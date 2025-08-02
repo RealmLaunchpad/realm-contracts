@@ -1,200 +1,243 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity 0.8.28;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/proxy/Clones.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "./LivoToken.sol";
-import "./interfaces/ILivoBondingCurve.sol";
-import "./interfaces/ILivoGraduationManager.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
+import "src/LivoToken.sol";
+import "src/interfaces/ILivoBondingCurve.sol";
+import "src/interfaces/ILivoGraduationManager.sol";
+import {TokenData, TokenDataLib} from "src/types/tokenData.sol";
 
-contract LivoLaunchpad is Ownable, ReentrancyGuard {
-    struct TokenData {
-        address bondingCurve;
-        address creator;
-        uint256 bondingCurveSupply;
-        uint256 ethCollected;
-        uint96 tradingFeeBps;
-        uint96 creatorFeeBps;
-        bool graduated;
-    }
+contract LivoLaunchpad is Ownable {
+    using TokenDataLib for TokenData;
+    using SafeERC20 for IERC20;
 
-    address public immutable tokenImplementation;
+    uint256 public constant BASIS_POINTS = 10_000; // 100% in basis points
 
+    // question consider if this should be immutable or not
+    /// @notice LivoToken ERC20 implementation address
+    IERC20 public tokenImplementation;
+
+    /// @notice The amount of ETH held in a token balance that is required for graduation
     uint256 public graduationThreshold = 20 ether;
-    uint96 public tradingFeeBps = 100; // 1%
+
+    /// @notice Trading fees in basis points (100 bps = 1%). Updates to these only affect future tokens
+    uint96 public _buyFeeBps = 100; // 1%
+    uint96 public _sellFeeBps = 100; // 1%
+
+    /// @notice Creator fee in basis points (100 bps = 1%).
     uint256 public graduationFee = 0.1 ether;
-    uint96 public creatorFeeBps = 5000; // 50%
+
+    /// @notice Each trade has fees, that fee is split between the creator and the treasury. This is the share for the creator
+    uint256 public creatorFeeShare = 5000; // 50%
+
+    /// @notice Livo Treasury, receiver of all trading/graduation fees
     address public treasury;
+    /// @notice Total fees collected by the treasury
+    uint256 public treasuryEthFeesCollected;
+
+    /// @notice Graduation manager contract that handles graduated tokens
     ILivoGraduationManager public graduationManager;
 
+    /// @notice Mapping of token address to its data
     mapping(address => TokenData) public tokens;
+
+    /// @notice Which Bonding Curve addresses can be selected at token creation
     mapping(address => bool) public whitelistedBondingCurves;
-    mapping(address => bool) public whitelistedGraduationManagers;
 
-    uint256 private constant TOTAL_SUPPLY = 1_000_000_000 * 10 ** 18; // 1B tokens
-    uint256 private constant BONDING_CURVE_SUPPLY = 800_000_000 * 10 ** 18; // 800M tokens for bonding curve
+    /// @notice the total supply of tokens forever
+    uint256 private constant TOTAL_SUPPLY = 1_000_000e18; // 1M tokens
 
-    event TokenCreated(
-        address indexed token,
-        address indexed creator,
-        string name,
-        string symbol,
-        address bondingCurve,
-        string metadata
-    );
+    // todo update this. So far dummy for compilation
+    uint256 private constant BONDING_CURVE_SUPPLY = 1_000_000e18; // 1M tokens for bonding curve
 
-    event TokenPurchased(
+    ///////////////////// Errors /////////////////////
+
+    error InvalidBondingCurve();
+    error InvalidNameOrSymbol();
+    error InvalidAmount();
+    error InvalidParameter(uint256 parameter);
+    error InvalidAddress();
+    error InvalidToken();
+    error CannotBeTraded();
+    error NotEnoughSupply();
+    error AlreadyGraduated();
+    error InsufficientETHReserves();
+    error GraduationCriteriaNotMet();
+    error EthTransferFailed();
+
+    ///////////////////// Events /////////////////////
+
+    event TokenCreated( // open field for additional data
+    address indexed token, address indexed creator, string name, string symbol, address bondingCurve, string metadata);
+
+    event LivoTokenPurchased(
         address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 fee
     );
 
-    event TokenSold(address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 fee);
+    event LivoTokenSold(
+        address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 fee
+    );
 
-    event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensRemaining);
+    event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
 
-    constructor(address _treasury) Ownable(msg.sender) {
+    event TreasuryFeesCollected(address indexed treasury, uint256 amount);
+    event TokenImplementationUpdated(IERC20 newImplementation);
+    event GraduationThresholdUpdated(uint256 newThreshold);
+    event TreasuryAddressUpdated(address newTreasury);
+    event CreatorFeeShareUpdated(uint256 newCreatorFeeBps);
+    event BondingCurveWhitelisted(address indexed bondingCurve, bool whitelisted);
+    event TradingFeesUpdated(uint96 buyFeeBps, uint96 sellFeeBps);
+    event GraduationManagerUpdated(address indexed graduationManager);
+
+    /////////////////////////////////////////////////
+
+    constructor(address _treasury, IERC20 _tokenImplementation) Ownable(msg.sender) {
         treasury = _treasury;
-        tokenImplementation = address(new LivoToken());
+        tokenImplementation = _tokenImplementation;
     }
 
     function createToken(string calldata name, string calldata symbol, string calldata metadata, address bondingCurve)
         external
         payable
-        nonReentrant
         returns (address)
     {
-        require(whitelistedBondingCurves[bondingCurve], "LivoLaunchpad: Invalid bonding curve");
-        require(bytes(name).length > 0 && bytes(symbol).length > 0, "LivoLaunchpad: Invalid name or symbol");
+        require(whitelistedBondingCurves[bondingCurve], InvalidBondingCurve());
+        require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
 
-        address tokenClone = Clones.clone(tokenImplementation);
+        address creator = msg.sender;
 
-        LivoToken(tokenClone).initialize(name, symbol, msg.sender, address(this), TOTAL_SUPPLY);
+        // minimal proxy pattern to deploy a new LivoToken instance
+        address tokenClone = Clones.clone(address(tokenImplementation));
+        // Initialize the new token instance
+        LivoToken(tokenClone).initialize(name, symbol, creator, address(this), TOTAL_SUPPLY);
 
+        // at creation all tokens are held by this contract
         tokens[tokenClone] = TokenData({
             bondingCurve: bondingCurve,
-            creator: msg.sender,
-            bondingCurveSupply: BONDING_CURVE_SUPPLY,
+            creator: creator,
             ethCollected: 0,
-            tradingFeeBps: tradingFeeBps,
-            creatorFeeBps: creatorFeeBps,
+            creatorFeesCollected: 0,
+            buyFeeBps: _buyFeeBps,
+            sellFeeBps: _sellFeeBps,
+            creatorFeeBps: 0, // todo update this
             graduated: false
         });
 
-        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, metadata);
+        emit TokenCreated(tokenClone, creator, name, symbol, bondingCurve, metadata);
 
         return tokenClone;
     }
 
-    function buyToken(address token) external payable nonReentrant {
-        require(msg.value > 0, "LivoLaunchpad: ETH amount must be greater than 0");
+    function buyToken(address token) external payable {
         TokenData storage tokenData = tokens[token];
-        require(tokenData.creator != address(0), "LivoLaunchpad: Token not found");
-        require(!tokenData.graduated, "LivoLaunchpad: Token already graduated");
 
-        uint256 fee = (msg.value * tokenData.tradingFeeBps) / 10000;
-        uint256 ethForTokens = msg.value - fee;
+        require(msg.value > 0, InvalidAmount());
+        require(tokenData.exists(), InvalidToken());
+        require(tokenData.notGraduated(), AlreadyGraduated());
 
+        uint256 ethFee = (msg.value * tokenData.buyFeeBps) / BASIS_POINTS;
+        uint256 ethForTokens = msg.value - ethFee;
+
+        // review this bonding curve interface
+        // review if donating tokens can mess up this
         uint256 tokensToReceive = ILivoBondingCurve(tokenData.bondingCurve).getTokensForEth(
-            ethForTokens, BONDING_CURVE_SUPPLY - tokenData.bondingCurveSupply, tokenData.ethCollected
+            ethForTokens, BONDING_CURVE_SUPPLY - IERC20(token).balanceOf(address(this)), tokenData.ethCollected
         );
 
-        require(tokensToReceive <= tokenData.bondingCurveSupply, "LivoLaunchpad: Insufficient token supply");
+        require(tokensToReceive >= IERC20(token).balanceOf(address(this)), NotEnoughSupply());
 
-        tokenData.bondingCurveSupply -= tokensToReceive;
+        uint256 creatorFee = (ethFee * tokenData.creatorFeeBps) / BASIS_POINTS;
+
+        tokenData.creatorFeesCollected += creatorFee;
+        treasuryEthFeesCollected += ethFee - creatorFee;
+
         tokenData.ethCollected += ethForTokens;
 
-        LivoToken(token).transfer(msg.sender, tokensToReceive);
+        IERC20(token).safeTransfer(msg.sender, tokensToReceive);
 
-        uint256 creatorFee = (fee * tokenData.creatorFeeBps) / 10000;
-        uint256 treasuryFee = fee - creatorFee;
-
-        if (creatorFee > 0) {
-            payable(tokenData.creator).transfer(creatorFee);
-        }
-        if (treasuryFee > 0) {
-            payable(treasury).transfer(treasuryFee);
-        }
-
-        emit TokenPurchased(token, msg.sender, msg.value, tokensToReceive, fee);
+        emit LivoTokenPurchased(token, msg.sender, msg.value, tokensToReceive, ethFee);
     }
 
-    function sellToken(address token, uint256 tokenAmount) external nonReentrant {
-        require(tokenAmount > 0, "LivoLaunchpad: Token amount must be greater than 0");
+    function sellToken(address token, uint256 tokenAmount) external {
         TokenData storage tokenData = tokens[token];
-        require(tokenData.creator != address(0), "LivoLaunchpad: Token not found");
-        require(!tokenData.graduated, "LivoLaunchpad: Token already graduated");
 
-        LivoToken(token).transferFrom(msg.sender, address(this), tokenAmount);
+        require(tokenData.exists(), InvalidToken());
+        require(tokenData.notGraduated(), AlreadyGraduated());
+        require(tokenAmount > 0, InvalidAmount());
 
-        uint256 ethToReceive = ILivoBondingCurve(tokenData.bondingCurve).getEthForTokens(
-            tokenAmount, BONDING_CURVE_SUPPLY - tokenData.bondingCurveSupply, tokenData.ethCollected
+        // review this bonding curve interface
+        uint256 ethRemoved = ILivoBondingCurve(tokenData.bondingCurve).getEthForTokens(
+            tokenAmount, BONDING_CURVE_SUPPLY - IERC20(token).balanceOf(address(this)), tokenData.ethCollected
         );
 
-        require(ethToReceive <= tokenData.ethCollected, "LivoLaunchpad: Insufficient ETH reserves");
+        // This is to prevent where a bonding curve steals from other curves or treasury
+        // Hopefully this scenario never happens
+        require(ethRemoved <= tokenData.ethCollected, InsufficientETHReserves());
 
-        uint256 fee = (ethToReceive * tokenData.tradingFeeBps) / 10000;
-        uint256 ethAfterFee = ethToReceive - fee;
+        // review fee assymmetries 1% != 1% down, so 1% sell != 1% buy ... ?
+        uint256 ethFee = (ethRemoved * tokenData.sellFeeBps) / BASIS_POINTS;
+        uint256 ethForSeller = ethRemoved - ethFee;
 
-        tokenData.bondingCurveSupply += tokenAmount;
-        tokenData.ethCollected -= ethToReceive;
+        tokenData.ethCollected -= ethRemoved;
 
-        payable(msg.sender).transfer(ethAfterFee);
+        uint256 creatorFee = (ethFee * tokenData.creatorFeeBps) / BASIS_POINTS;
+        uint256 treasuryFee = ethFee - creatorFee;
 
-        uint256 creatorFee = (fee * tokenData.creatorFeeBps) / 10000;
-        uint256 treasuryFee = fee - creatorFee;
+        tokenData.creatorFeesCollected += creatorFee;
+        treasuryEthFeesCollected += treasuryFee;
 
-        if (creatorFee > 0) {
-            payable(tokenData.creator).transfer(creatorFee);
-        }
-        if (treasuryFee > 0) {
-            payable(treasury).transfer(treasuryFee);
-        }
+        emit LivoTokenSold(token, msg.sender, tokenAmount, ethForSeller, ethFee);
 
-        emit TokenSold(token, msg.sender, tokenAmount, ethAfterFee, fee);
+        // todo should we update the amount of tokens in the bonding curve? review that curve
+        IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
+        // review potential reentrancies
+        (bool success,) = payable(msg.sender).call{value: ethForSeller}("");
+        require(success, EthTransferFailed());
     }
 
-    function graduateToken(address token) external payable nonReentrant {
-        require(msg.value >= graduationFee, "LivoLaunchpad: Insufficient graduation fee");
-        require(checkGraduationEligibility(token), "LivoLaunchpad: Token not eligible for graduation");
-
+    function graduateToken(address token) external payable {
         TokenData storage tokenData = tokens[token];
-        require(!tokenData.graduated, "LivoLaunchpad: Token already graduated");
+
+        require(tokenData.notGraduated(), AlreadyGraduated());
+        require(meetsGraduationCriteria(token), GraduationCriteriaNotMet());
 
         tokenData.graduated = true;
 
+        // review if token donations can mess up this
         uint256 ethCollected = tokenData.ethCollected;
-        uint256 tokensRemaining = tokenData.bondingCurveSupply;
 
-        LivoToken(token).transfer(address(graduationManager), tokensRemaining);
+        uint256 ethForGraduation = ethCollected - graduationFee;
+        uint256 tokensForGraduation = IERC20(token).balanceOf(address(this));
 
-        payable(treasury).transfer(graduationFee);
-        if (msg.value > graduationFee) {
-            payable(msg.sender).transfer(msg.value - graduationFee);
-        }
+        treasuryEthFeesCollected += graduationFee;
 
-        graduationManager.graduateToken{value: ethCollected}(token);
+        IERC20(token).safeTransfer(address(graduationManager), tokensForGraduation);
+        graduationManager.graduateToken{value: ethForGraduation}(token);
 
-        emit TokenGraduated(token, ethCollected, tokensRemaining);
+        emit TokenGraduated(token, ethForGraduation, tokensForGraduation);
     }
 
-    function checkGraduationEligibility(address token) public view returns (bool) {
+    //////////////////////////// view functions //////////////////////////
+
+    function meetsGraduationCriteria(address token) public view returns (bool) {
         TokenData storage tokenData = tokens[token];
-        return tokenData.ethCollected >= graduationThreshold && !tokenData.graduated;
-    }
-
-    function isGraduated(address token) external view returns (bool) {
-        return tokens[token].graduated;
+        // the graduation fee is taken from the eth collected by the curve, so the final liquidity is the graduation threshold
+        return (tokenData.ethCollected >= graduationThreshold + graduationFee) && !tokenData.graduated;
     }
 
     function getBuyPrice(address token, uint256 ethAmount) external view returns (uint256) {
         TokenData storage tokenData = tokens[token];
         require(tokenData.creator != address(0), "LivoLaunchpad: Token not found");
 
-        uint256 fee = (ethAmount * tokenData.tradingFeeBps) / 10000;
+        // review this bonding curve interface
+        uint256 fee = (ethAmount * tokenData.buyFeeBps) / BASIS_POINTS;
         uint256 ethForTokens = ethAmount - fee;
 
         return ILivoBondingCurve(tokenData.bondingCurve).getTokensForEth(
-            ethForTokens, BONDING_CURVE_SUPPLY - tokenData.bondingCurveSupply, tokenData.ethCollected
+            ethForTokens, BONDING_CURVE_SUPPLY - IERC20(token).balanceOf(address(this)), tokenData.ethCollected
         );
     }
 
@@ -203,10 +246,10 @@ contract LivoLaunchpad is Ownable, ReentrancyGuard {
         require(tokenData.creator != address(0), "LivoLaunchpad: Token not found");
 
         uint256 ethToReceive = ILivoBondingCurve(tokenData.bondingCurve).getEthForTokens(
-            tokenAmount, BONDING_CURVE_SUPPLY - tokenData.bondingCurveSupply, tokenData.ethCollected
+            tokenAmount, BONDING_CURVE_SUPPLY - IERC20(token).balanceOf(address(this)), tokenData.ethCollected
         );
 
-        uint256 fee = (ethToReceive * tokenData.tradingFeeBps) / 10000;
+        uint256 fee = (ethToReceive * tokenData.sellFeeBps) / BASIS_POINTS;
         return ethToReceive - fee;
     }
 
@@ -214,30 +257,52 @@ contract LivoLaunchpad is Ownable, ReentrancyGuard {
         return tokens[token].ethCollected;
     }
 
+    //////////////////////////// Admin functions //////////////////////////
+
+    function setLivoTokenImplementation(IERC20 newImplementation) external onlyOwner {
+        require(address(newImplementation) != address(0), InvalidAddress());
+        tokenImplementation = newImplementation;
+        emit TokenImplementationUpdated(newImplementation);
+    }
+
     // Owner functions
     function setGraduationThreshold(uint256 ethAmount) external onlyOwner {
         graduationThreshold = ethAmount;
+        emit GraduationThresholdUpdated(ethAmount);
     }
 
-    function setFeeRecipient(address recipient) external onlyOwner {
+    function setTreasuryAddress(address recipient) external onlyOwner {
         treasury = recipient;
-    }
-
-    function setCreatorFeeShare(uint256 basisPoints) external onlyOwner {
-        require(basisPoints <= 10000, "LivoLaunchpad: Invalid basis points");
-        creatorFeeBps = uint96(basisPoints);
+        emit TreasuryAddressUpdated(recipient);
     }
 
     function setGraduationManager(address manager) external onlyOwner {
-        require(whitelistedGraduationManagers[manager], "LivoLaunchpad: Invalid graduation manager");
+        // todo validations? interface?
         graduationManager = ILivoGraduationManager(manager);
+        emit GraduationManagerUpdated(manager);
     }
 
     function whitelistBondingCurve(address bondingCurve, bool whitelisted) external onlyOwner {
         whitelistedBondingCurves[bondingCurve] = whitelisted;
+        emit BondingCurveWhitelisted(bondingCurve, whitelisted);
     }
 
-    function whitelistGraduationManager(address manager, bool whitelisted) external onlyOwner {
-        whitelistedGraduationManagers[manager] = whitelisted;
+    function setTradingFees(uint96 buyFeeBps, uint96 sellFeeBps) external onlyOwner {
+        require(buyFeeBps <= BASIS_POINTS, InvalidParameter(buyFeeBps));
+        require(sellFeeBps <= BASIS_POINTS, InvalidParameter(sellFeeBps));
+        _buyFeeBps = buyFeeBps;
+        _sellFeeBps = sellFeeBps;
+        emit TradingFeesUpdated(buyFeeBps, sellFeeBps);
+    }
+
+    function collectTreasuryFees() external onlyOwner {
+        uint256 amount = treasuryEthFeesCollected;
+        if (amount == 0) return;
+
+        (bool success,) = treasury.call{value: amount}("");
+        require(success, EthTransferFailed());
+        treasuryEthFeesCollected = 0;
+
+        emit TreasuryFeesCollected(treasury, amount);
     }
 }

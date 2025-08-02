@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity 0.8.28;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
-contract LivoToken is ERC20, Ownable {
-    address public creator;
+contract LivoToken is ERC20 {
+    /// @notice LivoLaunchpad factory address
     address public factory;
 
-    bool public antiBotEnabled;
-    uint256 public buyFeeBps;
-    uint256 public sellFeeBps;
-    bool private initialized;
+    /// review if we need this
+    address public creator;
 
-    string private _tokenName;
-    string private _tokenSymbol;
-
+    /// @notice Addresses exempt from fees (only affecting post-graduation trades)
     mapping(address => bool) public feeExempt;
 
-    modifier onlyFactory() {
-        require(msg.sender == factory, "LivoToken: Only factory can call");
-        _;
-    }
+    /// @dev only to prevent re-initialization
+    bool internal _initialized;
+    /// @notice Token name and symbol
+    string private _tokenName;
+    /// @notice Token symbol
+    string private _tokenSymbol;
 
-    constructor() ERC20("", "") Ownable(msg.sender) {}
+    /// @notice Emitted when a fee exemption is set
+    event FeeExemptSet(address indexed account, bool exempt);
+
+    constructor() ERC20("", "") {}
 
     function initialize(
         string memory _name,
@@ -32,56 +32,35 @@ contract LivoToken is ERC20, Ownable {
         address _factory,
         uint256 _totalSupply
     ) external {
-        require(!initialized, "LivoToken: Already initialized");
-        initialized = true;
+        require(!_initialized, "LivoToken: Already initialized");
+        _initialized = true;
+
+        // all supply goes to the factory, where it can be traded according to the bonding curve
+        _setFeeExempt(_factory, true);
+        _mint(_factory, _totalSupply);
 
         _tokenName = _name;
         _tokenSymbol = _symbol;
         creator = _creator;
         factory = _factory;
-        _transferOwnership(_factory);
-
-        _mint(_factory, _totalSupply);
-
-        feeExempt[_factory] = true;
-        feeExempt[_creator] = true;
     }
 
+    /// @dev ERC20 interface compliance
     function name() public view override returns (string memory) {
         return _tokenName;
     }
 
+    /// @dev ERC20 interface compliance
     function symbol() public view override returns (string memory) {
         return _tokenSymbol;
     }
 
-    function setAntiBotProtection(bool enabled) external onlyFactory {
-        antiBotEnabled = enabled;
-    }
+    //////////////////////// internal functions ////////////////////////
 
-    function setBuyFee(uint256 basisPoints) external onlyFactory {
-        require(basisPoints <= 10000, "LivoToken: Fee too high");
-        buyFeeBps = basisPoints;
-    }
-
-    function setSellFee(uint256 basisPoints) external onlyFactory {
-        require(basisPoints <= 10000, "LivoToken: Fee too high");
-        sellFeeBps = basisPoints;
-    }
-
-    function setFeeExempt(address account, bool exempt) external onlyFactory {
+    function _setFeeExempt(address account, bool exempt) internal {
         feeExempt[account] = exempt;
+        emit FeeExemptSet(account, exempt);
     }
 
-    function _update(address from, address to, uint256 value) internal override {
-        if (antiBotEnabled && from != address(0) && to != address(0)) {
-            require(!_isContract(to) || feeExempt[to], "LivoToken: Contract interactions blocked");
-        }
-
-        super._update(from, to, value);
-    }
-
-    function _isContract(address account) internal view returns (bool) {
-        return account.code.length > 0;
-    }
+    // todo update buy/sell fees logic (burned?)
 }
