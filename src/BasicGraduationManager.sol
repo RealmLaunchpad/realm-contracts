@@ -16,12 +16,12 @@ interface IUniswapV2Router {
     function WETH() external pure returns (address);
     function addLiquidityETH(
         address token,
-        uint amountTokenDesired,
-        uint amountTokenMin,
-        uint amountETHMin,
+        uint256 amountTokenDesired,
+        uint256 amountTokenMin,
+        uint256 amountETHMin,
         address to,
-        uint deadline
-    ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
+        uint256 deadline
+    ) external payable returns (uint256 amountToken, uint256 amountETH, uint256 liquidity);
 }
 
 contract BasicGraduationManager is ILivoGraduationManager, Ownable, ReentrancyGuard {
@@ -29,58 +29,50 @@ contract BasicGraduationManager is ILivoGraduationManager, Ownable, ReentrancyGu
     IUniswapV2Factory public immutable uniswapFactory;
     address public immutable launchpad;
     address public liquidityLockContract;
-    
+
     mapping(address => bool) public graduatedTokens;
-    
+
     event TokenGraduated(
-        address indexed token,
-        address indexed pair,
-        uint256 tokenAmount,
-        uint256 ethAmount,
-        uint256 liquidity
+        address indexed token, address indexed pair, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
     );
-    
-    constructor(
-        address _uniswapRouter,
-        address _launchpad,
-        address _liquidityLockContract
-    ) Ownable(msg.sender) {
+
+    constructor(address _uniswapRouter, address _launchpad, address _liquidityLockContract) Ownable(msg.sender) {
         uniswapRouter = IUniswapV2Router(_uniswapRouter);
         uniswapFactory = IUniswapV2Factory(IUniswapV2Router(_uniswapRouter).factory());
         launchpad = _launchpad;
         liquidityLockContract = _liquidityLockContract;
     }
-    
+
     modifier onlyLaunchpad() {
         require(msg.sender == launchpad, "BasicGraduationManager: Only launchpad can call");
         _;
     }
-    
+
     function checkGraduationEligibility(address tokenAddress) external view override returns (bool) {
         // This is handled by the launchpad based on ETH collected threshold
         // This function exists for interface compliance
         return !graduatedTokens[tokenAddress];
     }
-    
+
     function graduateToken(address tokenAddress) external payable override onlyLaunchpad nonReentrant {
         require(!graduatedTokens[tokenAddress], "BasicGraduationManager: Token already graduated");
-        
+
         LivoToken token = LivoToken(tokenAddress);
         uint256 tokenBalance = token.balanceOf(address(this));
         uint256 ethBalance = msg.value;
-        
+
         require(tokenBalance > 0, "BasicGraduationManager: No tokens to graduate");
         require(ethBalance > 0, "BasicGraduationManager: No ETH to graduate");
-        
+
         // Create Uniswap pair if it doesn't exist
         address pair = uniswapFactory.getPair(tokenAddress, uniswapRouter.WETH());
         if (pair == address(0)) {
             pair = uniswapFactory.createPair(tokenAddress, uniswapRouter.WETH());
         }
-        
+
         // Approve tokens for router
         token.approve(address(uniswapRouter), tokenBalance);
-        
+
         // Add liquidity to Uniswap
         (uint256 amountToken, uint256 amountETH, uint256 liquidity) = uniswapRouter.addLiquidityETH{value: ethBalance}(
             tokenAddress,
@@ -90,15 +82,15 @@ contract BasicGraduationManager is ILivoGraduationManager, Ownable, ReentrancyGu
             liquidityLockContract, // Send LP tokens to lock contract
             block.timestamp + 300 // 5 minute deadline
         );
-        
+
         graduatedTokens[tokenAddress] = true;
-        
+
         // Disable anti-bot protection after graduation
         token.setAntiBotProtection(false);
-        
+
         emit TokenGraduated(tokenAddress, pair, amountToken, amountETH, liquidity);
     }
-    
+
     function setLiquidityLockContract(address _liquidityLockContract) external onlyOwner {
         liquidityLockContract = _liquidityLockContract;
     }
