@@ -16,7 +16,8 @@
 - `setCreatorFeeShare(uint256 basisPoints) external onlyOwner`
 - `setGraduationManager(address manager) external onlyOwner`
 **View Functions**:
-- `canBeGraduated(address token) external view returns (bool)`
+- `checkGraduationEligibility(address token) external view returns (bool)`
+- `isGraduated(address token) external view returns (bool)`
 - `getBuyPrice(address token, uint256 ethAmount) external view returns (uint256)`
 - `getSellPrice(address token, uint256 tokenAmount) external view returns (uint256)`
 - `getEthCollectedByToken(address token) external view returns (uint256)`
@@ -53,6 +54,7 @@ struct TokenConfig {
 - Admins can set new graduation managers as long as they comply with ILivoGraduationManager interface
 
 ### 2. LivoToken
+
 **Purpose**: Standard ERC20 token with anti-bot protection and configurable fees
 
 **Functions**:
@@ -70,6 +72,9 @@ struct TokenConfig {
 - `buyFeeBps` uint256
 - `sellFeeBps` uint256
 - Mapping of fee-exempt addresses
+
+**Notes:** 
+- inherits ERC20 from Openzeppelin 
 
 ### 3. BondingCurves
 
@@ -98,7 +103,7 @@ Admins will deploy one GraduationManager to begin with, but the Launchpad will b
 **Purpose**: Handles the graduation process and Uniswap V2 integration
 
 **Functions**:
-- `canBeGraduated(address tokenAddress) external view returns (bool)`
+- `checkGraduationEligibility(address tokenAddress) external view returns (bool)`
 - `graduateToken(address tokenAddress) external`
 
 **Dependencies**:
@@ -109,23 +114,21 @@ Admins will deploy one GraduationManager to begin with, but the Launchpad will b
 ## Architecture Flow
 
 ### Phase 1: Token Creation & Bonding Curve
-1. User calls `LivoLaunchpad.createToken()`
-2. LivoLaunchpad deploys new `LivoToken` contract (standard ERC20)
-3. LivoLaunchpad maps token to specified bonding curve contract
-4. LivoLaunchpad holds 80% of token supply for bonding curve trading
-5. Users trade via `LivoLaunchpad.buyToken()` and `sellToken()`
-6. 1% trading fee split 50/50 between creator and treasury
+0. Admins deploy and whitelists valid BondingCurve and GraduationManager contracts
+1. User creates token with `LivoLaunchpad.createToken()`
+2. LivoLaunchpad deploys new `LivoToken` contract (standard ERC20) mapping the token to specified bonding curve contract
+3. Users trade via `LivoLaunchpad.buyToken()` and `sellToken()`
+4. 1% trading fee split 50/50 between creator and treasury
 
 ### Phase 2: Graduation Process
-1. Token reaches 20 ETH collected threshold in `LivoLaunchpad`
+1. Token reaches 20 ETH collected threshold in `LivoLaunchpad`, then `checkGraduationEligibility(token)` returns True.
 2. Anyone can call `LivoLaunchpad.graduateToken()`
-3. LivoLaunchpad calls `GraduationManager.graduateToken()`
 4. Process:
    - Pay 0.1 ETH graduation fee to treasury
-   - Transfer 1% of supply to creator
+   - Transfer 1% of supply to creator  (TBD??)
    - Transfer remaining tokens and ETH to `GraduationManager`
    - Create Uniswap V2 pair with tokens and ETH
-   - Lock LP tokens in `LiquidityLocker`
+   - Lock LP tokens in `????`
    - Mark token as graduated in both `LivoToken` and `LivoLaunchpad`
 
 ## Gas Optimization
