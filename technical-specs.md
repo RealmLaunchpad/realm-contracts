@@ -19,35 +19,85 @@
 - `graduationFee` (0.1 ETH)
 - `creatorFeeBps` (5000 = 50%)
 - `treasury` address
+- `preGraduationOrchestrator` address
 - Array of deployed tokens
 
-### 2. BondingCurveToken
-**Purpose**: Individual token contract with integrated bonding curve
+### 2. LivoToken
+**Purpose**: Standard ERC20 token with anti-bot protection and configurable fees
 
 **Functions**:
-- `buy() external payable`
-- `sell(uint256 tokenAmount) external`
-- `getPrice() external view returns (uint256)`
-- `getTotalEthCollected() external view returns (uint256)`
+- Standard ERC20 functions (`transfer`, `approve`, etc.)
+- `setAntiBotProtection(bool enabled) external onlyFactory`
+- `setBuyFee(uint256 basisPoints) external onlyFactory`
+- `setSellFee(uint256 basisPoints) external onlyFactory`
+- `setFeeExempt(address account, bool exempt) external onlyFactory`
 - `isGraduated() external view returns (bool)`
-- `graduate() external`
-- `emergencyWithdraw() external onlyCreator` (pre-graduation only)
+- `graduate() external onlyOrchestrator`
 
 **State Variables**:
 - Standard ERC20 properties
 - `creator` address
-- `ethCollected` 
-- `graduated` bool
-- `bondingCurveSupply` (tokens available via bonding curve)
 - `factory` address
-- Chainlink price feed reference
+- `orchestrator` address
+- `graduated` bool
+- `antiBotEnabled` bool
+- `buyFeeBps` uint256
+- `sellFeeBps` uint256
+- Mapping of fee-exempt addresses
+
+### 3. PreGraduationOrchestrator
+**Purpose**: Handles all pre-graduation trading, bonding curves, and token custody
+
+**Functions**:
+- `buyToken(address token) external payable`
+- `sellToken(address token, uint256 tokenAmount) external`
+- `getBuyPrice(address token, uint256 ethAmount) external view returns (uint256)`
+- `getSellPrice(address token, uint256 tokenAmount) external view returns (uint256)`
+- `getTotalEthCollected(address token) external view returns (uint256)`
+- `checkGraduationEligibility(address token) external view returns (bool)`
+- `graduateToken(address token) external`
+- `emergencyWithdraw(address token) external onlyCreator`
+
+**State Variables**:
+- `mapping(address => address) tokenToBondingCurve` - Maps token to its bonding curve contract
+- `mapping(address => TokenConfig) tokenConfigs` - Fee configurations per token
+- `mapping(address => uint256) ethCollected` - ETH collected per token
+- `mapping(address => bool) graduated` - Graduation status per token
+- `mapping(address => address) tokenCreators` - Token creator mapping
+- `factory` address
+- `graduationManager` address
+
+**TokenConfig Struct**:
+```solidity
+struct TokenConfig {
+    uint256 tradingFeeBps;
+    uint256 creatorFeeBps;
+    uint256 bondingCurveSupply;
+    bool active;
+}
+```
+
+### 4. BondingCurve
+**Purpose**: Individual bonding curve logic for each token
+
+**Functions**:
+- `getBuyPrice(uint256 ethAmount) external view returns (uint256)`
+- `getSellPrice(uint256 tokenAmount) external view returns (uint256)`
+- `getTokensForEth(uint256 ethAmount) external view returns (uint256)`
+- `getEthForTokens(uint256 tokenAmount) external view returns (uint256)`
+
+**State Variables**:
+- `basePrice` uint256
+- `priceSlope` uint256
+- `currentSupply` uint256
+- `maxSupply` uint256
 
 **Bonding Curve Logic**:
-- Linear curve: `price = basePrice + (ethCollected * priceSlope)`
+- Linear curve: `price = basePrice + (currentSupply * priceSlope)`
 - Initial price: 0.000001 ETH per token
-- Price increases with ETH collected
+- Price increases with tokens sold
 
-### 3. LiquidityLocker
+### 5. LiquidityLocker
 **Purpose**: Permanently locks Uniswap V2 LP tokens after graduation
 
 **Functions**:
@@ -59,7 +109,7 @@
 - Mapping of locked LP tokens
 - Fee collection tracking
 
-### 4. GraduationManager
+### 6. GraduationManager
 **Purpose**: Handles the graduation process and Uniswap V2 integration
 
 **Functions**:
@@ -75,21 +125,24 @@
 
 ### Phase 1: Token Creation & Bonding Curve
 1. User calls `LaunchpadFactory.createToken()`
-2. Factory deploys new `BondingCurveToken` contract
-3. Token enters bonding curve phase
-4. Users trade via `buy()` and `sell()` functions
-5. 1% trading fee split 50/50 between creator and treasury
+2. Factory deploys new `LivoToken` contract (standard ERC20)
+3. Factory deploys dedicated `BondingCurve` contract for the token
+4. Factory registers token with `PreGraduationOrchestrator`
+5. Orchestrator holds 80% of token supply for bonding curve trading
+6. Users trade via `PreGraduationOrchestrator.buyToken()` and `sellToken()`
+7. 1% trading fee split 50/50 between creator and treasury
 
 ### Phase 2: Graduation Process
-1. Token reaches 20 ETH collected threshold
-2. Anyone can call `BondingCurveToken.graduate()`
-3. Contract calls `GraduationManager.graduateToken()`
+1. Token reaches 20 ETH collected threshold in `PreGraduationOrchestrator`
+2. Anyone can call `PreGraduationOrchestrator.graduateToken()`
+3. Orchestrator calls `GraduationManager.graduateToken()`
 4. Process:
    - Pay 0.1 ETH graduation fee to treasury
-   - Mint 1% of supply to creator
-   - Create Uniswap V2 pair with remaining ETH and tokens
+   - Transfer 1% of supply to creator
+   - Transfer remaining tokens and ETH to `GraduationManager`
+   - Create Uniswap V2 pair with tokens and ETH
    - Lock LP tokens in `LiquidityLocker`
-   - Disable bonding curve trading
+   - Mark token as graduated in both `LivoToken` and `PreGraduationOrchestrator`
 
 ## Token Economics
 
@@ -136,11 +189,12 @@
 
 ## Deployment Strategy
 
-1. Deploy `LaunchpadFactory`
-2. Deploy `LiquidityLocker` 
-3. Deploy `GraduationManager`
-4. Configure factory parameters
-5. Set up frontend integration points
+1. Deploy `LiquidityLocker`
+2. Deploy `GraduationManager`
+3. Deploy `PreGraduationOrchestrator`
+4. Deploy `LaunchpadFactory`
+5. Configure factory parameters and contract addresses
+6. Set up frontend integration points
 
 ## Gas Optimization
 
