@@ -29,19 +29,18 @@
 - `creatorFeeBps` (5000 = 50%)
 - `treasury` address
 - `graduationManager` address (ILivoGraduationManager)
-- `mapping(address => address) tokenToBondingCurve` - Maps token to its bonding curve contract (ILivoBoundingCurve)
-- `mapping(address => TokenConfig) tokenConfigs` - Fee configurations per token
-- `mapping(address => uint256) ethCollected` - ETH collected per token
-- `mapping(address => bool) graduated` - Graduation status per token
-- `mapping(address => address) tokenCreators` - Token creator mapping
+- `mapping(address => TokenData) tokens` - Consolidated token data mapping
 
-**TokenConfig Struct**:
+**TokenData Struct**:
 ```solidity
-struct TokenConfig {
-    uint256 tradingFeeBps;
-    uint256 creatorFeeBps;
-    uint256 bondingCurveSupply;
-    bool active;
+struct TokenData {
+    address bondingCurve;        // ILivoBoundingCurve compliant contract
+    address creator;             // Token creator address
+    uint256 bondingCurveSupply;  // Supply allocated to bonding curve
+    uint256 ethCollected;        // ETH collected from trading
+    uint96 tradingFeeBps;       // Trading fee basis points
+    uint96 creatorFeeBps;       // Creator fee basis points
+    bool graduated;              // Graduation status
 }
 ```
 
