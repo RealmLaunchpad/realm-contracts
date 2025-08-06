@@ -6,7 +6,7 @@
 **Purpose**: Central contract for creating new token launches, handling pre-graduation trading, bonding curves, and token custody
 
 **Permissionless Functions**:
-- `createToken(string name, string symbol, string metadata, address bondingCurve) external payable returns (address)`
+- `createToken(string name, string symbol, string metadata, address bondingCurve, address graduationManager) external payable returns (address)`
 - `buyToken(address token) external payable`
 - `sellToken(address token, uint256 tokenAmount) external`
 - `graduateToken(address token) external`
@@ -14,7 +14,7 @@
 - `setGraduationThreshold(uint256 ethAmount) external onlyOwner`
 - `setFeeRecipient(address recipient) external onlyOwner`
 - `setCreatorFeeShare(uint256 basisPoints) external onlyOwner`
-- `setGraduationManager(address manager) external onlyOwner`
+- `whitelistGraduationManager(address graduationManager, bool whitelisted) external onlyOwner`
 **View Functions**:
 - `checkGraduationEligibility(address token) external view returns (bool)`
 - `isGraduated(address token) external view returns (bool)`
@@ -28,7 +28,8 @@
 - `graduationFee` (0.1 ETH)
 - `creatorFeeBps` (5000 = 50%)
 - `treasury` address
-- `graduationManager` address (ILivoGraduationManager)
+- `graduationManager` address (ILivoGraduator) - legacy, kept for backwards compatibility
+- `mapping(address => bool) whitelistedGraduationManagers` - Whitelisted graduation managers
 - `mapping(address => TokenData) tokens` - Consolidated token data mapping
 
 **TokenData Struct**:
@@ -36,9 +37,11 @@
 struct TokenData {
     address bondingCurve;        // ILivoBoundingCurve compliant contract
     address creator;             // Token creator address
-    uint256 bondingCurveSupply;  // Supply allocated to bonding curve
+    address graduationManager;   // ILivoGraduator compliant contract assigned to this token
     uint256 ethCollected;        // ETH collected from trading
-    uint96 tradingFeeBps;       // Trading fee basis points
+    uint256 creatorFeesCollected;// ETH fees collected for the creator
+    uint96 buyFeeBps;           // Buy trading fee basis points
+    uint96 sellFeeBps;          // Sell trading fee basis points
     uint96 creatorFeeBps;       // Creator fee basis points
     bool graduated;              // Graduation status
 }
@@ -49,8 +52,10 @@ struct TokenData {
 - `setGraduationThreshold` and `setCreatorFeeShare` should only affect future tokens, not already deployed ones.
 - Holds all created tokens and all ETH from purchases until each token is graduated
 - Each token has its own bonding curve via the mapping to ILivoBoundingCurve compliant contracts
-- Each token has its own fee structure via TokenConfig
-- Admins can set new graduation managers as long as they comply with ILivoGraduationManager interface
+- Each token has its own graduation manager selected at creation time from whitelisted options
+- Each token has its own fee structure via TokenData
+- Admins can whitelist/unwhitelist graduation managers via `whitelistGraduationManager()`
+- Token creators choose their preferred graduation manager at token creation from whitelisted options
 
 ### 2. LivoToken
 
@@ -113,9 +118,9 @@ Admins will deploy one GraduationManager to begin with, but the Launchpad will b
 ## Architecture Flow
 
 ### Phase 1: Token Creation & Bonding Curve
-0. Admins deploy and whitelists valid BondingCurve and GraduationManager contracts
-1. User creates token with `LivoLaunchpad.createToken()`
-2. LivoLaunchpad deploys new `LivoToken` contract (standard ERC20) mapping the token to specified bonding curve contract
+0. Admins deploy and whitelist valid BondingCurve and GraduationManager contracts
+1. User creates token with `LivoLaunchpad.createToken()`, choosing from whitelisted bonding curves and graduation managers
+2. LivoLaunchpad deploys new `LivoToken` contract (standard ERC20) mapping the token to specified bonding curve and graduation manager
 3. Users trade via `LivoLaunchpad.buyToken()` and `sellToken()`
 4. 1% trading fee split 50/50 between creator and treasury
 
@@ -125,9 +130,8 @@ Admins will deploy one GraduationManager to begin with, but the Launchpad will b
 4. Process:
    - Pay 0.1 ETH graduation fee to treasury
    - Transfer 1% of supply to creator  (TBD??)
-   - Transfer remaining tokens and ETH to `GraduationManager`
-   - Create Uniswap V2 pair with tokens and ETH
-   - Lock LP tokens in `????`
+   - Transfer remaining tokens and ETH to the token's specific `GraduationManager` (chosen at creation)
+   - Graduation manager handles liquidity creation according to its implementation
    - Mark token as graduated in both `LivoToken` and `LivoLaunchpad`
 
 ## Gas Optimization

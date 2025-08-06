@@ -37,7 +37,11 @@ contract LivoToken is ERC20 {
 
         // all supply goes to the factory, where it can be traded according to the bonding curve
         _setFeeExempt(_factory, true);
-        _mint(_factory, _totalSupply);
+
+        // 1% of total supply to the creator
+        uint256 creatorSupply = _totalSupply / 100;
+        _mint(_creator, creatorSupply);
+        _mint(_factory, _totalSupply - creatorSupply);
 
         _tokenName = _name;
         _tokenSymbol = _symbol;

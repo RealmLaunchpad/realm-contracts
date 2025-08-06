@@ -3,12 +3,12 @@ pragma solidity 0.8.28;
 
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
-import {ILivoGraduationManager} from "src/interfaces/ILivoGraduationManager.sol";
+import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 
-contract BasicGraduationManager is ILivoGraduationManager, Ownable, ReentrancyGuard {
+contract BasicGraduationManager is ILivoGraduator, Ownable, ReentrancyGuard {
     IUniswapV2Router public immutable uniswapRouter;
     IUniswapV2Factory public immutable uniswapFactory;
     address public immutable launchpad;

@@ -4,6 +4,8 @@ pragma solidity 0.8.28;
 struct TokenData {
     /// @notice Bonding curve address. Cannot be altered once is set
     address bondingCurve;
+    /// @notice Graduation manager address assigned to this token. Cannot be altered once is set
+    address graduator;
     /// @notice Creator of the token. Cannot be altered once is set
     address creator;
     /// @notice Total ETH collected by the token purchases, which will be used mostly for liquidity
@@ -11,11 +13,11 @@ struct TokenData {
     /// @notice ETH fees collected for the creator, claimable at any time
     uint256 creatorFeesCollected;
     /// @notice Trading (buy) fee in basis points (100 bps = 1%)
-    uint96 buyFeeBps;
+    uint16 buyFeeBps;
     /// @notice Trading (sell) fee in basis points (100 bps = 1%)
-    uint96 sellFeeBps;
+    uint16 sellFeeBps;
     /// @notice Share of the fees in each trade that goes to the creator, in basis points (100 bps = 1%)
-    uint96 creatorFeeBps;
+    uint16 creatorFeeBps;
     /// @notice This is set to true once graduated, meaning it is no longer tradable from the launchpad
     bool graduated;
 }

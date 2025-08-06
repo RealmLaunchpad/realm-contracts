@@ -7,7 +7,7 @@ import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import "src/LivoToken.sol";
 import "src/interfaces/ILivoBondingCurve.sol";
-import "src/interfaces/ILivoGraduationManager.sol";
+import "src/interfaces/ILivoGraduator.sol";
 import {TokenData, TokenDataLib} from "src/types/tokenData.sol";
 
 contract LivoLaunchpad is Ownable {
@@ -23,29 +23,29 @@ contract LivoLaunchpad is Ownable {
     /// @notice The amount of ETH held in a token balance that is required for graduation
     uint256 public graduationThreshold = 20 ether;
 
-    /// @notice Trading fees in basis points (100 bps = 1%). Updates to these only affect future tokens
-    uint96 public _buyFeeBps = 100; // 1%
-    uint96 public _sellFeeBps = 100; // 1%
-
     /// @notice Creator fee in basis points (100 bps = 1%).
     uint256 public graduationFee = 0.1 ether;
 
-    /// @notice Each trade has fees, that fee is split between the creator and the treasury. This is the share for the creator
-    uint256 public creatorFeeShare = 5000; // 50%
-
-    /// @notice Livo Treasury, receiver of all trading/graduation fees
-    address public treasury;
     /// @notice Total fees collected by the treasury
     uint256 public treasuryEthFeesCollected;
 
-    /// @notice Graduation manager contract that handles graduated tokens
-    ILivoGraduationManager public graduationManager;
+    /// @notice Livo Treasury, receiver of all trading/graduation fees
+    address public treasury;
+
+    /// @notice Trading fees in basis points (100 bps = 1%). Updates to these only affect future tokens
+    uint16 public baseBuyFeeBps = 100; // 1%
+    uint16 public baseSellFeeBps = 100; // 1%
+    /// @notice Each trade has fees, that fee is split between the creator and the treasury. This is the share for the creator
+    uint16 public creatorFeeShareBps;
 
     /// @notice Mapping of token address to its data
     mapping(address => TokenData) public tokens;
 
     /// @notice Which Bonding Curve addresses can be selected at token creation
     mapping(address => bool) public whitelistedBondingCurves;
+
+    /// @notice Which Graduator addresses can be selected at token creation
+    mapping(address => bool) public whitelistedGraduators;
 
     /// @notice the total supply of tokens forever
     uint256 private constant TOTAL_SUPPLY = 1_000_000e18; // 1M tokens
@@ -56,6 +56,7 @@ contract LivoLaunchpad is Ownable {
     ///////////////////// Errors /////////////////////
 
     error InvalidBondingCurve();
+    error InvalidGraduator();
     error InvalidNameOrSymbol();
     error InvalidAmount();
     error InvalidParameter(uint256 parameter);
@@ -89,8 +90,8 @@ contract LivoLaunchpad is Ownable {
     event TreasuryAddressUpdated(address newTreasury);
     event CreatorFeeShareUpdated(uint256 newCreatorFeeBps);
     event BondingCurveWhitelisted(address indexed bondingCurve, bool whitelisted);
+    event GraduatorWhitelisted(address indexed graduator, bool whitelisted);
     event TradingFeesUpdated(uint96 buyFeeBps, uint96 sellFeeBps);
-    event GraduationManagerUpdated(address indexed graduationManager);
 
     /////////////////////////////////////////////////
 
@@ -99,30 +100,36 @@ contract LivoLaunchpad is Ownable {
         tokenImplementation = _tokenImplementation;
     }
 
-    function createToken(string calldata name, string calldata symbol, string calldata metadata, address bondingCurve)
-        external
-        payable
-        returns (address)
-    {
-        require(whitelistedBondingCurves[bondingCurve], InvalidBondingCurve());
+    function createToken(
+        string calldata name,
+        string calldata symbol,
+        string calldata metadata,
+        address bondingCurve,
+        address graduator
+    ) external payable returns (address) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
+        require(whitelistedBondingCurves[bondingCurve], InvalidBondingCurve());
+        require(whitelistedGraduators[graduator], InvalidGraduator());
 
         address creator = msg.sender;
 
         // minimal proxy pattern to deploy a new LivoToken instance
         address tokenClone = Clones.clone(address(tokenImplementation));
         // Initialize the new token instance
+        // It is responsibility of the token to distribute supply to the creator
+        // so that we can update the token implementation with new rules for future tokens
         LivoToken(tokenClone).initialize(name, symbol, creator, address(this), TOTAL_SUPPLY);
 
         // at creation all tokens are held by this contract
         tokens[tokenClone] = TokenData({
             bondingCurve: bondingCurve,
+            graduator: graduator,
             creator: creator,
             ethCollected: 0,
             creatorFeesCollected: 0,
-            buyFeeBps: _buyFeeBps,
-            sellFeeBps: _sellFeeBps,
-            creatorFeeBps: 0, // todo update this
+            buyFeeBps: baseBuyFeeBps,
+            sellFeeBps: baseSellFeeBps,
+            creatorFeeBps: creatorFeeShareBps,
             graduated: false
         });
 
@@ -214,8 +221,9 @@ contract LivoLaunchpad is Ownable {
 
         treasuryEthFeesCollected += graduationFee;
 
-        IERC20(token).safeTransfer(address(graduationManager), tokensForGraduation);
-        graduationManager.graduateToken{value: ethForGraduation}(token);
+        ILivoGraduator graduator = ILivoGraduator(tokenData.graduator);
+        IERC20(token).safeTransfer(address(graduator), tokensForGraduation);
+        graduator.graduateToken{value: ethForGraduation}(token);
 
         emit TokenGraduated(token, ethForGraduation, tokensForGraduation);
     }
@@ -276,22 +284,23 @@ contract LivoLaunchpad is Ownable {
         emit TreasuryAddressUpdated(recipient);
     }
 
-    function setGraduationManager(address manager) external onlyOwner {
-        // todo validations? interface?
-        graduationManager = ILivoGraduationManager(manager);
-        emit GraduationManagerUpdated(manager);
-    }
-
     function whitelistBondingCurve(address bondingCurve, bool whitelisted) external onlyOwner {
         whitelistedBondingCurves[bondingCurve] = whitelisted;
         emit BondingCurveWhitelisted(bondingCurve, whitelisted);
     }
 
-    function setTradingFees(uint96 buyFeeBps, uint96 sellFeeBps) external onlyOwner {
+    /// @dev blacklisted graduators will still be able to graduate the tokens that where created with them
+    function whitelistGraduator(address graduator, bool whitelisted) external onlyOwner {
+        // todo validation of the graduation manager?
+        whitelistedGraduators[graduator] = whitelisted;
+        emit GraduatorWhitelisted(graduator, whitelisted);
+    }
+
+    function setTradingFees(uint16 buyFeeBps, uint16 sellFeeBps) external onlyOwner {
         require(buyFeeBps <= BASIS_POINTS, InvalidParameter(buyFeeBps));
         require(sellFeeBps <= BASIS_POINTS, InvalidParameter(sellFeeBps));
-        _buyFeeBps = buyFeeBps;
-        _sellFeeBps = sellFeeBps;
+        baseBuyFeeBps = buyFeeBps;
+        baseSellFeeBps = sellFeeBps;
         emit TradingFeesUpdated(buyFeeBps, sellFeeBps);
     }
 
