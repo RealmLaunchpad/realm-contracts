@@ -66,6 +66,8 @@ contract LivoLaunchpad is Ownable {
     error EthTransferFailed();
     error DeadlineExceeded();
     error SlippageExceeded();
+    error CallerIsNotCreator();
+    error NothingToClaim();
 
     ///////////////////// Events /////////////////////
 
@@ -91,7 +93,7 @@ contract LivoLaunchpad is Ownable {
     event GraduatorWhitelisted(address indexed graduator, bool whitelisted);
     event TradingFeesUpdated(uint96 buyFeeBps, uint96 sellFeeBps);
     event GraduationFeeUpdated(uint256 newGraduationFee);
-
+    event CreatorEthFeesClaimed(address indexed token, address indexed creator, uint256 amount);
 
     /////////////////////////////////////////////////
 
@@ -159,6 +161,7 @@ contract LivoLaunchpad is Ownable {
         _registerEthFees(ethFee, tokenData);
 
         tokenData.ethCollected += ethForReserves;
+        tokenData.circulatingSupply += tokensToReceive;
 
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
 
@@ -184,6 +187,7 @@ contract LivoLaunchpad is Ownable {
         _registerEthFees(ethFee, tokenData);
 
         tokenData.ethCollected -= ethFromReserves;
+        tokenData.circulatingSupply -= tokenAmount;
 
         // funds transfers
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
@@ -212,6 +216,22 @@ contract LivoLaunchpad is Ownable {
         tokenData.graduator.graduateToken{value: ethForGraduation}(token);
 
         emit TokenGraduated(token, ethForGraduation, tokensForGraduation);
+    }
+
+    function claimCreatorEthFees(address token) external {
+        TokenData storage tokenData = tokens[token];
+
+        address creator = tokenData.creator;
+        uint256 amount = tokenData.creatorFeesCollected;
+
+        require(creator == msg.sender, CallerIsNotCreator());
+        require(amount > 0, NothingToClaim());
+
+        tokenData.creatorFeesCollected = 0;
+
+        _transferEth(creator, amount);
+
+        emit CreatorEthFeesClaimed(token, creator, amount);
     }
 
     //////////////////////////// view functions //////////////////////////
@@ -345,6 +365,7 @@ contract LivoLaunchpad is Ownable {
     }
 
     function _transferEth(address recipient, uint256 amount) internal {
+        if (amount == 0) return;
         // review potential reentrancies. Make sure this call is always done at the end of the transaction
         (bool success,) = recipient.call{value: amount}("");
         require(success, EthTransferFailed());
