@@ -175,25 +175,19 @@ contract LivoLaunchpad is Ownable {
         require(tokenAmount > 0, InvalidAmount());
         require(block.timestamp <= deadline, DeadlineExceeded());
 
-        // eth that leaves the token reserves
-        uint256 ethRemoved = tokenData.bondingCurve.getEthForTokens(tokenData.circulatingSupply, tokenAmount);
+        (uint256 ethFromSale, uint256 ethFee, uint256 ethForSeller) = quoteSell(token, tokenAmount);
 
         // This is to prevent where a bonding curve steals from other curves or treasury
         // Hopefully this scenario never happens
-        require(ethRemoved <= tokenData.ethCollected, InsufficientETHReserves());
-        require(ethRemoved >= minEthAmount, SlippageExceeded());
+        require(ethFromSale <= tokenData.ethCollected, InsufficientETHReserves());
+        require(ethForSeller >= minEthAmount, SlippageExceeded());
 
-        // review fee assymmetries 1% != 1% down, so 1% sell != 1% buy ... ?
-        uint256 ethFee = (ethRemoved * tokenData.sellFeeBps) / BASIS_POINTS;
-        uint256 ethForSeller = ethRemoved - ethFee;
-
-        tokenData.ethCollected -= ethRemoved;
+        tokenData.ethCollected -= ethFromSale;
 
         uint256 creatorFee = (ethFee * tokenData.creatorFeeBps) / BASIS_POINTS;
-        uint256 treasuryFee = ethFee - creatorFee;
 
         tokenData.creatorFeesCollected += creatorFee;
-        treasuryEthFeesCollected += treasuryFee;
+        treasuryEthFeesCollected += ethFee - creatorFee;
 
         emit LivoTokenSold(token, msg.sender, tokenAmount, ethForSeller, ethFee);
 
