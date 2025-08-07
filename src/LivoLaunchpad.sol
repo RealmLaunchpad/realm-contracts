@@ -68,6 +68,8 @@ contract LivoLaunchpad is Ownable {
     error InsufficientETHReserves();
     error GraduationCriteriaNotMet();
     error EthTransferFailed();
+    error DeadlineExceeded();
+    error SlippageExceeded();
 
     ///////////////////// Events /////////////////////
 
@@ -122,11 +124,13 @@ contract LivoLaunchpad is Ownable {
 
         // at creation all tokens are held by this contract
         tokens[tokenClone] = TokenData({
-            bondingCurve: bondingCurve,
+            bondingCurve: ILivoBondingCurve(bondingCurve),
             graduator: graduator,
             creator: creator,
             ethCollected: 0,
             creatorFeesCollected: 0,
+            // question would it make sense to make the calculations based on the balanceOf this address at all times?
+            circulatingSupply: TOTAL_SUPPLY - IERC20(tokenClone).balanceOf(address(this)),
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps,
             creatorFeeBps: creatorFeeShareBps,
@@ -138,51 +142,46 @@ contract LivoLaunchpad is Ownable {
         return tokenClone;
     }
 
-    function buyToken(address token) external payable {
+    function buyToken(address token, uint256 minTokenAmount, uint256 deadline) external payable {
         TokenData storage tokenData = tokens[token];
 
         require(msg.value > 0, InvalidAmount());
         require(tokenData.exists(), InvalidToken());
         require(tokenData.notGraduated(), AlreadyGraduated());
+        require(block.timestamp <= deadline, DeadlineExceeded());
 
-        uint256 ethFee = (msg.value * tokenData.buyFeeBps) / BASIS_POINTS;
-        uint256 ethForTokens = msg.value - ethFee;
-
-        // review this bonding curve interface
-        // review if donating tokens can mess up this
-        uint256 tokensToReceive = ILivoBondingCurve(tokenData.bondingCurve).getTokensForEth(
-            ethForTokens, BONDING_CURVE_SUPPLY - IERC20(token).balanceOf(address(this)), tokenData.ethCollected
-        );
+        // this applies the trading fees
+        (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = quoteBuy(token, msg.value);
 
         require(tokensToReceive >= IERC20(token).balanceOf(address(this)), NotEnoughSupply());
+        require(tokensToReceive >= minTokenAmount, SlippageExceeded());
 
         uint256 creatorFee = (ethFee * tokenData.creatorFeeBps) / BASIS_POINTS;
 
         tokenData.creatorFeesCollected += creatorFee;
         treasuryEthFeesCollected += ethFee - creatorFee;
-
-        tokenData.ethCollected += ethForTokens;
+        tokenData.ethCollected += ethForReserves;
 
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
 
         emit LivoTokenPurchased(token, msg.sender, msg.value, tokensToReceive, ethFee);
     }
 
-    function sellToken(address token, uint256 tokenAmount) external {
+    function sellToken(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
         TokenData storage tokenData = tokens[token];
 
         require(tokenData.exists(), InvalidToken());
         require(tokenData.notGraduated(), AlreadyGraduated());
         require(tokenAmount > 0, InvalidAmount());
+        require(block.timestamp <= deadline, DeadlineExceeded());
 
-        // review this bonding curve interface
-        uint256 ethRemoved = ILivoBondingCurve(tokenData.bondingCurve).getEthForTokens(
-            tokenAmount, BONDING_CURVE_SUPPLY - IERC20(token).balanceOf(address(this)), tokenData.ethCollected
-        );
+        // eth that leaves the token reserves
+        uint256 ethRemoved = tokenData.bondingCurve.getEthForTokens(tokenData.circulatingSupply, tokenAmount);
 
         // This is to prevent where a bonding curve steals from other curves or treasury
         // Hopefully this scenario never happens
         require(ethRemoved <= tokenData.ethCollected, InsufficientETHReserves());
+        require(ethRemoved >= minEthAmount, SlippageExceeded());
 
         // review fee assymmetries 1% != 1% down, so 1% sell != 1% buy ... ?
         uint256 ethFee = (ethRemoved * tokenData.sellFeeBps) / BASIS_POINTS;
@@ -198,7 +197,6 @@ contract LivoLaunchpad is Ownable {
 
         emit LivoTokenSold(token, msg.sender, tokenAmount, ethForSeller, ethFee);
 
-        // todo should we update the amount of tokens in the bonding curve? review that curve
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
         // review potential reentrancies
         (bool success,) = payable(msg.sender).call{value: ethForSeller}("");
@@ -230,10 +228,32 @@ contract LivoLaunchpad is Ownable {
 
     //////////////////////////// view functions //////////////////////////
 
-    function meetsGraduationCriteria(address token) public view returns (bool) {
+    function quoteBuy(address token, uint256 ethValue)
+        external
+        view
+        returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
+    {
         TokenData storage tokenData = tokens[token];
-        // the graduation fee is taken from the eth collected by the curve, so the final liquidity is the graduation threshold
-        return (tokenData.ethCollected >= graduationThreshold + graduationFee) && !tokenData.graduated;
+
+        ethFee = (ethValue * tokenData.buyFeeBps) / BASIS_POINTS;
+        ethForPurchase = ethValue - ethFee;
+
+        tokensToReceive = tokenData.bondingCurve.getTokensForEth(tokenData.circulatingSupply, ethForPurchase);
+        return (ethForPurchase, ethFee, tokensToReceive);
+    }
+
+    function quoteSell(address token, uint256 tokenAmount)
+        external
+        view
+        returns (uint256 ethFromSale, uint256 ethFee, uint256 ethForSeller)
+    {
+        TokenData storage tokenData = tokens[token];
+
+        ethFromSale = tokenData.bondingCurve.getEthForTokens(tokenData.circulatingSupply, tokenAmount);
+        ethFee = (ethFromSale * tokenData.sellFeeBps) / BASIS_POINTS;
+        ethForSeller = ethFromSale - ethFee;
+
+        return (ethFromSale, ethFee, ethForSeller);
     }
 
     function getBuyPrice(address token, uint256 ethAmount) external view returns (uint256) {
@@ -244,21 +264,23 @@ contract LivoLaunchpad is Ownable {
         uint256 fee = (ethAmount * tokenData.buyFeeBps) / BASIS_POINTS;
         uint256 ethForTokens = ethAmount - fee;
 
-        return ILivoBondingCurve(tokenData.bondingCurve).getTokensForEth(
-            ethForTokens, BONDING_CURVE_SUPPLY - IERC20(token).balanceOf(address(this)), tokenData.ethCollected
-        );
+        return tokenData.bondingCurve.getTokensForEth(tokenData.circulatingSupply, ethForTokens);
     }
 
     function getSellPrice(address token, uint256 tokenAmount) external view returns (uint256) {
         TokenData storage tokenData = tokens[token];
         require(tokenData.creator != address(0), "LivoLaunchpad: Token not found");
 
-        uint256 ethToReceive = ILivoBondingCurve(tokenData.bondingCurve).getEthForTokens(
-            tokenAmount, BONDING_CURVE_SUPPLY - IERC20(token).balanceOf(address(this)), tokenData.ethCollected
-        );
+        uint256 ethToReceive = tokenData.bondingCurve.getEthForTokens(tokenData.circulatingSupply, tokenAmount);
 
         uint256 fee = (ethToReceive * tokenData.sellFeeBps) / BASIS_POINTS;
         return ethToReceive - fee;
+    }
+
+    function meetsGraduationCriteria(address token) public view returns (bool) {
+        TokenData storage tokenData = tokens[token];
+        // the graduation fee is taken from the eth collected by the curve, so the final liquidity is the graduation threshold
+        return (tokenData.ethCollected >= graduationThreshold + graduationFee) && !tokenData.graduated;
     }
 
     function getEthCollectedByToken(address token) external view returns (uint256) {
