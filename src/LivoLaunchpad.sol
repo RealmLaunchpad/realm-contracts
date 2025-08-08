@@ -8,14 +8,18 @@ import "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import "src/LivoToken.sol";
 import "src/interfaces/ILivoBondingCurve.sol";
 import "src/interfaces/ILivoGraduator.sol";
-import {TokenData, TokenDataLib} from "src/types/tokenData.sol";
+import {TokenConfig, TokenState, TokenDataLib} from "src/types/tokenData.sol";
 
 contract LivoLaunchpad is Ownable {
-    using TokenDataLib for TokenData;
     using SafeERC20 for IERC20;
+    using TokenDataLib for TokenConfig;
+    using TokenDataLib for TokenState;
 
     /// 100% in basis points
     uint256 public constant BASIS_POINTS = 10_000; 
+
+    /// @notice the total supply of all deployed tokens
+    uint256 private constant TOTAL_SUPPLY = 1_000_000e18; // 1M tokens
 
     // question consider if this should be immutable or not
     /// @notice LivoToken ERC20 implementation address
@@ -42,17 +46,18 @@ contract LivoLaunchpad is Ownable {
     /// @notice Each trade has fees, that fee is split between the creator and the treasury. This is the share for the creator
     uint16 public creatorFeeShareBps;
 
-    /// @notice Mapping of token address to its data
-    mapping(address => TokenData) public tokens;
-
     /// @notice Which Bonding Curve addresses can be selected at token creation
     mapping(address => bool) public whitelistedBondingCurves;
 
     /// @notice Which Graduator addresses can be selected at token creation
     mapping(address => bool) public whitelistedGraduators;
 
-    /// @notice the total supply of tokens forever
-    uint256 private constant TOTAL_SUPPLY = 1_000_000e18; // 1M tokens
+
+    /// @notice Mapping of token address to its configuration
+    mapping(address => TokenConfig) public tokenConfigs;
+
+    /// @notice Mapping of token address to its state
+    mapping(address => TokenState) public tokenStates;
 
     ///////////////////// Errors /////////////////////
 
@@ -126,23 +131,23 @@ contract LivoLaunchpad is Ownable {
         // so that we can update the token implementation with new rules for future tokens
         LivoToken(tokenClone).initialize(name, symbol, creator, address(this), TOTAL_SUPPLY);
 
+        uint256 _creatorReservedSupply = TOTAL_SUPPLY * creatorFeeShareBps / BASIS_POINTS;
+
         // at creation all tokens are held by this contract
-        tokens[tokenClone] = TokenData({
+        tokenConfigs[tokenClone] = TokenConfig({
             bondingCurve: ILivoBondingCurve(bondingCurve),
             graduator: ILivoGraduator(graduator),
             creator: creator,
-            ethCollected: 0,
-            creatorFeesCollected: 0,
-            // question would it make sense to make the calculations based on the balanceOf this address at all times?
-            circulatingSupply: TOTAL_SUPPLY - IERC20(tokenClone).balanceOf(address(this)),
-            buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps,
-            creatorFeeBps: creatorFeeShareBps,
             graduationEthFee: baseGraduationFee,
             graduationThreshold: baseGraduationThreshold,
-            creatorReservedSupply: TOTAL_SUPPLY * creatorFeeShareBps / BASIS_POINTS,
-            graduated: false
+            creatorReservedSupply: _creatorReservedSupply,
+            buyFeeBps: baseBuyFeeBps,
+            sellFeeBps: baseSellFeeBps,
+            creatorFeeBps: creatorFeeShareBps
         });
+
+        // all other tokenState fields are correctly initialized to 0 or false
+        tokenStates[tokenClone].circulatingSupply = _creatorReservedSupply;
 
         emit TokenCreated(tokenClone, creator, name, symbol, bondingCurve, metadata);
 
@@ -150,11 +155,12 @@ contract LivoLaunchpad is Ownable {
     }
 
     function buyToken(address token, uint256 minTokenAmount, uint256 deadline) external payable {
-        TokenData storage tokenData = tokens[token];
+        TokenConfig storage tokenConfig = tokenConfigs[token];
+        TokenState storage tokenState = tokenStates[token];
 
         require(msg.value > 0, InvalidAmount());
-        require(tokenData.exists(), InvalidToken());
-        require(tokenData.notGraduated(), AlreadyGraduated());
+        require(tokenConfig.exists(), InvalidToken());
+        require(tokenState.notGraduated(), AlreadyGraduated());
         require(block.timestamp <= deadline, DeadlineExceeded());
 
         // this applies the trading fees
@@ -163,10 +169,10 @@ contract LivoLaunchpad is Ownable {
         require(tokensToReceive >= IERC20(token).balanceOf(address(this)), NotEnoughSupply());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
 
-        _registerEthFees(ethFee, tokenData);
+        tokenState.ethCollected += ethForReserves;
+        tokenState.circulatingSupply += tokensToReceive;
 
-        tokenData.ethCollected += ethForReserves;
-        tokenData.circulatingSupply += tokensToReceive;
+        _registerEthFees(ethFee, tokenConfig.creatorFeeBps, tokenState);
 
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
 
@@ -174,25 +180,25 @@ contract LivoLaunchpad is Ownable {
     }
 
     function sellToken(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
-        TokenData storage tokenData = tokens[token];
+        TokenConfig storage tokenConfig = tokenConfigs[token];
+        TokenState storage tokenState = tokenStates[token];
 
-        require(tokenData.exists(), InvalidToken());
-        require(tokenData.notGraduated(), AlreadyGraduated());
+        require(tokenConfig.exists(), InvalidToken());
+        require(tokenState.notGraduated(), AlreadyGraduated());
         require(tokenAmount > 0, InvalidAmount());
         require(block.timestamp <= deadline, DeadlineExceeded());
 
         (uint256 ethFromReserves, uint256 ethFee, uint256 ethForSeller) = _quoteSell(token, tokenAmount);
 
         // Hopefully this scenario never happens
-        require(ethFromReserves <= tokenData.ethCollected, InsufficientETHReserves());
+        require(tokenState.ethCollected >= ethFromReserves, InsufficientETHReserves());
         require(ethForSeller >= minEthAmount, SlippageExceeded());
 
+        tokenState.ethCollected -= ethFromReserves;
+        tokenState.circulatingSupply -= tokenAmount;
+
         // review fee asymmetries 1% != 1% down, so 1% sell != 1% buy ... ?
-
-        _registerEthFees(ethFee, tokenData);
-
-        tokenData.ethCollected -= ethFromReserves;
-        tokenData.circulatingSupply -= tokenAmount;
+        _registerEthFees(ethFee, tokenConfig.creatorFeeBps, tokenState);
 
         // funds transfers
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
@@ -202,40 +208,42 @@ contract LivoLaunchpad is Ownable {
     }
 
     function graduateToken(address tokenAddress) external payable {
-        TokenData storage tokenData = tokens[tokenAddress];
+        TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
+        TokenState storage tokenState = tokenStates[tokenAddress];
         IERC20 token = IERC20(tokenAddress);
 
-        require(tokenData.notGraduated(), AlreadyGraduated());
-        require(tokenData.meetsGraduationCriteria(), GraduationCriteriaNotMet());
+        require(tokenState.notGraduated(), AlreadyGraduated());
+        require(TokenDataLib.meetsGraduationCriteria(tokenState, tokenConfig), GraduationCriteriaNotMet());
 
-        tokenData.graduated = true;
+        tokenState.graduated = true;
 
         // review if tokenAddress donations can mess up this
-        uint256 ethCollected = tokenData.ethCollected;
-        uint256 ethForGraduation = ethCollected - tokenData.graduationEthFee;
-        treasuryEthFeesCollected += tokenData.graduationEthFee;
+        uint256 ethCollected = tokenState.ethCollected;
+        uint256 ethForGraduation = ethCollected - tokenConfig.graduationEthFee;
+        treasuryEthFeesCollected += tokenConfig.graduationEthFee;
 
-        uint256 tokensForCreator = tokenData.creatorReservedSupply;
+        uint256 tokensForCreator = tokenConfig.creatorReservedSupply;
         uint256 tokensForGraduation = token.balanceOf(address(this)) - tokensForCreator;
 
-        token.safeTransfer(tokenData.creator, tokensForCreator);
-        token.safeTransfer(address(tokenData.graduator), tokensForGraduation);
+        token.safeTransfer(tokenConfig.creator, tokensForCreator);
+        token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
 
-        tokenData.graduator.graduateToken{value: ethForGraduation}(tokenAddress, tokenData.creator);
+        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
 
         emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation);
     }
 
     function claimCreatorEthFees(address token) external {
-        TokenData storage tokenData = tokens[token];
+        TokenConfig storage tokenConfig = tokenConfigs[token];
+        TokenState storage tokenState = tokenStates[token];
 
-        address creator = tokenData.creator;
-        uint256 amount = tokenData.creatorFeesCollected;
+        address creator = tokenConfig.creator;
+        uint256 amount = tokenState.creatorFeesCollected;
 
         require(creator == msg.sender, CallerIsNotCreator());
         require(amount > 0, NothingToClaim());
 
-        tokenData.creatorFeesCollected = 0;
+        tokenState.creatorFeesCollected = 0;
 
         _transferEth(creator, amount);
 
@@ -261,18 +269,19 @@ contract LivoLaunchpad is Ownable {
     }
 
     function getCurrentPrice(address token) external view returns (uint256) {
-        TokenData storage tokenData = tokens[token];
-        require(tokenData.exists(), InvalidToken());
+        TokenConfig storage tokenConfig = tokenConfigs[token];
+        
+        require(tokenConfig.exists(), InvalidToken());
         // review this bonding curve interface
-        return tokenData.bondingCurve.getEthForTokens(tokenData.circulatingSupply, 1e18);
+        return tokenConfig.bondingCurve.getEthForTokens(tokenStates[token].circulatingSupply, 1e18);
     }
 
     function meetsGraduationCriteria(address token) public view returns (bool) {
-        return tokens[token].meetsGraduationCriteria();
+        return tokenStates[token].ethCollected >= tokenConfigs[token].minimumEthForGraduation();
     }
 
     function getEthCollectedByToken(address token) external view returns (uint256) {
-        return tokens[token].ethCollected;
+        return tokenStates[token].ethCollected;
     }
 
     //////////////////////////// Admin functions //////////////////////////
@@ -341,12 +350,12 @@ contract LivoLaunchpad is Ownable {
         view
         returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
     {
-        TokenData storage tokenData = tokens[token];
+        TokenConfig storage tokenConfig = tokenConfigs[token];
 
-        ethFee = (ethValue * tokenData.buyFeeBps) / BASIS_POINTS;
+        ethFee = (ethValue * tokenConfig.buyFeeBps) / BASIS_POINTS;
         ethForPurchase = ethValue - ethFee;
 
-        tokensToReceive = tokenData.bondingCurve.getTokensForEth(tokenData.circulatingSupply, ethForPurchase);
+        tokensToReceive = tokenConfig.bondingCurve.getTokensForEth(tokenStates[token].circulatingSupply, ethForPurchase);
         return (ethForPurchase, ethFee, tokensToReceive);
     }
 
@@ -355,20 +364,20 @@ contract LivoLaunchpad is Ownable {
         view
         returns (uint256 ethFromSale, uint256 ethFee, uint256 ethForSeller)
     {
-        TokenData storage tokenData = tokens[token];
+        TokenConfig storage tokenConfig = tokenConfigs[token];
 
-        ethFromSale = tokenData.bondingCurve.getEthForTokens(tokenData.circulatingSupply, tokenAmount);
-        ethFee = (ethFromSale * tokenData.sellFeeBps) / BASIS_POINTS;
+        ethFromSale = tokenConfig.bondingCurve.getEthForTokens(tokenStates[token].circulatingSupply, tokenAmount);
+        ethFee = (ethFromSale * tokenConfig.sellFeeBps) / BASIS_POINTS;
         ethForSeller = ethFromSale - ethFee;
 
         return (ethFromSale, ethFee, ethForSeller);
     }
 
-    function _registerEthFees(uint256 ethFee, TokenData storage tokenData) internal {
-        uint256 creatorFee = (ethFee * tokenData.creatorFeeBps) / BASIS_POINTS;
+    function _registerEthFees(uint256 ethFee, uint16 creatorFeeBps, TokenState storage tokenState) internal {
+        uint256 creatorFee = (ethFee * creatorFeeBps) / BASIS_POINTS;
         uint256 treasuryFee = ethFee - creatorFee;
 
-        tokenData.creatorFeesCollected += creatorFee;
+        tokenState.creatorFeesCollected += creatorFee;
         treasuryEthFeesCollected += treasuryFee;
     }
 

@@ -48,7 +48,7 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
     }
 
     /// @dev if the graduation fails, the eth goes back, but the tokens are stuck here.  review a solution for this        
-    function graduateToken(address tokenAddress, address creator) external payable override onlyLaunchpad {
+    function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
         IERC20 token = IERC20(tokenAddress);
 
         /// note review what happens if the token was already graduated and this is called again (even though the launchpad wouldn't do it)
