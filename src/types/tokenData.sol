@@ -21,6 +21,8 @@ struct TokenData {
     uint256 graduationEthFee;
     /// @notice Threshold in ETH that must be collected before graduation can happen
     uint256 graduationThreshold;
+    /// @notice Reserved supply of tokens for creator at graduation
+    uint256 creatorReservedSupply;
     /// @notice Trading (buy) fee in basis points (100 bps = 1%)
     uint16 buyFeeBps;
     /// @notice Trading (sell) fee in basis points (100 bps = 1%)

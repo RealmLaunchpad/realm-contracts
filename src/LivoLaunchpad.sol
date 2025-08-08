@@ -14,7 +14,8 @@ contract LivoLaunchpad is Ownable {
     using TokenDataLib for TokenData;
     using SafeERC20 for IERC20;
 
-    uint256 public constant BASIS_POINTS = 10_000; // 100% in basis points
+    /// 100% in basis points
+    uint256 public constant BASIS_POINTS = 10_000; 
 
     // question consider if this should be immutable or not
     /// @notice LivoToken ERC20 implementation address
@@ -23,8 +24,11 @@ contract LivoLaunchpad is Ownable {
     /// @notice The amount of ETH held in a token balance that is required for graduation
     uint256 public baseGraduationThreshold = 20 ether;
 
-    /// @notice Creator fee in basis points (100 bps = 1%).
+    /// @notice The base graduation fee in ETH, paid at graduation to the treasury
     uint256 public baseGraduationFee = 0.1 ether;
+
+    /// @notice Base creator fee in basis points (100 bps = 1%), paid in tokens at graduation
+    uint16 public baseCreatorFeeBps = 100;
 
     /// @notice Total fees collected by the treasury
     uint256 public treasuryEthFeesCollected;
@@ -136,6 +140,7 @@ contract LivoLaunchpad is Ownable {
             creatorFeeBps: creatorFeeShareBps,
             graduationEthFee: baseGraduationFee,
             graduationThreshold: baseGraduationThreshold,
+            creatorReservedSupply: TOTAL_SUPPLY * creatorFeeShareBps / BASIS_POINTS,
             graduated: false
         });
 
@@ -196,26 +201,29 @@ contract LivoLaunchpad is Ownable {
         emit LivoTokenSold(token, msg.sender, tokenAmount, ethForSeller, ethFee);
     }
 
-    function graduateToken(address token) external payable {
-        TokenData storage tokenData = tokens[token];
+    function graduateToken(address tokenAddress) external payable {
+        TokenData storage tokenData = tokens[tokenAddress];
+        IERC20 token = IERC20(tokenAddress);
 
         require(tokenData.notGraduated(), AlreadyGraduated());
         require(tokenData.meetsGraduationCriteria(), GraduationCriteriaNotMet());
 
         tokenData.graduated = true;
 
-        // review if token donations can mess up this
+        // review if tokenAddress donations can mess up this
         uint256 ethCollected = tokenData.ethCollected;
-
         uint256 ethForGraduation = ethCollected - tokenData.graduationEthFee;
-        uint256 tokensForGraduation = IERC20(token).balanceOf(address(this));
-
         treasuryEthFeesCollected += tokenData.graduationEthFee;
 
-        IERC20(token).safeTransfer(address(tokenData.graduator), tokensForGraduation);
-        tokenData.graduator.graduateToken{value: ethForGraduation}(token);
+        uint256 tokensForCreator = tokenData.creatorReservedSupply;
+        uint256 tokensForGraduation = token.balanceOf(address(this)) - tokensForCreator;
 
-        emit TokenGraduated(token, ethForGraduation, tokensForGraduation);
+        token.safeTransfer(tokenData.creator, tokensForCreator);
+        token.safeTransfer(address(tokenData.graduator), tokensForGraduation);
+
+        tokenData.graduator.graduateToken{value: ethForGraduation}(tokenAddress, tokenData.creator);
+
+        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation);
     }
 
     function claimCreatorEthFees(address token) external {

@@ -29,24 +29,22 @@ contract LivoToken is ERC20 {
         string memory _name,
         string memory _symbol,
         address _creator,
-        address _factory,
+        address _launchpad,
         uint256 _totalSupply
     ) external {
         require(!_initialized, "LivoToken: Already initialized");
         _initialized = true;
 
         // all supply goes to the factory, where it can be traded according to the bonding curve
-        _setFeeExempt(_factory, true);
+        _setFeeExempt(_launchpad, true);
 
-        // 1% of total supply to the creator
-        uint256 creatorSupply = _totalSupply / 100;
-        _mint(_creator, creatorSupply);
-        _mint(_factory, _totalSupply - creatorSupply);
+        // all is minted back to the launchpad
+        _mint(_launchpad, _totalSupply);
 
         _tokenName = _name;
         _tokenSymbol = _symbol;
         creator = _creator;
-        factory = _factory;
+        factory = _launchpad;
     }
 
     /// @dev ERC20 interface compliance
