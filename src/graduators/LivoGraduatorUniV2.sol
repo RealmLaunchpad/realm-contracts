@@ -19,10 +19,9 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
     uint16 public constant CREATOR_FEE_BPS = 100;
 
     uint16 public constant BASIS_POINTS = 10_000; // 100%
-    
+
     /// @notice Uniswap router and factory addresses
     IUniswapV2Router public immutable uniswapRouter;
-    IUniswapV2Factory public immutable uniswapFactory;
     address public immutable livoLaunchpad;
 
     ////////////////// Events //////////////////////
@@ -38,7 +37,6 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
 
     constructor(address _uniswapRouter, address _launchpad) Ownable(msg.sender) {
         uniswapRouter = IUniswapV2Router(_uniswapRouter);
-        uniswapFactory = IUniswapV2Factory(IUniswapV2Router(_uniswapRouter).factory());
         livoLaunchpad = _launchpad;
     }
 
@@ -47,11 +45,12 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         _;
     }
 
-    /// @dev if the graduation fails, the eth goes back, but the tokens are stuck here.  review a solution for this        
+    /// @dev if the graduation fails, the eth goes back, but the tokens are stuck here.  review a solution for this
     function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
         IERC20 token = IERC20(tokenAddress);
 
         /// note review what happens if the token was already graduated and this is called again (even though the launchpad wouldn't do it)
+        IUniswapV2Factory uniswapFactory = IUniswapV2Factory(IUniswapV2Router(uniswapRouter).factory());
 
         uint256 tokenBalance = token.balanceOf(address(this));
         uint256 ethBalance = msg.value;

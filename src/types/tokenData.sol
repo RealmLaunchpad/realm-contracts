@@ -45,7 +45,11 @@ library TokenDataLib {
         return !state.graduated;
     }
 
-    function meetsGraduationCriteria(TokenState storage state, TokenConfig storage config) internal view returns (bool) {
+    function meetsGraduationCriteria(TokenState storage state, TokenConfig storage config)
+        internal
+        view
+        returns (bool)
+    {
         return state.ethCollected >= config.graduationThreshold + config.graduationEthFee;
     }
 

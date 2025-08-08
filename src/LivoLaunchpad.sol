@@ -16,7 +16,7 @@ contract LivoLaunchpad is Ownable {
     using TokenDataLib for TokenState;
 
     /// 100% in basis points
-    uint256 public constant BASIS_POINTS = 10_000; 
+    uint256 public constant BASIS_POINTS = 10_000;
 
     /// @notice the total supply of all deployed tokens
     uint256 private constant TOTAL_SUPPLY = 1_000_000e18; // 1M tokens
@@ -51,7 +51,6 @@ contract LivoLaunchpad is Ownable {
 
     /// @notice Which Graduator addresses can be selected at token creation
     mapping(address => bool) public whitelistedGraduators;
-
 
     /// @notice Mapping of token address to its configuration
     mapping(address => TokenConfig) public tokenConfigs;
@@ -270,7 +269,7 @@ contract LivoLaunchpad is Ownable {
 
     function getCurrentPrice(address token) external view returns (uint256) {
         TokenConfig storage tokenConfig = tokenConfigs[token];
-        
+
         require(tokenConfig.exists(), InvalidToken());
         // review this bonding curve interface
         return tokenConfig.bondingCurve.getEthForTokens(tokenStates[token].circulatingSupply, 1e18);
@@ -280,8 +279,12 @@ contract LivoLaunchpad is Ownable {
         return tokenStates[token].ethCollected >= tokenConfigs[token].minimumEthForGraduation();
     }
 
-    function getEthCollectedByToken(address token) external view returns (uint256) {
-        return tokenStates[token].ethCollected;
+    function getTokenState(address token) external view returns (TokenState memory) {
+        return tokenStates[token];
+    }
+
+    function getTokenConfig(address token) external view returns (TokenConfig memory) {
+        return tokenConfigs[token];
     }
 
     //////////////////////////// Admin functions //////////////////////////
