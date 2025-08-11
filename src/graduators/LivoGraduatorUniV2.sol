@@ -80,6 +80,11 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
             block.timestamp // no deadline
         );
 
+        // set the pair to detect which transfers are trades against the uniswap pool
+        // this is set only after liquidity has been added, so the pair is valid,
+        // and the liquidity addition is fee exempt.
+        LivoToken(tokenAddress).setAutomatedMarketMakerPair(pair);
+
         emit TokenGraduated(tokenAddress, pair, amountToken, amountETH, liquidity);
     }
 }

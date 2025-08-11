@@ -123,12 +123,16 @@ contract LivoLaunchpad is Ownable {
 
         address creator = msg.sender;
 
+        // todo is it better to have a minimal proxy and spend the gas in reading state vars or to deploy a new contract every time?
+
         // minimal proxy pattern to deploy a new LivoToken instance
         address tokenClone = Clones.clone(address(tokenImplementation));
         // Initialize the new token instance
         // It is responsibility of the token to distribute supply to the creator
         // so that we can update the token implementation with new rules for future tokens
-        LivoToken(tokenClone).initialize(name, symbol, creator, address(this), TOTAL_SUPPLY);
+        LivoToken(tokenClone).initialize(
+            name, symbol, creator, address(this), graduator, TOTAL_SUPPLY, baseBuyFeeBps, baseSellFeeBps
+        );
 
         uint256 _creatorReservedSupply = TOTAL_SUPPLY * creatorFeeShareBps / BASIS_POINTS;
 
