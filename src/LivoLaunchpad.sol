@@ -83,29 +83,39 @@ contract LivoLaunchpad is Ownable {
 
     ///////////////////// Events /////////////////////
 
-    event TokenCreated( // open field for additional data
-    address indexed token, address indexed creator, string name, string symbol, address bondingCurve, string metadata);
+    event TokenCreated(
+        address indexed token,
+        address indexed creator,
+        string name,
+        string symbol,
+        address bondingCurve,
+        address graduator,
+        string metadata
+    );
 
-    event LivoTokenPurchased(
+    event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation, address uniPair);
+
+    event LivoTokenBuy(
         address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 fee
     );
 
-    event LivoTokenSold(
+    event LivoTokenSell(
         address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 fee
     );
 
-    event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
-
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
+    event CreatorEthFeesClaimed(address indexed token, address indexed creator, uint256 amount);
+
     event TokenImplementationUpdated(IERC20 newImplementation);
-    event GraduationThresholdUpdated(uint256 newThreshold);
+    event RequiredEthForGraduationLiquidityUpdated(uint256 newThreshold);
     event TreasuryAddressUpdated(address newTreasury);
     event CreatorFeeShareUpdated(uint256 newCreatorFeeBps);
+    event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
+    event GraduationFeeUpdated(uint256 newGraduationFee);
+
     event BondingCurveWhitelisted(address indexed bondingCurve, bool whitelisted);
     event GraduatorWhitelisted(address indexed graduator, bool whitelisted);
-    event TradingFeesUpdated(uint96 buyFeeBps, uint96 sellFeeBps);
-    event GraduationFeeUpdated(uint256 newGraduationFee);
-    event CreatorEthFeesClaimed(address indexed token, address indexed creator, uint256 amount);
+    
 
     /////////////////////////////////////////////////
 
@@ -161,7 +171,7 @@ contract LivoLaunchpad is Ownable {
         // all other tokenState fields are correctly initialized to 0 or false
         tokenStates[tokenClone].circulatingSupply = _creatorReservedSupply;
 
-        emit TokenCreated(tokenClone, creator, name, symbol, bondingCurve, metadata);
+        emit TokenCreated(tokenClone, creator, name, symbol, bondingCurve, graduator, metadata);
 
         return tokenClone;
     }
@@ -188,7 +198,7 @@ contract LivoLaunchpad is Ownable {
 
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
 
-        emit LivoTokenPurchased(token, msg.sender, msg.value, tokensToReceive, ethFee);
+        emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
     }
 
     function sellToken(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
@@ -216,10 +226,10 @@ contract LivoLaunchpad is Ownable {
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
         _transferEth(msg.sender, ethForSeller);
 
-        emit LivoTokenSold(token, msg.sender, tokenAmount, ethForSeller, ethFee);
+        emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
     }
 
-    function graduateToken(address tokenAddress) external payable {
+    function graduateToken(address tokenAddress) external payable{
         TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
         TokenState storage tokenState = tokenStates[tokenAddress];
         IERC20 token = IERC20(tokenAddress);
@@ -240,9 +250,9 @@ contract LivoLaunchpad is Ownable {
         token.safeTransfer(tokenConfig.creator, tokensForCreator);
         token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
 
-        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
+        address uniPair = tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
 
-        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation);
+        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation, uniPair);
     }
 
     function claimCreatorEthFees(address token) external {
@@ -312,7 +322,7 @@ contract LivoLaunchpad is Ownable {
     /// @notice Updates the graduation threshold, which only affects new token deployments
     function setLiquidityForGraduation(uint256 ethAmount) external onlyOwner {
         baseEthForGraduationLiquidity = ethAmount;
-        emit GraduationThresholdUpdated(ethAmount);
+        emit RequiredEthForGraduationLiquidityUpdated(ethAmount);
     }
 
     /// @notice Updates the graduation fee, which only affects new token deployments
