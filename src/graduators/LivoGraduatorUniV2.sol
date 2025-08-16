@@ -61,7 +61,7 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         // Create Uniswap pair if it doesn't exist
         // question is there a problem if the pair is created by another account before?
         // question review if WETH is the right or should be ETH somehow
-        address pair = uniswapFactory.getPair(tokenAddress, uniswapRouter.WETH());
+        pair = uniswapFactory.getPair(tokenAddress, uniswapRouter.WETH());
         if (pair == address(0)) {
             pair = uniswapFactory.createPair(tokenAddress, uniswapRouter.WETH());
         }

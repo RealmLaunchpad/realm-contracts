@@ -29,7 +29,7 @@ contract LivoLaunchpad is Ownable {
     uint256 public baseEthForGraduationLiquidity = 7.5 ether;
 
     /// @notice The base graduation fee in ETH, paid at graduation to the treasury
-    uint256 public baseGraduationFee = 0.5 ether;
+    uint256 public baseGraduationFee;
 
     /// @notice Base creator fee in basis points (100 bps = 1%), paid in tokens at graduation
     uint16 public baseCreatorFeeBps = 100;
@@ -41,8 +41,8 @@ contract LivoLaunchpad is Ownable {
     address public treasury;
 
     /// @notice Trading fees in basis points (100 bps = 1%). Updates to these only affect future tokens
-    uint16 public baseBuyFeeBps = 100; // 1%
-    uint16 public baseSellFeeBps = 100; // 1%
+    uint16 public baseBuyFeeBps;
+    uint16 public baseSellFeeBps;
     /// @notice Each trade has fees, that fee is split between the creator and the treasury. This is the share for the creator
     uint16 public creatorFeeShareBps;
 
@@ -115,13 +115,18 @@ contract LivoLaunchpad is Ownable {
 
     event BondingCurveWhitelisted(address indexed bondingCurve, bool whitelisted);
     event GraduatorWhitelisted(address indexed graduator, bool whitelisted);
-    
 
     /////////////////////////////////////////////////
 
     constructor(address _treasury, IERC20 _tokenImplementation) Ownable(msg.sender) {
-        treasury = _treasury;
-        tokenImplementation = _tokenImplementation;
+        // Set initial values and emit events for off-chain indexers
+        setTreasuryAddress(_treasury);
+        setLivoTokenImplementation(_tokenImplementation);
+
+        setLiquidityForGraduation(7.5 ether);
+        setGraduationFee(0.5 ether);
+        // buy/sell fees at 1%
+        setTradingFees(100, 100);
     }
 
     function createToken(
@@ -138,19 +143,15 @@ contract LivoLaunchpad is Ownable {
         require(whitelistedBondingCurves[bondingCurve], InvalidBondingCurve());
         require(whitelistedGraduators[graduator], InvalidGraduator());
 
-        address creator = msg.sender;
-
-        // todo is it better to have a minimal proxy and spend the gas in reading state vars or to deploy a new contract every time?
-
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
         address tokenClone = Clones.clone(address(tokenImplementation));
         // Initialize the new token instance
-        // It is responsibility of the token to distribute supply to the creator
+        // It is responsibility of the token to distribute supply to the msg.sender
         // so that we can update the token implementation with new rules for future tokens
         LivoToken(tokenClone).initialize(
-            name, symbol, creator, address(this), graduator, TOTAL_SUPPLY, baseBuyFeeBps, baseSellFeeBps
+            name, symbol, msg.sender, address(this), graduator, TOTAL_SUPPLY, baseBuyFeeBps, baseSellFeeBps
         );
 
         uint256 _creatorReservedSupply = TOTAL_SUPPLY * creatorFeeShareBps / BASIS_POINTS;
@@ -159,7 +160,7 @@ contract LivoLaunchpad is Ownable {
         tokenConfigs[tokenClone] = TokenConfig({
             bondingCurve: ILivoBondingCurve(bondingCurve),
             graduator: ILivoGraduator(graduator),
-            creator: creator,
+            creator: msg.sender,
             graduationEthFee: baseGraduationFee,
             ethForGraduationLiquidity: baseEthForGraduationLiquidity,
             creatorReservedSupply: _creatorReservedSupply,
@@ -171,7 +172,7 @@ contract LivoLaunchpad is Ownable {
         // all other tokenState fields are correctly initialized to 0 or false
         tokenStates[tokenClone].circulatingSupply = _creatorReservedSupply;
 
-        emit TokenCreated(tokenClone, creator, name, symbol, bondingCurve, graduator, metadata);
+        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata);
 
         return tokenClone;
     }
@@ -229,7 +230,7 @@ contract LivoLaunchpad is Ownable {
         emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
     }
 
-    function graduateToken(address tokenAddress) external payable{
+    function graduateToken(address tokenAddress) external payable {
         TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
         TokenState storage tokenState = tokenStates[tokenAddress];
         IERC20 token = IERC20(tokenAddress);
@@ -313,26 +314,26 @@ contract LivoLaunchpad is Ownable {
     //////////////////////////// Admin functions //////////////////////////
 
     /// @notice Updates the ERC20 token implementation, which only affects new token deployments
-    function setLivoTokenImplementation(IERC20 newImplementation) external onlyOwner {
+    function setLivoTokenImplementation(IERC20 newImplementation) public onlyOwner {
         require(address(newImplementation) != address(0), InvalidAddress());
         tokenImplementation = newImplementation;
         emit TokenImplementationUpdated(newImplementation);
     }
 
     /// @notice Updates the graduation threshold, which only affects new token deployments
-    function setLiquidityForGraduation(uint256 ethAmount) external onlyOwner {
+    function setLiquidityForGraduation(uint256 ethAmount) public onlyOwner {
         baseEthForGraduationLiquidity = ethAmount;
         emit RequiredEthForGraduationLiquidityUpdated(ethAmount);
     }
 
     /// @notice Updates the graduation fee, which only affects new token deployments
-    function setGraduationFee(uint256 ethAmount) external onlyOwner {
+    function setGraduationFee(uint256 ethAmount) public onlyOwner {
         baseGraduationFee = ethAmount;
         emit GraduationFeeUpdated(ethAmount);
     }
 
     /// @notice Updates the buy/sell fees, which only affects new token deployments
-    function setTradingFees(uint16 buyFeeBps, uint16 sellFeeBps) external onlyOwner {
+    function setTradingFees(uint16 buyFeeBps, uint16 sellFeeBps) public onlyOwner {
         require(buyFeeBps <= BASIS_POINTS, InvalidParameter(buyFeeBps));
         require(sellFeeBps <= BASIS_POINTS, InvalidParameter(sellFeeBps));
         baseBuyFeeBps = buyFeeBps;
@@ -341,19 +342,19 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @notice Whitelists a bonding curve that can be chosen by future tokens
-    function whitelistBondingCurve(address bondingCurve, bool whitelisted) external onlyOwner {
+    function whitelistBondingCurve(address bondingCurve, bool whitelisted) public onlyOwner {
         whitelistedBondingCurves[bondingCurve] = whitelisted;
         emit BondingCurveWhitelisted(bondingCurve, whitelisted);
     }
 
     /// @dev blacklisted graduators will still be able to graduate the tokens that where created with them
-    function whitelistGraduator(address graduator, bool whitelisted) external onlyOwner {
+    function whitelistGraduator(address graduator, bool whitelisted) public onlyOwner {
         // todo validation of the graduation manager?
         whitelistedGraduators[graduator] = whitelisted;
         emit GraduatorWhitelisted(graduator, whitelisted);
     }
 
-    function setTreasuryAddress(address recipient) external onlyOwner {
+    function setTreasuryAddress(address recipient) public onlyOwner {
         treasury = recipient;
         emit TreasuryAddressUpdated(recipient);
     }
