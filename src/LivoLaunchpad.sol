@@ -19,7 +19,7 @@ contract LivoLaunchpad is Ownable {
     uint256 public constant BASIS_POINTS = 10_000;
 
     /// @notice the total supply of all deployed tokens
-    uint256 private constant TOTAL_SUPPLY = 1_000_000e18; // 1M tokens
+    uint256 private constant TOTAL_SUPPLY = 1_000_000_000e18; // 1B tokens
 
     // question consider if this should be immutable or not
     /// @notice LivoToken ERC20 implementation address

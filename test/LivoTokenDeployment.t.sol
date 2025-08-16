@@ -56,7 +56,7 @@ contract LivoTokenDeploymentTest is Test {
         assertEq(token.symbol(), "TEST");
         assertEq(token.creator(), creator);
         assertEq(token.launchpad(), address(launchpad));
-        assertEq(token.totalSupply(), 1_000_000e18);
+        assertEq(token.totalSupply(), 1_000_000_000e18);
 
         // Verify token config was stored correctly
         TokenConfig memory config = launchpad.getTokenConfig(deployedToken);
