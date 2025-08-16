@@ -46,7 +46,7 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
     }
 
     /// @dev if the graduation fails, the eth goes back, but the tokens are stuck here.  review a solution for this
-    function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
+    function graduateToken(address tokenAddress) external payable override onlyLaunchpad returns (address pair) {
         IERC20 token = IERC20(tokenAddress);
 
         /// note review what happens if the token was already graduated and this is called again (even though the launchpad wouldn't do it)
@@ -61,7 +61,7 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         // Create Uniswap pair if it doesn't exist
         // question is there a problem if the pair is created by another account before?
         // question review if WETH is the right or should be ETH somehow
-        address pair = uniswapFactory.getPair(tokenAddress, uniswapRouter.WETH());
+        pair = uniswapFactory.getPair(tokenAddress, uniswapRouter.WETH());
         if (pair == address(0)) {
             pair = uniswapFactory.createPair(tokenAddress, uniswapRouter.WETH());
         }
@@ -86,5 +86,6 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         LivoToken(tokenAddress).setAutomatedMarketMakerPair(pair);
 
         emit TokenGraduated(tokenAddress, pair, amountToken, amountETH, liquidity);
+        return pair;
     }
 }

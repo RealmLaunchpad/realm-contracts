@@ -29,7 +29,7 @@ contract LivoLaunchpad is Ownable {
     uint256 public baseEthForGraduationLiquidity = 7.5 ether;
 
     /// @notice The base graduation fee in ETH, paid at graduation to the treasury
-    uint256 public baseGraduationFee = 0.5 ether;
+    uint256 public baseGraduationFee;
 
     /// @notice Base creator fee in basis points (100 bps = 1%), paid in tokens at graduation
     uint16 public baseCreatorFeeBps = 100;
@@ -41,8 +41,8 @@ contract LivoLaunchpad is Ownable {
     address public treasury;
 
     /// @notice Trading fees in basis points (100 bps = 1%). Updates to these only affect future tokens
-    uint16 public baseBuyFeeBps = 100; // 1%
-    uint16 public baseSellFeeBps = 100; // 1%
+    uint16 public baseBuyFeeBps;
+    uint16 public baseSellFeeBps;
     /// @notice Each trade has fees, that fee is split between the creator and the treasury. This is the share for the creator
     uint16 public creatorFeeShareBps;
 
@@ -83,35 +83,50 @@ contract LivoLaunchpad is Ownable {
 
     ///////////////////// Events /////////////////////
 
-    event TokenCreated( // open field for additional data
-    address indexed token, address indexed creator, string name, string symbol, address bondingCurve, string metadata);
+    event TokenCreated(
+        address indexed token,
+        address indexed creator,
+        string name,
+        string symbol,
+        address bondingCurve,
+        address graduator,
+        string metadata
+    );
 
-    event LivoTokenPurchased(
+    event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation, address uniPair);
+
+    event LivoTokenBuy(
         address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 fee
     );
 
-    event LivoTokenSold(
+    event LivoTokenSell(
         address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 fee
     );
 
-    event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
-
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
+    event CreatorEthFeesClaimed(address indexed token, address indexed creator, uint256 amount);
+
     event TokenImplementationUpdated(IERC20 newImplementation);
-    event GraduationThresholdUpdated(uint256 newThreshold);
+    event RequiredEthForGraduationLiquidityUpdated(uint256 newThreshold);
     event TreasuryAddressUpdated(address newTreasury);
     event CreatorFeeShareUpdated(uint256 newCreatorFeeBps);
+    event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
+    event GraduationFeeUpdated(uint256 newGraduationFee);
+
     event BondingCurveWhitelisted(address indexed bondingCurve, bool whitelisted);
     event GraduatorWhitelisted(address indexed graduator, bool whitelisted);
-    event TradingFeesUpdated(uint96 buyFeeBps, uint96 sellFeeBps);
-    event GraduationFeeUpdated(uint256 newGraduationFee);
-    event CreatorEthFeesClaimed(address indexed token, address indexed creator, uint256 amount);
 
     /////////////////////////////////////////////////
 
     constructor(address _treasury, IERC20 _tokenImplementation) Ownable(msg.sender) {
-        treasury = _treasury;
-        tokenImplementation = _tokenImplementation;
+        // Set initial values and emit events for off-chain indexers
+        setTreasuryAddress(_treasury);
+        setLivoTokenImplementation(_tokenImplementation);
+
+        setLiquidityForGraduation(7.5 ether);
+        setGraduationFee(0.5 ether);
+        // buy/sell fees at 1%
+        setTradingFees(100, 100);
     }
 
     function createToken(
@@ -128,19 +143,15 @@ contract LivoLaunchpad is Ownable {
         require(whitelistedBondingCurves[bondingCurve], InvalidBondingCurve());
         require(whitelistedGraduators[graduator], InvalidGraduator());
 
-        address creator = msg.sender;
-
-        // todo is it better to have a minimal proxy and spend the gas in reading state vars or to deploy a new contract every time?
-
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
         address tokenClone = Clones.clone(address(tokenImplementation));
         // Initialize the new token instance
-        // It is responsibility of the token to distribute supply to the creator
+        // It is responsibility of the token to distribute supply to the msg.sender
         // so that we can update the token implementation with new rules for future tokens
         LivoToken(tokenClone).initialize(
-            name, symbol, creator, address(this), graduator, TOTAL_SUPPLY, baseBuyFeeBps, baseSellFeeBps
+            name, symbol, msg.sender, address(this), graduator, TOTAL_SUPPLY, baseBuyFeeBps, baseSellFeeBps
         );
 
         uint256 _creatorReservedSupply = TOTAL_SUPPLY * creatorFeeShareBps / BASIS_POINTS;
@@ -149,7 +160,7 @@ contract LivoLaunchpad is Ownable {
         tokenConfigs[tokenClone] = TokenConfig({
             bondingCurve: ILivoBondingCurve(bondingCurve),
             graduator: ILivoGraduator(graduator),
-            creator: creator,
+            creator: msg.sender,
             graduationEthFee: baseGraduationFee,
             ethForGraduationLiquidity: baseEthForGraduationLiquidity,
             creatorReservedSupply: _creatorReservedSupply,
@@ -161,7 +172,7 @@ contract LivoLaunchpad is Ownable {
         // all other tokenState fields are correctly initialized to 0 or false
         tokenStates[tokenClone].circulatingSupply = _creatorReservedSupply;
 
-        emit TokenCreated(tokenClone, creator, name, symbol, bondingCurve, metadata);
+        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata);
 
         return tokenClone;
     }
@@ -188,7 +199,7 @@ contract LivoLaunchpad is Ownable {
 
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
 
-        emit LivoTokenPurchased(token, msg.sender, msg.value, tokensToReceive, ethFee);
+        emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
     }
 
     function sellToken(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
@@ -216,7 +227,7 @@ contract LivoLaunchpad is Ownable {
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
         _transferEth(msg.sender, ethForSeller);
 
-        emit LivoTokenSold(token, msg.sender, tokenAmount, ethForSeller, ethFee);
+        emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
     }
 
     function graduateToken(address tokenAddress) external payable {
@@ -240,9 +251,9 @@ contract LivoLaunchpad is Ownable {
         token.safeTransfer(tokenConfig.creator, tokensForCreator);
         token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
 
-        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
+        address uniPair = tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
 
-        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation);
+        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation, uniPair);
     }
 
     function claimCreatorEthFees(address token) external {
@@ -303,26 +314,26 @@ contract LivoLaunchpad is Ownable {
     //////////////////////////// Admin functions //////////////////////////
 
     /// @notice Updates the ERC20 token implementation, which only affects new token deployments
-    function setLivoTokenImplementation(IERC20 newImplementation) external onlyOwner {
+    function setLivoTokenImplementation(IERC20 newImplementation) public onlyOwner {
         require(address(newImplementation) != address(0), InvalidAddress());
         tokenImplementation = newImplementation;
         emit TokenImplementationUpdated(newImplementation);
     }
 
     /// @notice Updates the graduation threshold, which only affects new token deployments
-    function setLiquidityForGraduation(uint256 ethAmount) external onlyOwner {
+    function setLiquidityForGraduation(uint256 ethAmount) public onlyOwner {
         baseEthForGraduationLiquidity = ethAmount;
-        emit GraduationThresholdUpdated(ethAmount);
+        emit RequiredEthForGraduationLiquidityUpdated(ethAmount);
     }
 
     /// @notice Updates the graduation fee, which only affects new token deployments
-    function setGraduationFee(uint256 ethAmount) external onlyOwner {
+    function setGraduationFee(uint256 ethAmount) public onlyOwner {
         baseGraduationFee = ethAmount;
         emit GraduationFeeUpdated(ethAmount);
     }
 
     /// @notice Updates the buy/sell fees, which only affects new token deployments
-    function setTradingFees(uint16 buyFeeBps, uint16 sellFeeBps) external onlyOwner {
+    function setTradingFees(uint16 buyFeeBps, uint16 sellFeeBps) public onlyOwner {
         require(buyFeeBps <= BASIS_POINTS, InvalidParameter(buyFeeBps));
         require(sellFeeBps <= BASIS_POINTS, InvalidParameter(sellFeeBps));
         baseBuyFeeBps = buyFeeBps;
@@ -331,19 +342,19 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @notice Whitelists a bonding curve that can be chosen by future tokens
-    function whitelistBondingCurve(address bondingCurve, bool whitelisted) external onlyOwner {
+    function whitelistBondingCurve(address bondingCurve, bool whitelisted) public onlyOwner {
         whitelistedBondingCurves[bondingCurve] = whitelisted;
         emit BondingCurveWhitelisted(bondingCurve, whitelisted);
     }
 
     /// @dev blacklisted graduators will still be able to graduate the tokens that where created with them
-    function whitelistGraduator(address graduator, bool whitelisted) external onlyOwner {
+    function whitelistGraduator(address graduator, bool whitelisted) public onlyOwner {
         // todo validation of the graduation manager?
         whitelistedGraduators[graduator] = whitelisted;
         emit GraduatorWhitelisted(graduator, whitelisted);
     }
 
-    function setTreasuryAddress(address recipient) external onlyOwner {
+    function setTreasuryAddress(address recipient) public onlyOwner {
         treasury = recipient;
         emit TreasuryAddressUpdated(recipient);
     }
