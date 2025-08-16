@@ -25,11 +25,11 @@ contract LivoLaunchpad is Ownable {
     /// @notice LivoToken ERC20 implementation address
     IERC20 public tokenImplementation;
 
-    /// @notice The amount of ETH held in a token balance that is required for graduation
-    uint256 public baseGraduationThreshold = 20 ether;
+    /// @notice The amount of ETH held in a token balance that is required for liquidity at graduation
+    uint256 public baseEthForGraduationLiquidity = 7.5 ether;
 
     /// @notice The base graduation fee in ETH, paid at graduation to the treasury
-    uint256 public baseGraduationFee = 0.1 ether;
+    uint256 public baseGraduationFee = 0.5 ether;
 
     /// @notice Base creator fee in basis points (100 bps = 1%), paid in tokens at graduation
     uint16 public baseCreatorFeeBps = 100;
@@ -133,6 +133,8 @@ contract LivoLaunchpad is Ownable {
         // todo is it better to have a minimal proxy and spend the gas in reading state vars or to deploy a new contract every time?
 
         // minimal proxy pattern to deploy a new LivoToken instance
+        // Deploying the contracts with new() costs 3-4 times more gas than cloning
+        // trading will be a bit more expensive, as variables cannot be immutable
         address tokenClone = Clones.clone(address(tokenImplementation));
         // Initialize the new token instance
         // It is responsibility of the token to distribute supply to the creator
@@ -149,7 +151,7 @@ contract LivoLaunchpad is Ownable {
             graduator: ILivoGraduator(graduator),
             creator: creator,
             graduationEthFee: baseGraduationFee,
-            graduationThreshold: baseGraduationThreshold,
+            ethForGraduationLiquidity: baseEthForGraduationLiquidity,
             creatorReservedSupply: _creatorReservedSupply,
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps,
@@ -308,8 +310,8 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @notice Updates the graduation threshold, which only affects new token deployments
-    function setGraduationThreshold(uint256 ethAmount) external onlyOwner {
-        baseGraduationThreshold = ethAmount;
+    function setLiquidityForGraduation(uint256 ethAmount) external onlyOwner {
+        baseEthForGraduationLiquidity = ethAmount;
         emit GraduationThresholdUpdated(ethAmount);
     }
 

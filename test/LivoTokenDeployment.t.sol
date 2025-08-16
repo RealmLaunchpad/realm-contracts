@@ -63,8 +63,8 @@ contract LivoTokenDeploymentTest is Test {
         assertEq(address(config.bondingCurve), address(bondingCurve));
         assertEq(address(config.graduator), address(graduator));
         assertEq(config.creator, creator);
-        assertEq(config.graduationEthFee, 0.1 ether);
-        assertEq(config.graduationThreshold, 20 ether);
+        assertEq(config.graduationEthFee, 0.5 ether);
+        assertEq(config.ethForGraduationLiquidity, 7.5 ether);
 
         // Verify token state was initialized correctly
         TokenState memory state = launchpad.getTokenState(deployedToken);
