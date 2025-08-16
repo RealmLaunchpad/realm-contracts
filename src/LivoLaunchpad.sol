@@ -58,6 +58,9 @@ contract LivoLaunchpad is Ownable {
     /// @notice Mapping of token address to its state
     mapping(address => TokenState) public tokenStates;
 
+    /// @notice Mapping to track used symbols to prevent duplicates
+    mapping(bytes32 => bool) public usedSymbols;
+
     ///////////////////// Errors /////////////////////
 
     error InvalidBondingCurve();
@@ -76,6 +79,7 @@ contract LivoLaunchpad is Ownable {
     error SlippageExceeded();
     error CallerIsNotCreator();
     error NothingToClaim();
+    error SymbolAlreadyUsed();
 
     ///////////////////// Events /////////////////////
 
@@ -118,6 +122,9 @@ contract LivoLaunchpad is Ownable {
         address graduator
     ) external payable returns (address) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
+
+        _registerSymbol(symbol);
+
         require(whitelistedBondingCurves[bondingCurve], InvalidBondingCurve());
         require(whitelistedGraduators[graduator], InvalidGraduator());
 
@@ -393,5 +400,13 @@ contract LivoLaunchpad is Ownable {
         // review potential reentrancies. Make sure this call is always done at the end of the transaction
         (bool success,) = recipient.call{value: amount}("");
         require(success, EthTransferFailed());
+    }
+
+    function _registerSymbol(string calldata symbol) internal {
+        require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
+
+        bytes32 symbolHash = bytes32(bytes(symbol));
+        require(!usedSymbols[symbolHash], SymbolAlreadyUsed());
+        usedSymbols[symbolHash] = true;
     }
 }

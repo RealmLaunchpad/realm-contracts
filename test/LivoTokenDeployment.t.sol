@@ -103,4 +103,64 @@ contract LivoTokenDeploymentTest is Test {
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidNameOrSymbol.selector));
         launchpad.createToken("TestToken", "", "ipfs://test-metadata", address(bondingCurve), address(graduator));
     }
+
+    function testCannotCreateTokenWithSymbolTooLong() public {
+        // Create a symbol longer than 32 bytes
+        string memory longSymbol = "THISISAVERYLONGSYMBOLTHATEXCEEDS32BYTES";
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidNameOrSymbol.selector));
+        launchpad.createToken(
+            "TestToken", longSymbol, "ipfs://test-metadata", address(bondingCurve), address(graduator)
+        );
+    }
+
+    function testCannotCreateTokenWithDuplicateSymbol() public {
+        // Create first token with symbol "TEST"
+        vm.prank(creator);
+        launchpad.createToken("TestToken1", "TEST", "ipfs://test-metadata1", address(bondingCurve), address(graduator));
+
+        // Try to create second token with same symbol
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.SymbolAlreadyUsed.selector));
+        launchpad.createToken("TestToken2", "TEST", "ipfs://test-metadata2", address(bondingCurve), address(graduator));
+    }
+
+    function testCanCreateTokensWithDifferentSymbols() public {
+        // Create first token
+        vm.prank(creator);
+        address token1 = launchpad.createToken(
+            "TestToken1", "TEST1", "ipfs://test-metadata1", address(bondingCurve), address(graduator)
+        );
+
+        // Create second token with different symbol
+        vm.prank(creator);
+        address token2 = launchpad.createToken(
+            "TestToken2", "TEST2", "ipfs://test-metadata2", address(bondingCurve), address(graduator)
+        );
+
+        // Both should be deployed successfully
+        assertTrue(token1 != address(0));
+        assertTrue(token2 != address(0));
+        assertTrue(token1 != token2);
+
+        // Verify symbols are different
+        assertEq(LivoToken(token1).symbol(), "TEST1");
+        assertEq(LivoToken(token2).symbol(), "TEST2");
+    }
+
+    function testUsedSymbolsMapping() public {
+        string memory symbol = "TEST34SYM";
+        bytes32 symbolBytes32 = bytes32(bytes(symbol));
+
+        // Initially symbol should not be used
+        assertFalse(launchpad.usedSymbols(symbolBytes32));
+
+        // Create token with the symbol
+        vm.prank(creator);
+        launchpad.createToken("TestToken", symbol, "ipfs://test-metadata", address(bondingCurve), address(graduator));
+
+        // Now symbol should be marked as used
+        assertTrue(launchpad.usedSymbols(symbolBytes32));
+    }
 }
