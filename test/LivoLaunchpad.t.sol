@@ -20,21 +20,21 @@ contract LivoLaunchpadTest is Test {
         treasury = makeAddr("treasury");
         creator = makeAddr("creator");
         buyer = makeAddr("buyer");
-        
+
         // Deploy token implementation
         tokenImplementation = new LivoToken();
-        
+
         // Deploy launchpad with treasury and token implementation
         launchpad = new LivoLaunchpad(treasury, tokenImplementation);
-        
+
         // Deploy bonding curve and graduator
         bondingCurve = new DummyConstantPriceCurve();
         graduator = new LivoGraduatorUniV2(address(0), address(launchpad)); // Using address(0) for router as it's not used in tests
-        
+
         // Whitelist bonding curve and graduator
         launchpad.whitelistBondingCurve(address(bondingCurve), true);
         launchpad.whitelistGraduator(address(graduator), true);
-        
+
         // Give ETH to test accounts
         vm.deal(creator, 100 ether);
         vm.deal(buyer, 100 ether);
@@ -42,7 +42,8 @@ contract LivoLaunchpadTest is Test {
 
     function testCreateToken() public {
         vm.prank(creator);
-        address token = launchpad.createToken("TestToken", "TEST", "ipfs://metadata", address(bondingCurve), address(graduator));
+        address token =
+            launchpad.createToken("TestToken", "TEST", "ipfs://metadata", address(bondingCurve), address(graduator));
         assertTrue(token != address(0));
         LivoToken livoToken = LivoToken(token);
         assertEq(livoToken.name(), "TestToken");
@@ -54,10 +55,11 @@ contract LivoLaunchpadTest is Test {
     function testBuyToken() public {
         // Create token
         vm.prank(creator);
-        address token = launchpad.createToken("TestToken", "TEST", "ipfs://metadata", address(bondingCurve), address(graduator));
+        address token =
+            launchpad.createToken("TestToken", "TEST", "ipfs://metadata", address(bondingCurve), address(graduator));
         // Buy tokens
         uint256 ethAmount = 1 ether;
-        (, , uint256 expectedTokens) = launchpad.quoteBuy(token, ethAmount);
+        (,, uint256 expectedTokens) = launchpad.quoteBuy(token, ethAmount);
         uint256 balanceBefore = LivoToken(token).balanceOf(buyer);
         vm.prank(buyer);
         launchpad.buyToken{value: ethAmount}(token, expectedTokens, block.timestamp + 1 hours);
@@ -68,7 +70,8 @@ contract LivoLaunchpadTest is Test {
     function testSellToken() public {
         // Create token and buy some first
         vm.prank(creator);
-        address token = launchpad.createToken("TestToken", "TEST", "ipfs://metadata", address(bondingCurve), address(graduator));
+        address token =
+            launchpad.createToken("TestToken", "TEST", "ipfs://metadata", address(bondingCurve), address(graduator));
         // Buy tokens
         uint256 ethAmount = 1 ether;
         vm.prank(buyer);
@@ -78,7 +81,7 @@ contract LivoLaunchpadTest is Test {
         // Approve launchpad to spend tokens
         vm.prank(buyer);
         LivoToken(token).approve(address(launchpad), sellAmount);
-        (, , uint256 expectedEth) = launchpad.quoteSell(token, sellAmount);
+        (,, uint256 expectedEth) = launchpad.quoteSell(token, sellAmount);
         uint256 ethBefore = buyer.balance;
         vm.prank(buyer);
         launchpad.sellToken(token, sellAmount, expectedEth, block.timestamp + 1 hours);
