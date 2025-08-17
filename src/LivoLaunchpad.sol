@@ -189,7 +189,7 @@ contract LivoLaunchpad is Ownable {
         // this applies the trading fees
         (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = _quoteBuy(token, msg.value);
 
-        require(tokensToReceive >= _availableForPurchase(token), NotEnoughSupply());
+        require(tokensToReceive <= _availableForPurchase(token), NotEnoughSupply());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
 
         tokenState.ethCollected += ethForReserves;

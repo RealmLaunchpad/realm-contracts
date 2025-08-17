@@ -29,3 +29,5 @@ graduator := "0xBa1a7Fe65E7aAb563630F5921080996030a80AA1"
 create-token tokenName:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,string,address,address)" {{tokenName}} {{uppercase(tokenName)}} "/dummy/metadata/url" {{bondingCurve}} {{graduator}}
 
+buy tokenAddress value:
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "buyToken(address,uint256,uint256)" {{tokenAddress}} 0 175542935100 --value {{value}}
