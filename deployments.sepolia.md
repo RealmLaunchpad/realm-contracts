@@ -17,6 +17,6 @@
 | Uniswap V2 router          | `0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008` |
 |                            |
 | **Test Tokens**            |
-| TOKENIZER                     | `0xD17590DD567B97774ffFa56E91Ad09cfb9731E23` |
-| AGON                  | `0x88bBC6252304E4889C4adFe36B2Ccd7a8559A5dD` |
+| TOKENIZER                  | `0xD17590DD567B97774ffFa56E91Ad09cfb9731E23` |
+| AGON                       | `0x88bBC6252304E4889C4adFe36B2Ccd7a8559A5dD` |
 
