@@ -3,14 +3,14 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {DummyBondingCurve} from "src/bondingCurves/DummyBondingCurve.sol";
+import {DummyLinearBondingCurve} from "src/bondingCurves/DummyLinearBondingCurve.sol";
 import {LivoGraduatorUniV2} from "src/graduators/LivoGraduatorUniV2.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 
 contract LivoTokenDeploymentTest is Test {
     LivoLaunchpad public launchpad;
-    DummyBondingCurve public bondingCurve;
+    DummyLinearBondingCurve public bondingCurve;
     LivoGraduatorUniV2 public graduator;
     LivoToken public tokenImplementation;
 
@@ -30,7 +30,7 @@ contract LivoTokenDeploymentTest is Test {
         launchpad = new LivoLaunchpad(treasury, tokenImplementation);
 
         // Deploy bonding curve and graduator
-        bondingCurve = new DummyBondingCurve();
+        bondingCurve = new DummyLinearBondingCurve();
         graduator = new LivoGraduatorUniV2(uniswapRouter, address(launchpad));
 
         // Whitelist bonding curve and graduator
