@@ -3,43 +3,36 @@ pragma solidity 0.8.28;
 
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {Script} from "lib/forge-std/src/Script.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
-contract LaunchAndPurchasesSimulation is Script {
+contract BuySellSimulations is Script {
     // SEPOLIA
-    LivoLaunchpad launchpad = LivoLaunchpad(0xfD550c5dC070Ea575A06A40f2e18304D85211663);
-
-    address linearBondingCurve = 0x5176076dD27C12b5fF60eFbf97D2C6a0697CE0DF;
-    address linearGraduator = 0xBa1a7Fe65E7aAb563630F5921080996030a80AA1;
+    LivoLaunchpad launchpad = LivoLaunchpad(0x8a80112BCdd79f7b2635DDB4775ca50b56A940B2);
 
     function run() public {
-        // _launchTokens();
         _purchaseTokens();
     }
 
-    function _launchTokens() internal {
-        // launch a couple of tokens
-        vm.broadcast();
-        launchpad.createToken("Linear Token", "LINEAR", "/url/to/metadata/", linearBondingCurve, linearGraduator);
-
-        vm.broadcast();
-        launchpad.createToken("Vertigo Token", "VERTIGO", "/url/to/metadata/", linearBondingCurve, linearGraduator);
-    }
-
     function _purchaseTokens() internal {
-        address TOKEN1 = 0x88bBC6252304E4889C4adFe36B2Ccd7a8559A5dD;
-        address TOKEN2 = 0xD17590DD567B97774ffFa56E91Ad09cfb9731E23;
+        address TOKEN1 = 0x530Cd72Cf87c483cA14aF62A8241Bc6101929cD2;
+        address TOKEN2 = 0xf12c6cf1580411065Ed87D4042Dc50bb522A0780;
 
         uint256 deadline = block.timestamp + 300 days;
-        // purchase a couple of tokens
-        vm.startBroadcast();
-        launchpad.buyToken{value: 0.0000002 ether}(TOKEN1, 1, deadline);
-        launchpad.buyToken{value: 0.00000021 ether}(TOKEN1, 1, deadline);
-        launchpad.sellToken(TOKEN1, 0.1 ether, 0.0000000002 ether, deadline);
-        launchpad.sellToken(TOKEN1, 0.12 ether, 0.0000000002 ether, deadline);
 
-        launchpad.buyToken{value: 0.00000011 ether}(TOKEN2, 1, deadline);
-        launchpad.sellToken(TOKEN2, 0.12 ether, 0.0000000002 ether, deadline);
-        launchpad.buyToken{value: 0.00000015 ether}(TOKEN2, 1, deadline);
+        vm.startBroadcast();
+        IERC20(TOKEN1).approve(address(launchpad), type(uint256).max);
+        IERC20(TOKEN2).approve(address(launchpad), type(uint256).max);
+
+        // TOKEN 1
+        launchpad.buyToken{value: 0.0000005 ether}(TOKEN1, 0, deadline);
+        launchpad.buyToken{value: 0.00000051 ether}(TOKEN1, 0, deadline);
+        launchpad.sellToken(TOKEN1, 0.0000008 ether, 0, deadline);
+        launchpad.sellToken(TOKEN1, 0.000025 ether, 0, deadline);
+
+        // TOKEN 2
+        launchpad.buyToken{value: 0.000033 ether}(TOKEN2, 0, deadline);
+        launchpad.sellToken(TOKEN2, 0.0000444 ether, 0, deadline);
+        launchpad.buyToken{value: 0.000015 ether}(TOKEN2, 0, deadline);
 
         vm.stopBroadcast();
     }

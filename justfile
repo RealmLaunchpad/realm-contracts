@@ -9,12 +9,12 @@ test-curves:
     forge test --match-contract Curve
 
 ##################### INSPECTION ####################
-inspect-error errorhex:
+error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
 
 ##################### OPERATIONS #######################
 
-launchpad := "0xe8a447E523138853d9B73f390a9cA603fa914a26"
+launchpad := "0x8a80112BCdd79f7b2635DDB4775ca50b56A940B2"
 
 whitelist-curve curve:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "whitelistBondingCurve(address,bool)" {{curve}} true
@@ -31,3 +31,9 @@ create-token tokenName:
 
 buy tokenAddress value:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "buyToken(address,uint256,uint256)" {{tokenAddress}} 0 175542935100 --value {{value}}
+
+approve tokenAddress:
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{tokenAddress}} "approve(address,uint256)" {{launchpad}} 11579208923731619542357098500868790785326998466564056403945758400791312963993
+
+sell tokenAddress amount:
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "sellToken(address,uint256,uint256,uint256)" {{tokenAddress}} {{amount}} 0 175542935100
