@@ -2,7 +2,7 @@
 | -------------------------- | -------------------------------------------- |
 |                            |
 | **Launchpad**              |
-| LivoLaunchpad*             | `0xfD550c5dC070Ea575A06A40f2e18304D85211663` |
+| LivoLaunchpad*             | `0xe8a447E523138853d9B73f390a9cA603fa914a26` |
 | LivoToken implementation   | `0x7766e3a6A8C98a76308CFb4040E330c3308F7C73` |
 |                            |
 | **Bonding Curves**         |
@@ -17,5 +17,6 @@
 | Uniswap V2 router          | `0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008` |
 |                            |
 | **Test Tokens**            |
-| TORRET                     | `0xD17590DD567B97774ffFa56E91Ad09cfb9731E23` |
-| LIVONATOR                  | `0x88bBC6252304E4889C4adFe36B2Ccd7a8559A5dD` |
+| TOKENIZER                     | `0xD17590DD567B97774ffFa56E91Ad09cfb9731E23` |
+| AGON                  | `0x88bBC6252304E4889C4adFe36B2Ccd7a8559A5dD` |
+
