@@ -135,7 +135,7 @@ contract LivoLaunchpad is Ownable {
         string calldata metadata,
         address bondingCurve,
         address graduator
-    ) external payable returns (address) {
+    ) external returns (address) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
 
         _registerSymbol(symbol);
@@ -230,7 +230,7 @@ contract LivoLaunchpad is Ownable {
         emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
     }
 
-    function graduateToken(address tokenAddress) external payable {
+    function graduateToken(address tokenAddress) external {
         TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
         TokenState storage tokenState = tokenStates[tokenAddress];
         IERC20 token = IERC20(tokenAddress);
