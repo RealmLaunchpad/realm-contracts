@@ -189,7 +189,7 @@ contract LivoLaunchpad is Ownable {
         // this applies the trading fees
         (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = _quoteBuy(token, msg.value);
 
-        require(tokensToReceive >= IERC20(token).balanceOf(address(this)), NotEnoughSupply());
+        require(tokensToReceive >= _availableForPurchase(token), NotEnoughSupply());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
 
         tokenState.ethCollected += ethForReserves;
@@ -214,8 +214,8 @@ contract LivoLaunchpad is Ownable {
         (uint256 ethFromReserves, uint256 ethFee, uint256 ethForSeller) = _quoteSell(token, tokenAmount);
 
         // Hopefully this scenario never happens
-        require(tokenState.ethCollected >= ethFromReserves, InsufficientETHReserves());
         require(ethForSeller >= minEthAmount, SlippageExceeded());
+        require(_availableEthFromReserves(token) >= ethFromReserves, InsufficientETHReserves());
 
         tokenState.ethCollected -= ethFromReserves;
         tokenState.circulatingSupply -= tokenAmount;
@@ -280,7 +280,10 @@ contract LivoLaunchpad is Ownable {
         view
         returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
     {
-        return _quoteBuy(token, ethValue);
+        (ethForPurchase, ethFee, tokensToReceive) = _quoteBuy(token, ethValue);
+        if (tokensToReceive > _availableForPurchase(token)) {
+            revert NotEnoughSupply();
+        }
     }
 
     function quoteSell(address token, uint256 tokenAmount)
@@ -288,7 +291,15 @@ contract LivoLaunchpad is Ownable {
         view
         returns (uint256 ethFromSale, uint256 ethFee, uint256 ethForSeller)
     {
-        return _quoteSell(token, tokenAmount);
+        (ethFromSale, ethFee, ethForSeller) = _quoteSell(token, tokenAmount);
+        if (ethForSeller > _availableEthFromReserves(token)) {
+            revert InsufficientETHReserves();
+        }
+    }
+
+    /// @notice The available supply that can be purchased of a given token
+    function getAvailableForPurchase(address token) external view returns (uint256) {
+        return _availableForPurchase(token);
     }
 
     function getCurrentPrice(address token) external view returns (uint256) {
@@ -383,6 +394,7 @@ contract LivoLaunchpad is Ownable {
         ethForPurchase = ethValue - ethFee;
 
         tokensToReceive = tokenConfig.bondingCurve.getTokensForEth(tokenStates[token].circulatingSupply, ethForPurchase);
+
         return (ethForPurchase, ethFee, tokensToReceive);
     }
 
@@ -398,6 +410,17 @@ contract LivoLaunchpad is Ownable {
         ethForSeller = ethFromSale - ethFee;
 
         return (ethFromSale, ethFee, ethForSeller);
+    }
+
+    /// @dev The supply of a token that can be purchased
+    /// @dev The reserved creator supply is only effective at graduation,
+    /// and it is taken from the remaining tokens in this contract at graduation
+    function _availableForPurchase(address token) internal view returns (uint256) {
+        return IERC20(token).balanceOf(address(this));
+    }
+
+    function _availableEthFromReserves(address token) internal view returns (uint256) {
+        return tokenStates[token].ethCollected;
     }
 
     function _registerEthFees(uint256 ethFee, uint16 creatorFeeBps, TokenState storage tokenState) internal {
