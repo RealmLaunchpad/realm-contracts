@@ -26,9 +26,8 @@ contract LaunchAndPurchasesSimulation is Script {
     }
 
     function _purchaseTokens() internal {
-        address TOKEN1 = 0x7eAa71476375091Aed0BE6C65a3E87D00CC0332a;
-        address TOKEN2 = 0x9bEa2B57DF0309417fB3816e1d9834b31204588B;
-        address TOKEN3 = 0x3D603CDd592692d2E89beDAa172679a1D4255dd5;
+        address TOKEN1 = 0x88bBC6252304E4889C4adFe36B2Ccd7a8559A5dD;
+        address TOKEN2 = 0xD17590DD567B97774ffFa56E91Ad09cfb9731E23;
 
         uint256 deadline = block.timestamp + 300 days;
         // purchase a couple of tokens
@@ -42,9 +41,6 @@ contract LaunchAndPurchasesSimulation is Script {
         launchpad.sellToken(TOKEN2, 0.12 ether, 0.0000000002 ether, deadline);
         launchpad.buyToken{value: 0.00000015 ether}(TOKEN2, 1, deadline);
 
-        launchpad.buyToken{value: 0.00000021 ether}(TOKEN3, 1, deadline);
-        launchpad.sellToken(TOKEN3, 0.012 ether, 0.0000000002 ether, deadline);
-        launchpad.buyToken{value: 0.00000041 ether}(TOKEN3, 1, deadline);
         vm.stopBroadcast();
     }
 }
