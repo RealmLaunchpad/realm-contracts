@@ -32,7 +32,7 @@ contract LivoLaunchpad is Ownable {
     uint256 public baseGraduationFee;
 
     /// @notice Base creator fee in basis points (100 bps = 1%), paid in tokens at graduation
-    uint16 public baseCreatorFeeBps = 100;
+    uint16 public creatorReservedSupplyBasisPoints = 100;
 
     /// @notice Total fees collected by the treasury
     uint256 public treasuryEthFeesCollected;
@@ -43,8 +43,6 @@ contract LivoLaunchpad is Ownable {
     /// @notice Trading fees in basis points (100 bps = 1%). Updates to these only affect future tokens
     uint16 public baseBuyFeeBps;
     uint16 public baseSellFeeBps;
-    /// @notice Each trade has fees, that fee is split between the creator and the treasury. This is the share for the creator
-    uint16 public creatorFeeShareBps;
 
     /// @notice Which Bonding Curve addresses can be selected at token creation
     mapping(address => bool) public whitelistedBondingCurves;
@@ -104,12 +102,10 @@ contract LivoLaunchpad is Ownable {
     );
 
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
-    event CreatorEthFeesClaimed(address indexed token, address indexed creator, uint256 amount);
 
     event TokenImplementationUpdated(IERC20 newImplementation);
     event RequiredEthForGraduationLiquidityUpdated(uint256 newThreshold);
     event TreasuryAddressUpdated(address newTreasury);
-    event CreatorFeeShareUpdated(uint256 newCreatorFeeBps);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event GraduationFeeUpdated(uint256 newGraduationFee);
 
@@ -154,7 +150,7 @@ contract LivoLaunchpad is Ownable {
             name, symbol, msg.sender, address(this), graduator, TOTAL_SUPPLY, baseBuyFeeBps, baseSellFeeBps
         );
 
-        uint256 _creatorReservedSupply = TOTAL_SUPPLY * creatorFeeShareBps / BASIS_POINTS;
+        uint256 _creatorReservedSupply = TOTAL_SUPPLY * creatorReservedSupplyBasisPoints / BASIS_POINTS;
 
         // at creation all tokens are held by this contract
         tokenConfigs[tokenClone] = TokenConfig({
@@ -165,8 +161,7 @@ contract LivoLaunchpad is Ownable {
             ethForGraduationLiquidity: baseEthForGraduationLiquidity,
             creatorReservedSupply: _creatorReservedSupply,
             buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps,
-            creatorFeeBps: creatorFeeShareBps
+            sellFeeBps: baseSellFeeBps
         });
 
         // all other tokenState fields are correctly initialized to 0 or false
@@ -194,8 +189,7 @@ contract LivoLaunchpad is Ownable {
 
         tokenState.ethCollected += ethForReserves;
         tokenState.circulatingSupply += tokensToReceive;
-
-        _registerEthFees(ethFee, tokenConfig.creatorFeeBps, tokenState);
+        treasuryEthFeesCollected += ethFee;
 
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
 
@@ -219,9 +213,8 @@ contract LivoLaunchpad is Ownable {
 
         tokenState.ethCollected -= ethFromReserves;
         tokenState.circulatingSupply -= tokenAmount;
-
         // review fee asymmetries 1% != 1% down, so 1% sell != 1% buy ... ?
-        _registerEthFees(ethFee, tokenConfig.creatorFeeBps, tokenState);
+        treasuryEthFeesCollected += ethFee;
 
         // funds transfers
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
@@ -254,23 +247,6 @@ contract LivoLaunchpad is Ownable {
         address uniPair = tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
 
         emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation, uniPair);
-    }
-
-    function claimCreatorEthFees(address token) external {
-        TokenConfig storage tokenConfig = tokenConfigs[token];
-        TokenState storage tokenState = tokenStates[token];
-
-        address creator = tokenConfig.creator;
-        uint256 amount = tokenState.creatorFeesCollected;
-
-        require(creator == msg.sender, CallerIsNotCreator());
-        require(amount > 0, NothingToClaim());
-
-        tokenState.creatorFeesCollected = 0;
-
-        _transferEth(creator, amount);
-
-        emit CreatorEthFeesClaimed(token, creator, amount);
     }
 
     //////////////////////////// view functions //////////////////////////
@@ -421,14 +397,6 @@ contract LivoLaunchpad is Ownable {
 
     function _availableEthFromReserves(address token) internal view returns (uint256) {
         return tokenStates[token].ethCollected;
-    }
-
-    function _registerEthFees(uint256 ethFee, uint16 creatorFeeBps, TokenState storage tokenState) internal {
-        uint256 creatorFee = (ethFee * creatorFeeBps) / BASIS_POINTS;
-        uint256 treasuryFee = ethFee - creatorFee;
-
-        tokenState.creatorFeesCollected += creatorFee;
-        treasuryEthFeesCollected += treasuryFee;
     }
 
     function _transferEth(address recipient, uint256 amount) internal {

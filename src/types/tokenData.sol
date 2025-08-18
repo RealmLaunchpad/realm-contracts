@@ -21,15 +21,11 @@ struct TokenConfig {
     uint16 buyFeeBps;
     /// @notice Trading (sell) fee in basis points (100 bps = 1%)
     uint16 sellFeeBps;
-    /// @notice Share of the fees in each trade that goes to the creator, in basis points (100 bps = 1%)
-    uint16 creatorFeeBps;
 }
 
 struct TokenState {
     /// @notice Total ETH collected by the token purchases, which will be used mostly for liquidity
     uint256 ethCollected;
-    /// @notice ETH fees collected for the creator, claimable at any time
-    uint256 creatorFeesCollected;
     /// @notice Amount of tokens in circulation (that have been sold)
     uint256 circulatingSupply;
     /// @notice This is set to true once graduated, meaning it is no longer tradable from the launchpad
