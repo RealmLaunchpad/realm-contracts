@@ -69,7 +69,6 @@ contract LivoTokenDeploymentTest is Test {
         // Verify token state was initialized correctly
         TokenState memory state = launchpad.getTokenState(deployedToken);
         assertEq(state.ethCollected, 0);
-        assertEq(state.creatorFeesCollected, 0);
         assertEq(state.graduated, false);
 
         // Verify all tokens are held by launchpad initially
