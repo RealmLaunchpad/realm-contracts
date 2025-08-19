@@ -94,11 +94,11 @@ contract LivoLaunchpad is Ownable {
     event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation, address uniPair);
 
     event LivoTokenBuy(
-        address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 fee
+        address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 ethFee
     );
 
     event LivoTokenSell(
-        address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 fee
+        address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 ethFee
     );
 
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
