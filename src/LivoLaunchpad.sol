@@ -194,6 +194,11 @@ contract LivoLaunchpad is Ownable {
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
 
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
+
+        // at the beginning of the function already checks that the token is not graduated
+        if (tokenState.meetsGraduationCriteria(tokenConfig)) {
+            _graduateToken(token);
+        }
     }
 
     function sellToken(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
@@ -223,7 +228,7 @@ contract LivoLaunchpad is Ownable {
         emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
     }
 
-    function graduateToken(address tokenAddress) external {
+    function _graduateToken(address tokenAddress) internal {
         TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
         TokenState storage tokenState = tokenStates[tokenAddress];
         IERC20 token = IERC20(tokenAddress);
