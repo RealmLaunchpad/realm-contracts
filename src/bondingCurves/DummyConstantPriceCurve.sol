@@ -12,11 +12,35 @@ contract DummyConstantPriceCurve is ILivoBondingCurve {
     /// @dev units: [ETH/token]
     uint256 TOKEN_PRICE = 1e10;
 
-    function getTokensForEth(uint256 circulatingSupply, uint256 ethAmount) external view returns (uint256) {
+    function ethToTokens_onBuy(uint256 circulatingSupply, uint256 ethReserves, uint256 ethAmount)
+        external
+        view
+        returns (uint256 tokensReceived)
+    {
         return (PRECISION * ethAmount) / TOKEN_PRICE;
     }
 
-    function getEthForTokens(uint256 circulatingSupply, uint256 tokenAmount) external view returns (uint256) {
+    function ethToTokens_onSell(uint256 circulatingSupply, uint256 ethReserves, uint256 ethAmount)
+        external
+        view
+        returns (uint256 tokensRequired)
+    {
+        return (PRECISION * ethAmount) / TOKEN_PRICE;
+    }
+
+    function tokensToEth_onBuy(uint256 circulatingSupply, uint256 ethReserves, uint256 tokenAmount)
+        external
+        view
+        returns (uint256 ethRequired)
+    {
+        return tokenAmount * TOKEN_PRICE / PRECISION;
+    }
+
+    function tokensToEth_onSell(uint256 circulatingSupply, uint256 ethReserves, uint256 tokenAmount)
+        external
+        view
+        returns (uint256 ethReceived)
+    {
         return tokenAmount * TOKEN_PRICE / PRECISION;
     }
 

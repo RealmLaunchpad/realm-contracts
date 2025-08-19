@@ -288,7 +288,11 @@ contract LivoLaunchpad is Ownable {
 
         require(tokenConfig.exists(), InvalidToken());
         // review this bonding curve interface
-        return tokenConfig.bondingCurve.getEthForTokens(tokenStates[token].circulatingSupply, 1e18);
+        return tokenConfig.bondingCurve.ethToTokens_onBuy(
+            tokenStates[token].circulatingSupply,
+            tokenStates[token].ethCollected,
+            1e18
+        );
     }
 
     function meetsGraduationCriteria(address token) public view returns (bool) {
@@ -374,7 +378,9 @@ contract LivoLaunchpad is Ownable {
         ethFee = (ethValue * tokenConfig.buyFeeBps) / BASIS_POINTS;
         ethForPurchase = ethValue - ethFee;
 
-        tokensToReceive = tokenConfig.bondingCurve.getTokensForEth(tokenStates[token].circulatingSupply, ethForPurchase);
+        tokensToReceive = tokenConfig.bondingCurve.ethToTokens_onBuy(
+            tokenStates[token].circulatingSupply, tokenStates[token].ethCollected, ethForPurchase
+        );
 
         return (ethForPurchase, ethFee, tokensToReceive);
     }
@@ -386,7 +392,10 @@ contract LivoLaunchpad is Ownable {
     {
         TokenConfig storage tokenConfig = tokenConfigs[token];
 
-        ethFromSale = tokenConfig.bondingCurve.getEthForTokens(tokenStates[token].circulatingSupply, tokenAmount);
+        ethFromSale = tokenConfig.bondingCurve.tokensToEth_onSell(
+            tokenStates[token].circulatingSupply, tokenStates[token].ethCollected, tokenAmount
+        );
+
         ethFee = (ethFromSale * tokenConfig.sellFeeBps) / BASIS_POINTS;
         ethForSeller = ethFromSale - ethFee;
 
