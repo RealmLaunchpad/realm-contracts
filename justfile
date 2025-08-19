@@ -4,6 +4,8 @@ build:
     forge build
 
 ##################### TESTING ################################
+test:
+    forge test
 
 test-curves:
     forge test --match-contract Curve
