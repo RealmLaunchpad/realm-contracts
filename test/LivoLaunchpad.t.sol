@@ -95,4 +95,25 @@ contract LivoLaunchpadTest is Test {
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidBondingCurve.selector));
         launchpad.createToken("TestToken", "TEST", "ipfs://metadata", invalidCurve, address(graduator));
     }
+
+    function testCreateTokenWithDuplicateSymbols() public {
+        // Create first token with symbol "TEST"
+        vm.prank(creator);
+        address token1 =
+            launchpad.createToken("FirstToken", "TEST", "ipfs://metadata1", address(bondingCurve), address(graduator));
+
+        // Create second token with same symbol "TEST" - should succeed
+        vm.prank(creator);
+        address token2 =
+            launchpad.createToken("SecondToken", "TEST", "ipfs://metadata2", address(bondingCurve), address(graduator));
+
+        // Verify both tokens exist and have the same symbol but different addresses
+        assertTrue(token1 != address(0));
+        assertTrue(token2 != address(0));
+        assertTrue(token1 != token2);
+        assertEq(LivoToken(token1).symbol(), "TEST");
+        assertEq(LivoToken(token2).symbol(), "TEST");
+        assertEq(LivoToken(token1).name(), "FirstToken");
+        assertEq(LivoToken(token2).name(), "SecondToken");
+    }
 }
