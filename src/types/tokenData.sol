@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "src/interfaces/ILivoBondingCurve.sol";
-import "src/interfaces/ILivoGraduator.sol";
+import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
+import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 
 struct TokenConfig {
     /// @notice Bonding curve address. Cannot be altered once is set

@@ -19,8 +19,8 @@ contract LivoTokenDeploymentTest is Test {
 
     // review question are these mainnet addresses?
 
-    address public constant uniswapRouter = address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D); // Uniswap V2 Router
-    address public constant uniswapFactory = address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); // Uniswap V2 Factory
+    address public uniswapRouter = address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D); // Uniswap V2 Router
+    address public uniswapFactory = address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); // Uniswap V2 Factory
 
     function setUp() public {
         // Deploy token implementation

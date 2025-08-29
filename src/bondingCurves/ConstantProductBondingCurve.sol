@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "../interfaces/ILivoBondingCurve.sol";
+import {ILivoBondingCurve} from "../interfaces/ILivoBondingCurve.sol";
 
 contract ConstantProductBondingCurve is ILivoBondingCurve {
     // the bonding curve follows the constant product formula:
