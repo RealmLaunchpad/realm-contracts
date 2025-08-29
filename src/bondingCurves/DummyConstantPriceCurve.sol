@@ -12,7 +12,7 @@ contract DummyConstantPriceCurve is ILivoBondingCurve {
     /// @dev units: [ETH/token]
     uint256 tokenPrice = 1e10;
 
-    function ethToTokens_onBuy(uint256 circulatingSupply, uint256 ethReserves, uint256 ethAmount)
+    function buyTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
         external
         view
         returns (uint256 tokensReceived)
@@ -20,15 +20,7 @@ contract DummyConstantPriceCurve is ILivoBondingCurve {
         return (PRECISION * ethAmount) / tokenPrice;
     }
 
-    function ethToTokens_onSell(uint256 circulatingSupply, uint256 ethReserves, uint256 ethAmount)
-        external
-        view
-        returns (uint256 tokensRequired)
-    {
-        return (PRECISION * ethAmount) / tokenPrice;
-    }
-
-    function tokensToEth_onBuy(uint256 circulatingSupply, uint256 ethReserves, uint256 tokenAmount)
+    function buyExactTokens(uint256 tokenReserves, uint256 ethReserves, uint256 tokenAmount)
         external
         view
         returns (uint256 ethRequired)
@@ -36,12 +28,20 @@ contract DummyConstantPriceCurve is ILivoBondingCurve {
         return tokenAmount * tokenPrice / PRECISION;
     }
 
-    function tokensToEth_onSell(uint256 circulatingSupply, uint256 ethReserves, uint256 tokenAmount)
+    function sellExactTokens(uint256 tokenReserves, uint256 ethReserves, uint256 tokenAmount)
         external
         view
         returns (uint256 ethReceived)
     {
         return tokenAmount * tokenPrice / PRECISION;
+    }
+
+    function sellTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
+        external
+        view
+        returns (uint256 tokensRequired)
+    {
+        return (PRECISION * ethAmount) / tokenPrice;
     }
 
     /// @dev Allows changing the token price.
