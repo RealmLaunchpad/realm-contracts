@@ -21,8 +21,8 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
     uint16 public constant BASIS_POINTS = 10_000; // 100%
 
     /// @notice Uniswap router and factory addresses
-    IUniswapV2Router public immutable uniswapRouter;
-    address public immutable livoLaunchpad;
+    IUniswapV2Router public immutable UNISWAP_ROUTER;
+    address public immutable LIVO_LAUNCHPAD;
 
     ////////////////// Events //////////////////////
     event TokenGraduated(
@@ -36,12 +36,12 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
     error NoETHToGraduate();
 
     constructor(address _uniswapRouter, address _launchpad) Ownable(msg.sender) {
-        uniswapRouter = IUniswapV2Router(_uniswapRouter);
-        livoLaunchpad = _launchpad;
+        UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
+        LIVO_LAUNCHPAD = _launchpad;
     }
 
     modifier onlyLaunchpad() {
-        require(msg.sender == livoLaunchpad, OnlyLaunchpadAllowed());
+        require(msg.sender == LIVO_LAUNCHPAD, OnlyLaunchpadAllowed());
         _;
     }
 
@@ -50,7 +50,7 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         IERC20 token = IERC20(tokenAddress);
 
         /// note review what happens if the token was already graduated and this is called again (even though the launchpad wouldn't do it)
-        IUniswapV2Factory uniswapFactory = IUniswapV2Factory(IUniswapV2Router(uniswapRouter).factory());
+        IUniswapV2Factory uniswapFactory = IUniswapV2Factory(IUniswapV2Router(UNISWAP_ROUTER).factory());
 
         uint256 tokenBalance = token.balanceOf(address(this));
         uint256 ethBalance = msg.value;
@@ -61,17 +61,17 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         // Create Uniswap pair if it doesn't exist
         // question is there a problem if the pair is created by another account before?
         // question review if WETH is the right or should be ETH somehow
-        pair = uniswapFactory.getPair(tokenAddress, uniswapRouter.WETH());
+        pair = uniswapFactory.getPair(tokenAddress, UNISWAP_ROUTER.WETH());
         if (pair == address(0)) {
-            pair = uniswapFactory.createPair(tokenAddress, uniswapRouter.WETH());
+            pair = uniswapFactory.createPair(tokenAddress, UNISWAP_ROUTER.WETH());
         }
 
         // Approve tokens for router
         // question review when safeApprove doesn't work properly
-        token.safeIncreaseAllowance(address(uniswapRouter), tokenBalance);
+        token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokenBalance);
 
         // Add liquidity to Uniswap
-        (uint256 amountToken, uint256 amountETH, uint256 liquidity) = uniswapRouter.addLiquidityETH{value: ethBalance}(
+        (uint256 amountToken, uint256 amountETH, uint256 liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethBalance}(
             tokenAddress,
             tokenBalance,
             0, // Accept any amount of tokens // review

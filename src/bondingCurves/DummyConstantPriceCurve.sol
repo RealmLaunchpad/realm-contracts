@@ -10,44 +10,44 @@ contract DummyConstantPriceCurve is ILivoBondingCurve {
 
     /// @notice 1e18 means 1 token == 1 eth
     /// @dev units: [ETH/token]
-    uint256 TOKEN_PRICE = 1e10;
+    uint256 tokenPrice = 1e10;
 
-    function buyTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
+    function ethToTokens_onBuy(uint256 circulatingSupply, uint256 ethReserves, uint256 ethAmount)
         external
         view
         returns (uint256 tokensReceived)
     {
-        return (PRECISION * ethAmount) / TOKEN_PRICE;
+        return (PRECISION * ethAmount) / tokenPrice;
     }
 
-    function buyExactTokens(uint256 tokenReserves, uint256 ethReserves, uint256 tokenAmount)
-        external
-        view
-        returns (uint256 ethRequired)
-    {
-        return tokenAmount * TOKEN_PRICE / PRECISION;
-    }
-
-    function sellExactTokens(uint256 tokenReserves, uint256 ethReserves, uint256 tokenAmount)
-        external
-        view
-        returns (uint256 ethReceived)
-    {
-        return tokenAmount * TOKEN_PRICE / PRECISION;
-    }
-
-    function sellTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
+    function ethToTokens_onSell(uint256 circulatingSupply, uint256 ethReserves, uint256 ethAmount)
         external
         view
         returns (uint256 tokensRequired)
     {
-        return (PRECISION * ethAmount) / TOKEN_PRICE;
+        return (PRECISION * ethAmount) / tokenPrice;
+    }
+
+    function tokensToEth_onBuy(uint256 circulatingSupply, uint256 ethReserves, uint256 tokenAmount)
+        external
+        view
+        returns (uint256 ethRequired)
+    {
+        return tokenAmount * tokenPrice / PRECISION;
+    }
+
+    function tokensToEth_onSell(uint256 circulatingSupply, uint256 ethReserves, uint256 tokenAmount)
+        external
+        view
+        returns (uint256 ethReceived)
+    {
+        return tokenAmount * tokenPrice / PRECISION;
     }
 
     /// @dev Allows changing the token price.
     function setPrice(uint256 newPrice) external {
         // Only for testing purposes
         require(newPrice > 0, "Invalid price");
-        TOKEN_PRICE = newPrice;
+        tokenPrice = newPrice;
     }
 }
