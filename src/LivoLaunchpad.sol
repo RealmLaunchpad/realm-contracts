@@ -278,14 +278,6 @@ contract LivoLaunchpad is Ownable {
         return _availableForPurchase(token);
     }
 
-    function getCurrentPrice(address token) external view returns (uint256) {
-        TokenConfig storage tokenConfig = tokenConfigs[token];
-
-        require(tokenConfig.exists(), InvalidToken());
-        // review this bonding curve interface
-        return tokenConfig.bondingCurve.getEthForTokens(tokenStates[token].circulatingSupply, 1e18);
-    }
-
     function meetsGraduationCriteria(address token) public view returns (bool) {
         return tokenStates[token].ethCollected >= tokenConfigs[token].minimumEthForGraduation();
     }
@@ -359,6 +351,8 @@ contract LivoLaunchpad is Ownable {
 
     //////////////////////////// Internal functions //////////////////////////
 
+    // todo make quote functions for the 4 types of purchases
+
     function _quoteBuy(address token, uint256 ethValue)
         internal
         view
@@ -369,7 +363,9 @@ contract LivoLaunchpad is Ownable {
         ethFee = (ethValue * tokenConfig.buyFeeBps) / BASIS_POINTS;
         ethForPurchase = ethValue - ethFee;
 
-        tokensToReceive = tokenConfig.bondingCurve.getTokensForEth(tokenStates[token].circulatingSupply, ethForPurchase);
+        tokensToReceive = tokenConfig.bondingCurve.buyTokensForExactEth(
+            tokenStates[token].tokenReserves(), tokenStates[token].ethCollected, ethForPurchase
+        );
 
         return (ethForPurchase, ethFee, tokensToReceive);
     }
@@ -381,7 +377,10 @@ contract LivoLaunchpad is Ownable {
     {
         TokenConfig storage tokenConfig = tokenConfigs[token];
 
-        ethFromSale = tokenConfig.bondingCurve.getEthForTokens(tokenStates[token].circulatingSupply, tokenAmount);
+        ethFromSale = tokenConfig.bondingCurve.sellExactTokens(
+            tokenStates[token].tokenReserves(), tokenStates[token].ethCollected, tokenAmount
+        );
+
         ethFee = (ethFromSale * tokenConfig.sellFeeBps) / BASIS_POINTS;
         ethForSeller = ethFromSale - ethFee;
 

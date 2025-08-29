@@ -17,70 +17,78 @@ contract DummyConstantPriceCurveTest is Test {
         curve.setPrice(TOKEN_PRICE);
     }
 
-    function test_getTokensForEth_basic() public {
+    function test_buyTokensForExactEth_basic() public {
         uint256 ethAmount = 1e10;
-        uint256 circulatingSupply = 0;
+        uint256 tokenReserves = 0;
+        uint256 ethReserves = 0;
 
-        uint256 tokens = curve.getTokensForEth(circulatingSupply, ethAmount);
+        uint256 tokens = curve.buyTokensForExactEth(tokenReserves, ethReserves, ethAmount);
         assertEq(tokens, 1 ether);
     }
 
-    function test_getTokensForEth_withCirculatingSupply() public {
+    function test_buyTokensForExactEth_withTokenReserves() public {
         uint256 ethAmount = 1e10;
-        uint256 circulatingSupply = 1000e18;
+        uint256 tokenReserves = 1000e18;
+        uint256 ethReserves = 0;
 
-        uint256 tokens = curve.getTokensForEth(circulatingSupply, ethAmount);
+        uint256 tokens = curve.buyTokensForExactEth(tokenReserves, ethReserves, ethAmount);
         assertEq(tokens, 1 ether);
     }
 
-    function test_getTokensForEth_zeroEth() public {
+    function test_buyTokensForExactEth_zeroEth() public {
         uint256 ethAmount = 0;
-        uint256 circulatingSupply = 0;
+        uint256 tokenReserves = 0;
+        uint256 ethReserves = 0;
 
-        uint256 tokens = curve.getTokensForEth(circulatingSupply, ethAmount);
+        uint256 tokens = curve.buyTokensForExactEth(tokenReserves, ethReserves, ethAmount);
         assertEq(tokens, 0);
     }
 
-    function test_getEthForTokens_basic() public {
+    function test_buyExactTokens_basic() public {
         uint256 tokenAmount = 1e18;
-        uint256 circulatingSupply = 0;
+        uint256 tokenReserves = 0;
+        uint256 ethReserves = 0;
 
-        uint256 ethRequired = curve.getEthForTokens(circulatingSupply, tokenAmount);
+        uint256 ethRequired = curve.buyExactTokens(tokenReserves, ethReserves, tokenAmount);
         assertEq(ethRequired, 1e10);
     }
 
-    function test_getEthForTokens_withCirculatingSupply() public {
+    function test_buyExactTokens_withTokenReserves() public {
         uint256 tokenAmount = 1e18;
-        uint256 circulatingSupply = 500e18;
+        uint256 tokenReserves = 500e18;
+        uint256 ethReserves = 0;
 
-        uint256 ethRequired = curve.getEthForTokens(circulatingSupply, tokenAmount);
+        uint256 ethRequired = curve.buyExactTokens(tokenReserves, ethReserves, tokenAmount);
         assertEq(ethRequired, 1e10);
     }
 
-    function test_getEthForTokens_zeroTokens() public {
+    function test_buyExactTokens_zeroTokens() public {
         uint256 tokenAmount = 0;
-        uint256 circulatingSupply = 0;
+        uint256 tokenReserves = 0;
+        uint256 ethReserves = 0;
 
-        uint256 ethRequired = curve.getEthForTokens(circulatingSupply, tokenAmount);
+        uint256 ethRequired = curve.buyExactTokens(tokenReserves, ethReserves, tokenAmount);
         assertEq(ethRequired, 0);
     }
 
     function test_reciprocal_relationship() public view {
         uint256 ethAmount = 1 ether;
-        uint256 circulatingSupply = 100e18;
+        uint256 tokenReserves = 100e18;
+        uint256 ethReserves = 0;
 
-        uint256 tokens = curve.getTokensForEth(circulatingSupply, ethAmount);
-        uint256 ethBack = curve.getEthForTokens(circulatingSupply, tokens);
+        uint256 tokens = curve.buyTokensForExactEth(tokenReserves, ethReserves, ethAmount);
+        uint256 ethBack = curve.buyExactTokens(tokenReserves, ethReserves, tokens);
 
         assertEq(ethBack, ethAmount);
     }
 
     function test_constant_price_independence() public view {
         uint256 ethAmount = 1 ether;
+        uint256 ethReserves = 0;
 
-        uint256 tokens1 = curve.getTokensForEth(0, ethAmount);
-        uint256 tokens2 = curve.getTokensForEth(1000e18, ethAmount);
-        uint256 tokens3 = curve.getTokensForEth(1e24, ethAmount);
+        uint256 tokens1 = curve.buyTokensForExactEth(0, ethReserves, ethAmount);
+        uint256 tokens2 = curve.buyTokensForExactEth(1000e18, ethReserves, ethAmount);
+        uint256 tokens3 = curve.buyTokensForExactEth(1e24, ethReserves, ethAmount);
 
         assertEq(tokens1, tokens2);
         assertEq(tokens2, tokens3);

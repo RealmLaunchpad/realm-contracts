@@ -2,15 +2,27 @@
 pragma solidity 0.8.28;
 
 interface ILivoBondingCurve {
-    /// @notice How many tokens can be purchased with a given amount of ETH
-    /// @param circulatingSupply Tokens already sold and in circulation
-    /// @param ethAmount Amount of ETH to spend
-    /// @return Number of tokens that can be purchased
-    function getTokensForEth(uint256 circulatingSupply, uint256 ethAmount) external view returns (uint256);
+    /// @notice how many tokens can be purchased with a given amount of ETH
+    function buyTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
+        external
+        view
+        returns (uint256 tokensReceived);
 
-    /// @notice How much ETH is required to purchase a given amount of tokens
-    /// @param circulatingSupply Tokens already sold and in circulation
-    /// @param tokenAmount Amount of tokens to purchase
-    /// @return Amount of ETH required to purchase the tokens
-    function getEthForTokens(uint256 circulatingSupply, uint256 tokenAmount) external view returns (uint256);
+    /// @notice how much ETH is required to buy an exact amount of tokens
+    function buyExactTokens(uint256 tokenReserves, uint256 ethReserves, uint256 tokenAmount)
+        external
+        view
+        returns (uint256 ethRequired);
+
+    /// @notice how much ETH will be received when selling an exact amount of tokens
+    function sellExactTokens(uint256 tokenReserves, uint256 ethReserves, uint256 tokenAmount)
+        external
+        view
+        returns (uint256 ethReceived);
+
+    /// @notice how many tokens need to be sold to receive an exact amount of ETH
+    function sellTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
+        external
+        view
+        returns (uint256 tokensRequired);
 }
