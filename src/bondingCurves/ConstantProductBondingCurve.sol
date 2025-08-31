@@ -19,9 +19,9 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     //  - If all tokens were purchased, the total ETH collected would be 37.5 ETH
 
     // Solving numerically for the above constraints. Only the first constraint above is strictly enforced.
-    uint256 constant K = 2.925619835e45;
-    uint256 constant T0 = 72727272833333333619393939; // 7.27e27
-    uint256 constant E0 = 2727272727272727272; // 2.72e18
+    uint256 public constant K = 2.925619836e45;
+    uint256 public constant T0 = 72727272833333333619393939; // 7.27e27
+    uint256 public constant E0 = 2727272727272727272; // 2.72e18
 
     // todo probably I can get rid of the tokenReserves in all functions and derive them from the formula
 
