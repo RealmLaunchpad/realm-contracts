@@ -59,7 +59,7 @@ contract LivoLaunchpadTest is Test {
             launchpad.createToken("TestToken", "TEST", "ipfs://metadata", address(bondingCurve), address(graduator));
         // Buy tokens
         uint256 ethAmount = 1 ether;
-        (,, uint256 expectedTokens) = launchpad.quoteBuy(token, ethAmount);
+        (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(token, ethAmount);
         uint256 balanceBefore = LivoToken(token).balanceOf(buyer);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(token, expectedTokens, block.timestamp + 1 hours);
@@ -81,7 +81,7 @@ contract LivoLaunchpadTest is Test {
         // Approve launchpad to spend tokens
         vm.prank(buyer);
         LivoToken(token).approve(address(launchpad), sellAmount);
-        (,, uint256 expectedEth) = launchpad.quoteSell(token, sellAmount);
+        (,, uint256 expectedEth) = launchpad.quoteSellExactTokens(token, sellAmount);
         uint256 ethBefore = buyer.balance;
         vm.prank(buyer);
         launchpad.sellExactTokens(token, sellAmount, expectedEth, block.timestamp + 1 hours);
