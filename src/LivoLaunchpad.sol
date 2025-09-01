@@ -21,18 +21,20 @@ contract LivoLaunchpad is Ownable {
     /// @notice the total supply of all deployed tokens
     uint256 private constant TOTAL_SUPPLY = 1_000_000_000e18; // 1B tokens
 
-    // question consider if this should be immutable or not
+    /// @notice Supply reserved to the token creator, but only transferred at token graduation
+    uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
+
+    /// @notice The max amount of ether in reserves of a token after crossing the graduation threshold
+    uint256 public constant MAX_THRESHOLD_EXCEESS = 0.5 ether;
+
     /// @notice LivoToken ERC20 implementation address
     IERC20 public tokenImplementation;
 
-    /// @notice The amount of ETH held in a token balance that is required for liquidity at graduation
-    uint256 public baseEthForGraduationLiquidity = 7.5 ether;
+    /// @notice Eth reserves accumulated by a token to meet graduation criteria. Includes the graduation fees
+    uint256 public baseEthGraduationThreshold;
 
     /// @notice The base graduation fee in ETH, paid at graduation to the treasury
     uint256 public baseGraduationFee;
-
-    /// @notice Base creator fee in basis points (100 bps = 1%), paid in tokens at graduation
-    uint16 public creatorReservedSupplyBasisPoints = 100;
 
     /// @notice Total fees collected by the treasury
     uint256 public treasuryEthFeesCollected;
@@ -74,6 +76,7 @@ contract LivoLaunchpad is Ownable {
     error SlippageExceeded();
     error CallerIsNotCreator();
     error NothingToClaim();
+    error PurchaseExceedsLimitPostGraduation();
 
     ///////////////////// Events /////////////////////
 
@@ -86,25 +89,19 @@ contract LivoLaunchpad is Ownable {
         address graduator,
         string metadata
     );
-
     event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation, address uniPair);
-
     event LivoTokenBuy(
         address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 ethFee
     );
-
     event LivoTokenSell(
         address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 ethFee
     );
-
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
-
     event TokenImplementationUpdated(IERC20 newImplementation);
-    event RequiredEthForGraduationLiquidityUpdated(uint256 newThreshold);
+    event EthGraduationThresholdUpdated(uint256 newThreshold);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event GraduationFeeUpdated(uint256 newGraduationFee);
-
     event BondingCurveWhitelisted(address indexed bondingCurve, bool whitelisted);
     event GraduatorWhitelisted(address indexed graduator, bool whitelisted);
 
@@ -115,7 +112,9 @@ contract LivoLaunchpad is Ownable {
         setTreasuryAddress(_treasury);
         setLivoTokenImplementation(_tokenImplementation);
 
-        setLiquidityForGraduation(7.5 ether);
+        // This arbitrarily exact price ensures that if graduation happens exactly at this value,
+        // the price in the uniswap pool after graduation matches the price of the bonding curve
+        setEthGraduationThreshold(7956000000000052224); // 7.956 ether
         setGraduationFee(0.5 ether);
         // buy/sell fees at 1%
         setTradingFees(100, 100);
@@ -145,29 +144,25 @@ contract LivoLaunchpad is Ownable {
             name, symbol, msg.sender, address(this), graduator, TOTAL_SUPPLY, baseBuyFeeBps, baseSellFeeBps
         );
 
-        uint256 _creatorReservedSupply = TOTAL_SUPPLY * creatorReservedSupplyBasisPoints / BASIS_POINTS;
-
         // at creation all tokens are held by this contract
         tokenConfigs[tokenClone] = TokenConfig({
             bondingCurve: ILivoBondingCurve(bondingCurve),
             graduator: ILivoGraduator(graduator),
             creator: msg.sender,
             graduationEthFee: baseGraduationFee,
-            ethForGraduationLiquidity: baseEthForGraduationLiquidity,
-            creatorReservedSupply: _creatorReservedSupply,
+            ethGraduationThreshold: baseEthGraduationThreshold,
+            creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps
         });
-
-        // all other tokenState fields are correctly initialized to 0 or false
-        tokenStates[tokenClone].circulatingSupply = _creatorReservedSupply;
 
         emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata);
 
         return tokenClone;
     }
 
-    function buyToken(address token, uint256 minTokenAmount, uint256 deadline) external payable {
+    /// @dev slippage control is done with minTokenAmount (min tokens willing to buy)
+    function buyTokensWithExactEth(address token, uint256 minTokenAmount, uint256 deadline) external payable {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
@@ -175,9 +170,12 @@ contract LivoLaunchpad is Ownable {
         require(tokenConfig.exists(), InvalidToken());
         require(tokenState.notGraduated(), AlreadyGraduated());
         require(block.timestamp <= deadline, DeadlineExceeded());
+        require(
+            tokenState.ethCollected + msg.value < tokenConfig.ethGraduationThreshold + MAX_THRESHOLD_EXCEESS,
+            PurchaseExceedsLimitPostGraduation()
+        );
 
-        // this applies the trading fees
-        (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = _quoteBuy(token, msg.value);
+        (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = _quoteBuyWithExactEth(token, msg.value);
 
         require(tokensToReceive <= _availableForPurchase(token), NotEnoughSupply());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
@@ -190,13 +188,13 @@ contract LivoLaunchpad is Ownable {
 
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
-        // at the beginning of the function already checks that the token is not graduated
-        if (tokenState.meetsGraduationCriteria(tokenConfig)) {
+        if (_meetsGraduationCriteria(tokenState, tokenConfig)) {
             _graduateToken(token);
         }
     }
 
-    function sellToken(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
+    /// @dev slippage control is done with minEthAmount (min eth willing to receive)
+    function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
@@ -205,7 +203,7 @@ contract LivoLaunchpad is Ownable {
         require(tokenAmount > 0, InvalidAmount());
         require(block.timestamp <= deadline, DeadlineExceeded());
 
-        (uint256 ethFromReserves, uint256 ethFee, uint256 ethForSeller) = _quoteSell(token, tokenAmount);
+        (uint256 ethFromReserves, uint256 ethFee, uint256 ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
 
         // Hopefully this scenario never happens
         require(ethForSeller >= minEthAmount, SlippageExceeded());
@@ -223,63 +221,33 @@ contract LivoLaunchpad is Ownable {
         emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
     }
 
-    function _graduateToken(address tokenAddress) internal {
-        TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
-        TokenState storage tokenState = tokenStates[tokenAddress];
-        IERC20 token = IERC20(tokenAddress);
-
-        require(tokenState.notGraduated(), AlreadyGraduated());
-        require(TokenDataLib.meetsGraduationCriteria(tokenState, tokenConfig), GraduationCriteriaNotMet());
-
-        tokenState.graduated = true;
-
-        // review if tokenAddress donations can mess up this
-        uint256 ethCollected = tokenState.ethCollected;
-        uint256 ethForGraduation = ethCollected - tokenConfig.graduationEthFee;
-        treasuryEthFeesCollected += tokenConfig.graduationEthFee;
-
-        uint256 tokensForCreator = tokenConfig.creatorReservedSupply;
-        uint256 tokensForGraduation = token.balanceOf(address(this)) - tokensForCreator;
-
-        token.safeTransfer(tokenConfig.creator, tokensForCreator);
-        token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
-
-        address uniPair = tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
-
-        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation, uniPair);
-    }
-
     //////////////////////////// view functions //////////////////////////
 
-    function quoteBuy(address token, uint256 ethValue)
+    function quoteBuyWithExactEth(address token, uint256 ethValue)
         external
         view
         returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
     {
-        (ethForPurchase, ethFee, tokensToReceive) = _quoteBuy(token, ethValue);
-        if (tokensToReceive > _availableForPurchase(token)) {
-            revert NotEnoughSupply();
-        }
+        (ethForPurchase, ethFee, tokensToReceive) = _quoteBuyWithExactEth(token, ethValue);
+
+        if (ethForPurchase > _maxEthToSpend(token)) revert PurchaseExceedsLimitPostGraduation();
+        if (tokensToReceive > _availableForPurchase(token)) revert NotEnoughSupply();
     }
 
-    function quoteSell(address token, uint256 tokenAmount)
+    function quoteSellExactTokens(address token, uint256 tokenAmount)
         external
         view
         returns (uint256 ethFromSale, uint256 ethFee, uint256 ethForSeller)
     {
-        (ethFromSale, ethFee, ethForSeller) = _quoteSell(token, tokenAmount);
-        if (ethForSeller > _availableEthFromReserves(token)) {
-            revert InsufficientETHReserves();
-        }
+        (ethFromSale, ethFee, ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
+
+        if (ethForSeller > _availableEthFromReserves(token)) revert InsufficientETHReserves();
     }
 
-    /// @notice The available supply that can be purchased of a given token
-    function getAvailableForPurchase(address token) external view returns (uint256) {
-        return _availableForPurchase(token);
-    }
-
-    function meetsGraduationCriteria(address token) public view returns (bool) {
-        return tokenStates[token].ethCollected >= tokenConfigs[token].minimumEthForGraduation();
+    /// @notice Returns the maximum amount of ETH that can be spent on a given token
+    /// @dev This avoids going above the excess limit above graduation threshold
+    function getMaxEthToSpend(address token) public view returns (uint256) {
+        return _maxEthToSpend(token);
     }
 
     function getTokenState(address token) external view returns (TokenState memory) {
@@ -300,9 +268,9 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @notice Updates the graduation threshold, which only affects new token deployments
-    function setLiquidityForGraduation(uint256 ethAmount) public onlyOwner {
-        baseEthForGraduationLiquidity = ethAmount;
-        emit RequiredEthForGraduationLiquidityUpdated(ethAmount);
+    function setEthGraduationThreshold(uint256 ethThreshold) public onlyOwner {
+        baseEthGraduationThreshold = ethThreshold;
+        emit EthGraduationThresholdUpdated(ethThreshold);
     }
 
     /// @notice Updates the graduation fee, which only affects new token deployments
@@ -351,9 +319,55 @@ contract LivoLaunchpad is Ownable {
 
     //////////////////////////// Internal functions //////////////////////////
 
-    // todo make quote functions for the 4 types of purchases
+    function _graduateToken(address tokenAddress) internal {
+        TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
+        TokenState storage tokenState = tokenStates[tokenAddress];
+        IERC20 token = IERC20(tokenAddress);
 
-    function _quoteBuy(address token, uint256 ethValue)
+        // todo require that the reserves after the graduation don't exceed the maximum allowed
+        require(tokenState.notGraduated(), AlreadyGraduated());
+        require(_meetsGraduationCriteria(tokenState, tokenConfig), GraduationCriteriaNotMet());
+
+        tokenState.graduated = true;
+
+        // review if tokenAddress donations can mess up this
+        uint256 ethCollected = tokenState.ethCollected;
+        uint256 ethForGraduation = ethCollected - tokenConfig.graduationEthFee;
+        treasuryEthFeesCollected += tokenConfig.graduationEthFee;
+
+        uint256 tokensForCreator = tokenConfig.creatorReservedSupply;
+        uint256 tokensForGraduation = token.balanceOf(address(this)) - tokensForCreator;
+
+        // if the last purchase is a large one, the resulting price in the pool will be higher
+        // I don't see a security risk in this, (@audit make sure this is correct)
+        // The effect is that the last buyer will be at an immediate win.
+        // The larger the last purchase, the larger the price difference from the bonding curve to the univ2 pool
+        // But I think that simply encourages graduation, so I don't see a big problem
+        // The larger the buy, the larger the instant profit of the last purchase
+        // @audit can the last buyer exploit this somehow?
+
+        token.safeTransfer(tokenConfig.creator, tokensForCreator);
+        token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
+
+        address uniPair = tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
+
+        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation, uniPair);
+    }
+
+    function _transferEth(address recipient, uint256 amount) internal {
+        if (amount == 0) return;
+        // review potential reentrancies. Make sure this call is always done at the end of the transaction
+        (bool success,) = recipient.call{value: amount}("");
+        require(success, EthTransferFailed());
+    }
+
+    //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
+
+    function _maxEthToSpend(address token) internal view returns (uint256) {
+        return tokenConfigs[token].ethGraduationThreshold + MAX_THRESHOLD_EXCEESS - tokenStates[token].ethCollected;
+    }
+
+    function _quoteBuyWithExactEth(address token, uint256 ethValue)
         internal
         view
         returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
@@ -363,14 +377,14 @@ contract LivoLaunchpad is Ownable {
         ethFee = (ethValue * tokenConfig.buyFeeBps) / BASIS_POINTS;
         ethForPurchase = ethValue - ethFee;
 
-        tokensToReceive = tokenConfig.bondingCurve.buyTokensForExactEth(
+        tokensToReceive = tokenConfig.bondingCurve.buyTokensWithExactEth(
             tokenStates[token].tokenReserves(), tokenStates[token].ethCollected, ethForPurchase
         );
 
         return (ethForPurchase, ethFee, tokensToReceive);
     }
 
-    function _quoteSell(address token, uint256 tokenAmount)
+    function _quoteSellExactTokens(address token, uint256 tokenAmount)
         internal
         view
         returns (uint256 ethFromSale, uint256 ethFee, uint256 ethForSeller)
@@ -387,21 +401,22 @@ contract LivoLaunchpad is Ownable {
         return (ethFromSale, ethFee, ethForSeller);
     }
 
+    function _meetsGraduationCriteria(TokenState storage state, TokenConfig storage config)
+        internal
+        view
+        returns (bool)
+    {
+        return (state.ethCollected >= config.ethGraduationThreshold);
+    }
+
     /// @dev The supply of a token that can be purchased
     /// @dev The reserved creator supply is only effective at graduation,
     /// and it is taken from the remaining tokens in this contract at graduation
     function _availableForPurchase(address token) internal view returns (uint256) {
-        return IERC20(token).balanceOf(address(this));
+        return IERC20(token).balanceOf(address(this)) - CREATOR_RESERVED_SUPPLY;
     }
 
     function _availableEthFromReserves(address token) internal view returns (uint256) {
         return tokenStates[token].ethCollected;
-    }
-
-    function _transferEth(address recipient, uint256 amount) internal {
-        if (amount == 0) return;
-        // review potential reentrancies. Make sure this call is always done at the end of the transaction
-        (bool success,) = recipient.call{value: amount}("");
-        require(success, EthTransferFailed());
     }
 }

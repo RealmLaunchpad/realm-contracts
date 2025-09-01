@@ -121,7 +121,7 @@ Admins will deploy one GraduationManager to begin with, but the Launchpad will b
 0. Admins deploy and whitelist valid BondingCurve and GraduationManager contracts
 1. User creates token with `LivoLaunchpad.createToken()`, choosing from whitelisted bonding curves and graduation managers
 2. LivoLaunchpad deploys new `LivoToken` contract (standard ERC20) mapping the token to specified bonding curve and graduation manager
-3. Users trade via `LivoLaunchpad.buyToken()` and `sellToken()`
+3. Users trade via `LivoLaunchpad.buyTokensWithExactEth()` and `sellToken()`
 4. 1% trading fee split 50/50 between creator and treasury
 
 ### Phase 2: Graduation Process

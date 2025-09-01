@@ -12,7 +12,7 @@ contract DummyConstantPriceCurve is ILivoBondingCurve {
     /// @dev units: [ETH/token]
     uint256 tokenPrice = 1e10;
 
-    function buyTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
+    function buyTokensWithExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
         external
         view
         returns (uint256 tokensReceived)

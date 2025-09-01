@@ -12,7 +12,7 @@ struct TokenConfig {
     /// @notice Graduation fee in ETH, paid at graduation
     uint256 graduationEthFee;
     /// @notice Threshold in ETH that must be collected before graduation can happen
-    uint256 ethForGraduationLiquidity;
+    uint256 ethGraduationThreshold;
     /// @notice Reserved supply of tokens for creator at graduation
     uint256 creatorReservedSupply;
     /// @notice Creator of the token. Cannot be altered once is set
@@ -41,18 +41,6 @@ library TokenDataLib {
 
     function notGraduated(TokenState storage state) internal view returns (bool) {
         return !state.graduated;
-    }
-
-    function meetsGraduationCriteria(TokenState storage state, TokenConfig storage config)
-        internal
-        view
-        returns (bool)
-    {
-        return state.ethCollected >= config.ethForGraduationLiquidity + config.graduationEthFee;
-    }
-
-    function minimumEthForGraduation(TokenConfig storage config) internal view returns (uint256) {
-        return config.ethForGraduationLiquidity + config.graduationEthFee;
     }
 
     function tokenReserves(TokenState storage state) internal view returns (uint256) {

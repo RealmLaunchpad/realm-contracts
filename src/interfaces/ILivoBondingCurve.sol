@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 interface ILivoBondingCurve {
     /// @notice how many tokens can be purchased with a given amount of ETH
-    function buyTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
+    function buyTokensWithExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
         external
         view
         returns (uint256 tokensReceived);
