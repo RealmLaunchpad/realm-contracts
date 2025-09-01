@@ -1,46 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "forge-std/Test.sol";
+import {LaunchpadBaseTest} from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
-import {LivoGraduatorUniV2} from "src/graduators/LivoGraduatorUniV2.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 
-contract LivoTokenDeploymentTest is Test {
-    LivoLaunchpad public launchpad;
-    ConstantProductBondingCurve public bondingCurve;
-    LivoGraduatorUniV2 public graduator;
-    LivoToken public tokenImplementation;
-
-    address public treasury = makeAddr("treasury");
-    address public creator = makeAddr("creator");
-
-    // review question are these mainnet addresses?
-
-    address public uniswapRouter = address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D); // Uniswap V2 Router
-    address public uniswapFactory = address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f); // Uniswap V2 Factory
-
-    function setUp() public {
-        // Deploy token implementation
-        tokenImplementation = new LivoToken();
-
-        // Deploy launchpad
-        launchpad = new LivoLaunchpad(treasury, tokenImplementation);
-
-        // Deploy bonding curve and graduator
-        bondingCurve = new ConstantProductBondingCurve();
-        graduator = new LivoGraduatorUniV2(uniswapRouter, address(launchpad));
-
-        // Whitelist bonding curve and graduator
-        launchpad.whitelistBondingCurve(address(bondingCurve), true);
-        launchpad.whitelistGraduator(address(graduator), true);
-
-        // Give ETH to creator
-        vm.deal(creator, 100 ether);
-    }
-
+contract LivoTokenDeploymentTest is LaunchpadBaseTest {
     function testDeployLivoToken_happyPath() public {
         vm.prank(creator);
         address deployedToken = launchpad.createToken(
@@ -56,15 +22,15 @@ contract LivoTokenDeploymentTest is Test {
         assertEq(token.symbol(), "TEST");
         assertEq(token.creator(), creator);
         assertEq(token.launchpad(), address(launchpad));
-        assertEq(token.totalSupply(), 1_000_000_000e18);
+        assertEq(token.totalSupply(), TOTAL_SUPPLY);
 
         // Verify token config was stored correctly
         TokenConfig memory config = launchpad.getTokenConfig(deployedToken);
         assertEq(address(config.bondingCurve), address(bondingCurve));
         assertEq(address(config.graduator), address(graduator));
         assertEq(config.creator, creator);
-        assertEq(config.graduationEthFee, 0.5 ether);
-        assertApproxEqRel(config.ethGraduationThreshold, 7.956 ether, 1e10);
+        assertEq(config.graduationEthFee, BASE_GRADUATION_FEE);
+        assertApproxEqRel(config.ethGraduationThreshold, BASE_GRADUATION_THRESHOLD, 1e10);
 
         // Verify token state was initialized correctly
         TokenState memory state = launchpad.getTokenState(deployedToken);
@@ -149,5 +115,14 @@ contract LivoTokenDeploymentTest is Test {
         // Verify symbols are different
         assertEq(LivoToken(token1).symbol(), "TEST1");
         assertEq(LivoToken(token2).symbol(), "TEST2");
+    }
+
+    function test_cantCreateTokenWithTooLongSymbol() public {
+        string memory longSymbol = "TESTTESTTESTTESTTESTTESTTESTESESD"; // 33 characters
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidNameOrSymbol.selector));
+        launchpad.createToken(
+            "TestToken", longSymbol, "ipfs://test-metadata", address(bondingCurve), address(graduator)
+        );
     }
 }

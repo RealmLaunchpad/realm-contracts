@@ -261,7 +261,6 @@ contract LivoLaunchpad is Ownable {
 
     /// @notice Updates the ERC20 token implementation, which only affects new token deployments
     function setLivoTokenImplementation(IERC20 newImplementation) public onlyOwner {
-        require(address(newImplementation) != address(0), InvalidAddress());
         tokenImplementation = newImplementation;
         emit TokenImplementationUpdated(newImplementation);
     }
