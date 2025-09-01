@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 
 // This is a test file to test the bonding curve ConstantProductBondingCurve
-// here are some tests for buyTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
+// here are some tests for buyTokensWithExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
 // tokenReserves=0, ethReserves=0, ethAmount=1 should mint a non-zero amount of tokens
 // tokenReserves=0, ethReserves=0, ethAmount=8e18 should mint 800000000e18 tokens
 
@@ -32,41 +32,41 @@ contract ConstantProductBondingCurveTest is Test {
         assertApproxEqRel(tokenReserves, 200_000_000e18, 0.00000001e18, "Token reserves should be 200M at graduation");
     }
 
-    function test_buyTokensForExactEth_initialState() public {
+    function test_buyTokensWithExactEth_initialState() public {
         uint256 tokenReserves = TOTAL_SUPPLY;
         uint256 ethReserves = 0;
         uint256 ethAmount = 1;
 
-        uint256 tokens = curve.buyTokensForExactEth(tokenReserves, ethReserves, ethAmount);
+        uint256 tokens = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
         assertTrue(tokens > 0, "Should mint non-zero amount of tokens");
     }
 
-    function test_tokenPriceAtGraduationPoint() public {}
+    function test_tokenPriceAtGraduationPoint_matchesUniswap() public {}
 
-    // function test_buyTokensForExactEth_specificCase() public {
+    // function test_buyTokensWithExactEth_specificCase() public {
     //     uint256 tokenReserves = TOTAL_SUPPLY;
     //     uint256 ethReserves = 0;
     //     uint256 ethAmount = 8e18;
 
-    //     uint256 tokens = curve.buyTokensForExactEth(tokenReserves, ethReserves, ethAmount);
+    //     uint256 tokens = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
     //     assertEq(tokens, 800000000e18, "Should mint exactly 800000000e18 tokens");
     // }
 
-    // function test_buyTokensForExactEth_nonZeroSupply() public {
+    // function test_buyTokensWithExactEth_nonZeroSupply() public {
     //     uint256 tokenReserves = 1000e18;
     //     uint256 ethReserves = 1e18;
     //     uint256 ethAmount = 1e18;
 
-    //     uint256 tokens = curve.buyTokensForExactEth(tokenReserves, ethReserves, ethAmount);
+    //     uint256 tokens = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
     //     assertTrue(tokens > 0, "Should mint positive tokens with existing supply");
     // }
 
-    // function test_buyTokensForExactEth_zeroEth() public {
+    // function test_buyTokensWithExactEth_zeroEth() public {
     //     uint256 tokenReserves = 0;
     //     uint256 ethReserves = 0;
     //     uint256 ethAmount = 0;
 
-    //     uint256 tokens = curve.buyTokensForExactEth(tokenReserves, ethReserves, ethAmount);
+    //     uint256 tokens = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
     //     assertEq(tokens, 0, "Should mint zero tokens for zero ETH");
     // }
 
@@ -93,7 +93,7 @@ contract ConstantProductBondingCurveTest is Test {
     //     uint256 ethReserves = 1e18;
     //     uint256 ethAmount = 0.1e18;
 
-    //     uint256 tokens = curve.buyTokensForExactEth(tokenReserves, ethReserves, ethAmount);
+    //     uint256 tokens = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
     //     uint256 ethBack = curve.buyExactTokens(tokenReserves, ethReserves, tokens);
 
     //     assertApproxEqRel(ethBack, ethAmount, 1e15, "ETH amounts should be approximately equal");
@@ -104,12 +104,12 @@ contract ConstantProductBondingCurveTest is Test {
     //     uint256 ethReserves = 0;
     //     uint256 ethAmount = 1e18;
 
-    //     uint256 tokens1 = curve.buyTokensForExactEth(tokenReserves, ethReserves, ethAmount);
+    //     uint256 tokens1 = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
 
     //     uint256 newTokenReserves = tokenReserves + tokens1;
     //     uint256 newEthReserves = ethReserves + ethAmount;
 
-    //     uint256 tokens2 = curve.buyTokensForExactEth(newTokenReserves, newEthReserves, ethAmount);
+    //     uint256 tokens2 = curve.buyTokensWithExactEth(newTokenReserves, newEthReserves, ethAmount);
 
     //     assertTrue(tokens2 < tokens1, "Should receive fewer tokens as price increases");
     // }

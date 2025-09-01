@@ -35,7 +35,7 @@ contract ConstantProductPriceSimulations is Test {
         for (uint256 ethReserves = startEthReserves; ethReserves <= endEthReserves; ethReserves += 0.01e18) {
             uint256 tokenReserves = _getTokenReserves(ethReserves);
             uint256 buyPrice = _estimateBuyPrice(ethReserves);
-            console.log(ethReserves, tokenReserves, buyPrice);
+            // console.log(ethReserves, tokenReserves, buyPrice);
         }
     }
 
@@ -48,12 +48,12 @@ contract ConstantProductPriceSimulations is Test {
         for (uint256 ethReserves = startEthReserves; ethReserves <= endEthReserves; ethReserves += 0.01e18) {
             uint256 tokenReserves = bondingCurve.getTokenReserves(ethReserves);
             uint256 ethValue = 0.001e18;
-            uint256 tokensReceived = bondingCurve.buyTokensForExactEth(tokenReserves, ethReserves, ethValue);
+            uint256 tokensReceived = bondingCurve.buyTokensWithExactEth(tokenReserves, ethReserves, ethValue);
             uint256 buyPrice = 10e18 * ethValue / tokensReceived; // ETH/tokens
             uint256 univ2price = 10e18 * (ethReserves - ethFee) / (tokenReserves - creatorSupply); // ETH/tokens
             uint256 priceStep = (univ2price - buyPrice) * 1e18 / buyPrice;
-            console.log(ethReserves, tokenReserves, buyPrice, univ2price);
-            console.log(priceStep);
+            // console.log(ethReserves, tokenReserves, buyPrice, univ2price);
+            // console.log(priceStep);
         }
     }
 }
