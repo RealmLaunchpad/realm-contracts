@@ -41,6 +41,17 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTest {
         assertEq(token.balanceOf(address(launchpad)), token.totalSupply());
     }
 
+    function testTokenCreatedHasDifferentAddressThanImplementation() public {
+        vm.prank(creator);
+        address deployedToken = launchpad.createToken(
+            "Sanitator", "SANIT", "ipfs://test-metadata", address(bondingCurve), address(graduator)
+        );
+
+        // Verify token was deployed
+        assertTrue(deployedToken != address(0));
+        assertTrue(deployedToken != address(launchpad.tokenImplementation()));
+    }
+
     function testCannotCreateTokenWithInvalidBondingCurve() public {
         address invalidCurve = makeAddr("invalidCurve");
 
