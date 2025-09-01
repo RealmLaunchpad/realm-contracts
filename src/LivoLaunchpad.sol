@@ -211,7 +211,6 @@ contract LivoLaunchpad is Ownable {
 
         tokenState.ethCollected -= ethFromReserves;
         tokenState.circulatingSupply -= tokenAmount;
-        // review fee asymmetries 1% != 1% down, so 1% sell != 1% buy ... ?
         treasuryEthFeesCollected += ethFee;
 
         // funds transfers
@@ -262,7 +261,6 @@ contract LivoLaunchpad is Ownable {
 
     /// @notice Updates the ERC20 token implementation, which only affects new token deployments
     function setLivoTokenImplementation(IERC20 newImplementation) public onlyOwner {
-        require(address(newImplementation) != address(0), InvalidAddress());
         tokenImplementation = newImplementation;
         emit TokenImplementationUpdated(newImplementation);
     }
@@ -296,7 +294,6 @@ contract LivoLaunchpad is Ownable {
 
     /// @dev blacklisted graduators will still be able to graduate the tokens that where created with them
     function whitelistGraduator(address graduator, bool whitelisted) public onlyOwner {
-        // todo validation of the graduation manager?
         whitelistedGraduators[graduator] = whitelisted;
         emit GraduatorWhitelisted(graduator, whitelisted);
     }
@@ -324,7 +321,6 @@ contract LivoLaunchpad is Ownable {
         TokenState storage tokenState = tokenStates[tokenAddress];
         IERC20 token = IERC20(tokenAddress);
 
-        // todo require that the reserves after the graduation don't exceed the maximum allowed
         require(tokenState.notGraduated(), AlreadyGraduated());
         require(_meetsGraduationCriteria(tokenState, tokenConfig), GraduationCriteriaNotMet());
 
@@ -356,7 +352,7 @@ contract LivoLaunchpad is Ownable {
 
     function _transferEth(address recipient, uint256 amount) internal {
         if (amount == 0) return;
-        // review potential reentrancies. Make sure this call is always done at the end of the transaction
+        // review potential reentrancies. Make sure this call is always done at the end of all transactions
         (bool success,) = recipient.call{value: amount}("");
         require(success, EthTransferFailed());
     }
