@@ -168,20 +168,7 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @dev slippage control is done with minTokenAmount (min tokens willing to buy)
-    function buyTokensWithExactEth(uint256 minTokenAmount) external payable {}
-
-    /// @dev slippage control is done with msg.value itself (max eth willing to spend)
-    function buyExactTokens(uint256 tokenAmount) external payable {}
-
-    /// @dev slippage control is done with minEthAmount (min eth willing to receive)
-    function sellExactTokens(uint256 tokenAmount, uint256 minEthAmount) external payable {}
-
-    /// @dev slippage control is done with minEthAmount (max tokens willing to sell)
-    function sellTokensForExactEth(uint256 exactEthAmount, uint256 maxTokenAmount) external payable {}
-
-
-
-    function buyToken(address token, uint256 minTokenAmount, uint256 deadline) external payable {
+    function buyTokensWithExactEth(address token, uint256 minTokenAmount, uint256 deadline) external payable {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
@@ -189,13 +176,11 @@ contract LivoLaunchpad is Ownable {
         require(tokenConfig.exists(), InvalidToken());
         require(tokenState.notGraduated(), AlreadyGraduated());
         require(block.timestamp <= deadline, DeadlineExceeded());
-        // todo make quote functions aware of this
         require(
             tokenState.ethCollected + msg.value < tokenConfig.ethGraduationThreshold + MAX_THRESHOLD_EXCEESS,
             PurchaseExceedsLimitPostGraduation()
         );
 
-        // this applies the trading fees
         (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = _quoteBuy(token, msg.value);
 
         require(tokensToReceive <= _availableForPurchase(token), NotEnoughSupply());
@@ -209,13 +194,13 @@ contract LivoLaunchpad is Ownable {
 
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
-        // at the beginning of the function already checks that the token is not graduated
         if (_meetsGraduationCriteria(tokenState, tokenConfig)) {
             _graduateToken(token);
         }
     }
 
-    function sellToken(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
+    /// @dev slippage control is done with minEthAmount (min eth willing to receive)
+    function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
@@ -413,6 +398,17 @@ contract LivoLaunchpad is Ownable {
         ethForSeller = ethFromSale - ethFee;
 
         return (ethFromSale, ethFee, ethForSeller);
+    }
+
+    function _quoteEthForExactTokens(address token, uint256 tokenAmount) internal view returns (uint256) {
+        TokenConfig storage tokenConfig = tokenConfigs[token];
+        
+        uint256 ethForTokens = tokenConfig.bondingCurve.buyExactTokens(
+            tokenStates[token].tokenReserves(), tokenStates[token].ethCollected, tokenAmount
+        );
+        
+        uint256 ethFee = (ethForTokens * tokenConfig.buyFeeBps) / BASIS_POINTS;
+        return ethForTokens + ethFee;
     }
 
     function _meetsGraduationCriteria(TokenState storage state, TokenConfig storage config)

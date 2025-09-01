@@ -62,7 +62,7 @@ contract LivoLaunchpadTest is Test {
         (,, uint256 expectedTokens) = launchpad.quoteBuy(token, ethAmount);
         uint256 balanceBefore = LivoToken(token).balanceOf(buyer);
         vm.prank(buyer);
-        launchpad.buyToken{value: ethAmount}(token, expectedTokens, block.timestamp + 1 hours);
+        launchpad.buyTokensWithExactEth{value: ethAmount}(token, expectedTokens, block.timestamp + 1 hours);
         uint256 balanceAfter = LivoToken(token).balanceOf(buyer);
         assertEq(balanceAfter - balanceBefore, expectedTokens);
     }
@@ -75,7 +75,7 @@ contract LivoLaunchpadTest is Test {
         // Buy tokens
         uint256 ethAmount = 1 ether;
         vm.prank(buyer);
-        launchpad.buyToken{value: ethAmount}(token, 0, block.timestamp + 1 hours);
+        launchpad.buyTokensWithExactEth{value: ethAmount}(token, 0, block.timestamp + 1 hours);
         uint256 tokenBalance = LivoToken(token).balanceOf(buyer);
         uint256 sellAmount = tokenBalance / 2;
         // Approve launchpad to spend tokens
@@ -84,7 +84,7 @@ contract LivoLaunchpadTest is Test {
         (,, uint256 expectedEth) = launchpad.quoteSell(token, sellAmount);
         uint256 ethBefore = buyer.balance;
         vm.prank(buyer);
-        launchpad.sellToken(token, sellAmount, expectedEth, block.timestamp + 1 hours);
+        launchpad.sellExactTokens(token, sellAmount, expectedEth, block.timestamp + 1 hours);
         uint256 ethAfter = buyer.balance;
         assertApproxEqRel(ethAfter - ethBefore, expectedEth, 0.01e18); // 1% tolerance
     }

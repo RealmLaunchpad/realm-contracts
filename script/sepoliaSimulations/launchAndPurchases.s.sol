@@ -24,15 +24,15 @@ contract BuySellSimulations is Script {
         IERC20(TOKEN2).approve(address(launchpad), type(uint256).max);
 
         // TOKEN 1
-        launchpad.buyToken{value: 0.0000005 ether}(TOKEN1, 0, deadline);
-        launchpad.buyToken{value: 0.00000051 ether}(TOKEN1, 0, deadline);
-        launchpad.sellToken(TOKEN1, 0.0000008 ether, 0, deadline);
-        launchpad.sellToken(TOKEN1, 0.000025 ether, 0, deadline);
+        launchpad.buyTokensWithExactEth{value: 0.0000005 ether}(TOKEN1, 0, deadline);
+        launchpad.buyTokensWithExactEth{value: 0.00000051 ether}(TOKEN1, 0, deadline);
+        launchpad.sellExactTokens(TOKEN1, 0.0000008 ether, 0, deadline);
+        launchpad.sellExactTokens(TOKEN1, 0.000025 ether, 0, deadline);
 
         // TOKEN 2
-        launchpad.buyToken{value: 0.000033 ether}(TOKEN2, 0, deadline);
-        launchpad.sellToken(TOKEN2, 0.0000444 ether, 0, deadline);
-        launchpad.buyToken{value: 0.000015 ether}(TOKEN2, 0, deadline);
+        launchpad.buyTokensWithExactEth{value: 0.000033 ether}(TOKEN2, 0, deadline);
+        launchpad.sellExactTokens(TOKEN2, 0.0000444 ether, 0, deadline);
+        launchpad.buyTokensWithExactEth{value: 0.000015 ether}(TOKEN2, 0, deadline);
 
         vm.stopBroadcast();
     }
