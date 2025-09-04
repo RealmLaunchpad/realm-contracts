@@ -270,4 +270,47 @@ contract BuyTokensTest is LaunchpadBaseTest {
         TokenState memory finalState = launchpad.getTokenState(testToken);
         assertEq(finalState.circulatingSupply, firstBuyerTokens + secondBuyerTokens);
     }
+
+    function testBuyTokensWithExactEth_multipleBuysEqualsBigBuy() public createTestToken {
+        uint256 singleBuyAmount = 0.5 ether;
+        uint256 numberOfBuys = 4;
+        uint256 totalBuyAmount = singleBuyAmount * numberOfBuys;
+
+        // Scenario 1: Multiple small buys
+        address buyer1 = makeAddr("buyer1");
+        vm.deal(buyer1, totalBuyAmount);
+
+        for (uint256 i = 0; i < numberOfBuys; i++) {
+            vm.prank(buyer1);
+            launchpad.buyTokensWithExactEth{value: singleBuyAmount}(testToken, 0, DEADLINE);
+        }
+
+        uint256 tokensFromMultipleBuys = IERC20(testToken).balanceOf(buyer1);
+        TokenState memory stateAfterMultiple = launchpad.getTokenState(testToken);
+
+        // Reset state by creating a new token for the second scenario
+        vm.prank(creator);
+        address testToken2 = launchpad.createToken(
+            "Test Token 2", "TT2", "ipfs://test-metadata-2", address(bondingCurve), address(graduator)
+        );
+
+        // Scenario 2: One big buy
+        address buyer2 = makeAddr("buyer2");
+        vm.deal(buyer2, totalBuyAmount);
+
+        vm.prank(buyer2);
+        launchpad.buyTokensWithExactEth{value: totalBuyAmount}(testToken2, 0, DEADLINE);
+
+        uint256 tokensFromBigBuy = IERC20(testToken2).balanceOf(buyer2);
+        TokenState memory stateAfterBig = launchpad.getTokenState(testToken2);
+
+        // The final state should be the same
+        assertEq(tokensFromMultipleBuys, tokensFromBigBuy, "Multiple small buys should equal one big buy");
+        assertEq(stateAfterMultiple.ethCollected, stateAfterBig.ethCollected, "ETH collected should be the same");
+        assertEq(
+            stateAfterMultiple.circulatingSupply,
+            stateAfterBig.circulatingSupply,
+            "Circulating supply should be the same"
+        );
+    }
 }

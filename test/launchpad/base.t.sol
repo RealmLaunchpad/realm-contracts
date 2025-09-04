@@ -19,6 +19,9 @@ contract LaunchpadBaseTest is Test {
     address public buyer = makeAddr("buyer");
     address public seller = makeAddr("seller");
 
+    address public alice = makeAddr("alice");
+    address public bob = makeAddr("bob");
+
     address public testToken;
 
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;
@@ -44,6 +47,8 @@ contract LaunchpadBaseTest is Test {
         vm.deal(creator, INITIAL_ETH_BALANCE);
         vm.deal(buyer, INITIAL_ETH_BALANCE);
         vm.deal(seller, INITIAL_ETH_BALANCE);
+        vm.deal(alice, INITIAL_ETH_BALANCE);
+        vm.deal(bob, INITIAL_ETH_BALANCE);
     }
 
     modifier createTestToken() {
