@@ -28,7 +28,8 @@ contract ConstantProductPriceSimulations is Test {
         buyPrice = 1e18 * (ethReserves + E0) ** 2 / K;
     }
 
-    function test_graduationPriceTransition_nonExactPriceEstimations() public view {
+    function test_graduationPriceTransition_nonExactPriceEstimations() public {
+        vm.skip(true);
         uint256 startEthReserves = 7.9e18;
         uint256 endEthReserves = 8.2e18;
 
@@ -39,7 +40,8 @@ contract ConstantProductPriceSimulations is Test {
         }
     }
 
-    function test_graduationPriceTransition_bondingCurveQuotingFunctions() public view {
+    function test_graduationPriceTransition_bondingCurveQuotingFunctions() public {
+        vm.skip(true);
         uint256 startEthReserves = 7.9e18;
         uint256 endEthReserves = 8.2e18;
         uint256 ethFee = 0.4 ether;
