@@ -137,6 +137,9 @@ contract LivoLaunchpad is Ownable {
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
         address tokenClone = Clones.clone(address(tokenImplementation));
+        // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
+        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata);
+
         // Initialize the new token instance
         // It is responsibility of the token to distribute supply to the msg.sender
         // so that we can update the token implementation with new rules for future tokens
@@ -155,8 +158,6 @@ contract LivoLaunchpad is Ownable {
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps
         });
-
-        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata);
 
         return tokenClone;
     }
