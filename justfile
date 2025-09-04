@@ -16,7 +16,7 @@ error-inspection errorhex:
 
 ##################### OPERATIONS #######################
 
-launchpad := "0x8a80112BCdd79f7b2635DDB4775ca50b56A940B2"
+launchpad := "0x8024f24dF3fe8B45dAa0D9D94F59AA7e98DA1B7f"
 
 whitelist-curve curve:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "whitelistBondingCurve(address,bool)" {{curve}} true
@@ -25,8 +25,8 @@ whitelist-graduator graduator:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "whitelistGraduator(address,bool)" {{graduator}} true
 
 
-bondingCurve := "0x87426937c4e28F69900C2f3453399CF5F06886D7"
-graduator := "0xBa1a7Fe65E7aAb563630F5921080996030a80AA1"
+bondingCurve := "0x43f8bc6d25be185711680987019d20543e6b53f6"
+graduator := "0x3ddc687a57674F5AD6e3b25f8c41cf41E70c0402"
 
 create-token tokenName:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,string,address,address)" {{tokenName}} {{uppercase(tokenName)}} "/dummy/metadata/url" {{bondingCurve}} {{graduator}}
