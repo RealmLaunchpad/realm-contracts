@@ -97,7 +97,7 @@ contract LivoLaunchpad is Ownable {
         address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 ethFee
     );
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
-    event TokenImplementationUpdated(IERC20 newImplementation);
+    event TokenImplementationUpdated(address newImplementation);
     event EthGraduationThresholdUpdated(uint256 newThreshold);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
@@ -263,7 +263,7 @@ contract LivoLaunchpad is Ownable {
     /// @notice Updates the ERC20 token implementation, which only affects new token deployments
     function setLivoTokenImplementation(IERC20 newImplementation) public onlyOwner {
         tokenImplementation = newImplementation;
-        emit TokenImplementationUpdated(newImplementation);
+        emit TokenImplementationUpdated(address(newImplementation));
     }
 
     /// @notice Updates the graduation threshold, which only affects new token deployments

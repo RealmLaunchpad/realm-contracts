@@ -32,10 +32,10 @@ create-token tokenName:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,string,address,address)" {{tokenName}} {{uppercase(tokenName)}} "/dummy/metadata/url" {{bondingCurve}} {{graduator}}
 
 buy tokenAddress value:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "buyToken(address,uint256,uint256)" {{tokenAddress}} 1 175542935100 --value {{value}}
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "buyTokensWithExactEth(address,uint256,uint256)" {{tokenAddress}} 1 175542935100 --value {{value}}
 
 approve tokenAddress:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{tokenAddress}} "approve(address,uint256)" {{launchpad}} 11579208923731619542357098500868790785326998466564056403945758400791312963993
 
 sell tokenAddress amount:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "sellToken(address,uint256,uint256,uint256)" {{tokenAddress}} {{amount}} 1 175542935100
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "sellExactTokens(address,uint256,uint256,uint256)" {{tokenAddress}} {{amount}} 1 175542935100
