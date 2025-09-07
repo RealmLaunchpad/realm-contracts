@@ -15,11 +15,14 @@ contract LivoToken is ERC20 {
     /// @notice The only graduator allowed to graduate this token
     address public graduator;
 
+    /// @notice Wether the token has graduated already or not
+    bool public graduated;
+
+    /// @notice Uniswap pair
+    address public pair;
+
     /// @notice Addresses exempt from fees (only affecting post-graduation trades)
     mapping(address => bool) public feeExempt;
-
-    /// @notice Sets which pools/pairs are considered for trading fees
-    mapping(address => bool) public automatedMarketMakerPairs;
 
     /// @dev only to prevent re-initialization
     bool internal _initialized;
@@ -36,12 +39,13 @@ contract LivoToken is ERC20 {
 
     /// @notice Emitted when a fee exemption is set
     event FeeExemptSet(address indexed account, bool exempt);
-    event MarketMakerPairAdded(address indexed pair);
+    event Graduated();
 
     //////////////////////// Errors //////////////////////
 
     error OnlyGraduatorAllowed();
     error AlreadyInitialized();
+    error TranferToPairBeforeGraduationNotAllowed();
 
     constructor() ERC20("", "") {}
 
@@ -51,6 +55,7 @@ contract LivoToken is ERC20 {
         address _creator,
         address _launchpad,
         address _graduator,
+        address _pair,
         uint256 _totalSupply,
         uint256 _buyFeeBps,
         uint256 _sellFeeBps
@@ -65,6 +70,7 @@ contract LivoToken is ERC20 {
         graduator = _graduator;
         buyFeeBps = uint16(_buyFeeBps);
         sellFeeBps = uint16(_sellFeeBps);
+        pair = _pair;
 
         // all supply goes to the launchpad, where it can be traded according to the bonding curve
         _setFeeExempt(_launchpad, true);
@@ -76,11 +82,11 @@ contract LivoToken is ERC20 {
 
     //////////////////////// restricted access functions ////////////////////////
 
-    function setAutomatedMarketMakerPair(address pair) external {
+    function markGraduated() external {
         require(msg.sender == graduator, OnlyGraduatorAllowed());
 
-        automatedMarketMakerPairs[pair] = true;
-        emit MarketMakerPairAdded(pair);
+        graduated = true;
+        emit Graduated();
     }
 
     //////////////////////// view functions ////////////////////////
@@ -105,6 +111,16 @@ contract LivoToken is ERC20 {
     function _update(address from, address to, uint256 amount) internal override {
         require(from != to, "Can NOT send to same address");
 
+        // cache to save gas
+        address pair_ = pair;
+
+        // this ensures tokens don't arrive to the pair before graduation
+        // to avoid exploits/DOS related to liquidity addition at graduation
+        if ((!graduated) && (to == pair_)) {
+            revert TranferToPairBeforeGraduationNotAllowed();
+        }
+
+        // todo WHY THE HELL DO WE IMPOSE FEES IF WE CAN'T COLLECT THEM??
         if (feeExempt[from] || feeExempt[to]) {
             // if the sender or receiver is fee exempt, transfer without fees
             super._update(from, to, amount);
@@ -112,9 +128,9 @@ contract LivoToken is ERC20 {
         }
 
         uint256 fee = 0;
-        if (automatedMarketMakerPairs[to]) {
+        if (to == pair_) {
             fee = (amount * sellFeeBps) / BASIS_POINTS;
-        } else if (automatedMarketMakerPairs[from]) {
+        } else if (from == pair_) {
             fee = (amount * buyFeeBps) / BASIS_POINTS;
         }
 

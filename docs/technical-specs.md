@@ -138,3 +138,16 @@ Admins will deploy one GraduationManager to begin with, but the Launchpad will b
 
 - Minimal proxy pattern for token deployments
 - Efficient storage packing
+
+## Prevention of graduation DOS
+
+
+### The problem 
+
+- An attacker can create the pair in advance, setting an arbitrary price
+- If the graduation deposits liquidity forcing a price ratio (slippage control) then the graduation will be DOSed
+
+### The solution
+
+- Pre-create the uniswap pair at token creation
+- Gate the transfers to the pair until the token has been graduated

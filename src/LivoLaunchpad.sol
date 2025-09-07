@@ -87,9 +87,10 @@ contract LivoLaunchpad is Ownable {
         string symbol,
         address bondingCurve,
         address graduator,
-        string metadata
+        string metadata,
+        address pair
     );
-    event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation, address uniPair);
+    event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
     event LivoTokenBuy(
         address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 ethFee
     );
@@ -137,15 +138,6 @@ contract LivoLaunchpad is Ownable {
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
         address tokenClone = Clones.clone(address(tokenImplementation));
-        // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata);
-
-        // Initialize the new token instance
-        // It is responsibility of the token to distribute supply to the msg.sender
-        // so that we can update the token implementation with new rules for future tokens
-        LivoToken(tokenClone).initialize(
-            name, symbol, msg.sender, address(this), graduator, TOTAL_SUPPLY, baseBuyFeeBps, baseSellFeeBps
-        );
 
         // at creation all tokens are held by this contract
         tokenConfigs[tokenClone] = TokenConfig({
@@ -158,6 +150,28 @@ contract LivoLaunchpad is Ownable {
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps
         });
+
+        // review external call
+        // Creates the Uniswap Pair or whatever other initialization is necessary
+        address pair = ILivoGraduator(graduator).initializePair(tokenClone);
+
+        // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
+        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata, pair);
+
+        // Initialize the new token instance
+        // It is responsibility of the token to distribute supply to the msg.sender
+        // so that we can update the token implementation with new rules for future tokens
+        LivoToken(tokenClone).initialize(
+            name,
+            symbol,
+            msg.sender, // token creator
+            address(this), // launchpad
+            graduator, // graduator address
+            pair, // uniswap pair
+            TOTAL_SUPPLY,
+            baseBuyFeeBps,
+            baseSellFeeBps
+        );
 
         return tokenClone;
     }
@@ -346,9 +360,9 @@ contract LivoLaunchpad is Ownable {
         token.safeTransfer(tokenConfig.creator, tokensForCreator);
         token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
 
-        address uniPair = tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
+        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
 
-        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation, uniPair);
+        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation);
     }
 
     function _transferEth(address recipient, uint256 amount) internal {
