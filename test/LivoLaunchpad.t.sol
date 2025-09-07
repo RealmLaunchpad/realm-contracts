@@ -48,7 +48,6 @@ contract LivoLaunchpadTest is Test {
         LivoToken livoToken = LivoToken(token);
         assertEq(livoToken.name(), "TestToken");
         assertEq(livoToken.symbol(), "TEST");
-        assertEq(livoToken.creator(), creator);
         assertEq(livoToken.launchpad(), address(launchpad));
     }
 

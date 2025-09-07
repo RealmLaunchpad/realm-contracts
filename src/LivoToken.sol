@@ -47,32 +47,32 @@ contract LivoToken is ERC20 {
     constructor() ERC20("", "") {}
 
     function initialize(
-        string memory _name,
-        string memory _symbol,
-        address _launchpad,
-        address _graduator,
-        address _pair,
-        uint256 _totalSupply,
-        uint256 _buyFeeBps,
-        uint256 _sellFeeBps
+        string memory name_,
+        string memory symbol_,
+        address launchpad_,
+        address graduator_,
+        address pair_,
+        uint256 totalSupply_,
+        uint16 buyFeeBps_,
+        uint16 sellFeeBps_
     ) external {
         require(!_initialized, AlreadyInitialized());
         _initialized = true;
 
-        _tokenName = _name;
-        _tokenSymbol = _symbol;
-        launchpad = _launchpad;
-        graduator = _graduator;
-        buyFeeBps = uint16(_buyFeeBps);
-        sellFeeBps = uint16(_sellFeeBps);
-        pair = _pair;
+        _tokenName = name_;
+        _tokenSymbol = symbol_;
+        launchpad = launchpad_;
+        graduator = graduator_;
+        buyFeeBps = uint16(buyFeeBps_);
+        sellFeeBps = uint16(sellFeeBps_);
+        pair = pair_;
 
         // all supply goes to the launchpad, where it can be traded according to the bonding curve
-        _setFeeExempt(_launchpad, true);
-        _setFeeExempt(_graduator, true);
+        _setFeeExempt(launchpad_, true);
+        _setFeeExempt(graduator_, true);
 
         // all is minted back to the launchpad
-        _mint(_launchpad, _totalSupply);
+        _mint(launchpad_, totalSupply_);
     }
 
     //////////////////////// restricted access functions ////////////////////////

@@ -20,7 +20,6 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTest {
         LivoToken token = LivoToken(deployedToken);
         assertEq(token.name(), "TestToken");
         assertEq(token.symbol(), "TEST");
-        assertEq(token.creator(), creator);
         assertEq(token.launchpad(), address(launchpad));
         assertEq(token.totalSupply(), TOTAL_SUPPLY);
 

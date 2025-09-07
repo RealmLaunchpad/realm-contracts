@@ -28,17 +28,15 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
 
     ////////////////// Custom errors //////////////////////
     error OnlyLaunchpadAllowed();
-    error TokenAlreadyGraduated();
     error NoTokensToGraduate();
     error NoETHToGraduate();
 
     constructor(address _uniswapRouter, address _launchpad) Ownable(msg.sender) {
         LIVO_LAUNCHPAD = _launchpad;
 
+        WETH = UNISWAP_ROUTER.WETH();
         UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
         UNISWAP_FACTORY = IUniswapV2Factory(UNISWAP_ROUTER.factory());
-
-        WETH = UNISWAP_ROUTER.WETH();
     }
 
     modifier onlyLaunchpad() {
@@ -46,15 +44,16 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         _;
     }
 
-    function initializePair(address tokenAddress) external payable override onlyLaunchpad returns (address pair) {
+    function initializePair(address tokenAddress) external override onlyLaunchpad returns (address pair) {
         pair = UNISWAP_FACTORY.createPair(tokenAddress, WETH);
     }
 
     function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
         ILivoToken token = ILivoToken(tokenAddress);
 
-        uint256 tokenBalance = token.balanceOf(address(this));
+        // eth can only enter through msg.value, and all of it is deposited as liquidity
         uint256 ethBalance = msg.value;
+        uint256 tokenBalance = token.balanceOf(address(this));
 
         require(tokenBalance > 0, NoTokensToGraduate());
         require(ethBalance > 0, NoETHToGraduate());
@@ -66,14 +65,14 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         // this opens the gate of transferring tokens to the uniswap pair
         token.markGraduated();
 
-        // Approve the router to handle the tokens for liquidity addition
+        // Approve the router to handle the tokens for liquidity additiontokens for router
         token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokenBalance);
 
         // Add liquidity to Uniswap
         // Explanation about the lack of slippage protection when adding liquidity:
         // Before graduation, it is forbidden to transfer tokens to the pair, so the price cannot be artificially set pre-graduation
-        // Although it is possible to transfer eth to the pair, it comes at a net cost to the attacker. 
-        // And the overall impact at graduation is that the price in uniswap will be higher than in the bonding curve, 
+        // Although it is possible to transfer eth to the pair, it comes at a net cost to the attacker.
+        // And the overall impact at graduation is that the price in uniswap will be higher than in the bonding curve,
         // but this is at a cost of who tried to inflate the price, benefiting any other token holders
         // So I don't see any economic incentives, nor the token holders would be negatively affected
         (uint256 amountToken, uint256 amountEth, uint256 liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethBalance}(

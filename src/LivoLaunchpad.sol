@@ -65,7 +65,6 @@ contract LivoLaunchpad is Ownable {
     error InvalidNameOrSymbol();
     error InvalidAmount();
     error InvalidParameter(uint256 parameter);
-    error InvalidAddress();
     error InvalidToken();
     error NotEnoughSupply();
     error AlreadyGraduated();
@@ -74,8 +73,6 @@ contract LivoLaunchpad is Ownable {
     error EthTransferFailed();
     error DeadlineExceeded();
     error SlippageExceeded();
-    error CallerIsNotCreator();
-    error NothingToClaim();
     error PurchaseExceedsLimitPostGraduation();
 
     ///////////////////// Events /////////////////////
@@ -258,7 +255,7 @@ contract LivoLaunchpad is Ownable {
 
     /// @notice Returns the maximum amount of ETH that can be spent on a given token
     /// @dev This avoids going above the excess limit above graduation threshold
-    function getMaxEthToSpend(address token) public view returns (uint256) {
+    function getMaxEthToSpend(address token) external view returns (uint256) {
         return _maxEthToSpend(token);
     }
 
@@ -300,13 +297,13 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @notice Whitelists a bonding curve that can be chosen by future tokens
-    function whitelistBondingCurve(address bondingCurve, bool whitelisted) public onlyOwner {
+    function whitelistBondingCurve(address bondingCurve, bool whitelisted) external onlyOwner {
         whitelistedBondingCurves[bondingCurve] = whitelisted;
         emit BondingCurveWhitelisted(bondingCurve, whitelisted);
     }
 
     /// @dev blacklisted graduators will still be able to graduate the tokens that where created with them
-    function whitelistGraduator(address graduator, bool whitelisted) public onlyOwner {
+    function whitelistGraduator(address graduator, bool whitelisted) external onlyOwner {
         whitelistedGraduators[graduator] = whitelisted;
         emit GraduatorWhitelisted(graduator, whitelisted);
     }
