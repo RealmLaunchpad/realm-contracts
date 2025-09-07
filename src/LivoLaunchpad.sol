@@ -84,8 +84,8 @@ contract LivoLaunchpad is Ownable {
         string symbol,
         address bondingCurve,
         address graduator,
-        string metadata,
-        address pair
+        address pair,
+        string metadata
     );
     event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
     event LivoTokenBuy(
@@ -152,7 +152,7 @@ contract LivoLaunchpad is Ownable {
         address pair = ILivoGraduator(graduator).initializePair(tokenClone);
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata, pair);
+        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, pair, metadata);
 
         // Initialize the new token instance
         // It is responsibility of the token to distribute supply to the msg.sender
