@@ -151,7 +151,6 @@ contract LivoLaunchpad is Ownable {
             sellFeeBps: baseSellFeeBps
         });
 
-        // review external call
         // Creates the Uniswap Pair or whatever other initialization is necessary
         address pair = ILivoGraduator(graduator).initializePair(tokenClone);
 
@@ -164,7 +163,6 @@ contract LivoLaunchpad is Ownable {
         LivoToken(tokenClone).initialize(
             name,
             symbol,
-            msg.sender, // token creator
             address(this), // launchpad
             graduator, // graduator address
             pair, // uniswap pair
@@ -341,7 +339,6 @@ contract LivoLaunchpad is Ownable {
 
         tokenState.graduated = true;
 
-        // review if tokenAddress donations can mess up this
         uint256 ethCollected = tokenState.ethCollected;
         uint256 ethForGraduation = ethCollected - tokenConfig.graduationEthFee;
         treasuryEthFeesCollected += tokenConfig.graduationEthFee;
@@ -349,8 +346,8 @@ contract LivoLaunchpad is Ownable {
         uint256 tokensForCreator = tokenConfig.creatorReservedSupply;
         uint256 tokensForGraduation = token.balanceOf(address(this)) - tokensForCreator;
 
-        // if the last purchase is a large one, the resulting price in the pool will be higher
-        // I don't see a security risk in this, (@audit make sure this is correct)
+        // If the last purchase is a large one, the resulting price in the pool will be higher
+        // I don't see a security risk in this.
         // The effect is that the last buyer will be at an immediate win.
         // The larger the last purchase, the larger the price difference from the bonding curve to the univ2 pool
         // But I think that simply encourages graduation, so I don't see a big problem
@@ -367,7 +364,7 @@ contract LivoLaunchpad is Ownable {
 
     function _transferEth(address recipient, uint256 amount) internal {
         if (amount == 0) return;
-        // review potential reentrancies. Make sure this call is always done at the end of all transactions
+        // @audit beware of potential reentrancies. Make sure this call is always done at the end of all transactions
         (bool success,) = recipient.call{value: amount}("");
         require(success, EthTransferFailed());
     }

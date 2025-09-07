@@ -50,7 +50,6 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         pair = UNISWAP_FACTORY.createPair(tokenAddress, WETH);
     }
 
-    /// @dev if the graduation fails, the eth goes back, but the tokens are stuck here. review a solution for this
     function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
         ILivoToken token = ILivoToken(tokenAddress);
 
@@ -67,17 +66,22 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         // this opens the gate of transferring tokens to the uniswap pair
         token.markGraduated();
 
-        // Approve tokens for router
-        // question review when safeApprove doesn't work properly
+        // Approve the router to handle the tokens for liquidity addition
         token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokenBalance);
 
         // Add liquidity to Uniswap
+        // Explanation about the lack of slippage protection when adding liquidity:
+        // Before graduation, it is forbidden to transfer tokens to the pair, so the price cannot be artificially set pre-graduation
+        // Although it is possible to transfer eth to the pair, it comes at a net cost to the attacker. 
+        // And the overall impact at graduation is that the price in uniswap will be higher than in the bonding curve, 
+        // but this is at a cost of who tried to inflate the price, benefiting any other token holders
+        // So I don't see any economic incentives, nor the token holders would be negatively affected
         (uint256 amountToken, uint256 amountEth, uint256 liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethBalance}(
             tokenAddress,
             tokenBalance,
-            0, // Accept any amount of tokens // review
-            0, // Accept any amount of ETH // review
-            DEAD_ADDRESS, // Send LP tokens to lock contract // review
+            0, // Accept any amount of tokens
+            0, // Accept any amount of ETH
+            DEAD_ADDRESS, // Send LP tokens to lock contract
             block.timestamp // no deadline
         );
 

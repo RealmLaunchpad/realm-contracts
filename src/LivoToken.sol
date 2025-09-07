@@ -9,9 +9,6 @@ contract LivoToken is ERC20 {
     /// @notice LivoLaunchpad address
     address public launchpad;
 
-    /// review if we need this
-    address public creator;
-
     /// @notice The only graduator allowed to graduate this token
     address public graduator;
 
@@ -52,7 +49,6 @@ contract LivoToken is ERC20 {
     function initialize(
         string memory _name,
         string memory _symbol,
-        address _creator,
         address _launchpad,
         address _graduator,
         address _pair,
@@ -65,7 +61,6 @@ contract LivoToken is ERC20 {
 
         _tokenName = _name;
         _tokenSymbol = _symbol;
-        creator = _creator;
         launchpad = _launchpad;
         graduator = _graduator;
         buyFeeBps = uint16(_buyFeeBps);
