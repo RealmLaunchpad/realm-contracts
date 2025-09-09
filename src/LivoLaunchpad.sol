@@ -84,7 +84,6 @@ contract LivoLaunchpad is Ownable {
         string symbol,
         address bondingCurve,
         address graduator,
-        address pair,
         string metadata
     );
     event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
@@ -118,6 +117,17 @@ contract LivoLaunchpad is Ownable {
         setTradingFees(100, 100);
     }
 
+    struct TmpTokenMeta {
+        address token;
+        string name;
+        string symbol;
+        string metadata;
+        address bondingCurve;
+        address graduator;
+        uint16 buyFeesBps;
+        uint16 sellFeesBps;
+    }
+
     function createToken(
         string calldata name,
         string calldata symbol,
@@ -136,37 +146,23 @@ contract LivoLaunchpad is Ownable {
         // trading will be a bit more expensive, as variables cannot be immutable
         address tokenClone = Clones.clone(address(tokenImplementation));
 
-        // at creation all tokens are held by this contract
-        tokenConfigs[tokenClone] = TokenConfig({
-            bondingCurve: ILivoBondingCurve(bondingCurve),
-            graduator: ILivoGraduator(graduator),
-            creator: msg.sender,
-            graduationEthFee: baseGraduationFee,
-            ethGraduationThreshold: baseEthGraduationThreshold,
-            creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
-            buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps
+        TmpTokenMeta memory tmpTokenMeta = TmpTokenMeta({
+            token: tokenClone,
+            name: name,
+            symbol: symbol,
+            metadata: metadata,
+            bondingCurve: bondingCurve,
+            graduator: graduator,
+            buyFeesBps: baseBuyFeeBps,
+            sellFeesBps: baseSellFeeBps
         });
 
-        // Creates the Uniswap Pair or whatever other initialization is necessary
-        address pair = ILivoGraduator(graduator).initializePair(tokenClone);
-
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, pair, metadata);
+        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata);
 
-        // Initialize the new token instance
-        // It is responsibility of the token to distribute supply to the msg.sender
-        // so that we can update the token implementation with new rules for future tokens
-        LivoToken(tokenClone).initialize(
-            name,
-            symbol,
-            address(this), // launchpad
-            graduator, // graduator address
-            pair, // uniswap pair
-            TOTAL_SUPPLY,
-            baseBuyFeeBps,
-            baseSellFeeBps
-        );
+        // initialize token config, pair and token state
+        // forced to do this weird thing due to stack-too-deep errors
+        _initializers(tmpTokenMeta);
 
         return tokenClone;
     }
@@ -325,6 +321,37 @@ contract LivoLaunchpad is Ownable {
     }
 
     //////////////////////////// Internal functions //////////////////////////
+
+    function _initializers(TmpTokenMeta memory tmpTokenMeta) internal {
+        // at creation all tokens are held by this contract
+        tokenConfigs[tmpTokenMeta.token] = TokenConfig({
+            bondingCurve: ILivoBondingCurve(tmpTokenMeta.bondingCurve),
+            graduator: ILivoGraduator(tmpTokenMeta.graduator),
+            creator: msg.sender,
+            graduationEthFee: baseGraduationFee,
+            ethGraduationThreshold: baseEthGraduationThreshold,
+            creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
+            buyFeeBps: tmpTokenMeta.buyFeesBps,
+            sellFeeBps: tmpTokenMeta.sellFeesBps
+        });
+
+        // Creates the Uniswap Pair or whatever other initialization is necessary
+        address pair = ILivoGraduator(tmpTokenMeta.graduator).initializePair(tmpTokenMeta.token);
+
+        // Initialize the new token instance
+        // It is responsibility of the token to distribute supply to the msg.sender
+        // so that we can update the token implementation with new rules for future tokens
+        LivoToken(tmpTokenMeta.token).initialize(
+            tmpTokenMeta.name,
+            tmpTokenMeta.symbol,
+            address(this), // launchpad
+            tmpTokenMeta.graduator, // graduator address
+            pair, // uniswap pair
+            TOTAL_SUPPLY,
+            tmpTokenMeta.buyFeesBps,
+            tmpTokenMeta.sellFeesBps
+        );
+    }
 
     function _graduateToken(address tokenAddress) internal {
         TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
