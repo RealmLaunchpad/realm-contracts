@@ -12,6 +12,8 @@ contract DummyConstantPriceCurve is ILivoBondingCurve {
     /// @dev units: [ETH/token]
     uint256 tokenPrice = 1e10;
 
+    event PriceSet(uint256 price);
+
     function buyTokensWithExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
         external
         view
@@ -49,5 +51,6 @@ contract DummyConstantPriceCurve is ILivoBondingCurve {
         // Only for testing purposes
         require(newPrice > 0, "Invalid price");
         tokenPrice = newPrice;
+        emit PriceSet(newPrice);
     }
 }

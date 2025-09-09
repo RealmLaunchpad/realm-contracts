@@ -9,17 +9,17 @@ contract LivoToken is ERC20 {
     /// @notice LivoLaunchpad address
     address public launchpad;
 
-    /// review if we need this
-    address public creator;
-
     /// @notice The only graduator allowed to graduate this token
     address public graduator;
 
+    /// @notice Wether the token has graduated already or not
+    bool public graduated;
+
+    /// @notice Uniswap pair
+    address public pair;
+
     /// @notice Addresses exempt from fees (only affecting post-graduation trades)
     mapping(address => bool) public feeExempt;
-
-    /// @notice Sets which pools/pairs are considered for trading fees
-    mapping(address => bool) public automatedMarketMakerPairs;
 
     /// @dev only to prevent re-initialization
     bool internal _initialized;
@@ -36,51 +36,52 @@ contract LivoToken is ERC20 {
 
     /// @notice Emitted when a fee exemption is set
     event FeeExemptSet(address indexed account, bool exempt);
-    event MarketMakerPairAdded(address indexed pair);
+    event Graduated();
 
     //////////////////////// Errors //////////////////////
 
     error OnlyGraduatorAllowed();
     error AlreadyInitialized();
+    error TranferToPairBeforeGraduationNotAllowed();
 
     constructor() ERC20("", "") {}
 
     function initialize(
-        string memory _name,
-        string memory _symbol,
-        address _creator,
-        address _launchpad,
-        address _graduator,
-        uint256 _totalSupply,
-        uint256 _buyFeeBps,
-        uint256 _sellFeeBps
+        string memory name_,
+        string memory symbol_,
+        address launchpad_,
+        address graduator_,
+        address pair_,
+        uint256 totalSupply_,
+        uint16 buyFeeBps_,
+        uint16 sellFeeBps_
     ) external {
         require(!_initialized, AlreadyInitialized());
         _initialized = true;
 
-        _tokenName = _name;
-        _tokenSymbol = _symbol;
-        creator = _creator;
-        launchpad = _launchpad;
-        graduator = _graduator;
-        buyFeeBps = uint16(_buyFeeBps);
-        sellFeeBps = uint16(_sellFeeBps);
+        _tokenName = name_;
+        _tokenSymbol = symbol_;
+        launchpad = launchpad_;
+        graduator = graduator_;
+        buyFeeBps = uint16(buyFeeBps_);
+        sellFeeBps = uint16(sellFeeBps_);
+        pair = pair_;
 
         // all supply goes to the launchpad, where it can be traded according to the bonding curve
-        _setFeeExempt(_launchpad, true);
-        _setFeeExempt(_graduator, true);
+        _setFeeExempt(launchpad_, true);
+        _setFeeExempt(graduator_, true);
 
         // all is minted back to the launchpad
-        _mint(_launchpad, _totalSupply);
+        _mint(launchpad_, totalSupply_);
     }
 
     //////////////////////// restricted access functions ////////////////////////
 
-    function setAutomatedMarketMakerPair(address pair) external {
+    function markGraduated() external {
         require(msg.sender == graduator, OnlyGraduatorAllowed());
 
-        automatedMarketMakerPairs[pair] = true;
-        emit MarketMakerPairAdded(pair);
+        graduated = true;
+        emit Graduated();
     }
 
     //////////////////////// view functions ////////////////////////
@@ -105,6 +106,16 @@ contract LivoToken is ERC20 {
     function _update(address from, address to, uint256 amount) internal override {
         require(from != to, "Can NOT send to same address");
 
+        // cache to save gas
+        address pair_ = pair;
+
+        // this ensures tokens don't arrive to the pair before graduation
+        // to avoid exploits/DOS related to liquidity addition at graduation
+        if ((!graduated) && (to == pair_)) {
+            revert TranferToPairBeforeGraduationNotAllowed();
+        }
+
+        // todo WHY THE HELL DO WE IMPOSE FEES IF WE CAN'T COLLECT THEM??
         if (feeExempt[from] || feeExempt[to]) {
             // if the sender or receiver is fee exempt, transfer without fees
             super._update(from, to, amount);
@@ -112,9 +123,9 @@ contract LivoToken is ERC20 {
         }
 
         uint256 fee = 0;
-        if (automatedMarketMakerPairs[to]) {
+        if (to == pair_) {
             fee = (amount * sellFeeBps) / BASIS_POINTS;
-        } else if (automatedMarketMakerPairs[from]) {
+        } else if (from == pair_) {
             fee = (amount * buyFeeBps) / BASIS_POINTS;
         }
 

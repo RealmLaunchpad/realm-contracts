@@ -8,8 +8,8 @@ interface IUniswapV2Router {
         address token,
         uint256 amountTokenDesired,
         uint256 amountTokenMin,
-        uint256 amountETHMin,
+        uint256 amountEthMin,
         address to,
         uint256 deadline
-    ) external payable returns (uint256 amountToken, uint256 amountETH, uint256 liquidity);
+    ) external payable returns (uint256 amountToken, uint256 amountEth, uint256 liquidity);
 }

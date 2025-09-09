@@ -3,41 +3,41 @@ pragma solidity 0.8.28;
 
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {LivoToken} from "src/LivoToken.sol";
-import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
-    using SafeERC20 for IERC20;
+    using SafeERC20 for ILivoToken;
 
     /// @notice where LP tokens are sent at graduation, effectively locking the liquidity
-    address public constant DEAD_ADDRESS = address(0xdead);
+    address internal constant DEAD_ADDRESS = address(0xdead);
 
-    /// @notice creator fee in basis points (100 bps = 1%)
-    uint16 public constant CREATOR_FEE_BPS = 100;
-
-    uint16 public constant BASIS_POINTS = 10_000; // 100%
+    address public immutable LIVO_LAUNCHPAD;
 
     /// @notice Uniswap router and factory addresses
-    IUniswapV2Router public immutable UNISWAP_ROUTER;
-    address public immutable LIVO_LAUNCHPAD;
+    IUniswapV2Router internal immutable UNISWAP_ROUTER;
+    IUniswapV2Factory internal immutable UNISWAP_FACTORY;
+    address internal immutable WETH;
 
     ////////////////// Events //////////////////////
     event TokenGraduated(
         address indexed token, address indexed pair, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
     );
+    event PairInitialized(address indexed token, address indexed pair);
 
     ////////////////// Custom errors //////////////////////
     error OnlyLaunchpadAllowed();
-    error TokenAlreadyGraduated();
     error NoTokensToGraduate();
     error NoETHToGraduate();
 
     constructor(address _uniswapRouter, address _launchpad) Ownable(msg.sender) {
-        UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
         LIVO_LAUNCHPAD = _launchpad;
+        UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
+
+        WETH = UNISWAP_ROUTER.WETH();
+        UNISWAP_FACTORY = IUniswapV2Factory(UNISWAP_ROUTER.factory());
     }
 
     modifier onlyLaunchpad() {
@@ -45,47 +45,47 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
         _;
     }
 
-    /// @dev if the graduation fails, the eth goes back, but the tokens are stuck here.  review a solution for this
-    function graduateToken(address tokenAddress) external payable override onlyLaunchpad returns (address pair) {
-        IERC20 token = IERC20(tokenAddress);
+    function initializePair(address tokenAddress) external override onlyLaunchpad returns (address pair) {
+        pair = UNISWAP_FACTORY.createPair(tokenAddress, WETH);
+        emit PairInitialized(tokenAddress, pair);
+    }
 
-        /// note review what happens if the token was already graduated and this is called again (even though the launchpad wouldn't do it)
-        IUniswapV2Factory uniswapFactory = IUniswapV2Factory(IUniswapV2Router(UNISWAP_ROUTER).factory());
+    function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
+        ILivoToken token = ILivoToken(tokenAddress);
 
-        uint256 tokenBalance = token.balanceOf(address(this));
+        // eth can only enter through msg.value, and all of it is deposited as liquidity
         uint256 ethBalance = msg.value;
+        uint256 tokenBalance = token.balanceOf(address(this));
 
         require(tokenBalance > 0, NoTokensToGraduate());
         require(ethBalance > 0, NoETHToGraduate());
 
-        // Create Uniswap pair if it doesn't exist
-        // question is there a problem if the pair is created by another account before?
-        // question review if WETH is the right or should be ETH somehow
-        pair = uniswapFactory.getPair(tokenAddress, UNISWAP_ROUTER.WETH());
-        if (pair == address(0)) {
-            pair = uniswapFactory.createPair(tokenAddress, UNISWAP_ROUTER.WETH());
-        }
+        // the pair should have been pre-created at token launch.
+        // If not, pair==address(0) and graduation will revert
+        address pair = UNISWAP_FACTORY.getPair(tokenAddress, WETH);
 
-        // Approve tokens for router
-        // question review when safeApprove doesn't work properly
+        // this opens the gate of transferring tokens to the uniswap pair
+        token.markGraduated();
+
+        // Approve the router to handle the tokens for liquidity additiontokens for router
         token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokenBalance);
 
         // Add liquidity to Uniswap
-        (uint256 amountToken, uint256 amountETH, uint256 liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethBalance}(
+        // Explanation about the lack of slippage protection when adding liquidity:
+        // Before graduation, it is forbidden to transfer tokens to the pair, so the price cannot be artificially set pre-graduation
+        // Although it is possible to transfer eth to the pair, it comes at a net cost to the attacker.
+        // And the overall impact at graduation is that the price in uniswap will be higher than in the bonding curve,
+        // but this is at a cost of who tried to inflate the price, benefiting any other token holders
+        // So I don't see any economic incentives, nor the token holders would be negatively affected
+        (uint256 amountToken, uint256 amountEth, uint256 liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethBalance}(
             tokenAddress,
             tokenBalance,
-            0, // Accept any amount of tokens // review
-            0, // Accept any amount of ETH // review
-            DEAD_ADDRESS, // Send LP tokens to lock contract // review
+            0, // Accept any amount of tokens
+            0, // Accept any amount of ETH
+            DEAD_ADDRESS, // Send LP tokens to lock contract
             block.timestamp // no deadline
         );
 
-        // set the pair to detect which transfers are trades against the uniswap pool
-        // this is set only after liquidity has been added, so the pair is valid,
-        // and the liquidity addition is fee exempt.
-        LivoToken(tokenAddress).setAutomatedMarketMakerPair(pair);
-
-        emit TokenGraduated(tokenAddress, pair, amountToken, amountETH, liquidity);
-        return pair;
+        emit TokenGraduated(tokenAddress, pair, amountToken, amountEth, liquidity);
     }
 }

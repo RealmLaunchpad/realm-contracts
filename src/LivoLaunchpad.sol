@@ -65,7 +65,6 @@ contract LivoLaunchpad is Ownable {
     error InvalidNameOrSymbol();
     error InvalidAmount();
     error InvalidParameter(uint256 parameter);
-    error InvalidAddress();
     error InvalidToken();
     error NotEnoughSupply();
     error AlreadyGraduated();
@@ -74,8 +73,6 @@ contract LivoLaunchpad is Ownable {
     error EthTransferFailed();
     error DeadlineExceeded();
     error SlippageExceeded();
-    error CallerIsNotCreator();
-    error NothingToClaim();
     error PurchaseExceedsLimitPostGraduation();
 
     ///////////////////// Events /////////////////////
@@ -89,7 +86,7 @@ contract LivoLaunchpad is Ownable {
         address graduator,
         string metadata
     );
-    event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation, address uniPair);
+    event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
     event LivoTokenBuy(
         address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 ethFee
     );
@@ -120,6 +117,17 @@ contract LivoLaunchpad is Ownable {
         setTradingFees(100, 100);
     }
 
+    struct TmpTokenMeta {
+        address token;
+        string name;
+        string symbol;
+        string metadata;
+        address bondingCurve;
+        address graduator;
+        uint16 buyFeesBps;
+        uint16 sellFeesBps;
+    }
+
     function createToken(
         string calldata name,
         string calldata symbol,
@@ -137,27 +145,24 @@ contract LivoLaunchpad is Ownable {
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
         address tokenClone = Clones.clone(address(tokenImplementation));
+
+        TmpTokenMeta memory tmpTokenMeta = TmpTokenMeta({
+            token: tokenClone,
+            name: name,
+            symbol: symbol,
+            metadata: metadata,
+            bondingCurve: bondingCurve,
+            graduator: graduator,
+            buyFeesBps: baseBuyFeeBps,
+            sellFeesBps: baseSellFeeBps
+        });
+
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
         emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata);
 
-        // Initialize the new token instance
-        // It is responsibility of the token to distribute supply to the msg.sender
-        // so that we can update the token implementation with new rules for future tokens
-        LivoToken(tokenClone).initialize(
-            name, symbol, msg.sender, address(this), graduator, TOTAL_SUPPLY, baseBuyFeeBps, baseSellFeeBps
-        );
-
-        // at creation all tokens are held by this contract
-        tokenConfigs[tokenClone] = TokenConfig({
-            bondingCurve: ILivoBondingCurve(bondingCurve),
-            graduator: ILivoGraduator(graduator),
-            creator: msg.sender,
-            graduationEthFee: baseGraduationFee,
-            ethGraduationThreshold: baseEthGraduationThreshold,
-            creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
-            buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps
-        });
+        // initialize token config, pair and token state
+        // forced to do this weird thing due to stack-too-deep errors
+        _initializers(tmpTokenMeta);
 
         return tokenClone;
     }
@@ -246,7 +251,7 @@ contract LivoLaunchpad is Ownable {
 
     /// @notice Returns the maximum amount of ETH that can be spent on a given token
     /// @dev This avoids going above the excess limit above graduation threshold
-    function getMaxEthToSpend(address token) public view returns (uint256) {
+    function getMaxEthToSpend(address token) external view returns (uint256) {
         return _maxEthToSpend(token);
     }
 
@@ -288,13 +293,13 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @notice Whitelists a bonding curve that can be chosen by future tokens
-    function whitelistBondingCurve(address bondingCurve, bool whitelisted) public onlyOwner {
+    function whitelistBondingCurve(address bondingCurve, bool whitelisted) external onlyOwner {
         whitelistedBondingCurves[bondingCurve] = whitelisted;
         emit BondingCurveWhitelisted(bondingCurve, whitelisted);
     }
 
     /// @dev blacklisted graduators will still be able to graduate the tokens that where created with them
-    function whitelistGraduator(address graduator, bool whitelisted) public onlyOwner {
+    function whitelistGraduator(address graduator, bool whitelisted) external onlyOwner {
         whitelistedGraduators[graduator] = whitelisted;
         emit GraduatorWhitelisted(graduator, whitelisted);
     }
@@ -317,6 +322,37 @@ contract LivoLaunchpad is Ownable {
 
     //////////////////////////// Internal functions //////////////////////////
 
+    function _initializers(TmpTokenMeta memory tmpTokenMeta) internal {
+        // at creation all tokens are held by this contract
+        tokenConfigs[tmpTokenMeta.token] = TokenConfig({
+            bondingCurve: ILivoBondingCurve(tmpTokenMeta.bondingCurve),
+            graduator: ILivoGraduator(tmpTokenMeta.graduator),
+            creator: msg.sender,
+            graduationEthFee: baseGraduationFee,
+            ethGraduationThreshold: baseEthGraduationThreshold,
+            creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
+            buyFeeBps: tmpTokenMeta.buyFeesBps,
+            sellFeeBps: tmpTokenMeta.sellFeesBps
+        });
+
+        // Creates the Uniswap Pair or whatever other initialization is necessary
+        address pair = ILivoGraduator(tmpTokenMeta.graduator).initializePair(tmpTokenMeta.token);
+
+        // Initialize the new token instance
+        // It is responsibility of the token to distribute supply to the msg.sender
+        // so that we can update the token implementation with new rules for future tokens
+        LivoToken(tmpTokenMeta.token).initialize(
+            tmpTokenMeta.name,
+            tmpTokenMeta.symbol,
+            address(this), // launchpad
+            tmpTokenMeta.graduator, // graduator address
+            pair, // uniswap pair
+            TOTAL_SUPPLY,
+            tmpTokenMeta.buyFeesBps,
+            tmpTokenMeta.sellFeesBps
+        );
+    }
+
     function _graduateToken(address tokenAddress) internal {
         TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
         TokenState storage tokenState = tokenStates[tokenAddress];
@@ -327,7 +363,6 @@ contract LivoLaunchpad is Ownable {
 
         tokenState.graduated = true;
 
-        // review if tokenAddress donations can mess up this
         uint256 ethCollected = tokenState.ethCollected;
         uint256 ethForGraduation = ethCollected - tokenConfig.graduationEthFee;
         treasuryEthFeesCollected += tokenConfig.graduationEthFee;
@@ -335,8 +370,8 @@ contract LivoLaunchpad is Ownable {
         uint256 tokensForCreator = tokenConfig.creatorReservedSupply;
         uint256 tokensForGraduation = token.balanceOf(address(this)) - tokensForCreator;
 
-        // if the last purchase is a large one, the resulting price in the pool will be higher
-        // I don't see a security risk in this, (@audit make sure this is correct)
+        // If the last purchase is a large one, the resulting price in the pool will be higher
+        // I don't see a security risk in this.
         // The effect is that the last buyer will be at an immediate win.
         // The larger the last purchase, the larger the price difference from the bonding curve to the univ2 pool
         // But I think that simply encourages graduation, so I don't see a big problem
@@ -346,14 +381,14 @@ contract LivoLaunchpad is Ownable {
         token.safeTransfer(tokenConfig.creator, tokensForCreator);
         token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
 
-        address uniPair = tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
+        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
 
-        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation, uniPair);
+        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation);
     }
 
     function _transferEth(address recipient, uint256 amount) internal {
         if (amount == 0) return;
-        // review potential reentrancies. Make sure this call is always done at the end of all transactions
+        // @audit beware of potential reentrancies. Make sure this call is always done at the end of all transactions
         (bool success,) = recipient.call{value: amount}("");
         require(success, EthTransferFailed());
     }
