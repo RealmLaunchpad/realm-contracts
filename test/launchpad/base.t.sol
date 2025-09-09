@@ -32,14 +32,22 @@ contract LaunchpadBaseTest is Test {
     uint16 public constant BASE_BUY_FEE_BPS = 100;
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
+    // Uniswap V2 router address on mainnet
+    address constant UNISWAP_V2_ROUTER = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+    // for fork tests
+    uint256 constant BLOCKNUMBER = 23327777;
+
     function setUp() public virtual {
+        string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
+        vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
+
         tokenImplementation = new LivoToken();
         launchpad = new LivoLaunchpad(treasury, tokenImplementation);
 
         bondingCurve = new ConstantProductBondingCurve();
 
         // For graduation tests, a new graduator should be deployed, and use fork tests.
-        graduator = new LivoGraduatorUniV2(address(0), address(launchpad));
+        graduator = new LivoGraduatorUniV2(UNISWAP_V2_ROUTER, address(launchpad));
 
         launchpad.whitelistBondingCurve(address(bondingCurve), true);
         launchpad.whitelistGraduator(address(graduator), true);

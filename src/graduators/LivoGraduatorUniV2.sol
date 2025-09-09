@@ -25,6 +25,7 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
     event TokenGraduated(
         address indexed token, address indexed pair, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
     );
+    event PairInitialized(address indexed token, address indexed pair);
 
     ////////////////// Custom errors //////////////////////
     error OnlyLaunchpadAllowed();
@@ -33,9 +34,9 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
 
     constructor(address _uniswapRouter, address _launchpad) Ownable(msg.sender) {
         LIVO_LAUNCHPAD = _launchpad;
+        UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
 
         WETH = UNISWAP_ROUTER.WETH();
-        UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
         UNISWAP_FACTORY = IUniswapV2Factory(UNISWAP_ROUTER.factory());
     }
 
@@ -46,6 +47,7 @@ contract LivoGraduatorUniV2 is ILivoGraduator, Ownable {
 
     function initializePair(address tokenAddress) external override onlyLaunchpad returns (address pair) {
         pair = UNISWAP_FACTORY.createPair(tokenAddress, WETH);
+        emit PairInitialized(tokenAddress, pair);
     }
 
     function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
