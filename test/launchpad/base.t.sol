@@ -43,9 +43,7 @@ contract LaunchpadBaseTest is Test {
 
         tokenImplementation = new LivoToken();
         launchpad = new LivoLaunchpad(treasury, tokenImplementation);
-
         bondingCurve = new ConstantProductBondingCurve();
-
         // For graduation tests, a new graduator should be deployed, and use fork tests.
         graduator = new LivoGraduatorUniV2(UNISWAP_V2_ROUTER, address(launchpad));
 

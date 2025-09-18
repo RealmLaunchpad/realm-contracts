@@ -33,7 +33,7 @@ contract BuyTokensTest is LaunchpadBaseTest {
 
         TokenState memory state = launchpad.getTokenState(testToken);
         assertEq(state.ethCollected, expectedEthForPurchase);
-        assertEq(state.circulatingSupply, expectedTokensToReceive);
+        assertEq(state.releasedSupply, expectedTokensToReceive);
         assertEq(launchpad.treasuryEthFeesCollected(), expectedEthFee);
     }
 
@@ -58,10 +58,10 @@ contract BuyTokensTest is LaunchpadBaseTest {
         uint256 totalFeesCollected = launchpad.treasuryEthFeesCollected();
 
         assertTrue(stateAfterSecond.ethCollected > stateAfterFirst.ethCollected);
-        assertTrue(stateAfterSecond.circulatingSupply > stateAfterFirst.circulatingSupply);
+        assertTrue(stateAfterSecond.releasedSupply > stateAfterFirst.releasedSupply);
         assertTrue(totalTokensReceived > firstTokensReceived);
         assertTrue(totalFeesCollected > firstFeesCollected);
-        assertEq(stateAfterSecond.circulatingSupply, totalTokensReceived);
+        assertEq(stateAfterSecond.releasedSupply, totalTokensReceived);
     }
 
     function testBuyTwoTimesSameAmount_secondGetsLessTokens() public createTestToken {
@@ -88,6 +88,12 @@ contract BuyTokensTest is LaunchpadBaseTest {
             firstTokensReceived,
             "The second purchase should get less tokens as the price is higher"
         );
+    }
+
+    function test_quoteInitialPrice() public createTestToken {
+        // how many tokens do you get with the first wei?
+        (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(testToken, 1);
+        assertEq(expectedTokens, 393333334);
     }
 
     function testBuyTokensWithExactEth_withMinTokenAmount() public createTestToken {
@@ -268,7 +274,7 @@ contract BuyTokensTest is LaunchpadBaseTest {
         assertEq(IERC20(testToken).balanceOf(buyer), firstBuyerTokens); // First buyer balance unchanged
 
         TokenState memory finalState = launchpad.getTokenState(testToken);
-        assertEq(finalState.circulatingSupply, firstBuyerTokens + secondBuyerTokens);
+        assertEq(finalState.releasedSupply, firstBuyerTokens + secondBuyerTokens);
     }
 
     function testBuyTokensWithExactEth_multipleBuysEqualsBigBuy() public createTestToken {
@@ -308,9 +314,7 @@ contract BuyTokensTest is LaunchpadBaseTest {
         assertEq(tokensFromMultipleBuys, tokensFromBigBuy, "Multiple small buys should equal one big buy");
         assertEq(stateAfterMultiple.ethCollected, stateAfterBig.ethCollected, "ETH collected should be the same");
         assertEq(
-            stateAfterMultiple.circulatingSupply,
-            stateAfterBig.circulatingSupply,
-            "Circulating supply should be the same"
+            stateAfterMultiple.releasedSupply, stateAfterBig.releasedSupply, "Circulating supply should be the same"
         );
     }
 }
