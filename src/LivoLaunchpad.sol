@@ -176,6 +176,8 @@ contract LivoLaunchpad is Ownable {
         require(tokenConfig.exists(), InvalidToken());
         require(tokenState.notGraduated(), AlreadyGraduated());
         require(block.timestamp <= deadline, DeadlineExceeded());
+        // fees are ignored in this check. If fees were accounted, the limit should be higher,
+        // which would expand the price diff between bounding curve and uniswap
         require(
             tokenState.ethCollected + msg.value < tokenConfig.ethGraduationThreshold + MAX_THRESHOLD_EXCEESS,
             PurchaseExceedsLimitPostGraduation()
@@ -186,16 +188,17 @@ contract LivoLaunchpad is Ownable {
         require(tokensToReceive <= _availableForPurchase(token), NotEnoughSupply());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
 
-        tokenState.ethCollected += ethForReserves;
-        tokenState.circulatingSupply += tokensToReceive;
+        require(ethForReserves + ethFee == msg.value, "reserves + fee should match msg.value");
         treasuryEthFeesCollected += ethFee;
+        tokenState.ethCollected += ethForReserves;
+        tokenState.releasedSupply += tokensToReceive;
 
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
 
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
         if (_meetsGraduationCriteria(tokenState, tokenConfig)) {
-            _graduateToken(token);
+            _graduateToken(token, tokenState, tokenConfig);
         }
     }
 
@@ -216,7 +219,7 @@ contract LivoLaunchpad is Ownable {
         require(_availableEthFromReserves(token) >= ethFromReserves, InsufficientETHReserves());
 
         tokenState.ethCollected -= ethFromReserves;
-        tokenState.circulatingSupply -= tokenAmount;
+        tokenState.releasedSupply -= tokenAmount;
         treasuryEthFeesCollected += ethFee;
 
         // funds transfers
@@ -353,13 +356,12 @@ contract LivoLaunchpad is Ownable {
         );
     }
 
-    function _graduateToken(address tokenAddress) internal {
-        TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
-        TokenState storage tokenState = tokenStates[tokenAddress];
+    /// @dev This function assumes that the graduation criteria have been met
+    /// @dev It also assumes that the token hasn't been graduated yet
+    function _graduateToken(address tokenAddress, TokenState storage tokenState, TokenConfig storage tokenConfig)
+        internal
+    {
         IERC20 token = IERC20(tokenAddress);
-
-        require(tokenState.notGraduated(), AlreadyGraduated());
-        require(_meetsGraduationCriteria(tokenState, tokenConfig), GraduationCriteriaNotMet());
 
         tokenState.graduated = true;
 
@@ -369,6 +371,10 @@ contract LivoLaunchpad is Ownable {
 
         uint256 tokensForCreator = tokenConfig.creatorReservedSupply;
         uint256 tokensForGraduation = token.balanceOf(address(this)) - tokensForCreator;
+
+        // update token state
+        tokenState.ethCollected = 0;
+        tokenState.releasedSupply += tokensForCreator + tokensForGraduation;
 
         // If the last purchase is a large one, the resulting price in the pool will be higher
         // I don't see a security risk in this.
@@ -445,7 +451,9 @@ contract LivoLaunchpad is Ownable {
     /// @dev The reserved creator supply is only effective at graduation,
     /// and it is taken from the remaining tokens in this contract at graduation
     function _availableForPurchase(address token) internal view returns (uint256) {
-        return IERC20(token).balanceOf(address(this)) - CREATOR_RESERVED_SUPPLY;
+        // This is equivalent to:  return IERC20(token).balanceOf(address(this)) - CREATOR_RESERVED_SUPPLY;
+        // But this implementation is more gas efficient as it avoids an external call
+        return TOTAL_SUPPLY - tokenStates[token].releasedSupply - CREATOR_RESERVED_SUPPLY;
     }
 
     function _availableEthFromReserves(address token) internal view returns (uint256) {

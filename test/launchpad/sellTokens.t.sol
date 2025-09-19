@@ -66,7 +66,7 @@ contract SellTokensTest is LaunchpadBaseTest {
         );
 
         TokenState memory state = launchpad.getTokenState(testToken);
-        assertEq(state.circulatingSupply, 0);
+        assertEq(state.releasedSupply, 0);
         assertEq(launchpad.treasuryEthFeesCollected(), 0.01 ether + expectedEthFee); // Buy fee + sell fee
     }
 
@@ -86,7 +86,7 @@ contract SellTokensTest is LaunchpadBaseTest {
         assertEq(IERC20(testToken).balanceOf(alice), tokensToKeep);
 
         TokenState memory stateAfter = launchpad.getTokenState(testToken);
-        assertEq(stateAfter.circulatingSupply, stateBefore.circulatingSupply - tokensToSell);
+        assertEq(stateAfter.releasedSupply, stateBefore.releasedSupply - tokensToSell);
         assertLt(stateAfter.ethCollected, stateBefore.ethCollected);
         // Verify that launchpad balance decreased due to selling tokens
         assertGt(launchpadBalanceBefore, address(launchpad).balance);
@@ -116,9 +116,9 @@ contract SellTokensTest is LaunchpadBaseTest {
         uint256 ethAfterSecond = alice.balance;
 
         assertLt(stateAfterSecond.ethCollected, stateAfterFirst.ethCollected);
-        assertLt(stateAfterSecond.circulatingSupply, stateAfterFirst.circulatingSupply);
+        assertLt(stateAfterSecond.releasedSupply, stateAfterFirst.releasedSupply);
         assertGt(ethAfterSecond, ethAfterFirst);
-        assertEq(stateAfterSecond.circulatingSupply, stateAfterFirst.circulatingSupply - secondSell);
+        assertEq(stateAfterSecond.releasedSupply, stateAfterFirst.releasedSupply - secondSell);
     }
 
     function testSellExactTokens_differentSellers() public createTestToken afterMultipleBuys {
@@ -296,7 +296,7 @@ contract SellTokensTest is LaunchpadBaseTest {
         uint256 aliceTokensToSell = IERC20(testToken).balanceOf(alice) / 2;
 
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
-        uint256 circulatingBefore = stateBefore.circulatingSupply;
+        uint256 circulatingBefore = stateBefore.releasedSupply;
         uint256 ethCollectedBefore = stateBefore.ethCollected;
 
         (uint256 expectedEthFromSale,,) = launchpad.quoteSellExactTokens(testToken, aliceTokensToSell);
@@ -308,16 +308,16 @@ contract SellTokensTest is LaunchpadBaseTest {
 
         TokenState memory stateAfter = launchpad.getTokenState(testToken);
 
-        assertEq(stateAfter.circulatingSupply, circulatingBefore - aliceTokensToSell);
+        assertEq(stateAfter.releasedSupply, circulatingBefore - aliceTokensToSell);
         assertEq(stateAfter.ethCollected, ethCollectedBefore - expectedEthFromSale);
         assertFalse(stateAfter.graduated);
     }
 
-    function testSellExactTokens_sellAllCirculatingSupply() public createTestToken afterOneBuy {
+    function testSellExactTokens_sellAllreleasedSupply() public createTestToken afterOneBuy {
         uint256 allTokens = IERC20(testToken).balanceOf(alice);
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
 
-        assertEq(stateBefore.circulatingSupply, allTokens);
+        assertEq(stateBefore.releasedSupply, allTokens);
 
         vm.prank(alice);
         IERC20(testToken).approve(address(launchpad), allTokens);
@@ -325,7 +325,7 @@ contract SellTokensTest is LaunchpadBaseTest {
         launchpad.sellExactTokens(testToken, allTokens, 0, DEADLINE);
 
         TokenState memory stateAfter = launchpad.getTokenState(testToken);
-        assertEq(stateAfter.circulatingSupply, 0);
+        assertEq(stateAfter.releasedSupply, 0);
         assertEq(IERC20(testToken).balanceOf(alice), 0);
         assertEq(IERC20(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY);
     }
@@ -336,7 +336,7 @@ contract SellTokensTest is LaunchpadBaseTest {
         assertTrue(remainingTokens > 0);
 
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
-        assertTrue(stateBefore.circulatingSupply > 0);
+        assertTrue(stateBefore.releasedSupply > 0);
         assertTrue(stateBefore.ethCollected > 0);
 
         // Now sell the remaining tokens
@@ -346,7 +346,7 @@ contract SellTokensTest is LaunchpadBaseTest {
         launchpad.sellExactTokens(testToken, remainingTokens, 0, DEADLINE);
 
         TokenState memory stateAfter = launchpad.getTokenState(testToken);
-        assertEq(stateAfter.circulatingSupply, stateBefore.circulatingSupply - remainingTokens);
+        assertEq(stateAfter.releasedSupply, stateBefore.releasedSupply - remainingTokens);
         assertLt(stateAfter.ethCollected, stateBefore.ethCollected);
         assertEq(IERC20(testToken).balanceOf(alice), 0);
     }
@@ -419,9 +419,7 @@ contract SellTokensTest is LaunchpadBaseTest {
             "Tokens sold should be the same"
         );
         assertEq(
-            stateAfterMultiple.circulatingSupply,
-            stateAfterBig.circulatingSupply,
-            "Circulating supply should be the same"
+            stateAfterMultiple.releasedSupply, stateAfterBig.releasedSupply, "Circulating supply should be the same"
         );
     }
 
