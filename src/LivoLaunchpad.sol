@@ -198,8 +198,7 @@ contract LivoLaunchpad is Ownable {
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
         if (_meetsGraduationCriteria(tokenState, tokenConfig)) {
-            // todo: pass here tokenState and tokenConfig as storage references
-            _graduateToken(token);
+            _graduateToken(token, tokenState, tokenConfig);
         }
     }
 
@@ -357,14 +356,12 @@ contract LivoLaunchpad is Ownable {
         );
     }
 
-    function _graduateToken(address tokenAddress) internal {
-        TokenConfig storage tokenConfig = tokenConfigs[tokenAddress];
-        TokenState storage tokenState = tokenStates[tokenAddress];
+    /// @dev This function assumes that the graduation criteria have been met
+    /// @dev It also assumes that the token hasn't been graduated yet
+    function _graduateToken(address tokenAddress, TokenState storage tokenState, TokenConfig storage tokenConfig)
+        internal
+    {
         IERC20 token = IERC20(tokenAddress);
-
-        // todo if _graduate always happens as part of buyTokensWithExactEth, these checks are redundant
-        require(tokenState.notGraduated(), AlreadyGraduated());
-        require(_meetsGraduationCriteria(tokenState, tokenConfig), GraduationCriteriaNotMet());
 
         tokenState.graduated = true;
 
@@ -454,8 +451,9 @@ contract LivoLaunchpad is Ownable {
     /// @dev The reserved creator supply is only effective at graduation,
     /// and it is taken from the remaining tokens in this contract at graduation
     function _availableForPurchase(address token) internal view returns (uint256) {
-        // todo: gas optimization  :  return TOTAL_SUPPLY - tokenStates[token].releasedSupply - CREATOR_RESERVED_SUPPLY;
-        return IERC20(token).balanceOf(address(this)) - CREATOR_RESERVED_SUPPLY;
+        // This is equivalent to:  return IERC20(token).balanceOf(address(this)) - CREATOR_RESERVED_SUPPLY;
+        // But this implementation is more gas efficient as it avoids an external call
+        return TOTAL_SUPPLY - tokenStates[token].releasedSupply - CREATOR_RESERVED_SUPPLY;
     }
 
     function _availableEthFromReserves(address token) internal view returns (uint256) {
