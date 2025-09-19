@@ -70,7 +70,6 @@ contract BuyTokensTest is LaunchpadBaseTest {
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
-        TokenState memory stateAfterFirst = launchpad.getTokenState(testToken);
         uint256 firstTokensReceived = IERC20(testToken).balanceOf(buyer);
         uint256 firstFeesCollected = launchpad.treasuryEthFeesCollected();
 
@@ -78,7 +77,6 @@ contract BuyTokensTest is LaunchpadBaseTest {
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
-        TokenState memory stateAfterSecond = launchpad.getTokenState(testToken);
         uint256 secondTokensReceived = IERC20(testToken).balanceOf(buyer) - firstTokensReceived;
         uint256 totalFeesCollected = launchpad.treasuryEthFeesCollected();
 
@@ -315,6 +313,22 @@ contract BuyTokensTest is LaunchpadBaseTest {
         assertEq(stateAfterMultiple.ethCollected, stateAfterBig.ethCollected, "ETH collected should be the same");
         assertEq(
             stateAfterMultiple.releasedSupply, stateAfterBig.releasedSupply, "Circulating supply should be the same"
+        );
+    }
+
+    /// @notice Test funds collected match reserves and fees
+    function test_balanceChangesMatchesReservesAndFees() public createTestToken {
+        vm.deal(buyer, 100 ether);
+        uint256 initialLaunchpadBalance = address(launchpad).balance;
+
+        // buy but not graduate
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: BASE_GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
+
+        assertEq(
+            address(launchpad).balance - initialLaunchpadBalance,
+            launchpad.getTokenState(testToken).ethCollected + launchpad.treasuryEthFeesCollected(),
+            "eth balance should match reserves + fees"
         );
     }
 }

@@ -296,4 +296,34 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         // We are transitioning to uniswapV4 after graduation
         vm.skip(true);
     }
+
+    /// @notice Test that launchpad eth balance change at graduation is the exact reserves pre graduation
+    function test_graduationConservationOfFunds() public createTestTokenWithPair {
+        vm.deal(buyer, 100 ether);
+
+        // buy but not graduate
+        vm.prank(buyer);
+        // value sent: 6956000000000052224
+        launchpad.buyTokensWithExactEth{value: BASE_GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
+        assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
+        // collect the eth trading fees to have a clean comparison
+
+        uint256 launchpadEthBefore = address(launchpad).balance;
+
+        // the eth from this purchase would go straight into liquidity
+        uint256 purchaseValue = 1.5 ether;
+        vm.prank(seller);
+        launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
+        assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
+
+        uint256 launchpadEthAfter = address(launchpad).balance;
+
+        // Before: launchpad balance + purchaseValue == lauchpad balance + uniswap balance
+
+        assertEq(
+            launchpadEthBefore + purchaseValue,
+            launchpadEthAfter + WETH.balanceOf(uniswapPair),
+            "failed in funds conservation check"
+        );
+    }
 }
