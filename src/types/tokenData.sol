@@ -27,7 +27,7 @@ struct TokenState {
     /// @notice Total ETH collected by the token purchases, which will be used mostly for liquidity
     uint256 ethCollected;
     /// @notice Amount of tokens in circulation (that have been sold)
-    uint256 circulatingSupply;
+    uint256 releasedSupply;
     /// @notice This is set to true once graduated, meaning it is no longer tradable from the launchpad
     bool graduated;
 }
@@ -44,6 +44,6 @@ library TokenDataLib {
     }
 
     function tokenReserves(TokenState storage state) internal view returns (uint256) {
-        return TOTAL_SUPPLY - state.circulatingSupply;
+        return TOTAL_SUPPLY - state.releasedSupply;
     }
 }
