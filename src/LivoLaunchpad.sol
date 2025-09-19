@@ -188,15 +188,17 @@ contract LivoLaunchpad is Ownable {
         require(tokensToReceive <= _availableForPurchase(token), NotEnoughSupply());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
 
+        require(ethForReserves + ethFee == msg.value, "reserves + fee should match msg.value");
+        treasuryEthFeesCollected += ethFee;
         tokenState.ethCollected += ethForReserves;
         tokenState.releasedSupply += tokensToReceive;
-        treasuryEthFeesCollected += ethFee;
 
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
 
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
         if (_meetsGraduationCriteria(tokenState, tokenConfig)) {
+            // todo: pass here tokenState and tokenConfig as storage references
             _graduateToken(token);
         }
     }
@@ -360,6 +362,7 @@ contract LivoLaunchpad is Ownable {
         TokenState storage tokenState = tokenStates[tokenAddress];
         IERC20 token = IERC20(tokenAddress);
 
+        // todo if _graduate always happens as part of buyTokensWithExactEth, these checks are redundant
         require(tokenState.notGraduated(), AlreadyGraduated());
         require(_meetsGraduationCriteria(tokenState, tokenConfig), GraduationCriteriaNotMet());
 
@@ -451,6 +454,7 @@ contract LivoLaunchpad is Ownable {
     /// @dev The reserved creator supply is only effective at graduation,
     /// and it is taken from the remaining tokens in this contract at graduation
     function _availableForPurchase(address token) internal view returns (uint256) {
+        // todo: gas optimization  :  return TOTAL_SUPPLY - tokenStates[token].releasedSupply - CREATOR_RESERVED_SUPPLY;
         return IERC20(token).balanceOf(address(this)) - CREATOR_RESERVED_SUPPLY;
     }
 
