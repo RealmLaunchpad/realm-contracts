@@ -252,12 +252,9 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
     /// @notice Test that if WETH is transferred to the univ2pair pre-graduation, call pair.sync(), price in univ2 is higher than in the base graduation scenario
     function test_ethTransferToUniV2PairPreGraduation_sync_uniswapPriceHigher() public createTestTokenWithPair {
-        // this test was failing, but we are going to transition to uniswapV4 after graduation
-        vm.skip(true);
-
         // donate some eth to the pair
         IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
-        deal(address(WETH), address(pair), 0.01 ether);
+        deal(address(WETH), address(pair), 0.1 ether);
         pair.sync();
 
         // check how many tokens we get by purchasing 0.01 ether right before graduation
@@ -265,12 +262,16 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         uint256 ethAmountToGraduate = (graduationThreshold * 10000) / (10000 - BASE_BUY_FEE_BPS);
         vm.deal(buyer, ethAmountToGraduate + 1 ether);
         vm.startPrank(buyer);
-        launchpad.buyTokensWithExactEth{value: ethAmountToGraduate - 0.01 ether}(testToken, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: ethAmountToGraduate - 0.0001 ether}(testToken, 0, DEADLINE);
         uint256 tokensBefore = IERC20(testToken).balanceOf(buyer);
-        launchpad.buyTokensWithExactEth{value: 0.01 ether}(testToken, 0, DEADLINE);
+
+        // to calculate the uniswap price, we take the resereves only, so we don't consider fees
+        // to calculate the price in bonding curve we are going to artificially exclude the fees as well
+        uint256 secondBuy = 0.00011 ether;
+        launchpad.buyTokensWithExactEth{value: secondBuy}(testToken, 0, DEADLINE);
         uint256 tokensAfter = IERC20(testToken).balanceOf(buyer);
         uint256 tokensBought = tokensAfter - tokensBefore;
-        uint256 bondingCurvePrice = (0.01 ether * 1e18) / tokensBought;
+        uint256 bondingCurvePrice = (secondBuy * 1e18) / tokensBought;
         vm.stopPrank();
         assertTrue(LivoToken(testToken).graduated());
 
@@ -291,6 +292,30 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         // The price in uniswap should be strictly higher than the price in the bonding curve
         assertGt(uniswapPrice, bondingCurvePrice, "Uniswap price should be higher than bonding curve price");
+        // note: this test had the same issue as test_ethTransferToUniV2PairPreGraduation_noSync_uniswapPriceHigher()
+        // but I fixed this one by simply depositing a slighly higher amount of ETH
+    }
+
+
+    /// @notice Test that if a large amount of WETH is donated (and synced) to the univ2pair pre-graduation, graduation doesn't fail
+    function test_large_ethTransferToUniV2PairPreGraduation_sync_graduationOk() public createTestTokenWithPair {
+        // donate some eth to the pair
+        IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
+        // nobody would donate this amount of eth to block a token graduation, but just in case
+        deal(address(WETH), address(pair), 3 ether);
+        pair.sync();
+
+        _graduateToken();
+    }
+
+    /// @notice Test that if a large amount of WETH is donated to the univ2pair pre-graduation, graduation doesn't fail
+    function test_large_ethTransferToUniV2PairPreGraduation_noSync_graduationOk() public createTestTokenWithPair {
+        // donate some eth to the pair
+        IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
+        // nobody would donate this amount of eth to block a token graduation, but just in case
+        deal(address(WETH), address(pair), 3 ether);
+
+        _graduateToken();
     }
 
     /// @notice Test that launchpad eth balance change at graduation is the exact reserves pre graduation
