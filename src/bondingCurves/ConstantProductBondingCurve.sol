@@ -28,7 +28,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     /// @notice how many tokens can be purchased with a given amount of ETH
     function buyTokensWithExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
         external
-        view
+        pure
         returns (uint256 tokensReceived)
     {
         // todo review when T0 + tokenReserves smaller than K
@@ -38,7 +38,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     /// @notice how much ETH is required to buy an exact amount of tokens
     function buyExactTokens(uint256 tokenReserves, uint256 ethReserves, uint256 tokenAmount)
         external
-        view
+        pure
         returns (uint256 ethRequired)
     {
         // todo review when tokenReserves + T0 < tokenAmount
@@ -49,7 +49,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     /// @notice how much ETH will be received when selling an exact amount of tokens
     function sellExactTokens(uint256 tokenReserves, uint256 ethReserves, uint256 tokenAmount)
         external
-        view
+        pure
         returns (uint256 ethReceived)
     {
         // todo review when tokenReserves + T0 < K
@@ -59,7 +59,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     /// @notice how many tokens need to be sold to receive an exact amount of ETH
     function sellTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
         external
-        view
+        pure
         returns (uint256 tokensRequired)
     {
         // todo review when ethReserves + E0 < ethAmount
