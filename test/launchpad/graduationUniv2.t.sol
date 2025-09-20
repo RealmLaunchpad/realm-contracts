@@ -293,15 +293,6 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         assertGt(uniswapPrice, bondingCurvePrice, "Uniswap price should be higher than bonding curve price");
     }
 
-    /// @notice Test that if WETH is transferred to the univ2pair pre-graduation, call pair.sync(), the price is higher than in the base graduation scenario
-    function test_ethTransferToUniV2PairPreGraduation_sync_liquidityAdditionAtRightPrice()
-        public
-        createTestTokenWithPair
-    {
-        // We are transitioning to uniswapV4 after graduation
-        vm.skip(true);
-    }
-
     /// @notice Test that launchpad eth balance change at graduation is the exact reserves pre graduation
     function test_graduationConservationOfFunds() public createTestTokenWithPair {
         vm.deal(buyer, 100 ether);
