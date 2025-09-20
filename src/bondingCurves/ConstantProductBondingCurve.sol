@@ -31,6 +31,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         view
         returns (uint256 tokensReceived)
     {
+        // todo review when T0 + tokenReserves smaller than K
         tokensReceived = T0 + tokenReserves - K / (ethReserves + ethAmount + E0);
     }
 
@@ -40,7 +41,9 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         view
         returns (uint256 ethRequired)
     {
-        ethRequired = K / (tokenReserves - tokenAmount + T0) - ethReserves - E0;
+        // todo review when tokenReserves + T0 < tokenAmount
+        // todo review when left side is smaller than  ethReserves + E0
+        ethRequired = K / (tokenReserves + T0 - tokenAmount) - ethReserves - E0;
     }
 
     /// @notice how much ETH will be received when selling an exact amount of tokens
@@ -49,6 +52,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         view
         returns (uint256 ethReceived)
     {
+        // todo review when tokenReserves + T0 < K
         ethReceived = E0 + ethReserves - K / (tokenReserves + tokenAmount + T0);
     }
 
@@ -58,7 +62,9 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         view
         returns (uint256 tokensRequired)
     {
-        tokensRequired = K / (ethReserves - ethAmount + E0) - tokenReserves - T0;
+        // todo review when ethReserves + E0 < ethAmount
+        // todo review when left side is smaller than (tokenReserves + T0)
+        tokensRequired = K / (ethReserves + E0 - ethAmount) - tokenReserves - T0;
     }
 
     function getTokenReserves(uint256 ethReserves) external pure returns (uint256) {
@@ -68,6 +74,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     ///////////////////////////// INTERNALS //////////////////////////////////
 
     function _getTokenReserves(uint256 ethReserves) internal pure returns (uint256) {
+        // todo review left side is smaller than T0
         return K / (ethReserves + E0) - T0;
     }
 }
