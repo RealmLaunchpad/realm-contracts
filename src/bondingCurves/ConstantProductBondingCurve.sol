@@ -29,7 +29,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     error NotImplemented();
 
     /// @notice how many tokens can be purchased with a given amount of ETH
-    function buyTokensWithExactEth(uint256, /*tokenReserves*/ uint256 ethReserves, uint256 ethAmount)
+    function buyTokensWithExactEth(uint256 ethReserves, uint256 ethAmount)
         external
         pure
         returns (uint256 tokensReceived)
@@ -45,11 +45,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     }
 
     /// @notice how much ETH is required to buy an exact amount of tokens
-    function buyExactTokens(uint256, /*tokenReserves*/ uint256 ethReserves, uint256 tokenAmount)
-        external
-        pure
-        returns (uint256 ethRequired)
-    {
+    function buyExactTokens(uint256 ethReserves, uint256 tokenAmount) external pure returns (uint256 ethRequired) {
         // This would be the formula to implement, but not needed for this version.
         // uint256 tokenReserves = K / (ethReserves + E0) - T0;
         // ethRequired = K / (tokenReserves + T0 - tokenAmount) - ethReserves - E0;
@@ -58,11 +54,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     }
 
     /// @notice how much ETH will be received when selling an exact amount of tokens
-    function sellExactTokens(uint256, /*tokenReserves*/ uint256 ethReserves, uint256 tokenAmount)
-        external
-        pure
-        returns (uint256 ethReceived)
-    {
+    function sellExactTokens(uint256 ethReserves, uint256 tokenAmount) external pure returns (uint256 ethReceived) {
         // The final expression is derived from these two:
         //      uint256 tokenReserves = K / (ethReserves + E0) - T0;
         //      ethReceived = E0 + ethReserves - K / (tokenReserves + tokenAmount + T0);
@@ -71,7 +63,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     }
 
     /// @notice how many tokens need to be sold to receive an exact amount of ETH
-    function sellTokensForExactEth(uint256, /*tokenReserves*/ uint256 ethReserves, uint256 ethAmount)
+    function sellTokensForExactEth(uint256 ethReserves, uint256 ethAmount)
         external
         pure
         returns (uint256 tokensRequired)

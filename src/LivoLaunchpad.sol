@@ -415,9 +415,8 @@ contract LivoLaunchpad is Ownable {
         ethFee = (ethValue * tokenConfig.buyFeeBps) / BASIS_POINTS;
         ethForPurchase = ethValue - ethFee;
 
-        tokensToReceive = tokenConfig.bondingCurve.buyTokensWithExactEth(
-            tokenStates[token].tokenReserves(), tokenStates[token].ethCollected, ethForPurchase
-        );
+        tokensToReceive =
+            tokenConfig.bondingCurve.buyTokensWithExactEth(tokenStates[token].ethCollected, ethForPurchase);
 
         return (ethForPurchase, ethFee, tokensToReceive);
     }
@@ -429,9 +428,7 @@ contract LivoLaunchpad is Ownable {
     {
         TokenConfig storage tokenConfig = tokenConfigs[token];
 
-        ethFromSale = tokenConfig.bondingCurve.sellExactTokens(
-            tokenStates[token].tokenReserves(), tokenStates[token].ethCollected, tokenAmount
-        );
+        ethFromSale = tokenConfig.bondingCurve.sellExactTokens(tokenStates[token].ethCollected, tokenAmount);
 
         ethFee = (ethFromSale * tokenConfig.sellFeeBps) / BASIS_POINTS;
         ethForSeller = ethFromSale - ethFee;

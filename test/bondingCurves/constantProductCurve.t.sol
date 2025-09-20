@@ -45,7 +45,7 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 ethReserves = 0;
         uint256 ethAmount = 1;
 
-        uint256 tokens = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
+        uint256 tokens = curve.buyTokensWithExactEth(ethReserves, ethAmount);
         assertTrue(tokens > 0, "Should mint non-zero amount of tokens");
     }
 
@@ -55,8 +55,8 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
         uint256 ethAmount = 1e18;
 
-        uint256 tokensReceived = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
-        uint256 ethRequired = curve.buyExactTokens(tokenReserves, ethReserves, tokensReceived);
+        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, ethAmount);
+        uint256 ethRequired = curve.buyExactTokens(ethReserves, tokensReceived);
 
         // accept a difference of 0.01% between the two functions
         assertApproxEqRel(ethRequired, ethAmount, 0.0001e18, "Buy functions should match in price");
@@ -68,7 +68,7 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 ethReserves = GRADUATION_THRESHOLD;
         // the buy value cannot be too hight, otherwise we affect the price too much
         uint256 buyValue = 0.000001e18;
-        uint256 tokensReceived = curve.buyTokensWithExactEth(tokenReserves, ethReserves, buyValue);
+        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, buyValue);
         uint256 curvePrice = (1e18 * buyValue) / tokensReceived; // ETH/tokens
 
         // then we take the graduation fee and tokens for creators, and calculate the Uniswap price
@@ -86,7 +86,7 @@ contract ConstantProductBondingCurveTest is Test {
         ethAmount = bound(ethAmount, 0, 37e18);
 
         // token reserves are calculated internally from the ethReserves so it doesn't matter what we pass here
-        uint256 tokensReceived = curve.buyTokensWithExactEth(1, ethReserves, ethAmount);
+        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, ethAmount);
     }
 
     // This basically tests that a buy can happen after the first small purchase. Not the most useful test though.
@@ -95,7 +95,7 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
         uint256 tokenAmount = 1000e18;
 
-        uint256 ethReceived = curve.sellExactTokens(tokenReserves, ethReserves, tokenAmount);
+        uint256 ethReceived = curve.sellExactTokens(ethReserves, tokenAmount);
         assertTrue(ethReceived > 0, "Should receive non-zero amount of ETH");
     }
 
@@ -103,7 +103,7 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 tokenReserves = curve.getTokenReserves(GRADUATION_THRESHOLD);
         uint256 ethReserves = GRADUATION_THRESHOLD;
         uint256 sellAmount = 1000e18;
-        uint256 ethReceived = curve.sellExactTokens(tokenReserves, ethReserves, sellAmount);
+        uint256 ethReceived = curve.sellExactTokens(ethReserves, sellAmount);
         uint256 curvePrice = (1e18 * ethReceived) / sellAmount;
 
         uint256 tokenReservesForUniswap = tokenReserves - GRADUATION_TOKEN_CREATOR_REWARD;
@@ -118,7 +118,7 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
         tokenAmount = bound(tokenAmount, 1e18, tokenReserves / 10);
 
-        uint256 ethReceived = curve.sellExactTokens(tokenReserves, ethReserves, tokenAmount);
+        uint256 ethReceived = curve.sellExactTokens(ethReserves, tokenAmount);
         assertTrue(ethReceived > 0, "Should receive ETH when selling tokens");
     }
 
@@ -127,13 +127,13 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
 
         ethAmount = bound(ethAmount, 0.000001e18, 2e18);
-        uint256 tokensReceived = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
+        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, ethAmount);
         ethReserves += ethAmount;
         console.log("before updating tokenReserves");
         tokenReserves -= tokensReceived;
         console.log("after updating tokenReserves");
 
-        uint256 ethReceived = curve.sellExactTokens(tokenReserves, ethReserves, tokensReceived);
+        uint256 ethReceived = curve.sellExactTokens(ethReserves, tokensReceived);
 
         // we accept a loss of up to 0.1% in the buy+sell process
         assertApproxEqRel(ethReceived, ethAmount, 0.00000001e18, "Should get back almost all ETH after buy+sell");
