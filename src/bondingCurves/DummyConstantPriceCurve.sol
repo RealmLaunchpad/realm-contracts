@@ -14,7 +14,7 @@ contract DummyConstantPriceCurve is ILivoBondingCurve {
 
     event PriceSet(uint256 price);
 
-    function buyTokensWithExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
+    function buyTokensWithExactEth(uint256 ethReserves, uint256 ethAmount)
         external
         view
         returns (uint256 tokensReceived)
@@ -22,23 +22,15 @@ contract DummyConstantPriceCurve is ILivoBondingCurve {
         return (PRECISION * ethAmount) / tokenPrice;
     }
 
-    function buyExactTokens(uint256 tokenReserves, uint256 ethReserves, uint256 tokenAmount)
-        external
-        view
-        returns (uint256 ethRequired)
-    {
+    function buyExactTokens(uint256 ethReserves, uint256 tokenAmount) external view returns (uint256 ethRequired) {
         return tokenAmount * tokenPrice / PRECISION;
     }
 
-    function sellExactTokens(uint256 tokenReserves, uint256 ethReserves, uint256 tokenAmount)
-        external
-        view
-        returns (uint256 ethReceived)
-    {
+    function sellExactTokens(uint256 ethReserves, uint256 tokenAmount) external view returns (uint256 ethReceived) {
         return tokenAmount * tokenPrice / PRECISION;
     }
 
-    function sellTokensForExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
+    function sellTokensForExactEth(uint256 ethReserves, uint256 ethAmount)
         external
         view
         returns (uint256 tokensRequired)

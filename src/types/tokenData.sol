@@ -43,6 +43,7 @@ library TokenDataLib {
         return !state.graduated;
     }
 
+    // todo this function is no longer used and probably can be removed
     function tokenReserves(TokenState storage state) internal view returns (uint256) {
         return TOTAL_SUPPLY - state.releasedSupply;
     }
