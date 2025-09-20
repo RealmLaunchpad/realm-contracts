@@ -81,7 +81,6 @@ contract ConstantProductBondingCurveTest is Test {
     }
 
     function test_fuzz_buyTokensWithExactEth(uint256 ethReserves, uint256 ethAmount) public {
-
         // This is way outside the expected range, as tokens would be graduated when reserves are about 8 ETH, but just in case
         ethReserves = bound(ethReserves, 0, 37e18);
         ethAmount = bound(ethAmount, 0, 37e18);
@@ -90,7 +89,7 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 tokensReceived = curve.buyTokensWithExactEth(1, ethReserves, ethAmount);
     }
 
-    // This basically tests that a buy can happen after the first small purchase. Not the most useful test though. 
+    // This basically tests that a buy can happen after the first small purchase. Not the most useful test though.
     function test_sellExactTokens_initialState() public {
         uint256 ethReserves = 1e18;
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
@@ -130,9 +129,9 @@ contract ConstantProductBondingCurveTest is Test {
         ethAmount = bound(ethAmount, 0.000001e18, 2e18);
         uint256 tokensReceived = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
         ethReserves += ethAmount;
-        console.log('before updating tokenReserves');
+        console.log("before updating tokenReserves");
         tokenReserves -= tokensReceived;
-        console.log('after updating tokenReserves');
+        console.log("after updating tokenReserves");
 
         uint256 ethReceived = curve.sellExactTokens(tokenReserves, ethReserves, tokensReceived);
 
