@@ -91,7 +91,7 @@ contract BuyTokensTest is LaunchpadBaseTest {
     function test_quoteInitialPrice() public createTestToken {
         // how many tokens do you get with the first wei?
         (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(testToken, 1);
-        assertEq(expectedTokens, 393333334);
+        assertApproxEqAbs(expectedTokens, 393333333, 1);
     }
 
     function testBuyTokensWithExactEth_withMinTokenAmount() public createTestToken {
@@ -308,11 +308,11 @@ contract BuyTokensTest is LaunchpadBaseTest {
         uint256 tokensFromBigBuy = IERC20(testToken2).balanceOf(buyer2);
         TokenState memory stateAfterBig = launchpad.getTokenState(testToken2);
 
-        // The final state should be the same
-        assertEq(tokensFromMultipleBuys, tokensFromBigBuy, "Multiple small buys should equal one big buy");
+        // The final state should be the same (allow a 10wei error)
+        assertApproxEqAbs(tokensFromMultipleBuys, tokensFromBigBuy, 10, "Multiple small buys should equal one big buy");
         assertEq(stateAfterMultiple.ethCollected, stateAfterBig.ethCollected, "ETH collected should be the same");
-        assertEq(
-            stateAfterMultiple.releasedSupply, stateAfterBig.releasedSupply, "Circulating supply should be the same"
+        assertApproxEqAbs(
+            stateAfterMultiple.releasedSupply, stateAfterBig.releasedSupply, 10, "Circulating supply should be the same"
         );
     }
 
