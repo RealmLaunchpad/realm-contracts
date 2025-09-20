@@ -231,7 +231,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         assertGt(uniswapPrice, bondingCurvePrice, "Uniswap price should be higher than bonding curve price");
 
         // note: if we didn't artificially compensate for the fees in the bonding curve, this assertion would revert with these numbers
-        //  uniswap: 39063797643 <= bonding curve: 39368865940  -->  price drop of 0.78% 
+        //  uniswap: 39063797643 <= bonding curve: 39368865940  -->  price drop of 0.78%
     }
 
     /// @notice Test that if WETH is transferred to the univ2pair pre-graduation, call pair.sync(), liquidity addition doesn't revert
@@ -295,7 +295,6 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         // note: this test had the same issue as test_ethTransferToUniV2PairPreGraduation_noSync_uniswapPriceHigher()
         // but I fixed this one by simply depositing a slighly higher amount of ETH
     }
-
 
     /// @notice Test that if a large amount of WETH is donated (and synced) to the univ2pair pre-graduation, graduation doesn't fail
     function test_large_ethTransferToUniV2PairPreGraduation_sync_graduationOk() public createTestTokenWithPair {

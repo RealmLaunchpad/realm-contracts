@@ -23,7 +23,10 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     uint256 public constant T0 = 72727273200000000286060606; // 7.27e27
     uint256 public constant E0 = 2727272727272727272; // 2.72e18
 
-    // todo probably I can get rid of the tokenReserves in all functions and derive them from the formula
+    // IMPORTANT: These constants define a curve that doesn't behave well for ethReserves > 37 eth. 
+    // This is not a problem in practice as long as the graduation threshold + limit excess is well below that.
+    
+    error NotImplemented();
 
     /// @notice how many tokens can be purchased with a given amount of ETH
     function buyTokensWithExactEth(uint256 tokenReserves, uint256 ethReserves, uint256 ethAmount)
@@ -31,8 +34,14 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         pure
         returns (uint256 tokensReceived)
     {
-        // todo review when T0 + tokenReserves smaller than K
-        tokensReceived = T0 + tokenReserves - K / (ethReserves + ethAmount + E0);
+        // tokenReserves are passed to the bonding curve to comply with the ILivoBondingCurve interface
+        // but if they are derived from the formula, it is more difficult to trick the curve
+
+        // The final expression is derived from these two:
+        //      tokenReserves = K / (ethReserves + E0) - T0;
+        //      tokensReceived = T0 + tokenReserves - K / (ethReserves + ethAmount + E0);
+        // denominator can nevery be 0, as E0 is a non-zero constant
+        tokensReceived = K * ethAmount / ((ethReserves + E0) * (ethReserves + ethAmount + E0));
     }
 
     /// @notice how much ETH is required to buy an exact amount of tokens
@@ -41,9 +50,10 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         pure
         returns (uint256 ethRequired)
     {
-        // todo review when tokenReserves + T0 < tokenAmount
-        // todo review when left side is smaller than  ethReserves + E0
+        // This would be the formula to implement, but not needed for this version.
+        tokenReserves = K / (ethReserves + E0) - T0;
         ethRequired = K / (tokenReserves + T0 - tokenAmount) - ethReserves - E0;
+        // revert NotImplemented();
     }
 
     /// @notice how much ETH will be received when selling an exact amount of tokens
@@ -62,9 +72,9 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         pure
         returns (uint256 tokensRequired)
     {
-        // todo review when ethReserves + E0 < ethAmount
-        // todo review when left side is smaller than (tokenReserves + T0)
-        tokensRequired = K / (ethReserves + E0 - ethAmount) - tokenReserves - T0;
+        // This would be the formula to implement, but not needed for this version.
+        // tokensRequired = K / (ethReserves + E0 - ethAmount) - tokenReserves - T0;
+        revert NotImplemented();
     }
 
     function getTokenReserves(uint256 ethReserves) external pure returns (uint256) {

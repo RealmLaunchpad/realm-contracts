@@ -20,6 +20,11 @@ contract ConstantProductBondingCurveTest is Test {
         curve = new ConstantProductBondingCurve();
     }
 
+    function _uniswapV2EstimatedPrice(uint256 tokenReserves, uint256 ethReserves) internal pure returns (uint256) {
+        if (tokenReserves == 0 || ethReserves == 0) return 0;
+        return (ethReserves * 1e18) / tokenReserves;
+    }
+
     /////////////////////// TESTING BASIC FUNCTION SHAPE ////////////////////////////////
     function test_tokenReservesAtZeroEthSupply() public {
         uint256 tokenReserves = curve.getTokenReserves(0);
@@ -44,16 +49,26 @@ contract ConstantProductBondingCurveTest is Test {
         assertTrue(tokens > 0, "Should mint non-zero amount of tokens");
     }
 
-    function _uniswapV2EstimatedPrice(uint256 tokenReserves, uint256 ethReserves) internal pure returns (uint256) {
-        if (tokenReserves == 0 || ethReserves == 0) return 0;
-        return (ethReserves * 1e18) / tokenReserves;
+    function test_buyFunctionsMatchInPrice() public view {
+        uint256 ethReserves = 1e18;
+        uint256 tokenReserves = curve.getTokenReserves(ethReserves);
+        uint256 ethAmount = 1e18;
+
+        uint256 tokensReceived = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
+        uint256 ethRequired = curve.buyExactTokens(tokenReserves, ethReserves, tokensReceived);
+
+        // accept a difference of 0.01% between the two functions
+        assertApproxEqRel(ethRequired, ethAmount, 0.0001e18, "Buy functions should match in price");
     }
 
-    function test_tokenPriceAtGraduationPoint_matchesUniswap() public {
+    function test_tokenPriceAtGraduationPoint_matchesUniswap() public view {
         // reserves pre-graduation
         uint256 tokenReserves = curve.getTokenReserves(GRADUATION_THRESHOLD);
         uint256 ethReserves = GRADUATION_THRESHOLD;
-        uint256 curvePrice = curve.buyExactTokens(tokenReserves, ethReserves, 1e18);
+        // the buy value cannot be too hight, otherwise we affect the price too much
+        uint256 buyValue = 0.000001e18;
+        uint256 tokensReceived = curve.buyTokensWithExactEth(tokenReserves, ethReserves, buyValue);
+        uint256 curvePrice = (1e18 * buyValue) / tokensReceived; // ETH/tokens
 
         // then we take the graduation fee and tokens for creators, and calculate the Uniswap price
         uint256 tokenReservesForUniswap = tokenReserves - GRADUATION_TOKEN_CREATOR_REWARD;
@@ -62,6 +77,16 @@ contract ConstantProductBondingCurveTest is Test {
 
         // accept an price change of %0.001 between uniswap and bonding curve at the moment of graduation
         assertApproxEqRel(curvePrice, uniswapPrice, 0.00001e18, "Token prices should match at graduation point");
+    }
+
+    function test_fuzz_buyAndSellExactTokens(uint256 ethReserves, uint256 ethAmount) public {
+
+        // This is way outside the expected range, as tokens would be graduated when reserves are about 8 ETH, but just in case
+        ethReserves = bound(ethReserves, 0, 37e18);
+        ethAmount = bound(ethAmount, 0, 37e18);
+
+        // token reserves are calculated internally from the ethReserves so it doesn't matter what we pass here
+        uint256 tokensReceived = curve.buyTokensWithExactEth(1, ethReserves, ethAmount);
     }
 
     // todo sell tokens tests
