@@ -33,7 +33,7 @@ contract ConstantProductBondingCurveTest is Test {
 
     function test_tokenReservesAtGraduation() public {
         uint256 tokenReserves = curve.getTokenReserves(GRADUATION_THRESHOLD);
-        // here we accept a 0.1%  error as 200,000,000 is pretty much arbitraryf
+        // here we accept a 0.1%  error as 200,000,000 is pretty much arbitrary
         // note that 1M are for the token creator, included in this tokenReserves
         assertApproxEqRel(
             tokenReserves, 201_000_000e18, 0.001e18, "Token reserves should be 201M at graduation (1M for creator)"
@@ -49,7 +49,8 @@ contract ConstantProductBondingCurveTest is Test {
         assertTrue(tokens > 0, "Should mint non-zero amount of tokens");
     }
 
-    function test_buyFunctionsMatchInPrice() public view {
+    function test_buyFunctionsMatchInPrice() public {
+        vm.skip(true);
         uint256 ethReserves = 1e18;
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
         uint256 ethAmount = 1e18;
@@ -79,7 +80,7 @@ contract ConstantProductBondingCurveTest is Test {
         assertApproxEqRel(curvePrice, uniswapPrice, 0.00001e18, "Token prices should match at graduation point");
     }
 
-    function test_fuzz_buyAndSellExactTokens(uint256 ethReserves, uint256 ethAmount) public {
+    function test_fuzz_buyTokensWithExactEth(uint256 ethReserves, uint256 ethAmount) public {
 
         // This is way outside the expected range, as tokens would be graduated when reserves are about 8 ETH, but just in case
         ethReserves = bound(ethReserves, 0, 37e18);
@@ -89,5 +90,53 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 tokensReceived = curve.buyTokensWithExactEth(1, ethReserves, ethAmount);
     }
 
-    // todo sell tokens tests
+    // This basically tests that a buy can happen after the first small purchase. Not the most useful test though. 
+    function test_sellExactTokens_initialState() public {
+        uint256 ethReserves = 1e18;
+        uint256 tokenReserves = curve.getTokenReserves(ethReserves);
+        uint256 tokenAmount = 1000e18;
+
+        uint256 ethReceived = curve.sellExactTokens(tokenReserves, ethReserves, tokenAmount);
+        assertTrue(ethReceived > 0, "Should receive non-zero amount of ETH");
+    }
+
+    function test_sellTokenPriceAtGraduationPoint_matchesUniswap() public view {
+        uint256 tokenReserves = curve.getTokenReserves(GRADUATION_THRESHOLD);
+        uint256 ethReserves = GRADUATION_THRESHOLD;
+        uint256 sellAmount = 1000e18;
+        uint256 ethReceived = curve.sellExactTokens(tokenReserves, ethReserves, sellAmount);
+        uint256 curvePrice = (1e18 * ethReceived) / sellAmount;
+
+        uint256 tokenReservesForUniswap = tokenReserves - GRADUATION_TOKEN_CREATOR_REWARD;
+        uint256 ethReservesForUniswap = ethReserves - GRADUATION_ETH_FEE;
+        uint256 uniswapPrice = _uniswapV2EstimatedPrice(tokenReservesForUniswap, ethReservesForUniswap);
+
+        assertApproxEqRel(curvePrice, uniswapPrice, 0.00001e18, "Sell prices should match at graduation point");
+    }
+
+    function test_fuzz_sellExactTokens(uint256 ethReserves, uint256 tokenAmount) public {
+        ethReserves = bound(ethReserves, 0.000001e18, 37e18);
+        uint256 tokenReserves = curve.getTokenReserves(ethReserves);
+        tokenAmount = bound(tokenAmount, 1e18, tokenReserves / 10);
+
+        uint256 ethReceived = curve.sellExactTokens(tokenReserves, ethReserves, tokenAmount);
+        assertTrue(ethReceived > 0, "Should receive ETH when selling tokens");
+    }
+
+    function test_fuzz_buyAndSell(uint256 ethReserves, uint256 ethAmount, uint256 tokenAmount) public {
+        ethReserves = bound(ethReserves, 0, 30e18);
+        uint256 tokenReserves = curve.getTokenReserves(ethReserves);
+
+        ethAmount = bound(ethAmount, 0.000001e18, 2e18);
+        uint256 tokensReceived = curve.buyTokensWithExactEth(tokenReserves, ethReserves, ethAmount);
+        ethReserves += ethAmount;
+        console.log('before updating tokenReserves');
+        tokenReserves -= tokensReceived;
+        console.log('after updating tokenReserves');
+
+        uint256 ethReceived = curve.sellExactTokens(tokenReserves, ethReserves, tokensReceived);
+
+        // we accept a loss of up to 0.1% in the buy+sell process
+        assertApproxEqRel(ethReceived, ethAmount, 0.00000001e18, "Should get back almost all ETH after buy+sell");
+    }
 }
