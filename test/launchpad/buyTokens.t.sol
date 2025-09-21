@@ -165,7 +165,7 @@ contract BuyTokensTest is LaunchpadBaseTest {
 
     function testBuyTokensWithExactEth_revertExceedsPostGraduationLimit() public createTestToken {
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 maxExcess = 0.5 ether; // MAX_THRESHOLD_EXCEESS
+        uint256 maxExcess = 0.5 ether; // MAX_THRESHOLD_EXCESS
 
         // Try to buy way beyond the excess limit
         uint256 excessiveAmount = graduationThreshold + maxExcess + 0.1 ether;
@@ -181,7 +181,7 @@ contract BuyTokensTest is LaunchpadBaseTest {
         createTestToken
     {
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 maxExcess = 0.5 ether; // MAX_THRESHOLD_EXCEESS
+        uint256 maxExcess = 0.5 ether; // MAX_THRESHOLD_EXCESS
 
         // Buy up to just before the threshold (accounting for fees)
         uint256 targetEthReserves = graduationThreshold - 1 ether; // Stay well below threshold
@@ -330,5 +330,40 @@ contract BuyTokensTest is LaunchpadBaseTest {
             launchpad.getTokenState(testToken).ethCollected + launchpad.treasuryEthFeesCollected(),
             "eth balance should match reserves + fees"
         );
+    }
+
+    /// @notice Given a fuzzed starting point in the curve, two consecutive buys of the same amount should yield a higher price the second time
+    function test_fuzz_twoConsecutiveBuysSecondPriceIsHigher(uint256 ethForPreBuy, uint256 ethForComparison) public createTestToken {
+        uint256 maxTotalEth = BASE_GRADUATION_THRESHOLD + launchpad.MAX_THRESHOLD_EXCESS();
+        // if the token graduates from the first one, the next one is pointless
+        ethForPreBuy = bound(ethForPreBuy, 1, BASE_GRADUATION_THRESHOLD - 2);
+        ethForComparison = bound(ethForComparison, 1, (maxTotalEth - ethForPreBuy) / 2);
+
+        vm.deal(buyer, 10 ether);
+        vm.deal(seller, 10 ether);
+
+        // this is bascially to get a random starting point in the curve
+        launchpad.buyTokensWithExactEth{value: ethForPreBuy}(testToken, 0, DEADLINE);
+
+        // first buy
+        uint256 initialTokenBalance = IERC20(testToken).balanceOf(buyer);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: ethForComparison}(testToken, 0, DEADLINE);
+        uint256 tokensReceived1 = IERC20(testToken).balanceOf(buyer) - initialTokenBalance;
+        uint256 firstPrice = (ethForComparison * 1e18) / tokensReceived1;
+
+        // if graduated here, the next part is pointless. Return
+        if (launchpad.getTokenState(testToken).graduated) {
+            return;
+        }
+
+        // second buy
+        initialTokenBalance = IERC20(testToken).balanceOf(seller);
+        vm.prank(seller);
+        launchpad.buyTokensWithExactEth{value: ethForComparison}(testToken, 0, DEADLINE);
+        uint256 tokensReceived2 = IERC20(testToken).balanceOf(seller) - initialTokenBalance;
+        uint256 secondPrice = (ethForComparison * 1e18) / tokensReceived2;
+
+        assertGe(secondPrice, firstPrice, "The second purchase should get a higher price");
     }
 }

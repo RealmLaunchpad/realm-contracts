@@ -13,7 +13,7 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 
 contract BaseUniswapV2GraduationTests is LaunchpadBaseTest {
     uint256 constant DEADLINE = type(uint256).max;
-    uint256 constant MAX_THRESHOLD_EXCEESS = 0.5 ether;
+    uint256 constant MAX_THRESHOLD_EXCESS = 0.5 ether;
     address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     // Uniswap V2 contracts on mainnet
