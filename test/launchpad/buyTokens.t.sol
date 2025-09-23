@@ -333,7 +333,10 @@ contract BuyTokensTest is LaunchpadBaseTest {
     }
 
     /// @notice Given a fuzzed starting point in the curve, two consecutive buys of the same amount should yield a higher price the second time
-    function test_fuzz_twoConsecutiveBuysSecondPriceIsHigher(uint256 ethForPreBuy, uint256 ethForComparison) public createTestToken {
+    function test_fuzz_twoConsecutiveBuysSecondPriceIsHigher(uint256 ethForPreBuy, uint256 ethForComparison)
+        public
+        createTestToken
+    {
         uint256 maxTotalEth = BASE_GRADUATION_THRESHOLD + launchpad.MAX_THRESHOLD_EXCESS();
         // if the token graduates from the first one, the next one is pointless
         ethForPreBuy = bound(ethForPreBuy, 1, BASE_GRADUATION_THRESHOLD - 2);

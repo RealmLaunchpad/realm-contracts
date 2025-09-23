@@ -10,6 +10,9 @@ test:
 test-curves:
     forge test --match-contract Curve
 
+invariant-tests:
+    forge test --match-contract Invariants
+
 ##################### INSPECTION ####################
 error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
