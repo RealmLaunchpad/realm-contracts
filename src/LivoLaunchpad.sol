@@ -168,7 +168,7 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @dev slippage control is done with minTokenAmount (min tokens willing to buy)
-    function buyTokensWithExactEth(address token, uint256 minTokenAmount, uint256 deadline) external payable {
+    function buyTokensWithExactEth(address token, uint256 minTokenAmount, uint256 deadline) external payable returns (uint256 receivedTokens) {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
@@ -200,10 +200,12 @@ contract LivoLaunchpad is Ownable {
         if (_meetsGraduationCriteria(tokenState, tokenConfig)) {
             _graduateToken(token, tokenState, tokenConfig);
         }
+
+        return tokensToReceive;
     }
 
     /// @dev slippage control is done with minEthAmount (min eth willing to receive)
-    function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
+    function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external returns (uint256 receivedEth) {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
@@ -227,6 +229,8 @@ contract LivoLaunchpad is Ownable {
         _transferEth(msg.sender, ethForSeller);
 
         emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
+
+        return ethForSeller;
     }
 
     //////////////////////////// view functions //////////////////////////
