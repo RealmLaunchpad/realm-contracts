@@ -168,7 +168,11 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @dev slippage control is done with minTokenAmount (min tokens willing to buy)
-    function buyTokensWithExactEth(address token, uint256 minTokenAmount, uint256 deadline) external payable returns (uint256 receivedTokens) {
+    function buyTokensWithExactEth(address token, uint256 minTokenAmount, uint256 deadline)
+        external
+        payable
+        returns (uint256 receivedTokens)
+    {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
@@ -176,8 +180,8 @@ contract LivoLaunchpad is Ownable {
         require(tokenConfig.exists(), InvalidToken());
         require(tokenState.notGraduated(), AlreadyGraduated());
         require(block.timestamp <= deadline, DeadlineExceeded());
-        // fees are ignored in this check. If fees were accounted, the limit should be higher,
-        // which would expand the price diff between bounding curve and uniswap
+        // fees are ignored in the check below on purpose.
+        // If fees were accounted, the limit should be higher, but it is an arbitrary limit anyways
         require(
             tokenState.ethCollected + msg.value < tokenConfig.ethGraduationThreshold + MAX_THRESHOLD_EXCESS,
             PurchaseExceedsLimitPostGraduation()
@@ -205,7 +209,10 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @dev slippage control is done with minEthAmount (min eth willing to receive)
-    function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external returns (uint256 receivedEth) {
+    function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline)
+        external
+        returns (uint256 receivedEth)
+    {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 

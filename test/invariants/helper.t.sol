@@ -15,11 +15,14 @@ contract InvariantsHelperLaunchpad is Test {
     address admin = makeAddr("admin");
     address treasury = makeAddr("treasury");
 
-    EnumerableSet.AddressSet internal _actors;
-    EnumerableSet.AddressSet internal _tokens;
-    address lastActor;
-
     address public currentActor;
+    EnumerableSet.AddressSet internal _actors;
+
+    // non graduated tokens
+    EnumerableSet.AddressSet internal _tokens;
+    // graduated tokens
+    EnumerableSet.AddressSet internal _graduatedTokens;
+
     address public selectedToken;
     uint256 public timestamp;
 
@@ -36,16 +39,15 @@ contract InvariantsHelperLaunchpad is Test {
     mapping(address => uint256) public aggregatedEthFromSells;
     mapping(address => bool) public graduatedTokens;
 
-    uint256 graduatedCount;
+    uint256 public globalAggregatedEthForBuys;
+    uint256 public globalAggregatedTokensBought;
+    uint256 public globalAggregatedTokensSold;
+    uint256 public globalAggregatedEthFromSells;
 
     uint256 constant FAR_IN_FUTURE = 9758664012;
 
     /////////////////////////////////////////////////////
-    constructor(
-        LivoLaunchpad _launchpad,
-        address _bondingCurve,
-         address _graduator
-    ) {
+    constructor(LivoLaunchpad _launchpad, address _bondingCurve, address _graduator) {
         launchpad = _launchpad;
         bondingCurve = _bondingCurve;
         graduator = _graduator;
@@ -114,7 +116,7 @@ contract InvariantsHelperLaunchpad is Test {
         if (_tokens.length() == 0) return;
         _sell(seed, amount);
     }
-    
+
     function sell2(uint256 seed, uint256 amount) public {
         if (_tokens.length() == 0) return;
         _sell(seed, amount);
@@ -125,21 +127,30 @@ contract InvariantsHelperLaunchpad is Test {
         TokenState memory state = launchpad.getTokenState(selectedToken);
         if (state.graduated) return;
 
+        uint256 maxEthToBuy =
+            launchpad.baseEthGraduationThreshold() + launchpad.MAX_THRESHOLD_EXCESS() - state.ethCollected;
+
         // graduation happens at roughly 8 eth
         // purchase exceeds when trying to purchase more than 8.5 eth more or less
-        uint256 ethToSpend = _bound(amount, 1, 10 ether);
+        uint256 ethToSpend = _bound(amount, 1, maxEthToBuy + 0.1 ether);
         deal(currentActor, ethToSpend);
 
+        vm.prank(currentActor);
+        // if (maxEthToBuy - ethToSpend <= 0.1 ether) {
+        //     vm.expectRevert(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector);
+        // }
         uint256 tokensReceived = launchpad.buyTokensWithExactEth{value: ethToSpend}(selectedToken, 0, FAR_IN_FUTURE);
 
         aggregatedEthForBuys[selectedToken] += ethToSpend;
         aggregatedTokensBought[selectedToken] += tokensReceived;
-    
+        globalAggregatedEthForBuys += ethToSpend;
+        globalAggregatedTokensBought += tokensReceived;
+
         if (launchpad.getTokenState(selectedToken).graduated) {
-            graduatedCount += 1;
             graduatedTokens[selectedToken] = true;
             // review if removing this is not leaving core assumptions untested
             _tokens.remove(selectedToken);
+            _graduatedTokens.add(selectedToken);
         }
     }
 
@@ -154,11 +165,15 @@ contract InvariantsHelperLaunchpad is Test {
 
         uint256 tokensToSell = _bound(amount, 1, tokenBalance);
 
+        vm.startPrank(currentActor);
         IERC20(selectedToken).approve(address(launchpad), tokensToSell);
         uint256 ethReceived = launchpad.sellExactTokens(selectedToken, tokensToSell, 0, FAR_IN_FUTURE);
+        vm.stopPrank();
 
         aggregatedTokensSold[selectedToken] += tokensToSell;
         aggregatedEthFromSells[selectedToken] += ethReceived;
+        globalAggregatedTokensSold += tokensToSell;
+        globalAggregatedEthFromSells += ethReceived;
     }
 
     //////////////////////////// utility functions ///////////////////////
@@ -181,5 +196,13 @@ contract InvariantsHelperLaunchpad is Test {
 
     function nTokens() public view returns (uint256) {
         return _tokens.length();
+    }
+
+    function graduatedTokenAt(uint256 i) public view returns (address) {
+        return _graduatedTokens.at(i);
+    }
+
+    function nGraduatedTokens() public view returns (uint256) {
+        return _graduatedTokens.length();
     }
 }

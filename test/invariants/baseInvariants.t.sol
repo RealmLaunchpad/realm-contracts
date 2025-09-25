@@ -8,16 +8,15 @@ import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBond
 import {LivoGraduatorUniV2} from "src/graduators/LivoGraduatorUniV2.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
+import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 contract LaunchpadInvariants is Test {
-
     LivoLaunchpad public launchpad;
     LivoToken public tokenImplementation;
     ConstantProductBondingCurve public bondingCurve;
     LivoGraduatorUniV2 public graduator;
 
     InvariantsHelperLaunchpad public helper;
-
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -45,9 +44,10 @@ contract LaunchpadInvariants is Test {
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
-        
+
         // deploy another contract to skip that address with 1 wei
         LivoToken throwAway = new LivoToken();
+        throwAway; // silence compiler
 
         // the actual deployments
         tokenImplementation = new LivoToken();
@@ -69,7 +69,7 @@ contract LaunchpadInvariants is Test {
 
     ///////////////////////////// Launchpad invariants ////////////////////////////////////
 
-    // the launchpad eth balance should match the sum of all token ethCollected plus the treasury balance
+    /// @notice the launchpad eth balance should match the sum of all token ethCollected plus the treasury balance
     function invariant_launchpadEthBalance() public view {
         assertEq(
             address(launchpad).balance,
@@ -78,7 +78,7 @@ contract LaunchpadInvariants is Test {
         );
     }
 
-    // the sum of all msg.value from purchases for each token should be greater than the sum of eth from sells
+    /// @notice the sum of all msg.value from purchases for each token should be greater than the sum of eth from sells
     function invariant_tokenEthCollected() public view {
         for (uint256 i = 0; i < helper.nTokens(); i++) {
             address token = helper.tokenAt(i);
@@ -88,18 +88,94 @@ contract LaunchpadInvariants is Test {
         }
     }
 
-    // the sum of all msg.value from purchases for all tokens should be greater than the sum of eth from sells from all tokens
-    // the sum of all token totalSupply should be less than or equal to TOTAL_SUPPLY - CREATOR_RESERVED_SUPPLY
-    // the sum of all token balances should be less or equal to TOTAL_SUPPLY
-    // the sum of all token purchases should be greater or equal than the sum of all token sells
-    // the sum of all token purchases minus the sum of all token sells should be equal to the sum of tokens in all buyers balance
-    // the sum of all token purchases minus the sum of all token sells should be equal to the total supply minus the tokens in the launchpad balance
-    // the ethCollected by a token is always less than the graduation threshold plus the excess cap
+    /// @notice the sum of all msg.value from purchases for all tokens should be greater than the sum of eth from sells from all tokens
+    function invariant_allTokensEthCollected() public view {
+        assertGe(
+            helper.globalAggregatedEthForBuys(),
+            helper.globalAggregatedEthFromSells(),
+            "total eth collected is less than total eth from sells"
+        );
+    }
+
+    /// @notice each non-graduated token should have a balance in the launchpad above CREATOR_RESERVED_SUPPLY
+    function invariant_nonGraduatedTokensAboveCreatorReserved() public view {
+        for (uint256 i = 0; i < helper.nTokens(); i++) {
+            address token = helper.tokenAt(i);
+            assertGt(
+                IERC20(token).balanceOf(address(launchpad)),
+                CREATOR_RESERVED_SUPPLY,
+                "non-graduated token has balance in launchpad below CREATOR_RESERVED_SUPPLY"
+            );
+        }
+    }
+
+    /// @notice the sum of all token purchases should be greater or equal than the sum of all token sells
+    function invariant_tokensBoughtGreaterThanSold() public view {
+        assertGe(
+            helper.globalAggregatedTokensBought(),
+            helper.globalAggregatedTokensSold(),
+            "total tokens bought is less than total tokens sold"
+        );
+    }
+
+    /// @notice For each non-graduated token, the sum of all token purchases minus the sum of all token sells should be equal to the sum of tokens in all buyers balance
+    function invariant_tokensBoughtMinusSoldEqualsBalances() public view {
+        for (uint256 i = 0; i < helper.nTokens(); i++) {
+            address token = helper.tokenAt(i);
+            uint256 totalBalances = 0;
+            for (uint256 j = 0; j < helper.nActors(); j++) {
+                totalBalances += IERC20(token).balanceOf(helper.actorAt(j));
+            }
+            // the tokens bought are the tokens that left the launchpad
+            assertEq(
+                helper.aggregatedTokensBought(token) - helper.aggregatedTokensSold(token),
+                totalBalances,
+                "total tokens bought minus total tokens sold does not equal total balances"
+            );
+        }
+    }
+
+    /// @notice for each token, the sum of all token purchases minus the sum of all token sells should be equal to the total supply minus the tokens in the launchpad balance
+    function invariant_tokensBoughtMinusSoldEqualsTotalSupplyMinusLaunchpadBalance() public view {
+        for (uint256 i = 0; i < helper.nTokens(); i++) {
+            address token = helper.tokenAt(i);
+            uint256 launchpadBalance = IERC20(token).balanceOf(address(launchpad));
+            // the tokens bought are the tokens that left the launchpad
+            assertEq(
+                helper.aggregatedTokensBought(token) - helper.aggregatedTokensSold(token),
+                TOTAL_SUPPLY - launchpadBalance,
+                "tokens that left the launchpad does not equal total supply minus launchpad balance"
+            );
+        }
+    }
 
     ///////////////////////////// Graduation invariants ////////////////////////////////////
 
-    // ungraduated tokens have always an ethCollected below the graduation threshold
-    // graduated tokens have 0 supply in the launchpad
+    /// @notice ungraduated tokens have always an ethCollected below the graduation threshold
+    function invariant_ungraduatedBelowGraduationThreshold() public view {
+        uint256 nTokens = helper.nTokens();
+        for (uint256 i = 0; i < nTokens; i++) {
+            address token = helper.tokenAt(i);
+            TokenState memory state = launchpad.getTokenState(token);
+            assertLt(
+                state.ethCollected,
+                launchpad.baseEthGraduationThreshold(),
+                "ungraduated token has ethCollected above graduation threshold"
+            );
+        }
+    }
+
+    /// @notice graduated tokens have 0 supply in the launchpad, and ethCollected has been reset to 0
+    function invariant_graduatedTokensZeroSupplyInLaunchpad() public view {
+        uint256 nGraduatedTokens = helper.nGraduatedTokens();
+        for (uint256 i = 0; i < nGraduatedTokens; i++) {
+            address token = helper.graduatedTokenAt(i);
+            uint256 launchpadBalance = IERC20(token).balanceOf(address(launchpad));
+            assertEq(launchpadBalance, 0, "graduated token has non zero balance in launchpad");
+            TokenState memory state = launchpad.getTokenState(token);
+            assertEq(state.ethCollected, 0, "graduated token has non zero ethCollected");
+        }
+    }
 
     ///////////////////////////// INTERNALS ////////////////////////////////////
 

@@ -14,8 +14,8 @@ verbosity = 3
 
 
 [invariant]
-runs = 1 #256
-depth = 10 #500
+runs = 50 #256
+depth = 250 #500
 fail_on_revert = false
 # call_override = false
 # dictionary_weight = 80
