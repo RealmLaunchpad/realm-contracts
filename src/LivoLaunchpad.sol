@@ -361,9 +361,7 @@ contract LivoLaunchpad is Ownable {
             address(this), // launchpad
             tmpTokenMeta.graduator, // graduator address
             pair, // uniswap pair
-            TOTAL_SUPPLY,
-            tmpTokenMeta.buyFeesBps,
-            tmpTokenMeta.sellFeesBps
+            TOTAL_SUPPLY
         );
     }
 

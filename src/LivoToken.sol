@@ -15,11 +15,8 @@ contract LivoToken is ERC20 {
     /// @notice Wether the token has graduated already or not
     bool public graduated;
 
-    /// @notice Uniswap pair
+    /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
     address public pair;
-
-    /// @notice Addresses exempt from fees (only affecting post-graduation trades)
-    mapping(address => bool) public feeExempt;
 
     /// @dev only to prevent re-initialization
     bool internal _initialized;
@@ -27,10 +24,6 @@ contract LivoToken is ERC20 {
     string private _tokenName;
     /// @notice Token symbol
     string private _tokenSymbol;
-
-    /// @notice buy/sell fees in basis points (100 bps = 1%)
-    uint16 public buyFeeBps;
-    uint16 public sellFeeBps;
 
     //////////////////////// Events //////////////////////
 
@@ -43,6 +36,7 @@ contract LivoToken is ERC20 {
     error OnlyGraduatorAllowed();
     error AlreadyInitialized();
     error TranferToPairBeforeGraduationNotAllowed();
+    error CannotSelfTransfer();
 
     constructor() ERC20("", "") {}
 
@@ -52,9 +46,7 @@ contract LivoToken is ERC20 {
         address launchpad_,
         address graduator_,
         address pair_,
-        uint256 totalSupply_,
-        uint16 buyFeeBps_,
-        uint16 sellFeeBps_
+        uint256 totalSupply_
     ) external {
         require(!_initialized, AlreadyInitialized());
         _initialized = true;
@@ -63,13 +55,7 @@ contract LivoToken is ERC20 {
         _tokenSymbol = symbol_;
         launchpad = launchpad_;
         graduator = graduator_;
-        buyFeeBps = uint16(buyFeeBps_);
-        sellFeeBps = uint16(sellFeeBps_);
         pair = pair_;
-
-        // all supply goes to the launchpad, where it can be traded according to the bonding curve
-        _setFeeExempt(launchpad_, true);
-        _setFeeExempt(graduator_, true);
 
         // all is minted back to the launchpad
         _mint(launchpad_, totalSupply_);
@@ -98,13 +84,8 @@ contract LivoToken is ERC20 {
 
     //////////////////////// internal functions ////////////////////////
 
-    function _setFeeExempt(address account, bool exempt) internal {
-        feeExempt[account] = exempt;
-        emit FeeExemptSet(account, exempt);
-    }
-
     function _update(address from, address to, uint256 amount) internal override {
-        require(from != to, "Can NOT send to same address");
+        require(from != to, CannotSelfTransfer());
 
         // cache to save gas
         address pair_ = pair;
@@ -115,28 +96,6 @@ contract LivoToken is ERC20 {
             revert TranferToPairBeforeGraduationNotAllowed();
         }
 
-        // todo WHY THE HELL DO WE IMPOSE FEES IF WE CAN'T COLLECT THEM??
-        if (feeExempt[from] || feeExempt[to]) {
-            // if the sender or receiver is fee exempt, transfer without fees
-            super._update(from, to, amount);
-            return;
-        }
-
-        uint256 fee = 0;
-        if (to == pair_) {
-            fee = (amount * sellFeeBps) / BASIS_POINTS;
-        } else if (from == pair_) {
-            fee = (amount * buyFeeBps) / BASIS_POINTS;
-        }
-
-        // burn the fees
-        if (fee > 0) {
-            _update(from, address(0xdead), fee);
-        }
-
-        // amountAfterFee = amount if fee is 0
-        uint256 amountAfterFee = amount - fee;
-
-        super._update(from, to, amountAfterFee);
+        super._update(from, to, amount);
     }
 }
