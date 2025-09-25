@@ -25,7 +25,7 @@ contract LivoLaunchpad is Ownable {
     uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
 
     /// @notice The max amount of ether in reserves of a token after crossing the graduation threshold
-    uint256 public constant MAX_THRESHOLD_EXCEESS = 0.5 ether;
+    uint256 public constant MAX_THRESHOLD_EXCESS = 0.5 ether;
 
     /// @notice LivoToken ERC20 implementation address
     IERC20 public tokenImplementation;
@@ -168,7 +168,11 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @dev slippage control is done with minTokenAmount (min tokens willing to buy)
-    function buyTokensWithExactEth(address token, uint256 minTokenAmount, uint256 deadline) external payable {
+    function buyTokensWithExactEth(address token, uint256 minTokenAmount, uint256 deadline)
+        external
+        payable
+        returns (uint256 receivedTokens)
+    {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
@@ -176,10 +180,10 @@ contract LivoLaunchpad is Ownable {
         require(tokenConfig.exists(), InvalidToken());
         require(tokenState.notGraduated(), AlreadyGraduated());
         require(block.timestamp <= deadline, DeadlineExceeded());
-        // fees are ignored in this check. If fees were accounted, the limit should be higher,
-        // which would expand the price diff between bounding curve and uniswap
+        // fees are ignored in the check below on purpose.
+        // If fees were accounted, the limit should be higher, but it is an arbitrary limit anyways
         require(
-            tokenState.ethCollected + msg.value < tokenConfig.ethGraduationThreshold + MAX_THRESHOLD_EXCEESS,
+            tokenState.ethCollected + msg.value < tokenConfig.ethGraduationThreshold + MAX_THRESHOLD_EXCESS,
             PurchaseExceedsLimitPostGraduation()
         );
 
@@ -200,10 +204,15 @@ contract LivoLaunchpad is Ownable {
         if (_meetsGraduationCriteria(tokenState, tokenConfig)) {
             _graduateToken(token, tokenState, tokenConfig);
         }
+
+        return tokensToReceive;
     }
 
     /// @dev slippage control is done with minEthAmount (min eth willing to receive)
-    function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline) external {
+    function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline)
+        external
+        returns (uint256 receivedEth)
+    {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
@@ -227,6 +236,8 @@ contract LivoLaunchpad is Ownable {
         _transferEth(msg.sender, ethForSeller);
 
         emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
+
+        return ethForSeller;
     }
 
     //////////////////////////// view functions //////////////////////////
@@ -402,7 +413,7 @@ contract LivoLaunchpad is Ownable {
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
 
     function _maxEthToSpend(address token) internal view returns (uint256) {
-        return tokenConfigs[token].ethGraduationThreshold + MAX_THRESHOLD_EXCEESS - tokenStates[token].ethCollected;
+        return tokenConfigs[token].ethGraduationThreshold + MAX_THRESHOLD_EXCESS - tokenStates[token].ethCollected;
     }
 
     function _quoteBuyWithExactEth(address token, uint256 ethValue)

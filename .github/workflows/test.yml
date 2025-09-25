@@ -39,7 +39,12 @@ jobs:
           forge build --sizes
         id: build
 
-      - name: Run Forge tests
+      - name: Run Forge tests (no invariants)
         run: |
-          forge test -vvv
+          forge test --no-match-contract Invariant -vvv
+        id: test
+
+      - name: Run Forge Invariant tests
+        run: |
+          forge test --match-contract Invariant
         id: test

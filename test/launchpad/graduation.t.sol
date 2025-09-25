@@ -14,7 +14,7 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 /// @dev These tests should be agnostic of the type of graduator.
 contract BaseAgnosticGraduationTests is LaunchpadBaseTest {
     uint256 constant DEADLINE = type(uint256).max;
-    uint256 constant MAX_THRESHOLD_EXCEESS = 0.5 ether;
+    uint256 constant MAX_THRESHOLD_EXCESS = 0.5 ether;
     address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     function setUp() public override {
@@ -111,10 +111,10 @@ contract ProtocolAgnosticGraduationTests is BaseAgnosticGraduationTests {
     function test_buyExceedingGraduationPlusExcessLimitReverts() public createTestToken {
         vm.deal(buyer, 2 * BASE_GRADUATION_THRESHOLD);
 
-        uint256 exactLimitBeforeFees = BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCEESS;
+        uint256 exactLimitBeforeFees = BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS;
 
         // This purchase should be fine, hitting right below graduation
-        uint256 value = exactLimitBeforeFees - MAX_THRESHOLD_EXCEESS - 0.000001 ether;
+        uint256 value = exactLimitBeforeFees - MAX_THRESHOLD_EXCESS - 0.000001 ether;
         vm.startPrank(buyer);
         launchpad.buyTokensWithExactEth{value: value}(testToken, 0, DEADLINE);
         // make sure the token hasn't graduated
@@ -122,8 +122,8 @@ contract ProtocolAgnosticGraduationTests is BaseAgnosticGraduationTests {
 
         // actual reserves after applying fees
         uint256 effectiveReserves = (value * (10000 - BASE_BUY_FEE_BPS)) / 10000;
-        uint256 triggerOfExcess = BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCEESS - effectiveReserves;
-        // now the next purchase needs to take the reserves beyond BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCEESS
+        uint256 triggerOfExcess = BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS - effectiveReserves;
+        // now the next purchase needs to take the reserves beyond BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
         launchpad.buyTokensWithExactEth{value: triggerOfExcess + 0.01 ether}(testToken, 0, DEADLINE);
     }
