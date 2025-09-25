@@ -5,7 +5,7 @@ build:
 
 ##################### TESTING ################################
 test:
-    forge test
+    forge test --no-match-contract Invariants
 
 test-curves:
     forge test --match-contract Curve

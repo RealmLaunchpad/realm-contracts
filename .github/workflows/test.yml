@@ -2,8 +2,11 @@ name: CI
 
 on:
   push:
+    branches:
+      - master
   pull_request:
   workflow_dispatch:
+
 
 env:
   FOUNDRY_PROFILE: ci
@@ -42,9 +45,9 @@ jobs:
       - name: Run Forge tests (no invariants)
         run: |
           forge test --no-match-contract Invariant -vvv
-        id: test
+        id: unit_tests
 
       - name: Run Forge Invariant tests
         run: |
           forge test --match-contract Invariant
-        id: test
+        id: invariants
