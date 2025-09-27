@@ -1,3 +1,7 @@
+# Livo Launchpad
+
+A permissionless launchpad where any account can launch an ERC20 and bootstrap liquidity before graduating to a Uniswap pool. 
+
 ## Foundry
 
 **Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
