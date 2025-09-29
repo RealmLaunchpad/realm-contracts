@@ -9,7 +9,7 @@
 | `CosntantProductCurve`       | `0x5176076dD27C12b5fF60eFbf97D2C6a0697CE0DF` |
 |                              |
 | **Graduators**               |
-| `LivoGraduatorUniV2`         | `0xBa1a7Fe65E7aAb563630F5921080996030a80AA1` |
+| `LivoGraduatorUniswapV2`         | `0xBa1a7Fe65E7aAb563630F5921080996030a80AA1` |
 |                              |
 | **External addresses**       |
 | Livo Deployer                | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |

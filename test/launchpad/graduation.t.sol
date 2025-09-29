@@ -206,7 +206,6 @@ contract ProtocolAgnosticGraduationTests is BaseAgnosticGraduationTests {
         );
 
         uint256 treasuryFeesBeforeGraduation = launchpad.treasuryEthFeesCollected();
-        uint256 etherReservesPreGraduation = launchpad.getTokenState(testToken).ethCollected;
 
         uint256 purchaseValue = 1.5 ether;
         vm.prank(buyer);
@@ -215,7 +214,6 @@ contract ProtocolAgnosticGraduationTests is BaseAgnosticGraduationTests {
 
         uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
 
-        uint256 launchpadEthAfter = address(launchpad).balance;
         uint256 treasuryFeesAfterGraduation = launchpad.treasuryEthFeesCollected();
 
         assertEq(
@@ -268,7 +266,6 @@ contract ProtocolAgnosticGraduationTests is BaseAgnosticGraduationTests {
 
         uint256 etherReservesPreGraduation = launchpad.getTokenState(testToken).ethCollected; // 6886440000000051702
         uint256 launchpadEthBefore = address(launchpad).balance;
-        uint256 treasuryBefore = launchpad.treasuryEthFeesCollected(); // 69560000000000522
 
         // the eth from this purchase would go straight into liquidity
         uint256 purchaseValue = 1.5 ether;
@@ -277,9 +274,6 @@ contract ProtocolAgnosticGraduationTests is BaseAgnosticGraduationTests {
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
 
         uint256 launchpadEthAfter = address(launchpad).balance;
-        uint256 ethLaunchpadBalanceChange = launchpadEthBefore - launchpadEthAfter;
-        uint256 treasuryAfter = launchpad.treasuryEthFeesCollected();
-        uint256 treasuryChange = treasuryAfter - treasuryBefore;
 
         // eth balance change in the contract:
         // income: +purchaseValue

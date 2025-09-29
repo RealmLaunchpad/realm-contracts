@@ -5,14 +5,14 @@ import "forge-std/Test.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
-import {LivoGraduatorUniV2} from "src/graduators/LivoGraduatorUniV2.sol";
+import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 
 contract LaunchpadBaseTest is Test {
     LivoLaunchpad public launchpad;
     LivoToken public tokenImplementation;
     ConstantProductBondingCurve public bondingCurve;
-    LivoGraduatorUniV2 public graduator;
+    LivoGraduatorUniswapV2 public graduator;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -46,7 +46,7 @@ contract LaunchpadBaseTest is Test {
 
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduator should be deployed, and use fork tests.
-        graduator = new LivoGraduatorUniV2(UNISWAP_V2_ROUTER, address(launchpad));
+        graduator = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
         launchpad.whitelistBondingCurve(address(bondingCurve), true);
         launchpad.whitelistGraduator(address(graduator), true);
