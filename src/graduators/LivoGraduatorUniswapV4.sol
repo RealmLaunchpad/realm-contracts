@@ -9,7 +9,29 @@ import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/
 // import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 // import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 
-contract LivoGraduatorUniV2 is ILivoGraduator {
+
+// import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+// import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+// // import {BasicHooks} from "src/BasicHooks.sol";
+
+// import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
+// import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+// import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
+// import {CurrencyLibrary, Currency} from "lib/v4-core/src/types/Currency.sol";
+
+// import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
+// import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
+// import {PositionInfo} from "lib/v4-periphery/src/libraries/PositionInfoLibrary.sol";
+// import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
+// import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
+
+// import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
+// import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
+// import {Commands} from "src/dependencies/Univ4UniversalRouterCommands.sol";
+// import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
+
+
+contract LivoGraduatorUniswapV4 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
     address public immutable LIVO_LAUNCHPAD;
