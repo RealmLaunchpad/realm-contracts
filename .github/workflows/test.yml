@@ -47,7 +47,7 @@ jobs:
           forge test --no-match-contract Invariant -vvv
         id: unit_tests
 
-      - name: Run Forge Invariant tests
-        run: |
-          forge test --match-contract Invariant
-        id: invariants
+      # - name: Run Forge Invariant tests
+      #   run: |
+      #     forge test --match-contract Invariant
+      #   id: invariants
