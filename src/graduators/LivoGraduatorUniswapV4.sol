@@ -42,16 +42,18 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     
     address internal immutable WETH;
 
-    ////////////////// Events //////////////////////
-    event TokenGraduated(
-        address indexed token, address indexed pair, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
-    );
-    event PairInitialized(address indexed token, address indexed pair);
+    // todo make these conditional to the chainId
+    IPoolManager public immutable poolManager = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
+    IPositionManager public immutable posm = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
+    IUniversalRouter public immutable universalRouter = IUniversalRouter(0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af);
+    IPermit2 public immutable permit2 = IPermit2(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
-    ////////////////// Custom errors //////////////////////
-    error OnlyLaunchpadAllowed();
-    error NoTokensToGraduate();
-    error NoETHToGraduate();
+    // fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
+    // todo make hook to distribute lp fees to treasury & token creator
+    uint24 constant lpFee = 10000;
+
+    // tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
+    int24 constant tickSpacing = 200;
 
     constructor(address _uniswapRouter, address _launchpad) {
         LIVO_LAUNCHPAD = _launchpad;

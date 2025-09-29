@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
-import {LaunchpadBaseTestsWithUniv2Graduator} from "./base.t.sol";
+import {LaunchpadBaseTest} from "test/launchpad/base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";

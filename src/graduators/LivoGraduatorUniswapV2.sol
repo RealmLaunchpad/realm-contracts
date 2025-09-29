@@ -22,17 +22,6 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     IUniswapV2Factory internal immutable UNISWAP_FACTORY;
     address internal immutable WETH;
 
-    ////////////////// Events //////////////////////
-    event TokenGraduated(
-        address indexed token, address indexed pair, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
-    );
-    event PairInitialized(address indexed token, address indexed pair);
-
-    ////////////////// Custom errors //////////////////////
-    error OnlyLaunchpadAllowed();
-    error NoTokensToGraduate();
-    error NoETHToGraduate();
-
     constructor(address _uniswapRouter, address _launchpad) {
         LIVO_LAUNCHPAD = _launchpad;
         UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
