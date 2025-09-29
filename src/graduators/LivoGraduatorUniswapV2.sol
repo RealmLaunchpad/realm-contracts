@@ -9,7 +9,7 @@ import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 
-contract LivoGraduatorUniV2 is ILivoGraduator {
+contract LivoGraduatorUniswapV2 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
     /// @notice where LP tokens are sent at graduation, effectively locking the liquidity

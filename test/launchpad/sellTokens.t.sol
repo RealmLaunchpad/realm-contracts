@@ -45,7 +45,7 @@ contract SellTokensTest is LaunchpadBaseTest {
         uint256 aliceTokenBalanceBefore = IERC20(testToken).balanceOf(alice);
         uint256 launchpadEthBalanceBefore = address(launchpad).balance;
 
-        (uint256 expectedEthFromSale, uint256 expectedEthFee, uint256 expectedEthForSeller) =
+        (, uint256 expectedEthFee, uint256 expectedEthForSeller) =
             launchpad.quoteSellExactTokens(testToken, tokensToSell);
 
         vm.prank(alice);
