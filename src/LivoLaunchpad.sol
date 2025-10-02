@@ -342,6 +342,8 @@ contract LivoLaunchpad is Ownable {
         });
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
+        // in the case of univ4, the pair will be the address of the pool manager,
+        // to which tokens cannot be transferred until graduation
         address pair = ILivoGraduator(tmpTokenMeta.graduator).initializePair(tmpTokenMeta.token);
 
         // Initialize the new token instance
