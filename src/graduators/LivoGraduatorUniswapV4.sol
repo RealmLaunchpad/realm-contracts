@@ -21,10 +21,10 @@ import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 // import {PositionInfo} from "lib/v4-periphery/src/libraries/PositionInfoLibrary.sol";
-// import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 // import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 
-// import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
+import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 // import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 // import {Commands} from "src/dependencies/Univ4UniversalRouterCommands.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
@@ -32,6 +32,10 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 contract LivoGraduatorUniswapV4 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
+    // to burn excess tokens not deposited as liquidity at graduation
+    address internal constant DEAD_ADDRESS = address(0xdEaD);
+
+    IPermit2 public immutable permit2;
     IPoolManager public immutable poolManager;
     IPositionManager public immutable positionManager;
 
@@ -55,7 +59,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     // lots of tokens for 1 eth.
 
     /// @notice starting price: 333333334 tokens/ETH (equivalent to 0.000000003 ETH/token).
-    uint160 constant sqrtPriceBX96 = 1456928274337359229878378703093760;
+    uint160 constant sqrtPriceBX96_tokensPerEth = 1446501728071428127725498493042688;
 
     // the starting price defined above (max price) must be inside the liquidity range // review
     // thus the upper boundary of the liquidity range must be slightly higher .
@@ -69,9 +73,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     // With a token supply of 1 billion, this corresponds to 2305 USD/token.
     // The price is denominated in ETH. If ETH price is 2305 USD/ETH, the token price would be 1:1.
     // to be conservative, we consider the scenario in which ETH goes down significantly: ETH price (2.3$ / ETH).
-    // So the max price covered by the liquidity position will be at 1000 ETH/token, which corresponds to the price below
-    /// @notice maximum conceivable token price of the liquidity range (1000 ETH/token)
-    uint160 constant sqrtPriceAX96 = 2515582309682650804192804864;
+    // So the max price covered by the liquidity position will be at 0.001 tokens/ETH (1000 ETH/token)
+    /// @notice maximum conceivable token price of the liquidity range (0.001 tokens/ETH)
+    uint160 constant sqrtPriceAX96_tokensPerEth = 2505414483750479155158843392;
 
     // The upper ticket for that max token price above would be 69081,
     // but to align it with -196200 and the tick spacing, we round it down to 69000, which is still pretty conservative
@@ -82,14 +86,15 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     // this starting price is roughly 338156060 tokens for 1 wei, i.e. 0.000000003 ETH/token
     // just below the upper tick price. In range, but minimal eth required to mint the position.
     /// @notice starting price when initializing the Uniswap-v4 pair
-    uint160 constant startingPriceX96 = sqrtPriceBX96 - 1;
+    uint160 constant startingPriceX96 = sqrtPriceBX96_tokensPerEth - 1;
 
     error EthTransferFailed();
 
-    constructor(address _launchpad, address _poolManager, address _positionManager) {
+    constructor(address _launchpad, address _poolManager, address _positionManager, address _permit2) {
         LIVO_LAUNCHPAD = _launchpad;
         poolManager = IPoolManager(_poolManager);
         positionManager = IPositionManager(_positionManager);
+        permit2 = IPermit2(_permit2);
     }
 
     modifier onlyLaunchpad() {
@@ -125,9 +130,20 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // this opens the gate of transferring tokens to the uniswap pair
         token.markGraduated();
 
+        // approve permit2 as a spender
+        token.approve(address(permit2), type(uint256).max);
+
+        // approve `PositionManager` as a spender
+        IAllowanceTransfer(address(permit2)).approve(
+            address(token), address(positionManager), type(uint160).max, type(uint48).max
+        );
+
         // uniswap v4 liquidity position creation
         // question where should we put the nft? -> wherever we need to collect fees
         _depositLiquidity(tokenAddress, tokenBalance, ethValue);
+
+        // burn excess tokens that are left in this contract
+        _cleanUp(tokenAddress);
 
         // emit TokenGraduated(tokenAddress, pair, tokenBalance, amountEth, liquidity);// todo
     }
@@ -147,16 +163,35 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         PoolKey memory pool = _getPoolKey(tokenAddress);
 
-        // todo explore what happens when excess eth is deposited as liquidity (can I keep same range, same starting price, etc?)
-        // calculate liquidity based on the startingPrice and the range
-        // calculate the liquidity range, assuming we just hit graduation exactly // todo
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            uint160(startingPriceX96), // current pool price --> presumably the starting price which cannot be modified until graduation
-            uint160(sqrtPriceAX96), // lower tick price
-            uint160(sqrtPriceBX96), // upper tick price
-            ethValue, // desired amount0
-            tokenAmount // desired amount1  // todo make sure we are not left with any excess tokens. Allocate excess tokens/eth
+        // todo if we specify the token amount we need to collect any excess eth back
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmount1(
+            uint160(sqrtPriceAX96_tokensPerEth), // lower tick price (max token price)
+            uint160(sqrtPriceBX96_tokensPerEth), // upper tick price (min token price)
+            tokenAmount // desired amount1
         );
+
+        // =============== todo REMOVE ALL THESE ===============
+        // review this is only for sanity check purposes, and should be removed 
+        uint128 liquidity0 = LiquidityAmounts.getLiquidityForAmount0(
+            uint160(sqrtPriceAX96_tokensPerEth), // lower tick price (max token price)
+            uint160(sqrtPriceBX96_tokensPerEth), // upper tick price (min token price)
+            ethValue // desired amount1
+        );
+        require(liquidity > 0, "NoLiquidityCreated");
+        require(liquidity0 > 0, "NoLiquidity0Created");
+        require(liquidity0 <= liquidity, "Eth should be the limiting factor");
+        // ===========================================================
+
+        //        // todo explore what happens when excess eth is deposited as liquidity (can I keep same range, same starting price, etc?)
+        //        // calculate liquidity based on the startingPrice and the range
+        //        // calculate the liquidity range, assuming we just hit graduation exactly // todo
+        //        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+        //            uint160(startingPriceX96), // current pool price --> presumably the starting price which cannot be modified until graduation
+        //            uint160(sqrtPriceAX96_tokensPerEth), // lower tick price
+        //            uint160(sqrtPriceBX96_tokensPerEth), // upper tick price
+        //            ethValue, // desired amount0
+        //            tokenAmount // desired amount1  // todo make sure we are not left with any excess tokens. Allocate excess tokens/eth
+        //        );
 
         // Actions for ETH liquidity positions
         // 1. Mint position
@@ -181,7 +216,15 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         IPositionManager(positionManager).modifyLiquidities{value: ethValue}(
             abi.encode(actions, params), block.timestamp
         );
+    }
 
+    function _cleanUp(address token) internal returns (uint256 burnedTokens) {
+        burnedTokens = ILivoToken(token).balanceOf(address(this));
+        // we could include some checks here to prevent bruning too much supply,
+        // but that would put graduation at risk of DOS
+        ILivoToken(token).safeTransfer(DEAD_ADDRESS, burnedTokens);
+
+        // todo do something with excess eth
         // todo remaining eth is transferred to the caller (last buyer) // review this
     }
 
