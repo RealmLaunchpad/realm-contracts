@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTest} from "./base.t.sol";
+import {LaunchpadBaseTestsWithUniv2Graduator} from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 
-contract LivoTokenDeploymentTest is LaunchpadBaseTest {
+contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testDeployLivoToken_happyPath() public {
         vm.prank(creator);
         address deployedToken = launchpad.createToken(

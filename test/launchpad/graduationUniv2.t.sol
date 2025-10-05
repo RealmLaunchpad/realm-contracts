@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
-import {LaunchpadBaseTest} from "./base.t.sol";
+import {LaunchpadBaseTestsWithUniv2Graduator} from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -11,7 +11,7 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 
-contract BaseUniswapV2GraduationTests is LaunchpadBaseTest {
+contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     uint256 constant DEADLINE = type(uint256).max;
     uint256 constant MAX_THRESHOLD_EXCESS = 0.5 ether;
     address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
@@ -116,8 +116,6 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         vm.expectRevert("UniswapV2: PAIR_EXISTS");
         UNISWAP_FACTORY.createPair(testToken, address(WETH));
     }
-
-    // todo continue here
 
     /// @notice Test that price in uniswap matches price in launchpad when last purchase meets the threshold exactly
     function test_priceInUniswapReflectsGraduationLiquidity() public createTestTokenWithPair {

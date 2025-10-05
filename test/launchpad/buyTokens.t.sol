@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTest} from "./base.t.sol";
+import {LaunchpadBaseTestsWithUniv2Graduator} from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/LivoToken.sol";
 
-contract BuyTokensTest is LaunchpadBaseTest {
+
+contract BuyTokensTest is LaunchpadBaseTestsWithUniv2Graduator {
     uint256 constant DEADLINE = type(uint256).max;
 
     function testBuyTokensWithExactEth_happyPath() public createTestToken {

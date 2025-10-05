@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
-import {LaunchpadBaseTest} from "./base.t.sol";
+import {LaunchpadBaseTestsWithUniv2Graduator} from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -12,7 +12,7 @@ import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 
 /// @dev These tests should be agnostic of the type of graduator.
-contract BaseAgnosticGraduationTests is LaunchpadBaseTest {
+contract BaseAgnosticGraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     uint256 constant DEADLINE = type(uint256).max;
     uint256 constant MAX_THRESHOLD_EXCESS = 0.5 ether;
     address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;

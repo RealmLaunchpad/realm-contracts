@@ -6,13 +6,15 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 
-contract LaunchpadBaseTest is Test {
+contract LaunchpadBaseTests is Test {
     LivoLaunchpad public launchpad;
     LivoToken public tokenImplementation;
     ConstantProductBondingCurve public bondingCurve;
-    LivoGraduatorUniswapV2 public graduator;
+
+    ILivoGraduator public graduator;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -45,11 +47,6 @@ contract LaunchpadBaseTest is Test {
         launchpad = new LivoLaunchpad(treasury, tokenImplementation);
 
         bondingCurve = new ConstantProductBondingCurve();
-        // For graduation tests, a new graduator should be deployed, and use fork tests.
-        graduator = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
-
-        launchpad.whitelistBondingCurve(address(bondingCurve), true);
-        launchpad.whitelistGraduator(address(graduator), true);
 
         vm.deal(creator, INITIAL_ETH_BALANCE);
         vm.deal(buyer, INITIAL_ETH_BALANCE);
@@ -65,5 +62,17 @@ contract LaunchpadBaseTest is Test {
         );
 
         _;
+    }
+}
+
+contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
+   function setUp() public virtual override {
+        super.setUp();
+
+        // For graduation tests, a new graduator should be deployed, and use fork tests.
+        graduator = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
+
+        launchpad.whitelistBondingCurve(address(bondingCurve), true);
+        launchpad.whitelistGraduator(address(graduator), true);
     }
 }
