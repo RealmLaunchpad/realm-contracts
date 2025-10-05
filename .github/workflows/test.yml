@@ -32,22 +32,24 @@ jobs:
         run: |
           forge --version
 
-      - name: Run Forge fmt
+      - name: Forge fmt
         run: |
           forge fmt --check
         id: fmt
 
-      - name: Run Forge build
+      - name: Forge build
         run: |
           forge build --sizes
         id: build
 
-      - name: Run Forge tests (no invariants)
+      - name: Forge tests (no invariants)
         run: |
           forge test --no-match-contract Invariant -vvv
         id: unit_tests
 
-      # - name: Run Forge Invariant tests
-      #   run: |
-      #     forge test --match-contract Invariant
-      #   id: invariants
+      - name: Lean Invariant tests
+        run: |
+          sed -i 's/runs = [0-9]*/runs = 1/' foundry.toml
+          sed -i 's/depth = [0-9]*/depth = 5/' foundry.toml
+          forge test --match-contract Invariant
+        id: invariants

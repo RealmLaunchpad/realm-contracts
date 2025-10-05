@@ -12,6 +12,12 @@ test-curves:
 invariant-tests:
     forge test --match-contract Invariants
 
+# Runs a super fast version of invariants for CI.(not so reliable at all) (runs=1, depth=5)
+lean-invariants:
+    sed -i 's/runs = [0-9]*/runs = 1/' foundry.toml
+    sed -i 's/depth = [0-9]*/depth = 5/' foundry.toml
+    forge test --match-contract Invariants
+
 ##################### INSPECTION ####################
 error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
