@@ -57,6 +57,7 @@ contract LaunchpadBaseTests is Test {
 
     modifier createTestToken() {
         vm.prank(creator);
+        // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
         testToken = launchpad.createToken(
             "TestToken", "TEST", "ipfs://test-metadata", address(bondingCurve), address(graduator)
         );
@@ -66,13 +67,12 @@ contract LaunchpadBaseTests is Test {
 }
 
 contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
-   function setUp() public virtual override {
+    function setUp() public virtual override {
         super.setUp();
 
         // For graduation tests, a new graduator should be deployed, and use fork tests.
         graduator = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
-        launchpad.whitelistBondingCurve(address(bondingCurve), true);
-        launchpad.whitelistGraduator(address(graduator), true);
+        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduator), true);
     }
 }

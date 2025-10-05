@@ -14,7 +14,9 @@ contract LaunchpadInvariants is Test {
     LivoLaunchpad public launchpad;
     LivoToken public tokenImplementation;
     ConstantProductBondingCurve public bondingCurve;
-    LivoGraduatorUniswapV2 public graduator;
+    LivoGraduatorUniswapV2 public graduatorV2;
+
+    // todo add graduatorV4 and create tokens with both graduators to test their coexistence
 
     InvariantsHelperLaunchpad public helper;
 
@@ -54,13 +56,12 @@ contract LaunchpadInvariants is Test {
         launchpad = new LivoLaunchpad(treasury, tokenImplementation);
 
         bondingCurve = new ConstantProductBondingCurve();
-        // For graduation tests, a new graduator should be deployed, and use fork tests.
-        graduator = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
+        // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
+        graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
-        launchpad.whitelistBondingCurve(address(bondingCurve), true);
-        launchpad.whitelistGraduator(address(graduator), true);
+        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV2), true);
 
-        helper = new InvariantsHelperLaunchpad(launchpad, address(bondingCurve), address(graduator));
+        helper = new InvariantsHelperLaunchpad(launchpad, address(bondingCurve), address(graduatorV2));
 
         targetContract(address(helper));
     }

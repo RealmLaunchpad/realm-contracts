@@ -7,7 +7,6 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/LivoToken.sol";
 
-
 contract BuyTokensTest is LaunchpadBaseTestsWithUniv2Graduator {
     uint256 constant DEADLINE = type(uint256).max;
 
