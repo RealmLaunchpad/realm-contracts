@@ -2,7 +2,8 @@
 pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
-import {LaunchpadBaseTest} from "test/launchpad/base.t.sol";
+import {Test} from "forge-std/Test.sol";
+import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator, LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -11,17 +12,12 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 
-/// @dev These tests should be agnostic of the type of graduator.
-contract BaseAgnosticGraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
+/// @dev These tests should should pass regardless of the of graduator, so we test it with both
+abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
+    //////////////////////////////////// modifiers and utilities ///////////////////////////////
     uint256 constant DEADLINE = type(uint256).max;
     uint256 constant MAX_THRESHOLD_EXCESS = 0.5 ether;
     address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
-
-    function setUp() public override {
-        super.setUp();
-    }
-
-    //////////////////////////////////// modifiers and utilities ///////////////////////////////
 
     function _graduateToken() internal {
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
@@ -31,9 +27,9 @@ contract BaseAgnosticGraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmountToGraduate}(testToken, 0, DEADLINE);
     }
-}
+    
+    //////////////////////////////////// modifiers and utilities ///////////////////////////////
 
-contract ProtocolAgnosticGraduationTests is BaseAgnosticGraduationTests {
     /// @notice Test that graduated boolean turns true in launchpad
     function test_graduatedBooleanTurnsTrueInLaunchpad() public createTestToken {
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
@@ -281,5 +277,22 @@ contract ProtocolAgnosticGraduationTests is BaseAgnosticGraduationTests {
         uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
         uint256 liquidity = etherReservesPreGraduation - tradingFee - BASE_GRADUATION_FEE;
         assertEq(launchpadEthBefore - launchpadEthAfter, liquidity, "eth balance change should equal liquidity added");
+    }
+}
+
+
+/// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator
+contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, LaunchpadBaseTestsWithUniv2Graduator {
+
+    function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
+        super.setUp();
+    }
+}
+
+/// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V4 graduator
+contract UniswapV4AgnosticGraduationTests is ProtocolAgnosticGraduationTests, LaunchpadBaseTestsWithUniv4Graduator {
+
+    function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator) {
+        super.setUp();
     }
 }

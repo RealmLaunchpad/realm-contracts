@@ -32,9 +32,8 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 contract LivoGraduatorUniswapV4 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
-    IPoolManager immutable public poolManager;
-    IPositionManager immutable public positionManager;
-
+    IPoolManager public immutable poolManager;
+    IPositionManager public immutable positionManager;
 
     /// @notice Address of the livo launchpad
     address public immutable LIVO_LAUNCHPAD;
@@ -52,15 +51,15 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
     // In the uniswapV4 pool, the pair is (currency0,currency1) = (nativeEth, token)
     // The `sqrtPriceX96` is denominated as sqrt(amountToken1/amountToken0) * 2^96,
-    // so tokens/ETH (eth price of one token). Thus, the starting point is a high number, 
+    // so tokens/ETH (eth price of one token). Thus, the starting point is a high number,
     // lots of tokens for 1 eth.
 
     /// @notice starting price: 333333334 tokens/ETH (equivalent to 0.000000003 ETH/token).
-    uint160 constant sqrtPriceBX96 = 1456928274337359229878378703093760; 
+    uint160 constant sqrtPriceBX96 = 1456928274337359229878378703093760;
 
     // the starting price defined above (max price) must be inside the liquidity range // review
-    // thus the upper boundary of the liquidity range must be slightly higher . 
-    // The price above would correspond to an upper tick of 196256, 
+    // thus the upper boundary of the liquidity range must be slightly higher .
+    // The price above would correspond to an upper tick of 196256,
     // but to align with 200 tick spacing, and include the starting price, we round UP to 196400
     /// @notice the upper boundary of the liquidity range when the position is created.
     int24 constant tickUpper = 196400;
@@ -72,9 +71,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     // to be conservative, we consider the scenario in which ETH goes down significantly: ETH price (2.3$ / ETH).
     // So the max price covered by the liquidity position will be at 1000 ETH/token, which corresponds to the price below
     /// @notice maximum conceivable token price of the liquidity range (1000 ETH/token)
-    uint160 constant sqrtPriceAX96 = 2515582309682650804192804864; 
+    uint160 constant sqrtPriceAX96 = 2515582309682650804192804864;
 
-    // The upper ticket for that max token price above would be 69081, 
+    // The upper ticket for that max token price above would be 69081,
     // but to align it with -196200 and the tick spacing, we round it down to 69000, which is still pretty conservative
     /// @notice the lower boundary of the liquidity range when the position is created
     int24 constant tickLower = -69000;
@@ -83,7 +82,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     // this starting price is roughly 338156060 tokens for 1 wei, i.e. 0.000000003 ETH/token
     // just below the upper tick price. In range, but minimal eth required to mint the position.
     /// @notice starting price when initializing the Uniswap-v4 pair
-    uint160 constant startingPriceX96 = sqrtPriceBX96 - 1; 
+    uint160 constant startingPriceX96 = sqrtPriceBX96 - 1;
 
     error EthTransferFailed();
 
@@ -134,18 +133,16 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     }
 
     function _getPoolKey(address tokenAddress) internal view returns (PoolKey memory) {
-        return
-            PoolKey({
-                currency0: Currency.wrap(address(0)), // native ETH
-                currency1: Currency.wrap(address(tokenAddress)),
-                fee: lpFee,
-                tickSpacing: tickSpacing,
-                hooks: IHooks(address(0)) // no hooks ? // todo build necessary hooks if relevant
-            });
+        return PoolKey({
+            currency0: Currency.wrap(address(0)), // native ETH
+            currency1: Currency.wrap(address(tokenAddress)),
+            fee: lpFee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(0)) // no hooks ? // todo build necessary hooks if relevant
+        });
     }
 
     function _depositLiquidity(address tokenAddress, uint256 tokenAmount, uint256 ethValue) internal {
-
         address excessEthRecipient = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
 
         PoolKey memory pool = _getPoolKey(tokenAddress);
@@ -160,14 +157,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             ethValue, // desired amount0
             tokenAmount // desired amount1  // todo make sure we are not left with any excess tokens. Allocate excess tokens/eth
         );
-       
+
         // Actions for ETH liquidity positions
         // 1. Mint position
         // 2. Settle pair (send ETH and tokens)
         // 3. Sweep any remaining native ETH back to the treasury (only required with native eth positions)
         bytes memory actions =
             abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP));
-        bytes[] memory params = new bytes[](3);     
+        bytes[] memory params = new bytes[](3);
 
         // parameters for MINT_POSITION action
         // review if this contract should be the receiver of the position NFT
@@ -181,7 +178,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         // the actual call to the position manager to mint the liquidity position
         // deadline = block.timestamp (no effective deadline)
-        IPositionManager(positionManager).modifyLiquidities{value: ethValue}(abi.encode(actions, params), block.timestamp);
+        IPositionManager(positionManager).modifyLiquidities{value: ethValue}(
+            abi.encode(actions, params), block.timestamp
+        );
 
         // todo remaining eth is transferred to the caller (last buyer) // review this
     }
@@ -198,8 +197,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     function _transferEth(address to, uint256 value) internal {
         (bool success,) = address(to).call{value: value}("");
         require(success, EthTransferFailed());
-
     }
     /// @notice Allows receiving native eth fees from uniswapV4 fees
-    receive() payable external {}
+
+    receive() external payable {}
 }

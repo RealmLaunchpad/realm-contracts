@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTest} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
