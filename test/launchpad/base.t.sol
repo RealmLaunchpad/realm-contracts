@@ -47,6 +47,11 @@ contract LaunchpadBaseTests is Test {
         launchpad = new LivoLaunchpad(treasury, tokenImplementation);
 
         bondingCurve = new ConstantProductBondingCurve();
+        // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
+        graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
+
+        launchpad.whitelistBondingCurve(address(bondingCurve), true);
+        launchpad.whitelistGraduator(address(graduatorV2), true);
 
         vm.deal(creator, INITIAL_ETH_BALANCE);
         vm.deal(buyer, INITIAL_ETH_BALANCE);
@@ -58,7 +63,7 @@ contract LaunchpadBaseTests is Test {
     modifier createTestToken() {
         vm.prank(creator);
         testToken = launchpad.createToken(
-            "TestToken", "TEST", "ipfs://test-metadata", address(bondingCurve), address(graduator)
+            "TestToken", "TEST", "ipfs://test-metadata", address(bondingCurve), address(graduatorV2)
         );
 
         _;

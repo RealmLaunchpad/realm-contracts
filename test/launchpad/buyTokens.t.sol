@@ -296,7 +296,7 @@ contract BuyTokensTest is LaunchpadBaseTestsWithUniv2Graduator {
         // Reset state by creating a new token for the second scenario
         vm.prank(creator);
         address testToken2 = launchpad.createToken(
-            "Test Token 2", "TT2", "ipfs://test-metadata-2", address(bondingCurve), address(graduator)
+            "Test Token 2", "TT2", "ipfs://test-metadata-2", address(bondingCurve), address(graduatorV2)
         );
 
         // Scenario 2: One big buy
