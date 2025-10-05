@@ -171,7 +171,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         );
 
         // =============== todo REMOVE ALL THESE ===============
-        // review this is only for sanity check purposes, and should be removed 
+        // review this is only for sanity check purposes, and should be removed
         uint128 liquidity0 = LiquidityAmounts.getLiquidityForAmount0(
             uint160(sqrtPriceAX96_tokensPerEth), // lower tick price (max token price)
             uint160(sqrtPriceBX96_tokensPerEth), // upper tick price (min token price)

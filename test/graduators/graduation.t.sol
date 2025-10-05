@@ -3,7 +3,11 @@ pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
-import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator, LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
+import {
+    LaunchpadBaseTests,
+    LaunchpadBaseTestsWithUniv2Graduator,
+    LaunchpadBaseTestsWithUniv4Graduator
+} from "test/launchpad/base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -27,7 +31,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmountToGraduate}(testToken, 0, DEADLINE);
     }
-    
+
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
 
     /// @notice Test that graduated boolean turns true in launchpad
@@ -280,10 +284,8 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     }
 }
 
-
 /// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator
 contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, LaunchpadBaseTestsWithUniv2Graduator {
-
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
         super.setUp();
     }
@@ -291,7 +293,6 @@ contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
 
 /// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V4 graduator
 contract UniswapV4AgnosticGraduationTests is ProtocolAgnosticGraduationTests, LaunchpadBaseTestsWithUniv4Graduator {
-
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator) {
         super.setUp();
     }

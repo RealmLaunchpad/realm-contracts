@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTestsWithUniv2Graduator} from "./base.t.sol";
+import {
+    LaunchpadBaseTests,
+    LaunchpadBaseTestsWithUniv2Graduator,
+    LaunchpadBaseTestsWithUniv4Graduator
+} from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/LivoToken.sol";
 
-contract BuyTokensTest is LaunchpadBaseTestsWithUniv2Graduator {
+abstract contract BuyTokensTest is LaunchpadBaseTests {
     uint256 constant DEADLINE = type(uint256).max;
 
     function testBuyTokensWithExactEth_happyPath() public createTestToken {
@@ -368,5 +372,19 @@ contract BuyTokensTest is LaunchpadBaseTestsWithUniv2Graduator {
         uint256 secondPrice = (ethForComparison * 1e18) / tokensReceived2;
 
         assertGe(secondPrice, firstPrice, "The second purchase should get a higher price");
+    }
+}
+
+/// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator
+contract BuyTokenTests_Univ2 is BuyTokensTest, LaunchpadBaseTestsWithUniv2Graduator {
+    function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
+        super.setUp();
+    }
+}
+
+/// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V4 graduator
+contract BuyTokenTests_Univ4 is BuyTokensTest, LaunchpadBaseTestsWithUniv4Graduator {
+    function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator) {
+        super.setUp();
     }
 }

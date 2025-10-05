@@ -297,7 +297,11 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         _buy(0.1 ether);
         _graduateToken();
 
-        assertEq(LivoToken(testToken).balanceOf(creator), TOTAL_SUPPLY / 100, "creator should have less than 1% of the supply");
+        assertEq(
+            LivoToken(testToken).balanceOf(creator),
+            TOTAL_SUPPLY / 100,
+            "creator should have less than 1% of the supply"
+        );
     }
 
     /// @notice Test that after graduation (exact eth) all the token supply is in the buyer's balance and the pool manager
@@ -311,7 +315,11 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         uint256 creatorBalance = LivoToken(testToken).balanceOf(creator);
         uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
 
-        assertEq(buyerBalance + poolManagerBalance + creatorBalance + burntSupply, TOTAL_SUPPLY, "some tokens have disappeared");
+        assertEq(
+            buyerBalance + poolManagerBalance + creatorBalance + burntSupply,
+            TOTAL_SUPPLY,
+            "some tokens have disappeared"
+        );
         assertLt(burntSupply, 2e18, "burned tokens exceeds 2 tokens");
         assertLt(burntSupply, TOTAL_SUPPLY / 100_000_000, "more than 0.000001% of the supply is burned");
     }
@@ -331,9 +339,6 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         // console.log("eth worth of burnt tokens", ethWorthOfBurntTokens);
         assertLt(ethWorthOfBurntTokens, 0.00000001 ether, "eth worth of burnt tokens is greater than 0.00004$");
     }
-
-
-
 
     // /// @notice Test that launchpad eth balance change at graduation is the exact reserves pre-graduation
     // function test_launchpadEthBalanceChangeEqualsReservesAtGraduation() public createTestToken {
@@ -363,7 +368,6 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     //     uint256 ethChange = launchpadEthBefore + purchaseValue - launchpadEthAfter;
     //     assertEq(ethChange, liquidityExpected, "ETH balance change should equal liquidity sent to pool");
     // }
-
 
     // /// @notice Test that when token is graduated exactly at the graduation threshold, the price purchasing in univ4 is slightly above the price in the bonding curve
     // function test_priceInUniv4AboveBondingCurveAtExactThreshold() public createTestToken {
@@ -484,7 +488,7 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     // }
 
     ///////////////////////////////////////// NORMAL UNIV4 ACTIVITY POST GRADUATION ////////////////////////////////////
-    
+
     // function test_buyingFromUniv4AfterGraduation_succeeds() public createTestToken {
     //     revert("Not implemented");
     // }
