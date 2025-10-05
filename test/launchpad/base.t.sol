@@ -85,6 +85,7 @@ contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
     address constant positionManagerAddress = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
 
     address constant permit2Address = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    address constant universalRouter = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
 
     function setUp() public virtual override {
         super.setUp();

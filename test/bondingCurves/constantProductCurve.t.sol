@@ -70,11 +70,13 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 buyValue = 0.000001e18;
         uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, buyValue);
         uint256 curvePrice = (1e18 * buyValue) / tokensReceived; // ETH/tokens
+        console.log("Curve price at graduation [eth/token]", curvePrice);
 
         // then we take the graduation fee and tokens for creators, and calculate the Uniswap price
         uint256 tokenReservesForUniswap = tokenReserves - GRADUATION_TOKEN_CREATOR_REWARD;
         uint256 ethReservesForUniswap = ethReserves - GRADUATION_ETH_FEE;
         uint256 uniswapPrice = _uniswapV2EstimatedPrice(tokenReservesForUniswap, ethReservesForUniswap);
+        console.log("Uniswap price at graduation [eth/token]", uniswapPrice);
 
         // accept an price change of %0.001 between uniswap and bonding curve at the moment of graduation
         assertApproxEqRel(curvePrice, uniswapPrice, 0.00001e18, "Token prices should match at graduation point");

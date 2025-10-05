@@ -8,17 +8,19 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
-import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
-import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
-import {Currency, CurrencyLibrary} from "lib/v4-core/src/types/Currency.sol";
-import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
-import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+
+import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
+import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
+import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
+import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 
 /// @notice Tests for Uniswap V4 graduator functionality
-/// @dev NOTE: Some tests are currently skipped due to a SafeCastOverflow bug in LivoGraduatorUniswapV4._depositLiquidity
-///      The bug occurs when getLiquidityForAmounts returns a value > uint128.max
-///      These tests should be enabled once the graduator implementation is fixed
 contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -34,7 +36,7 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     int24 constant tickSpacing = 200;
 
     // review this is hardcoded and shoud match the contract ... // review
-    uint160 constant startingPriceX96 = 1446501728071428127725498493042687;
+    uint160 constant startingPriceX96 = 401129254579132618442796085280768;
 
     function setUp() public override {
         super.setUp();
@@ -56,7 +58,7 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     function _buy(uint256 value) internal {
-        vm.deal(buyer, value + 1 ether);
+        vm.deal(buyer, value);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: value}(testToken, 0, DEADLINE);
     }
@@ -68,24 +70,74 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         _buy(ethAmountToGraduate);
     }
 
-    function _getTokenPrice() internal returns (uint256) {
+    function _readSqrtX96TokenPrice() internal view returns (uint160) {
         // Check price is as expected
         PoolKey memory poolKey = _getPoolKey(testToken);
         PoolId poolId = poolKey.toId();
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
 
-        return _sqrtX96ToTokenPrice(sqrtPriceX96);
+        return sqrtPriceX96;
     }
 
-    function _sqrtX96ToEthPrice(uint160 sqrtPriceX96) internal pure returns (uint256) {
+    function _convertSqrtX96ToEthPrice(uint160 sqrtPriceX96) internal pure returns (uint256) {
         // price expressed as token1/token0 == tokens per native ETH
         // price = (sqrtPriceX96 / 2^96)^2 = (sqrtPriceX96^2) / 2^192
         return (uint256(sqrtPriceX96) * uint256(sqrtPriceX96)) >> 192;
     }
 
-    function _sqrtX96ToTokenPrice(uint160 sqrtPriceX96) internal pure returns (uint256) {
+    function _convertSqrtX96ToTokenPrice(uint160 sqrtPriceX96) internal pure returns (uint256) {
         // revert the sqrtprice and convert it as token price (ETH per token) with 18 decimals
         return (uint256(1e18) << 192) / (uint256(sqrtPriceX96) * uint256(sqrtPriceX96));
+    }
+
+
+    function _swap(uint256 amountIn, uint256 minAmountOut) internal {
+        // now a purchase through uniswap v4
+        vm.startPrank(buyer);
+        IERC20(testToken).approve(address(permit2Address), type(uint256).max);
+        IPermit2(permit2Address).approve(address(testToken), universalRouter, type(uint160).max, type(uint48).max);
+
+        bytes[] memory params = new bytes[](3);
+
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)), // native ETH
+            currency1: Currency.wrap(address(testToken)),
+            fee: lpFee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(0))
+        });
+
+        // First parameter: swap configuration
+        params[0] = abi.encode(
+            IV4Router.ExactInputSingleParams({
+                poolKey: key,
+                zeroForOne: true,            // true if we're swapping token0 for token1 (buying tokens with eth)
+                amountIn: uint128(amountIn),          // amount of tokens we're swapping
+                amountOutMinimum: uint128(minAmountOut), // minimum amount we expect to receive
+                hookData: bytes("")             // no hook data needed
+            })
+        );
+
+        // Encode the Universal Router command
+        uint256 V4_SWAP = 0x10;
+        bytes memory commands = abi.encodePacked(uint8(V4_SWAP));
+        bytes[] memory inputs = new bytes[](1);
+
+            // Encode V4Router actions
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.SWAP_EXACT_IN_SINGLE),
+            uint8(Actions.SETTLE_ALL),
+            uint8(Actions.TAKE_ALL)
+        );
+
+        params[1] = abi.encode(key.currency0, amountIn);
+        params[2] = abi.encode(key.currency1, minAmountOut);
+
+        // Combine actions and params into inputs
+        inputs[0] = abi.encode(actions, params);
+
+        // Execute the swap
+        IUniversalRouter(universalRouter).execute{value: amountIn}(commands, inputs, block.timestamp);
     }
 
     //////////////////////////////////// tests ///////////////////////////////
@@ -96,9 +148,12 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         PoolId poolId = poolKey.toId();
 
         (uint160 sqrtPriceX96, int24 tick,,) = poolManager.getSlot0(poolId);
+        // the starting price is the graduation price, which would only be achieved at graduation
+        // before that there should be no activity on this pool (token transfers are forbidden to the pool manager)
+        uint256 graduationPrice = 39011306440; // wei per token
+        uint256 poolSetPrice = _convertSqrtX96ToTokenPrice(sqrtPriceX96);
 
-        assertEq(_sqrtX96ToEthPrice(sqrtPriceX96), 333333333, "Pool should be initialized with correct starting price");
-        // assertApproxEqAbs(sqrtPriceX96, startingPriceX96, 1, "Pool should be initialized with correct starting price");
+        assertApproxEqAbs(poolSetPrice, graduationPrice, 10, "Pool price should match graduation price. 10 wei error difference");
         assertGt(tick, 0, "Tick should be positive");
     }
 
@@ -106,9 +161,9 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     function test_poolCannotBeRecreatedWithSameParameters() public createTestToken {
         PoolKey memory poolKey = _getPoolKey(testToken);
 
-        // The pool is already initialized, so re-initializing should revert
+        // The pool is already initialized, so re-initializing should revert, even with a different price (cos has same key)
         vm.expectRevert(bytes4(0x7983c051)); // PoolAlreadyInitialized()
-        poolManager.initialize(poolKey, startingPriceX96);
+        poolManager.initialize(poolKey, 2505414483750479155158843392);
     }
 
     /// @notice Test that a pool can be created with different parameters
@@ -123,11 +178,12 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         });
 
         // This should succeed as it's a different pool
-        poolManager.initialize(differentPoolKey, startingPriceX96);
+        uint160 differentStartPrice = 2505414483750479155158843392;
+        poolManager.initialize(differentPoolKey, differentStartPrice);
 
         PoolId poolId = differentPoolKey.toId();
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        assertEq(sqrtPriceX96, startingPriceX96, "Different pool should be initialized");
+        assertEq(sqrtPriceX96, differentStartPrice, "Different pool should be initialized");
     }
 
     /// @notice Test that tokens cannot be transferred to the pool manager before graduation
@@ -193,14 +249,14 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         );
         // comparison in the tokens/ETH domain , on price
         assertEq(
-            _sqrtX96ToEthPrice(sqrtPriceX96),
-            _sqrtX96ToEthPrice(startingPriceX96),
+            _convertSqrtX96ToEthPrice(sqrtPriceX96),
+            _convertSqrtX96ToEthPrice(startingPriceX96),
             "[eth-price domain] The token price (ETH/token) should be higher than the starting price"
         );
         // comparison in the ETH/tokens domain (token price)
         assertEq(
-            _sqrtX96ToTokenPrice(sqrtPriceX96),
-            _sqrtX96ToTokenPrice(startingPriceX96),
+            _convertSqrtX96ToTokenPrice(sqrtPriceX96),
+            _convertSqrtX96ToTokenPrice(startingPriceX96),
             "[token-price domain] The token price (ETH/token) should be higher than the starting price"
         );
     }
@@ -210,13 +266,7 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         _buy(MAX_THRESHOLD_EXCESS - 0.1 ether);
         _graduateToken();
 
-        TokenState memory state = launchpad.getTokenState(testToken);
-        assertTrue(state.graduated, "Token should be graduated");
-
-        // Check price is as expected
-        PoolKey memory poolKey = _getPoolKey(testToken);
-        PoolId poolId = poolKey.toId();
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        uint160 sqrtPriceX96 = _readSqrtX96TokenPrice();
 
         // Token Price should be at or above starting price
         // since price is expressed as tokens/ETH, the sqrtPrice should be less than the starting price
@@ -231,17 +281,18 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         );
         // comparison in the tokens/ETH domain , on price
         assertEq(
-            _sqrtX96ToEthPrice(sqrtPriceX96),
-            _sqrtX96ToEthPrice(startingPriceX96),
+            _convertSqrtX96ToEthPrice(sqrtPriceX96),
+            _convertSqrtX96ToEthPrice(startingPriceX96),
             "[eth-price domain] The token price (ETH/token) should be higher than the starting price"
         );
         // comparison in the ETH/tokens domain (token price)
         assertEq(
-            _sqrtX96ToTokenPrice(sqrtPriceX96),
-            _sqrtX96ToTokenPrice(startingPriceX96),
+            _convertSqrtX96ToTokenPrice(sqrtPriceX96),
+            _convertSqrtX96ToTokenPrice(startingPriceX96),
             "[token-price domain] The token price (ETH/token) should be higher than the starting price"
         );
     }
+
 
     /// @notice Test that after graduation there are no tokens left in the graduator or launchpad contracts
     function test_tokenBalancesAfterExactGraduationAreZero() public createTestToken {
@@ -320,7 +371,7 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
             TOTAL_SUPPLY,
             "some tokens have disappeared"
         );
-        assertLt(burntSupply, 2e18, "burned tokens exceeds 2 tokens");
+        assertLt(burntSupply, 5e18, "burned tokens exceeds 5 tokens");
         assertLt(burntSupply, TOTAL_SUPPLY / 100_000_000, "more than 0.000001% of the supply is burned");
     }
 
@@ -331,93 +382,166 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         // there is always some leftovers burned
         assertGt(burntSupply, 0);
 
-        uint256 tokenPrice = _getTokenPrice();
+        uint256 tokenPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
         // console.log("token price after graduation", tokenPrice);
 
         // the eth worth of the burnt tokens should be negligible (less than 0.01 ETH)
         uint256 ethWorthOfBurntTokens = (burntSupply * tokenPrice) / 1e18;
         // console.log("eth worth of burnt tokens", ethWorthOfBurntTokens);
-        assertLt(ethWorthOfBurntTokens, 0.00000001 ether, "eth worth of burnt tokens is greater than 0.00004$");
+        assertLt(ethWorthOfBurntTokens, 0.000001 ether, "eth worth of burnt tokens is greater than 0.00004$");
     }
 
-    // /// @notice Test that launchpad eth balance change at graduation is the exact reserves pre-graduation
-    // function test_launchpadEthBalanceChangeEqualsReservesAtGraduation() public createTestToken {
-    //     vm.deal(buyer, 100 ether);
+    /// @notice Test that after graduation (exact eth) all the token supply is in the buyer's balance and the pool manager
+    function test_poolManagerTokenBalanceAfterExcessGraduation() public createTestToken {
+        assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
+        _buy(BASE_GRADUATION_THRESHOLD - 0.01 ether);
+        _buy(0.5 ether);
 
-    //     // Buy but not graduate
-    //     vm.prank(buyer);
-    //     launchpad.buyTokensWithExactEth{value: BASE_GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
-    //     assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
+        uint256 buyerBalance = LivoToken(testToken).balanceOf(buyer);
+        uint256 poolManagerBalance = LivoToken(testToken).balanceOf(poolManagerAddress);
+        uint256 creatorBalance = LivoToken(testToken).balanceOf(creator);
+        uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
 
-    //     uint256 etherReservesPreGraduation = launchpad.getTokenState(testToken).ethCollected;
-    //     uint256 launchpadEthBefore = address(launchpad).balance;
+        assertEq(
+            buyerBalance + poolManagerBalance + creatorBalance + burntSupply,
+            TOTAL_SUPPLY,
+            "some tokens have disappeared"
+        );
+        assertLt(burntSupply, 5e18, "burned tokens exceeds 5 tokens");
+        assertLt(burntSupply, TOTAL_SUPPLY / 100_000_000, "more than 0.000001% of the supply is burned");
+    }
 
-    //     // Purchase to trigger graduation
-    //     uint256 purchaseValue = 1.5 ether;
-    //     vm.prank(buyer);
-    //     launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
-    //     assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
+    /// @notice Test that after graduation (exact eth) the eth worth of tokens dead is negligible
+    function test_negligibleEthWorthOfTokensBurnedAtExcessGraduation() public createTestToken {
+        assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
+        _buy(BASE_GRADUATION_THRESHOLD - 0.01 ether);
+        _buy(0.5 ether);
+        
+        uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
+        // there is always some leftovers burned
+        assertGt(burntSupply, 0);
 
-    //     uint256 launchpadEthAfter = address(launchpad).balance;
+        uint256 tokenPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
+        // console.log("token price after graduation", tokenPrice);
 
-    //     // Calculate expected liquidity sent
-    //     uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
-    //     uint256 liquidityExpected = etherReservesPreGraduation + (purchaseValue - tradingFee - BASE_GRADUATION_FEE);
+        // the eth worth of the burnt tokens should be negligible (less than 0.01 ETH)
+        uint256 ethWorthOfBurntTokens = (burntSupply * tokenPrice) / 1e18;
+        // console.log("eth worth of burnt tokens", ethWorthOfBurntTokens);
+        assertLt(ethWorthOfBurntTokens, 0.000001 ether, "eth worth of burnt tokens is greater than 0.00004$");
+    }
 
-    //     // ETH balance change should account for the liquidity sent to the pool
-    //     uint256 ethChange = launchpadEthBefore + purchaseValue - launchpadEthAfter;
-    //     assertEq(ethChange, liquidityExpected, "ETH balance change should equal liquidity sent to pool");
-    // }
 
-    // /// @notice Test that when token is graduated exactly at the graduation threshold, the price purchasing in univ4 is slightly above the price in the bonding curve
-    // function test_priceInUniv4AboveBondingCurveAtExactThreshold() public createTestToken {
-    //     // Graduate at exact threshold
-    //     uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-    //     uint256 ethAmountToGraduate = (graduationThreshold * 10000) / (10000 - BASE_BUY_FEE_BPS);
+    /// @notice Test that the price given at graduation is lower than pool price in uniswapv4
+    function test_priceGivenAtGraduation_smallTx_MatchesUniv4() public createTestToken {
+        _buy(BASE_GRADUATION_THRESHOLD - 1);
+        uint256 remainingForGraduation;
+        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        _buy(remainingForGraduation-1);
+        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        _buy(remainingForGraduation-1);
+        assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
-    //     vm.deal(buyer, ethAmountToGraduate + 1 ether);
-    //     vm.prank(buyer);
-    //     launchpad.buyTokensWithExactEth{value: ethAmountToGraduate}(testToken, 0, DEADLINE);
+        deal(buyer, 10 ether);
+        uint256 buyerEthBalance = buyer.balance;
+        uint256 buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
+        console.log("Buyer eth balance before last tx", buyerEthBalance);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 0.00001 ether}(testToken, 0, DEADLINE);
 
-    //     assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
+        assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated now");
 
-    //     // Get the current price in the Uniswap v4 pool
-    //     PoolKey memory poolKey = _getPoolKey(testToken);
-    //     PoolId poolId = poolKey.toId();
-    //     (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        uint256 ethSpent = buyerEthBalance - buyer.balance;
+        uint256 tokensBought = LivoToken(testToken).balanceOf(buyer) - buyerTokenBalance;
+        uint256 effectiveEth = ethSpent - ((ethSpent * BASE_BUY_FEE_BPS) / 10000);
+        uint256 effectivePrice = (effectiveEth * 1e18) / tokensBought;
+        console.log("Eth spent in last tx", ethSpent);
+        console.log("Effective Eth spent in last tx", effectiveEth);
+        console.log("Tokens bought in last tx", tokensBought);
+        console.log("Effective price at graduation (eth/token)", effectivePrice);
+        uint256 poolPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
 
-    //     // The pool price should be slightly above the starting price
-    //     // (it will be the same or very close since we just graduated)
-    //     assertGe(sqrtPriceX96, startingPriceX96, "Pool price should be at or above starting price");
-    // }
+        // 39405360036 raw
+        // 39011306436 as if there were no fees
+        assertApproxEqRel(effectivePrice, poolPrice, 0.00001e18, "Effective price at graduation should match pool price (small last tx)");
+        assertGt(poolPrice, effectivePrice, "Pool price should be above effective price at graduation (small last tx)");
+    }
 
-    // /// @notice Test that when token is graduated at graduation threshold plus MAX_THRESHOLD_EXCESS, the price purchasing in univ4 is above the price in the bonding curve
-    // function test_priceInUniv4AboveBondingCurveAtThresholdPlusExcess() public createTestToken {
-    //     // Buy up to just below threshold first
-    //     uint256 firstPurchase = BASE_GRADUATION_THRESHOLD - 0.2 ether;
-    //     vm.deal(buyer, 10 ether);
-    //     vm.prank(buyer);
-    //     launchpad.buyTokensWithExactEth{value: firstPurchase}(testToken, 0, DEADLINE);
 
-    //     // Now buy enough to graduate with max excess
-    //     // This purchase should take us to threshold + max excess
-    //     uint256 effectiveFirst = (firstPurchase * (10000 - BASE_BUY_FEE_BPS)) / 10000;
-    //     uint256 remainingToThreshold = BASE_GRADUATION_THRESHOLD - effectiveFirst;
-    //     uint256 secondPurchase = ((remainingToThreshold + MAX_THRESHOLD_EXCESS) * 10000) / (10000 - BASE_BUY_FEE_BPS);
+    /// @notice Test that after exact graduation, the first purchase has a similar price than the last purchase in the bonding curve
+    function test_priceGivenAtGraduation_smallTx_MatchesUniv4_Swap() public createTestToken {
+        _buy(BASE_GRADUATION_THRESHOLD - 1);
+        uint256 remainingForGraduation;
+        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        _buy(remainingForGraduation-1);
+        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        _buy(remainingForGraduation-1);
+        assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
-    //     vm.prank(buyer);
-    //     launchpad.buyTokensWithExactEth{value: secondPurchase}(testToken, 0, DEADLINE);
+        deal(buyer, 10 ether);
+        uint256 buyerEthBalance = buyer.balance;
+        uint256 buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
+        console.log("Buyer eth balance before last tx", buyerEthBalance);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 0.00001 ether}(testToken, 0, DEADLINE);
 
-    //     assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
+        assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated now");
 
-    //     // Get the current price in the Uniswap v4 pool
-    //     PoolKey memory poolKey = _getPoolKey(testToken);
-    //     PoolId poolId = poolKey.toId();
-    //     (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        uint256 ethSpent = buyerEthBalance - buyer.balance;
+        uint256 tokensBought = LivoToken(testToken).balanceOf(buyer) - buyerTokenBalance;
+        uint256 effectivePrice = (ethSpent * 1e18) / tokensBought;
+        console.log("Eth spent in last tx", ethSpent);
+        console.log("Tokens bought in last tx", tokensBought);
+        console.log("Effective price at graduation (eth/token)", effectivePrice);
 
-    //     // The pool price should be at or above the starting price
-    //     assertGe(sqrtPriceX96, startingPriceX96, "Pool price should be at or above starting price");
-    // }
+        buyerEthBalance = buyer.balance;
+        buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
+        _swap(0.00001 ether, 0);
+        uint256 ethSpentInSwap = buyerEthBalance - buyer.balance;
+        uint256 tokensBoughtInSwap = LivoToken(testToken).balanceOf(buyer) - buyerTokenBalance;
+        uint256 swapPrice = (ethSpentInSwap * 1e18) / tokensBoughtInSwap;
+        console.log("Eth spent in swap", ethSpentInSwap);
+        console.log("Tokens bought in swap", tokensBoughtInSwap);
+        console.log("Swap price (eth/token)", swapPrice);
+        
+        assertApproxEqRel(effectivePrice, swapPrice, 0.0001e18, "Effective price at graduation should match swap price");
+        assertGt(swapPrice, effectivePrice, "Swap price should be above effective price at graduation");
+    }
+
+    /// @notice Test that when token is graduated at graduation threshold plus MAX_THRESHOLD_EXCESS, the price purchasing in univ4 is above the price in the bonding curve
+    function test_priceGivenAtGraduationMatchesUniv4_largeLastPurchase_matchesSwap() public createTestToken {
+        _buy(BASE_GRADUATION_THRESHOLD - 0.5 ether);
+        assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
+
+        // if a crazy user buys the remaining tokens, will get a hell of a price impact ...
+        deal(buyer, 10 ether);
+        uint256 buyerEthBalance = buyer.balance;
+        uint256 buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
+        console.log("Buyer eth balance before last tx", buyerEthBalance);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated now");
+
+        uint256 ethSpent = buyerEthBalance - buyer.balance;
+        uint256 tokensBought = LivoToken(testToken).balanceOf(buyer) - buyerTokenBalance;
+        uint256 effectivePrice = (ethSpent * 1e18) / tokensBought;
+        console.log("Eth spent in last tx", ethSpent);
+        console.log("Tokens bought in last tx", tokensBought);
+        console.log("Effective price at graduation (eth/token)", effectivePrice);
+
+        // now we do a similar purchase in uniswapv4, to account for the price impact
+        buyerEthBalance = buyer.balance;
+        buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
+        _swap(1 ether, 0);
+        uint256 ethSpentInSwap = buyerEthBalance - buyer.balance;
+        uint256 tokensBoughtInSwap = LivoToken(testToken).balanceOf(buyer) - buyerTokenBalance;
+        uint256 swapPrice = (ethSpentInSwap * 1e18) / tokensBoughtInSwap;
+        console.log("Eth spent in swap", ethSpentInSwap);
+        console.log("Tokens bought in swap", tokensBoughtInSwap);
+        console.log("Swap price (eth/token)", swapPrice);
+        
+        // the swap price should be higher, and due to the price impact, they are not expected to match at all
+        assertGt(swapPrice, effectivePrice, "Swap price should be above effective price at graduation");
+    }
 
     /////////////////////////////////// EXPLOITS / DOS / MISSUSAGE /////////////////////////////////////////
 

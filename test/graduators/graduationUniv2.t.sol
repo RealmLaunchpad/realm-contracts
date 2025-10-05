@@ -292,6 +292,25 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         // but I fixed this one by simply depositing a slighly higher amount of ETH
     }
 
+    /// @notice Ensure that the right amount of tokens are deposited as liquidity
+    function test_rightAmountOfTokensToLiquidity() public createTestTokenWithPair {
+        // donate some eth to the pair
+        IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
+        _graduateToken();
+
+        assertApproxEqRel(IERC20(testToken).balanceOf(uniswapPair), 191_123_250e18, 0.0001e18, "not enough tokens went to univ2 pool");
+    }
+
+    /// @notice Ensure that the right amount of eth was deposited as liquidity
+    function test_rightAmountOfEthToLiquidity() public createTestTokenWithPair {
+        // donate some eth to the pair
+        IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
+        _graduateToken();
+        
+        assertApproxEqRel(WETH.balanceOf(address(pair)), 7.456e18, 0.000001e18, "not enough eth went to univ2 pool");
+    }
+
+
     /// @notice Test that if a large amount of WETH is donated (and synced) to the univ2pair pre-graduation, graduation doesn't fail
     function test_large_ethTransferToUniV2PairPreGraduation_sync_graduationOk() public createTestTokenWithPair {
         // donate some eth to the pair

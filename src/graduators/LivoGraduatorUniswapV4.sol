@@ -5,12 +5,6 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-// import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
-// import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
-// import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
-
-// import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-// import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 // // import {BasicHooks} from "src/BasicHooks.sol";
 
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -25,7 +19,7 @@ import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IA
 // import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
-// import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
+import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 // import {Commands} from "src/dependencies/Univ4UniversalRouterCommands.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
@@ -86,7 +80,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     // this starting price is roughly 338156060 tokens for 1 wei, i.e. 0.000000003 ETH/token
     // just below the upper tick price. In range, but minimal eth required to mint the position.
     /// @notice starting price when initializing the Uniswap-v4 pair
-    uint160 constant startingPriceX96 = sqrtPriceBX96_tokensPerEth - 1;
+
+    /// @notice starting price when graduation occurs, which must be inside the liquidity range
+    // The bonding curve gives an approximate graduation price of 39011306440 wei per token, 
+    // (slightly above the bonding curve which is 39011306436 wei per token). 
+    // A small increase step at graduation is expected, but fairly negligible
+    // which in token/eth is 25633594.238583516 tokens per eth
+    //converting that to sqrtX96 price is the price below
+    uint160 constant startingPriceX96_tokensPerEth = 401129254579132618442796085280768;
 
     error EthTransferFailed();
 
@@ -107,7 +108,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         // this sets the price even if there is no liquidity yet
         // todo make sure this price is slightly higher than the last price in the bonding curve
-        poolManager.initialize(pool, startingPriceX96);
+        poolManager.initialize(pool, startingPriceX96_tokensPerEth);
 
         // in univ4, there is not a pair address.
         // We return the address of the pool manager, which forbids token transfers to the pool until graduation
@@ -135,7 +136,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         // approve `PositionManager` as a spender
         IAllowanceTransfer(address(permit2)).approve(
-            address(token), address(positionManager), type(uint160).max, type(uint48).max
+            address(token), // approved token
+            address(positionManager), // spender
+            type(uint160).max, // amount
+            type(uint48).max // expiration
         );
 
         // uniswap v4 liquidity position creation
@@ -148,7 +152,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // emit TokenGraduated(tokenAddress, pair, tokenBalance, amountEth, liquidity);// todo
     }
 
-    function _getPoolKey(address tokenAddress) internal view returns (PoolKey memory) {
+    function _getPoolKey(address tokenAddress) internal pure returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(tokenAddress)),
@@ -163,35 +167,36 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         PoolKey memory pool = _getPoolKey(tokenAddress);
 
-        // todo if we specify the token amount we need to collect any excess eth back
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmount1(
-            uint160(sqrtPriceAX96_tokensPerEth), // lower tick price (max token price)
-            uint160(sqrtPriceBX96_tokensPerEth), // upper tick price (min token price)
-            tokenAmount // desired amount1
-        );
+        // // todo if we specify the token amount we need to collect any excess eth back
+        // uint128 liquidity = LiquidityAmounts.getLiquidityForAmount1(
+        //     uint160(sqrtPriceAX96_tokensPerEth), // lower tick price (max token price)
+        //     uint160(sqrtPriceBX96_tokensPerEth), // upper tick price (min token price)
+        //     tokenAmount // desired amount1
+        // );
 
-        // =============== todo REMOVE ALL THESE ===============
-        // review this is only for sanity check purposes, and should be removed
-        uint128 liquidity0 = LiquidityAmounts.getLiquidityForAmount0(
-            uint160(sqrtPriceAX96_tokensPerEth), // lower tick price (max token price)
-            uint160(sqrtPriceBX96_tokensPerEth), // upper tick price (min token price)
-            ethValue // desired amount1
-        );
-        require(liquidity > 0, "NoLiquidityCreated");
-        require(liquidity0 > 0, "NoLiquidity0Created");
-        require(liquidity0 <= liquidity, "Eth should be the limiting factor");
-        // ===========================================================
+        // // =============== todo REMOVE ALL THESE ===============
+        // // review this is only for sanity check purposes, and should be removed
+        // uint128 liquidity0 = LiquidityAmounts.getLiquidityForAmount0(
+        //     uint160(sqrtPriceAX96_tokensPerEth), // lower tick price (max token price)
+        //     uint160(sqrtPriceBX96_tokensPerEth), // upper tick price (min token price)
+        //     ethValue // desired amount1
+        // );
+        
+        // require(liquidity > 0, "NoLiquidityCreated");
+        // require(liquidity0 > 0, "NoLiquidity0Created");
+        // require(liquidity0 <= liquidity, "Eth should be the limiting factor");
+        // // ===========================================================
 
-        //        // todo explore what happens when excess eth is deposited as liquidity (can I keep same range, same starting price, etc?)
-        //        // calculate liquidity based on the startingPrice and the range
-        //        // calculate the liquidity range, assuming we just hit graduation exactly // todo
-        //        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-        //            uint160(startingPriceX96), // current pool price --> presumably the starting price which cannot be modified until graduation
-        //            uint160(sqrtPriceAX96_tokensPerEth), // lower tick price
-        //            uint160(sqrtPriceBX96_tokensPerEth), // upper tick price
-        //            ethValue, // desired amount0
-        //            tokenAmount // desired amount1  // todo make sure we are not left with any excess tokens. Allocate excess tokens/eth
-        //        );
+        // todo explore what happens when excess eth is deposited as liquidity (can I keep same range, same starting price, etc?)
+        // calculate liquidity based on the startingPrice and the range
+        // calculate the liquidity range, assuming we just hit graduation exactly // todo
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            uint160(startingPriceX96_tokensPerEth), // current pool price --> presumably the starting price which cannot be modified until graduation
+            uint160(sqrtPriceAX96_tokensPerEth), // lower tick price
+            uint160(sqrtPriceBX96_tokensPerEth), // upper tick price
+            ethValue, // desired amount0
+            tokenAmount // desired amount1  // todo make sure we are not left with any excess tokens. Allocate excess tokens/eth
+        );
 
         // Actions for ETH liquidity positions
         // 1. Mint position
