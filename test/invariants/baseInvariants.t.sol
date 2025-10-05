@@ -57,8 +57,7 @@ contract LaunchpadInvariants is Test {
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
-        launchpad.whitelistBondingCurve(address(bondingCurve), true);
-        launchpad.whitelistGraduator(address(graduatorV2), true);
+        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduator), true);
 
         helper = new InvariantsHelperLaunchpad(launchpad, address(bondingCurve), address(graduatorV2));
 

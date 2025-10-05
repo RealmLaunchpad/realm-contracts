@@ -51,20 +51,20 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertTrue(deployedToken != address(launchpad.tokenImplementation()));
     }
 
-    function testCannotCreateTokenWithInvalidBondingCurve() public {
+    function testCannotCreateTokenWith_InvalidCrurve_ValidGraduator() public {
         address invalidCurve = makeAddr("invalidCurve");
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidBondingCurve.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidCurveGraduatorCombination.selector));
         launchpad.createToken("TestToken", "TEST", "ipfs://test-metadata", invalidCurve, address(graduatorV2));
     }
 
-    function testCannotCreateTokenWithInvalidGraduator() public {
-        address invalidGraduator = makeAddr("invalidGraduator");
+    function testCannotCreateTokenWith_InvalidGraduator_ValidCurve() public {
+        address invalidCurve = makeAddr("invalidCurve");
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidGraduator.selector));
-        launchpad.createToken("TestToken", "TEST", "ipfs://test-metadata", address(bondingCurve), invalidGraduator);
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidCurveGraduatorCombination.selector));
+        launchpad.createToken("TestToken", "TEST", "ipfs://test-metadata", address(bondingCurve), invalidCurve);
     }
 
     function testCannotCreateTokenWithEmptyName() public {

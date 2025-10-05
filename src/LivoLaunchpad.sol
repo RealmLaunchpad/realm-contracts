@@ -46,11 +46,8 @@ contract LivoLaunchpad is Ownable {
     uint16 public baseBuyFeeBps;
     uint16 public baseSellFeeBps;
 
-    /// @notice Which Bonding Curve addresses can be selected at token creation
-    mapping(address => bool) public whitelistedBondingCurves;
-
-    /// @notice Which Graduator addresses can be selected at token creation
-    mapping(address => bool) public whitelistedGraduators;
+    /// @notice stores whitelisted pairs of bonding curves and graduators. 
+    mapping(address curve => mapping(address graduator => bool whitelisted)) public whitelistedComponents;
 
     /// @notice Mapping of token address to its configuration
     mapping(address => TokenConfig) public tokenConfigs;
@@ -60,8 +57,8 @@ contract LivoLaunchpad is Ownable {
 
     ///////////////////// Errors /////////////////////
 
-    error InvalidBondingCurve();
-    error InvalidGraduator();
+    error WhitelistAlreadySet();
+    error InvalidCurveGraduatorCombination();
     error InvalidNameOrSymbol();
     error InvalidAmount();
     error InvalidParameter(uint256 parameter);
@@ -99,8 +96,7 @@ contract LivoLaunchpad is Ownable {
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event GraduationFeeUpdated(uint256 newGraduationFee);
-    event BondingCurveWhitelisted(address indexed bondingCurve, bool whitelisted);
-    event GraduatorWhitelisted(address indexed graduator, bool whitelisted);
+    event CurveAndGraduatorWhitelistedSet(address bondingCurve, address graduator, bool whitelisted);
 
     /////////////////////////////////////////////////
 
@@ -137,9 +133,7 @@ contract LivoLaunchpad is Ownable {
     ) external returns (address) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
-
-        require(whitelistedBondingCurves[bondingCurve], InvalidBondingCurve());
-        require(whitelistedGraduators[graduator], InvalidGraduator());
+        require(whitelistedComponents[bondingCurve][graduator], InvalidCurveGraduatorCombination());
 
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
@@ -306,16 +300,14 @@ contract LivoLaunchpad is Ownable {
         emit TradingFeesUpdated(buyFeeBps, sellFeeBps);
     }
 
-    /// @notice Whitelists a bonding curve that can be chosen by future tokens
-    function whitelistBondingCurve(address bondingCurve, bool whitelisted) external onlyOwner {
-        whitelistedBondingCurves[bondingCurve] = whitelisted;
-        emit BondingCurveWhitelisted(bondingCurve, whitelisted);
-    }
+    /// @notice Whitelist a combination of bonding curve and graduator
+    /// @dev A combination of bonding curve & graduator can only be used if they are both whitelisted as a pair
+    function whitelistCurveAndGraduator(address bondingCurve, address graduator, bool whitelisted) external onlyOwner {
+        if (whitelistedComponents[bondingCurve][graduator] == whitelisted) revert WhitelistAlreadySet();
 
-    /// @dev blacklisted graduators will still be able to graduate the tokens that where created with them
-    function whitelistGraduator(address graduator, bool whitelisted) external onlyOwner {
-        whitelistedGraduators[graduator] = whitelisted;
-        emit GraduatorWhitelisted(graduator, whitelisted);
+        whitelistedComponents[bondingCurve][graduator] = whitelisted;
+
+        emit CurveAndGraduatorWhitelistedSet(bondingCurve, graduator, whitelisted);
     }
 
     function setTreasuryAddress(address recipient) public onlyOwner {
