@@ -46,7 +46,7 @@ contract LivoLaunchpad is Ownable {
     uint16 public baseBuyFeeBps;
     uint16 public baseSellFeeBps;
 
-    /// @notice stores whitelisted pairs of bonding curves and graduators. 
+    /// @notice stores whitelisted pairs of bonding curves and graduators.
     mapping(address curve => mapping(address graduator => bool whitelisted)) public whitelistedComponents;
 
     /// @notice Mapping of token address to its configuration

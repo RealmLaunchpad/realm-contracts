@@ -120,22 +120,20 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_whitelisting_FailsForNonOwner() public {
         vm.prank(nonOwner);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
-        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV2), true);
+        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduator), true);
     }
 
     function test_whitelisting_SucceedsForOwner() public {
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit(false, false, false, true);
         emit CurveAndGraduatorWhitelistedSet(newBondingCurve, newGraduator, true);
-
-        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV2), true);
+        launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, true);
 
         assertTrue(launchpad.whitelistedComponents(newBondingCurve, newGraduator));
 
         // Test blacklisting
-        vm.expectEmit(true, true, true, true);
-        emit CurveAndGraduatorWhitelistedSet(newBondingCurve, newGraduator, true);
-
-        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV2), false);
+        vm.expectEmit(false, false, false, true);
+        emit CurveAndGraduatorWhitelistedSet(newBondingCurve, newGraduator, false);
+        launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, false);
 
         assertFalse(launchpad.whitelistedComponents(newBondingCurve, newGraduator));
     }
@@ -144,13 +142,12 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, true);
 
         assertFalse(launchpad.whitelistedComponents(address(bondingCurve), newGraduator));
-
     }
 
     function test_whitelistCurveAndGraduator_GivesFalseFor_notCurve_wGraduator() public {
         launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, true);
 
-        assertFalse(launchpad.whitelistedComponents(newBondingCurve, address(graduatorV2)));
+        assertFalse(launchpad.whitelistedComponents(newBondingCurve, address(graduator)));
     }
 
     // setTreasuryAddress Tests

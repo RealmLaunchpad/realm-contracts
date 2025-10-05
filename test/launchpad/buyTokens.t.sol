@@ -7,7 +7,6 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/LivoToken.sol";
 
-
 contract BuyTokensTest is LaunchpadBaseTestsWithUniv2Graduator {
     uint256 constant DEADLINE = type(uint256).max;
 
@@ -296,7 +295,7 @@ contract BuyTokensTest is LaunchpadBaseTestsWithUniv2Graduator {
         // Reset state by creating a new token for the second scenario
         vm.prank(creator);
         address testToken2 = launchpad.createToken(
-            "Test Token 2", "TT2", "ipfs://test-metadata-2", address(bondingCurve), address(graduatorV2)
+            "Test Token 2", "TT2", "ipfs://test-metadata-2", address(bondingCurve), address(graduator)
         );
 
         // Scenario 2: One big buy

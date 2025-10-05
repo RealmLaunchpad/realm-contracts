@@ -31,7 +31,7 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     modifier createTestTokenWithPair() {
         vm.prank(creator);
         testToken = launchpad.createToken(
-            "TestToken", "TEST", "ipfs://test-metadata", address(bondingCurve), address(graduatorV2)
+            "TestToken", "TEST", "ipfs://test-metadata", address(bondingCurve), address(graduator)
         );
         uniswapPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
         _;
@@ -107,7 +107,7 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     function test_cannotCreateUniV2PairRightAfterTokenDeployment() public {
         vm.prank(creator);
         testToken = launchpad.createToken(
-            "TestToken", "TEST", "ipfs://test-metadata", address(bondingCurve), address(graduatorV2)
+            "TestToken", "TEST", "ipfs://test-metadata", address(bondingCurve), address(graduator)
         );
 
         address existingPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
