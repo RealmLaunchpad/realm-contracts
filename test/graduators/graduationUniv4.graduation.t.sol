@@ -35,13 +35,13 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     IPoolManager poolManager;
 
-    // these are copied from the graduator ... // review if they are modified in the graduator this tests may break
+    // these are copied from the graduator ... // note if they are modified in the graduator contract will break some tests
     uint24 constant lpFee = 10000;
     int24 constant tickSpacing = 200;
 
     uint256 constant GRADUATION_PRICE = 39011306440; // ETH/token (eth per token, expressed in wei)
 
-    // review this is hardcoded and shoud match the contract ... // review
+    // note this is hardcoded and shoud match the contract ...
     uint160 constant startingPriceX96 = 401129254579132618442796085280768;
 
     function setUp() public override {
@@ -679,7 +679,7 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
             uint160(sqrtPriceX96Lower), // lower tick price -> max token price denominated in eth
             uint160(sqrtPriceX96Upper), // upper tick price -> min token price denominated in eth
             ethValue, // desired amount0
-            tokenAmount // desired amount1  // todo make sure we are not left with any excess tokens. Allocate excess tokens/eth
+            tokenAmount // desired amount1
         );
 
         // Actions for ETH liquidity positions
@@ -691,7 +691,6 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         bytes[] memory params = new bytes[](3);
 
         // parameters for MINT_POSITION action
-        // review if this contract should be the receiver of the position NFT
         params[0] = abi.encode(pool, tickLower, tickUpper, liquidity, ethValue, tokenAmount, address(this), "");
 
         // parameters for SETTLE_PAIR action
@@ -837,30 +836,13 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
         _swapSell(creator, creatorBalanceBefore, 1, true);
 
+        assertEq(LivoToken(testToken).balanceOf(buyer), 0, "Buyer should have sold all tokens");
+        assertEq(LivoToken(testToken).balanceOf(creator), 0, "Creator should have sold all tokens");
+
         uint256 poolManagerBalance = LivoToken(testToken).balanceOf(address(poolManager));
         uint256 deadAddressBalance = LivoToken(testToken).balanceOf(address(0xdead));
 
         assertEq(poolManagerBalance + deadAddressBalance, TOTAL_SUPPLY, "All tokens should be sold to the pool manager");
-    }
-
-    function test_sellingFromUniv4AfterGraduation_sellFullSupply_whereIsTheEth() public createTestToken {
-        // after graduation, the same swap should succeed
-        _graduateToken();
-
-        uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
-        uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
-        uint256 buyerEtherBefore = buyer.balance;
-        uint256 creatorEtherBefore = creator.balance;
-        assertGt(creatorBalanceBefore, 0, "creator got no tokens");
-
-        _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
-        uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
-
-        _swapSell(creator, creatorBalanceBefore, 1, true);
-        uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
-
-        // todo include here the fees collected by the NFT owner
-        assertEq(ethRecoveredByBuyer + ethRecoveredByCreator, 7 ether, "Total eth recovered should be 7 ether");
     }
 
     function test_sellingFromUniv4AfterGraduation_priceCanDipBelowGraduation() public createTestToken {
@@ -905,5 +887,38 @@ contract UniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         _graduateToken();
     }
 
-    /// @notice test that at graduation, the treasury balance only increases by the GRADUATION FEE and trading fee, but not by the eth reserves
+    /// @notice test that after graduating, all the eth in the liquidity pool can be extracted again by selling all token supply
+    function test_sellingFromUniv4AfterGraduation_sellFullSupply_whereIsTheEth() public createTestToken {
+        uint256 poolBalanceBefore = address(poolManager).balance;
+        _graduateToken();
+        uint256 poolBalanceAfterGraduation = address(poolManager).balance;
+
+        uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
+        uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
+        uint256 buyerEtherBefore = buyer.balance;
+        uint256 creatorEtherBefore = creator.balance;
+
+        _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
+        _swapSell(creator, creatorBalanceBefore, 1, true);
+
+        uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
+        uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
+        uint256 ethLeftPool = poolBalanceAfterGraduation - address(poolManager).balance;
+        // check that the eth collected by buyer and seller matches the eth left the pool
+        assertEq(
+            ethRecoveredByBuyer + ethRecoveredByCreator,
+            ethLeftPool,
+            "eth recovered by buyer and creator should match eth in pool"
+        );
+
+        // because of the liquidity boundaries set when adding liquidity, there is a tiny amount of eth that won't be recoverable
+        // even when all token supply is sold.
+        // We have tuned the ticks so that this amount is lower than 0.005 ether
+        assertApproxEqAbs(
+            address(poolManager).balance,
+            poolBalanceBefore,
+            0.005 ether,
+            "Non recoverable ether from pool manager is too large"
+        );
+    }
 }

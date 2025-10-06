@@ -49,6 +49,19 @@ contract ConstantProductBondingCurveTest is Test {
         assertTrue(tokens > 0, "Should mint non-zero amount of tokens");
     }
 
+    function test_initialState_buyTokensLowestPrice() public {
+        uint256 ethReserves = 0;
+        uint256 tokenReserves = curve.getTokenReserves(ethReserves);
+        uint256 ethAmount = 0.00000000001e18;
+
+        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, ethAmount);
+        uint256 tokenPrice = 1e18 * ethAmount / tokensReceived; // ETH per token
+        console.log("Initial token price [eth/token]", tokenPrice);
+
+        // at the start, the price is very low, so we expect to receive a lot of tokens
+        assertEq(tokenPrice, 2542372880, "Initial token price should be very low");
+    }
+
     function test_buyFunctionsMatchInPrice() public {
         vm.skip(true);
         uint256 ethReserves = 1e18;

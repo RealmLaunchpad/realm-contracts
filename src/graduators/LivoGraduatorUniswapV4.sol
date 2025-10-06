@@ -38,7 +38,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     address public immutable LIVO_LAUNCHPAD;
 
     // todo make hook to distribute lp fees to treasury & token creator
-    // todo perhaps eth on buys, token on sells
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
     uint24 constant lpFee = 10000;
 
@@ -55,9 +54,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
     /// @notice the upper boundary of the liquidity range when the position is created,
     /// i.e., the minimum token price denominated in ETH
-    /// high tick: 219200 -> sqrtX96price: 4555217601048903849476852920877056 -> 3305666893.35 tokens per ETH
+    /// high tick: 203600 -> 2088220564709554551739049874292736 -> 694694034.078335 tokens per ETH
     /// (the ticks need to be multiples of tickSpacing).
-    int24 constant tickUpper = 219200;
+    int24 constant tickUpper = 203600;
 
     /// @notice the lower boundary of the liquidity range when the position is created
     /// low tick: -7000 -> sqrtX96price: 55832119482513121612260179968 -> 0.49660268342258984 tokens per ETH
