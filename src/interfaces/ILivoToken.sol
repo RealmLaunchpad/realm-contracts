@@ -17,4 +17,6 @@ interface ILivoToken is IERC20 {
     ) external;
 
     function markGraduated() external;
+
+    function creator() external view returns (address);
 }
