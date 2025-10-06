@@ -6,6 +6,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
@@ -15,6 +16,7 @@ contract LaunchpadInvariants is Test {
     LivoToken public tokenImplementation;
     ConstantProductBondingCurve public bondingCurve;
     LivoGraduatorUniswapV2 public graduatorV2;
+    LivoGraduatorUniswapV4 public graduatorV4;
 
     // todo add graduatorV4 and create tokens with both graduators to test their coexistence
 
@@ -60,8 +62,10 @@ contract LaunchpadInvariants is Test {
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
         launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV2), true);
+        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV4), true);
 
-        helper = new InvariantsHelperLaunchpad(launchpad, address(bondingCurve), address(graduatorV2));
+        helper =
+            new InvariantsHelperLaunchpad(launchpad, address(bondingCurve), address(graduatorV2), address(graduatorV4));
 
         targetContract(address(helper));
     }

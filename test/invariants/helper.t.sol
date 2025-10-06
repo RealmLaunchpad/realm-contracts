@@ -31,7 +31,9 @@ contract InvariantsHelperLaunchpad is Test {
 
     LivoLaunchpad public launchpad;
     address public bondingCurve;
-    address public graduator;
+
+    address public graduatorV2;
+    address public graduatorV4;
 
     mapping(address => uint256) public aggregatedEthForBuys;
     mapping(address => uint256) public aggregatedTokensBought;
@@ -47,10 +49,11 @@ contract InvariantsHelperLaunchpad is Test {
     uint256 constant FAR_IN_FUTURE = 9758664012;
 
     /////////////////////////////////////////////////////
-    constructor(LivoLaunchpad _launchpad, address _bondingCurve, address _graduator) {
+    constructor(LivoLaunchpad _launchpad, address _bondingCurve, address _graduatorV2, address _graduatorV4) {
         launchpad = _launchpad;
         bondingCurve = _bondingCurve;
-        graduator = _graduator;
+        graduatorV2 = _graduatorV2;
+        graduatorV4 = _graduatorV4;
 
         _actors.add(address(makeAddr("actor1")));
         _actors.add(address(makeAddr("actor2")));
@@ -97,6 +100,8 @@ contract InvariantsHelperLaunchpad is Test {
     //////////////////////////////////////////////////////////
 
     function createToken(uint256 seed) public passTime(seed) choseActor(seed) {
+        address graduator = (seed % 2 == 0) ? graduatorV2 : graduatorV4;
+
         vm.prank(currentActor);
         address token = launchpad.createToken("TestToken", "TEST", "ipfs://test-metadata", bondingCurve, graduator);
         _tokens.add(token);
