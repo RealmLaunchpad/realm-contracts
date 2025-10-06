@@ -8,6 +8,8 @@ import {TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
+import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     uint256 constant DEADLINE = type(uint256).max;
@@ -298,7 +300,9 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
         _graduateToken();
 
-        assertApproxEqRel(IERC20(testToken).balanceOf(uniswapPair), 191_123_250e18, 0.0001e18, "not enough tokens went to univ2 pool");
+        assertApproxEqRel(
+            IERC20(testToken).balanceOf(uniswapPair), 191_123_250e18, 0.0001e18, "not enough tokens went to univ2 pool"
+        );
     }
 
     /// @notice Ensure that the right amount of eth was deposited as liquidity
@@ -306,10 +310,9 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         // donate some eth to the pair
         IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
         _graduateToken();
-        
+
         assertApproxEqRel(WETH.balanceOf(address(pair)), 7.456e18, 0.000001e18, "not enough eth went to univ2 pool");
     }
-
 
     /// @notice Test that if a large amount of WETH is donated (and synced) to the univ2pair pre-graduation, graduation doesn't fail
     function test_large_ethTransferToUniV2PairPreGraduation_sync_graduationOk() public createTestTokenWithPair {
@@ -360,5 +363,25 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
             launchpadEthAfter + WETH.balanceOf(uniswapPair),
             "failed in funds conservation check"
         );
+    }
+
+    /// @notice Test that the TokenGraduated event is emitted by the graduator
+    function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ2() public createTestToken {
+        address tokenPair = 0xE0fAce90bC3aFF2aB0F42E6CdDa48862a021cAa8;
+        vm.expectEmit(true, true, false, true);
+        emit ILivoGraduator.TokenGraduated(
+            testToken, tokenPair, 191123250949901652977523068, 7456000000000052224, 37749370313721482071414
+        );
+
+        _graduateToken();
+    }
+
+    /// @notice Test that the TokenGraduated event is emitted by the Launchpad
+    function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ2() public createTestToken {
+        address tokenPair = 0xE0fAce90bC3aFF2aB0F42E6CdDa48862a021cAa8;
+        vm.expectEmit(true, false, false, true);
+        emit LivoLaunchpad.TokenGraduated(testToken, 7456000000000052224, 191123250949901652977523068);
+
+        _graduateToken();
     }
 }
