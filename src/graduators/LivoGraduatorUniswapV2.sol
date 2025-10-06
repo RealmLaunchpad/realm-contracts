@@ -13,7 +13,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
     /// @notice where LP tokens are sent at graduation, effectively locking the liquidity
-    address internal constant DEAD_ADDRESS = address(0xdead);
+    address internal constant DEAD_ADDRESS = address(0xdEaD);
 
     address public immutable LIVO_LAUNCHPAD;
 
@@ -21,17 +21,6 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     IUniswapV2Router internal immutable UNISWAP_ROUTER;
     IUniswapV2Factory internal immutable UNISWAP_FACTORY;
     address internal immutable WETH;
-
-    ////////////////// Events //////////////////////
-    event TokenGraduated(
-        address indexed token, address indexed pair, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
-    );
-    event PairInitialized(address indexed token, address indexed pair);
-
-    ////////////////// Custom errors //////////////////////
-    error OnlyLaunchpadAllowed();
-    error NoTokensToGraduate();
-    error NoETHToGraduate();
 
     constructor(address _uniswapRouter, address _launchpad) {
         LIVO_LAUNCHPAD = _launchpad;

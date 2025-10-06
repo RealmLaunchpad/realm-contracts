@@ -87,12 +87,9 @@ contract LivoToken is ERC20 {
     function _update(address from, address to, uint256 amount) internal override {
         require(from != to, CannotSelfTransfer());
 
-        // cache to save gas
-        address pair_ = pair;
-
         // this ensures tokens don't arrive to the pair before graduation
         // to avoid exploits/DOS related to liquidity addition at graduation
-        if ((!graduated) && (to == pair_)) {
+        if ((!graduated) && (to == pair)) {
             revert TranferToPairBeforeGraduationNotAllowed();
         }
 

@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTestsWithUniv2Graduator} from "./base.t.sol";
+import {
+    LaunchpadBaseTests,
+    LaunchpadBaseTestsWithUniv2Graduator,
+    LaunchpadBaseTestsWithUniv4Graduator
+} from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/LivoToken.sol";
 
-contract SellTokensTest is LaunchpadBaseTestsWithUniv2Graduator {
+abstract contract SellTokensTest is LaunchpadBaseTests {
     uint256 constant DEADLINE = type(uint256).max;
     uint256 constant ONE_ETH_BUY = 1 ether;
     uint256 constant TWO_ETH_BUY = 2 ether;
@@ -426,4 +430,18 @@ contract SellTokensTest is LaunchpadBaseTestsWithUniv2Graduator {
     // TODO test that all circulating supply returns to the launchpad balance after multiple buyers sell all of their tokens
     // TODO test that buying 1 wei always gives you a non-zero amount of tokens
     // TODO test that selling always gives you a non-zero amount of eth
+}
+
+/// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator
+contract SellTokenTests_Univ2 is SellTokensTest, LaunchpadBaseTestsWithUniv2Graduator {
+    function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
+        super.setUp();
+    }
+}
+
+/// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V4 graduator
+contract SellTokenTests_Univ4 is SellTokensTest, LaunchpadBaseTestsWithUniv4Graduator {
+    function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator) {
+        super.setUp();
+    }
 }
