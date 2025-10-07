@@ -25,6 +25,8 @@ contract LaunchpadBaseTests is Test {
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
 
+    address public admin = makeAddr("admin");
+
     address public testToken;
 
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;

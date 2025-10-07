@@ -43,7 +43,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     // note this is hardcoded and shoud match the contract ...
     uint160 constant startingPriceX96 = 401129254579132618442796085280768;
 
-    function setUp() public override virtual {
+    function setUp() public virtual override {
         super.setUp();
         poolManager = IPoolManager(poolManagerAddress);
 
