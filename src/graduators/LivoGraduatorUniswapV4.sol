@@ -158,7 +158,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         uint256 liquidity = _depositLiquidity(tokenAddress, tokenBalance, ethValue);
 
         // burn excess tokens that are left in this contract
-        // todo perhaps ignore this one and let the tokens stay here. no harm, gas savings. 
+        // todo perhaps ignore this one and let the tokens stay here. no harm, gas savings.
         uint256 burnedTokens = _cleanUp(tokenAddress);
 
         emit TokenGraduated(tokenAddress, address(poolManager), tokenBalance - burnedTokens, ethValue, liquidity);

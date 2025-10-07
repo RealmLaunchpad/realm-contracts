@@ -25,7 +25,6 @@ import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IA
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 
-
 interface ILivoGraduatorWithFees is ILivoGraduator {
     function collectEthFees(address token) external;
     function tokenPositionIds(address token) external view returns (uint256);
@@ -101,10 +100,6 @@ contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
         uint256 totalFeesCollected = creatorFees + treasuryFees;
 
         assertApproxEqAbs(totalFeesCollected, buyAmount / 100, 1, "total fees should be 1%");
-    }
-
-    function test_claimFees_happyPath_tokenBalances() public createTestToken {
-        revert("Not implemented");
     }
 
     /// @notice test that on buys, only eth fees are collected
