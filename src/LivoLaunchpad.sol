@@ -271,6 +271,12 @@ contract LivoLaunchpad is Ownable {
         return tokenConfigs[token];
     }
 
+    function getTokenCreator(address token) external view returns (address) {
+        TokenConfig storage config = tokenConfigs[token];
+        if (!config.exists()) revert InvalidToken();
+        return config.creator;
+    }
+
     //////////////////////////// Admin functions //////////////////////////
 
     /// @notice Updates the ERC20 token implementation, which only affects new token deployments
