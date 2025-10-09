@@ -384,4 +384,36 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         _graduateToken();
     }
+
+    /// @notice that maxEthToSpend gives a value that allows for graduation
+    function test_maxEthToSpend_allowsGraduation() public createTestTokenWithPair {
+        uint256 maxEth = launchpad.getMaxEthToSpend(testToken);
+        assertGt(maxEth, BASE_GRADUATION_THRESHOLD, "maxEthToSpend should be higher than graduation threshold");
+
+        vm.deal(buyer, maxEth + 1 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: maxEth}(testToken, 0, DEADLINE);
+
+        assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
+    }
+
+    /// @notice that buy maxEthToSpend (after some buys) gives a value that allows for graduation
+    function test_maxEthToSpend_afterSomeBuys_allowsGraduation(uint256 preBuyAmount) public createTestTokenWithPair {
+        preBuyAmount = bound(preBuyAmount, 0.01 ether, BASE_GRADUATION_THRESHOLD);
+
+        deal(seller, 100 ether);
+        vm.prank(seller);
+        launchpad.buyTokensWithExactEth{value: preBuyAmount}(testToken, 0, DEADLINE);
+        // if the first one already graduated, we just skip the rest of the test
+        if (launchpad.getTokenState(testToken).graduated) return;
+
+        // recalculate the max, after the previous buy
+        uint256 maxEth = launchpad.getMaxEthToSpend(testToken);
+
+        vm.deal(buyer, maxEth + 1 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: maxEth}(testToken, 0, DEADLINE);
+
+        assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
+    }
 }

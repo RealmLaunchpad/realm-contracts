@@ -8,3 +8,5 @@ tmp/
 simulations/
 
 report.md
+
+lcov.info

@@ -414,7 +414,7 @@ contract LivoLaunchpad is Ownable {
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
 
     function _maxEthToSpend(address token) internal view returns (uint256) {
-        return tokenConfigs[token].ethGraduationThreshold + MAX_THRESHOLD_EXCESS - tokenStates[token].ethCollected;
+        return tokenConfigs[token].ethGraduationThreshold + MAX_THRESHOLD_EXCESS - tokenStates[token].ethCollected - 1;
     }
 
     function _quoteBuyWithExactEth(address token, uint256 ethValue)
