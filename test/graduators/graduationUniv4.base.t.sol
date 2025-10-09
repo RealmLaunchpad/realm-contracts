@@ -96,21 +96,28 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     function _swapBuy(address caller, uint256 amountIn, uint256 minAmountOut, bool expectSuccess) internal {
-        _swap(caller, amountIn, minAmountOut, true, expectSuccess);
+        _swap(caller, testToken, amountIn, minAmountOut, true, expectSuccess);
     }
 
     function _swapSell(address caller, uint256 amountIn, uint256 minAmountOut, bool expectSuccess) internal {
-        _swap(caller, amountIn, minAmountOut, false, expectSuccess);
+        _swap(caller, testToken, amountIn, minAmountOut, false, expectSuccess);
     }
 
-    function _swap(address caller, uint256 amountIn, uint256 minAmountOut, bool isBuy, bool expectSuccess) internal {
+    function _swap(
+        address caller,
+        address token,
+        uint256 amountIn,
+        uint256 minAmountOut,
+        bool isBuy,
+        bool expectSuccess
+    ) internal {
         vm.startPrank(caller);
-        IERC20(testToken).approve(address(permit2Address), type(uint256).max);
-        IPermit2(permit2Address).approve(address(testToken), universalRouter, type(uint160).max, type(uint48).max);
+        IERC20(token).approve(address(permit2Address), type(uint256).max);
+        IPermit2(permit2Address).approve(address(token), universalRouter, type(uint160).max, type(uint48).max);
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
-            currency1: Currency.wrap(address(testToken)),
+            currency1: Currency.wrap(address(token)),
             fee: lpFee,
             tickSpacing: tickSpacing,
             hooks: IHooks(address(0))

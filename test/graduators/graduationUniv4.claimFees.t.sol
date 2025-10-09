@@ -26,13 +26,16 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 
 interface ILivoGraduatorWithFees is ILivoGraduator {
-    function collectEthFees(address token) external;
-    function tokenPositionIds(address token) external view returns (uint256);
+    function collectEthFees(address[] calldata tokens) external;
+    function positionIds(address token) external view returns (uint256);
+    function getClaimableFees(address[] calldata tokens) external view returns (uint256[] memory creatorFees);
 }
 
-/// @notice Tests for Uniswap V4 graduator functionality
-contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
+contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     ILivoGraduatorWithFees graduatorWithFees;
+
+    address testToken1;
+    address testToken2;
 
     function setUp() public override {
         super.setUp();
@@ -52,8 +55,40 @@ contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
         _;
     }
 
+    modifier twoGraduatedTokens(uint256 buyAmount) {
+        vm.startPrank(creator);
+        testToken1 = launchpad.createToken(
+            "TestToken1", "TEST1", "ipfs://test-metadata", address(bondingCurve), address(graduator)
+        );
+        testToken2 = launchpad.createToken(
+            "TestToken2", "TEST2", "ipfs://test-metadata", address(bondingCurve), address(graduator)
+        );
+        vm.stopPrank();
+
+        // graduate token1 and token2
+        vm.deal(buyer, 100 ether);
+        vm.startPrank(buyer);
+        launchpad.buyTokensWithExactEth{value: 8.1 ether}(testToken1, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: 8.3 ether}(testToken2, 0, DEADLINE);
+
+        // buy from token1 and token2 from uniswap
+        _swap(buyer, testToken1, buyAmount, 10e18, true, true);
+        _swap(buyer, testToken2, buyAmount, 10e18, true, true);
+        vm.stopPrank();
+        _;
+    }
+
+    function _collectFees(address token) internal {
+        address[] memory tokens = new address[](1);
+        tokens[0] = token;
+        graduatorWithFees.collectEthFees(tokens);
+    }
+}
+
+/// @notice Tests for Uniswap V4 graduator functionality
+contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
     function test_rightPositionIdAfterGraduation() public createAndGraduateToken {
-        uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).tokenPositionIds(testToken);
+        uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken);
 
         assertEq(positionId, 62898, "wrong position id registered at graduation");
     }
@@ -65,7 +100,7 @@ contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
-        graduatorWithFees.collectEthFees(testToken);
+        _collectFees(testToken);
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -89,7 +124,7 @@ contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
-        graduatorWithFees.collectEthFees(testToken);
+        _collectFees(testToken);
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -110,7 +145,7 @@ contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(address(graduatorWithFees));
 
-        graduatorWithFees.collectEthFees(testToken);
+        _collectFees(testToken);
 
         uint256 tokenBalanceAfter = IERC20(testToken).balanceOf(address(graduatorWithFees));
 
@@ -126,7 +161,7 @@ contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
         uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(address(graduatorWithFees));
         uint256 poolManagerBalance = IERC20(testToken).balanceOf(address(poolManager));
 
-        graduatorWithFees.collectEthFees(testToken);
+        _collectFees(testToken);
 
         uint256 tokenBalanceAfter = IERC20(testToken).balanceOf(address(graduatorWithFees));
         uint256 poolManagerBalanceAfter = IERC20(testToken).balanceOf(address(poolManager));
@@ -137,5 +172,208 @@ contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
         assertLt(poolManagerBalanceAfter, poolManagerBalance, "token fees should leave the token manager");
         assertGt(tokenBalanceAfter, tokenBalanceBefore, "Tokens should arrive to the graduator");
         assertEq(creator.balance, creatorEthBalanceBefore, "No fees should be collected now");
+    }
+
+    /// @notice test that any eth balance is not collected by the first call to claimFees
+    function test_claimFees_noInitialEthBalance() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        _swapBuy(buyer, 1 ether, 10e18, true);
+        // send some eth to the graduator
+        vm.prank(buyer);
+        payable(address(graduatorWithFees)).transfer(0.5 ether);
+
+        assertEq(address(graduatorWithFees).balance, 0.5 ether, "graduator should have exactly 0.5");
+
+        _collectFees(testToken);
+
+        assertEq(address(graduatorWithFees).balance, 0.5 ether, "graduator should have exactly 0.5 still");
+    }
+
+    /// @notice test that a token creator can claim fees from mutliple tokens in one transaction
+    function test_claimFees_multipleTokens() public twoGraduatedTokens(1 ether) {
+        // both should have accumulated fees
+        address[] memory tokens = new address[](2);
+        tokens[0] = testToken1;
+        tokens[1] = testToken2;
+        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 treasuryEthBalanceBefore = treasury.balance;
+
+        graduatorWithFees.collectEthFees(tokens);
+
+        uint256 creatorEthBalanceAfter = creator.balance;
+        uint256 treasuryEthBalanceAfter = treasury.balance;
+        assertGt(creatorEthBalanceAfter, creatorEthBalanceBefore, "creator eth balance should increase");
+        assertGt(treasuryEthBalanceAfter, treasuryEthBalanceBefore, "treasury eth balance should increase");
+
+        // 1% fees expected from each token (2 * 10-ether buys)
+        uint256 expectedTotalFees = 2 * 1 ether / 100;
+
+        assertApproxEqAbs(
+            (creatorEthBalanceAfter - creatorEthBalanceBefore) + (treasuryEthBalanceAfter - treasuryEthBalanceBefore),
+            expectedTotalFees,
+            2,
+            "total fees should be 1% of total buys"
+        );
+    }
+
+    /// @notice test that including the same token twice in the claim array does not double count fees
+    function test_claimFees_multipleTokens_withDuplicate() public twoGraduatedTokens(1 ether) {
+        // both should have accumulated fees
+        address[] memory tokens = new address[](3);
+        tokens[0] = testToken1;
+        tokens[1] = testToken2;
+        tokens[2] = testToken1; // duplicate
+        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 treasuryEthBalanceBefore = treasury.balance;
+
+        graduatorWithFees.collectEthFees(tokens);
+        uint256 creatorEthBalanceAfter = creator.balance;
+        uint256 treasuryEthBalanceAfter = treasury.balance;
+
+        // 1% fees expected from each token (2 * 10-ether buys)
+        uint256 expectedTotalFees = 2 * 1 ether / 100;
+
+        assertApproxEqAbs(
+            (creatorEthBalanceAfter - creatorEthBalanceBefore) + (treasuryEthBalanceAfter - treasuryEthBalanceBefore),
+            expectedTotalFees,
+            2,
+            "total fees should be 1% of total buys"
+        );
+    }
+}
+
+contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
+    function test_viewFunction_positionId() public createAndGraduateToken {
+        uint256 positionId = graduatorWithFees.positionIds(testToken);
+
+        assertEq(positionId, 62898, "wrong position id registered at graduation");
+    }
+
+    /// @notice test that right after graduation getClaimableFees gives 0
+    function test_viewFunction_getClaimableFees_rightAfterGraduation() public createAndGraduateToken {
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+
+        assertEq(fees.length, 1, "should return one fee value");
+        assertEq(fees[0], 0, "fees should be 0 right after graduation");
+    }
+
+    /// @notice test that after one swapBuy, getClaimableFees gives expected fees
+    function test_viewFunction_getClaimableFees_afterOneSwapBuy() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        uint256 buyAmount = 1 ether;
+        _swapBuy(buyer, buyAmount, 10e18, true);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+
+        assertEq(fees.length, 1, "should return one fee value");
+        // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
+        // So creator gets 0.5% = buyAmount / 200
+        uint256 expectedFees = buyAmount / 200;
+        assertApproxEqAbs(fees[0], expectedFees, 1, "creator fees should be 0.5% of buy amount");
+    }
+
+    /// @notice test that after one swapSell, getClaimableFees gives 0
+    function test_viewFunction_getClaimableFees_afterOneSwapSell() public createAndGraduateToken {
+        _swapSell(buyer, 100000000e18, 0.1 ether, true);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+
+        assertEq(fees.length, 1, "should return one fee value");
+        assertEq(fees[0], 0, "no eth fees should be claimable after sell");
+    }
+
+    /// @notice test that after two swapBuy, getClaimableFees gives expected fees
+    function test_viewFunction_getClaimableFees_afterTwoSwapBuys() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        uint256 buyAmount1 = 1 ether;
+        uint256 buyAmount2 = 0.5 ether;
+        _swapBuy(buyer, buyAmount1, 10e18, true);
+        _swapBuy(buyer, buyAmount2, 10e18, true);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+
+        assertEq(fees.length, 1, "should return one fee value");
+        uint256 expectedCreatorFees = (buyAmount1 + buyAmount2) / 200;
+        assertApproxEqAbs(fees[0], expectedCreatorFees, 2, "creator fees should be 0.5% of total buy amounts");
+    }
+
+    /// @notice test that after swapBuy, claim, getClaimableFees gives 0
+    function test_viewFunction_getClaimableFees_afterClaimGivesZero() public createAndGraduateToken {
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+
+        deal(buyer, 10 ether);
+        _swapBuy(buyer, 1 ether, 10e18, true);
+
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+        assertApproxEqAbs(fees[0], 1 ether / 200, 1, "creator fees should be 0.5% of buy amount");
+
+        _collectFees(testToken);
+
+        fees = graduatorWithFees.getClaimableFees(tokens);
+
+        assertEq(fees[0], 0, "fees should be 0 after claim");
+    }
+
+    /// @notice test that after swapBuy, claim, swapBuy getClaimableFees gives expected fees
+    function test_viewFunction_getClaimableFees_afterClaimAndSwapBuy() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        _swapBuy(buyer, 1 ether, 10e18, true);
+
+        _collectFees(testToken);
+
+        uint256 buyAmount2 = 0.8 ether;
+        _swapBuy(buyer, buyAmount2, 10e18, true);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+
+        assertEq(fees.length, 1, "should return one fee value");
+        assertApproxEqAbs(fees[0], buyAmount2 / 200, 1, "creator fees should be 0.5% of second buy amount");
+    }
+
+    /// @notice test that getClaimableFees works for multiple tokens
+    function test_viewFunction_getClaimableFees_multipleTokens() public twoGraduatedTokens(1 ether) {
+        address[] memory tokens = new address[](2);
+        tokens[0] = testToken1;
+        tokens[1] = testToken2;
+
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+
+        assertEq(fees.length, 2, "should return two fee values");
+        // Expected fees: 0.5% of 1 ether = 1 ether / 200
+        assertApproxEqAbs(fees[0], 1 ether / 200, 1, "fees[0] should be 0.5% of buy amount");
+        assertApproxEqAbs(fees[1], 1 ether / 200, 1, "fees[1] should be 0.5% of buy amount");
+    }
+
+    /// @notice test that getClaimableFees gives the same results when called with the repeated token in the array
+    function test_viewFunction_getClaimableFees_repeatedToken() public twoGraduatedTokens(1 ether) {
+        address[] memory tokens = new address[](3);
+        tokens[0] = testToken1;
+        tokens[1] = testToken2;
+        tokens[2] = testToken1; // repeated
+
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+
+        assertEq(fees.length, 3, "should return three fee values");
+        // Expected fees: 0.5% of 1 ether = 1 ether / 200
+        assertApproxEqAbs(fees[0], 1 ether / 200, 1, "fees[0] should be 0.5% of buy amount");
+        assertApproxEqAbs(fees[1], 1 ether / 200, 1, "fees[1] should be 0.5% of buy amount");
+        assertApproxEqAbs(fees[2], 1 ether / 200, 1, "fees[2] should match fees[0] for repeated token");
+        assertEq(fees[0], fees[2], "repeated token should return same fees");
     }
 }
