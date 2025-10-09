@@ -427,9 +427,125 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         );
     }
 
-    // TODO test that all circulating supply returns to the launchpad balance after multiple buyers sell all of their tokens
-    // TODO test that buying 1 wei always gives you a non-zero amount of tokens
-    // TODO test that selling always gives you a non-zero amount of eth
+    /// @notice Verifies that when multiple buyers sell all their tokens, the entire circulating supply returns to the launchpad
+    function testSellExactTokens_allCirculatingSupplyReturnsToLaunchpad() public createTestToken {
+        // Setup: Multiple buyers purchase tokens
+        address buyer1 = makeAddr("buyer1");
+        address buyer2 = makeAddr("buyer2");
+        address buyer3 = makeAddr("buyer3");
+
+        vm.deal(buyer1, 2 ether);
+        vm.deal(buyer2, 3 ether);
+        vm.deal(buyer3, 1.5 ether);
+
+        // Buyers purchase tokens
+        vm.prank(buyer1);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+
+        vm.prank(buyer2);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+
+        vm.prank(buyer3);
+        launchpad.buyTokensWithExactEth{value: 0.5 ether}(testToken, 0, DEADLINE);
+
+        TokenState memory stateAfterBuys = launchpad.getTokenState(testToken);
+        uint256 totalCirculatingSupply = stateAfterBuys.releasedSupply;
+        uint256 launchpadBalanceAfterBuys = IERC20(testToken).balanceOf(address(launchpad));
+
+        // Verify tokens are distributed to buyers
+        uint256 buyer1Tokens = IERC20(testToken).balanceOf(buyer1);
+        uint256 buyer2Tokens = IERC20(testToken).balanceOf(buyer2);
+        uint256 buyer3Tokens = IERC20(testToken).balanceOf(buyer3);
+
+        assertEq(buyer1Tokens + buyer2Tokens + buyer3Tokens, totalCirculatingSupply);
+        assertTrue(totalCirculatingSupply > 0);
+
+        // All buyers sell all their tokens
+        vm.startPrank(buyer1);
+        IERC20(testToken).approve(address(launchpad), buyer1Tokens);
+        launchpad.sellExactTokens(testToken, buyer1Tokens, 0, DEADLINE);
+        vm.stopPrank();
+
+        vm.startPrank(buyer2);
+        IERC20(testToken).approve(address(launchpad), buyer2Tokens);
+        launchpad.sellExactTokens(testToken, buyer2Tokens, 0, DEADLINE);
+        vm.stopPrank();
+
+        vm.startPrank(buyer3);
+        IERC20(testToken).approve(address(launchpad), buyer3Tokens);
+        launchpad.sellExactTokens(testToken, buyer3Tokens, 0, DEADLINE);
+        vm.stopPrank();
+
+        // Verify all circulating supply returned to launchpad
+        TokenState memory stateAfterSells = launchpad.getTokenState(testToken);
+        assertEq(stateAfterSells.releasedSupply, 0, "All circulating supply should be returned");
+        assertEq(IERC20(testToken).balanceOf(buyer1), 0);
+        assertEq(IERC20(testToken).balanceOf(buyer2), 0);
+        assertEq(IERC20(testToken).balanceOf(buyer3), 0);
+        assertEq(
+            IERC20(testToken).balanceOf(address(launchpad)),
+            TOTAL_SUPPLY,
+            "Launchpad should hold entire supply after all sells"
+        );
+    }
+
+    /// @notice Verifies that buying with 1 wei always results in receiving a non-zero amount of tokens
+    function testBuyTokens_oneWeiAlwaysGivesNonZeroTokens() public createTestToken {
+        // Test at initial state (lowest price point)
+        vm.prank(alice);
+        launchpad.buyTokensWithExactEth{value: 1}(testToken, 0, DEADLINE);
+
+        uint256 tokensReceived = IERC20(testToken).balanceOf(alice);
+        assertGt(tokensReceived, 0, "Should receive non-zero tokens for 1 wei at initial price");
+
+        // Buy more tokens to increase price significantly
+        vm.prank(bob);
+        launchpad.buyTokensWithExactEth{value: 5 ether}(testToken, 0, DEADLINE);
+
+        // Test at much higher price point
+        address charlie = makeAddr("charlie");
+        vm.deal(charlie, 1 ether);
+
+        vm.prank(charlie);
+        launchpad.buyTokensWithExactEth{value: 1}(testToken, 0, DEADLINE);
+
+        uint256 charlieTokens = IERC20(testToken).balanceOf(charlie);
+        assertGt(charlieTokens, 0, "Should receive non-zero tokens for 1 wei at high price");
+    }
+
+    /// @notice Verifies that selling tokens with reasonable amounts always returns non-zero ETH
+    function testSellExactTokens_alwaysGivesNonZeroEthOrReverts() public createTestToken afterOneBuy {
+        uint256 tokensOwned = IERC20(testToken).balanceOf(alice);
+
+        // Test selling all tokens - should give non-zero ETH
+        uint256 ethBalanceBefore = alice.balance;
+
+        vm.prank(alice);
+        IERC20(testToken).approve(address(launchpad), tokensOwned);
+        vm.prank(alice);
+        launchpad.sellExactTokens(testToken, tokensOwned, 0, DEADLINE);
+
+        uint256 ethReceived = alice.balance - ethBalanceBefore;
+        assertGt(ethReceived, 0, "Should receive non-zero ETH when selling tokens");
+
+        // Test selling a reasonable small amount (0.01% of a buy)
+        vm.prank(bob);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+
+        uint256 bobTokens = IERC20(testToken).balanceOf(bob);
+        uint256 tokensToSell = bobTokens / 10000; // Sell 0.01% of tokens
+        require(tokensToSell > 0, "Need non-zero tokens to test");
+
+        uint256 bobEthBefore = bob.balance;
+
+        vm.prank(bob);
+        IERC20(testToken).approve(address(launchpad), tokensToSell);
+        vm.prank(bob);
+        launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
+
+        uint256 bobEthReceived = bob.balance - bobEthBefore;
+        assertGt(bobEthReceived, 0, "Should receive non-zero ETH when selling reasonable amount");
+    }
 }
 
 /// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator

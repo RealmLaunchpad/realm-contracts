@@ -61,6 +61,7 @@ contract LivoLaunchpad is Ownable {
     error InvalidCurveGraduatorCombination();
     error InvalidNameOrSymbol();
     error InvalidAmount();
+    error ReceivingZeroAmount();
     error InvalidParameter(uint256 parameter);
     error InvalidToken();
     error NotEnoughSupply();
@@ -217,8 +218,11 @@ contract LivoLaunchpad is Ownable {
 
         (uint256 ethFromReserves, uint256 ethFee, uint256 ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
 
-        // Hopefully this scenario never happens
         require(ethForSeller >= minEthAmount, SlippageExceeded());
+        // When minEthAmount==0, we assume that the seller accepts any kind of "resaonable" slippage
+        // However, receiving eth in exchange for a non-zero amount of tokens would be unfair
+        require(ethForSeller > 0, ReceivingZeroAmount());
+        // Hopefully this scenario never happens
         require(_availableEthFromReserves(token) >= ethFromReserves, InsufficientETHReserves());
 
         tokenState.ethCollected -= ethFromReserves;
