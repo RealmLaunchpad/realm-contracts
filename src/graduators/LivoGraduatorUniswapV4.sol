@@ -9,28 +9,28 @@ import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {CurrencyLibrary, Currency} from "lib/v4-core/src/types/Currency.sol";
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
-
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
-// import {PositionInfo} from "lib/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
-// import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
-
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
-import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
-// import {Commands} from "src/dependencies/Univ4UniversalRouterCommands.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {PositionConfig, PositionConfigLibrary} from "lib/v4-periphery/src/libraries/PositionConfig.sol";
 import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 
 contract LivoGraduatorUniswapV4 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
     using PositionConfigLibrary for PositionConfig;
     using PoolIdLibrary for PoolKey;
+    using SafeCast for uint256;
+    using StateLibrary for IPoolManager;
 
     /// @notice Each graduated token has an associated liquidity position represented by this tokenId
-    mapping(address token => uint256 tokenId) public tokenPositionIds;
+    mapping(address token => uint256 tokenId) public positionIds;
 
     // to burn excess tokens not deposited as liquidity at graduation
     address internal constant DEAD_ADDRESS = address(0xdEaD);
@@ -150,7 +150,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             type(uint48).max // expiration
         );
 
-        tokenPositionIds[tokenAddress] = positionManager.nextTokenId();
+        positionIds[tokenAddress] = positionManager.nextTokenId();
 
         // uniswap v4 liquidity position creation
         // todo question where should we put the nft? -> wherever we need to collect fees
@@ -198,9 +198,16 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         }
     }
 
+    ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
+
     /// @notice Reads how many eth fees are there claimable for each tokenAddress in the array
     function getClaimableFees(address[] calldata tokens) public view returns (uint256[] memory creatorFees) {
-        // todo finish this reading by uniswapv4 pool manager
+        uint256 len = tokens.length;
+        creatorFees = new uint256[](len);
+
+        for (uint256 i = 0; i < len; i++) {
+            creatorFees[i] = _viewClaimableFees(tokens[i]);
+        }
     }
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
@@ -272,7 +279,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // parameters for each of the actions
         bytes[] memory params = new bytes[](2);
         // each graduated token has an associated liquidity position represented by this tokenId
-        uint256 positionId = tokenPositionIds[token];
+        uint256 positionId = positionIds[token];
         /// @dev collecting fees is achieved by removing liquidity=0, the second parameter
         params[0] = abi.encode(positionId, 0, 0, 0, "");
         // receive the eth here, and then distribute between livo team and token creator
@@ -293,6 +300,25 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // 50/50 split of the eth fees between livo treasury and token creator
         treasuryFees = collectedEthFees / 2;
         creatorFees = collectedEthFees - treasuryFees;
+    }
+
+    function _viewClaimableFees(address token) internal view returns (uint256 creatorEthFees) {
+        PoolKey memory poolKey = _getPoolKey(token);
+
+        PoolId poolId = poolKey.toId();
+        uint256 positionId = positionIds[token];
+
+        (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) =
+            poolManager.getPositionInfo(poolId, address(positionManager), tickLower, tickUpper, bytes32(positionId));
+
+        (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
+            poolManager.getFeeGrowthInside(poolId, tickLower, tickUpper);
+
+        uint128 tokenAmount = (
+            FullMath.mulDiv(feeGrowthInside0X128 - feeGrowthInside0LastX128, liquidity, FixedPoint128.Q128)
+        ).toUint128();
+
+        creatorEthFees = tokenAmount / 2;
     }
 
     function _transferEth(address to, uint256 value) internal {
