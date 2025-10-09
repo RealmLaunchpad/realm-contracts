@@ -5,8 +5,6 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-// // import {BasicHooks} from "src/BasicHooks.sol";
-
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {CurrencyLibrary, Currency} from "lib/v4-core/src/types/Currency.sol";
@@ -44,7 +42,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @notice Address of the livo launchpad
     address public immutable LIVO_LAUNCHPAD;
 
-    // todo make hook to distribute lp fees to treasury & token creator
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
     uint24 constant lpFee = 10000;
 
@@ -88,9 +85,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     // graduation price: 39011306440 tokens per ETH -> 0.000000000025633594 eth per token -> sqrtX96price: 401129254579132618442796085280768 -> tick: 170600
     uint160 constant graduationPriceX96_tokensPerEth = 401129254579132618442796085280768;
 
-    address public hook;
-
     error EthTransferFailed();
+    error NoTokensToCollectFees();
+    error TooManyTokensToCollectFees();
 
     constructor(address _launchpad, address _poolManager, address _positionManager, address _permit2) {
         LIVO_LAUNCHPAD = _launchpad;
@@ -107,10 +104,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         _;
     }
 
-    function setHooks(address _hook) external {
-        // todo access control on this function!
-        hook = _hook;
-    }
+    /// @notice To receive eth when collecting fees from the position manager
+    /// @dev this function assumes that there is never eth balance in this contract
+    /// @dev Any eth balance will be considered as fees collected by the next call to collect fees
+    receive() external payable {}
 
     function initializePair(address tokenAddress) external override onlyLaunchpad returns (address) {
         PoolKey memory pool = _getPoolKey(tokenAddress);
@@ -164,13 +161,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         emit TokenGraduated(tokenAddress, address(poolManager), tokenBalance - burnedTokens, ethValue, liquidity);
     }
 
-    function _getPoolKey(address tokenAddress) internal view returns (PoolKey memory) {
+    function _getPoolKey(address tokenAddress) internal pure returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(tokenAddress)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(hook) // no hooks ? // todo build necessary hooks if relevant for fee collection if relevant
+            hooks: IHooks(address(0)) // no hooks
         });
     }
 
@@ -201,7 +198,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // parameters for MINT_POSITION action
         // review if this contract should be the receiver of the position NFT
         address nftReceiver = address(this);
-        params[0] = abi.encode(pool, tickLower, tickUpper, liquidity, ethValue, tokenAmount, nftReceiver, hook);
+        params[0] = abi.encode(pool, tickLower, tickUpper, liquidity, ethValue, tokenAmount, nftReceiver, "");
 
         // parameters for SETTLE_PAIR action
         params[1] = abi.encode(pool.currency0, pool.currency1);
@@ -216,6 +213,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         );
     }
 
+    /// todo remove this function. Juust let the tokens be in this contract, locked
     function _cleanUp(address token) internal returns (uint256 burnedTokens) {
         burnedTokens = ILivoToken(token).balanceOf(address(this));
         // we could include some checks here to prevent bruning too much supply,
@@ -224,15 +222,47 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // the excess eth is transferred already by uniswap to the treasury in the sweep action
     }
 
-    ///////////////// todo implement fees logic //////////////////
-
-    /// @notice To receive eth when collecting fees from the position manager
-    /// @dev this function assumes that there is never eth balance in this contract
-    /// @dev Any eth balance will be considered as fees collected by the next call to collect fees
-    receive() external payable {}
+    function getClaimableFees(address[] calldata tokens) public view returns (uint256[] memory creatorFees) {
+        // todo finish this reading by uniswapv4 pool manager
+    }
 
     /// @notice Any account can collect these fees on behalf of livo treasury (tokens as fees are left in the pool, so effectively burned)
-    function collectEthFees(address token) external {
+    /// @dev by reentering
+    function collectEthFees(address[] calldata tokens) external {
+        uint256 len = tokens.length;
+        require(len > 0, NoTokensToCollectFees());
+        require(len < 50, TooManyTokensToCollectFees());
+
+        uint256 totalTreasuryFees = 0;
+        for (uint256 i = 0; i < len; i++) {
+            address token = tokens[i];
+            // collect fees from uniswap4 into this contract (both eth and tokens)
+            (uint256 creatorFees, uint256 treasuryFees) = _claimFromUniswap(token);
+            totalTreasuryFees += treasuryFees;
+
+            // review if it is ok to transfer here the fees before the transfer to treasury. Re-entrancy?
+            address tokenCreator = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenCreator(token);
+            _transferEth(tokenCreator, creatorFees);
+        }
+
+        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+        // put together all the treasury transfers into one tx for gas efficiency
+        _transferEth(treasury, totalTreasuryFees);
+    }
+
+
+    /// @notice sweep any remaining eth in this contract to the treasury
+    /// @dev no eth balance should be in this contract at any point. It should be either deposited as liquidity,
+    /// or collected as fees and immediately transferred out
+    function sweep() external {
+        uint256 ethBalance = address(this).balance;
+        if (ethBalance > 0) {
+            address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+            _transferEth(treasury, ethBalance);
+        }
+    }
+
+    function _claimFromUniswap(address token) internal returns (uint256 creatorFees, uint256 treasuryFees) {
         // each graduated token has an associated liquidity position represented by this tokenId
         uint256 positionId = tokenPositionIds[token];
         // collecting fees is done by decreasing liquidity by 0
@@ -246,29 +276,25 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         Currency currency1 = Currency.wrap(token);
         params[1] = abi.encode(currency0, currency1, address(this));
 
+        // collect fees will result in an eth transfer to this contract
+        uint256 balanceBefore = address(this).balance;
+
         IPositionManager(positionManager).modifyLiquidities(
             abi.encode(actions, params),
             block.timestamp // no deadline
         );
 
-        // note: this assumes that all eth in the balance was just acquired as fees
-        // review this assumption
-        uint256 collectedEthFees = address(this).balance;
+        uint256 collectedEthFees = address(this).balance - balanceBefore;
 
         // 50/50 split of the eth fees between livo treasury and token creator
-        uint256 treasuryFees = collectedEthFees / 2;
-        uint256 creatorFees = collectedEthFees - treasuryFees;
-
-        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-        address tokenCreator = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenCreator(token);
-
-        // token creator receives the last one, for re-entrancy safety
-        _transferEth(treasury, treasuryFees);
-        _transferEth(tokenCreator, creatorFees);
+        treasuryFees = collectedEthFees / 2;
+        creatorFees = collectedEthFees - treasuryFees;
     }
 
     function _transferEth(address to, uint256 value) internal {
         (bool success,) = address(to).call{value: value}("");
         require(success, EthTransferFailed());
     }
+
+
 }
