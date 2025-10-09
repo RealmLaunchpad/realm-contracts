@@ -116,6 +116,20 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         );
     }
 
+    /// @notice test that the token balance of the graduator increases when claiming fees
+    function test_claimFees_graduatorTokenBalanceIncrease() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        _swapSell(buyer, 10 ether, 10, true);
+
+        uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(address(graduatorWithFees));
+
+        _collectFees(testToken);
+
+        uint256 tokenBalanceAfter = IERC20(testToken).balanceOf(address(graduatorWithFees));
+
+        assertGt(tokenBalanceAfter, tokenBalanceBefore, "graduator token balance should increase");
+    }
+
     function test_claimFees_expectedFeesIncrease() public createAndGraduateToken {
         deal(buyer, 10 ether);
         uint256 buyAmount = 1 ether;

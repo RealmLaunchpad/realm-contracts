@@ -153,14 +153,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         positionIds[tokenAddress] = positionManager.nextTokenId();
 
         // uniswap v4 liquidity position creation
-        // todo question where should we put the nft? -> wherever we need to collect fees
         uint256 liquidity = _depositLiquidity(tokenAddress, tokenBalance, ethValue);
 
-        // burn excess tokens that are left in this contract
-        // todo perhaps ignore this one and let the tokens stay here. no harm, gas savings.
-        uint256 burnedTokens = _cleanUp(tokenAddress);
+        // there may be a smal leftover of tokens not deposited
+        uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
+        uint256 tokensDeposited = tokenBalance - tokenBalanceAfterDeposit;
 
-        emit TokenGraduated(tokenAddress, address(poolManager), tokenBalance - burnedTokens, ethValue, liquidity);
+        emit TokenGraduated(tokenAddress, address(poolManager), tokensDeposited, ethValue, liquidity);
     }
 
     /// @notice Any account can collect these fees on behalf of livo treasury (tokens as fees are left in the pool, so effectively burned)
@@ -177,7 +176,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             (uint256 creatorFees, uint256 treasuryFees) = _claimFromUniswap(token);
             totalTreasuryFees += treasuryFees;
 
-            // review if it is ok to transfer here the fees before the transfer to treasury. Re-entrancy?
             address tokenCreator = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenCreator(token);
             _transferEth(tokenCreator, creatorFees);
         }
@@ -262,15 +260,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         IPositionManager(positionManager).modifyLiquidities{value: ethValue}(
             abi.encode(actions, params), block.timestamp
         );
-    }
-
-    /// todo remove this function. Juust let the tokens be in this contract, locked
-    function _cleanUp(address token) internal returns (uint256 burnedTokens) {
-        burnedTokens = ILivoToken(token).balanceOf(address(this));
-        // we could include some checks here to prevent bruning too much supply,
-        // but that would put graduation at risk of DOS
-        ILivoToken(token).safeTransfer(DEAD_ADDRESS, burnedTokens);
-        // the excess eth is transferred already by uniswap to the treasury in the sweep action
     }
 
     function _claimFromUniswap(address token) internal returns (uint256 creatorFees, uint256 treasuryFees) {
