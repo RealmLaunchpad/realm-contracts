@@ -61,6 +61,7 @@ contract LivoLaunchpad is Ownable {
     error InvalidCurveGraduatorCombination();
     error InvalidNameOrSymbol();
     error InvalidAmount();
+    error ReceivingZeroAmount();
     error InvalidParameter(uint256 parameter);
     error InvalidToken();
     error NotEnoughSupply();
@@ -203,6 +204,7 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @dev slippage control is done with minEthAmount (min eth willing to receive)
+    /// @dev Even if minEthAmount==0, receiving 0 eth is not allowed and the transaction reverts
     function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline)
         external
         returns (uint256 receivedEth)
@@ -217,8 +219,11 @@ contract LivoLaunchpad is Ownable {
 
         (uint256 ethFromReserves, uint256 ethFee, uint256 ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
 
-        // Hopefully this scenario never happens
         require(ethForSeller >= minEthAmount, SlippageExceeded());
+        // When minEthAmount==0, we assume that the seller accepts any kind of "resaonable" slippage
+        // However, receiving eth in exchange for a non-zero amount of tokens would be unfair
+        require(ethForSeller > 0, ReceivingZeroAmount());
+        // Hopefully this scenario never happens
         require(_availableEthFromReserves(token) >= ethFromReserves, InsufficientETHReserves());
 
         tokenState.ethCollected -= ethFromReserves;
@@ -387,12 +392,10 @@ contract LivoLaunchpad is Ownable {
 
         // If the last purchase is a large one, the resulting price in the pool will be higher
         // I don't see a security risk in this.
-        // The effect is that the last buyer will be at an immediate win.
+        // The effect is that the last buyer will be at an immediate small win.
         // The larger the last purchase, the larger the price difference from the bonding curve to the univ2 pool
         // But I think that simply encourages graduation, so I don't see a big problem
         // The larger the buy, the larger the instant profit of the last purchase
-        // @audit can the last buyer exploit this somehow?
-
         token.safeTransfer(tokenConfig.creator, tokensForCreator);
         token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
 
@@ -403,7 +406,7 @@ contract LivoLaunchpad is Ownable {
 
     function _transferEth(address recipient, uint256 amount) internal {
         if (amount == 0) return;
-        // @audit beware of potential reentrancies. Make sure this call is always done at the end of all transactions
+        // note: this call happens always after all state changes in all callers of this function to protect against re-entrancy
         (bool success,) = recipient.call{value: amount}("");
         require(success, EthTransferFailed());
     }

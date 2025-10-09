@@ -206,9 +206,9 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
             0,
             "there should be no tokens in the launchpad after graduation"
         );
-        assertEq(
+        assertLt(
             LivoToken(testToken).balanceOf(address(graduator)),
-            0,
+            0.000000000001e18,
             "there should be no tokens in the graduator after graduation"
         );
     }
@@ -223,9 +223,9 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
             0,
             "there should be no tokens in the launchpad after graduation"
         );
-        assertEq(
+        assertLt(
             LivoToken(testToken).balanceOf(address(graduator)),
-            0,
+            0.000000000001e18,
             "there should be no tokens in the graduator after graduation"
         );
     }
@@ -267,7 +267,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         uint256 buyerBalance = LivoToken(testToken).balanceOf(buyer);
         uint256 poolManagerBalance = LivoToken(testToken).balanceOf(poolManagerAddress);
         uint256 creatorBalance = LivoToken(testToken).balanceOf(creator);
-        uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
+        uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
 
         assertEq(
             buyerBalance + poolManagerBalance + creatorBalance + burntSupply,
@@ -281,7 +281,8 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     /// @notice Test that after graduation (exact eth) the eth worth of tokens dead is negligible
     function test_negligibleEthWorthOfTokensBurnedAtExactGraduation() public createTestToken {
         _graduateToken();
-        uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
+        // tokens left in the graduator are considered burned
+        uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
         // there is always some leftovers burned
         assertGt(burntSupply, 0);
 
@@ -303,7 +304,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         uint256 buyerBalance = LivoToken(testToken).balanceOf(buyer);
         uint256 poolManagerBalance = LivoToken(testToken).balanceOf(poolManagerAddress);
         uint256 creatorBalance = LivoToken(testToken).balanceOf(creator);
-        uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
+        uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
 
         assertEq(
             buyerBalance + poolManagerBalance + creatorBalance + burntSupply,
@@ -320,7 +321,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         _buy(BASE_GRADUATION_THRESHOLD - 0.01 ether);
         _buy(0.5 ether);
 
-        uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
+        uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
         // there is always some leftovers burned
         assertGt(burntSupply, 0);
 
@@ -606,7 +607,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         assertEq(LivoToken(testToken).balanceOf(creator), 0, "Creator should have sold all tokens");
 
         uint256 poolManagerBalance = LivoToken(testToken).balanceOf(address(poolManager));
-        uint256 deadAddressBalance = LivoToken(testToken).balanceOf(address(0xdead));
+        uint256 deadAddressBalance = LivoToken(testToken).balanceOf(address(graduator));
 
         assertEq(poolManagerBalance + deadAddressBalance, TOTAL_SUPPLY, "All tokens should be sold to the pool manager");
     }
@@ -686,5 +687,24 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
             0.005 ether,
             "Non recoverable ether from pool manager is too large"
         );
+    }
+
+    function test_creatorSellsHisAllocationRightAfterGraduation() public createTestToken {
+        _graduateToken();
+
+        uint256 creatorEtherBefore = creator.balance;
+        uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
+        assertEq(creatorBalanceBefore, TOTAL_SUPPLY / 100, "creator should have 1% of the supply");
+
+        _swapSell(creator, creatorBalanceBefore, 1, true);
+
+        uint256 tokenPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
+        assertEq(tokenPrice, 0.000000035263946364 ether);
+
+        uint256 tokenMcapInEth = tokenPrice * TOTAL_SUPPLY / 1e18;
+        assertGt(tokenMcapInEth, 35 ether, "token mcap should be 35 eth at graduation");
+
+        uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
+        assertGt(ethRecoveredByCreator, 0.35 ether, "creator should recover at least 0.35 eth");
     }
 }

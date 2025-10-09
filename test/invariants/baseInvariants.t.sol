@@ -18,8 +18,6 @@ contract LaunchpadInvariants is Test {
     LivoGraduatorUniswapV2 public graduatorV2;
     LivoGraduatorUniswapV4 public graduatorV4;
 
-    // todo add graduatorV4 and create tokens with both graduators to test their coexistence
-
     InvariantsHelperLaunchpad public helper;
 
     address public treasury = makeAddr("treasury");
