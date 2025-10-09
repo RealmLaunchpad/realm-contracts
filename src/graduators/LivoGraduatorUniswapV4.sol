@@ -104,6 +104,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         _;
     }
 
+    ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
+
     /// @notice To receive eth when collecting fees from the position manager
     /// @dev this function assumes that there is never eth balance in this contract
     /// @dev Any eth balance will be considered as fees collected by the next call to collect fees
@@ -160,6 +162,48 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         emit TokenGraduated(tokenAddress, address(poolManager), tokenBalance - burnedTokens, ethValue, liquidity);
     }
+
+    /// @notice Any account can collect these fees on behalf of livo treasury (tokens as fees are left in the pool, so effectively burned)
+    /// @dev by reentering
+    function collectEthFees(address[] calldata tokens) external {
+        uint256 len = tokens.length;
+        require(len > 0, NoTokensToCollectFees());
+        require(len < 100, TooManyTokensToCollectFees());
+
+        uint256 totalTreasuryFees = 0;
+        for (uint256 i = 0; i < len; i++) {
+            address token = tokens[i];
+            // collect fees from uniswap4 into this contract (both eth and tokens)
+            (uint256 creatorFees, uint256 treasuryFees) = _claimFromUniswap(token);
+            totalTreasuryFees += treasuryFees;
+
+            // review if it is ok to transfer here the fees before the transfer to treasury. Re-entrancy?
+            address tokenCreator = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenCreator(token);
+            _transferEth(tokenCreator, creatorFees);
+        }
+
+        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+        // put together all the treasury transfers into one tx for gas efficiency
+        _transferEth(treasury, totalTreasuryFees);
+    }
+
+    /// @notice sweep any remaining eth in this contract to the treasury
+    /// @dev no eth balance should be in this contract at any point. It should be either deposited as liquidity,
+    /// or collected as fees and immediately transferred out
+    function sweep() external {
+        uint256 ethBalance = address(this).balance;
+        if (ethBalance > 0) {
+            address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+            _transferEth(treasury, ethBalance);
+        }
+    }
+
+    /// @notice Reads how many eth fees are there claimable for each tokenAddress in the array
+    function getClaimableFees(address[] calldata tokens) public view returns (uint256[] memory creatorFees) {
+        // todo finish this reading by uniswapv4 pool manager
+    }
+
+    ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
     function _getPoolKey(address tokenAddress) internal pure returns (PoolKey memory) {
         return PoolKey({
@@ -222,54 +266,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // the excess eth is transferred already by uniswap to the treasury in the sweep action
     }
 
-    function getClaimableFees(address[] calldata tokens) public view returns (uint256[] memory creatorFees) {
-        // todo finish this reading by uniswapv4 pool manager
-    }
-
-    /// @notice Any account can collect these fees on behalf of livo treasury (tokens as fees are left in the pool, so effectively burned)
-    /// @dev by reentering
-    function collectEthFees(address[] calldata tokens) external {
-        uint256 len = tokens.length;
-        require(len > 0, NoTokensToCollectFees());
-        require(len < 50, TooManyTokensToCollectFees());
-
-        uint256 totalTreasuryFees = 0;
-        for (uint256 i = 0; i < len; i++) {
-            address token = tokens[i];
-            // collect fees from uniswap4 into this contract (both eth and tokens)
-            (uint256 creatorFees, uint256 treasuryFees) = _claimFromUniswap(token);
-            totalTreasuryFees += treasuryFees;
-
-            // review if it is ok to transfer here the fees before the transfer to treasury. Re-entrancy?
-            address tokenCreator = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenCreator(token);
-            _transferEth(tokenCreator, creatorFees);
-        }
-
-        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-        // put together all the treasury transfers into one tx for gas efficiency
-        _transferEth(treasury, totalTreasuryFees);
-    }
-
-
-    /// @notice sweep any remaining eth in this contract to the treasury
-    /// @dev no eth balance should be in this contract at any point. It should be either deposited as liquidity,
-    /// or collected as fees and immediately transferred out
-    function sweep() external {
-        uint256 ethBalance = address(this).balance;
-        if (ethBalance > 0) {
-            address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-            _transferEth(treasury, ethBalance);
-        }
-    }
-
     function _claimFromUniswap(address token) internal returns (uint256 creatorFees, uint256 treasuryFees) {
-        // each graduated token has an associated liquidity position represented by this tokenId
-        uint256 positionId = tokenPositionIds[token];
         // collecting fees is done by decreasing liquidity by 0
         bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
         // parameters for each of the actions
         bytes[] memory params = new bytes[](2);
-        /// @dev collecting fees is achieved with liquidity=0, the second parameter
+        // each graduated token has an associated liquidity position represented by this tokenId
+        uint256 positionId = tokenPositionIds[token];
+        /// @dev collecting fees is achieved by removing liquidity=0, the second parameter
         params[0] = abi.encode(positionId, 0, 0, 0, "");
         // receive the eth here, and then distribute between livo team and token creator
         Currency currency0 = Currency.wrap(address(0)); // tokenAddress1 = 0 for native ETH
@@ -295,6 +299,4 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         (bool success,) = address(to).call{value: value}("");
         require(success, EthTransferFailed());
     }
-
-
 }

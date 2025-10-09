@@ -64,7 +64,7 @@ contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
             "TestToken2", "TEST2", "ipfs://test-metadata", address(bondingCurve), address(graduator)
         );
         vm.stopPrank();
-        
+
         // graduate token1 and token2
         vm.deal(buyer, 100 ether);
         vm.startPrank(buyer);
@@ -203,7 +203,7 @@ contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
         assertGt(treasuryEthBalanceAfter, treasuryEthBalanceBefore, "treasury eth balance should increase");
 
         // 1% fees expected from each token (2 * 10-ether buys)
-        uint256 expectedTotalFees = 2 * 1 ether / 100; 
+        uint256 expectedTotalFees = 2 * 1 ether / 100;
 
         assertApproxEqAbs(
             (creatorEthBalanceAfter - creatorEthBalanceBefore) + (treasuryEthBalanceAfter - treasuryEthBalanceBefore),
@@ -221,14 +221,14 @@ contract UniswapV4ClaimFeesTests is BaseUniswapV4GraduationTests {
         tokens[1] = testToken2;
         tokens[2] = testToken1; // duplicate
         uint256 creatorEthBalanceBefore = creator.balance;
-        uint256 treasuryEthBalanceBefore = treasury.balance;    
+        uint256 treasuryEthBalanceBefore = treasury.balance;
 
         graduatorWithFees.collectEthFees(tokens);
         uint256 creatorEthBalanceAfter = creator.balance;
-        uint256 treasuryEthBalanceAfter = treasury.balance; 
+        uint256 treasuryEthBalanceAfter = treasury.balance;
 
         // 1% fees expected from each token (2 * 10-ether buys)
-        uint256 expectedTotalFees = 2 * 1 ether / 100; 
+        uint256 expectedTotalFees = 2 * 1 ether / 100;
 
         assertApproxEqAbs(
             (creatorEthBalanceAfter - creatorEthBalanceBefore) + (treasuryEthBalanceAfter - treasuryEthBalanceBefore),

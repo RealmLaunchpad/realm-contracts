@@ -103,7 +103,14 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         _swap(caller, testToken, amountIn, minAmountOut, false, expectSuccess);
     }
 
-    function _swap(address caller, address token, uint256 amountIn, uint256 minAmountOut, bool isBuy, bool expectSuccess) internal {
+    function _swap(
+        address caller,
+        address token,
+        uint256 amountIn,
+        uint256 minAmountOut,
+        bool isBuy,
+        bool expectSuccess
+    ) internal {
         vm.startPrank(caller);
         IERC20(token).approve(address(permit2Address), type(uint256).max);
         IPermit2(permit2Address).approve(address(token), universalRouter, type(uint160).max, type(uint48).max);
