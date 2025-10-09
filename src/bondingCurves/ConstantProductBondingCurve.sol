@@ -44,15 +44,6 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         tokensReceived = K * ethAmount / ((ethReserves + E0) * (ethReserves + ethAmount + E0));
     }
 
-    /// @notice how much ETH is required to buy an exact amount of tokens
-    function buyExactTokens(uint256 ethReserves, uint256 tokenAmount) external pure returns (uint256 ethRequired) {
-        // This would be the formula to implement, but not needed for this version.
-        // uint256 tokenReserves = K / (ethReserves + E0) - T0;
-        // ethRequired = K / (tokenReserves + T0 - tokenAmount) - ethReserves - E0;
-
-        revert NotImplemented();
-    }
-
     /// @notice how much ETH will be received when selling an exact amount of tokens
     function sellExactTokens(uint256 ethReserves, uint256 tokenAmount) external pure returns (uint256 ethReceived) {
         // The final expression is derived from these two:
@@ -62,18 +53,6 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         ethReceived = tokenAmount * (ethReserves + E0) ** 2 / (K + tokenAmount * (ethReserves + E0));
     }
 
-    /// @notice how many tokens need to be sold to receive an exact amount of ETH
-    function sellTokensForExactEth(uint256 ethReserves, uint256 ethAmount)
-        external
-        pure
-        returns (uint256 tokensRequired)
-    {
-        // This would be the formula to implement, but not needed for this version.
-        // uint256 tokenReserves = K / (ethReserves + E0) - T0;
-        // tokensRequired = K / (ethReserves + E0 - ethAmount) - tokenReserves - T0;
-
-        revert NotImplemented();
-    }
 
     function getTokenReserves(uint256 ethReserves) external pure returns (uint256) {
         return _getTokenReserves(ethReserves);

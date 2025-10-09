@@ -62,19 +62,6 @@ contract ConstantProductBondingCurveTest is Test {
         assertEq(tokenPrice, 2542372880, "Initial token price should be very low");
     }
 
-    function test_buyFunctionsMatchInPrice() public {
-        vm.skip(true);
-        uint256 ethReserves = 1e18;
-        uint256 tokenReserves = curve.getTokenReserves(ethReserves);
-        uint256 ethAmount = 1e18;
-
-        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, ethAmount);
-        uint256 ethRequired = curve.buyExactTokens(ethReserves, tokensReceived);
-
-        // accept a difference of 0.01% between the two functions
-        assertApproxEqRel(ethRequired, ethAmount, 0.0001e18, "Buy functions should match in price");
-    }
-
     function test_tokenPriceAtGraduationPoint_matchesUniswap() public view {
         // reserves pre-graduation
         uint256 tokenReserves = curve.getTokenReserves(GRADUATION_THRESHOLD);
