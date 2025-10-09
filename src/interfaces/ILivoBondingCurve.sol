@@ -10,5 +10,4 @@ interface ILivoBondingCurve {
 
     /// @notice how much ETH will be received when selling an exact amount of tokens
     function sellExactTokens(uint256 ethReserves, uint256 tokenAmount) external view returns (uint256 ethReceived);
-    
 }

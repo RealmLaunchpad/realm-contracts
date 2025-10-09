@@ -53,7 +53,6 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         ethReceived = tokenAmount * (ethReserves + E0) ** 2 / (K + tokenAmount * (ethReserves + E0));
     }
 
-
     function getTokenReserves(uint256 ethReserves) external pure returns (uint256) {
         return _getTokenReserves(ethReserves);
     }

@@ -399,7 +399,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
     /// @notice that buy maxEthToSpend (after some buys) gives a value that allows for graduation
     function test_maxEthToSpend_afterSomeBuys_allowsGraduation(uint256 preBuyAmount) public createTestTokenWithPair {
-        preBuyAmount= bound(preBuyAmount, 0.01 ether, BASE_GRADUATION_THRESHOLD);
+        preBuyAmount = bound(preBuyAmount, 0.01 ether, BASE_GRADUATION_THRESHOLD);
 
         deal(seller, 100 ether);
         vm.prank(seller);
