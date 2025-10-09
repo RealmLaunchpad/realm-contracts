@@ -688,4 +688,23 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
             "Non recoverable ether from pool manager is too large"
         );
     }
+
+    function test_creatorSellsHisAllocationRightAfterGraduation() public createTestToken {
+        _graduateToken();
+
+        uint256 creatorEtherBefore = creator.balance;
+        uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
+        assertEq(creatorBalanceBefore, TOTAL_SUPPLY / 100, "creator should have 1% of the supply");
+
+        _swapSell(creator, creatorBalanceBefore, 1, true);
+
+        uint256 tokenPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
+        assertEq(tokenPrice, 0.000000035263946364 ether);
+
+        uint256 tokenMcapInEth = tokenPrice * TOTAL_SUPPLY / 1e18;
+        assertGt(tokenMcapInEth, 35 ether, "token mcap should be 35 eth at graduation");
+
+        uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
+        assertGt(ethRecoveredByCreator, 0.35 ether, "creator should recover at least 0.35 eth");
+    }
 }

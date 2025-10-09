@@ -153,7 +153,6 @@ contract InvariantsHelperLaunchpad is Test {
 
         if (launchpad.getTokenState(selectedToken).graduated) {
             graduatedTokens[selectedToken] = true;
-            // review if removing this is not leaving core assumptions untested
             _tokens.remove(selectedToken);
             _graduatedTokens.add(selectedToken);
         }

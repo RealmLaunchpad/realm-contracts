@@ -165,8 +165,6 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         assertFalse(state.graduated);
     }
 
-    // NOTE the purchase triggering the graduation will be tested extensively in another test contract
-
     function testBuyTokensWithExactEth_revertExceedsPostGraduationLimit() public createTestToken {
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
         uint256 maxExcess = 0.5 ether; // MAX_THRESHOLD_EXCESS

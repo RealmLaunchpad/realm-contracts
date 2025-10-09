@@ -245,7 +245,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         bytes[] memory params = new bytes[](3);
 
         // parameters for MINT_POSITION action
-        // review if this contract should be the receiver of the position NFT
         address nftReceiver = address(this);
         params[0] = abi.encode(pool, tickLower, tickUpper, liquidity, ethValue, tokenAmount, nftReceiver, "");
 

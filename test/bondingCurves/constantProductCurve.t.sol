@@ -153,4 +153,12 @@ contract ConstantProductBondingCurveTest is Test {
         // we accept a loss of up to 0.1% in the buy+sell process
         assertApproxEqRel(ethReceived, ethAmount, 0.00000001e18, "Should get back almost all ETH after buy+sell");
     }
+
+    function test_fuzz_getTokenReserves(uint256 ethReserves) public {
+        ethReserves = bound(ethReserves, 0, 37 ether);
+
+        uint256 tokenReserves = curve.getTokenReserves(ethReserves);
+
+        assertTrue(tokenReserves > 0, "Token reserves should be non-zero");
+    }
 }

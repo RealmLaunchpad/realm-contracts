@@ -34,13 +34,13 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     IPoolManager poolManager;
 
-    // these are copied from the graduator ... // note if they are modified in the graduator contract will break some tests
+    // these are copied from the graduator ...
     uint24 constant lpFee = 10000;
     int24 constant tickSpacing = 200;
 
     uint256 constant GRADUATION_PRICE = 39011306440; // ETH/token (eth per token, expressed in wei)
 
-    // note this is hardcoded and shoud match the contract ...
+    // note this is hardcoded and should match the contract but it is not exposed as a public variable
     uint160 constant startingPriceX96 = 401129254579132618442796085280768;
 
     function setUp() public virtual override {

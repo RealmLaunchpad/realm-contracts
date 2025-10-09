@@ -110,7 +110,6 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         address pair
     ) internal returns (uint256 amountToken, uint256 amountEth, uint256 liquidity) {
         // Calculate tokens needed to match existing price
-        // review this calculation
         uint256 tokensToTransfer = (tokenBalance * ethReserve) / (ethValue + ethReserve);
 
         // if there was eth in the contract, then it is guaranteed that tokensToTransfer > 0

@@ -14,7 +14,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     // t = K / (e + E0) - T0
 
     // And we can define the constraints to calculate K, T0, E0 as follows (top one is the most important)
-    //  - when no eth has been collected, the token supply should equal the total supply (1B tokens, so 1,000,000,000e18) // review this
+    //  - when no eth has been collected, the token supply should equal the total supply (1B tokens, so 1,000,000,000e18)
     //  - The graduation should happen when 8 ETH are collected, and 200,000,000 tokens are still in the reserves
     //  - If all tokens were purchased, the total ETH collected would be 37.5 ETH
 
@@ -82,7 +82,9 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     ///////////////////////////// INTERNALS //////////////////////////////////
 
     function _getTokenReserves(uint256 ethReserves) internal pure returns (uint256) {
-        // todo review left side is smaller than T0
+        // note: this calculation starts reverting with an overflow at some point above ethReserves > 37 ether
+        // So this curve should not be used in that range
+        // For the current graduation setup it should be safe, as the graduation happens at around 8 ether
         return K / (ethReserves + E0) - T0;
     }
 }
