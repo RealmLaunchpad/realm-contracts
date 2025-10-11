@@ -36,6 +36,10 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     }
     //////////////////////////////////// tests ///////////////////////////////
 
+    function test_deployTokenWithUni4Graduator() public createTestToken {
+        // just create the token
+    }
+
     /// @notice Test that pool is created in the pool manager at token creation
     function test_poolCreatedInPoolManagerAtTokenCreation() public createTestToken {
         PoolKey memory poolKey = _getPoolKey(testToken);
