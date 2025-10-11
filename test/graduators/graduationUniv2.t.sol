@@ -297,7 +297,6 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     /// @notice Ensure that the right amount of tokens are deposited as liquidity
     function test_rightAmountOfTokensToLiquidity() public createTestTokenWithPair {
         // donate some eth to the pair
-        IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
         _graduateToken();
 
         assertApproxEqRel(
@@ -367,7 +366,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
     /// @notice Test that the TokenGraduated event is emitted by the graduator
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ2() public createTestToken {
-        address tokenPair = 0xE0fAce90bC3aFF2aB0F42E6CdDa48862a021cAa8;
+        address tokenPair = 0xca836052C887fb3F9e419592aB45be14EF618365;
         vm.expectEmit(true, true, false, true);
         emit ILivoGraduator.TokenGraduated(
             testToken, tokenPair, 191123250949901652977523068, 7456000000000052224, 37749370313721482071414
@@ -378,7 +377,6 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
     /// @notice Test that the TokenGraduated event is emitted by the Launchpad
     function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ2() public createTestToken {
-        address tokenPair = 0xE0fAce90bC3aFF2aB0F42E6CdDa48862a021cAa8;
         vm.expectEmit(true, false, false, true);
         emit LivoLaunchpad.TokenGraduated(testToken, 7456000000000052224, 191123250949901652977523068);
 
