@@ -49,10 +49,10 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
 
 contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     ///////////////////////////////// TESTS //////////////////////////////////////
-    function test_deployTokenWithUni2Graduator() public createTestToken {
+
+    function test_justDeployTokenWithUni2Graduator() public createTestToken {
         // just create the token
     }
-
 
     /// @notice Test that univ2pair is created in uniswap at token launch
     function test_uniV2PairCreatedAtTokenLaunch() public createTestTokenWithPair {

@@ -53,7 +53,6 @@ contract LaunchpadBaseTests is Test {
 
     LiquidityLockUniv4WithFees public liquidityLock;
 
-
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
@@ -96,7 +95,6 @@ contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
 }
 
 contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
-
     function setUp() public virtual override {
         super.setUp();
 

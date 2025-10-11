@@ -45,8 +45,6 @@ contract LaunchpadInvariants is Test {
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
-
-
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);

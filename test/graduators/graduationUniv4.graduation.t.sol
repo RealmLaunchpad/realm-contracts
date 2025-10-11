@@ -36,7 +36,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     }
     //////////////////////////////////// tests ///////////////////////////////
 
-    function test_deployTokenWithUni4Graduator() public createTestToken {
+    function test_justDeployTokenWithUni4Graduator() public createTestToken {
         // just create the token
     }
 
