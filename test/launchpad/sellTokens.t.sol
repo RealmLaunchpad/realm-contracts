@@ -391,7 +391,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         // Reset state by creating a new token and setting up the same initial conditions
         vm.prank(creator);
         address testToken2 = launchpad.createToken(
-            "Test Token 2", "TT2", "ipfs://test-metadata-2", address(bondingCurve), address(graduator)
+            "Test Token 2", "TT2", address(bondingCurve), address(graduator)
         );
 
         // Buy the same amount for both scenarios to establish identical starting conditions

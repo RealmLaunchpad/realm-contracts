@@ -49,7 +49,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
         testToken = launchpad.createToken(
-            "TestToken", "TEST", "ipfs://test-metadata", address(bondingCurve), address(graduator)
+            "TestToken", "TEST", address(bondingCurve), address(graduator)
         );
 
         _graduateToken();
@@ -59,10 +59,10 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     modifier twoGraduatedTokens(uint256 buyAmount) {
         vm.startPrank(creator);
         testToken1 = launchpad.createToken(
-            "TestToken1", "TEST1", "ipfs://test-metadata", address(bondingCurve), address(graduator)
+            "TestToken1", "TEST1", address(bondingCurve), address(graduator)
         );
         testToken2 = launchpad.createToken(
-            "TestToken2", "TEST2", "ipfs://test-metadata", address(bondingCurve), address(graduator)
+            "TestToken2", "TEST2", address(bondingCurve), address(graduator)
         );
         vm.stopPrank();
 
