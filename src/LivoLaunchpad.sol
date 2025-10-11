@@ -81,8 +81,7 @@ contract LivoLaunchpad is Ownable {
         string name,
         string symbol,
         address bondingCurve,
-        address graduator,
-        string metadata
+        address graduator
     );
     event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
     event LivoTokenBuy(
@@ -118,20 +117,16 @@ contract LivoLaunchpad is Ownable {
         address token;
         string name;
         string symbol;
-        string metadata;
         address bondingCurve;
         address graduator;
         uint16 buyFeesBps;
         uint16 sellFeesBps;
     }
 
-    function createToken(
-        string calldata name,
-        string calldata symbol,
-        string calldata metadata,
-        address bondingCurve,
-        address graduator
-    ) external returns (address) {
+    function createToken(string calldata name, string calldata symbol, address bondingCurve, address graduator)
+        external
+        returns (address)
+    {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
         require(whitelistedComponents[bondingCurve][graduator], InvalidCurveGraduatorCombination());
@@ -145,7 +140,6 @@ contract LivoLaunchpad is Ownable {
             token: tokenClone,
             name: name,
             symbol: symbol,
-            metadata: metadata,
             bondingCurve: bondingCurve,
             graduator: graduator,
             buyFeesBps: baseBuyFeeBps,
@@ -153,7 +147,7 @@ contract LivoLaunchpad is Ownable {
         });
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator, metadata);
+        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator);
 
         // initialize token config, pair and token state
         // forced to do this weird thing due to stack-too-deep errors
