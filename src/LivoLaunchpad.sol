@@ -123,12 +123,10 @@ contract LivoLaunchpad is Ownable {
         uint16 sellFeesBps;
     }
 
-    function createToken(
-        string calldata name,
-        string calldata symbol,
-        address bondingCurve,
-        address graduator
-    ) external returns (address) {
+    function createToken(string calldata name, string calldata symbol, address bondingCurve, address graduator)
+        external
+        returns (address)
+    {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
         require(whitelistedComponents[bondingCurve][graduator], InvalidCurveGraduatorCombination());
