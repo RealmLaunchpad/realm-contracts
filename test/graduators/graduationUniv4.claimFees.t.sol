@@ -24,6 +24,7 @@ import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
+import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 interface ILivoGraduatorWithFees is ILivoGraduator {
     function collectEthFees(address[] calldata tokens) external;
@@ -91,6 +92,28 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken);
 
         assertEq(positionId, 62898, "wrong position id registered at graduation");
+    }
+
+    /// @notice test that the owner of the univ4 NFT position is the liquidity lock contract
+    function test_liquidityNftOwnerAfterGraduation() public createAndGraduateToken {
+        uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken);
+
+        assertEq(
+            IERC721(uniswapV4NftAddress).ownerOf(positionId),
+            address(liquidityLock),
+            "liquidity lock should own the position NFT"
+        );
+    }
+
+    /// @notice test that in the liquidity lock, the graduator appears as the owner of the liquidity position
+    function test_liquidityLock_ownerOfPositionIsGraduator() public createAndGraduateToken {
+        uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken);
+
+        assertEq(
+            liquidityLock.lockOwners(positionId),
+            address(graduatorWithFees),
+            "graduator should be the owner of the locked position"
+        );
     }
 
     function test_claimFees_happyPath_ethBalanceIncrease() public createAndGraduateToken {
