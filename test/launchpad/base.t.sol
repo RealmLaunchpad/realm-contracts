@@ -42,6 +42,18 @@ contract LaunchpadBaseTests is Test {
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
+    // uniswapv4 addresses in mainnet
+    address constant poolManagerAddress = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+    address constant positionManagerAddress = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
+
+    address constant permit2Address = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    address constant universalRouter = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+
+    address constant uniswapV4NftAddress = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
+
+    LiquidityLockUniv4WithFees public liquidityLock;
+
+
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
@@ -84,16 +96,6 @@ contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
 }
 
 contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
-    // addresses in mainnet
-    address constant poolManagerAddress = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-    address constant positionManagerAddress = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
-
-    address constant permit2Address = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-    address constant universalRouter = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
-
-    address constant uniswapV4NftAddress = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
-
-    LiquidityLockUniv4WithFees public liquidityLock;
 
     function setUp() public virtual override {
         super.setUp();

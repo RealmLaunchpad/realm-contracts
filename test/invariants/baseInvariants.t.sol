@@ -20,6 +20,8 @@ contract LaunchpadInvariants is Test {
 
     InvariantsHelperLaunchpad public helper;
 
+    address constant poolManagerAddress = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
     address public buyer = makeAddr("buyer");
@@ -42,6 +44,8 @@ contract LaunchpadInvariants is Test {
     address constant UNISWAP_V2_ROUTER = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
+
+
 
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
