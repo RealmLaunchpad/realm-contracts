@@ -20,6 +20,8 @@ contract LaunchpadInvariants is Test {
 
     InvariantsHelperLaunchpad public helper;
 
+    address constant poolManagerAddress = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
     address public buyer = makeAddr("buyer");
