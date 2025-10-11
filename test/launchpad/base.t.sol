@@ -101,7 +101,6 @@ contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
         vm.prank(admin);
         liquidityLock = new LiquidityLockUniv4WithFees(uniswapV4NftAddress, positionManagerAddress);
 
-
         // For graduation tests, a new graduator should be deployed, and use fork tests.
         vm.prank(admin);
         graduator = new LivoGraduatorUniswapV4(

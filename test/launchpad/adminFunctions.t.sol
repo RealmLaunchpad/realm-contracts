@@ -140,7 +140,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         // Test blacklisting
         vm.expectEmit(false, false, false, true);
         emit CurveAndGraduatorWhitelistedSet(newBondingCurve, newGraduator, false);
-        
+
         vm.prank(admin);
         launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, false);
 

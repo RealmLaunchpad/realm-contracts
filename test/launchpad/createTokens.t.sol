@@ -38,6 +38,34 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertEq(token.balanceOf(address(launchpad)), token.totalSupply());
     }
 
+    function test_createTokenIfImplementationHashBeenInitialized() public {
+        address maliciousGraduator = makeAddr("MaliciousGraduator");
+
+        vm.prank(admin);
+        LivoToken implementation = new LivoToken();
+
+        vm.prank(seller);
+        implementation.initialize("ImplToken", "IMPL", address(launchpad), maliciousGraduator, address(0), 1234);
+
+        assertEq(implementation.name(), "ImplToken");
+        assertEq(implementation.symbol(), "IMPL");
+        assertEq(implementation.launchpad(), address(launchpad));
+        assertEq(implementation.graduator(), maliciousGraduator);
+        assertEq(implementation.totalSupply(), 1234);
+
+        vm.prank(admin);
+        launchpad.setLivoTokenImplementation(implementation);
+
+        vm.prank(creator);
+        address deployedToken = launchpad.createToken("SuperToken", "SUPER", address(bondingCurve), address(graduator));
+
+        assertEq(LivoToken(deployedToken).name(), "SuperToken");
+        assertEq(LivoToken(deployedToken).symbol(), "SUPER");
+        assertEq(LivoToken(deployedToken).launchpad(), address(launchpad));
+        assertEq(LivoToken(deployedToken).graduator(), address(graduator));
+        assertEq(LivoToken(deployedToken).totalSupply(), TOTAL_SUPPLY);
+    }
+
     function testTokenCreatedHasDifferentAddressThanImplementation() public {
         vm.prank(creator);
         address deployedToken = launchpad.createToken("Sanitator", "SANIT", address(bondingCurve), address(graduator));
