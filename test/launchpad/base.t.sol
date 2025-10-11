@@ -9,6 +9,8 @@ import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol"
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
+import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
+import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
 
 contract LaunchpadBaseTests is Test {
     LivoLaunchpad public launchpad;
@@ -89,12 +91,24 @@ contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
     address constant permit2Address = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address constant universalRouter = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
 
+    address constant uniswapV4NftAddress = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
+
+    LiquidityLockUniv4WithFees public liquidityLock;
+
     function setUp() public virtual override {
         super.setUp();
 
+        liquidityLock = new LiquidityLockUniv4WithFees(uniswapV4NftAddress, positionManagerAddress);
+
         // For graduation tests, a new graduator should be deployed, and use fork tests.
-        graduator =
-            new LivoGraduatorUniswapV4(address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address);
+        graduator = new LivoGraduatorUniswapV4(
+            address(launchpad),
+            address(liquidityLock),
+            poolManagerAddress,
+            positionManagerAddress,
+            permit2Address,
+            uniswapV4NftAddress
+        );
 
         launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduator), true);
     }

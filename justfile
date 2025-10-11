@@ -6,6 +6,9 @@ build:
 fast-test:
     forge test --no-match-contract Invariants
 
+gas-report:
+    forge test --no-match-contract Invariants --gas-report
+
 test-curves:
     forge test --match-contract Curve
 

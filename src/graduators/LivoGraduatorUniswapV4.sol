@@ -21,6 +21,8 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
+import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
+import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 contract LivoGraduatorUniswapV4 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
@@ -32,9 +34,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @notice Each graduated token has an associated liquidity position represented by this tokenId
     mapping(address token => uint256 tokenId) public positionIds;
 
+    /// @notice Where the liquidity NFTs will be locked
+    ILiquidityLockUniv4WithFees public immutable liquidityLock;
+
+    /// @notice Uniswap V4 contracts
     IPermit2 public immutable permit2;
     IPoolManager public immutable poolManager;
     IPositionManager public immutable positionManager;
+    IERC721 public immutable univ4NftPositions;
 
     /// @notice Address of the livo launchpad
     address public immutable LIVO_LAUNCHPAD;
@@ -86,14 +93,27 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     error NoTokensToCollectFees();
     error TooManyTokensToCollectFees();
 
-    constructor(address _launchpad, address _poolManager, address _positionManager, address _permit2) {
+    constructor(
+        address _launchpad,
+        address _liquidityLock,
+        address _poolManager,
+        address _positionManager,
+        address _permit2,
+        address _univ4NftPositions
+    ) {
         LIVO_LAUNCHPAD = _launchpad;
         poolManager = IPoolManager(_poolManager);
         positionManager = IPositionManager(_positionManager);
         permit2 = IPermit2(_permit2);
+        univ4NftPositions = IERC721(_univ4NftPositions);
+        liquidityLock = ILiquidityLockUniv4WithFees(_liquidityLock);
 
         SQRT_PRICEX96_LOWER_TICK = uint160(TickMath.getSqrtPriceAtTick(TICK_LOWER));
         SQRT_PRICEX96_UPPER_TICK = uint160(TickMath.getSqrtPriceAtTick(TICK_UPPER));
+
+        // approve the liquidity lock to pull any NFT liquidity in this contract
+        // instead of having to approve every NFT on every graduation to save gas
+        univ4NftPositions.setApprovalForAll(_liquidityLock, true);
     }
 
     modifier onlyLaunchpad() {
@@ -146,8 +166,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             type(uint160).max, // amount
             type(uint48).max // expiration
         );
-
-        positionIds[tokenAddress] = positionManager.nextTokenId();
 
         // uniswap v4 liquidity position creation
         uint256 liquidity = _depositLiquidity(tokenAddress, tokenBalance, ethValue);
@@ -241,9 +259,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP));
         bytes[] memory params = new bytes[](3);
 
-        // parameters for MINT_POSITION action
-        address nftReceiver = address(this);
-        params[0] = abi.encode(pool, TICK_LOWER, TICK_UPPER, liquidity, ethValue, tokenAmount, nftReceiver, "");
+        // parameters for MINT_POSITION action. Receive the NFT here, and then lock it in the liquidity lock
+        params[0] = abi.encode(pool, TICK_LOWER, TICK_UPPER, liquidity, ethValue, tokenAmount, address(this), "");
 
         // parameters for SETTLE_PAIR action
         params[1] = abi.encode(pool.currency0, pool.currency1);
@@ -251,35 +268,28 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // parameters for SWEEP action
         params[2] = abi.encode(pool.currency0, excessEthRecipient); // sweep all remaining native ETH to recipient
 
+        // read the next positionId before minting the position
+        uint256 positionId = positionManager.nextTokenId();
+        positionIds[tokenAddress] = positionId;
+
         // the actual call to the position manager to mint the liquidity position
         // deadline = block.timestamp (no effective deadline)
         IPositionManager(positionManager).modifyLiquidities{value: ethValue}(
             abi.encode(actions, params), block.timestamp
         );
+
+        // locks the liquidity position NFT in the liquidity lock contract
+        liquidityLock.lockUniV4Position(positionId);
     }
 
     function _claimFromUniswap(address token) internal returns (uint256 creatorFees, uint256 treasuryFees) {
-        // collecting fees is done by decreasing liquidity by 0
-        bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
-        // parameters for each of the actions
-        bytes[] memory params = new bytes[](2);
-        // each graduated token has an associated liquidity position represented by this tokenId
-        uint256 positionId = positionIds[token];
-        /// @dev collecting fees is achieved by removing liquidity=0, the second parameter
-        params[0] = abi.encode(positionId, 0, 0, 0, "");
-        // receive the eth here, and then distribute between livo team and token creator
-        Currency currency0 = Currency.wrap(address(0)); // tokenAddress1 = 0 for native ETH
-        Currency currency1 = Currency.wrap(token);
-        params[1] = abi.encode(currency0, currency1, address(this));
-
         // collect fees will result in an eth transfer to this contract
         uint256 balanceBefore = address(this).balance;
 
-        IPositionManager(positionManager).modifyLiquidities(
-            abi.encode(actions, params),
-            block.timestamp // no deadline
-        );
+        // claim fees to this contract and distribute between livo treasury and token creator
+        liquidityLock.claimUniV4PositionFees(positionIds[token], address(0), token, address(this));
 
+        // eth fees collected in this call
         uint256 collectedEthFees = address(this).balance - balanceBefore;
 
         // 50/50 split of the eth fees between livo treasury and token creator
