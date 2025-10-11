@@ -32,6 +32,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.expectEmit(true, true, true, true);
         emit TokenImplementationUpdated(newImplementation);
 
+        vm.prank(admin);
         launchpad.setLivoTokenImplementation(newImplementation);
 
         assertEq(address(launchpad.tokenImplementation()), address(newImplementation));
@@ -52,6 +53,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.expectEmit(true, true, true, true);
         emit EthGraduationThresholdUpdated(newThreshold);
 
+        vm.prank(admin);
         launchpad.setEthGraduationThreshold(newThreshold);
 
         assertEq(launchpad.baseEthGraduationThreshold(), newThreshold);
@@ -72,6 +74,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.expectEmit(true, true, true, true);
         emit GraduationFeeUpdated(newFee);
 
+        vm.prank(admin);
         launchpad.setGraduationFee(newFee);
 
         assertEq(launchpad.baseGraduationFee(), newFee);
@@ -94,6 +97,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.expectEmit(true, true, true, true);
         emit TradingFeesUpdated(newBuyFee, newSellFee);
 
+        vm.prank(admin);
         launchpad.setTradingFees(newBuyFee, newSellFee);
 
         assertEq(launchpad.baseBuyFeeBps(), newBuyFee);
@@ -104,6 +108,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         uint16 invalidBuyFee = 10001; // > 100%
         uint16 validSellFee = 250;
 
+        vm.prank(admin);
         vm.expectRevert(abi.encodeWithSignature("InvalidParameter(uint256)", invalidBuyFee));
         launchpad.setTradingFees(invalidBuyFee, validSellFee);
     }
@@ -112,6 +117,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         uint16 validBuyFee = 200;
         uint16 invalidSellFee = 10001; // > 100%
 
+        vm.prank(admin);
         vm.expectRevert(abi.encodeWithSignature("InvalidParameter(uint256)", invalidSellFee));
         launchpad.setTradingFees(validBuyFee, invalidSellFee);
     }
@@ -126,6 +132,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_whitelisting_SucceedsForOwner() public {
         vm.expectEmit(false, false, false, true);
         emit CurveAndGraduatorWhitelistedSet(newBondingCurve, newGraduator, true);
+        vm.prank(admin);
         launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, true);
 
         assertTrue(launchpad.whitelistedComponents(newBondingCurve, newGraduator));
@@ -133,18 +140,22 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         // Test blacklisting
         vm.expectEmit(false, false, false, true);
         emit CurveAndGraduatorWhitelistedSet(newBondingCurve, newGraduator, false);
+
+        vm.prank(admin);
         launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, false);
 
         assertFalse(launchpad.whitelistedComponents(newBondingCurve, newGraduator));
     }
 
     function test_whitelistCurveAndGraduator_GivesFalseFor_wCurve_notGraduator() public {
+        vm.prank(admin);
         launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, true);
 
         assertFalse(launchpad.whitelistedComponents(address(bondingCurve), newGraduator));
     }
 
     function test_whitelistCurveAndGraduator_GivesFalseFor_notCurve_wGraduator() public {
+        vm.prank(admin);
         launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, true);
 
         assertFalse(launchpad.whitelistedComponents(newBondingCurve, address(graduator)));
@@ -161,6 +172,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.expectEmit(true, true, true, true);
         emit TreasuryAddressUpdated(newTreasury);
 
+        vm.prank(admin);
         launchpad.setTreasuryAddress(newTreasury);
 
         assertEq(launchpad.treasury(), newTreasury);
@@ -187,6 +199,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             vm.expectEmit(true, true, true, true);
             emit TreasuryFeesCollected(treasury, feesCollected);
 
+            vm.prank(admin);
             launchpad.collectTreasuryFees();
 
             assertEq(launchpad.treasuryEthFeesCollected(), 0);
@@ -198,6 +211,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         // When there are no fees, function should succeed but do nothing
         uint256 initialTreasuryBalance = treasury.balance;
 
+        vm.prank(admin);
         launchpad.collectTreasuryFees();
 
         assertEq(launchpad.treasuryEthFeesCollected(), 0);

@@ -57,10 +57,11 @@ contract LaunchpadBaseTests is Test {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
 
+        vm.startPrank(admin);
         tokenImplementation = new LivoToken();
         launchpad = new LivoLaunchpad(treasury, tokenImplementation);
-
         bondingCurve = new ConstantProductBondingCurve();
+        vm.stopPrank();
 
         vm.deal(creator, INITIAL_ETH_BALANCE);
         vm.deal(buyer, INITIAL_ETH_BALANCE);
@@ -73,7 +74,6 @@ contract LaunchpadBaseTests is Test {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
         testToken = launchpad.createToken("TestToken", "TEST", address(bondingCurve), address(graduator));
-
         _;
     }
 }
@@ -86,8 +86,10 @@ contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
         super.setUp();
 
         // For graduation tests, a new graduator should be deployed, and use fork tests.
+        vm.prank(admin);
         graduator = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
+        vm.prank(admin);
         launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduator), true);
     }
 }
@@ -96,9 +98,11 @@ contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
     function setUp() public virtual override {
         super.setUp();
 
+        vm.prank(admin);
         liquidityLock = new LiquidityLockUniv4WithFees(uniswapV4NftAddress, positionManagerAddress);
 
         // For graduation tests, a new graduator should be deployed, and use fork tests.
+        vm.prank(admin);
         graduator = new LivoGraduatorUniswapV4(
             address(launchpad),
             address(liquidityLock),
@@ -108,6 +112,7 @@ contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
             uniswapV4NftAddress
         );
 
+        vm.prank(admin);
         launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduator), true);
     }
 }
