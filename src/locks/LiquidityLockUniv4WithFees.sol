@@ -27,7 +27,7 @@ contract LiquidityLockUniv4WithFees {
     ///////////////////// Events /////////////////////
 
     /// @notice Emitted when a position is locked
-    event PositionLocked(address indexed owner, uint256 indexed positionId);
+    event PositionLocked(address indexed sender, address indexed positionReceiver, uint256 indexed positionId);
     /// @notice Emitted when fees are claimed from a locked position
     event PositionFeesClaimed(
         address indexed owner, uint256 indexed positionId, address token0, address token1, address recipient
@@ -47,14 +47,13 @@ contract LiquidityLockUniv4WithFees {
 
     /// @notice Locks a Uniswap V4 position NFT in this contract
     /// @param positionId The ID of the position to lock
-    // todo update with new argument positionOwner
-    function lockUniV4Position(uint256 positionId) external {
-        // todo pass receiver/positionOwner
+    /// @param positionReceiver The address that will be recorded as the owner of the locked position
+    function lockUniV4Position(uint256 positionId, address positionReceiver) external {
         if (lockOwners[positionId] != address(0)) revert PositionIsAlreadyLocked();
 
-        lockOwners[positionId] = msg.sender;
+        lockOwners[positionId] = positionReceiver;
 
-        emit PositionLocked(msg.sender, positionId);
+        emit PositionLocked(msg.sender, positionReceiver, positionId);
 
         IERC721(UNISWAPV4_NFT).transferFrom(msg.sender, address(this), positionId);
     }

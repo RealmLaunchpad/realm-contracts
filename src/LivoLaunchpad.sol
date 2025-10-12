@@ -410,9 +410,9 @@ contract LivoLaunchpad is Ownable {
         LivoToken(tmpTokenMeta.token).initialize(
             tmpTokenMeta.name,
             tmpTokenMeta.symbol,
-            address(this), // launchpad
             tmpTokenMeta.graduator, // graduator address
             pair, // uniswap pair
+            address(this), // supply receiver, all tokens are held by the launchpad initially
             TOTAL_SUPPLY
         );
     }

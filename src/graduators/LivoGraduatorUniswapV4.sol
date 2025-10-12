@@ -302,7 +302,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         );
 
         // locks the liquidity position NFT in the liquidity lock contract
-        LIQUIDITY_LOCK.lockUniV4Position(positionId);
+        LIQUIDITY_LOCK.lockUniV4Position(positionId, address(this));
     }
 
     function _claimFromUniswap(address token) internal returns (uint256 creatorFees, uint256 treasuryFees) {

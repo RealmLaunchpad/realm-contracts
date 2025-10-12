@@ -4,10 +4,6 @@ pragma solidity 0.8.28;
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 contract LivoToken is ERC20 {
-    /// @notice LivoLaunchpad address
-    // todo remove this variable (unused)
-    address public launchpad;
-
     /// @notice The only graduator allowed to graduate this token
     address public graduator;
 
@@ -16,10 +12,6 @@ contract LivoToken is ERC20 {
 
     /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
     address public pair;
-
-    /// @notice Prevents re-initialization
-    // todo remove this variable (use graduator==address(0) as a proxy for initialization)
-    bool internal _initialized;
 
     /// @notice Token name
     string private _tokenName;
@@ -38,6 +30,7 @@ contract LivoToken is ERC20 {
     error AlreadyInitialized();
     error TranferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
+    error InvalidGraduator();
 
     //////////////////////////////////////////////////////
 
@@ -48,29 +41,28 @@ contract LivoToken is ERC20 {
     /// @notice Initializes the token clone with its parameters
     /// @param name_ The token name
     /// @param symbol_ The token symbol
-    /// @param launchpad_ Address of the LivoLaunchpad contract // todo remove
     /// @param graduator_ Address of the graduator contract
     /// @param pair_ Address of the Uniswap pair
+    /// @param supplyReceiver_ Address receiving the total supply of tokens
     /// @param totalSupply_ Total supply to mint
     function initialize(
         string memory name_,
         string memory symbol_,
-        address launchpad_,
         address graduator_,
         address pair_,
+        address supplyReceiver_,
         uint256 totalSupply_
     ) external {
-        require(!_initialized, AlreadyInitialized());
-        _initialized = true;
+        require(graduator_ != address(0), InvalidGraduator());
+        require(graduator == address(0), AlreadyInitialized());
 
         _tokenName = name_;
         _tokenSymbol = symbol_;
-        launchpad = launchpad_;
         graduator = graduator_;
         pair = pair_;
 
         // all is minted back to the launchpad
-        _mint(launchpad_, totalSupply_);
+        _mint(supplyReceiver_, totalSupply_);
     }
 
     //////////////////////// restricted access functions ////////////////////////
