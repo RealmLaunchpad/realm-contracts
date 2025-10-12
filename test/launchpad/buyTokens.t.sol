@@ -335,7 +335,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         public
         createTestToken
     {
-        uint256 maxTotalEth = BASE_GRADUATION_THRESHOLD + launchpad.MAX_THRESHOLD_EXCESS();
+        uint256 maxTotalEth = BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS;
         // if the token graduates from the first one, the next one is pointless
         ethForPreBuy = bound(ethForPreBuy, 1, BASE_GRADUATION_THRESHOLD - 2);
         ethForComparison = bound(ethForComparison, 1, (maxTotalEth - ethForPreBuy) / 2);

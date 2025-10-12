@@ -133,7 +133,7 @@ contract InvariantsHelperLaunchpad is Test {
         if (state.graduated) return;
 
         uint256 maxEthToBuy =
-            launchpad.baseEthGraduationThreshold() + launchpad.MAX_THRESHOLD_EXCESS() - state.ethCollected;
+            launchpad.baseEthGraduationThreshold() + launchpad.graduationExcessCap() - state.ethCollected;
 
         // graduation happens at roughly 8 eth
         // purchase exceeds when trying to purchase more than 8.5 eth more or less

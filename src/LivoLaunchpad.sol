@@ -26,8 +26,7 @@ contract LivoLaunchpad is Ownable {
     uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
 
     /// @notice The max amount of ether in reserves of a token after crossing the graduation threshold
-    // todo make this a configurable parameter
-    uint256 public constant MAX_THRESHOLD_EXCESS = 0.1 ether;
+    uint256 public graduationExcessCap;
 
     /// @notice LivoToken ERC20 implementation address
     IERC20 public tokenImplementation;
@@ -95,6 +94,7 @@ contract LivoLaunchpad is Ownable {
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
     event TokenImplementationUpdated(address newImplementation);
     event EthGraduationThresholdUpdated(uint256 newThreshold);
+    event ExcessCapUpdated(uint256 newExcessCap);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event GraduationFeeUpdated(uint256 newGraduationFee);
@@ -112,6 +112,7 @@ contract LivoLaunchpad is Ownable {
         // This arbitrarily exact price ensures that if graduation happens exactly at this value,
         // the price in the uniswap pool after graduation matches the price of the bonding curve
         setEthGraduationThreshold(7956000000000052224); // 7.956 ether
+        setExcessCap(0.1 ether);
         setGraduationFee(0.5 ether);
         // buy/sell fees at 1%
         setTradingFees(100, 100);
@@ -196,8 +197,9 @@ contract LivoLaunchpad is Ownable {
 
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
         require(tokensToReceive <= _availableTokensForPurchase(token), NotEnoughSupply());
+        // the excess cap and graduation are denominated in eth reserves, without the fees
         require(
-            tokenState.ethCollected + ethForReserves < tokenConfig.ethGraduationThreshold + MAX_THRESHOLD_EXCESS,
+            tokenState.ethCollected + ethForReserves < tokenConfig.ethGraduationThreshold + graduationExcessCap,
             PurchaseExceedsLimitPostGraduation()
         );
 
@@ -340,6 +342,11 @@ contract LivoLaunchpad is Ownable {
         emit EthGraduationThresholdUpdated(ethThreshold);
     }
 
+    function setExcessCap(uint256 ethExcessCap) public onlyOwner {
+        graduationExcessCap = ethExcessCap;
+        emit ExcessCapUpdated(ethExcessCap);
+    }
+
     /// @notice Updates the graduation fee, which only affects new token deployments
     /// @param ethAmount The new graduation fee in wei
     function setGraduationFee(uint256 ethAmount) public onlyOwner {
@@ -467,8 +474,12 @@ contract LivoLaunchpad is Ownable {
 
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
 
-    function _maxEthToSpend(address token) internal view returns (uint256) {
-        return tokenConfigs[token].ethGraduationThreshold + MAX_THRESHOLD_EXCESS - tokenStates[token].ethCollected - 1;
+    function _maxEthToSpend(address token) internal view returns (uint256 ethBuy) {
+        uint256 maxEthReserves = tokenConfigs[token].ethGraduationThreshold + graduationExcessCap - 1;
+        uint256 remainingReserves = maxEthReserves - tokenStates[token].ethCollected;
+
+        // apply inverse fees
+        ethBuy = (remainingReserves * BASIS_POINTS) / (BASIS_POINTS - tokenConfigs[token].buyFeeBps);
     }
 
     function _quoteBuyWithExactEth(address token, uint256 ethValue)
