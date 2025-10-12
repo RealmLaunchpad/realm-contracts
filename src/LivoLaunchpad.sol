@@ -108,7 +108,6 @@ contract LivoLaunchpad is Ownable {
         // Set initial values and emit events for off-chain indexers
         setTreasuryAddress(_treasury);
         setLivoTokenImplementation(_tokenImplementation);
-
         // This arbitrarily exact price ensures that if graduation happens exactly at this value,
         // the price in the uniswap pool after graduation matches the price of the bonding curve
         setEthGraduationThreshold(7956000000000052224); // 7.956 ether
@@ -116,16 +115,6 @@ contract LivoLaunchpad is Ownable {
         setGraduationFee(0.5 ether);
         // buy/sell fees at 1%
         setTradingFees(100, 100);
-    }
-
-    struct TmpTokenMeta {
-        address token;
-        string name;
-        string symbol;
-        address bondingCurve;
-        address graduator;
-        uint16 buyFeesBps;
-        uint16 sellFeesBps;
     }
 
     /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
@@ -148,22 +137,11 @@ contract LivoLaunchpad is Ownable {
         // trading will be a bit more expensive, as variables cannot be immutable
         address tokenClone = Clones.clone(address(tokenImplementation));
 
-        TmpTokenMeta memory tmpTokenMeta = TmpTokenMeta({
-            token: tokenClone,
-            name: name,
-            symbol: symbol,
-            bondingCurve: bondingCurve,
-            graduator: graduator,
-            buyFeesBps: baseBuyFeeBps,
-            sellFeesBps: baseSellFeeBps
-        });
-
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
         emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator);
 
         // initialize token config, pair and token state
-        // forced to do this weird thing due to stack-too-deep errors
-        _initializers(tmpTokenMeta);
+        _initializers(tokenClone, name, symbol, bondingCurve, graduator);
 
         return tokenClone;
     }
@@ -400,31 +378,31 @@ contract LivoLaunchpad is Ownable {
 
     //////////////////////////// Internal functions //////////////////////////
 
-    function _initializers(TmpTokenMeta memory tmpTokenMeta) internal {
+    function _initializers(address token, string calldata name, string calldata symbol, address bondingCurve, address graduator) internal {
         // at creation all tokens are held by this contract
-        tokenConfigs[tmpTokenMeta.token] = TokenConfig({
-            bondingCurve: ILivoBondingCurve(tmpTokenMeta.bondingCurve),
-            graduator: ILivoGraduator(tmpTokenMeta.graduator),
+        tokenConfigs[token] = TokenConfig({
+            bondingCurve: ILivoBondingCurve(bondingCurve),
+            graduator: ILivoGraduator(graduator),
             creator: msg.sender,
             graduationEthFee: baseGraduationFee,
             ethGraduationThreshold: baseEthGraduationThreshold,
             creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
-            buyFeeBps: tmpTokenMeta.buyFeesBps,
-            sellFeeBps: tmpTokenMeta.sellFeesBps
+            buyFeeBps: baseBuyFeeBps,
+            sellFeeBps: baseSellFeeBps
         });
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
         // in the case of univ4, the pair will be the address of the pool manager,
         // to which tokens cannot be transferred until graduation
-        address pair = ILivoGraduator(tmpTokenMeta.graduator).initializePair(tmpTokenMeta.token);
+        address pair = ILivoGraduator(graduator).initializePair(token);
 
         // Initialize the new token instance
         // It is responsibility of the token to distribute supply to the msg.sender
         // so that we can update the token implementation with new rules for future tokens
-        LivoToken(tmpTokenMeta.token).initialize(
-            tmpTokenMeta.name,
-            tmpTokenMeta.symbol,
-            tmpTokenMeta.graduator, // graduator address
+        LivoToken(token).initialize(
+            name,
+            symbol,
+            graduator, // graduator address
             pair, // uniswap pair
             address(this), // supply receiver, all tokens are held by the launchpad initially
             TOTAL_SUPPLY
