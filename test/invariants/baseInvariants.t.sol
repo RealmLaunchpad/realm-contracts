@@ -49,10 +49,6 @@ contract LaunchpadInvariants is Test {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
 
-        // deploy another contract to skip that address with 1 wei
-        LivoToken throwAway = new LivoToken();
-        throwAway; // silence compiler
-
         // the actual deployments
         tokenImplementation = new LivoToken();
         launchpad = new LivoLaunchpad(treasury, tokenImplementation);
