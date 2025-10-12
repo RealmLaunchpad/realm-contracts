@@ -20,17 +20,6 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
 
-    function _graduateToken() internal {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
-
-        vm.deal(buyer, ethAmountToGraduate + 1 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: ethAmountToGraduate}(testToken, 0, DEADLINE);
-    }
-
-    //////////////////////////////////// modifiers and utilities ///////////////////////////////
-
     /// @notice Test that graduated boolean turns true in launchpad
     function test_graduatedBooleanTurnsTrueInLaunchpad() public createTestToken {
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
@@ -56,6 +45,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     function test_tokensCannotBeBoughtFromLaunchpadAfterGraduation() public createTestToken {
         _graduateToken();
 
+        deal(buyer, 1 ether);
         vm.prank(buyer);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.AlreadyGraduated.selector));
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
@@ -131,7 +121,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     function test_graduationWorksWithSmallExcess() public createTestToken {
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
         // Buy a bit more than graduation threshold but within allowed excess
-        uint256 smallExcessAmount = graduationThreshold + 0.1 ether;
+        uint256 smallExcessAmount = graduationThreshold + 0.01 ether;
         uint256 ethAmountWithSmallExcess = _increaseWithFees(smallExcessAmount);
 
         vm.deal(buyer, ethAmountWithSmallExcess);
@@ -179,8 +169,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
             launchpad.getTokenState(testToken).ethCollected, 0, "ETH reserves should be greater than 0 after a purchase"
         );
 
-        vm.prank(seller);
-        launchpad.buyTokensWithExactEth{value: 1.5 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
         assertEq(launchpad.getTokenState(testToken).ethCollected, 0, "ETH reserves should be reset to 0 at graduation");
     }
@@ -204,7 +193,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         uint256 treasuryFeesBeforeGraduation = launchpad.treasuryEthFeesCollected();
 
-        uint256 purchaseValue = 1.5 ether;
+        uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
@@ -240,7 +229,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         );
 
         // the eth from this purchase would go straight into liquidity
-        uint256 purchaseValue = 1.5 ether;
+        uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
         vm.prank(seller);
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
@@ -265,7 +254,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         uint256 launchpadEthBefore = address(launchpad).balance;
 
         // the eth from this purchase would go straight into liquidity
-        uint256 purchaseValue = 1.5 ether;
+        uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
         vm.prank(seller);
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");

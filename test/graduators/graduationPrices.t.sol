@@ -49,12 +49,14 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
     }
 
     function _uniswapBuy(address account, uint256 ethAmount) public virtual {
-        account; ethAmount;
+        account;
+        ethAmount;
         revert("must be overriden");
     }
 
     function _uniswapSell(address account, uint256 tokenAmount) public virtual {
-        account; tokenAmount;
+        account;
+        tokenAmount;
         revert("must be overriden");
     }
 
@@ -102,7 +104,9 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         // uniswapv2 yields a lower swap price due to the lower fees (0.3% vs 1% in launchpad)
         // ensure that either swapPrice > launchpadPrice (univ4), or that they are very close (univ2)
         if (effectiveSwapPrice < effectiveLaunchpadPrice) {
-            assertApproxEqRel(effectiveSwapPrice, effectiveLaunchpadPrice, 0.01e18, "swap price more than 1% lower than launchpad");
+            assertApproxEqRel(
+                effectiveSwapPrice, effectiveLaunchpadPrice, 0.01e18, "swap price more than 1% lower than launchpad"
+            );
         }
     }
 
@@ -127,7 +131,9 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         // uniswapv2 yields a lower swap price due to the lower fees (0.3% vs 1% in launchpad)
         // ensure that either swapPrice > launchpadPrice (univ4), or that they are very close (univ2)
         if (effectiveSwapPrice < effectiveLaunchpadPrice) {
-            assertApproxEqRel(effectiveSwapPrice, effectiveLaunchpadPrice, 0.01e18, "swap price more than 1% lower than launchpad");
+            assertApproxEqRel(
+                effectiveSwapPrice, effectiveLaunchpadPrice, 0.01e18, "swap price more than 1% lower than launchpad"
+            );
         }
     }
 
@@ -153,7 +159,9 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         // uniswapv2 yields a lower swap price due to the lower fees (0.3% vs 1% in launchpad)
         // ensure that either swapPrice > launchpadPrice (univ4), or that they are very close (univ2)
         if (effectiveSwapPrice < effectiveLaunchpadPrice) {
-            assertApproxEqRel(effectiveSwapPrice, effectiveLaunchpadPrice, 0.01e18, "swap price more than 1% lower than launchpad");
+            assertApproxEqRel(
+                effectiveSwapPrice, effectiveLaunchpadPrice, 0.01e18, "swap price more than 1% lower than launchpad"
+            );
         }
     }
 
@@ -191,7 +199,9 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
 
         console.log(midCurvePurchase, " eth: launchpad price", effectiveLaunchpadPrice);
         console.log(midCurvePurchase, " eth: swap price", effectiveSwapPrice);
-        assertApproxEqRel(effectiveLaunchpadPrice, effectiveSwapPrice, 0.001e18, "not within 0.1% when selling back all supply");
+        assertApproxEqRel(
+            effectiveLaunchpadPrice, effectiveSwapPrice, 0.001e18, "not within 0.1% when selling back all supply"
+        );
     }
 }
 

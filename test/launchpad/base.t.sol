@@ -88,6 +88,12 @@ contract LaunchpadBaseTests is Test {
         _;
     }
 
+    function _graduateToken() internal {
+        uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
+        uint256 missingForGraduation = _increaseWithFees(BASE_GRADUATION_THRESHOLD - ethReserves);
+        _launchpadBuy(testToken, missingForGraduation);
+    }
+
     function _launchpadBuy(address token, uint256 value) internal {
         vm.deal(buyer, value);
         vm.prank(buyer);

@@ -12,7 +12,6 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 
-
 contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     // Uniswap V2 contracts on mainnet
     IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
@@ -33,20 +32,11 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
         _;
     }
 
-    function _graduateToken() internal {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
-
-        vm.deal(buyer, ethAmountToGraduate + 1 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: ethAmountToGraduate}(testToken, 0, DEADLINE);
-    }
-
     function _swapBuy(address account, address token, uint256 ethAmount, uint256 minTokens) internal {
         vm.startPrank(account);
         WETH.deposit{value: ethAmount}();
         WETH.approve(UNISWAP_V2_ROUTER, ethAmount);
-        
+
         address[] memory path = new address[](2);
         path[0] = address(WETH);
         path[1] = token;
@@ -377,7 +367,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         uint256 launchpadEthBefore = address(launchpad).balance;
 
         // the eth from this purchase would go straight into liquidity
-        uint256 purchaseValue = 1.5 ether;
+        uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
         vm.prank(seller);
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
@@ -385,7 +375,6 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         uint256 launchpadEthAfter = address(launchpad).balance;
 
         // Before: launchpad balance + purchaseValue == lauchpad balance + uniswap balance
-
         assertEq(
             launchpadEthBefore + purchaseValue,
             launchpadEthAfter + WETH.balanceOf(uniswapPair),

@@ -55,13 +55,6 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         });
     }
 
-    function _graduateToken() internal {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
-
-        _launchpadBuy(testToken, ethAmountToGraduate);
-    }
-
     function _readSqrtX96TokenPrice() internal view returns (uint160) {
         // Check price is as expected
         PoolKey memory poolKey = _getPoolKey(testToken);
