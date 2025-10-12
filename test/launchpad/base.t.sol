@@ -85,7 +85,7 @@ contract LaunchpadBaseTests is Test {
         vm.deal(alice, INITIAL_ETH_BALANCE);
         vm.deal(bob, INITIAL_ETH_BALANCE);
 
-        MAX_THRESHOLD_EXCESS = launchpad.MAX_THRESHOLD_EXCESS();
+        MAX_THRESHOLD_EXCESS = launchpad.graduationExcessCap();
     }
 
     modifier createTestToken() {

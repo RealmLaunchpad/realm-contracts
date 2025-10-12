@@ -409,6 +409,17 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
     }
 
+    /// @notice that maxEthToSpend reverts if increased by 1
+    function test_maxEthToSpend_revertsIfIncreasedBy1() public createTestTokenWithPair {
+        uint256 maxEth = launchpad.getMaxEthToSpend(testToken);
+        assertGt(maxEth, BASE_GRADUATION_THRESHOLD, "maxEthToSpend should be higher than graduation threshold");
+
+        vm.deal(buyer, maxEth + 1 ether);
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        launchpad.buyTokensWithExactEth{value: maxEth + 1}(testToken, 0, DEADLINE);
+    }
+
     /// @notice that buy maxEthToSpend (after some buys) gives a value that allows for graduation
     function test_maxEthToSpend_afterSomeBuys_allowsGraduation(uint256 preBuyAmount) public createTestTokenWithPair {
         preBuyAmount = bound(preBuyAmount, 0.01 ether, BASE_GRADUATION_THRESHOLD);
