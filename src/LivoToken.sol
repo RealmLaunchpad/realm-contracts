@@ -13,10 +13,6 @@ contract LivoToken is ERC20 {
     /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
     address public pair;
 
-    /// @notice Prevents re-initialization
-    // todo remove this variable (use graduator==address(0) as a proxy for initialization)
-    bool internal _initialized;
-
     /// @notice Token name
     string private _tokenName;
 
@@ -34,6 +30,7 @@ contract LivoToken is ERC20 {
     error AlreadyInitialized();
     error TranferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
+    error InvalidGraduator();
 
     //////////////////////////////////////////////////////
 
@@ -56,8 +53,8 @@ contract LivoToken is ERC20 {
         address supplyReceiver_,
         uint256 totalSupply_
     ) external {
-        require(!_initialized, AlreadyInitialized());
-        _initialized = true;
+        require(graduator_ != address(0), InvalidGraduator());
+        require(graduator == address(0), AlreadyInitialized());
 
         _tokenName = name_;
         _tokenSymbol = symbol_;

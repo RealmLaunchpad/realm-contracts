@@ -153,4 +153,20 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidNameOrSymbol.selector));
         launchpad.createToken("TestToken", longSymbol, address(bondingCurve), address(graduator));
     }
+
+    function test_initializeTokenWithZeroGraduator() public {
+        LivoToken token = new LivoToken();
+
+        vm.expectRevert(abi.encodeWithSelector(LivoToken.InvalidGraduator.selector));
+        token.initialize("NoGradToken", "NOGRAD", address(0), address(0), address(0), 1000);
+    }
+
+    function test_initializeTwiceToken() public {
+        LivoToken token = new LivoToken();
+
+        token.initialize("OnceToken", "ONCE", address(graduator), address(0), address(this), 1000);
+
+        vm.expectRevert(abi.encodeWithSelector(LivoToken.AlreadyInitialized.selector));
+        token.initialize("TwiceToken", "TWICE", address(graduator), address(0), address(this), 1000);
+    }
 }
