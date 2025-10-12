@@ -189,7 +189,8 @@ contract LivoLaunchpad is Ownable {
 
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
-        if (_meetsGraduationCriteria(tokenState, tokenConfig)) {
+        // if the graduation criteria is met, graduation happens automatically
+        if (tokenState.ethCollected >= tokenConfig.ethGraduationThreshold) {
             _graduateToken(token, tokenState, tokenConfig);
         }
 
@@ -218,16 +219,16 @@ contract LivoLaunchpad is Ownable {
         require(tokenAmount > 0, InvalidAmount());
         require(block.timestamp <= deadline, DeadlineExceeded());
 
-        (uint256 ethFromReserves, uint256 ethFee, uint256 ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
+        (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
 
         require(ethForSeller >= minEthAmount, SlippageExceeded());
         // When minEthAmount==0, we assume that the seller accepts any kind of "resaonable" slippage
         // However, receiving eth in exchange for a non-zero amount of tokens would be unfair
         require(ethForSeller > 0, ReceivingZeroAmount());
         // Hopefully this scenario never happens
-        require(_availableEthFromReserves(token) >= ethFromReserves, InsufficientETHReserves());
+        require(_availableEthFromReserves(token) >= ethPulledFromReserves, InsufficientETHReserves());
 
-        tokenState.ethCollected -= ethFromReserves;
+        tokenState.ethCollected -= ethPulledFromReserves;
         tokenState.releasedSupply -= tokenAmount;
         treasuryEthFeesCollected += ethFee;
 
@@ -489,14 +490,6 @@ contract LivoLaunchpad is Ownable {
         ethForSeller = ethFromSale - ethFee;
 
         return (ethFromSale, ethFee, ethForSeller);
-    }
-
-    function _meetsGraduationCriteria(TokenState storage state, TokenConfig storage config)
-        internal
-        view
-        returns (bool)
-    {
-        return (state.ethCollected >= config.ethGraduationThreshold);
     }
 
     /// @dev The supply of a token that can be purchased
