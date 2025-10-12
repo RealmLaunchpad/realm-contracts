@@ -195,7 +195,6 @@ contract LivoLaunchpad is Ownable {
         require(tokensToReceive <= _availableTokensForPurchase(token), NotEnoughSupply());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
 
-        require(ethForReserves + ethFee == msg.value, "reserves + fee should match msg.value");
         treasuryEthFeesCollected += ethFee;
         tokenState.ethCollected += ethForReserves;
         tokenState.releasedSupply += tokensToReceive;
