@@ -2,6 +2,13 @@
 
 Livo Launchpad is a decentralized token launch platform that enables fair token distribution through a bonding curve mechanism, with automatic liquidity provision to either Uniswap V2 or Uniswap V4 upon reaching graduation criteria.
 
+## Meta info
+
+- Deployment chain: **Ethereum mainnet**
+- Integrations:
+  - Uniswap v2 (liquidity addition)
+  - Uniswap V4 (liquidity addition)
+
 ## Protocol Overview
 
 The Livo Launchpad protocol is a token factory and trading system that enables fair token distribution through a bonding curve mechanism, with the following features:
