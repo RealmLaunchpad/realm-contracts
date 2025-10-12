@@ -1,72 +1,246 @@
 # Livo Launchpad
 
-A permissionless launchpad where any account can launch an ERC20 and bootstrap liquidity before graduating to a Uniswap pool. 
+Livo Launchpad is a decentralized token launch platform that enables fair token distribution through a bonding curve mechanism, with automatic liquidity provision to either Uniswap V2 or Uniswap V4 upon reaching graduation criteria.
 
-UniswapV2 and V4 are supported
+## Protocol Overview
 
-## Foundry
+The Livo Launchpad protocol is a token factory and trading system that enables fair token distribution through a bonding curve mechanism, with the following features:
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+1. **Token Creation**: Anyone can create an ERC20 token with a fixed supply of 1 billion tokens using a minimal proxy pattern for gas-efficient deployment
+2. **Bonding Curve Trading**: Users buy/sell tokens from the launchpad through a constant product bonding curve until graduation
+3. **Automatic Graduation**: When ETH reserves reach ~8 ETH (7.956 ETH exactly), tokens automatically graduate to Uniswap
+4. **Liquidity Provision**: All collected ETH (minus fees) is used to create a permanent, locked liquidity pool in Uniswap:
+   - Uniswap V2: LP tokens sent to dead address
+   - Uniswap V4: NFT liquidity position locked in a Liquidity Lock contract
+5. **Creator Rewards**: Token creators receive 1% of supply (10M tokens) at graduation
+6. **Fair Launch**: No pre-mines or pre-allocations. All supply is minted to the launchpad where it can be purchased.
+7. **Pre-Graduation Trading Fees**: 1% fee on buys/sells, allocated to Livo treasury.
+8. **Post-Graduation Trading Fees**:
+   - Uniswap V2: No additional fees
+   - Uniswap V4: 1% LP fees with ETH fees split 50/50 between creator and Livo treasury; token fees locked
+9. **Graduation Fee**: 0.5 ETH paid to treasury at graduation (configurable by admin)
 
-Foundry consists of:
+## Architecture
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+### Core Contracts
 
-## Documentation
+#### `LivoLaunchpad.sol`
+The main entry point and orchestrator contract that:
+- Deploys new tokens via `createToken()`
+- Handles buy/sell orders via `buyTokensWithExactEth()` and `sellExactTokens()`
+- Manages token state and configuration
+- Triggers graduation when threshold is met
+- Collects and distributes fees
+- Any re-configuration of graduation or fees dynamics only affects future token creations
 
-https://book.getfoundry.sh/
+#### `LivoToken.sol`
+Minimal ERC20 implementation with graduation controls:
+- Initialized via `initialize()` (not constructor, since it's cloned with a minimal proxy pattern)
+- Prevents transfers to liquidity pool before graduation
+- Marked as graduated by graduator contract via `markGraduated()`
+- No fees on transfer, no token owner. 
 
-## Usage
+#### `ConstantProductBondingCurve.sol`
+Implements the pricing formula for token purchases/sales:
+- Uses constant product formula: `K = (t + T0) * (e + E0)`
+- Numerically tuned constants ensure smooth price progression until graduation, which should happen at 7.956 ETH ~200M tokens remaining in reserves 
+  - Note: out of those ~200M tokens, 10M are allocated to token creator, so only ~190M are used for liquidity.
+- Total curve capacity: ~37.5 ETH if all tokens were sold through the bonding curve. Beyond that point the curve breaks. This point should never be reached, so graduation threshold should be far away from that limit (~8 ETH initially).
 
-### Build
+#### `LivoGraduatorUniswapV2.sol`
+Handles graduation to Uniswap V2:
+- Creates Uniswap V2 pair at token creation via `initializePair()`
+- Adds liquidity to Uniswap V2 via `graduateToken()`
+- Sends LP tokens to dead address (`0xdEaD`)
+- Handles edge case of ETH donations to pair before graduation preventing graduation DOS 
+- **No creator fees** - all LP fees go to LP token holders (which are locked in the `0xdEaD` address)
 
-```shell
-$ forge build
+#### `LivoGraduatorUniswapV4.sol`
+Handles graduation to Uniswap V4:
+- Initializes Uniswap V4 pool at token creation via `initializePair()`
+- Adds concentrated liquidity position via `graduateToken()`
+- Locks liquidity NFT in `LiquidityLockUniv4WithFees` contract
+- **Creator ETH fees enabled** 
+  - LP Fees collected as tokens are left locked in the univ4 graduator
+  - LP Fees collected as ETH are split 50/50% between the token creator and Livo treasury
+- Collects and distributes fees via `collectEthFees()`
+
+#### `LiquidityLockUniv4WithFees.sol`
+Custody contract for Uniswap V4 liquidity positions:
+- Holds the UniV4 NFTs representing liquidity positions of all graduated tokens 
+- Allows fee collection via `claimUniV4PositionFees()` without withdrawing liquidity
+- Prevents withdrawal of locked position NFT
+
+### Token Data Structures
+
+#### `TokenConfig` (set at creation, immutable)
+
+- Stores immutable attributes of a token when it is created (bondig curve, graduator, creator, etc)
+- For more info see docstrings in the structs defined in `src/types/tokenData.sol::TokenConfig`.
+
+#### `TokenState` (dynamic, changes with trading)
+
+- Stores variables defining the state of each deployed token (eth collected, released supply, if it has been graduated, etc).
+- For more info see docstrings in the structs defined in `src/types/tokenData.sol::TokenState`.
+
+## Main Entry Points
+
+### For Token Creators
+
+- **`createToken()`**: Deploy new tokens
+
+### For Token Traders (Pre-Graduation)
+
+- **`buyTokensWithExactEth()`**: Buy tokens on Livo Launchpad
+- **`sellExactTokens()`**: Sell tokens on Livo Launchpad
+
+### For Uniswap Trading (Post-Graduation)
+
+After graduation, tokens trade on Uniswap V2 or V4 like any other token.
+
+## Graduation Process
+
+### When Does Graduation Happen?
+
+Graduation is triggered automatically when `ethCollected >= ethGraduationThreshold` (~7.956 ETH initially).
+
+The threshold has a small excess allowance of 0.5 ETH. If a buy would exceed `threshold + 0.5 ETH`, the purchase reverts. This ensures that the price spread between the last launchpad buy and the uniswap pool doesn't deviate too much 
+
+The excess ETH is deposited as liquidity, which should be reflected as a higher token price. 
+
+### What Happens at Graduation?
+
+1. **Fees Collected**: Graduation fee (0.5 ETH) goes to treasury
+2. **Creator Allocation**: 10M tokens transferred to creator
+3. **Liquidity Addition**: Remaining tokens + ETH sent to graduator contract
+4. **Pool Creation**: Graduator adds liquidity to Uniswap
+5. **State Update**: Token marked as graduated, trading disabled on launchpad
+6. **Reserves Reset**: `ethCollected` set to 0
+7. The token can be traded now via Uniswap 
+
+#### Calculation Example (Exact Graduation)
+```
+ETH collected: 7.956 ETH
+Graduation fee: 0.5 ETH
+ETH to liquidity: 7.456 ETH
+
+Total supply: 1,000,000,000 tokens
+Creator reserved: 10,000,000 tokens
+Tokens sold: ~799,000,000 tokens
+Tokens to liquidity: ~191,000,000 tokens
 ```
 
-### Test
+## Uniswap V2 vs Uniswap V4 Graduation
 
-```shell
-$ forge test
-```
+### Uniswap V2 Graduation
 
-### Format
+**Characteristics:**
+- **Higher gas costs at token creation**: Full ERC20 pair contract deployment at token creation
+- **LP tokens burned**: Sent to `0xdEaD` address, liquidity permanently locked
+- **No creator fees**: Uniswap V2 trading accumulate as LP, which are locked in the `0xdEaD` address. 
+- **Invariant**: Uniswap price ≥ bonding curve price at graduation
 
-```shell
-$ forge fmt
-```
+### Uniswap V4 Graduation
 
-### Gas Snapshots
+**Characteristics:**
+- **Lower gas costs at token creation**: pair is initialized in the pool manager, no contract deployment.
+- **Liquidity NFT locked**: Held in `LiquidityLockUniv4WithFees` contract
+- **Invariant**: Uniswap price ≥ bonding curve price at graduation
+- **Fee tier**: 1% (10,000 pips)
+- **Tick spacing**: 200
+- // todo review these two below:
+- **Position spans** from 0.497 to 694,694,034 tokens per ETH
+- **Starting price**: ~39,011,306,440 tokens per ETH
 
-```shell
-$ forge snapshot
-```
+**Fee Collection:**
+Anyone can call `LivoGraduatorUniswapV4.collectEthFees()` to:
+1. Claim accumulated fees from Uniswap V4 positions of an array of graduated tokens
+2. Split ETH fees 50/50 between creator and Livo treasury
+3. Token fees remain in graduator contract (effectively burned)
 
-### Anvil
+## Deployment & Setup
 
-```shell
-$ anvil
-```
+### Prerequisites
+- Uniswap V2 Router (for V2 graduator): `0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D` (mainnet)
+- Uniswap V4 Pool Manager: `0x000000000004444c5dc75cB358380D2e3dE08A90` (mainnet)
+- Uniswap V4 Position Manager: `0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e` (mainnet)
+- Permit2: `0x000000000022D473030F116dDEE9F6B43aC78BA3` (mainnet)
 
-### Deploy
+### Deployment Steps
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
+1. **Deploy Token Implementation**
+   ```solidity
+   LivoToken tokenImplementation = new LivoToken();
+   ```
 
-### Cast
+2. **Deploy Launchpad**
+   ```solidity
+   LivoLaunchpad launchpad = new LivoLaunchpad(treasury, tokenImplementation);
+   ```
 
-```shell
-$ cast <subcommand>
-```
+3. **Deploy Bonding Curve**
+   ```solidity
+   ConstantProductBondingCurve bondingCurve = new ConstantProductBondingCurve();
+   ```
 
-### Help
+4. **Deploy Graduators**
+   ```solidity
+   // Uniswap V2
+   LivoGraduatorUniswapV2 graduatorV2 = new LivoGraduatorUniswapV2(
+       UNISWAP_V2_ROUTER,
+       address(launchpad)
+   );
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+   // Uniswap V4
+   LiquidityLockUniv4WithFees liquidityLock = new LiquidityLockUniv4WithFees(
+       UNIV4_NFT_POSITIONS,
+       UNIV4_POSITION_MANAGER
+   );
+
+   LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
+       address(launchpad),
+       address(liquidityLock),
+       POOL_MANAGER,
+       POSITION_MANAGER,
+       PERMIT2,
+       UNIV4_NFT_POSITIONS
+   );
+   ```
+
+5. **Whitelist curves & graduators pairs**
+   ```solidity
+   launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV2), true);
+   launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV4), true);
+   ```
+
+## Security Considerations
+
+### Known Issues & Mitigations
+
+#### 1. **Bonding Curve Overflow (>37 ETH)**
+The `ConstantProductBondingCurve` has numerical limits and will revert if `ethReserves > ~37 ETH`.
+
+**Mitigation**: Graduation threshold (7.956 ETH) + max excess (0.5 ETH) = 8.456 ETH, well below 37 ETH limit.
+
+#### 2. **ETH Donations to Uniswap V2 Pair Pre-Graduation**
+Malicious actors could send ETH directly to the pair to manipulate the price at graduation.
+
+**Mitigation**: `LivoGraduatorUniswapV2` includes:
+- `sync()` call before reading reserves
+- Price matching algorithm that transfers tokens directly to pair first
+- Fallback to naive liquidity addition if needed
+- Ensures Uniswap price ≥ bonding curve price
+
+#### 3. **Large Last Purchase (Graduation Excess)**
+- If the last purchase before graduation is large (e.g., 0.5 ETH excess), the resulting Uniswap pool price will be higher than the bonding curve price. This is expected, as more ETH has been spent in purchasing
+- Even if the max excess is hit, the price in uniswap after graduation should **always** be higher than the last price in the launchpad (fair pricing).
+- The last buyer gets an immediate small profit. The larger the excess, the larger the instant price difference.
+- This is considered acceptable as it encourages graduation. The max excess of 0.5 ETH limits the maximum impact.
+
+#### 4. **Token Transfers to Pool Before Graduation**
+Tokens cannot be transferred to the liquidity pool before graduation to avoid DOS of the graduation transaction.
+- `LivoToken._update()` blocks transfers to `pair` address before `graduated == true`.
+
+#### 6. **Minimal Dust Tokens Burned at Graduation**
+When adding liquidity to Uniswap V4, a small amount of tokens (~0.000001% of supply) may remain unallocated due to rounding. This is accepted, but should not be a large portion (0.1% of the supply would be unacceptable).
+
