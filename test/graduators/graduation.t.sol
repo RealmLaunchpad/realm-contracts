@@ -19,13 +19,10 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 /// @dev These tests should should pass regardless of the of graduator, so we test it with both
 abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
-    uint256 constant DEADLINE = type(uint256).max;
-    uint256 constant MAX_THRESHOLD_EXCESS = 0.5 ether;
-    address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     function _graduateToken() internal {
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = (graduationThreshold * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
 
         vm.deal(buyer, ethAmountToGraduate + 1 ether);
         vm.prank(buyer);
@@ -135,7 +132,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
         // Buy a bit more than graduation threshold but within allowed excess
         uint256 smallExcessAmount = graduationThreshold + 0.1 ether;
-        uint256 ethAmountWithSmallExcess = (smallExcessAmount * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 ethAmountWithSmallExcess = _increaseWithFees(smallExcessAmount);
 
         vm.deal(buyer, ethAmountWithSmallExcess);
         vm.prank(buyer);

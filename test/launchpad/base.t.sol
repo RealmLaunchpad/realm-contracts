@@ -39,6 +39,12 @@ contract LaunchpadBaseTests is Test {
     uint16 public constant BASE_BUY_FEE_BPS = 100;
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
+    uint256 MAX_THRESHOLD_EXCESS;
+
+    // we don't test deadlines mostly
+    uint256 constant DEADLINE = type(uint256).max;
+    address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
@@ -68,6 +74,8 @@ contract LaunchpadBaseTests is Test {
         vm.deal(seller, INITIAL_ETH_BALANCE);
         vm.deal(alice, INITIAL_ETH_BALANCE);
         vm.deal(bob, INITIAL_ETH_BALANCE);
+
+        MAX_THRESHOLD_EXCESS = launchpad.MAX_THRESHOLD_EXCESS();
     }
 
     modifier createTestToken() {
@@ -75,6 +83,16 @@ contract LaunchpadBaseTests is Test {
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
         testToken = launchpad.createToken("TestToken", "TEST", address(bondingCurve), address(graduator));
         _;
+    }
+
+    function _launchpadBuy(address token, uint256 value) internal {
+        vm.deal(buyer, value);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: value}(token, 0, DEADLINE);
+    }
+
+    function _increaseWithFees(uint256 ethIntoReserves) internal pure returns (uint256 ethBuy) {
+        ethBuy = (ethIntoReserves * 10000) / (10000 - BASE_BUY_FEE_BPS);
     }
 }
 

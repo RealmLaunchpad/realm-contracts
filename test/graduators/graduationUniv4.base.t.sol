@@ -29,9 +29,6 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
 
-    uint256 constant DEADLINE = type(uint256).max;
-    uint256 MAX_THRESHOLD_EXCESS;
-
     IPoolManager poolManager;
 
     // these are copied from the graduator ...
@@ -46,8 +43,6 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     function setUp() public virtual override {
         super.setUp();
         poolManager = IPoolManager(poolManagerAddress);
-
-        MAX_THRESHOLD_EXCESS = launchpad.MAX_THRESHOLD_EXCESS();
     }
 
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
@@ -62,17 +57,11 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         });
     }
 
-    function _buy(uint256 value) internal {
-        vm.deal(buyer, value);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: value}(testToken, 0, DEADLINE);
-    }
-
     function _graduateToken() internal {
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = (graduationThreshold * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
 
-        _buy(ethAmountToGraduate);
+        _launchpadBuy(testToken, ethAmountToGraduate);
     }
 
     function _readSqrtX96TokenPrice() internal view returns (uint160) {

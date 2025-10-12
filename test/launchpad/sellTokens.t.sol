@@ -12,7 +12,6 @@ import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/LivoToken.sol";
 
 abstract contract SellTokensTest is LaunchpadBaseTests {
-    uint256 constant DEADLINE = type(uint256).max;
     uint256 constant ONE_ETH_BUY = 1 ether;
     uint256 constant TWO_ETH_BUY = 2 ether;
 
