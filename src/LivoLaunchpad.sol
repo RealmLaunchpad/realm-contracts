@@ -168,7 +168,7 @@ contract LivoLaunchpad is Ownable {
 
     /// @notice Buys tokens with exact ETH amount
     /// @dev The user sends ETH via msg.value and receives tokens based on the bonding curve price
-    /// @dev 1% fee deducted from ETH amount. 
+    /// @dev 1% fee deducted from ETH amount.
     /// @dev Slippage control is done with minTokenAmount.
     /// @dev Purchases can trigger graduation if threshold reached
     /// @dev Cannot buy a token that has already graduated (use uniswap instead)
@@ -216,7 +216,7 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @notice Sells an exact amount of tokens back and receives ETH based on the bonding curve price.
-    /// @dev 1% fee deducted from ETH received. 
+    /// @dev 1% fee deducted from ETH received.
     /// @dev Slippage control is done with minEthAmount (min eth willing to receive).
     /// @dev Cannot sell tokens that have been graduated (use uniswap instead)
     /// @dev Even if minEthAmount==0, receiving 0 eth is not allowed and the transaction reverts
