@@ -108,7 +108,6 @@ contract LivoLaunchpad is Ownable {
         // Set initial values and emit events for off-chain indexers
         setTreasuryAddress(_treasury);
         setLivoTokenImplementation(_tokenImplementation);
-
         // This arbitrarily exact price ensures that if graduation happens exactly at this value,
         // the price in the uniswap pool after graduation matches the price of the bonding curve
         setEthGraduationThreshold(7956000000000052224); // 7.956 ether
@@ -118,26 +117,16 @@ contract LivoLaunchpad is Ownable {
         setTradingFees(100, 100);
     }
 
-    struct TmpTokenMeta {
-        address token;
-        string name;
-        string symbol;
-        address bondingCurve;
-        address graduator;
-        uint16 buyFeesBps;
-        uint16 sellFeesBps;
-    }
-
     /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
     /// @dev Selected bonding curve and graduator must be a whitelisted pair
     /// @param name The name of the token
     /// @param symbol The symbol of the token (max 32 characters)
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
-    /// @return The address of the newly created token
+    /// @return token The address of the newly created token
     function createToken(string calldata name, string calldata symbol, address bondingCurve, address graduator)
         external
-        returns (address)
+        returns (address token)
     {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
@@ -146,26 +135,41 @@ contract LivoLaunchpad is Ownable {
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
-        address tokenClone = Clones.clone(address(tokenImplementation));
-
-        TmpTokenMeta memory tmpTokenMeta = TmpTokenMeta({
-            token: tokenClone,
-            name: name,
-            symbol: symbol,
-            bondingCurve: bondingCurve,
-            graduator: graduator,
-            buyFeesBps: baseBuyFeeBps,
-            sellFeesBps: baseSellFeeBps
-        });
+        token = Clones.clone(address(tokenImplementation));
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator);
+        emit TokenCreated(token, msg.sender, name, symbol, bondingCurve, graduator);
 
-        // initialize token config, pair and token state
-        // forced to do this weird thing due to stack-too-deep errors
-        _initializers(tmpTokenMeta);
+        // at creation all tokens are held by this contract
+        tokenConfigs[token] = TokenConfig({
+            bondingCurve: ILivoBondingCurve(bondingCurve),
+            graduator: ILivoGraduator(graduator),
+            creator: msg.sender,
+            graduationEthFee: baseGraduationFee,
+            ethGraduationThreshold: baseEthGraduationThreshold,
+            creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
+            buyFeeBps: baseBuyFeeBps,
+            sellFeeBps: baseSellFeeBps
+        });
 
-        return tokenClone;
+        // Creates the Uniswap Pair or whatever other initialization is necessary
+        // in the case of univ4, the pair will be the address of the pool manager,
+        // to which tokens cannot be transferred until graduation
+        address pair = ILivoGraduator(graduator).initializePair(token);
+
+        // Initialize the new token instance
+        // It is responsibility of the token to distribute supply to the msg.sender
+        // so that we can update the token implementation with new rules for future tokens
+        LivoToken(token).initialize(
+            name,
+            symbol,
+            graduator, // graduator address
+            pair, // uniswap pair
+            address(this), // supply receiver, all tokens are held by the launchpad initially
+            TOTAL_SUPPLY
+        );
+
+        return token;
     }
 
     /// @notice Buys tokens with exact ETH amount
@@ -211,7 +215,8 @@ contract LivoLaunchpad is Ownable {
 
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
-        if (_meetsGraduationCriteria(tokenState, tokenConfig)) {
+        // if the graduation criteria is met, graduation happens automatically
+        if (tokenState.ethCollected >= tokenConfig.ethGraduationThreshold) {
             _graduateToken(token, tokenState, tokenConfig);
         }
 
@@ -240,16 +245,17 @@ contract LivoLaunchpad is Ownable {
         require(tokenAmount > 0, InvalidAmount());
         require(block.timestamp <= deadline, DeadlineExceeded());
 
-        (uint256 ethFromReserves, uint256 ethFee, uint256 ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
+        (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller) =
+            _quoteSellExactTokens(token, tokenAmount);
 
         require(ethForSeller >= minEthAmount, SlippageExceeded());
         // When minEthAmount==0, we assume that the seller accepts any kind of "resaonable" slippage
         // However, receiving eth in exchange for a non-zero amount of tokens would be unfair
         require(ethForSeller > 0, ReceivingZeroAmount());
         // Hopefully this scenario never happens
-        require(_availableEthFromReserves(token) >= ethFromReserves, InsufficientETHReserves());
+        require(_availableEthFromReserves(token) >= ethPulledFromReserves, InsufficientETHReserves());
 
-        tokenState.ethCollected -= ethFromReserves;
+        tokenState.ethCollected -= ethPulledFromReserves;
         tokenState.releasedSupply -= tokenAmount;
         treasuryEthFeesCollected += ethFee;
 
@@ -400,37 +406,6 @@ contract LivoLaunchpad is Ownable {
 
     //////////////////////////// Internal functions //////////////////////////
 
-    function _initializers(TmpTokenMeta memory tmpTokenMeta) internal {
-        // at creation all tokens are held by this contract
-        tokenConfigs[tmpTokenMeta.token] = TokenConfig({
-            bondingCurve: ILivoBondingCurve(tmpTokenMeta.bondingCurve),
-            graduator: ILivoGraduator(tmpTokenMeta.graduator),
-            creator: msg.sender,
-            graduationEthFee: baseGraduationFee,
-            ethGraduationThreshold: baseEthGraduationThreshold,
-            creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
-            buyFeeBps: tmpTokenMeta.buyFeesBps,
-            sellFeeBps: tmpTokenMeta.sellFeesBps
-        });
-
-        // Creates the Uniswap Pair or whatever other initialization is necessary
-        // in the case of univ4, the pair will be the address of the pool manager,
-        // to which tokens cannot be transferred until graduation
-        address pair = ILivoGraduator(tmpTokenMeta.graduator).initializePair(tmpTokenMeta.token);
-
-        // Initialize the new token instance
-        // It is responsibility of the token to distribute supply to the msg.sender
-        // so that we can update the token implementation with new rules for future tokens
-        LivoToken(tmpTokenMeta.token).initialize(
-            tmpTokenMeta.name,
-            tmpTokenMeta.symbol,
-            tmpTokenMeta.graduator, // graduator address
-            pair, // uniswap pair
-            address(this), // supply receiver, all tokens are held by the launchpad initially
-            TOTAL_SUPPLY
-        );
-    }
-
     /// @dev This function assumes that the graduation criteria is met
     /// @dev It also assumes that the token hasn't been graduated yet
     function _graduateToken(address tokenAddress, TokenState storage tokenState, TokenConfig storage tokenConfig)
@@ -511,14 +486,6 @@ contract LivoLaunchpad is Ownable {
         ethForSeller = ethFromSale - ethFee;
 
         return (ethFromSale, ethFee, ethForSeller);
-    }
-
-    function _meetsGraduationCriteria(TokenState storage state, TokenConfig storage config)
-        internal
-        view
-        returns (bool)
-    {
-        return (state.ethCollected >= config.ethGraduationThreshold);
     }
 
     /// @dev The supply of a token that can be purchased
