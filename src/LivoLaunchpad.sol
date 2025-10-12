@@ -123,10 +123,10 @@ contract LivoLaunchpad is Ownable {
     /// @param symbol The symbol of the token (max 32 characters)
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
-    /// @return The address of the newly created token
+    /// @return token The address of the newly created token
     function createToken(string calldata name, string calldata symbol, address bondingCurve, address graduator)
         external
-        returns (address)
+        returns (address token)
     {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
@@ -135,15 +135,41 @@ contract LivoLaunchpad is Ownable {
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
-        address tokenClone = Clones.clone(address(tokenImplementation));
+        token = Clones.clone(address(tokenImplementation));
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(tokenClone, msg.sender, name, symbol, bondingCurve, graduator);
+        emit TokenCreated(token, msg.sender, name, symbol, bondingCurve, graduator);
 
-        // initialize token config, pair and token state
-        _initializers(tokenClone, name, symbol, bondingCurve, graduator);
+        // at creation all tokens are held by this contract
+        tokenConfigs[token] = TokenConfig({
+            bondingCurve: ILivoBondingCurve(bondingCurve),
+            graduator: ILivoGraduator(graduator),
+            creator: msg.sender,
+            graduationEthFee: baseGraduationFee,
+            ethGraduationThreshold: baseEthGraduationThreshold,
+            creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
+            buyFeeBps: baseBuyFeeBps,
+            sellFeeBps: baseSellFeeBps
+        });
 
-        return tokenClone;
+        // Creates the Uniswap Pair or whatever other initialization is necessary
+        // in the case of univ4, the pair will be the address of the pool manager,
+        // to which tokens cannot be transferred until graduation
+        address pair = ILivoGraduator(graduator).initializePair(token);
+
+        // Initialize the new token instance
+        // It is responsibility of the token to distribute supply to the msg.sender
+        // so that we can update the token implementation with new rules for future tokens
+        LivoToken(token).initialize(
+            name,
+            symbol,
+            graduator, // graduator address
+            pair, // uniswap pair
+            address(this), // supply receiver, all tokens are held by the launchpad initially
+            TOTAL_SUPPLY
+        );
+
+        return token;
     }
 
     /// @notice Buys tokens with exact ETH amount
@@ -219,7 +245,8 @@ contract LivoLaunchpad is Ownable {
         require(tokenAmount > 0, InvalidAmount());
         require(block.timestamp <= deadline, DeadlineExceeded());
 
-        (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
+        (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller) =
+            _quoteSellExactTokens(token, tokenAmount);
 
         require(ethForSeller >= minEthAmount, SlippageExceeded());
         // When minEthAmount==0, we assume that the seller accepts any kind of "resaonable" slippage
@@ -378,37 +405,6 @@ contract LivoLaunchpad is Ownable {
     }
 
     //////////////////////////// Internal functions //////////////////////////
-
-    function _initializers(address token, string calldata name, string calldata symbol, address bondingCurve, address graduator) internal {
-        // at creation all tokens are held by this contract
-        tokenConfigs[token] = TokenConfig({
-            bondingCurve: ILivoBondingCurve(bondingCurve),
-            graduator: ILivoGraduator(graduator),
-            creator: msg.sender,
-            graduationEthFee: baseGraduationFee,
-            ethGraduationThreshold: baseEthGraduationThreshold,
-            creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
-            buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps
-        });
-
-        // Creates the Uniswap Pair or whatever other initialization is necessary
-        // in the case of univ4, the pair will be the address of the pool manager,
-        // to which tokens cannot be transferred until graduation
-        address pair = ILivoGraduator(graduator).initializePair(token);
-
-        // Initialize the new token instance
-        // It is responsibility of the token to distribute supply to the msg.sender
-        // so that we can update the token implementation with new rules for future tokens
-        LivoToken(token).initialize(
-            name,
-            symbol,
-            graduator, // graduator address
-            pair, // uniswap pair
-            address(this), // supply receiver, all tokens are held by the launchpad initially
-            TOTAL_SUPPLY
-        );
-    }
 
     /// @dev This function assumes that the graduation criteria is met
     /// @dev It also assumes that the token hasn't been graduated yet
