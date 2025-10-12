@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {ILivoBondingCurve} from "../interfaces/ILivoBondingCurve.sol";
 
 contract ConstantProductBondingCurve is ILivoBondingCurve {
-    // todo review all these docs
     // the bonding curve follows the constant product formula:
     // K = (t + T0) * (e + E0)
     // `t` is the reserves of the token in the bonding curve (not sold yet )
