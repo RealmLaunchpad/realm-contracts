@@ -114,6 +114,8 @@ Graduation is triggered automatically when `ethCollected >= ethGraduationThresho
 The threshold has a small excess allowance of 0.5 ETH. If a buy would exceed `threshold + 0.5 ETH`, the purchase reverts. This ensures that the price spread between the last launchpad buy and the uniswap pool doesn't deviate too much 
 
 The excess ETH is deposited as liquidity, which should be reflected as a higher token price. 
+Empirical forked tests show that:
+
 
 ### What Happens at Graduation?
 
@@ -222,7 +224,9 @@ Anyone can call `LivoGraduatorUniswapV4.collectEthFees()` to:
 
 ## Security Considerations
 
-### Known Issues & Mitigations
+### Known Issues
+
+***Please challenge these known issues. Try to find ways of exploiting them further.***
 
 #### 1. **Bonding Curve Overflow (>37 ETH)**
 The `ConstantProductBondingCurve` has numerical limits and will revert if `ethReserves > ~37 ETH`.
@@ -251,3 +255,16 @@ Tokens cannot be transferred to the liquidity pool before graduation to avoid DO
 #### 6. **Minimal Dust Tokens Burned at Graduation**
 When adding liquidity to Uniswap V4, a small amount of tokens (~0.000001% of supply) may remain unallocated due to rounding. This is accepted, but should not be a large portion (0.1% of the supply would be unacceptable).
 
+#### 7. **Price drop in Uniswap V2 graduator** 
+Due to lower LP fees (0.3% vs 1% in launchpad), the swap price after graduation is slightly lower than in the launchpad. 
+
+- (!) The swap price is about `0.6712%` lower when graduation happens exactly at threshold
+- (✔) The swap price is higher than launchpad when the last purchase is right below the excess cap
+
+#### 8. **Price difference between buying X tokens from launchpad and selling them to uniswap**
+
+The launchpad price when X tokens are in circulation before graduation does not match exactly the uniswap price when the same amount of tokens are in circulation. [see curves diagrams]. 
+
+This is accepted, as not all the eth used for purchases is used in reserves (eth fees) and not all the eth reserves are used for liquidity (graduation fees).
+
+*Explore impact further.*

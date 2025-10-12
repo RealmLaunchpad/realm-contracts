@@ -14,10 +14,10 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     // The token reserves can be expressed as a function of the eth reserves:
     // t = K / (e + E0) - T0
 
-    // And we can define the constraints to calculate K, T0, E0 as follows (top one is the most important)
-    //  - when no eth has been collected, the token supply should equal the total supply (1B tokens, so 1,000,000,000e18)
-    //  - The graduation should happen when 8 ETH are collected, and 200,000,000 tokens are still in the reserves
-    //  - If all tokens were purchased, the total ETH collected would be 37.5 ETH
+    // Here are the constraints to calculate K, T0, E0 as follows (top one is the most important)
+    //  - when no eth has been collected, the token supply should equal 1B tokens (so 1,000,000,000e18)
+    //  - The graduation should happen when ~8 ETH are collected, and 200,000,000 tokens are still in the reserves
+    //  - If all tokens were purchased, the total ETH collected would be ~37.5 ETH
 
     /// @notice Constant K for the bonding curve formula
     /// @dev Solving numerically for the above constraints. Only the first constraint above is strictly enforced

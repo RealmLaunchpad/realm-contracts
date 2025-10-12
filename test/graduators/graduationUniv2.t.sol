@@ -10,6 +10,8 @@ import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
+
 
 contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     // Uniswap V2 contracts on mainnet
@@ -18,7 +20,7 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     address public uniswapPair;
 
-    function setUp() public override {
+    function setUp() public virtual override {
         super.setUp();
     }
 
@@ -38,6 +40,35 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
         vm.deal(buyer, ethAmountToGraduate + 1 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmountToGraduate}(testToken, 0, DEADLINE);
+    }
+
+    function _swapBuy(address account, address token, uint256 ethAmount, uint256 minTokens) internal {
+        vm.startPrank(account);
+        WETH.deposit{value: ethAmount}();
+        WETH.approve(UNISWAP_V2_ROUTER, ethAmount);
+        
+        address[] memory path = new address[](2);
+        path[0] = address(WETH);
+        path[1] = token;
+
+        IUniswapV2Router02(UNISWAP_V2_ROUTER).swapExactTokensForTokens(
+            ethAmount, minTokens, path, account, block.timestamp + 1 hours
+        );
+        vm.stopPrank();
+    }
+
+    function _swapSell(address account, address token, uint256 tokenAmount, uint256 minEth) internal {
+        vm.startPrank(account);
+        IERC20(token).approve(UNISWAP_V2_ROUTER, tokenAmount);
+
+        address[] memory path = new address[](2);
+        path[0] = token;
+        path[1] = address(WETH);
+
+        IUniswapV2Router02(UNISWAP_V2_ROUTER).swapExactTokensForTokens(
+            tokenAmount, minEth, path, account, block.timestamp + 1 hours
+        );
+        vm.stopPrank();
     }
 }
 

@@ -57,6 +57,9 @@ contract LaunchpadBaseTests is Test {
 
     address constant uniswapV4NftAddress = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
 
+    // This is the price setpoint, but does not include trading fees
+    uint256 constant GRADUATION_PRICE = 39011306440; // ETH/token (eth per token, expressed in wei)
+
     LiquidityLockUniv4WithFees public liquidityLock;
 
     function setUp() public virtual {
