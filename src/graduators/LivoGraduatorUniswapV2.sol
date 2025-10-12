@@ -12,16 +12,26 @@ import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 contract LivoGraduatorUniswapV2 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
-    /// @notice where LP tokens are sent at graduation, effectively locking the liquidity
+    /// @notice Where LP tokens are sent at graduation, effectively locking the liquidity
     address internal constant DEAD_ADDRESS = address(0xdEaD);
 
+    /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
 
-    /// @notice Uniswap router and factory addresses
+    /// @notice Uniswap V2 router contract
     IUniswapV2Router internal immutable UNISWAP_ROUTER;
+
+    /// @notice Uniswap V2 factory contract
     IUniswapV2Factory internal immutable UNISWAP_FACTORY;
+
+    /// @notice Wrapped ETH address
     address internal immutable WETH;
 
+    event SweepedRemainingEth(address graduatedToken, uint256 amount);
+
+    /// @notice Initializes the Uniswap V2 graduator
+    /// @param _uniswapRouter Address of the Uniswap V2 router
+    /// @param _launchpad Address of the LivoLaunchpad contract
     constructor(address _uniswapRouter, address _launchpad) {
         LIVO_LAUNCHPAD = _launchpad;
         UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
@@ -35,11 +45,17 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         _;
     }
 
+    /// @notice Creates a Uniswap V2 pair for the token to reserve the pair and know the pair address
+    /// @param tokenAddress Address of the token
+    /// @return pair Address of the created Uniswap V2 pair
     function initializePair(address tokenAddress) external override onlyLaunchpad returns (address pair) {
+        // todo potential optimization: infer deterministic address to save gas. But be aware of security implications
         pair = UNISWAP_FACTORY.createPair(tokenAddress, WETH);
         emit PairInitialized(tokenAddress, pair);
     }
 
+    /// @notice Graduates a token by adding liquidity to Uniswap V2
+    /// @param tokenAddress Address of the token to graduate
     function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
         ILivoToken token = ILivoToken(tokenAddress);
 
@@ -83,7 +99,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         emit TokenGraduated(tokenAddress, pair, amountToken, amountEth, liquidity);
     }
 
-    /// @notice Reads the actual reserves after syncing, and returns them in the order of (token, eth)
+    /// @dev Reads the actual eth reserves after syncing
     function _getUpdatedEthReserves(address pair, address tokenAddress) internal returns (uint256 ethReserve) {
         IUniswapV2Pair pairContract = IUniswapV2Pair(pair);
 
@@ -102,6 +118,9 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         }
     }
 
+    /// @dev Adds liquidity trying to match the intended price (derived from the ratio of eth/tokens for graduation)
+    /// @dev The number one priority is that liquidity addition doesn't revert
+    /// @dev The number two priority is that the resulting price in the pool is GREATER than the last price given by the launchpad before graduation
     function _addLiquidityWithPriceMatching(
         address tokenAddress,
         uint256 ethReserve,
@@ -156,6 +175,9 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
             address livoTreasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
             (bool success,) = livoTreasury.call{value: remainingEth}("");
             require(success, "ETH transfer to treasury failed");
+
+            // for transparency, to be able to detect if some graduation went completely wrong
+            emit SweepedRemainingEth(tokenAddress, remainingEth);
         }
     }
 }

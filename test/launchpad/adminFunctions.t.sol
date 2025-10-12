@@ -179,9 +179,8 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     // collectTreasuryFees Tests
-    function test_collectTreasuryFees_FailsForNonOwner() public {
+    function test_collectTreasuryFees_nonOwnerCanClaim() public {
         vm.prank(nonOwner);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
         launchpad.collectTreasuryFees();
     }
 

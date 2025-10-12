@@ -4,30 +4,31 @@ pragma solidity 0.8.28;
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 contract LivoToken is ERC20 {
-    uint256 public constant BASIS_POINTS = 10_000;
-
     /// @notice LivoLaunchpad address
+    // todo remove this variable (unused)
     address public launchpad;
 
     /// @notice The only graduator allowed to graduate this token
     address public graduator;
 
-    /// @notice Wether the token has graduated already or not
+    /// @notice Whether the token has graduated already or not
     bool public graduated;
 
     /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
     address public pair;
 
-    /// @dev only to prevent re-initialization
+    /// @notice Prevents re-initialization
+    // todo remove this variable (use graduator==address(0) as a proxy for initialization)
     bool internal _initialized;
-    /// @notice Token name and symbol
+
+    /// @notice Token name
     string private _tokenName;
+
     /// @notice Token symbol
     string private _tokenSymbol;
 
     //////////////////////// Events //////////////////////
 
-    /// @notice Emitted when a fee exemption is set
     event FeeExemptSet(address indexed account, bool exempt);
     event Graduated();
 
@@ -38,8 +39,19 @@ contract LivoToken is ERC20 {
     error TranferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
 
+    //////////////////////////////////////////////////////
+
+    /// @notice Creates a new LivoToken instance which will be used as implementation for clones
+    /// @dev Token name and symbol are set during initialization, not in constructor
     constructor() ERC20("", "") {}
 
+    /// @notice Initializes the token clone with its parameters
+    /// @param name_ The token name
+    /// @param symbol_ The token symbol
+    /// @param launchpad_ Address of the LivoLaunchpad contract // todo remove
+    /// @param graduator_ Address of the graduator contract
+    /// @param pair_ Address of the Uniswap pair
+    /// @param totalSupply_ Total supply to mint
     function initialize(
         string memory name_,
         string memory symbol_,
@@ -63,6 +75,8 @@ contract LivoToken is ERC20 {
 
     //////////////////////// restricted access functions ////////////////////////
 
+    /// @notice Marks the token as graduated, which unlocks transfers to the pair
+    /// @dev Can only be called by the pre-set graduator contract
     function markGraduated() external {
         require(msg.sender == graduator, OnlyGraduatorAllowed());
 

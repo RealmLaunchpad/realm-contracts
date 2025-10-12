@@ -11,22 +11,22 @@ struct TokenConfig {
     ILivoGraduator graduator;
     /// @notice Graduation fee in ETH, paid at graduation
     uint256 graduationEthFee;
-    /// @notice Threshold in ETH that must be collected before graduation can happen
+    /// @notice Threshold in ETH that must be collected for graduation to happen
     uint256 ethGraduationThreshold;
     /// @notice Reserved supply of tokens for creator at graduation
     uint256 creatorReservedSupply;
     /// @notice Creator of the token. Cannot be altered once is set
     address creator;
-    /// @notice Trading (buy) fee in basis points (100 bps = 1%)
+    /// @notice Trading (buy) fee in basis points (100 bps = 1%). Only applies before graduation
     uint16 buyFeeBps;
-    /// @notice Trading (sell) fee in basis points (100 bps = 1%)
+    /// @notice Trading (sell) fee in basis points (100 bps = 1%). Only applies before graduation
     uint16 sellFeeBps;
 }
 
 struct TokenState {
     /// @notice Total ETH collected by the token purchases, which will be used mostly for liquidity
     uint256 ethCollected;
-    /// @notice Amount of tokens in circulation (that have been sold)
+    /// @notice Amount of tokens in circulation outside Livo Launchpad (that have been sold)
     uint256 releasedSupply;
     /// @notice This is set to true once graduated, meaning it is no longer tradable from the launchpad
     bool graduated;
@@ -41,10 +41,5 @@ library TokenDataLib {
 
     function notGraduated(TokenState storage state) internal view returns (bool) {
         return !state.graduated;
-    }
-
-    // todo this function is no longer used and probably can be removed
-    function tokenReserves(TokenState storage state) internal view returns (uint256) {
-        return TOTAL_SUPPLY - state.releasedSupply;
     }
 }
