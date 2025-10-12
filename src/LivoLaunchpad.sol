@@ -26,7 +26,8 @@ contract LivoLaunchpad is Ownable {
     uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
 
     /// @notice The max amount of ether in reserves of a token after crossing the graduation threshold
-    uint256 public constant MAX_THRESHOLD_EXCESS = 0.5 ether;
+    // todo make this a configurable parameter
+    uint256 public constant MAX_THRESHOLD_EXCESS = 0.1 ether;
 
     /// @notice LivoToken ERC20 implementation address
     IERC20 public tokenImplementation;
