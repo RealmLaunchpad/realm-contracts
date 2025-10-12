@@ -10,19 +10,16 @@ import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 
 contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
-    uint256 constant DEADLINE = type(uint256).max;
-    uint256 constant MAX_THRESHOLD_EXCESS = 0.5 ether;
-    address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
-
     // Uniswap V2 contracts on mainnet
     IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
     IWETH constant WETH = IWETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     address public uniswapPair;
 
-    function setUp() public override {
+    function setUp() public virtual override {
         super.setUp();
     }
 
@@ -35,13 +32,33 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
         _;
     }
 
-    function _graduateToken() internal {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = (graduationThreshold * 10000) / (10000 - BASE_BUY_FEE_BPS);
+    function _swapBuy(address account, address token, uint256 ethAmount, uint256 minTokens) internal {
+        vm.startPrank(account);
+        WETH.deposit{value: ethAmount}();
+        WETH.approve(UNISWAP_V2_ROUTER, ethAmount);
 
-        vm.deal(buyer, ethAmountToGraduate + 1 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: ethAmountToGraduate}(testToken, 0, DEADLINE);
+        address[] memory path = new address[](2);
+        path[0] = address(WETH);
+        path[1] = token;
+
+        IUniswapV2Router02(UNISWAP_V2_ROUTER).swapExactTokensForTokens(
+            ethAmount, minTokens, path, account, block.timestamp + 1 hours
+        );
+        vm.stopPrank();
+    }
+
+    function _swapSell(address account, address token, uint256 tokenAmount, uint256 minEth) internal {
+        vm.startPrank(account);
+        IERC20(token).approve(UNISWAP_V2_ROUTER, tokenAmount);
+
+        address[] memory path = new address[](2);
+        path[0] = token;
+        path[1] = address(WETH);
+
+        IUniswapV2Router02(UNISWAP_V2_ROUTER).swapExactTokensForTokens(
+            tokenAmount, minEth, path, account, block.timestamp + 1 hours
+        );
+        vm.stopPrank();
     }
 }
 
@@ -120,7 +137,7 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     /// @notice Test that price in uniswap matches price in launchpad when last purchase meets the threshold exactly
     function test_priceInUniswapReflectsGraduationLiquidity() public createTestTokenWithPair {
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = (graduationThreshold * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
 
         vm.deal(buyer, ethAmountToGraduate);
         vm.prank(buyer);
@@ -193,7 +210,8 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         // check how many tokens we get by purchasing 0.01 ether right before graduation
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = (graduationThreshold * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
+
         vm.deal(buyer, ethAmountToGraduate + 1 ether);
         vm.startPrank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmountToGraduate - 0.0001 ether}(testToken, 0, DEADLINE);
@@ -202,7 +220,8 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         // to calculate the uniswap price, we take the resereves only, so we don't consider fees
         // to calculate the price in bonding curve we are going to artificially exclude the fees as well
         uint256 secondBuy = 0.00011 ether;
-        uint256 secondBuyPlusFees = (secondBuy * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 secondBuyPlusFees = _increaseWithFees(secondBuy);
+
         launchpad.buyTokensWithExactEth{value: secondBuyPlusFees}(testToken, 0, DEADLINE);
         uint256 tokensAfter = IERC20(testToken).balanceOf(buyer);
         uint256 tokensBought = tokensAfter - tokensBefore;
@@ -257,7 +276,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         // check how many tokens we get by purchasing 0.01 ether right before graduation
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = (graduationThreshold * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
         vm.deal(buyer, ethAmountToGraduate + 1 ether);
         vm.startPrank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmountToGraduate - 0.0001 ether}(testToken, 0, DEADLINE);
@@ -348,7 +367,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         uint256 launchpadEthBefore = address(launchpad).balance;
 
         // the eth from this purchase would go straight into liquidity
-        uint256 purchaseValue = 1.5 ether;
+        uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
         vm.prank(seller);
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
@@ -356,7 +375,6 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         uint256 launchpadEthAfter = address(launchpad).balance;
 
         // Before: launchpad balance + purchaseValue == lauchpad balance + uniswap balance
-
         assertEq(
             launchpadEthBefore + purchaseValue,
             launchpadEthAfter + WETH.balanceOf(uniswapPair),

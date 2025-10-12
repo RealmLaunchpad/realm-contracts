@@ -26,7 +26,8 @@ contract LivoLaunchpad is Ownable {
     uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
 
     /// @notice The max amount of ether in reserves of a token after crossing the graduation threshold
-    uint256 public constant MAX_THRESHOLD_EXCESS = 0.5 ether;
+    // todo make this a configurable parameter
+    uint256 public constant MAX_THRESHOLD_EXCESS = 0.1 ether;
 
     /// @notice LivoToken ERC20 implementation address
     IERC20 public tokenImplementation;
@@ -190,15 +191,15 @@ contract LivoLaunchpad is Ownable {
         require(block.timestamp <= deadline, DeadlineExceeded());
         // fees are ignored in the check below on purpose.
         // If fees were accounted, the limit should be higher, but it is an arbitrary limit anyways
-        require(
-            tokenState.ethCollected + msg.value < tokenConfig.ethGraduationThreshold + MAX_THRESHOLD_EXCESS,
-            PurchaseExceedsLimitPostGraduation()
-        );
 
         (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = _quoteBuyWithExactEth(token, msg.value);
 
-        require(tokensToReceive <= _availableTokensForPurchase(token), NotEnoughSupply());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
+        require(tokensToReceive <= _availableTokensForPurchase(token), NotEnoughSupply());
+        require(
+            tokenState.ethCollected + ethForReserves < tokenConfig.ethGraduationThreshold + MAX_THRESHOLD_EXCESS,
+            PurchaseExceedsLimitPostGraduation()
+        );
 
         treasuryEthFeesCollected += ethFee;
         tokenState.ethCollected += ethForReserves;

@@ -29,16 +29,11 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
 
-    uint256 constant DEADLINE = type(uint256).max;
-    uint256 MAX_THRESHOLD_EXCESS;
-
     IPoolManager poolManager;
 
     // these are copied from the graduator ...
     uint24 constant lpFee = 10000;
     int24 constant tickSpacing = 200;
-
-    uint256 constant GRADUATION_PRICE = 39011306440; // ETH/token (eth per token, expressed in wei)
 
     // note this is hardcoded and should match the contract but it is not exposed as a public variable
     uint160 constant startingPriceX96 = 401129254579132618442796085280768;
@@ -46,8 +41,6 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     function setUp() public virtual override {
         super.setUp();
         poolManager = IPoolManager(poolManagerAddress);
-
-        MAX_THRESHOLD_EXCESS = launchpad.MAX_THRESHOLD_EXCESS();
     }
 
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
@@ -60,19 +53,6 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
             tickSpacing: tickSpacing,
             hooks: IHooks(address(0))
         });
-    }
-
-    function _buy(uint256 value) internal {
-        vm.deal(buyer, value);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: value}(testToken, 0, DEADLINE);
-    }
-
-    function _graduateToken() internal {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = (graduationThreshold * 10000) / (10000 - BASE_BUY_FEE_BPS);
-
-        _buy(ethAmountToGraduate);
     }
 
     function _readSqrtX96TokenPrice() internal view returns (uint160) {

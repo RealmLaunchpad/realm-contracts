@@ -12,8 +12,6 @@ import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/LivoToken.sol";
 
 abstract contract BuyTokensTest is LaunchpadBaseTests {
-    uint256 constant DEADLINE = type(uint256).max;
-
     function testBuyTokensWithExactEth_happyPath() public createTestToken {
         uint256 ethAmount = 1 ether;
         uint256 minTokenAmount = 0;
@@ -153,7 +151,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         // Buy up to just before the threshold (accounting for fees)
         // Calculate amount that gets us close but not over threshold
         uint256 targetEthReserves = graduationThreshold - 1 ether; // Stay well below threshold
-        uint256 ethAmountToBuy = (targetEthReserves * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 ethAmountToBuy = _increaseWithFees(targetEthReserves);
 
         vm.deal(buyer, ethAmountToBuy + 1 ether);
         vm.prank(buyer);
@@ -187,7 +185,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         // Buy up to just before the threshold (accounting for fees)
         uint256 targetEthReserves = graduationThreshold - 1 ether; // Stay well below threshold
-        uint256 ethAmountToBuy = (targetEthReserves * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 ethAmountToBuy = _increaseWithFees(targetEthReserves);
 
         vm.deal(buyer, ethAmountToBuy + 1 ether);
         vm.prank(buyer);

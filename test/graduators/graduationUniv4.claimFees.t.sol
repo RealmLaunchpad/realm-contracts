@@ -61,14 +61,19 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         vm.stopPrank();
 
         // graduate token1 and token2
+        uint256 buyAmount1 = _increaseWithFees(BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
+        uint256 buyAmount2 = _increaseWithFees(BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
         vm.deal(buyer, 100 ether);
         vm.startPrank(buyer);
-        launchpad.buyTokensWithExactEth{value: 8.1 ether}(testToken1, 0, DEADLINE);
-        launchpad.buyTokensWithExactEth{value: 8.3 ether}(testToken2, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: buyAmount1}(testToken1, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: buyAmount2}(testToken2, 0, DEADLINE);
+
+        assertTrue(launchpad.getTokenState(testToken1).graduated, "Token1 should be graduated");
+        assertTrue(launchpad.getTokenState(testToken2).graduated, "Token2 should be graduated");
 
         // buy from token1 and token2 from uniswap
-        _swap(buyer, testToken1, buyAmount, 10e18, true, true);
-        _swap(buyer, testToken2, buyAmount, 10e18, true, true);
+        _swap(buyer, testToken1, buyAmount, 1, true, true);
+        _swap(buyer, testToken2, buyAmount, 1, true, true);
         vm.stopPrank();
         _;
     }

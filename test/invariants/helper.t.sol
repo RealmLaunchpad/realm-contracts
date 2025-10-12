@@ -109,12 +109,12 @@ contract InvariantsHelperLaunchpad is Test {
 
     function buy1(uint256 seed, uint256 amount) public {
         if (_tokens.length() == 0) return;
-        _buy(seed, amount);
+        _launchpadBuy(seed, amount);
     }
 
     function buy2(uint256 seed, uint256 amount) public {
         if (_tokens.length() == 0) return;
-        _buy(seed, amount);
+        _launchpadBuy(seed, amount);
     }
 
     function sell1(uint256 seed, uint256 amount) public {
@@ -127,7 +127,7 @@ contract InvariantsHelperLaunchpad is Test {
         _sell(seed, amount);
     }
 
-    function _buy(uint256 seed, uint256 amount) internal passTime(seed) choseActor(seed) selectToken(seed) {
+    function _launchpadBuy(uint256 seed, uint256 amount) internal passTime(seed) choseActor(seed) selectToken(seed) {
         if (selectedToken == address(0)) return;
         TokenState memory state = launchpad.getTokenState(selectedToken);
         if (state.graduated) return;

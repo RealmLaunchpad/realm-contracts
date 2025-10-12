@@ -19,20 +19,6 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 /// @dev These tests should should pass regardless of the of graduator, so we test it with both
 abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
-    uint256 constant DEADLINE = type(uint256).max;
-    uint256 constant MAX_THRESHOLD_EXCESS = 0.5 ether;
-    address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
-
-    function _graduateToken() internal {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-        uint256 ethAmountToGraduate = (graduationThreshold * 10000) / (10000 - BASE_BUY_FEE_BPS);
-
-        vm.deal(buyer, ethAmountToGraduate + 1 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: ethAmountToGraduate}(testToken, 0, DEADLINE);
-    }
-
-    //////////////////////////////////// modifiers and utilities ///////////////////////////////
 
     /// @notice Test that graduated boolean turns true in launchpad
     function test_graduatedBooleanTurnsTrueInLaunchpad() public createTestToken {
@@ -59,6 +45,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     function test_tokensCannotBeBoughtFromLaunchpadAfterGraduation() public createTestToken {
         _graduateToken();
 
+        deal(buyer, 1 ether);
         vm.prank(buyer);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.AlreadyGraduated.selector));
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
@@ -134,8 +121,8 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     function test_graduationWorksWithSmallExcess() public createTestToken {
         uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
         // Buy a bit more than graduation threshold but within allowed excess
-        uint256 smallExcessAmount = graduationThreshold + 0.1 ether;
-        uint256 ethAmountWithSmallExcess = (smallExcessAmount * 10000) / (10000 - BASE_BUY_FEE_BPS);
+        uint256 smallExcessAmount = graduationThreshold + 0.01 ether;
+        uint256 ethAmountWithSmallExcess = _increaseWithFees(smallExcessAmount);
 
         vm.deal(buyer, ethAmountWithSmallExcess);
         vm.prank(buyer);
@@ -182,8 +169,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
             launchpad.getTokenState(testToken).ethCollected, 0, "ETH reserves should be greater than 0 after a purchase"
         );
 
-        vm.prank(seller);
-        launchpad.buyTokensWithExactEth{value: 1.5 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
         assertEq(launchpad.getTokenState(testToken).ethCollected, 0, "ETH reserves should be reset to 0 at graduation");
     }
@@ -207,7 +193,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         uint256 treasuryFeesBeforeGraduation = launchpad.treasuryEthFeesCollected();
 
-        uint256 purchaseValue = 1.5 ether;
+        uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
@@ -243,7 +229,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         );
 
         // the eth from this purchase would go straight into liquidity
-        uint256 purchaseValue = 1.5 ether;
+        uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
         vm.prank(seller);
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
@@ -268,7 +254,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         uint256 launchpadEthBefore = address(launchpad).balance;
 
         // the eth from this purchase would go straight into liquidity
-        uint256 purchaseValue = 1.5 ether;
+        uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
         vm.prank(seller);
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");

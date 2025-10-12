@@ -171,7 +171,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that token can be graduated successfully and pool has correct liquidity and price after graduation
     function test_successfulGraduation_happyPath_excessGraduation() public createTestToken {
-        _buy(MAX_THRESHOLD_EXCESS - 0.1 ether);
+        _launchpadBuy(testToken, MAX_THRESHOLD_EXCESS - 0.01 ether);
         _graduateToken();
 
         uint160 sqrtPriceX96 = _readSqrtX96TokenPrice();
@@ -219,7 +219,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that after graduation (with excess eth) there are no tokens left in the graduator or launchpad contracts
     function test_tokenBalancesAfterGraduationWithExcessAreZero() public createTestToken {
-        _buy(MAX_THRESHOLD_EXCESS - 0.1 ether);
+        _launchpadBuy(testToken, MAX_THRESHOLD_EXCESS - 0.01 ether);
         _graduateToken();
 
         assertEq(
@@ -243,7 +243,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that after graduation (with excess eth) there is no ETH left in the graduator or launchpad contracts
     function test_ethBalanceAfterGraduationWithExcessAreZero() public createTestToken {
-        _buy(MAX_THRESHOLD_EXCESS - 0.1 ether);
+        _launchpadBuy(testToken, MAX_THRESHOLD_EXCESS - 0.01 ether);
         _graduateToken();
 
         assertEq(address(graduator).balance, 0, "there should be no ETH in the graduator after graduation");
@@ -252,7 +252,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     /// @notice Test that after graduation the creator has received exactly 1% of the supply
     function test_creatorTokenBalanceAfterExactGraduation() public createTestToken {
         assertEq(LivoToken(testToken).balanceOf(creator), 0, "creator should start with 0 tokens");
-        _buy(0.1 ether);
+        _launchpadBuy(testToken, 0.1 ether);
         _graduateToken();
 
         assertEq(
@@ -302,8 +302,8 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     /// @notice Test that after graduation (exact eth) all the token supply is in the buyer's balance and the pool manager
     function test_poolManagerTokenBalanceAfterExcessGraduation() public createTestToken {
         assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
-        _buy(BASE_GRADUATION_THRESHOLD - 0.01 ether);
-        _buy(0.5 ether);
+        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 0.01 ether);
+        _graduateToken();
 
         uint256 buyerBalance = LivoToken(testToken).balanceOf(buyer);
         uint256 poolManagerBalance = LivoToken(testToken).balanceOf(poolManagerAddress);
@@ -322,8 +322,8 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     /// @notice Test that after graduation (exact eth) the eth worth of tokens dead is negligible
     function test_negligibleEthWorthOfTokensBurnedAtExcessGraduation() public createTestToken {
         assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
-        _buy(BASE_GRADUATION_THRESHOLD - 0.01 ether);
-        _buy(0.5 ether);
+        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 0.01 ether);
+        _graduateToken();
 
         uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
         // there is always some leftovers burned
@@ -362,12 +362,12 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that the price given at graduation is lower than pool price in uniswapv4
     function test_priceGivenAtGraduation_smallTx_MatchesUniv4() public createTestToken {
-        _buy(BASE_GRADUATION_THRESHOLD - 1);
+        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 1);
         uint256 remainingForGraduation;
         remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
-        _buy(remainingForGraduation - 1);
+        _launchpadBuy(testToken, remainingForGraduation - 1);
         remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
-        _buy(remainingForGraduation - 1);
+        _launchpadBuy(testToken, remainingForGraduation - 1);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
         deal(buyer, 10 ether);
@@ -402,12 +402,12 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that after exact graduation, the first purchase has a similar price than the last purchase in the bonding curve
     function test_priceGivenAtGraduation_smallTx_MatchesUniv4_Swap() public createTestToken {
-        _buy(BASE_GRADUATION_THRESHOLD - 1);
+        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 1);
         uint256 remainingForGraduation;
         remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
-        _buy(remainingForGraduation - 1);
+        _launchpadBuy(testToken, remainingForGraduation - 1);
         remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
-        _buy(remainingForGraduation - 1);
+        _launchpadBuy(testToken, remainingForGraduation - 1);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
         uint256 referenceBuyAmount = 0.00001 ether;
@@ -444,16 +444,14 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that when token is graduated at graduation threshold plus MAX_THRESHOLD_EXCESS, the price purchasing in univ4 is above the price in the bonding curve
     function test_priceGivenAtGraduationMatchesUniv4_largeLastPurchase_matchesSwap() public createTestToken {
-        _buy(BASE_GRADUATION_THRESHOLD - 0.5 ether);
+        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 0.5 ether);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
         // if a crazy user buys the remaining tokens, will get a hell of a price impact ...
-        deal(buyer, 10 ether);
         uint256 buyerEthBalance = buyer.balance;
         uint256 buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
         console.log("Buyer eth balance before last tx", buyerEthBalance);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated now");
 
         uint256 ethSpent = buyerEthBalance - buyer.balance;
@@ -464,6 +462,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         console.log("Effective price at graduation (eth/token)", effectivePrice);
 
         // now we do a similar purchase in uniswapv4, to account for the price impact
+        deal(buyer, 2 ether);
         buyerEthBalance = buyer.balance;
         buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
         _swapBuy(buyer, 1 ether, 0, true);
@@ -522,7 +521,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     }
 
     function test_sellingFromUniv4BeforeGraduation_reverts() public createTestToken {
-        _buy(0.31 ether);
+        _launchpadBuy(testToken, 0.31 ether);
         uint256 sellAmount = LivoToken(testToken).balanceOf(buyer) / 3;
         // a purchase accepting minimum 1 wei of tokens should revert
         // the "false" below indicates that we expect it shouldn't succeed. The expectRevert has to be right before the router.execute() call
@@ -551,7 +550,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     }
 
     function test_sellingFromUniv4AfterGraduation_succeeds() public createTestToken {
-        _buy(0.31 ether);
+        _launchpadBuy(testToken, 0.31 ether);
         uint256 sellAmount = LivoToken(testToken).balanceOf(buyer) / 3;
 
         // after graduation, the same swap should succeed
@@ -600,8 +599,6 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
-        uint256 buyerEtherBefore = buyer.balance;
-        uint256 creatorEtherBefore = creator.balance;
         assertGt(creatorBalanceBefore, 0, "creator got no tokens");
 
         _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
