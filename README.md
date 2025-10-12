@@ -267,4 +267,20 @@ The launchpad price when X tokens are in circulation before graduation does not 
 
 This is accepted, as not all the eth used for purchases is used in reserves (eth fees) and not all the eth reserves are used for liquidity (graduation fees).
 
-*Explore impact further.*
+#### 9. **Capitalization differences between uniV2 and uniV4**
+
+Because the price in univ2 and univ4 will be slightly different at graduation, so will the market capitalization and the eth worth of liquidity deposited. 
+
+Here we calculate the maximum difference between the two (when the graduation is exact):
+
+**Uniswap V2 graduator**:
+- Token price: 39181184229 wei/token = 0.00000003918 ETH
+- Market cap = 39.18 ETH
+
+**Uniswap V4 graduator**:
+- Token price: 39457675015 wei/token = 0.00000003945 ETH
+- Market cap: 39.45 ETH
+
+The price (and market cap) after graduation on univ4 tokens is about 0.7% higher than univ2. 
+
+Note that the prices here are the effective prices making a swap, (ethSpent/tokensBought), which also includes the swap fees (1% in Univ4 vs 0.3% in Univ2).

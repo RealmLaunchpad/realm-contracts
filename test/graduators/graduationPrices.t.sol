@@ -82,6 +82,47 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         assertTrue(launchpad.getTokenState(testToken).graduated, "not graduated");
     }
 
+    /////////////////////// liquidity, mcap, etc //////////////////////////////////
+
+    function test_metricsAtExactGraduation() public createTestToken {
+        // these values are computed from the current bonding curve parameters, and may change if those change
+        uint256 expectedTokensInLiquidity = 190_000_000e18;
+        uint256 expectedEthInLiquidity = 7.5 ether;
+        uint256 expectedPriceAtGraduation = 0.0000000392 ether;
+        uint256 expectedMcapAtGraduation = 39.2 ether;
+
+        _graduateExact();
+
+        // buy on uniswap, and derive the price from how many tokens were bought
+        uint256 ethAmount = 0.01 ether;
+        uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
+        _uniswapBuy(buyer, ethAmount);
+        uint256 tokensBoughtSwap = IERC20(testToken).balanceOf(buyer) - tokenBalanceBefore;
+        uint256 effectiveSwapPrice = (ethAmount * 1e18) / tokensBoughtSwap;
+        uint256 tokensInPair = IERC20(testToken).balanceOf(LivoToken(testToken).pair());
+
+        // regardless of both univ2 and univ4.
+        // 1% error margin below
+        assertApproxEqRel(
+            expectedPriceAtGraduation, effectiveSwapPrice, 0.01 ether, "price at graduation does not match"
+        );
+        assertApproxEqRel(
+            expectedMcapAtGraduation,
+            effectiveSwapPrice * TOTAL_SUPPLY / 1e18,
+            0.01 ether,
+            "mcap at graduation does not match"
+        );
+        assertApproxEqRel(
+            expectedTokensInLiquidity, tokensInPair, 0.01 ether, "liquidity tokens at graduation do not match"
+        );
+        assertApproxEqRel(
+            expectedEthInLiquidity,
+            effectiveSwapPrice * tokensInPair / 1e18,
+            0.01 ether,
+            "liquidity eth at graduation does not match"
+        );
+    }
+
     /////////////////////////////// PRICING TESTS //////////////////////////////////
 
     function test_graduationPriceMatch_exactGraduation() public createTestToken {
