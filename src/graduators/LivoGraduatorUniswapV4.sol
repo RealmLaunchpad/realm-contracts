@@ -31,26 +31,33 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     using SafeCast for uint256;
     using StateLibrary for IPoolManager;
 
-    /// @notice Each graduated token has an associated liquidity position represented by this tokenId
+    /// @notice Associated liquidity positionIds for each graduated token
     mapping(address token => uint256 tokenId) public positionIds;
 
-    /// @notice Where the liquidity NFTs will be locked
-    ILiquidityLockUniv4WithFees public immutable liquidityLock;
-
-    /// @notice Uniswap V4 contracts
-    IPermit2 public immutable permit2;
-    IPoolManager public immutable poolManager;
-    IPositionManager public immutable positionManager;
-    IERC721 public immutable univ4NftPositions;
-
-    /// @notice Address of the livo launchpad
+    /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
 
+    /// @notice Contract where the liquidity NFTs will be locked
+    ILiquidityLockUniv4WithFees public immutable liquidityLock;
+
+    /// @notice Permit2 contract for token approvals
+    IPermit2 public immutable permit2;
+
+    /// @notice Uniswap V4 pool manager contract
+    IPoolManager public immutable poolManager;
+
+    /// @notice Uniswap V4 position manager contract
+    IPositionManager public immutable positionManager;
+
+    /// @notice Uniswap V4 NFT positions contract
+    IERC721 public immutable univ4NftPositions;
+
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
+    /// @dev 10000 pips = 1%
     uint24 constant LP_FEE = 10000;
 
-    /// @notice tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
-    /// @dev the larger the spacing the cheaper to swap gas-wise
+    /// @notice Tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
+    /// @dev The larger the spacing the cheaper to swap gas-wise
     int24 constant TICK_SPACING = 200;
 
     //////////////////////////// price set-point ///////////////////////////////
@@ -60,39 +67,43 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     // so tokens/ETH (eth price of one token).
     // Thus, the max token price is found at the low tick, and the min token price at the high tick
 
-    /// @notice the upper boundary of the liquidity range when the position is created,
-    /// i.e., the minimum token price denominated in ETH
-    /// high tick: 203600 -> 2088220564709554551739049874292736 -> 694694034.078335 tokens per ETH
-    /// (the ticks need to be multiples of TICK_SPACING).
+    /// @notice The upper boundary of the liquidity range when the position is created (minimum token price in ETH)
+    /// @dev High tick: 203600 -> 2088220564709554551739049874292736 -> 694694034.078335 tokens per ETH
+    /// @dev Ticks need to be multiples of TICK_SPACING
     int24 constant TICK_UPPER = 203600;
 
-    /// @notice the lower boundary of the liquidity range when the position is created
-    /// low tick: -7000 -> sqrtX96price: 55832119482513121612260179968 -> 0.49660268342258984 tokens per ETH
-    /// i.e., at the maximum token price denominated in ETH
-    /// At this tick, the token price would imply a market cap of 2,000,000,000 ETH (8,000,000,000,000 USD with ETH at 4000 USD)
+    /// @notice The lower boundary of the liquidity range when the position is created (maximum token price in ETH)
+    /// @dev Low tick: -7000 -> sqrtX96price: 55832119482513121612260179968 -> 0.49660268342258984 tokens per ETH
+    /// @dev At this tick, the token price would imply a market cap of 2,000,000,000 ETH (8,000,000,000,000 USD with ETH at 4000 USD)
     int24 constant TICK_LOWER = -7000;
 
-    /// @notice the sqrtX96 price at the high tick, i.e., the minimum token price denominated in ETH
-    /// @dev this is derived from the high-tick
+    /// @notice Starting price when graduation occurs, which must be inside the liquidity range
+    /// @dev Graduation price: 39011306440 tokens per ETH -> 0.000000000025633594 eth per token -> sqrtX96price: 401129254579132618442796085280768 -> tick: 170600
+    uint160 constant SQRT_PRICEX96_GRADUATION = 401129254579132618442796085280768;
+
+    /// @notice The sqrtX96 price at the high tick, i.e., the minimum token price denominated in ETH
+    /// @dev Derived from the high-tick in constructor
     uint160 immutable SQRT_PRICEX96_UPPER_TICK;
 
-    /// @notice the sqrtX96 price at the low tick, i.e., the maximum token price denominated in ETH
-    /// @dev this is derived from the low-tick
+    /// @notice The sqrtX96 price at the low tick, i.e., the maximum token price denominated in ETH
+    /// @dev Derived from the low-tick in constructor
     uint160 immutable SQRT_PRICEX96_LOWER_TICK;
 
-    /// @notice starting price when graduation occurs, which must be inside the liquidity range
-    // The bonding curve gives an approximate graduation price of 39011306440 tokens per eth,
-    // (slightly above the bonding curve which is 39011306436 tokens per eth).
-    // A small increase step at graduation is expected, but fairly negligible
-    // which in token/eth is 25633594.238583516 tokens per eth
-    //converting that to sqrtX96 price is the price below
-    // graduation price: 39011306440 tokens per ETH -> 0.000000000025633594 eth per token -> sqrtX96price: 401129254579132618442796085280768 -> tick: 170600
-    uint160 constant SQRT_PRICEX96_GRADUATION = 401129254579132618442796085280768;
+    /////////////////////// Errors ///////////////////////
 
     error EthTransferFailed();
     error NoTokensToCollectFees();
     error TooManyTokensToCollectFees();
+    
+    //////////////////////////////////////////////////////
 
+    /// @notice Initializes the Uniswap V4 graduator
+    /// @param _launchpad Address of the LivoLaunchpad contract
+    /// @param _liquidityLock Address of the liquidity lock contract
+    /// @param _poolManager Address of the Uniswap V4 pool manager
+    /// @param _positionManager Address of the Uniswap V4 position manager
+    /// @param _permit2 Address of the Permit2 contract
+    /// @param _univ4NftPositions Address of the Uniswap V4 NFT positions contract
     constructor(
         address _launchpad,
         address _liquidityLock,
@@ -111,7 +122,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         SQRT_PRICEX96_LOWER_TICK = uint160(TickMath.getSqrtPriceAtTick(TICK_LOWER));
         SQRT_PRICEX96_UPPER_TICK = uint160(TickMath.getSqrtPriceAtTick(TICK_UPPER));
 
-        // approve the liquidity lock to pull any NFT liquidity in this contract
+        // approve the liquidityLock to pull any NFT liquidity in this contract
         // instead of having to approve every NFT on every graduation to save gas
         univ4NftPositions.setApprovalForAll(_liquidityLock, true);
     }
@@ -128,6 +139,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @dev Any eth balance will be considered as fees collected by the next call to collect fees
     receive() external payable {}
 
+    /// @notice Initializes a Uniswap V4 pool for the token
+    /// @param tokenAddress Address of the token
+    /// @return Address of the pool manager (same for all tokens, but to comply with the ILivoGraduator interface)
     function initializePair(address tokenAddress) external override onlyLaunchpad returns (address) {
         PoolKey memory pool = _getPoolKey(tokenAddress);
 
@@ -142,6 +156,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         return address(poolManager);
     }
 
+    /// @notice Graduates a token by adding liquidity to Uniswap V4
+    /// @param tokenAddress Address of the token to graduate
     function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
         ILivoToken token = ILivoToken(tokenAddress);
 
@@ -177,8 +193,11 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         emit TokenGraduated(tokenAddress, address(poolManager), tokensDeposited, ethValue, liquidity);
     }
 
-    /// @notice Any account can collect these fees on behalf of livo treasury (tokens as fees are left in the pool, so effectively burned)
-    /// @dev by reentering
+    /// @notice Collects ETH fees from graduated tokens and distributes them to creators and treasury
+    /// @dev Any account can call this function. 
+    /// @dev Token fees are left in this contract (effectively burned, but without gas waste)
+    /// @dev Each token fees are claimed and distributed independently
+    /// @param tokens Array of token addresses to collect fees from
     function collectEthFees(address[] calldata tokens) external {
         uint256 len = tokens.length;
         require(len > 0, NoTokensToCollectFees());
@@ -200,9 +219,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         _transferEth(treasury, totalTreasuryFees);
     }
 
-    /// @notice sweep any remaining eth in this contract to the treasury
-    /// @dev no eth balance should be in this contract at any point. It should be either deposited as liquidity,
-    /// or collected as fees and immediately transferred out
+    /// @notice Sweeps any remaining ETH in this contract to the treasury
+    /// @dev No ETH balance should be in this contract at any point. 
+    ///      It should be either deposited as liquidity or collected as fees and immediately transferred out
+    ///      So this is just a cautionary measure
     function sweep() external {
         uint256 ethBalance = address(this).balance;
         if (ethBalance > 0) {
@@ -213,7 +233,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
 
-    /// @notice Reads how many eth fees are there claimable for each tokenAddress in the array
+    /// @notice Returns the claimable ETH fees for each token in the array
+    /// @dev For each amount in creatorEthFees, the treasury can expect the same amount as well
+    /// @param tokens Array of token addresses
+    /// @return creatorEthFees Array of claimable ETH fees for creators
     function getClaimableFees(address[] calldata tokens) public view returns (uint256[] memory creatorEthFees) {
         uint256 len = tokens.length;
         creatorEthFees = new uint256[](len);
