@@ -326,8 +326,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         PoolId poolId = poolKey.toId();
         uint256 positionId = positionIds[token];
 
-        (uint128 liquidity, uint256 feeGrowthInside0LastX128,) =
-            UNIV4_POOL_MANAGER.getPositionInfo(poolId, address(UNIV4_POSITION_MANAGER), TICK_LOWER, TICK_UPPER, bytes32(positionId));
+        (uint128 liquidity, uint256 feeGrowthInside0LastX128,) = UNIV4_POOL_MANAGER.getPositionInfo(
+            poolId, address(UNIV4_POSITION_MANAGER), TICK_LOWER, TICK_UPPER, bytes32(positionId)
+        );
 
         (uint256 feeGrowthInside0X128,) = UNIV4_POOL_MANAGER.getFeeGrowthInside(poolId, TICK_LOWER, TICK_UPPER);
 
