@@ -15,10 +15,11 @@ contract LivoLaunchpad is Ownable {
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
 
-    /// 100% in basis points
+    /// @notice 100% in basis points
     uint256 public constant BASIS_POINTS = 10_000;
 
-    /// @notice the total supply of all deployed tokens
+    /// @notice The total supply of all deployed tokens
+    /// @dev 1 billion tokens with 18 decimals
     uint256 private constant TOTAL_SUPPLY = 1_000_000_000e18; // 1B tokens
 
     /// @notice Supply reserved to the token creator, but only transferred at token graduation
@@ -30,13 +31,13 @@ contract LivoLaunchpad is Ownable {
     /// @notice LivoToken ERC20 implementation address
     IERC20 public tokenImplementation;
 
-    /// @notice Eth reserves accumulated by a token to meet graduation criteria. Includes the graduation fees
+    /// @notice Eth reserves accumulated by a token to meet graduation criteria. Includes the graduation fees (in wei)
     uint256 public baseEthGraduationThreshold;
 
-    /// @notice The base graduation fee in ETH, paid at graduation to the treasury
+    /// @notice The base graduation fee in ETH, paid at graduation to the treasury (in wei)
     uint256 public baseGraduationFee;
 
-    /// @notice Total fees collected by the treasury
+    /// @notice Total fees collected by the treasury (in wei)
     uint256 public treasuryEthFeesCollected;
 
     /// @notice Livo Treasury, receiver of all trading/graduation fees
@@ -46,13 +47,13 @@ contract LivoLaunchpad is Ownable {
     uint16 public baseBuyFeeBps;
     uint16 public baseSellFeeBps;
 
-    /// @notice stores whitelisted pairs of bonding curves and graduators.
+    /// @notice Whitelisted pairs of bonding curves and graduators
     mapping(address curve => mapping(address graduator => bool whitelisted)) public whitelistedComponents;
 
     /// @notice Mapping of token address to its configuration
     mapping(address => TokenConfig) public tokenConfigs;
 
-    /// @notice Mapping of token address to its state
+    /// @notice Mapping of token address to its state variables
     mapping(address => TokenState) public tokenStates;
 
     ///////////////////// Errors /////////////////////
@@ -100,6 +101,8 @@ contract LivoLaunchpad is Ownable {
 
     /////////////////////////////////////////////////
 
+    /// @param _treasury Address of the treasury to receive fees
+    /// @param _tokenImplementation Address of the LivoToken implementation for cloning
     constructor(address _treasury, IERC20 _tokenImplementation) Ownable(msg.sender) {
         // Set initial values and emit events for off-chain indexers
         setTreasuryAddress(_treasury);
@@ -123,6 +126,12 @@ contract LivoLaunchpad is Ownable {
         uint16 sellFeesBps;
     }
 
+    /// @notice Creates a new token with bonding curve and graduator
+    /// @param name The name of the token
+    /// @param symbol The symbol of the token (max 32 characters)
+    /// @param bondingCurve Address of the bonding curve contract
+    /// @param graduator Address of the graduator contract
+    /// @return The address of the newly created token
     function createToken(string calldata name, string calldata symbol, address bondingCurve, address graduator)
         external
         returns (address)
@@ -156,7 +165,12 @@ contract LivoLaunchpad is Ownable {
         return tokenClone;
     }
 
-    /// @dev slippage control is done with minTokenAmount (min tokens willing to buy)
+    /// @notice Buys tokens with exact ETH amount
+    /// @dev Slippage control is done with minTokenAmount (min tokens willing to buy)
+    /// @param token Address of the token to buy
+    /// @param minTokenAmount Minimum amount of tokens to receive (slippage protection)
+    /// @param deadline Unix timestamp after which transaction will revert
+    /// @return receivedTokens Amount of tokens received
     function buyTokensWithExactEth(address token, uint256 minTokenAmount, uint256 deadline)
         external
         payable
@@ -178,7 +192,7 @@ contract LivoLaunchpad is Ownable {
 
         (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = _quoteBuyWithExactEth(token, msg.value);
 
-        require(tokensToReceive <= _availableForPurchase(token), NotEnoughSupply());
+        require(tokensToReceive <= _availableTokensForPurchase(token), NotEnoughSupply());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
 
         require(ethForReserves + ethFee == msg.value, "reserves + fee should match msg.value");
@@ -197,8 +211,14 @@ contract LivoLaunchpad is Ownable {
         return tokensToReceive;
     }
 
-    /// @dev slippage control is done with minEthAmount (min eth willing to receive)
+    /// @notice Sells exact amount of tokens for ETH
+    /// @dev Slippage control is done with minEthAmount (min eth willing to receive)
     /// @dev Even if minEthAmount==0, receiving 0 eth is not allowed and the transaction reverts
+    /// @param token Address of the token to sell
+    /// @param tokenAmount Amount of tokens to sell
+    /// @param minEthAmount Minimum amount of ETH to receive (slippage protection)
+    /// @param deadline Unix timestamp after which transaction will revert
+    /// @return receivedEth Amount of ETH received
     function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline)
         external
         returns (uint256 receivedEth)
@@ -235,6 +255,12 @@ contract LivoLaunchpad is Ownable {
 
     //////////////////////////// view functions //////////////////////////
 
+    /// @notice Quotes the result of buying tokens with exact ETH amount
+    /// @param token Address of the token to quote
+    /// @param ethValue Amount of ETH to spend
+    /// @return ethForPurchase Amount of ETH used effectively for purchase (after fees)
+    /// @return ethFee Fee amount in ETH
+    /// @return tokensToReceive Amount of tokens that would be received
     function quoteBuyWithExactEth(address token, uint256 ethValue)
         external
         view
@@ -243,9 +269,15 @@ contract LivoLaunchpad is Ownable {
         (ethForPurchase, ethFee, tokensToReceive) = _quoteBuyWithExactEth(token, ethValue);
 
         if (ethForPurchase > _maxEthToSpend(token)) revert PurchaseExceedsLimitPostGraduation();
-        if (tokensToReceive > _availableForPurchase(token)) revert NotEnoughSupply();
+        if (tokensToReceive > _availableTokensForPurchase(token)) revert NotEnoughSupply();
     }
 
+    /// @notice Quotes the result of selling exact amount of tokens
+    /// @param token Address of the token to quote
+    /// @param tokenAmount Amount of tokens to sell
+    /// @return ethFromSale Amount of ETH from the sale (before fees are applied)
+    /// @return ethFee Fee amount in ETH
+    /// @return ethForSeller Amount of ETH the seller would receive
     function quoteSellExactTokens(address token, uint256 tokenAmount)
         external
         view
@@ -262,14 +294,23 @@ contract LivoLaunchpad is Ownable {
         return _maxEthToSpend(token);
     }
 
+    /// @notice Returns relevant state variables of a token defined in TokenState struct
+    /// @param token Address of the token
+    /// @return The TokenState
     function getTokenState(address token) external view returns (TokenState memory) {
         return tokenStates[token];
     }
 
+    /// @notice Returns the configuration of a token
+    /// @param token Address of the token
+    /// @return The token configuration
     function getTokenConfig(address token) external view returns (TokenConfig memory) {
         return tokenConfigs[token];
     }
 
+    /// @notice Returns the creator of a token
+    /// @param token The address of the token
+    /// @return The address of the token creator
     function getTokenCreator(address token) external view returns (address) {
         TokenConfig storage config = tokenConfigs[token];
         if (!config.exists()) revert InvalidToken();
@@ -279,24 +320,29 @@ contract LivoLaunchpad is Ownable {
     //////////////////////////// Admin functions //////////////////////////
 
     /// @notice Updates the ERC20 token implementation, which only affects new token deployments
+    /// @param newImplementation Address of the new token implementation
     function setLivoTokenImplementation(IERC20 newImplementation) public onlyOwner {
         tokenImplementation = newImplementation;
         emit TokenImplementationUpdated(address(newImplementation));
     }
 
     /// @notice Updates the graduation threshold, which only affects new token deployments
+    /// @param ethThreshold The new ETH graduation threshold in wei
     function setEthGraduationThreshold(uint256 ethThreshold) public onlyOwner {
         baseEthGraduationThreshold = ethThreshold;
         emit EthGraduationThresholdUpdated(ethThreshold);
     }
 
     /// @notice Updates the graduation fee, which only affects new token deployments
+    /// @param ethAmount The new graduation fee in wei
     function setGraduationFee(uint256 ethAmount) public onlyOwner {
         baseGraduationFee = ethAmount;
         emit GraduationFeeUpdated(ethAmount);
     }
 
     /// @notice Updates the buy/sell fees, which only affects new token deployments
+    /// @param buyFeeBps The buy fee in basis points (100 = 1%)
+    /// @param sellFeeBps The sell fee in basis points (100 = 1%)
     function setTradingFees(uint16 buyFeeBps, uint16 sellFeeBps) public onlyOwner {
         require(buyFeeBps <= BASIS_POINTS, InvalidParameter(buyFeeBps));
         require(sellFeeBps <= BASIS_POINTS, InvalidParameter(sellFeeBps));
@@ -307,6 +353,9 @@ contract LivoLaunchpad is Ownable {
 
     /// @notice Whitelist a combination of bonding curve and graduator
     /// @dev A combination of bonding curve & graduator can only be used if they are both whitelisted as a pair
+    /// @param bondingCurve Address of the bonding curve contract
+    /// @param graduator Address of the graduator contract
+    /// @param whitelisted True to whitelist combination, false to remove from whitelist
     function whitelistCurveAndGraduator(address bondingCurve, address graduator, bool whitelisted) external onlyOwner {
         if (whitelistedComponents[bondingCurve][graduator] == whitelisted) revert WhitelistAlreadySet();
 
@@ -315,12 +364,16 @@ contract LivoLaunchpad is Ownable {
         emit CurveAndGraduatorWhitelistedSet(bondingCurve, graduator, whitelisted);
     }
 
+    /// @notice Updates the treasury address
+    /// @param recipient The new treasury address
     function setTreasuryAddress(address recipient) public onlyOwner {
         treasury = recipient;
         emit TreasuryAddressUpdated(recipient);
     }
 
-    function collectTreasuryFees() external onlyOwner {
+    /// @notice Collects accumulated treasury fees and transfers them to the treasury
+    /// @dev No access control, as the receiver of the fees is the treasury itself
+    function collectTreasuryFees() external {
         uint256 amount = treasuryEthFeesCollected;
         if (amount == 0) return;
 
@@ -364,7 +417,7 @@ contract LivoLaunchpad is Ownable {
         );
     }
 
-    /// @dev This function assumes that the graduation criteria have been met
+    /// @dev This function assumes that the graduation criteria is met
     /// @dev It also assumes that the token hasn't been graduated yet
     function _graduateToken(address tokenAddress, TokenState storage tokenState, TokenConfig storage tokenConfig)
         internal
@@ -453,7 +506,7 @@ contract LivoLaunchpad is Ownable {
     /// @dev The supply of a token that can be purchased
     /// @dev The reserved creator supply is only effective at graduation,
     /// and it is taken from the remaining tokens in this contract at graduation
-    function _availableForPurchase(address token) internal view returns (uint256) {
+    function _availableTokensForPurchase(address token) internal view returns (uint256) {
         // This is equivalent to:  return IERC20(token).balanceOf(address(this)) - CREATOR_RESERVED_SUPPLY;
         // But this implementation is more gas efficient as it avoids an external call
         return TOTAL_SUPPLY - tokenStates[token].releasedSupply - CREATOR_RESERVED_SUPPLY;
