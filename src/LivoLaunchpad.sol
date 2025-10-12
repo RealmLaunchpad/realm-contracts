@@ -126,7 +126,8 @@ contract LivoLaunchpad is Ownable {
         uint16 sellFeesBps;
     }
 
-    /// @notice Creates a new token with bonding curve and graduator
+    /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
+    /// @dev Selected bonding curve and graduator must be a whitelisted pair
     /// @param name The name of the token
     /// @param symbol The symbol of the token (max 32 characters)
     /// @param bondingCurve Address of the bonding curve contract
@@ -166,7 +167,11 @@ contract LivoLaunchpad is Ownable {
     }
 
     /// @notice Buys tokens with exact ETH amount
-    /// @dev Slippage control is done with minTokenAmount (min tokens willing to buy)
+    /// @dev The user sends ETH via msg.value and receives tokens based on the bonding curve price
+    /// @dev 1% fee deducted from ETH amount. 
+    /// @dev Slippage control is done with minTokenAmount.
+    /// @dev Purchases can trigger graduation if threshold reached
+    /// @dev Cannot buy a token that has already graduated (use uniswap instead)
     /// @param token Address of the token to buy
     /// @param minTokenAmount Minimum amount of tokens to receive (slippage protection)
     /// @param deadline Unix timestamp after which transaction will revert
@@ -210,8 +215,10 @@ contract LivoLaunchpad is Ownable {
         return tokensToReceive;
     }
 
-    /// @notice Sells exact amount of tokens for ETH
-    /// @dev Slippage control is done with minEthAmount (min eth willing to receive)
+    /// @notice Sells an exact amount of tokens back and receives ETH based on the bonding curve price.
+    /// @dev 1% fee deducted from ETH received. 
+    /// @dev Slippage control is done with minEthAmount (min eth willing to receive).
+    /// @dev Cannot sell tokens that have been graduated (use uniswap instead)
     /// @dev Even if minEthAmount==0, receiving 0 eth is not allowed and the transaction reverts
     /// @param token Address of the token to sell
     /// @param tokenAmount Amount of tokens to sell
