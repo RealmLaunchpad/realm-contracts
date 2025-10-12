@@ -11,6 +11,9 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
 import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
+import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
+import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
+import {IWETH} from "src/interfaces/IWETH.sol";
 
 contract LaunchpadBaseTests is Test {
     LivoLaunchpad public launchpad;
@@ -56,6 +59,10 @@ contract LaunchpadBaseTests is Test {
     address constant universalRouter = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
 
     address constant uniswapV4NftAddress = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
+
+    // Uniswap V2 contracts on mainnet
+    IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
+    IWETH constant WETH = IWETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     // This is the price setpoint, but does not include trading fees
     uint256 constant GRADUATION_PRICE = 39011306440; // ETH/token (eth per token, expressed in wei)

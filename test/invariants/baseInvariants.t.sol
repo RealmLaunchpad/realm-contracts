@@ -32,6 +32,8 @@ contract LaunchpadInvariants is Test {
 
     address public testToken;
 
+    address public admin = makeAddr("admin");
+
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
     uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
@@ -49,9 +51,7 @@ contract LaunchpadInvariants is Test {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
 
-        // deploy another contract to skip that address with 1 wei
-        LivoToken throwAway = new LivoToken();
-        throwAway; // silence compiler
+        vm.startPrank(admin);
 
         // the actual deployments
         tokenImplementation = new LivoToken();
@@ -63,6 +63,7 @@ contract LaunchpadInvariants is Test {
 
         launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV2), true);
         launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV4), true);
+        vm.stopPrank();
 
         helper =
             new InvariantsHelperLaunchpad(launchpad, address(bondingCurve), address(graduatorV2), address(graduatorV4));
