@@ -94,7 +94,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     error EthTransferFailed();
     error NoTokensToCollectFees();
     error TooManyTokensToCollectFees();
-    
+
     //////////////////////////////////////////////////////
 
     /// @notice Initializes the Uniswap V4 graduator
@@ -194,7 +194,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     }
 
     /// @notice Collects ETH fees from graduated tokens and distributes them to creators and treasury
-    /// @dev Any account can call this function. 
+    /// @dev Any account can call this function.
     /// @dev Token fees are left in this contract (effectively burned, but without gas waste)
     /// @dev Each token fees are claimed and distributed independently
     /// @param tokens Array of token addresses to collect fees from
@@ -220,7 +220,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     }
 
     /// @notice Sweeps any remaining ETH in this contract to the treasury
-    /// @dev No ETH balance should be in this contract at any point. 
+    /// @dev No ETH balance should be in this contract at any point.
     ///      It should be either deposited as liquidity or collected as fees and immediately transferred out
     ///      So this is just a cautionary measure
     function sweep() external {

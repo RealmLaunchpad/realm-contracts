@@ -19,7 +19,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     //  - The graduation should happen when 8 ETH are collected, and 200,000,000 tokens are still in the reserves
     //  - If all tokens were purchased, the total ETH collected would be 37.5 ETH
 
-    /// @notice Constant K for the bonding curve formula 
+    /// @notice Constant K for the bonding curve formula
     /// @dev Solving numerically for the above constraints. Only the first constraint above is strictly enforced
     uint256 public constant K = 2.925619836e45;
     /// @notice Constant T0 for the bonding curve formula

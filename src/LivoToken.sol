@@ -20,10 +20,10 @@ contract LivoToken is ERC20 {
     /// @notice Prevents re-initialization
     // todo remove this variable (use graduator==address(0) as a proxy for initialization)
     bool internal _initialized;
-    
+
     /// @notice Token name
     string private _tokenName;
-    
+
     /// @notice Token symbol
     string private _tokenSymbol;
 

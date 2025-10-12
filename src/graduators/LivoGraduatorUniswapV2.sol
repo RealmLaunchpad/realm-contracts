@@ -120,7 +120,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
 
     /// @dev Adds liquidity trying to match the intended price (derived from the ratio of eth/tokens for graduation)
     /// @dev The number one priority is that liquidity addition doesn't revert
-    /// @dev The number two priority is that the resulting price in the pool is GREATER than the last price given by the launchpad before graduation 
+    /// @dev The number two priority is that the resulting price in the pool is GREATER than the last price given by the launchpad before graduation
     function _addLiquidityWithPriceMatching(
         address tokenAddress,
         uint256 ethReserve,
@@ -178,6 +178,6 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
 
             // for transparency, to be able to detect if some graduation went completely wrong
             emit SweepedRemainingEth(tokenAddress, remainingEth);
-          }
+        }
     }
 }
