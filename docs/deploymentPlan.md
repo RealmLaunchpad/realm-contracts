@@ -1,5 +1,7 @@
 # Deployment guidelines
 
+- foundry.toml: optimization runs : 200 or more
+
 - deploy bonding curve
 - deploy token implementation 
 

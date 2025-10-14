@@ -39,35 +39,11 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertEq(token.balanceOf(address(launchpad)), token.totalSupply());
     }
 
-    function test_createTokenIfImplementationHashBeenInitialized() public {
-        address maliciousGraduator = makeAddr("MaliciousGraduator");
-        address attacker = address(0xbad);
-
-        vm.prank(admin);
+    function test_cannotInitializeImplementation() public {
         LivoToken implementation = new LivoToken();
 
-        vm.prank(seller);
-        implementation.initialize("ImplToken", "IMPL", maliciousGraduator, address(0), attacker, 1234);
-
-        assertEq(implementation.name(), "ImplToken");
-        assertEq(implementation.symbol(), "IMPL");
-        assertEq(implementation.graduator(), maliciousGraduator);
-        assertEq(implementation.totalSupply(), 1234);
-        assertEq(LivoToken(address(implementation)).balanceOf(address(launchpad)), 0);
-        assertEq(LivoToken(address(implementation)).balanceOf(attacker), 1234);
-
-        vm.prank(admin);
-        launchpad.setLivoTokenImplementation(implementation);
-
-        vm.prank(creator);
-        address deployedToken = launchpad.createToken("SuperToken", "SUPER", address(bondingCurve), address(graduator));
-
-        assertEq(LivoToken(deployedToken).name(), "SuperToken");
-        assertEq(LivoToken(deployedToken).symbol(), "SUPER");
-        assertEq(LivoToken(deployedToken).graduator(), address(graduator));
-        assertEq(LivoToken(deployedToken).totalSupply(), TOTAL_SUPPLY);
-        assertEq(LivoToken(deployedToken).balanceOf(address(launchpad)), TOTAL_SUPPLY);
-        assertEq(LivoToken(deployedToken).balanceOf(attacker), 0);
+        vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
+        implementation.initialize("ImplToken", "IMPL", address(graduator), address(0), address(this), 1234);
     }
 
     function testTokenCreatedHasDifferentAddressThanImplementation() public {
@@ -152,21 +128,5 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidNameOrSymbol.selector));
         launchpad.createToken("TestToken", longSymbol, address(bondingCurve), address(graduator));
-    }
-
-    function test_initializeTokenWithZeroGraduator() public {
-        LivoToken token = new LivoToken();
-
-        vm.expectRevert(abi.encodeWithSelector(LivoToken.InvalidGraduator.selector));
-        token.initialize("NoGradToken", "NOGRAD", address(0), address(0), address(0), 1000);
-    }
-
-    function test_initializeTwiceToken() public {
-        LivoToken token = new LivoToken();
-
-        token.initialize("OnceToken", "ONCE", address(graduator), address(0), address(this), 1000);
-
-        vm.expectRevert(abi.encodeWithSelector(LivoToken.AlreadyInitialized.selector));
-        token.initialize("TwiceToken", "TWICE", address(graduator), address(0), address(this), 1000);
     }
 }

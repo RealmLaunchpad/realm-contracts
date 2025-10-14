@@ -2,8 +2,9 @@
 pragma solidity 0.8.28;
 
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 
-contract LivoToken is ERC20 {
+contract LivoToken is ERC20, Initializable {
     /// @notice The only graduator allowed to graduate this token
     address public graduator;
 
@@ -36,7 +37,9 @@ contract LivoToken is ERC20 {
 
     /// @notice Creates a new LivoToken instance which will be used as implementation for clones
     /// @dev Token name and symbol are set during initialization, not in constructor
-    constructor() ERC20("", "") {}
+    constructor() ERC20("", "") {
+        _disableInitializers();
+    }
 
     /// @notice Initializes the token clone with its parameters
     /// @param name_ The token name
@@ -52,9 +55,8 @@ contract LivoToken is ERC20 {
         address pair_,
         address supplyReceiver_,
         uint256 totalSupply_
-    ) external {
+    ) external initializer {
         require(graduator_ != address(0), InvalidGraduator());
-        require(graduator == address(0), AlreadyInitialized());
 
         _tokenName = name_;
         _tokenSymbol = symbol_;
