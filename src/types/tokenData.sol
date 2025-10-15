@@ -33,8 +33,6 @@ struct TokenState {
 }
 
 library TokenDataLib {
-    uint256 constant TOTAL_SUPPLY = 1_000_000_000e18;
-
     function exists(TokenConfig storage config) internal view returns (bool) {
         return config.creator != address(0);
     }
