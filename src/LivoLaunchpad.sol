@@ -68,7 +68,6 @@ contract LivoLaunchpad is Ownable {
     error NotEnoughSupply();
     error AlreadyGraduated();
     error InsufficientETHReserves();
-    error GraduationCriteriaNotMet();
     error EthTransferFailed();
     error DeadlineExceeded();
     error SlippageExceeded();
