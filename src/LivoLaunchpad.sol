@@ -348,6 +348,9 @@ contract LivoLaunchpad is Ownable {
         emit EthGraduationThresholdUpdated(ethThreshold);
     }
 
+    /// @notice Updates the excess cap above the graduation threshold
+    /// @dev When reserves exceed this amount above the graduation, purchases revert
+    /// @param ethExcessCap The new excess cap in wei
     function setExcessCap(uint256 ethExcessCap) public onlyOwner {
         graduationExcessCap = ethExcessCap;
         emit ExcessCapUpdated(ethExcessCap);
