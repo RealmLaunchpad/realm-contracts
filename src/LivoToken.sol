@@ -22,14 +22,13 @@ contract LivoToken is ERC20, Initializable {
 
     //////////////////////// Events //////////////////////
 
-    event FeeExemptSet(address indexed account, bool exempt);
     event Graduated();
 
     //////////////////////// Errors //////////////////////
 
     error OnlyGraduatorAllowed();
     error AlreadyInitialized();
-    error TranferToPairBeforeGraduationNotAllowed();
+    error TransferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
     error InvalidGraduator();
 
@@ -98,7 +97,7 @@ contract LivoToken is ERC20, Initializable {
         // this ensures tokens don't arrive to the pair before graduation
         // to avoid exploits/DOS related to liquidity addition at graduation
         if ((!graduated) && (to == pair)) {
-            revert TranferToPairBeforeGraduationNotAllowed();
+            revert TransferToPairBeforeGraduationNotAllowed();
         }
 
         super._update(from, to, amount);

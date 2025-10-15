@@ -89,7 +89,7 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         uint256 tokenBalance = IERC20(testToken).balanceOf(buyer);
 
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoToken.TranferToPairBeforeGraduationNotAllowed.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector));
         IERC20(testToken).transfer(uniswapPair, tokenBalance / 2);
     }
 

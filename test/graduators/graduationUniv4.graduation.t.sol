@@ -98,7 +98,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
         // Try to transfer to pool manager
         vm.prank(buyer);
-        vm.expectRevert(LivoToken.TranferToPairBeforeGraduationNotAllowed.selector);
+        vm.expectRevert(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector);
         token.transfer(address(poolManager), buyerBalance / 2);
     }
 
