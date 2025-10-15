@@ -75,7 +75,7 @@ contract LaunchpadBaseTests is Test {
 
         vm.startPrank(admin);
         tokenImplementation = new LivoToken();
-        launchpad = new LivoLaunchpad(treasury, tokenImplementation);
+        launchpad = new LivoLaunchpad(treasury, address(tokenImplementation));
         bondingCurve = new ConstantProductBondingCurve();
         vm.stopPrank();
 

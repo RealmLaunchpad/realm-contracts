@@ -23,17 +23,17 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(nonOwner);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
-        launchpad.setLivoTokenImplementation(newImplementation);
+        launchpad.setLivoTokenImplementation(address(newImplementation));
     }
 
     function test_setLivoTokenImplementation_SucceedsForOwner() public {
         IERC20 newImplementation = new LivoToken();
 
         vm.expectEmit(true, true, true, true);
-        emit TokenImplementationUpdated(newImplementation);
+        emit TokenImplementationUpdated(address(newImplementation));
 
         vm.prank(admin);
-        launchpad.setLivoTokenImplementation(newImplementation);
+        launchpad.setLivoTokenImplementation(address(newImplementation));
 
         assertEq(address(launchpad.tokenImplementation()), address(newImplementation));
     }
@@ -218,7 +218,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     // Events from the contract - needed for expectEmit
-    event TokenImplementationUpdated(IERC20 newImplementation);
+    event TokenImplementationUpdated(address newImplementation);
     event EthGraduationThresholdUpdated(uint256 newThreshold);
     event GraduationFeeUpdated(uint256 newGraduationFee);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);

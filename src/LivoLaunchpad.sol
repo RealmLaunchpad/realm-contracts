@@ -29,7 +29,7 @@ contract LivoLaunchpad is Ownable {
     uint256 public graduationExcessCap;
 
     /// @notice LivoToken ERC20 implementation address
-    IERC20 public tokenImplementation;
+    address public tokenImplementation;
 
     /// @notice Eth reserves accumulated by a token to meet graduation criteria. Includes the graduation fees (in wei)
     uint256 public baseEthGraduationThreshold;
@@ -104,7 +104,7 @@ contract LivoLaunchpad is Ownable {
 
     /// @param _treasury Address of the treasury to receive fees
     /// @param _tokenImplementation Address of the LivoToken implementation for cloning
-    constructor(address _treasury, IERC20 _tokenImplementation) Ownable(msg.sender) {
+    constructor(address _treasury, address _tokenImplementation) Ownable(msg.sender) {
         // Set initial values and emit events for off-chain indexers
         setTreasuryAddress(_treasury);
         setLivoTokenImplementation(_tokenImplementation);
@@ -135,7 +135,7 @@ contract LivoLaunchpad is Ownable {
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
-        token = Clones.clone(address(tokenImplementation));
+        token = Clones.clone(tokenImplementation);
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
         emit TokenCreated(token, msg.sender, name, symbol, bondingCurve, graduator);
@@ -336,7 +336,7 @@ contract LivoLaunchpad is Ownable {
 
     /// @notice Updates the ERC20 token implementation, which only affects new token deployments
     /// @param newImplementation Address of the new token implementation
-    function setLivoTokenImplementation(IERC20 newImplementation) public onlyOwner {
+    function setLivoTokenImplementation(address newImplementation) public onlyOwner {
         tokenImplementation = newImplementation;
         emit TokenImplementationUpdated(address(newImplementation));
     }

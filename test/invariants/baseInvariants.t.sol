@@ -55,7 +55,7 @@ contract LaunchpadInvariants is Test {
 
         // the actual deployments
         tokenImplementation = new LivoToken();
-        launchpad = new LivoLaunchpad(treasury, tokenImplementation);
+        launchpad = new LivoLaunchpad(treasury, address(tokenImplementation));
 
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
