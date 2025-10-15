@@ -367,6 +367,31 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         assertGe(secondPrice, firstPrice, "The second purchase should get a higher price");
     }
+
+    function test_quoteBuyTokens_invalidToken() public {
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidToken.selector));
+        launchpad.quoteBuyWithExactEth(address(0), 1 ether);
+    }
+
+    function test_quoteSellTokens_invalidToken() public {
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidToken.selector));
+        launchpad.quoteSellExactTokens(address(0), 1 ether);
+    }
+
+    function test_quoteBuyTokens_rightBelowHittingExcessLimit() public createTestToken {
+        uint256 maxValue = _increaseWithFees(BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS);
+
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        launchpad.quoteBuyWithExactEth(testToken, maxValue);
+
+        // however, one wei less should be fine
+        uint256 maxValueJustBelow = maxValue - 1;
+        (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive) =
+            launchpad.quoteBuyWithExactEth(testToken, maxValueJustBelow);
+
+        assertGt(tokensToReceive, 0, "No tokens received");
+        assertEq(ethForPurchase + ethFee, maxValueJustBelow, "Amounts don't add up");
+    }
 }
 
 /// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator

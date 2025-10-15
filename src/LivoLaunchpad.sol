@@ -280,9 +280,11 @@ contract LivoLaunchpad is Ownable2Step {
         view
         returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
     {
+        if (!tokenConfigs[token].exists()) revert InvalidToken();
+        if (ethValue > _maxEthToSpend(token)) revert PurchaseExceedsLimitPostGraduation();
+
         (ethForPurchase, ethFee, tokensToReceive) = _quoteBuyWithExactEth(token, ethValue);
 
-        if (ethForPurchase > _maxEthToSpend(token)) revert PurchaseExceedsLimitPostGraduation();
         if (tokensToReceive > _availableTokensForPurchase(token)) revert NotEnoughSupply();
     }
 
@@ -297,6 +299,8 @@ contract LivoLaunchpad is Ownable2Step {
         view
         returns (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller)
     {
+        if (!tokenConfigs[token].exists()) revert InvalidToken();
+
         (ethPulledFromReserves, ethFee, ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
 
         if (ethPulledFromReserves > _availableEthFromReserves(token)) revert InsufficientETHReserves();
