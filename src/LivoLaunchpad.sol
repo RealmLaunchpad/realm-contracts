@@ -248,7 +248,7 @@ contract LivoLaunchpad is Ownable2Step {
             _quoteSellExactTokens(token, tokenAmount);
 
         require(ethForSeller >= minEthAmount, SlippageExceeded());
-        // When minEthAmount==0, we assume that the seller accepts any kind of "resaonable" slippage
+        // When minEthAmount==0, we assume that the seller accepts any kind of "reasonable" slippage
         // However, receiving eth in exchange for a non-zero amount of tokens would be unfair
         require(ethForSeller > 0, ReceivingZeroAmount());
         // Hopefully this scenario never happens
@@ -289,17 +289,17 @@ contract LivoLaunchpad is Ownable2Step {
     /// @notice Quotes the result of selling exact amount of tokens
     /// @param token Address of the token to quote
     /// @param tokenAmount Amount of tokens to sell
-    /// @return ethFromSale Amount of ETH from the sale (before fees are applied)
+    /// @return ethPulledFromReserves Amount of ETH pulled from the reserves before fees are applied
     /// @return ethFee Fee amount in ETH
     /// @return ethForSeller Amount of ETH the seller would receive
     function quoteSellExactTokens(address token, uint256 tokenAmount)
         external
         view
-        returns (uint256 ethFromSale, uint256 ethFee, uint256 ethForSeller)
+        returns (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller)
     {
-        (ethFromSale, ethFee, ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
+        (ethPulledFromReserves, ethFee, ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
 
-        if (ethForSeller > _availableEthFromReserves(token)) revert InsufficientETHReserves();
+        if (ethPulledFromReserves > _availableEthFromReserves(token)) revert InsufficientETHReserves();
     }
 
     /// @notice Returns the maximum amount of ETH that can be spent on a given token
