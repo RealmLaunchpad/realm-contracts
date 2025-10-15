@@ -206,6 +206,40 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         }
     }
 
+    function test_transferOwnership2step() public {
+        // Start ownership transfer
+        vm.prank(admin);
+        launchpad.transferOwnership(nonOwner);
+        assertEq(launchpad.pendingOwner(), nonOwner);
+
+        // Accept ownership from new owner
+        vm.prank(nonOwner);
+        launchpad.acceptOwnership();
+        assertEq(launchpad.owner(), nonOwner);
+        assertEq(launchpad.pendingOwner(), address(0));
+    }
+
+    function test_transferOwnership_cancelled() public {
+        // Start ownership transfer
+        vm.prank(admin);
+        launchpad.transferOwnership(nonOwner);
+        assertEq(launchpad.pendingOwner(), nonOwner);
+
+        // original owner can still do owner functions
+        vm.prank(admin);
+        launchpad.setEthGraduationThreshold(9 ether);
+
+        // Cancel ownership transfer by setting pending owner to zero address
+        vm.prank(admin);
+        launchpad.transferOwnership(address(0));
+        assertEq(launchpad.pendingOwner(), address(0));
+        assertEq(launchpad.owner(), admin);
+
+        // original owner can still do owner functions
+        vm.prank(admin);
+        launchpad.setEthGraduationThreshold(10 ether);
+    }
+
     function test_collectTreasuryFees_NoFeesToCollect() public {
         // When there are no fees, function should succeed but do nothing
         uint256 initialTreasuryBalance = treasury.balance;
