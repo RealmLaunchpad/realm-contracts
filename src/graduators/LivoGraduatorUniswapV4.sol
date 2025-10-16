@@ -33,6 +33,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @notice Associated liquidity positionIds for each graduated token
     mapping(address token => uint256 tokenId) public positionIds;
 
+    /// @notice Treasury eth fees collected
+    uint256 public treasuryEthFees;
+
     /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
 
@@ -93,6 +96,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     error EthTransferFailed();
     error NoTokensToCollectFees();
     error TooManyTokensToCollectFees();
+
+    /////////////////////// Events ///////////////////////
+
+    event EthFeeCollectionTransferFailed(address indexed creator, uint256 amount);
 
     //////////////////////////////////////////////////////
 
@@ -210,12 +217,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             totalTreasuryFees += treasuryFees;
 
             address tokenCreator = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenCreator(token);
-            _transferEth(tokenCreator, creatorFees);
+            // attempt to transfer ether. If it fails, the transfer is skip and the funds are considered part of the treasury
+            // This is to prevent fallback functions DOS the fee collection for the treasury.
+            (bool success,) = address(tokenCreator).call{value: creatorFees}("");
+            // emit event for transparency, in case we needed to manually transfer the funds later
+            if (!success) emit EthFeeCollectionTransferFailed(tokenCreator, creatorFees);
         }
-
-        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-        // put together all the treasury transfers into one tx for gas efficiency
-        _transferEth(treasury, totalTreasuryFees);
+        // the remaining eth balance is considered part of the treasury, and can be collected with sweep()
     }
 
     /// @notice Sweeps any remaining ETH in this contract to the treasury
@@ -226,7 +234,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         uint256 ethBalance = address(this).balance;
         if (ethBalance > 0) {
             address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-            _transferEth(treasury, ethBalance);
+            (bool success,) = address(treasury).call{value: ethBalance}("");
+            require(success, EthTransferFailed());
         }
     }
 
@@ -336,10 +345,5 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         ).toUint128();
 
         creatorEthFees = tokenAmount / 2;
-    }
-
-    function _transferEth(address to, uint256 value) internal {
-        (bool success,) = address(to).call{value: value}("");
-        require(success, EthTransferFailed());
     }
 }

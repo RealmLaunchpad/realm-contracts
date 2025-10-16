@@ -30,6 +30,7 @@ interface ILivoGraduatorWithFees is ILivoGraduator {
     function collectEthFees(address[] calldata tokens) external;
     function positionIds(address token) external view returns (uint256);
     function getClaimableFees(address[] calldata tokens) external view returns (uint256[] memory creatorFees);
+    function sweep() external;
 }
 
 contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
@@ -54,7 +55,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         _;
     }
 
-    modifier twoGraduatedTokens(uint256 buyAmount) {
+    modifier twoGraduatedTokensWithBuys(uint256 buyAmount) {
         vm.startPrank(creator);
         testToken1 = launchpad.createToken("TestToken1", "TEST1", address(bondingCurve), address(graduator));
         testToken2 = launchpad.createToken("TestToken2", "TEST2", address(bondingCurve), address(graduator));
@@ -123,6 +124,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
         _collectFees(testToken);
+        graduatorWithFees.sweep();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -152,25 +154,43 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         assertGt(tokenBalanceAfter, tokenBalanceBefore, "graduator token balance should increase");
     }
 
-    function test_claimFees_expectedFeesIncrease() public createAndGraduateToken {
+    function test_claimFees_expectedCreatorFeesIncrease() public createAndGraduateToken {
         deal(buyer, 10 ether);
         uint256 buyAmount = 1 ether;
         _swapBuy(buyer, buyAmount, 10e18, true);
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
+        uint256 graduatorBalanceBefore = address(graduatorWithFees).balance;
 
         _collectFees(testToken);
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
+        uint256 graduatorBalanceAfter = address(graduatorWithFees).balance;
+
+        assertEq(treasuryEthBalanceAfter, treasuryEthBalanceBefore, "treasury eth balance should not change");
 
         uint256 creatorFees = creatorEthBalanceAfter - creatorEthBalanceBefore;
+        uint256 treasuryFees = graduatorBalanceAfter - graduatorBalanceBefore;
+
+        assertApproxEqAbs(creatorFees + treasuryFees, buyAmount / 100, 1, "total fees should be 1%");
+    }
+
+    function test_claimFees_expectedTreasuryFeesIncrease() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        uint256 buyAmount = 1 ether;
+        _swapBuy(buyer, buyAmount, 10e18, true);
+
+        uint256 treasuryEthBalanceBefore = treasury.balance;
+
+        _collectFees(testToken);
+        graduatorWithFees.sweep();
+
+        uint256 treasuryEthBalanceAfter = treasury.balance;
         uint256 treasuryFees = treasuryEthBalanceAfter - treasuryEthBalanceBefore;
 
-        uint256 totalFeesCollected = creatorFees + treasuryFees;
-
-        assertApproxEqAbs(totalFeesCollected, buyAmount / 100, 1, "total fees should be 1%");
+        assertApproxEqAbs(treasuryFees, buyAmount / 200, 1, "total fees should be 1% between treasury and creator");
     }
 
     /// @notice test that on buys, only eth fees are collected
@@ -214,27 +234,39 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
     function test_claimFees_noInitialEthBalance() public createAndGraduateToken {
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
+
         // send some eth to the graduator
         vm.prank(buyer);
         payable(address(graduatorWithFees)).transfer(0.5 ether);
 
-        assertEq(address(graduatorWithFees).balance, 0.5 ether, "graduator should have exactly 0.5");
+        uint256 graduatorEthBalanceBefore = address(graduatorWithFees).balance;
+        assertEq(graduatorEthBalanceBefore, 0.5 ether, "graduator should have exactly 0.5 ether");
 
         _collectFees(testToken);
+        // if there is no sweep, the treasury fees stay in the contract
+        assertGt(
+            address(graduatorWithFees).balance,
+            graduatorEthBalanceBefore,
+            "graduator should have more than 0.5 (the treasury fees)"
+        );
 
-        assertEq(address(graduatorWithFees).balance, 0.5 ether, "graduator should have exactly 0.5 still");
+        graduatorWithFees.sweep();
+
+        assertEq(address(graduatorWithFees).balance, 0, "graduator eth balance should be 0 after sweep");
     }
 
     /// @notice test that a token creator can claim fees from mutliple tokens in one transaction
-    function test_claimFees_multipleTokens() public twoGraduatedTokens(1 ether) {
+    function test_claimFees_multipleTokens() public twoGraduatedTokensWithBuys(1 ether) {
         // both should have accumulated fees
         address[] memory tokens = new address[](2);
         tokens[0] = testToken1;
         tokens[1] = testToken2;
+
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
         graduatorWithFees.collectEthFees(tokens);
+        graduatorWithFees.sweep();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -253,7 +285,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
     }
 
     /// @notice test that including the same token twice in the claim array does not double count fees
-    function test_claimFees_multipleTokens_withDuplicate() public twoGraduatedTokens(1 ether) {
+    function test_claimFees_multipleTokens_withDuplicate() public twoGraduatedTokensWithBuys(1 ether) {
         // both should have accumulated fees
         address[] memory tokens = new address[](3);
         tokens[0] = testToken1;
@@ -263,6 +295,8 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
         graduatorWithFees.collectEthFees(tokens);
+        graduatorWithFees.sweep();
+
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
 
@@ -273,6 +307,46 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
             (creatorEthBalanceAfter - creatorEthBalanceBefore) + (treasuryEthBalanceAfter - treasuryEthBalanceBefore),
             expectedTotalFees,
             2,
+            "total fees should be 1% of total buys"
+        );
+    }
+
+    /// @notice test that a token creator can claim fees from mutliple tokens in one transaction
+    function test_claimFees_multipleTokens_twoBuysBeforeSweep() public twoGraduatedTokensWithBuys(1 ether) {
+        // both should have accumulated fees
+        address[] memory tokens = new address[](2);
+        tokens[0] = testToken1;
+        tokens[1] = testToken2;
+
+        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 treasuryEthBalanceBefore = treasury.balance;
+
+        _swap(buyer, testToken1, 1 ether, 12342, true, true);
+        _swap(buyer, testToken2, 1 ether, 12342, true, true);
+
+        graduatorWithFees.collectEthFees(tokens);
+
+        _swap(buyer, testToken1, 2 ether, 12342, true, true);
+        _swap(buyer, testToken2, 2 ether, 12342, true, true);
+
+        graduatorWithFees.collectEthFees(tokens);
+        graduatorWithFees.sweep();
+
+        uint256 creatorEarned = creator.balance - creatorEthBalanceBefore;
+        uint256 treasuryEarned = treasury.balance - treasuryEthBalanceBefore;
+
+        assertGt(creatorEarned, 0, "creator eth balance should increase");
+        assertGt(treasuryEarned, 0, "treasury eth balance should increase");
+        // 10 wei error allowed here
+        assertApproxEqAbs(creatorEarned, treasuryEarned, 10, "creator and treasury should earn approx the same");
+
+        // 1% fees expected from each creator (2 * 1 ether + 2 * 1 ether buys + 2 * 2 ether buys)
+        uint256 expectedTotalFees = (2 + 2 + 4) * 1 ether / 100;
+
+        assertApproxEqAbs(
+            creatorEarned + treasuryEarned,
+            expectedTotalFees,
+            10, // 10 wei error allowed
             "total fees should be 1% of total buys"
         );
     }
@@ -383,7 +457,7 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
     }
 
     /// @notice test that getClaimableFees works for multiple tokens
-    function test_viewFunction_getClaimableFees_multipleTokens() public twoGraduatedTokens(1 ether) {
+    function test_viewFunction_getClaimableFees_multipleTokens() public twoGraduatedTokensWithBuys(1 ether) {
         address[] memory tokens = new address[](2);
         tokens[0] = testToken1;
         tokens[1] = testToken2;
@@ -397,7 +471,7 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
     }
 
     /// @notice test that getClaimableFees gives the same results when called with the repeated token in the array
-    function test_viewFunction_getClaimableFees_repeatedToken() public twoGraduatedTokens(1 ether) {
+    function test_viewFunction_getClaimableFees_repeatedToken() public twoGraduatedTokensWithBuys(1 ether) {
         address[] memory tokens = new address[](3);
         tokens[0] = testToken1;
         tokens[1] = testToken2;
