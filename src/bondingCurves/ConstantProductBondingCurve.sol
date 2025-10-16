@@ -29,12 +29,6 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     // IMPORTANT: These constants define a curve that doesn't behave well for ethReserves > 37 eth.
     // This is not a problem in practice as long as the graduation threshold + limit excess is well below that.
 
-    ///////////////////// Errors /////////////////////
-
-    error NotImplemented();
-
-    //////////////////////////////////////////////////
-
     /// @notice Calculates how many tokens can be purchased with a given amount of ETH
     /// @param ethReserves Current ETH reserves in the bonding curve
     /// @param ethAmount Amount of ETH to spend
