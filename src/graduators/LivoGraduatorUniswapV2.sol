@@ -29,6 +29,8 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
 
     event SweepedRemainingEth(address graduatedToken, uint256 amount);
 
+    error EtherTransferFailed();
+
     /// @notice Initializes the Uniswap V2 graduator
     /// @param _uniswapRouter Address of the Uniswap V2 router
     /// @param _launchpad Address of the LivoLaunchpad contract
@@ -139,7 +141,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
             // Add remaining tokens and ETH as liquidity
             uint256 remainingTokens = tokenBalance - tokensToTransfer;
             (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethValue}(
-                tokenAddress, remainingTokens, 0, 0, DEAD_ADDRESS, block.timestamp + 3600
+                tokenAddress, remainingTokens, 0, 0, DEAD_ADDRESS, block.timestamp
             );
             // the tokens sent as sync also count as liquidity added ofc
             amountToken += tokensToTransfer;
@@ -157,7 +159,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         returns (uint256 amountToken, uint256 amountEth, uint256 liquidity)
     {
         (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethValue}(
-            tokenAddress, tokenBalance, 0, 0, DEAD_ADDRESS, block.timestamp + 3600
+            tokenAddress, tokenBalance, 0, 0, DEAD_ADDRESS, block.timestamp
         );
     }
 
@@ -173,7 +175,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         if (remainingEth > 0) {
             address livoTreasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
             (bool success,) = livoTreasury.call{value: remainingEth}("");
-            require(success, "ETH transfer to treasury failed");
+            require(success, EtherTransferFailed());
 
             // for transparency, to be able to detect if some graduation went completely wrong
             emit SweepedRemainingEth(tokenAddress, remainingEth);
