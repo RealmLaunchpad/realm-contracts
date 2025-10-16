@@ -129,25 +129,17 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         // Calculate tokens needed to match target price
         uint256 tokensToTransfer = (tokenBalance * ethReserve) / (ethValue + ethReserve);
 
-        // if there was eth in the contract, then it is guaranteed that tokensToTransfer > 0
-        if (tokensToTransfer < tokenBalance) {
-            // Transfer calculated tokens directly to pair and sync to reach the target price
-            ILivoToken(tokenAddress).safeTransfer(pair, tokensToTransfer);
-            IUniswapV2Pair(pair).sync();
+        // Note: tokensToTransfer is always < tokenBalance due to (ethReserve < ethValue + ethReserve)
+        ILivoToken(tokenAddress).safeTransfer(pair, tokensToTransfer);
+        IUniswapV2Pair(pair).sync();
 
-            // Add remaining tokens and ETH as liquidity
-            uint256 remainingTokens = tokenBalance - tokensToTransfer;
-            (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethValue}(
-                tokenAddress, remainingTokens, 0, 0, DEAD_ADDRESS, block.timestamp
-            );
-            // the tokens sent as sync also count as liquidity added ofc
-            amountToken += tokensToTransfer;
-        } else {
-            // Fallback: add all as liquidity
-            // This would only happen if some weirdo sent enough ETH so that the remaining tokens supply cannot match the price
-            // Although highly unlikely, it is important to protect against this scenario
-            (amountToken, amountEth, liquidity) = _naiveLiquidityAddition(tokenAddress, tokenBalance, ethValue);
-        }
+        // Add remaining tokens and ETH as liquidity
+        uint256 remainingTokens = tokenBalance - tokensToTransfer;
+        (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethValue}(
+            tokenAddress, remainingTokens, 0, 0, DEAD_ADDRESS, block.timestamp
+        );
+        // the tokens sent as sync also count as liquidity added ofc
+        amountToken += tokensToTransfer;
     }
 
     /// @dev This blindly adds the liquidity, accepting any LPs, so accepting whatever price ratio is in the pair already
