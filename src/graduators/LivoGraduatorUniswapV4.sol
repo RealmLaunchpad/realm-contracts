@@ -12,7 +12,6 @@ import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
-import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {PositionConfig, PositionConfigLibrary} from "lib/v4-periphery/src/libraries/PositionConfig.sol";
@@ -41,7 +40,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     ILiquidityLockUniv4WithFees public immutable LIQUIDITY_LOCK;
 
     /// @notice Permit2 contract for token approvals
-    IPermit2 public immutable PERMIT2;
+    address public immutable PERMIT2;
 
     /// @notice Uniswap V4 pool manager contract
     IPoolManager public immutable UNIV4_POOL_MANAGER;
@@ -115,7 +114,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         LIVO_LAUNCHPAD = _launchpad;
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
         UNIV4_POSITION_MANAGER = IPositionManager(_positionManager);
-        PERMIT2 = IPermit2(_permit2);
+        PERMIT2 = _permit2;
         UNIV4_NFT_POSITIONS = IERC721(_univ4NftPositions);
         LIQUIDITY_LOCK = ILiquidityLockUniv4WithFees(_liquidityLock);
 
@@ -174,9 +173,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // so no problem with having these dangling approvals
 
         // approve PERMIT2 as a spender
-        token.approve(address(PERMIT2), type(uint256).max);
+        token.approve(PERMIT2, type(uint256).max);
         // approve `PositionManager` as a spender
-        IAllowanceTransfer(address(PERMIT2)).approve(
+        IAllowanceTransfer(PERMIT2).approve(
             address(token), // approved token
             address(UNIV4_POSITION_MANAGER), // spender
             type(uint160).max, // amount
