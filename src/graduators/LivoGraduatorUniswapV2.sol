@@ -77,14 +77,14 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         // Approve the router to handle the tokens for liquidity addition
         token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokenBalance);
 
-        // syncs and reads the actual reserves in the pair (in case there is unsynced ETH)
+        // syncs and reads the actual reserves in the pair (in case there is unsynced WETH)
         uint256 ethReserve = _getUpdatedEthReserves(pair, tokenAddress);
 
         uint256 amountToken;
         uint256 amountEth;
         uint256 liquidity;
         // We ensure that the token reserve is zero by forbidding transfers to the pair pre-graduation
-        // Therefore, here we only need to check if there is ETH in the pair
+        // Therefore, here we only need to check if there is WETH in the pair
         if (ethReserve == 0) {
             (amountToken, amountEth, liquidity) = _naiveLiquidityAddition(tokenAddress, tokenBalance, ethValue);
         } else {
@@ -101,11 +101,8 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     }
 
     /// @dev Reads the actual eth reserves after syncing
-    function _getUpdatedEthReserves(address pair, address tokenAddress) internal returns (uint256 ethReserve) {
+    function _getUpdatedEthReserves(address pair, address tokenAddress) internal view returns (uint256 ethReserve) {
         IUniswapV2Pair pairContract = IUniswapV2Pair(pair);
-
-        // in case there is unsynced ETH
-        pairContract.sync();
 
         (uint112 reserve0, uint112 reserve1,) = pairContract.getReserves();
 
@@ -129,12 +126,12 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         uint256 ethValue,
         address pair
     ) internal returns (uint256 amountToken, uint256 amountEth, uint256 liquidity) {
-        // Calculate tokens needed to match existing price
+        // Calculate tokens needed to match target price
         uint256 tokensToTransfer = (tokenBalance * ethReserve) / (ethValue + ethReserve);
 
         // if there was eth in the contract, then it is guaranteed that tokensToTransfer > 0
         if (tokensToTransfer < tokenBalance) {
-            // Transfer calculated tokens directly to pair and sync
+            // Transfer calculated tokens directly to pair and sync to reach the target price
             ILivoToken(tokenAddress).safeTransfer(pair, tokensToTransfer);
             IUniswapV2Pair(pair).sync();
 
