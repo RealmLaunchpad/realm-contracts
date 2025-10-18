@@ -142,8 +142,7 @@ contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
             address(liquidityLock),
             poolManagerAddress,
             positionManagerAddress,
-            permit2Address,
-            uniswapV4NftAddress
+            permit2Address
         );
 
         vm.prank(admin);

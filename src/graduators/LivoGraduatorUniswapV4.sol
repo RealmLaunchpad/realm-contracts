@@ -49,10 +49,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     IPoolManager public immutable UNIV4_POOL_MANAGER;
 
     /// @notice Uniswap V4 position manager contract
-    IPositionManager public immutable UNIV4_POSITION_MANAGER;
-
-    /// @notice Uniswap V4 NFT positions contract
-    IERC721 public immutable UNIV4_NFT_POSITIONS;
+    address public immutable UNIV4_POSITION_MANAGER;
 
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
     /// @dev 10000 pips = 1%
@@ -109,20 +106,17 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @param _poolManager Address of the Uniswap V4 pool manager
     /// @param _positionManager Address of the Uniswap V4 position manager
     /// @param _permit2 Address of the Permit2 contract
-    /// @param _univ4NftPositions Address of the Uniswap V4 NFT positions contract
     constructor(
         address _launchpad,
         address _liquidityLock,
         address _poolManager,
         address _positionManager,
-        address _permit2,
-        address _univ4NftPositions
+        address _permit2
     ) {
         LIVO_LAUNCHPAD = _launchpad;
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
-        UNIV4_POSITION_MANAGER = IPositionManager(_positionManager);
+        UNIV4_POSITION_MANAGER = _positionManager;
         PERMIT2 = _permit2;
-        UNIV4_NFT_POSITIONS = IERC721(_univ4NftPositions);
         LIQUIDITY_LOCK = ILiquidityLockUniv4WithFees(_liquidityLock);
 
         SQRT_PRICEX96_LOWER_TICK = uint160(TickMath.getSqrtPriceAtTick(TICK_LOWER));
@@ -130,7 +124,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         // approve the LIQUIDITY_LOCK to pull any NFT liquidity in this contract
         // instead of having to approve every NFT on every graduation to save gas
-        UNIV4_NFT_POSITIONS.setApprovalForAll(_liquidityLock, true);
+        IERC721(_positionManager).setApprovalForAll(_liquidityLock, true);
     }
 
     modifier onlyLaunchpad() {
@@ -184,7 +178,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // approve `PositionManager` as a spender
         IAllowanceTransfer(PERMIT2).approve(
             address(token), // approved token
-            address(UNIV4_POSITION_MANAGER), // spender
+            UNIV4_POSITION_MANAGER, // spender
             type(uint160).max, // amount
             type(uint48).max // expiration
         );
@@ -192,7 +186,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // uniswap v4 liquidity position creation
         uint256 liquidity = _depositLiquidity(tokenAddress, tokenBalance, ethValue);
 
-        // there may be a smal leftover of tokens not deposited
+        // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
         uint256 tokensDeposited = tokenBalance - tokenBalanceAfterDeposit;
 
@@ -344,6 +338,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             FullMath.mulDiv(feeGrowthInside0X128 - feeGrowthInside0LastX128, liquidity, FixedPoint128.Q128)
         ).toUint128();
 
-        creatorEthFees = tokenAmount / 2;
+        creatorEthFees = tokenAmount - tokenAmount / 2;
     }
 }
