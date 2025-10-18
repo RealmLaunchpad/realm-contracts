@@ -122,19 +122,24 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param symbol The symbol of the token (max 32 characters)
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
+    /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
     /// @return token The address of the newly created token
-    function createToken(string calldata name, string calldata symbol, address bondingCurve, address graduator)
-        external
-        returns (address token)
-    {
+    function createToken(
+        string calldata name,
+        string calldata symbol,
+        address bondingCurve,
+        address graduator,
+        bytes32 salt
+    ) external returns (address token) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
         require(whitelistedComponents[bondingCurve][graduator], InvalidCurveGraduatorCombination());
 
+        bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
-        token = Clones.clone(tokenImplementation);
+        token = Clones.cloneDeterministic(tokenImplementation, salt_);
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
         emit TokenCreated(token, msg.sender, name, symbol, bondingCurve, graduator);
