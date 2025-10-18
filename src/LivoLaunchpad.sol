@@ -441,7 +441,8 @@ contract LivoLaunchpad is Ownable2Step {
         token.safeTransfer(tokenConfig.creator, tokensForCreator);
         token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
 
-        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress);
+        // pass here the tokensForGraduation to avoid deflation attack in the graduator
+        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress, tokensForGraduation);
 
         emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation);
     }

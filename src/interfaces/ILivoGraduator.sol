@@ -18,5 +18,5 @@ interface ILivoGraduator {
     ////////////////// Functions //////////////////////
 
     function initializePair(address tokenAddress) external returns (address pair);
-    function graduateToken(address tokenAddress) external payable;
+    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable;
 }

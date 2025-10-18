@@ -57,14 +57,14 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
 
     /// @notice Graduates a token by adding liquidity to Uniswap V2
     /// @param tokenAddress Address of the token to graduate
-    function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
+    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override onlyLaunchpad {
         ILivoToken token = ILivoToken(tokenAddress);
 
+        // if tokenAmount is not in this contract balance, the call will fail
         // eth can only enter through msg.value, and all of it is deposited as liquidity
         uint256 ethValue = msg.value;
-        uint256 tokenBalance = token.balanceOf(address(this));
 
-        require(tokenBalance > 0, NoTokensToGraduate());
+        require(tokenAmount > 0, NoTokensToGraduate());
         require(ethValue > 0, NoETHToGraduate());
 
         // the pair should have been pre-created at token launch.
@@ -75,7 +75,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         token.markGraduated();
 
         // Approve the router to handle the tokens for liquidity addition
-        token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokenBalance);
+        token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokenAmount);
 
         // syncs and reads the actual reserves in the pair (in case there is unsynced WETH)
         uint256 ethReserve = _getUpdatedEthReserves(pair, tokenAddress);
@@ -86,12 +86,12 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         // We ensure that the token reserve is zero by forbidding transfers to the pair pre-graduation
         // Therefore, here we only need to check if there is WETH in the pair
         if (ethReserve == 0) {
-            (amountToken, amountEth, liquidity) = _naiveLiquidityAddition(tokenAddress, tokenBalance, ethValue);
+            (amountToken, amountEth, liquidity) = _naiveLiquidityAddition(tokenAddress, tokenAmount, ethValue);
         } else {
             // This path would almost never be executed. But we need to protect against attacks
             // trying to DOS the graduation by sending ETH to the pair pre-graduation
             (amountToken, amountEth, liquidity) =
-                _addLiquidityWithPriceMatching(tokenAddress, ethReserve, tokenBalance, ethValue, pair);
+                _addLiquidityWithPriceMatching(tokenAddress, ethReserve, tokenAmount, ethValue, pair);
         }
 
         // handle any remaining balance in this contract

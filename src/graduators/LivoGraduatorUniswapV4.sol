@@ -156,13 +156,12 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
     /// @notice Graduates a token by adding liquidity to Uniswap V4
     /// @param tokenAddress Address of the token to graduate
-    function graduateToken(address tokenAddress) external payable override onlyLaunchpad {
+    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override onlyLaunchpad {
         ILivoToken token = ILivoToken(tokenAddress);
 
+        // the tokenAmount needs to be in this contract balance before the call. Otherwise it reverts
         uint256 ethValue = msg.value;
-        uint256 tokenBalance = token.balanceOf(address(this));
-
-        require(tokenBalance > 0, NoTokensToGraduate());
+        require(tokenAmount > 0, NoTokensToGraduate());
         require(ethValue > 0, NoETHToGraduate());
 
         // this opens the gate of transferring tokens to the uniswap pair
@@ -182,11 +181,11 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         );
 
         // uniswap v4 liquidity position creation
-        uint256 liquidity = _depositLiquidity(tokenAddress, tokenBalance, ethValue);
+        uint256 liquidity = _depositLiquidity(tokenAddress, tokenAmount, ethValue);
 
         // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
-        uint256 tokensDeposited = tokenBalance - tokenBalanceAfterDeposit;
+        uint256 tokensDeposited = tokenAmount - tokenBalanceAfterDeposit;
 
         emit TokenGraduated(tokenAddress, address(UNIV4_POOL_MANAGER), tokensDeposited, ethValue, liquidity);
     }
