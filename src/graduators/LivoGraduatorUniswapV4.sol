@@ -294,7 +294,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         params[2] = abi.encode(pool.currency0, excessEthRecipient); // sweep all remaining native ETH to recipient
 
         // read the next positionId before minting the position
-        uint256 positionId = UNIV4_POSITION_MANAGER.nextTokenId();
+        uint256 positionId = IPositionManager(UNIV4_POSITION_MANAGER).nextTokenId();
         positionIds[tokenAddress] = positionId;
 
         // the actual call to the position manager to mint the liquidity position
