@@ -27,9 +27,12 @@ import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 interface ILivoGraduatorWithFees is ILivoGraduator {
-    function collectEthFees(address[] calldata tokens) external;
-    function positionIds(address token) external view returns (uint256);
-    function getClaimableFees(address[] calldata tokens) external view returns (uint256[] memory creatorFees);
+    function collectEthFees(address[] calldata tokens, uint256 positionIndex) external;
+    function positionIds(address token, uint256 positionIndex) external view returns (uint256);
+    function getClaimableFees(address[] calldata tokens, uint256 positionIndex)
+        external
+        view
+        returns (uint256[] memory creatorFees);
     function sweep() external;
 }
 
@@ -82,21 +85,21 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     function _collectFees(address token) internal {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        graduatorWithFees.collectEthFees(tokens);
+        graduatorWithFees.collectEthFees(tokens, 0);
     }
 }
 
 /// @notice Tests for Uniswap V4 graduator functionality
 contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
     function test_rightPositionIdAfterGraduation() public createAndGraduateToken {
-        uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken);
+        uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken, 0);
 
         assertEq(positionId, 62898, "wrong position id registered at graduation");
     }
 
     /// @notice test that the owner of the univ4 NFT position is the liquidity lock contract
     function test_liquidityNftOwnerAfterGraduation() public createAndGraduateToken {
-        uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken);
+        uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken, 0);
 
         assertEq(
             IERC721(uniswapV4NftAddress).ownerOf(positionId),
@@ -107,7 +110,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
 
     /// @notice test that in the liquidity lock, the graduator appears as the owner of the liquidity position
     function test_liquidityLock_ownerOfPositionIsGraduator() public createAndGraduateToken {
-        uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken);
+        uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken, 0);
 
         assertEq(
             liquidityLock.lockOwners(positionId),
@@ -265,7 +268,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
-        graduatorWithFees.collectEthFees(tokens);
+        graduatorWithFees.collectEthFees(tokens, 0);
         graduatorWithFees.sweep();
 
         uint256 creatorEthBalanceAfter = creator.balance;
@@ -294,7 +297,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
-        graduatorWithFees.collectEthFees(tokens);
+        graduatorWithFees.collectEthFees(tokens, 0);
         graduatorWithFees.sweep();
 
         uint256 creatorEthBalanceAfter = creator.balance;
@@ -324,12 +327,12 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         _swap(buyer, testToken1, 1 ether, 12342, true, true);
         _swap(buyer, testToken2, 1 ether, 12342, true, true);
 
-        graduatorWithFees.collectEthFees(tokens);
+        graduatorWithFees.collectEthFees(tokens, 0);
 
         _swap(buyer, testToken1, 2 ether, 12342, true, true);
         _swap(buyer, testToken2, 2 ether, 12342, true, true);
 
-        graduatorWithFees.collectEthFees(tokens);
+        graduatorWithFees.collectEthFees(tokens, 0);
         graduatorWithFees.sweep();
 
         uint256 creatorEarned = creator.balance - creatorEthBalanceBefore;
@@ -350,11 +353,36 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
             "total fees should be 1% of total buys"
         );
     }
+
+    /// @notice test that if price dips well below the graduation price and then there are buys, the fees are still correctly collected
+    /// @dev This is mainly covering the extra single-sided eth position below the graduation price
+    function test_viewFunction_collectFees_priceDipBelowGraduationAndThenBuys() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        // first, make the price dip below graduation price by selling a lot of tokens
+        _swapSell(buyer, 10_000_000e18, 0.1 ether, true);
+
+        // then do a buy crossing again that liquidity position
+        uint256 buyAmount = 4 ether;
+        _swapBuy(buyer, buyAmount, 10e18, true);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+
+        uint256 creatorBalanceBefore = creator.balance;
+        graduatorWithFees.collectEthFees(tokens, 0);
+        graduatorWithFees.collectEthFees(tokens, 1);
+        uint256 totalCreatorFees = creator.balance - creatorBalanceBefore;
+
+        // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
+        // So creator gets 0.5% = buyAmount / 200
+        uint256 expectedFees = buyAmount / 200;
+        assertApproxEqAbsDecimal(totalCreatorFees, expectedFees, 1, 18, "creator fees should be 0.5% of buy amount");
+    }
 }
 
 contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
     function test_viewFunction_positionId() public createAndGraduateToken {
-        uint256 positionId = graduatorWithFees.positionIds(testToken);
+        uint256 positionId = graduatorWithFees.positionIds(testToken, 0);
 
         assertEq(positionId, 62898, "wrong position id registered at graduation");
     }
@@ -364,7 +392,7 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, 0);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertEq(fees[0], 0, "fees should be 0 right after graduation");
@@ -379,7 +407,7 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, 0);
 
         assertEq(fees.length, 1, "should return one fee value");
         // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
@@ -395,7 +423,7 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, 0);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertEq(fees[0], 0, "no eth fees should be claimable after sell");
@@ -412,7 +440,7 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, 0);
 
         assertEq(fees.length, 1, "should return one fee value");
         uint256 expectedCreatorFees = (buyAmount1 + buyAmount2) / 200;
@@ -427,12 +455,12 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, 0);
         assertApproxEqAbs(fees[0], 1 ether / 200, 1, "creator fees should be 0.5% of buy amount");
 
         _collectFees(testToken);
 
-        fees = graduatorWithFees.getClaimableFees(tokens);
+        fees = graduatorWithFees.getClaimableFees(tokens, 0);
 
         assertEq(fees[0], 0, "fees should be 0 after claim");
     }
@@ -450,7 +478,7 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, 0);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertApproxEqAbs(fees[0], buyAmount2 / 200, 1, "creator fees should be 0.5% of second buy amount");
@@ -462,7 +490,7 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         tokens[0] = testToken1;
         tokens[1] = testToken2;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, 0);
 
         assertEq(fees.length, 2, "should return two fee values");
         // Expected fees: 0.5% of 1 ether = 1 ether / 200
@@ -477,7 +505,7 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         tokens[1] = testToken2;
         tokens[2] = testToken1; // repeated
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens);
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, 0);
 
         assertEq(fees.length, 3, "should return three fee values");
         // Expected fees: 0.5% of 1 ether = 1 ether / 200
@@ -485,5 +513,31 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         assertApproxEqAbs(fees[1], 1 ether / 200, 1, "fees[1] should be 0.5% of buy amount");
         assertApproxEqAbs(fees[2], 1 ether / 200, 1, "fees[2] should match fees[0] for repeated token");
         assertEq(fees[0], fees[2], "repeated token should return same fees");
+    }
+
+    /// @notice test that if price dips well below the graduation price and then there are buys, the fees are still correctly calculated
+    /// @dev This is mainly covering the extra single-sided eth position below the graduation price
+    function test_viewFunction_getClaimableFees_priceDipBelowGraduationAndThenBuys() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        // first, make the price dip below graduation price by selling a lot of tokens
+        _swapSell(buyer, 10_000_000e18, 0.1 ether, true);
+
+        // then do a buy crossing again that liquidity position
+        uint256 buyAmount = 4 ether;
+        _swapBuy(buyer, buyAmount, 10e18, true);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        // claim from both positions to claim all ETH possible
+        uint256[] memory fees0;
+        fees0 = graduatorWithFees.getClaimableFees(tokens, 0);
+        uint256[] memory fees1;
+        fees1 = graduatorWithFees.getClaimableFees(tokens, 1);
+        uint256 totalFees = fees0[0] + fees1[0];
+
+        // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
+        // So creator gets 0.5% = buyAmount / 200
+        uint256 expectedFees = buyAmount / 200;
+        assertApproxEqAbsDecimal(totalFees, expectedFees, 1, 18, "creator fees should be 0.5% of buy amount");
     }
 }
