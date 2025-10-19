@@ -27,9 +27,18 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     /// @notice Wrapped ETH address
     address internal immutable WETH;
 
+    //////////////////////// EVENTS ////////////////////////
+
     event SweepedRemainingEth(address graduatedToken, uint256 amount);
+    event TokenGraduated(
+        address indexed token, address indexed pair, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
+    );
+
+    //////////////////////// ERRORS ////////////////////////
 
     error EtherTransferFailed();
+
+    ////////////////////////////////////////////////////////
 
     /// @notice Initializes the Uniswap V2 graduator
     /// @param _uniswapRouter Address of the Uniswap V2 router

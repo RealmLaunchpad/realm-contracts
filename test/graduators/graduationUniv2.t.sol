@@ -9,6 +9,7 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 
@@ -382,7 +383,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ2() public createTestToken {
         address tokenPair = 0x428B8846d10CefF5eDD09CEDEE7f15CFDe95752E;
         vm.expectEmit(true, true, false, true);
-        emit ILivoGraduator.TokenGraduated(
+        emit LivoGraduatorUniswapV2.TokenGraduated(
             testToken, tokenPair, 191123250949901652977523068, 7456000000000052224, 37749370313721482071414
         );
 
