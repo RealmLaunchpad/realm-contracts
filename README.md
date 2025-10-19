@@ -238,8 +238,8 @@ Anyone can call `LivoGraduatorUniswapV4.collectEthFees()` to:
 
 5. **Whitelist curves & graduators pairs**
    ```solidity
-   launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV2), true);
-   launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV4), true);
+   launchpad.whitelistComponents(address(bondingCurve), address(graduatorV2), true);
+   launchpad.whitelistComponents(address(bondingCurve), address(graduatorV4), true);
    ```
 
 ## Security Considerations

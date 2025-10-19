@@ -302,7 +302,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     /// @notice Test that after graduation (exact eth) all the token supply is in the buyer's balance and the pool manager
     function test_poolManagerTokenBalanceAfterExcessGraduation() public createTestToken {
         assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
-        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 0.01 ether);
+        _launchpadBuy(testToken, GRADUATION_THRESHOLD - 0.01 ether);
         _graduateToken();
 
         uint256 buyerBalance = LivoToken(testToken).balanceOf(buyer);
@@ -322,7 +322,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     /// @notice Test that after graduation (exact eth) the eth worth of tokens dead is negligible
     function test_negligibleEthWorthOfTokensBurnedAtExcessGraduation() public createTestToken {
         assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
-        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 0.01 ether);
+        _launchpadBuy(testToken, GRADUATION_THRESHOLD - 0.01 ether);
         _graduateToken();
 
         uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
@@ -362,11 +362,11 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that the price given at graduation is lower than pool price in uniswapv4
     function test_priceGivenAtGraduation_smallTx_MatchesUniv4() public createTestToken {
-        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 1);
+        _launchpadBuy(testToken, GRADUATION_THRESHOLD - 1);
         uint256 remainingForGraduation;
-        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        remainingForGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         _launchpadBuy(testToken, remainingForGraduation - 1);
-        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        remainingForGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         _launchpadBuy(testToken, remainingForGraduation - 1);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
@@ -402,11 +402,11 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that after exact graduation, the first purchase has a similar price than the last purchase in the bonding curve
     function test_priceGivenAtGraduation_smallTx_MatchesUniv4_Swap() public createTestToken {
-        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 1);
+        _launchpadBuy(testToken, GRADUATION_THRESHOLD - 1);
         uint256 remainingForGraduation;
-        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        remainingForGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         _launchpadBuy(testToken, remainingForGraduation - 1);
-        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        remainingForGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         _launchpadBuy(testToken, remainingForGraduation - 1);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
@@ -444,7 +444,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that when token is graduated at graduation threshold plus MAX_THRESHOLD_EXCESS, the price purchasing in univ4 is above the price in the bonding curve
     function test_priceGivenAtGraduationMatchesUniv4_largeLastPurchase_matchesSwap() public createTestToken {
-        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 0.5 ether);
+        _launchpadBuy(testToken, GRADUATION_THRESHOLD - 0.5 ether);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
         // if a crazy user buys the remaining tokens, will get a hell of a price impact ...
@@ -640,7 +640,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         vm.expectEmit(true, true, false, true);
         emit LivoGraduatorUniswapV4.TokenGraduated(
             testToken,
-            bytes32(0x61d09d3d61aca8c0bb4a184f4a8aa1e8efaf52b6ab5058939a90289ca01417d7),
+            bytes32(0xac4023835d8279a53bbbab32938ad899812e4219c5d907fba98ec8924f9aa229),
             191123250949901652977521310,
             7456000000000052224,
             55296381402046003400649
@@ -738,14 +738,14 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice If the last buyer immediately sells after graduation, they shouldn't be at profit
     function test_arbitrageOpportunityAtGraduation(uint256 initialEthBuy, uint256 secondBuy) public createTestToken {
-        initialEthBuy = bound(initialEthBuy, 0.01 ether, BASE_GRADUATION_THRESHOLD - 0.01 ether);
+        initialEthBuy = bound(initialEthBuy, 0.01 ether, GRADUATION_THRESHOLD - 0.01 ether);
 
         _launchpadBuy(testToken, initialEthBuy);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
         // the second buy triggers graduation, and can exceed until permitted
         uint256 remainingEthUntilGraduation =
-            BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+            GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         uint256 maxEthPurchase = launchpad.getMaxEthToSpend(testToken);
         uint256 graduationPurchaseAmount = bound(secondBuy, remainingEthUntilGraduation, maxEthPurchase);
 

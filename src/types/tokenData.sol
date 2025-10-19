@@ -13,6 +13,8 @@ struct TokenConfig {
     uint256 graduationEthFee;
     /// @notice Threshold in ETH that must be collected for graduation to happen
     uint256 ethGraduationThreshold;
+    /// @notice Max excess eth over graduation threshold
+    uint256 maxExcessOverThreshold;
     /// @notice Reserved supply of tokens for creator at graduation
     uint256 creatorReservedSupply;
     /// @notice Creator of the token. Cannot be altered once is set
@@ -39,5 +41,10 @@ library TokenDataLib {
 
     function notGraduated(TokenState storage state) internal view returns (bool) {
         return !state.graduated;
+    }
+
+    /// @dev above this value, the buy transaction should revert
+    function maxEthReserves(TokenConfig storage config) internal view returns (uint256) {
+        return config.ethGraduationThreshold + config.maxExcessOverThreshold;
     }
 }

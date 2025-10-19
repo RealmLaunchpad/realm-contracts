@@ -37,8 +37,6 @@ contract LaunchpadInvariants is Test {
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
     uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
-    uint256 public constant BASE_GRADUATION_THRESHOLD = 7956000000000052224;
-    uint256 public constant BASE_GRADUATION_FEE = 0.5 ether;
     uint16 public constant BASE_BUY_FEE_BPS = 100;
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
@@ -46,6 +44,11 @@ contract LaunchpadInvariants is Test {
     address constant UNISWAP_V2_ROUTER = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
+
+    // used for both combinations of curves,graduators for univ2 and univ4
+    uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~8 ether
+    uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
+    uint256 constant GRADUATION_FEE = 0.5 ether;
 
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
@@ -55,18 +58,33 @@ contract LaunchpadInvariants is Test {
 
         // the actual deployments
         tokenImplementation = new LivoToken();
-        launchpad = new LivoLaunchpad(treasury, address(tokenImplementation));
+        launchpad = new LivoLaunchpad(treasury);
 
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
-        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV2), true);
-        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduatorV4), true);
+        launchpad.whitelistComponents(
+            address(tokenImplementation),
+            address(bondingCurve),
+            address(graduatorV2),
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
+        launchpad.whitelistComponents(
+            address(tokenImplementation),
+            address(bondingCurve),
+            address(graduatorV4),
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
         vm.stopPrank();
 
-        helper =
-            new InvariantsHelperLaunchpad(launchpad, address(bondingCurve), address(graduatorV2), address(graduatorV4));
+        helper = new InvariantsHelperLaunchpad(
+            launchpad, address(tokenImplementation), address(bondingCurve), address(graduatorV2), address(graduatorV4)
+        );
 
         targetContract(address(helper));
     }
@@ -165,7 +183,7 @@ contract LaunchpadInvariants is Test {
             TokenState memory state = launchpad.getTokenState(token);
             assertLt(
                 state.ethCollected,
-                launchpad.baseEthGraduationThreshold(),
+                GRADUATION_THRESHOLD,
                 "ungraduated token has ethCollected above graduation threshold"
             );
         }

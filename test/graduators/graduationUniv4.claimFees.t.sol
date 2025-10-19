@@ -52,7 +52,9 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     modifier createAndGraduateToken() {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
-        testToken = launchpad.createToken("TestToken", "TEST", address(bondingCurve), address(graduator), hex"12");
+        testToken = launchpad.createToken(
+            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), "0x12"
+        );
 
         _graduateToken();
         _;
@@ -60,13 +62,17 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
     modifier twoGraduatedTokensWithBuys(uint256 buyAmount) {
         vm.startPrank(creator);
-        testToken1 = launchpad.createToken("TestToken1", "TEST1", address(bondingCurve), address(graduator), "");
-        testToken2 = launchpad.createToken("TestToken2", "TEST2", address(bondingCurve), address(graduator), "");
+        testToken1 = launchpad.createToken(
+            "TestToken1", "TEST1", address(implementation), address(bondingCurve), address(graduator), "0x1a3a"
+        );
+        testToken2 = launchpad.createToken(
+            "TestToken2", "TEST2", address(implementation), address(bondingCurve), address(graduator), "0x1a3a"
+        );
         vm.stopPrank();
 
         // graduate token1 and token2
-        uint256 buyAmount1 = _increaseWithFees(BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
-        uint256 buyAmount2 = _increaseWithFees(BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
+        uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
+        uint256 buyAmount2 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
         vm.deal(buyer, 100 ether);
         vm.startPrank(buyer);
         launchpad.buyTokensWithExactEth{value: buyAmount1}(testToken1, 0, DEADLINE);
@@ -102,7 +108,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken, 0);
 
         assertEq(
-            IERC721(uniswapV4NftAddress).ownerOf(positionId),
+            IERC721(positionManagerAddress).ownerOf(positionId),
             address(liquidityLock),
             "liquidity lock should own the position NFT"
         );
