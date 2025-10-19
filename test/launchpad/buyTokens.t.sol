@@ -147,7 +147,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
     function testBuyTokensWithExactEth_nearGraduationThreshold() public createTestToken {
         // Test buying close to graduation threshold without actually graduating
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
+        uint256 graduationThreshold = GRADUATION_THRESHOLD;
 
         // Buy up to just before the threshold (accounting for fees)
         // Calculate amount that gets us close but not over threshold
@@ -165,7 +165,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     }
 
     function testBuyTokensWithExactEth_revertExceedsPostGraduationLimit() public createTestToken {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
+        uint256 graduationThreshold = GRADUATION_THRESHOLD;
         uint256 maxExcess = 0.5 ether; // MAX_THRESHOLD_EXCESS
 
         // Try to buy way beyond the excess limit
@@ -181,7 +181,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         public
         createTestToken
     {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
+        uint256 graduationThreshold = GRADUATION_THRESHOLD;
         uint256 maxExcess = 0.5 ether; // MAX_THRESHOLD_EXCESS
 
         // Buy up to just before the threshold (accounting for fees)
@@ -324,7 +324,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         // buy but not graduate
         vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: BASE_GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
 
         assertEq(
             address(launchpad).balance - initialLaunchpadBalance,
@@ -338,9 +338,9 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         public
         createTestToken
     {
-        uint256 maxTotalEth = BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS;
+        uint256 maxTotalEth = GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS;
         // if the token graduates from the first one, the next one is pointless
-        ethForPreBuy = bound(ethForPreBuy, 1, BASE_GRADUATION_THRESHOLD - 2);
+        ethForPreBuy = bound(ethForPreBuy, 1, GRADUATION_THRESHOLD - 2);
         ethForComparison = bound(ethForComparison, 1, (maxTotalEth - ethForPreBuy) / 2);
 
         vm.deal(buyer, 10 ether);
@@ -382,7 +382,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     }
 
     function test_quoteBuyTokens_rightBelowHittingExcessLimit() public createTestToken {
-        uint256 maxValue = _increaseWithFees(BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS + 1);
+        uint256 maxValue = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS + 1);
 
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
         launchpad.quoteBuyWithExactEth(testToken, maxValue);
@@ -397,7 +397,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     }
 
     function test_fuzzBuyMaxEth(uint256 firstEthBuy) public createTestToken {
-        uint256 limit = _increaseWithFees(BASE_GRADUATION_THRESHOLD) - 1;
+        uint256 limit = _increaseWithFees(GRADUATION_THRESHOLD) - 1;
         firstEthBuy = bound(firstEthBuy, 1, limit);
 
         vm.deal(buyer, 20 ether);

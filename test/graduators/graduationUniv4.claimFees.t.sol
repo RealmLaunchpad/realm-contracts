@@ -71,8 +71,8 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         vm.stopPrank();
 
         // graduate token1 and token2
-        uint256 buyAmount1 = _increaseWithFees(BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
-        uint256 buyAmount2 = _increaseWithFees(BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
+        uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
+        uint256 buyAmount2 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
         vm.deal(buyer, 100 ether);
         vm.startPrank(buyer);
         launchpad.buyTokensWithExactEth{value: buyAmount1}(testToken1, 0, DEADLINE);
@@ -108,7 +108,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken, 0);
 
         assertEq(
-            IERC721(uniswapV4NftAddress).ownerOf(positionId),
+            IERC721(positionManagerAddress).ownerOf(positionId),
             address(liquidityLock),
             "liquidity lock should own the position NFT"
         );

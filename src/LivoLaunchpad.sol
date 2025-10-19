@@ -28,9 +28,6 @@ contract LivoLaunchpad is Ownable2Step {
     /// @notice Supply reserved to the token creator, but only transferred at token graduation
     uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
 
-    /// @notice The base graduation fee in ETH, paid at graduation to the treasury (in wei)
-    uint256 public baseGraduationFee;
-
     /// @notice Total fees collected by the treasury (in wei)
     uint256 public treasuryEthFeesCollected;
 
@@ -91,7 +88,6 @@ contract LivoLaunchpad is Ownable2Step {
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
-    event GraduationFeeUpdated(uint256 newGraduationFee);
     event ComponentsSetWhitelisted(address implementation, address bondingCurve, address graduator, bool whitelisted);
 
     /////////////////////////////////////////////////
@@ -100,8 +96,6 @@ contract LivoLaunchpad is Ownable2Step {
     constructor(address _treasury) Ownable(msg.sender) {
         // Set initial values and emit events for off-chain indexers
         setTreasuryAddress(_treasury);
-
-        setGraduationFee(0.5 ether);
         // buy/sell fees at 1%
         setTradingFees(100, 100);
     }
@@ -137,8 +131,8 @@ contract LivoLaunchpad is Ownable2Step {
         emit TokenCreated(token, msg.sender, name, symbol, implementation, bondingCurve, graduator);
 
         // get both these parameters at once to save one external call
-        (uint256 graduationThreshold, uint256 maxExcessOverThreshold) =
-            ILivoBondingCurve(bondingCurve).getGraduationSettings();
+        (uint256 graduationThreshold, uint256 maxExcessOverThreshold, uint256 graduationEthFee) =
+            ILivoGraduator(graduator).getGraduationSettings();
 
         // at creation all tokens are held by this contract
         tokenConfigs[token] = TokenConfig({
@@ -147,8 +141,8 @@ contract LivoLaunchpad is Ownable2Step {
             creator: msg.sender,
             ethGraduationThreshold: graduationThreshold,
             maxExcessOverThreshold: maxExcessOverThreshold,
+            graduationEthFee: graduationEthFee,
             creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
-            graduationEthFee: baseGraduationFee,
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps
         });
@@ -332,13 +326,6 @@ contract LivoLaunchpad is Ownable2Step {
     }
 
     //////////////////////////// Admin functions //////////////////////////
-
-    /// @notice Updates the graduation fee, which only affects new token deployments
-    /// @param ethAmount The new graduation fee in wei
-    function setGraduationFee(uint256 ethAmount) public onlyOwner {
-        baseGraduationFee = ethAmount;
-        emit GraduationFeeUpdated(ethAmount);
-    }
 
     /// @notice Updates the buy/sell fees, which only affects new token deployments
     /// @param buyFeeBps The buy fee in basis points (100 = 1%)

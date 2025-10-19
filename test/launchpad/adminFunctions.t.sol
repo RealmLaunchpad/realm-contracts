@@ -17,27 +17,6 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.deal(nonOwner, INITIAL_ETH_BALANCE);
     }
 
-    // setGraduationFee Tests
-    function test_setGraduationFee_FailsForNonOwner() public {
-        uint256 newFee = 1 ether;
-
-        vm.prank(nonOwner);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
-        launchpad.setGraduationFee(newFee);
-    }
-
-    function test_setGraduationFee_SucceedsForOwner() public {
-        uint256 newFee = 1 ether;
-
-        vm.expectEmit(true, true, true, true);
-        emit GraduationFeeUpdated(newFee);
-
-        vm.prank(admin);
-        launchpad.setGraduationFee(newFee);
-
-        assertEq(launchpad.baseGraduationFee(), newFee);
-    }
-
     // setTradingFees Tests
     function test_setTradingFees_FailsForNonOwner() public {
         uint16 newBuyFee = 200;

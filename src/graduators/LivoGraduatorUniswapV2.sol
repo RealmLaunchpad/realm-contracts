@@ -36,6 +36,8 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
 
     //////////////////////// ERRORS ////////////////////////
 
+    ////////////////////// Custom errors ///////////////
+
     error EtherTransferFailed();
 
     ////////////////////////////////////////////////////////
@@ -107,6 +109,18 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         _cleanup(tokenAddress);
 
         emit TokenGraduated(tokenAddress, pair, amountToken, amountEth, liquidity);
+    }
+
+    /// @notice Returns the graduation threshold, the margin above it that ETH reserves can reach at graduation and the graduation fee
+    /// @dev These need to be linked as they would have an effect on the effective price post graduation
+    function getGraduationSettings()
+        external
+        pure
+        returns (uint256 graduationThreshold, uint256 maxExcessOverThreshold, uint256 graduationEthFee)
+    {
+        graduationThreshold = GRADUATION_THRESHOLD;
+        maxExcessOverThreshold = MAX_EXCESS_OVER_THRESHOLD;
+        graduationEthFee = GRADUATION_ETH_FEE;
     }
 
     /// @dev Reads the actual eth reserves after syncing
