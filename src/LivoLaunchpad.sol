@@ -196,8 +196,6 @@ contract LivoLaunchpad is Ownable2Step {
         require(tokenConfig.exists(), InvalidToken());
         require(tokenState.notGraduated(), AlreadyGraduated());
         require(block.timestamp <= deadline, DeadlineExceeded());
-        // fees are ignored in the check below on purpose.
-        // If fees were accounted, the limit should be higher, but it is an arbitrary limit anyways
 
         (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = _quoteBuyWithExactEth(token, msg.value);
 
@@ -474,6 +472,7 @@ contract LivoLaunchpad is Ownable2Step {
     {
         TokenConfig storage tokenConfig = tokenConfigs[token];
 
+        // it is ok that these fees round in favor of the user (1 wei less fee on every purchase)
         ethFee = (ethValue * tokenConfig.buyFeeBps) / BASIS_POINTS;
         ethForPurchase = ethValue - ethFee;
 
@@ -492,6 +491,7 @@ contract LivoLaunchpad is Ownable2Step {
 
         ethFromSale = tokenConfig.bondingCurve.sellExactTokens(tokenStates[token].ethCollected, tokenAmount);
 
+        // it is ok that these fees round in favor of the user (1 wei less fee on every sale)
         ethFee = (ethFromSale * tokenConfig.sellFeeBps) / BASIS_POINTS;
         ethForSeller = ethFromSale - ethFee;
 
