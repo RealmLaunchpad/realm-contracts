@@ -23,7 +23,7 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     modifier createTestTokenWithPair() {
         vm.prank(creator);
-        testToken = launchpad.createToken("TestToken", "TEST", address(bondingCurve), address(graduator));
+        testToken = launchpad.createToken("TestToken", "TEST", address(bondingCurve), address(graduator), "0x1");
         uniswapPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
         _;
     }
@@ -121,7 +121,7 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     /// @notice Test that it is not possible to create the univ2pair right after token is deployed
     function test_cannotCreateUniV2PairRightAfterTokenDeployment() public {
         vm.prank(creator);
-        testToken = launchpad.createToken("TestToken", "TEST", address(bondingCurve), address(graduator));
+        testToken = launchpad.createToken("TestToken", "TEST", address(bondingCurve), address(graduator), "1234");
 
         address existingPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
         assertTrue(existingPair != address(0), "Pair should already exist from token creation");
@@ -380,7 +380,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
     /// @notice Test that the TokenGraduated event is emitted by the graduator
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ2() public createTestToken {
-        address tokenPair = 0xca836052C887fb3F9e419592aB45be14EF618365;
+        address tokenPair = 0x428B8846d10CefF5eDD09CEDEE7f15CFDe95752E;
         vm.expectEmit(true, true, false, true);
         emit ILivoGraduator.TokenGraduated(
             testToken, tokenPair, 191123250949901652977523068, 7456000000000052224, 37749370313721482071414
