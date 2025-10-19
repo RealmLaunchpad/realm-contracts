@@ -69,8 +69,9 @@ contract LaunchpadInvariants is Test {
 
         (GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS) = bondingCurve.getGraduationSettings();
 
-        helper =
-            new InvariantsHelperLaunchpad(launchpad, address(tokenImplementation), address(bondingCurve), address(graduatorV2), address(graduatorV4));
+        helper = new InvariantsHelperLaunchpad(
+            launchpad, address(tokenImplementation), address(bondingCurve), address(graduatorV2), address(graduatorV4)
+        );
 
         targetContract(address(helper));
     }

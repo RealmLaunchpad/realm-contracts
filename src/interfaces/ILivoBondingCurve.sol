@@ -12,5 +12,8 @@ interface ILivoBondingCurve {
     function sellExactTokens(uint256 ethReserves, uint256 tokenAmount) external view returns (uint256 ethReceived);
 
     /// @notice Returns the graduation threshold and the margin above it that ETH reserves can reach at graduation
-    function getGraduationSettings() external view returns (uint256 graduationThreshold, uint256 maxExcessOverThreshold);
+    function getGraduationSettings()
+        external
+        view
+        returns (uint256 graduationThreshold, uint256 maxExcessOverThreshold);
 }

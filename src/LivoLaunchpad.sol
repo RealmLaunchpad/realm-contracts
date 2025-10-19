@@ -44,7 +44,8 @@ contract LivoLaunchpad is Ownable2Step {
     uint16 public baseSellFeeBps;
 
     /// @notice Whitelisted sets of (implementation, bonding curve, graduator)
-    mapping(address implementation => mapping(address curve => mapping(address graduator => bool whitelisted))) public whitelistedComponents;
+    mapping(address implementation => mapping(address curve => mapping(address graduator => bool whitelisted))) public
+        whitelistedComponents;
 
     /// @notice Mapping of token address to its configuration
     mapping(address => TokenConfig) public tokenConfigs;
@@ -136,7 +137,8 @@ contract LivoLaunchpad is Ownable2Step {
         emit TokenCreated(token, msg.sender, name, symbol, implementation, bondingCurve, graduator);
 
         // get both these parameters at once to save one external call
-        (uint256 graduationThreshold, uint256 maxExcessOverThreshold) = ILivoBondingCurve(bondingCurve).getGraduationSettings();
+        (uint256 graduationThreshold, uint256 maxExcessOverThreshold) =
+            ILivoBondingCurve(bondingCurve).getGraduationSettings();
 
         // at creation all tokens are held by this contract
         tokenConfigs[token] = TokenConfig({
@@ -349,13 +351,15 @@ contract LivoLaunchpad is Ownable2Step {
         emit TradingFeesUpdated(buyFeeBps, sellFeeBps);
     }
 
-    /// @notice Whitelist a combination of bonding curve and graduator
-    /// @dev A combination of bonding curve & graduator can only be used if they are both whitelisted as a pair
+    /// @notice Whitelist a set of components (tokenImplementation, curve, graduator)
     /// @param implementation Token implementation address
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
     /// @param whitelisted True to whitelist combination, false to remove from whitelist
-    function whitelistComponents(address implementation, address bondingCurve, address graduator, bool whitelisted) external onlyOwner {
+    function whitelistComponents(address implementation, address bondingCurve, address graduator, bool whitelisted)
+        external
+        onlyOwner
+    {
         if (whitelistedComponents[implementation][bondingCurve][graduator] == whitelisted) revert WhitelistAlreadySet();
 
         whitelistedComponents[implementation][bondingCurve][graduator] = whitelisted;

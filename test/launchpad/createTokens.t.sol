@@ -9,7 +9,9 @@ import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testDeployLivoToken_happyPath() public {
         vm.prank(creator);
-        address deployedToken = launchpad.createToken("TestToken", "TEST",address(implementation), address(bondingCurve), address(graduator));
+        address deployedToken = launchpad.createToken(
+            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator)
+        );
 
         // Verify token was deployed
         assertTrue(deployedToken != address(0));
@@ -48,7 +50,9 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function testTokenCreatedHasDifferentAddressThanImplementation() public {
         vm.prank(creator);
-        address deployedToken = launchpad.createToken("Sanitator", "SANIT",address(implementation), address(bondingCurve), address(graduator));
+        address deployedToken = launchpad.createToken(
+            "Sanitator", "SANIT", address(implementation), address(bondingCurve), address(graduator)
+        );
 
         // Verify token was deployed
         assertTrue(deployedToken != address(0));
@@ -60,7 +64,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.NotWhitelistedComponents.selector));
-        launchpad.createToken("TestToken", "TEST", address(implementation),invalidCurve, address(graduator));
+        launchpad.createToken("TestToken", "TEST", address(implementation), invalidCurve, address(graduator));
     }
 
     function testCannotCreateTokenWith_InvalidGraduator_ValidCurve() public {
@@ -68,29 +72,33 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.NotWhitelistedComponents.selector));
-        launchpad.createToken("TestToken", "TEST", address(implementation),invalidCurve, address(graduator));
+        launchpad.createToken("TestToken", "TEST", address(implementation), invalidCurve, address(graduator));
     }
 
     function testCannotCreateTokenWithEmptyName() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidNameOrSymbol.selector));
-        launchpad.createToken("", "TEST", address(implementation),address(bondingCurve), address(graduator));
+        launchpad.createToken("", "TEST", address(implementation), address(bondingCurve), address(graduator));
     }
 
     function testCannotCreateTokenWithEmptySymbol() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidNameOrSymbol.selector));
-        launchpad.createToken("TestToken", "", address(implementation),address(bondingCurve), address(graduator));
+        launchpad.createToken("TestToken", "", address(implementation), address(bondingCurve), address(graduator));
     }
 
     function testCanCreateTokenWithDuplicateSymbol() public {
         // Create first token with symbol "TEST"
         vm.prank(creator);
-        address token1 = launchpad.createToken("TestToken1", "TEST",address(implementation), address(bondingCurve), address(graduator));
+        address token1 = launchpad.createToken(
+            "TestToken1", "TEST", address(implementation), address(bondingCurve), address(graduator)
+        );
 
         // Create second token with same symbol - should succeed now
         vm.prank(creator);
-        address token2 = launchpad.createToken("TestToken2", "TEST",address(implementation), address(bondingCurve), address(graduator));
+        address token2 = launchpad.createToken(
+            "TestToken2", "TEST", address(implementation), address(bondingCurve), address(graduator)
+        );
 
         // Both should be deployed successfully
         assertTrue(token1 != address(0));
@@ -107,11 +115,15 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testCanCreateTokensWithDifferentSymbols() public {
         // Create first token
         vm.prank(creator);
-        address token1 = launchpad.createToken("TestToken1", "TEST1",address(implementation), address(bondingCurve), address(graduator));
+        address token1 = launchpad.createToken(
+            "TestToken1", "TEST1", address(implementation), address(bondingCurve), address(graduator)
+        );
 
         // Create second token with different symbol
         vm.prank(creator);
-        address token2 = launchpad.createToken("TestToken2", "TEST2", address(implementation),address(bondingCurve), address(graduator));
+        address token2 = launchpad.createToken(
+            "TestToken2", "TEST2", address(implementation), address(bondingCurve), address(graduator)
+        );
 
         // Both should be deployed successfully
         assertTrue(token1 != address(0));
@@ -127,6 +139,8 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         string memory longSymbol = "TESTTESTTESTTESTTESTTESTTESTESESD"; // 33 characters
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidNameOrSymbol.selector));
-        launchpad.createToken("TestToken", longSymbol, address(implementation),address(bondingCurve), address(graduator));
+        launchpad.createToken(
+            "TestToken", longSymbol, address(implementation), address(bondingCurve), address(graduator)
+        );
     }
 }

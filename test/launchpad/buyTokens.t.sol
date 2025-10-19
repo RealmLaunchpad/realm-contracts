@@ -295,7 +295,9 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         // Reset state by creating a new token for the second scenario
         vm.prank(creator);
-        address testToken2 = launchpad.createToken("Test Token 2", "TT2",address(implementation), address(bondingCurve), address(graduator));
+        address testToken2 = launchpad.createToken(
+            "Test Token 2", "TT2", address(implementation), address(bondingCurve), address(graduator)
+        );
 
         // Scenario 2: One big buy
         address buyer2 = makeAddr("buyer2");
@@ -413,7 +415,6 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: secondBuyMaxEth}(testToken, 0, DEADLINE);
     }
-
 }
 
 /// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator

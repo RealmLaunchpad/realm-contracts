@@ -50,7 +50,13 @@ contract InvariantsHelperLaunchpad is Test {
     uint256 constant FAR_IN_FUTURE = 9758664012;
 
     /////////////////////////////////////////////////////
-    constructor(LivoLaunchpad _launchpad, address _implementation, address _bondingCurve, address _graduatorV2, address _graduatorV4) {
+    constructor(
+        LivoLaunchpad _launchpad,
+        address _implementation,
+        address _bondingCurve,
+        address _graduatorV2,
+        address _graduatorV4
+    ) {
         implementation = _implementation;
         launchpad = _launchpad;
         bondingCurve = _bondingCurve;

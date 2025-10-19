@@ -84,7 +84,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_whitelisting_FailsForNonOwner() public {
         vm.prank(nonOwner);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
-        launchpad.whitelistComponents(address(implementation),address(bondingCurve), address(graduator), true);
+        launchpad.whitelistComponents(address(implementation), address(bondingCurve), address(graduator), true);
     }
 
     function test_whitelisting_SucceedsForOwner() public {
@@ -93,30 +93,30 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(admin);
         launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, true);
 
-        assertTrue(launchpad.whitelistedComponents(address(implementation),newBondingCurve, newGraduator));
+        assertTrue(launchpad.whitelistedComponents(address(implementation), newBondingCurve, newGraduator));
 
         // Test blacklisting
         vm.expectEmit(false, false, false, true);
         emit ComponentsSetWhitelisted(address(implementation), newBondingCurve, newGraduator, false);
 
         vm.prank(admin);
-        launchpad.whitelistComponents(address(implementation),newBondingCurve, newGraduator, false);
+        launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, false);
 
-        assertFalse(launchpad.whitelistedComponents(address(implementation),newBondingCurve, newGraduator));
+        assertFalse(launchpad.whitelistedComponents(address(implementation), newBondingCurve, newGraduator));
     }
 
     function test_whitelistCurveAndGraduator_GivesFalseFor_wCurve_notGraduator() public {
         vm.prank(admin);
         launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, true);
 
-        assertFalse(launchpad.whitelistedComponents(address(implementation),address(bondingCurve), newGraduator));
+        assertFalse(launchpad.whitelistedComponents(address(implementation), address(bondingCurve), newGraduator));
     }
 
     function test_whitelistCurveAndGraduator_GivesFalseFor_notCurve_wGraduator() public {
         vm.prank(admin);
         launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, true);
 
-        assertFalse(launchpad.whitelistedComponents(address(implementation),newBondingCurve, address(graduator)));
+        assertFalse(launchpad.whitelistedComponents(address(implementation), newBondingCurve, address(graduator)));
     }
 
     // setTreasuryAddress Tests
@@ -214,7 +214,9 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     event EthGraduationThresholdUpdated(uint256 newThreshold);
     event GraduationFeeUpdated(uint256 newGraduationFee);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
-    event ComponentsSetWhitelisted(address tokenImplementation, address bondingCurve, address graduator, bool whitelisted);
+    event ComponentsSetWhitelisted(
+        address tokenImplementation, address bondingCurve, address graduator, bool whitelisted
+    );
     event TreasuryAddressUpdated(address newTreasury);
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
 }
