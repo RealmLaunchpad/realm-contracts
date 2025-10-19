@@ -732,4 +732,35 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
             "Treasury got more fees than intended"
         );
     }
+
+    /// @notice If the last buyer immediately sells after graduation, they shouldn't be at profit
+    function test_arbitrageOpportunityAtGraduation(uint256 initialEthBuy, uint256 secondBuy) public createTestToken {
+        initialEthBuy = bound(initialEthBuy, 0.01 ether, BASE_GRADUATION_THRESHOLD - 0.01 ether);
+
+        _launchpadBuy(testToken, initialEthBuy);
+        assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
+
+        // the second buy triggers graduation, and can exceed until permitted
+        uint256 remainingEthUntilGraduation =
+            BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        uint256 maxEthPurchase = launchpad.getMaxEthToSpend(testToken);
+        uint256 graduationPurchaseAmount = bound(secondBuy, remainingEthUntilGraduation, maxEthPurchase);
+
+        uint256 sellerBalanceBefore = seller.balance;
+
+        vm.startPrank(seller);
+        launchpad.buyTokensWithExactEth{value: graduationPurchaseAmount}(testToken, 0, DEADLINE);
+
+        LivoToken(testToken).approve(address(launchpad), type(uint256).max);
+        uint256 tokenBalance = LivoToken(testToken).balanceOf(seller);
+
+        _swapSell(seller, tokenBalance, 0, true);
+        vm.stopPrank();
+
+        uint256 sellerBalanceAfter = seller.balance;
+
+        // if the seller sells all tokens he purchased for 0.02 eth, he should not be at profit due to trading fees
+        // otherwise there is an arbitrage opportunity
+        assertLtDecimal(sellerBalanceAfter, sellerBalanceBefore, 18, "Seller should not be at profit");
+    }
 }

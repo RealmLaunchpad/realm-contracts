@@ -93,7 +93,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     int24 constant TICK_GRADUATION = 170600;
     // this position is concentrated right below the graduation price
     int24 constant TICK_LOWER_2 = TICK_GRADUATION + TICK_SPACING;
-    int24 constant TICK_UPPER_2 = TICK_GRADUATION + 2 * TICK_SPACING; // very concentrated below graduation price
+    int24 constant TICK_UPPER_2 = TICK_UPPER - (110 * TICK_SPACING);
 
     uint160 immutable SQRT_LOWER_2;
     uint160 immutable SQRT_UPPER_2;
