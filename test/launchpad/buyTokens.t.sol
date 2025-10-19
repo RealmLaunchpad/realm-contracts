@@ -10,6 +10,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/LivoToken.sol";
+import {console} from "forge-std/console.sol";
 
 abstract contract BuyTokensTest is LaunchpadBaseTests {
     function testBuyTokensWithExactEth_happyPath() public createTestToken {
@@ -294,7 +295,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         // Reset state by creating a new token for the second scenario
         vm.prank(creator);
-        address testToken2 = launchpad.createToken("Test Token 2", "TT2", address(bondingCurve), address(graduator), "");
+        address testToken2 = launchpad.createToken("Test Token 2", "TT2",address(implementation), address(bondingCurve), address(graduator));
 
         // Scenario 2: One big buy
         address buyer2 = makeAddr("buyer2");
@@ -379,7 +380,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     }
 
     function test_quoteBuyTokens_rightBelowHittingExcessLimit() public createTestToken {
-        uint256 maxValue = _increaseWithFees(BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS);
+        uint256 maxValue = _increaseWithFees(BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS + 1);
 
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
         launchpad.quoteBuyWithExactEth(testToken, maxValue);
@@ -392,6 +393,27 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         assertGt(tokensToReceive, 0, "No tokens received");
         assertEq(ethForPurchase + ethFee, maxValueJustBelow, "Amounts don't add up");
     }
+
+    function test_fuzzBuyMaxEth(uint256 firstEthBuy) public createTestToken {
+        uint256 limit = _increaseWithFees(BASE_GRADUATION_THRESHOLD) - 1;
+        firstEthBuy = bound(firstEthBuy, 1, limit);
+
+        vm.deal(buyer, 20 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: firstEthBuy}(testToken, 0, DEADLINE);
+
+        uint256 secondBuyMaxEth = launchpad.getMaxEthToSpend(testToken);
+        console.log("secondBuy", secondBuyMaxEth);
+
+        uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
+        uint256 expectedMaxEth = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS - ethReserves);
+        assertEq(secondBuyMaxEth, expectedMaxEth, "Max ETH to spend mismatch");
+
+        // this call should always go through because getMaxEthToSpend should not give you a value that would revert when buying
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: secondBuyMaxEth}(testToken, 0, DEADLINE);
+    }
+
 }
 
 /// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator

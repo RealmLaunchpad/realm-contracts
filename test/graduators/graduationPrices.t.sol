@@ -34,7 +34,7 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
 
         ETH_PURCHASE_TO_GRADUATE = _increaseWithFees(graduationThreshold);
 
-        ETH_PURCHASE_TRIGGERS_EXCESS = _increaseWithFees(graduationThreshold + MAX_THRESHOLD_EXCESS);
+        ETH_PURCHASE_TRIGGERS_EXCESS = _increaseWithFees(graduationThreshold + MAX_THRESHOLD_EXCESS + 1);
     }
 
     function _graduateExact() internal {

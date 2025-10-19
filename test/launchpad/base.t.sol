@@ -17,7 +17,7 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 
 contract LaunchpadBaseTests is Test {
     LivoLaunchpad public launchpad;
-    LivoToken public tokenImplementation;
+    LivoToken public implementation;
     ConstantProductBondingCurve public bondingCurve;
 
     ILivoGraduator public graduator;
@@ -43,6 +43,7 @@ contract LaunchpadBaseTests is Test {
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
     uint256 MAX_THRESHOLD_EXCESS;
+    uint256 GRADUATION_THRESHOLD;
 
     // we don't test deadlines mostly
     uint256 constant DEADLINE = type(uint256).max;
@@ -74,8 +75,8 @@ contract LaunchpadBaseTests is Test {
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
 
         vm.startPrank(admin);
-        tokenImplementation = new LivoToken();
-        launchpad = new LivoLaunchpad(treasury, address(tokenImplementation));
+        implementation = new LivoToken();
+        launchpad = new LivoLaunchpad(treasury);
         bondingCurve = new ConstantProductBondingCurve();
         vm.stopPrank();
 
@@ -85,13 +86,13 @@ contract LaunchpadBaseTests is Test {
         vm.deal(alice, INITIAL_ETH_BALANCE);
         vm.deal(bob, INITIAL_ETH_BALANCE);
 
-        MAX_THRESHOLD_EXCESS = launchpad.graduationExcessCap();
+        (GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS) = bondingCurve.getGraduationSettings();
     }
 
     modifier createTestToken() {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
-        testToken = launchpad.createToken("TestToken", "TEST", address(bondingCurve), address(graduator), 0x0);
+        testToken = launchpad.createToken("TestToken", "TEST", address(implementation),address(bondingCurve), address(graduator));
         _;
     }
 
@@ -124,7 +125,7 @@ contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
         graduator = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
         vm.prank(admin);
-        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduator), true);
+        launchpad.whitelistComponents(address(implementation), address(bondingCurve), address(graduator), true);
     }
 }
 
@@ -142,6 +143,6 @@ contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
         );
 
         vm.prank(admin);
-        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduator), true);
+        launchpad.whitelistComponents(address(implementation), address(bondingCurve), address(graduator), true);
     }
 }

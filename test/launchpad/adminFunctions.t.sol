@@ -17,48 +17,6 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.deal(nonOwner, INITIAL_ETH_BALANCE);
     }
 
-    // setLivoTokenImplementation Tests
-    function test_setLivoTokenImplementation_FailsForNonOwner() public {
-        IERC20 newImplementation = new LivoToken();
-
-        vm.prank(nonOwner);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
-        launchpad.setLivoTokenImplementation(address(newImplementation));
-    }
-
-    function test_setLivoTokenImplementation_SucceedsForOwner() public {
-        IERC20 newImplementation = new LivoToken();
-
-        vm.expectEmit(true, true, true, true);
-        emit TokenImplementationUpdated(address(newImplementation));
-
-        vm.prank(admin);
-        launchpad.setLivoTokenImplementation(address(newImplementation));
-
-        assertEq(address(launchpad.tokenImplementation()), address(newImplementation));
-    }
-
-    // setEthGraduationThreshold Tests
-    function test_setEthGraduationThreshold_FailsForNonOwner() public {
-        uint256 newThreshold = 10 ether;
-
-        vm.prank(nonOwner);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
-        launchpad.setEthGraduationThreshold(newThreshold);
-    }
-
-    function test_setEthGraduationThreshold_SucceedsForOwner() public {
-        uint256 newThreshold = 10 ether;
-
-        vm.expectEmit(true, true, true, true);
-        emit EthGraduationThresholdUpdated(newThreshold);
-
-        vm.prank(admin);
-        launchpad.setEthGraduationThreshold(newThreshold);
-
-        assertEq(launchpad.baseEthGraduationThreshold(), newThreshold);
-    }
-
     // setGraduationFee Tests
     function test_setGraduationFee_FailsForNonOwner() public {
         uint256 newFee = 1 ether;
@@ -126,39 +84,39 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_whitelisting_FailsForNonOwner() public {
         vm.prank(nonOwner);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
-        launchpad.whitelistCurveAndGraduator(address(bondingCurve), address(graduator), true);
+        launchpad.whitelistComponents(address(implementation),address(bondingCurve), address(graduator), true);
     }
 
     function test_whitelisting_SucceedsForOwner() public {
         vm.expectEmit(false, false, false, true);
-        emit CurveAndGraduatorWhitelistedSet(newBondingCurve, newGraduator, true);
+        emit ComponentsSetWhitelisted(address(implementation), newBondingCurve, newGraduator, true);
         vm.prank(admin);
-        launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, true);
+        launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, true);
 
-        assertTrue(launchpad.whitelistedComponents(newBondingCurve, newGraduator));
+        assertTrue(launchpad.whitelistedComponents(address(implementation),newBondingCurve, newGraduator));
 
         // Test blacklisting
         vm.expectEmit(false, false, false, true);
-        emit CurveAndGraduatorWhitelistedSet(newBondingCurve, newGraduator, false);
+        emit ComponentsSetWhitelisted(address(implementation), newBondingCurve, newGraduator, false);
 
         vm.prank(admin);
-        launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, false);
+        launchpad.whitelistComponents(address(implementation),newBondingCurve, newGraduator, false);
 
-        assertFalse(launchpad.whitelistedComponents(newBondingCurve, newGraduator));
+        assertFalse(launchpad.whitelistedComponents(address(implementation),newBondingCurve, newGraduator));
     }
 
     function test_whitelistCurveAndGraduator_GivesFalseFor_wCurve_notGraduator() public {
         vm.prank(admin);
-        launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, true);
+        launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, true);
 
-        assertFalse(launchpad.whitelistedComponents(address(bondingCurve), newGraduator));
+        assertFalse(launchpad.whitelistedComponents(address(implementation),address(bondingCurve), newGraduator));
     }
 
     function test_whitelistCurveAndGraduator_GivesFalseFor_notCurve_wGraduator() public {
         vm.prank(admin);
-        launchpad.whitelistCurveAndGraduator(newBondingCurve, newGraduator, true);
+        launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, true);
 
-        assertFalse(launchpad.whitelistedComponents(newBondingCurve, address(graduator)));
+        assertFalse(launchpad.whitelistedComponents(address(implementation),newBondingCurve, address(graduator)));
     }
 
     // setTreasuryAddress Tests
@@ -227,7 +185,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         // original owner can still do owner functions
         vm.prank(admin);
-        launchpad.setEthGraduationThreshold(9 ether);
+        launchpad.setTreasuryAddress(address(0x12345));
 
         // Cancel ownership transfer by setting pending owner to zero address
         vm.prank(admin);
@@ -237,7 +195,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         // original owner can still do owner functions
         vm.prank(admin);
-        launchpad.setEthGraduationThreshold(10 ether);
+        launchpad.setTreasuryAddress(address(0x1223432345));
     }
 
     function test_collectTreasuryFees_NoFeesToCollect() public {
@@ -256,7 +214,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     event EthGraduationThresholdUpdated(uint256 newThreshold);
     event GraduationFeeUpdated(uint256 newGraduationFee);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
-    event CurveAndGraduatorWhitelistedSet(address bondingCurve, address graduator, bool whitelisted);
+    event ComponentsSetWhitelisted(address tokenImplementation, address bondingCurve, address graduator, bool whitelisted);
     event TreasuryAddressUpdated(address newTreasury);
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
 }

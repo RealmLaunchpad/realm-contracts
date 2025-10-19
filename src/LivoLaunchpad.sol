@@ -135,6 +135,7 @@ contract LivoLaunchpad is Ownable2Step {
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
         emit TokenCreated(token, msg.sender, name, symbol, implementation, bondingCurve, graduator);
 
+        // get both these parameters at once to save one external call
         (uint256 graduationThreshold, uint256 maxExcessOverThreshold) = ILivoBondingCurve(bondingCurve).getGraduationSettings();
 
         // at creation all tokens are held by this contract
@@ -354,7 +355,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
     /// @param whitelisted True to whitelist combination, false to remove from whitelist
-    function whitelistCurveAndGraduator(address implementation, address bondingCurve, address graduator, bool whitelisted) external onlyOwner {
+    function whitelistComponents(address implementation, address bondingCurve, address graduator, bool whitelisted) external onlyOwner {
         if (whitelistedComponents[implementation][bondingCurve][graduator] == whitelisted) revert WhitelistAlreadySet();
 
         whitelistedComponents[implementation][bondingCurve][graduator] = whitelisted;

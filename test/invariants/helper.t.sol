@@ -30,8 +30,9 @@ contract InvariantsHelperLaunchpad is Test {
     uint256 MIN_TIME_JUMP = 1; // seconds
 
     LivoLaunchpad public launchpad;
-    address public bondingCurve;
 
+    address public implementation;
+    address public bondingCurve;
     address public graduatorV2;
     address public graduatorV4;
 
@@ -49,7 +50,8 @@ contract InvariantsHelperLaunchpad is Test {
     uint256 constant FAR_IN_FUTURE = 9758664012;
 
     /////////////////////////////////////////////////////
-    constructor(LivoLaunchpad _launchpad, address _bondingCurve, address _graduatorV2, address _graduatorV4) {
+    constructor(LivoLaunchpad _launchpad, address _implementation, address _bondingCurve, address _graduatorV2, address _graduatorV4) {
+        implementation = _implementation;
         launchpad = _launchpad;
         bondingCurve = _bondingCurve;
         graduatorV2 = _graduatorV2;
@@ -103,7 +105,7 @@ contract InvariantsHelperLaunchpad is Test {
         address graduator = (seed % 2 == 0) ? graduatorV2 : graduatorV4;
 
         vm.prank(currentActor);
-        address token = launchpad.createToken("TestToken", "TEST", bondingCurve, graduator, "");
+        address token = launchpad.createToken("TestToken", "TEST", implementation, bondingCurve, graduator);
         _tokens.add(token);
     }
 
@@ -132,8 +134,7 @@ contract InvariantsHelperLaunchpad is Test {
         TokenState memory state = launchpad.getTokenState(selectedToken);
         if (state.graduated) return;
 
-        uint256 maxEthToBuy =
-            launchpad.baseEthGraduationThreshold() + launchpad.graduationExcessCap() - state.ethCollected;
+        uint256 maxEthToBuy = launchpad.getMaxEthToSpend(selectedToken) - state.ethCollected;
 
         // graduation happens at roughly 8 eth
         // purchase exceeds when trying to purchase more than 8.5 eth more or less
