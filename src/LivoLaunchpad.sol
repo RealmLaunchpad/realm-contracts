@@ -15,6 +15,9 @@ contract LivoLaunchpad is Ownable2Step {
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
 
+    /// @notice Max allowed trading fees in basis points
+    uint256 internal constant MAX_TRADING_FEE_BPS = 500; // 5%
+
     /// @notice 100% in basis points
     uint256 public constant BASIS_POINTS = 10_000;
 
@@ -370,8 +373,8 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param buyFeeBps The buy fee in basis points (100 = 1%)
     /// @param sellFeeBps The sell fee in basis points (100 = 1%)
     function setTradingFees(uint16 buyFeeBps, uint16 sellFeeBps) public onlyOwner {
-        require(buyFeeBps <= BASIS_POINTS, InvalidParameter(buyFeeBps));
-        require(sellFeeBps <= BASIS_POINTS, InvalidParameter(sellFeeBps));
+        require(buyFeeBps <= MAX_TRADING_FEE_BPS, InvalidParameter(buyFeeBps));
+        require(sellFeeBps <= MAX_TRADING_FEE_BPS, InvalidParameter(sellFeeBps));
         baseBuyFeeBps = buyFeeBps;
         baseSellFeeBps = sellFeeBps;
         emit TradingFeesUpdated(buyFeeBps, sellFeeBps);
