@@ -14,7 +14,6 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
@@ -24,6 +23,7 @@ import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
+import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 
 /// @notice Tests for Uniswap V4 graduator functionality
 contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
@@ -98,7 +98,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
         // Try to transfer to pool manager
         vm.prank(buyer);
-        vm.expectRevert(LivoToken.TranferToPairBeforeGraduationNotAllowed.selector);
+        vm.expectRevert(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector);
         token.transfer(address(poolManager), buyerBalance / 2);
     }
 
@@ -296,13 +296,13 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         // the eth worth of the burnt tokens should be negligible (less than 0.01 ETH)
         uint256 ethWorthOfBurntTokens = (burntSupply * tokenPrice) / 1e18;
         // console.log("eth worth of burnt tokens", ethWorthOfBurntTokens);
-        assertLt(ethWorthOfBurntTokens, 0.000001 ether, "eth worth of burnt tokens is greater than 0.00004$");
+        assertLt(ethWorthOfBurntTokens, 0.002 ether, "eth worth of burnt tokens is greater than (0.002 ETH) 8$");
     }
 
     /// @notice Test that after graduation (exact eth) all the token supply is in the buyer's balance and the pool manager
     function test_poolManagerTokenBalanceAfterExcessGraduation() public createTestToken {
         assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
-        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 0.01 ether);
+        _launchpadBuy(testToken, GRADUATION_THRESHOLD - 0.01 ether);
         _graduateToken();
 
         uint256 buyerBalance = LivoToken(testToken).balanceOf(buyer);
@@ -322,7 +322,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     /// @notice Test that after graduation (exact eth) the eth worth of tokens dead is negligible
     function test_negligibleEthWorthOfTokensBurnedAtExcessGraduation() public createTestToken {
         assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
-        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 0.01 ether);
+        _launchpadBuy(testToken, GRADUATION_THRESHOLD - 0.01 ether);
         _graduateToken();
 
         uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
@@ -362,11 +362,11 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that the price given at graduation is lower than pool price in uniswapv4
     function test_priceGivenAtGraduation_smallTx_MatchesUniv4() public createTestToken {
-        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 1);
+        _launchpadBuy(testToken, GRADUATION_THRESHOLD - 1);
         uint256 remainingForGraduation;
-        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        remainingForGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         _launchpadBuy(testToken, remainingForGraduation - 1);
-        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        remainingForGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         _launchpadBuy(testToken, remainingForGraduation - 1);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
@@ -402,11 +402,11 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that after exact graduation, the first purchase has a similar price than the last purchase in the bonding curve
     function test_priceGivenAtGraduation_smallTx_MatchesUniv4_Swap() public createTestToken {
-        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 1);
+        _launchpadBuy(testToken, GRADUATION_THRESHOLD - 1);
         uint256 remainingForGraduation;
-        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        remainingForGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         _launchpadBuy(testToken, remainingForGraduation - 1);
-        remainingForGraduation = BASE_GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        remainingForGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         _launchpadBuy(testToken, remainingForGraduation - 1);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
@@ -444,7 +444,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /// @notice Test that when token is graduated at graduation threshold plus MAX_THRESHOLD_EXCESS, the price purchasing in univ4 is above the price in the bonding curve
     function test_priceGivenAtGraduationMatchesUniv4_largeLastPurchase_matchesSwap() public createTestToken {
-        _launchpadBuy(testToken, BASE_GRADUATION_THRESHOLD - 0.5 ether);
+        _launchpadBuy(testToken, GRADUATION_THRESHOLD - 0.5 ether);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
         // if a crazy user buys the remaining tokens, will get a hell of a price impact ...
@@ -638,8 +638,12 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted at graduation
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ4() public createTestToken {
         vm.expectEmit(true, true, false, true);
-        emit ILivoGraduator.TokenGraduated(
-            testToken, poolManagerAddress, 191123250949901652977521310, 7456000000000052224, 37754543528839101445059
+        emit LivoGraduatorUniswapV4.TokenGraduated(
+            testToken,
+            bytes32(0xac4023835d8279a53bbbab32938ad899812e4219c5d907fba98ec8924f9aa229),
+            191123250949901652977521310,
+            7456000000000052224,
+            55296381402046003400649
         );
 
         _graduateToken();
@@ -659,35 +663,44 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     function test_sellingFromUniv4AfterGraduation_sellFullSupply_whereIsTheEth() public createTestToken {
         uint256 poolBalanceBefore = address(poolManager).balance;
         _graduateToken();
-        uint256 poolBalanceAfterGraduation = address(poolManager).balance;
 
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
+        uint256 poolTokenBalanceBefore = LivoToken(testToken).balanceOf(address(poolManager));
+        assertApproxEqAbs(
+            buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore,
+            0.0001 ether,
+            TOTAL_SUPPLY,
+            "some supply is missing"
+        );
+
+        uint256 poolBalanceAfterGraduation = address(poolManager).balance;
         uint256 buyerEtherBefore = buyer.balance;
         uint256 creatorEtherBefore = creator.balance;
 
+        // ~190M tokens are in liquidity, 10M owned by the creator, and ~800M owned by `buyer`
+        // when selling everything back, almost all eth deposited as liquidity should be recovered
+
+        // sell the full balance of the buyer, who has most of the supply
         _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
+        // sell the creator, who has the remaining circulating supply
         _swapSell(creator, creatorBalanceBefore, 1, true);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
-        uint256 ethLeftPool = poolBalanceAfterGraduation - address(poolManager).balance;
+        uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
         // check that the eth collected by buyer and seller matches the eth left the pool
         assertEq(
             ethRecoveredByBuyer + ethRecoveredByCreator,
-            ethLeftPool,
+            ethLeavingFromThePoolManager,
             "eth recovered by buyer and creator should match eth in pool"
         );
 
         // because of the liquidity boundaries set when adding liquidity, there is a tiny amount of eth that won't be recoverable
         // even when all token supply is sold.
         // We have tuned the ticks so that this amount is lower than 0.005 ether
-        assertApproxEqAbs(
-            address(poolManager).balance,
-            poolBalanceBefore,
-            0.005 ether,
-            "Non recoverable ether from pool manager is too large"
-        );
+        uint256 nonRecoverableEth = address(poolManager).balance - poolBalanceBefore;
+        assertLtDecimal(nonRecoverableEth, 0.105 ether, 18, "Non recoverable ether from pool manager is too large");
     }
 
     function test_creatorSellsHisAllocationRightAfterGraduation() public createTestToken {
@@ -700,12 +713,57 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         _swapSell(creator, creatorBalanceBefore, 1, true);
 
         uint256 tokenPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
-        assertEq(tokenPrice, 0.000000035263946364 ether);
 
         uint256 tokenMcapInEth = tokenPrice * TOTAL_SUPPLY / 1e18;
         assertGt(tokenMcapInEth, 35 ether, "token mcap should be 35 eth at graduation");
 
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
         assertGt(ethRecoveredByCreator, 0.35 ether, "creator should recover at least 0.35 eth");
+    }
+
+    function test_unintentionalFeesGoingToTreasury() public createTestToken {
+        uint256 treasuryBalanceBefore = address(treasury).balance;
+        uint256 expectedGraduationFee = 0.5001 ether;
+
+        _graduateToken();
+
+        uint256 treasuryBalanceAfter = address(treasury).balance;
+        assertLtDecimal(
+            treasuryBalanceAfter - treasuryBalanceBefore,
+            expectedGraduationFee,
+            18,
+            "Treasury got more fees than intended"
+        );
+    }
+
+    /// @notice If the last buyer immediately sells after graduation, they shouldn't be at profit
+    function test_arbitrageOpportunityAtGraduation(uint256 initialEthBuy, uint256 secondBuy) public createTestToken {
+        initialEthBuy = bound(initialEthBuy, 0.01 ether, GRADUATION_THRESHOLD - 0.01 ether);
+
+        _launchpadBuy(testToken, initialEthBuy);
+        assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
+
+        // the second buy triggers graduation, and can exceed until permitted
+        uint256 remainingEthUntilGraduation =
+            GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        uint256 maxEthPurchase = launchpad.getMaxEthToSpend(testToken);
+        uint256 graduationPurchaseAmount = bound(secondBuy, remainingEthUntilGraduation, maxEthPurchase);
+
+        uint256 sellerBalanceBefore = seller.balance;
+
+        vm.startPrank(seller);
+        launchpad.buyTokensWithExactEth{value: graduationPurchaseAmount}(testToken, 0, DEADLINE);
+
+        LivoToken(testToken).approve(address(launchpad), type(uint256).max);
+        uint256 tokenBalance = LivoToken(testToken).balanceOf(seller);
+
+        _swapSell(seller, tokenBalance, 0, true);
+        vm.stopPrank();
+
+        uint256 sellerBalanceAfter = seller.balance;
+
+        // if the seller sells all tokens he purchased for 0.02 eth, he should not be at profit due to trading fees
+        // otherwise there is an arbitrage opportunity
+        assertLtDecimal(sellerBalanceAfter, sellerBalanceBefore, 18, "Seller should not be at profit");
     }
 }

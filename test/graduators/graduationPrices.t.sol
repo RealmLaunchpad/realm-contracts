@@ -18,6 +18,7 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {BaseUniswapV2GraduationTests} from "test/graduators/graduationUniv2.t.sol";
+import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 
 /// @dev Test that the graduation price matches between launchpad and graduators
 abstract contract GraduationPricesTests is LaunchpadBaseTests {
@@ -25,16 +26,13 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
     uint256 ETH_PURCHASE_TO_GRADUATE;
 
     // below this value, graduation is allowed. Above this value, purchase reverts
-    uint256 ETH_PURCHASE_TRIGGERS_EXCESS;
+    uint256 MAX_ETH_PURCHASE_TO_GRADUATE;
 
     function setUp() public virtual override {
         super.setUp();
 
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
-
-        ETH_PURCHASE_TO_GRADUATE = _increaseWithFees(graduationThreshold);
-
-        ETH_PURCHASE_TRIGGERS_EXCESS = _increaseWithFees(graduationThreshold + MAX_THRESHOLD_EXCESS);
+        ETH_PURCHASE_TO_GRADUATE = _increaseWithFees(GRADUATION_THRESHOLD);
+        MAX_ETH_PURCHASE_TO_GRADUATE = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS);
     }
 
     function _graduateExact() internal {
@@ -42,7 +40,7 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
     }
 
     function _graduateExcess() internal {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
+        uint256 graduationThreshold = GRADUATION_THRESHOLD;
         uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
 
         _launchpadBuy(testToken, ethAmountToGraduate + MAX_THRESHOLD_EXCESS - 1);
@@ -74,11 +72,11 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
 
     function test_exactExcessTriggersRevert() public createTestToken {
         vm.expectRevert(abi.encodeWithSignature("PurchaseExceedsLimitPostGraduation()"));
-        _launchpadBuy(testToken, ETH_PURCHASE_TRIGGERS_EXCESS);
+        _launchpadBuy(testToken, MAX_ETH_PURCHASE_TO_GRADUATE + 1);
     }
 
     function test_belowExcessDoesNotRevert() public createTestToken {
-        _launchpadBuy(testToken, ETH_PURCHASE_TRIGGERS_EXCESS - 1);
+        _launchpadBuy(testToken, MAX_ETH_PURCHASE_TO_GRADUATE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "not graduated");
     }
 

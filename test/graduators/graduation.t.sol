@@ -91,14 +91,14 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         uint256 treasuryBalanceAfter = launchpad.treasuryEthFeesCollected();
         uint256 feeCollected = treasuryBalanceAfter - treasuryBalanceBefore;
 
-        assertGe(feeCollected, BASE_GRADUATION_FEE, "Graduation fee should be collected");
+        assertGe(feeCollected, GRADUATION_FEE, "Graduation fee should be collected");
     }
 
     /// @notice Test that a buy exceeding the graduation + excess limit reverts
     function test_buyExceedingGraduationPlusExcessLimitReverts() public createTestToken {
-        vm.deal(buyer, 2 * BASE_GRADUATION_THRESHOLD);
+        vm.deal(buyer, 2 * GRADUATION_THRESHOLD);
 
-        uint256 exactLimitBeforeFees = BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS;
+        uint256 exactLimitBeforeFees = GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS;
 
         // This purchase should be fine, hitting right below graduation
         uint256 value = exactLimitBeforeFees - MAX_THRESHOLD_EXCESS - 0.000001 ether;
@@ -109,8 +109,8 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         // actual reserves after applying fees
         uint256 effectiveReserves = (value * (10000 - BASE_BUY_FEE_BPS)) / 10000;
-        uint256 triggerOfExcess = BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS - effectiveReserves;
-        // now the next purchase needs to take the reserves beyond BASE_GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS
+        uint256 triggerOfExcess = GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS - effectiveReserves;
+        // now the next purchase needs to take the reserves beyond GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
         launchpad.buyTokensWithExactEth{value: triggerOfExcess + 0.01 ether}(testToken, 0, DEADLINE);
     }
@@ -119,7 +119,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
     /// @notice Test graduation happens with a small excess
     function test_graduationWorksWithSmallExcess() public createTestToken {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
+        uint256 graduationThreshold = GRADUATION_THRESHOLD;
         // Buy a bit more than graduation threshold but within allowed excess
         uint256 smallExcessAmount = graduationThreshold + 0.01 ether;
         uint256 ethAmountWithSmallExcess = _increaseWithFees(smallExcessAmount);
@@ -163,7 +163,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         assertEq(launchpad.getTokenState(testToken).ethCollected, 0, "Initial ETH reserves should be zero");
 
         vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: BASE_GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated");
         assertGt(
             launchpad.getTokenState(testToken).ethCollected, 0, "ETH reserves should be greater than 0 after a purchase"
@@ -182,9 +182,9 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         // buy but not graduate
         vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: BASE_GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
-        uint256 expectedFees = ((BASE_GRADUATION_THRESHOLD - 1 ether) * BASE_BUY_FEE_BPS) / 10000;
+        uint256 expectedFees = ((GRADUATION_THRESHOLD - 1 ether) * BASE_BUY_FEE_BPS) / 10000;
         assertEq(
             launchpad.treasuryEthFeesCollected(),
             treasuryStartingBalance + expectedFees,
@@ -204,7 +204,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         assertEq(
             treasuryFeesAfterGraduation - treasuryFeesBeforeGraduation,
-            BASE_GRADUATION_FEE + tradingFee,
+            GRADUATION_FEE + tradingFee,
             "Treasury should collect graduation fee (plus trading fee)"
         );
     }
@@ -216,7 +216,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         // buy but not graduate
         vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: BASE_GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
         uint256 firstLaunchpadEthBefore = address(launchpad).balance - initialLaunchpadBalance;
@@ -246,7 +246,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         // buy but not graduate
         vm.prank(buyer);
         // value sent: 6956000000000052224
-        launchpad.buyTokensWithExactEth{value: BASE_GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
         // collect the eth trading fees to have a clean comparison
 
@@ -265,7 +265,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         // income: +purchaseValue
         // expenses: -liquidity
         uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
-        uint256 liquidity = etherReservesPreGraduation - tradingFee - BASE_GRADUATION_FEE;
+        uint256 liquidity = etherReservesPreGraduation - tradingFee - GRADUATION_FEE;
         assertEq(launchpadEthBefore - launchpadEthAfter, liquidity, "eth balance change should equal liquidity added");
     }
 }

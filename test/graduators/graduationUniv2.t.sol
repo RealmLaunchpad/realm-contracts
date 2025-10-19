@@ -9,6 +9,7 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 
@@ -23,7 +24,9 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     modifier createTestTokenWithPair() {
         vm.prank(creator);
-        testToken = launchpad.createToken("TestToken", "TEST", address(bondingCurve), address(graduator));
+        testToken = launchpad.createToken(
+            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), "0x003"
+        );
         uniswapPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
         _;
     }
@@ -89,7 +92,7 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         uint256 tokenBalance = IERC20(testToken).balanceOf(buyer);
 
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoToken.TranferToPairBeforeGraduationNotAllowed.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector));
         IERC20(testToken).transfer(uniswapPair, tokenBalance / 2);
     }
 
@@ -121,7 +124,9 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     /// @notice Test that it is not possible to create the univ2pair right after token is deployed
     function test_cannotCreateUniV2PairRightAfterTokenDeployment() public {
         vm.prank(creator);
-        testToken = launchpad.createToken("TestToken", "TEST", address(bondingCurve), address(graduator));
+        testToken = launchpad.createToken(
+            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), "0x003"
+        );
 
         address existingPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
         assertTrue(existingPair != address(0), "Pair should already exist from token creation");
@@ -132,7 +137,7 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
 
     /// @notice Test that price in uniswap matches price in launchpad when last purchase meets the threshold exactly
     function test_priceInUniswapReflectsGraduationLiquidity() public createTestTokenWithPair {
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
+        uint256 graduationThreshold = GRADUATION_THRESHOLD;
         uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
 
         vm.deal(buyer, ethAmountToGraduate);
@@ -205,7 +210,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         deal(address(WETH), address(pair), 0.01 ether);
 
         // check how many tokens we get by purchasing 0.01 ether right before graduation
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
+        uint256 graduationThreshold = GRADUATION_THRESHOLD;
         uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
 
         vm.deal(buyer, ethAmountToGraduate + 1 ether);
@@ -271,7 +276,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         pair.sync();
 
         // check how many tokens we get by purchasing 0.01 ether right before graduation
-        uint256 graduationThreshold = BASE_GRADUATION_THRESHOLD;
+        uint256 graduationThreshold = GRADUATION_THRESHOLD;
         uint256 ethAmountToGraduate = _increaseWithFees(graduationThreshold);
         vm.deal(buyer, ethAmountToGraduate + 1 ether);
         vm.startPrank(buyer);
@@ -356,7 +361,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         // buy but not graduate
         vm.prank(buyer);
         // value sent: 6956000000000052224
-        launchpad.buyTokensWithExactEth{value: BASE_GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
         // collect the eth trading fees to have a clean comparison
 
@@ -380,9 +385,9 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
     /// @notice Test that the TokenGraduated event is emitted by the graduator
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ2() public createTestToken {
-        address tokenPair = 0xca836052C887fb3F9e419592aB45be14EF618365;
+        address tokenPair = 0x68E1D1946219e1B537dd778Da4Ce022F76243008;
         vm.expectEmit(true, true, false, true);
-        emit ILivoGraduator.TokenGraduated(
+        emit LivoGraduatorUniswapV2.TokenGraduated(
             testToken, tokenPair, 191123250949901652977523068, 7456000000000052224, 37749370313721482071414
         );
 
@@ -400,7 +405,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     /// @notice that maxEthToSpend gives a value that allows for graduation
     function test_maxEthToSpend_allowsGraduation() public createTestTokenWithPair {
         uint256 maxEth = launchpad.getMaxEthToSpend(testToken);
-        assertGt(maxEth, BASE_GRADUATION_THRESHOLD, "maxEthToSpend should be higher than graduation threshold");
+        assertGt(maxEth, GRADUATION_THRESHOLD, "maxEthToSpend should be higher than graduation threshold");
 
         vm.deal(buyer, maxEth + 1 ether);
         vm.prank(buyer);
@@ -412,7 +417,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     /// @notice that maxEthToSpend reverts if increased by 1
     function test_maxEthToSpend_revertsIfIncreasedBy1() public createTestTokenWithPair {
         uint256 maxEth = launchpad.getMaxEthToSpend(testToken);
-        assertGt(maxEth, BASE_GRADUATION_THRESHOLD, "maxEthToSpend should be higher than graduation threshold");
+        assertGt(maxEth, GRADUATION_THRESHOLD, "maxEthToSpend should be higher than graduation threshold");
 
         vm.deal(buyer, maxEth + 1 ether);
         vm.prank(buyer);
@@ -422,7 +427,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
     /// @notice that buy maxEthToSpend (after some buys) gives a value that allows for graduation
     function test_maxEthToSpend_afterSomeBuys_allowsGraduation(uint256 preBuyAmount) public createTestTokenWithPair {
-        preBuyAmount = bound(preBuyAmount, 0.01 ether, BASE_GRADUATION_THRESHOLD);
+        preBuyAmount = bound(preBuyAmount, 0.01 ether, GRADUATION_THRESHOLD);
 
         deal(seller, 100 ether);
         vm.prank(seller);
