@@ -63,39 +63,86 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_whitelisting_FailsForNonOwner() public {
         vm.prank(nonOwner);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
-        launchpad.whitelistComponents(address(implementation), address(bondingCurve), address(graduator), true);
+        launchpad.whitelistComponents(
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
     }
 
     function test_whitelisting_SucceedsForOwner() public {
         vm.expectEmit(false, false, false, true);
-        emit ComponentsSetWhitelisted(address(implementation), newBondingCurve, newGraduator, true);
+        emit ComponentsSetWhitelisted(
+            address(implementation),
+            newBondingCurve,
+            newGraduator,
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
         vm.prank(admin);
-        launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, true);
+        launchpad.whitelistComponents(
+            address(implementation),
+            newBondingCurve,
+            newGraduator,
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
 
-        assertTrue(launchpad.whitelistedComponents(address(implementation), newBondingCurve, newGraduator));
+        assertTrue(launchpad.isSetWhitelisted(address(implementation), newBondingCurve, newGraduator));
+    }
+
+    function test_blacklisting_SucceedsForOwner() public {
+        vm.prank(admin);
+        launchpad.whitelistComponents(
+            address(implementation),
+            newBondingCurve,
+            newGraduator,
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
 
         // Test blacklisting
         vm.expectEmit(false, false, false, true);
-        emit ComponentsSetWhitelisted(address(implementation), newBondingCurve, newGraduator, false);
+        emit ComponentsSetBlacklisted(address(implementation), newBondingCurve, newGraduator);
 
         vm.prank(admin);
-        launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, false);
+        launchpad.blacklistComponents(address(implementation), newBondingCurve, newGraduator);
 
-        assertFalse(launchpad.whitelistedComponents(address(implementation), newBondingCurve, newGraduator));
+        assertFalse(launchpad.isSetWhitelisted(address(implementation), newBondingCurve, newGraduator));
     }
 
     function test_whitelistCurveAndGraduator_GivesFalseFor_wCurve_notGraduator() public {
         vm.prank(admin);
-        launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, true);
+        launchpad.whitelistComponents(
+            address(implementation),
+            newBondingCurve,
+            newGraduator,
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
 
-        assertFalse(launchpad.whitelistedComponents(address(implementation), address(bondingCurve), newGraduator));
+        assertFalse(launchpad.isSetWhitelisted(address(implementation), address(bondingCurve), newGraduator));
     }
 
     function test_whitelistCurveAndGraduator_GivesFalseFor_notCurve_wGraduator() public {
         vm.prank(admin);
-        launchpad.whitelistComponents(address(implementation), newBondingCurve, newGraduator, true);
+        launchpad.whitelistComponents(
+            address(implementation),
+            newBondingCurve,
+            newGraduator,
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
 
-        assertFalse(launchpad.whitelistedComponents(address(implementation), newBondingCurve, address(graduator)));
+        assertFalse(launchpad.isSetWhitelisted(address(implementation), newBondingCurve, address(graduator)));
     }
 
     // setTreasuryAddress Tests
@@ -194,8 +241,14 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     event GraduationFeeUpdated(uint256 newGraduationFee);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event ComponentsSetWhitelisted(
-        address tokenImplementation, address bondingCurve, address graduator, bool whitelisted
+        address implementation,
+        address bondingCurve,
+        address graduator,
+        uint256 ethGraduationThreshold,
+        uint256 maxExcessOverThreshold,
+        uint256 graduationEthFee
     );
+    event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
     event TreasuryAddressUpdated(address newTreasury);
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
 }

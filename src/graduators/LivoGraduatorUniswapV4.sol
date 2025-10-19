@@ -58,15 +58,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @dev The larger the spacing the cheaper to swap gas-wise
     int24 constant TICK_SPACING = 200;
 
-    /// @notice Graduation threshold above which graduation can happen
-    uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~8 ether
-
-    /// @notice Max excess eth over graduation threshold
-    uint256 constant MAX_EXCESS_OVER_THRESHOLD = 0.1 ether;
-
-    /// @notice Graduation ETH fee paid to Livo treasury
-    uint256 constant GRADUATION_ETH_FEE = 0.5 ether;
-
     //////////////////////////// price set-point ///////////////////////////////
 
     // In the uniswapV4 pool, the pair is (currency0,currency1) = (nativeEth, token)
@@ -281,18 +272,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     }
 
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
-
-    /// @notice Returns the graduation threshold, the margin above it that ETH reserves can reach at graduation and the graduation fee
-    /// @dev These need to be linked as they would have an effect on the effective price post graduation
-    function getGraduationSettings()
-        external
-        pure
-        returns (uint256 graduationThreshold, uint256 maxExcessOverThreshold, uint256 graduationEthFee)
-    {
-        graduationThreshold = GRADUATION_THRESHOLD;
-        maxExcessOverThreshold = MAX_EXCESS_OVER_THRESHOLD;
-        graduationEthFee = GRADUATION_ETH_FEE;
-    }
 
     /// @notice Returns the claimable ETH fees for each token in the array
     /// @dev For each amount in creatorEthFees, the treasury can expect the same amount as well

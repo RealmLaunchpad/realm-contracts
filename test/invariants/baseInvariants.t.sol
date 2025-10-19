@@ -45,9 +45,10 @@ contract LaunchpadInvariants is Test {
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
-    uint256 GRADUATION_THRESHOLD;
-    uint256 MAX_THRESHOLD_EXCESS;
-    uint256 GRADUATION_FEE;
+    // used for both combinations of curves,graduators for univ2 and univ4
+    uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~8 ether
+    uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
+    uint256 constant GRADUATION_FEE = 0.5 ether;
 
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
@@ -63,12 +64,23 @@ contract LaunchpadInvariants is Test {
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
-        launchpad.whitelistComponents(address(tokenImplementation), address(bondingCurve), address(graduatorV2), true);
-        launchpad.whitelistComponents(address(tokenImplementation), address(bondingCurve), address(graduatorV4), true);
+        launchpad.whitelistComponents(
+            address(tokenImplementation),
+            address(bondingCurve),
+            address(graduatorV2),
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
+        launchpad.whitelistComponents(
+            address(tokenImplementation),
+            address(bondingCurve),
+            address(graduatorV4),
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
         vm.stopPrank();
-
-        // for this test, both graduators have the same settings so this is ok
-        (GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS, GRADUATION_FEE) = graduatorV2.getGraduationSettings();
 
         helper = new InvariantsHelperLaunchpad(
             launchpad, address(tokenImplementation), address(bondingCurve), address(graduatorV2), address(graduatorV4)

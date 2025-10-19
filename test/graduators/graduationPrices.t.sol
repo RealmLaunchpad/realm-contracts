@@ -31,10 +31,6 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
     function setUp() public virtual override {
         super.setUp();
 
-        // deploy a graduator to get these values (same for univ2 and univ4)
-        graduator = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
-        (GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS, GRADUATION_FEE) = graduator.getGraduationSettings();
-
         ETH_PURCHASE_TO_GRADUATE = _increaseWithFees(GRADUATION_THRESHOLD);
         MAX_ETH_PURCHASE_TO_GRADUATE = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS);
     }

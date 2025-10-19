@@ -42,10 +42,10 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     function test_cannotInitializeImplementation() public {
-        LivoToken implementation = new LivoToken();
+        LivoToken imp = new LivoToken();
 
         vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
-        implementation.initialize("ImplToken", "IMPL", address(graduator), address(0), address(this), 1234);
+        imp.initialize("ImplToken", "IMPL", address(graduator), address(0), address(this), 1234);
     }
 
     function testTokenCreatedHasDifferentAddressThanImplementation() public {
@@ -73,6 +73,19 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.NotWhitelistedComponents.selector));
         launchpad.createToken("TestToken", "TEST", address(implementation), invalidCurve, address(graduator));
+    }
+
+    function testCannotCreateTokenWith_blaklistedComponents() public {
+        // this should succeed
+        vm.prank(creator);
+        launchpad.createToken("Sanitator", "SANIT", address(implementation), address(bondingCurve), address(graduator));
+
+        vm.prank(admin);
+        launchpad.blacklistComponents(address(implementation), address(bondingCurve), address(graduator));
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.NotWhitelistedComponents.selector));
+        launchpad.createToken("TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator));
     }
 
     function testCannotCreateTokenWithEmptyName() public {

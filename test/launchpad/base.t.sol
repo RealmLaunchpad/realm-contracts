@@ -40,10 +40,10 @@ contract LaunchpadBaseTests is Test {
     uint16 public constant BASE_BUY_FEE_BPS = 100;
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
-    // graduation settings
-    uint256 MAX_THRESHOLD_EXCESS;
-    uint256 GRADUATION_THRESHOLD;
-    uint256 GRADUATION_FEE;
+    // used for both combinations of curves,graduators for univ2 and univ4
+    uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~8 ether
+    uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
+    uint256 constant GRADUATION_FEE = 0.5 ether;
 
     // we don't test deadlines mostly
     uint256 constant DEADLINE = type(uint256).max;
@@ -74,31 +74,43 @@ contract LaunchpadBaseTests is Test {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
         vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
 
-        vm.startPrank(admin);
-        implementation = new LivoToken();
-        launchpad = new LivoLaunchpad(treasury);
-        bondingCurve = new ConstantProductBondingCurve();
-        vm.stopPrank();
-
         vm.deal(creator, INITIAL_ETH_BALANCE);
         vm.deal(buyer, INITIAL_ETH_BALANCE);
         vm.deal(seller, INITIAL_ETH_BALANCE);
         vm.deal(alice, INITIAL_ETH_BALANCE);
         vm.deal(bob, INITIAL_ETH_BALANCE);
 
+        vm.startPrank(admin);
+        implementation = new LivoToken();
+        launchpad = new LivoLaunchpad(treasury);
+        bondingCurve = new ConstantProductBondingCurve();
+
         // V2 graduator
-        vm.prank(admin);
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
+        launchpad.whitelistComponents(
+            address(implementation),
+            address(bondingCurve),
+            address(graduatorV2),
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
 
         // V4 graduator
-        vm.prank(admin);
         liquidityLock = new LiquidityLockUniv4WithFees(positionManagerAddress);
-
-        // For graduation tests, a new graduator should be deployed, and use fork tests.
-        vm.prank(admin);
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad), address(liquidityLock), poolManagerAddress, positionManagerAddress, permit2Address
         );
+        launchpad.whitelistComponents(
+            address(implementation),
+            address(bondingCurve),
+            address(graduatorV4),
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
+
+        vm.stopPrank();
     }
 
     modifier createTestToken() {
@@ -131,11 +143,6 @@ contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
     function setUp() public virtual override {
         super.setUp();
 
-        vm.prank(admin);
-        launchpad.whitelistComponents(address(implementation), address(bondingCurve), address(graduatorV2), true);
-
-        (GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS, GRADUATION_FEE) = graduatorV2.getGraduationSettings();
-
         graduator = graduatorV2;
     }
 }
@@ -143,11 +150,6 @@ contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
 contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
     function setUp() public virtual override {
         super.setUp();
-
-        vm.prank(admin);
-        launchpad.whitelistComponents(address(implementation), address(bondingCurve), address(graduatorV4), true);
-
-        (GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS, GRADUATION_FEE) = graduatorV4.getGraduationSettings();
 
         graduator = graduatorV4;
     }

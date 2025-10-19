@@ -16,10 +16,4 @@ interface ILivoGraduator {
 
     function initializePair(address tokenAddress) external returns (address pair);
     function graduateToken(address tokenAddress, uint256 tokenAmount) external payable;
-
-    /// @notice Returns the graduation threshold, the margin above it that ETH reserves can reach at graduation and the graduation fee
-    /// @dev These need to be linked as they would have an effect on the effective price post graduation
-    function getGraduationSettings()
-        external
-        returns (uint256 graduationThreshold, uint256 maxExcessOverThreshold, uint256 graduationEthFee);
 }

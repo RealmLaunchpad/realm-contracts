@@ -41,7 +41,7 @@ contract LivoLaunchpad is Ownable2Step {
     uint16 public baseSellFeeBps;
 
     /// @notice Whitelisted sets of (implementation, bonding curve, graduator)
-    mapping(address implementation => mapping(address curve => mapping(address graduator => bool whitelisted))) public
+    mapping(address implementation => mapping(address curve => mapping(address graduator => GraduationSettings))) public
         whitelistedComponents;
 
     /// @notice Mapping of token address to its configuration
@@ -50,9 +50,14 @@ contract LivoLaunchpad is Ownable2Step {
     /// @notice Mapping of token address to its state variables
     mapping(address => TokenState) public tokenStates;
 
+    struct GraduationSettings {
+        uint256 ethGraduationThreshold;
+        uint256 maxExcessOverThreshold;
+        uint256 graduationEthFee;
+    }
+
     ///////////////////// Errors /////////////////////
 
-    error WhitelistAlreadySet();
     error NotWhitelistedComponents();
     error InvalidNameOrSymbol();
     error InvalidAmount();
@@ -66,6 +71,8 @@ contract LivoLaunchpad is Ownable2Step {
     error DeadlineExceeded();
     error SlippageExceeded();
     error PurchaseExceedsLimitPostGraduation();
+    error AlreadyConfigured();
+    error AlreadyBlacklisted();
 
     ///////////////////// Events /////////////////////
 
@@ -88,7 +95,15 @@ contract LivoLaunchpad is Ownable2Step {
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
-    event ComponentsSetWhitelisted(address implementation, address bondingCurve, address graduator, bool whitelisted);
+    event ComponentsSetWhitelisted(
+        address implementation,
+        address bondingCurve,
+        address graduator,
+        uint256 ethGraduationThreshold,
+        uint256 maxExcessOverThreshold,
+        uint256 graduationEthFee
+    );
+    event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
 
     /////////////////////////////////////////////////
 
@@ -119,7 +134,10 @@ contract LivoLaunchpad is Ownable2Step {
     ) external returns (address token) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
-        require(whitelistedComponents[implementation][bondingCurve][graduator], NotWhitelistedComponents());
+
+        GraduationSettings storage graduationSettings = whitelistedComponents[implementation][bondingCurve][graduator];
+
+        require(_isSetWhitelisted(graduationSettings), NotWhitelistedComponents());
 
         bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
         // minimal proxy pattern to deploy a new LivoToken instance
@@ -130,18 +148,14 @@ contract LivoLaunchpad is Ownable2Step {
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
         emit TokenCreated(token, msg.sender, name, symbol, implementation, bondingCurve, graduator);
 
-        // get both these parameters at once to save one external call
-        (uint256 graduationThreshold, uint256 maxExcessOverThreshold, uint256 graduationEthFee) =
-            ILivoGraduator(graduator).getGraduationSettings();
-
         // at creation all tokens are held by this contract
         tokenConfigs[token] = TokenConfig({
             bondingCurve: ILivoBondingCurve(bondingCurve),
             graduator: ILivoGraduator(graduator),
             creator: msg.sender,
-            ethGraduationThreshold: graduationThreshold,
-            maxExcessOverThreshold: maxExcessOverThreshold,
-            graduationEthFee: graduationEthFee,
+            ethGraduationThreshold: graduationSettings.ethGraduationThreshold,
+            maxExcessOverThreshold: graduationSettings.maxExcessOverThreshold,
+            graduationEthFee: graduationSettings.graduationEthFee,
             creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps
@@ -325,6 +339,27 @@ contract LivoLaunchpad is Ownable2Step {
         return config.creator;
     }
 
+    /// @notice Retrieves the graduation settings for a given launchpad implementation.
+    /// @param implementation The address of the token implementation contract.
+    /// @param bondingCurve The address of the bonding curve contract.
+    /// @param graduator The address of the graduator contract
+    /// @return Returns the graduation settings relevant to the provided implementation, bonding curve, and graduator.
+    function getGraduationSettings(address implementation, address bondingCurve, address graduator)
+        external
+        view
+        returns (GraduationSettings memory)
+    {
+        return whitelistedComponents[implementation][bondingCurve][graduator];
+    }
+
+    function isSetWhitelisted(address implementation, address bondingCurve, address graduator)
+        external
+        view
+        returns (bool)
+    {
+        return _isSetWhitelisted(whitelistedComponents[implementation][bondingCurve][graduator]);
+    }
+
     //////////////////////////// Admin functions //////////////////////////
 
     /// @notice Updates the buy/sell fees, which only affects new token deployments
@@ -338,20 +373,48 @@ contract LivoLaunchpad is Ownable2Step {
         emit TradingFeesUpdated(buyFeeBps, sellFeeBps);
     }
 
-    /// @notice Whitelist a set of components (tokenImplementation, curve, graduator)
+    /// @notice Whitelists a set of components (token implementation, bonding curve, graduator) with graduation settings.
     /// @param implementation Token implementation address
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
-    /// @param whitelisted True to whitelist combination, false to remove from whitelist
-    function whitelistComponents(address implementation, address bondingCurve, address graduator, bool whitelisted)
-        external
-        onlyOwner
-    {
-        if (whitelistedComponents[implementation][bondingCurve][graduator] == whitelisted) revert WhitelistAlreadySet();
+    /// @param ethGraduationThreshold ETH threshold required for graduation
+    /// @param maxExcessOverThreshold Maximum ETH excess allowed over the graduation threshold
+    /// @param graduationEthFee ETH fee collected by the treasury at graduation
+    function whitelistComponents(
+        address implementation,
+        address bondingCurve,
+        address graduator,
+        uint256 ethGraduationThreshold,
+        uint256 maxExcessOverThreshold,
+        uint256 graduationEthFee
+    ) external onlyOwner {
+        // ethGraduationThreshold == 0 is used as proxy to know if the set has been whitelisted
+        require(ethGraduationThreshold > 0, InvalidParameter(ethGraduationThreshold));
+        // A set of (implementation, curve, graduator) can only have one configuration
+        // If more are required, new copies of those components can be deployed, and a new configuration can be made with those
+        require(!_isSetWhitelisted(whitelistedComponents[implementation][bondingCurve][graduator]), AlreadyConfigured());
 
-        whitelistedComponents[implementation][bondingCurve][graduator] = whitelisted;
+        whitelistedComponents[implementation][bondingCurve][graduator] = GraduationSettings({
+            ethGraduationThreshold: ethGraduationThreshold,
+            maxExcessOverThreshold: maxExcessOverThreshold,
+            graduationEthFee: graduationEthFee
+        });
 
-        emit ComponentsSetWhitelisted(implementation, bondingCurve, graduator, whitelisted);
+        emit ComponentsSetWhitelisted(
+            implementation, bondingCurve, graduator, ethGraduationThreshold, maxExcessOverThreshold, graduationEthFee
+        );
+    }
+
+    /// @notice Blacklists a previously whitelisted deployment set of components.
+    /// @param implementation The address of the implementation contract to blacklist.
+    /// @param bondingCurve The address of the bonding curve contract to blacklist.
+    /// @param graduator The address of the graduator contract to blacklist.
+    function blacklistComponents(address implementation, address bondingCurve, address graduator) external onlyOwner {
+        require(_isSetWhitelisted(whitelistedComponents[implementation][bondingCurve][graduator]), AlreadyBlacklisted());
+
+        delete whitelistedComponents[implementation][bondingCurve][graduator];
+
+        emit ComponentsSetBlacklisted(implementation, bondingCurve, graduator);
     }
 
     /// @notice Updates the treasury address
@@ -471,5 +534,9 @@ contract LivoLaunchpad is Ownable2Step {
 
     function _availableEthFromReserves(address token) internal view returns (uint256) {
         return tokenStates[token].ethCollected;
+    }
+
+    function _isSetWhitelisted(GraduationSettings storage graduationSettings) internal view returns (bool) {
+        return (graduationSettings.ethGraduationThreshold > 0);
     }
 }
