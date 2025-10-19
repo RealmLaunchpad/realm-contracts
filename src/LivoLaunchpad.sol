@@ -28,15 +28,6 @@ contract LivoLaunchpad is Ownable2Step {
     /// @notice Supply reserved to the token creator, but only transferred at token graduation
     uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
 
-    /// @notice The max amount of ether in reserves of a token after crossing the graduation threshold
-    uint256 public graduationExcessCap;
-
-    /// @notice LivoToken ERC20 implementation address
-    address public tokenImplementation;
-
-    /// @notice Eth reserves accumulated by a token to meet graduation criteria. Includes the graduation fees (in wei)
-    uint256 public baseEthGraduationThreshold;
-
     /// @notice The base graduation fee in ETH, paid at graduation to the treasury (in wei)
     uint256 public baseGraduationFee;
 
@@ -46,12 +37,14 @@ contract LivoLaunchpad is Ownable2Step {
     /// @notice Livo Treasury, receiver of all trading/graduation fees
     address public treasury;
 
-    /// @notice Trading fees in basis points (100 bps = 1%). Updates to these only affect future tokens
+    /// @notice Trading fees (buys) in basis points (100 bps = 1%). Updates to these only affect future tokens
     uint16 public baseBuyFeeBps;
+
+    /// @notice Trading fees (sells) in basis points (100 bps = 1%). Updates to these only affect future tokens
     uint16 public baseSellFeeBps;
 
-    /// @notice Whitelisted pairs of bonding curves and graduators
-    mapping(address curve => mapping(address graduator => bool whitelisted)) public whitelistedComponents;
+    /// @notice Whitelisted sets of (implementation, bonding curve, graduator)
+    mapping(address implementation => mapping(address curve => mapping(address graduator => bool whitelisted))) public whitelistedComponents;
 
     /// @notice Mapping of token address to its configuration
     mapping(address => TokenConfig) public tokenConfigs;
@@ -62,7 +55,7 @@ contract LivoLaunchpad is Ownable2Step {
     ///////////////////// Errors /////////////////////
 
     error WhitelistAlreadySet();
-    error InvalidCurveGraduatorCombination();
+    error NotWhitelistedComponents();
     error InvalidNameOrSymbol();
     error InvalidAmount();
     error ReceivingZeroAmount();
@@ -83,6 +76,7 @@ contract LivoLaunchpad is Ownable2Step {
         address indexed creator,
         string name,
         string symbol,
+        address implementation,
         address bondingCurve,
         address graduator
     );
@@ -94,26 +88,18 @@ contract LivoLaunchpad is Ownable2Step {
         address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 ethFee
     );
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
-    event TokenImplementationUpdated(address newImplementation);
-    event EthGraduationThresholdUpdated(uint256 newThreshold);
-    event ExcessCapUpdated(uint256 newExcessCap);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event GraduationFeeUpdated(uint256 newGraduationFee);
-    event CurveAndGraduatorWhitelistedSet(address bondingCurve, address graduator, bool whitelisted);
+    event ComponentsSetWhitelisted(address implementation, address bondingCurve, address graduator, bool whitelisted);
 
     /////////////////////////////////////////////////
 
     /// @param _treasury Address of the treasury to receive fees
-    /// @param _tokenImplementation Address of the LivoToken implementation for cloning
-    constructor(address _treasury, address _tokenImplementation) Ownable(msg.sender) {
+    constructor(address _treasury) Ownable(msg.sender) {
         // Set initial values and emit events for off-chain indexers
         setTreasuryAddress(_treasury);
-        setLivoTokenImplementation(_tokenImplementation);
-        // This arbitrarily exact price ensures that if graduation happens exactly at this value,
-        // the price in the uniswap pool after graduation matches the price of the bonding curve
-        setEthGraduationThreshold(7956000000000052224); // 7.956 ether
-        setExcessCap(0.1 ether);
+
         setGraduationFee(0.5 ether);
         // buy/sell fees at 1%
         setTradingFees(100, 100);
@@ -123,6 +109,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @dev Selected bonding curve and graduator must be a whitelisted pair
     /// @param name The name of the token
     /// @param symbol The symbol of the token (max 32 characters)
+    /// @param implementation Token implementation contract
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
     /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
@@ -130,13 +117,14 @@ contract LivoLaunchpad is Ownable2Step {
     function createToken(
         string calldata name,
         string calldata symbol,
+	address implementation,
         address bondingCurve,
         address graduator,
         bytes32 salt
     ) external returns (address token) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
-        require(whitelistedComponents[bondingCurve][graduator], InvalidCurveGraduatorCombination());
+        require(whitelistedComponents[implementation][bondingCurve][graduator], NotWhitelistedComponents());
 
         bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
         // minimal proxy pattern to deploy a new LivoToken instance
@@ -145,16 +133,19 @@ contract LivoLaunchpad is Ownable2Step {
         token = Clones.cloneDeterministic(tokenImplementation, salt_);
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(token, msg.sender, name, symbol, bondingCurve, graduator);
+        emit TokenCreated(token, msg.sender, name, symbol, implementation, bondingCurve, graduator);
+
+        (uint256 graduationThreshold, uint256 maxExcessOverThreshold) = ILivoBondingCurve(bondingCurve).getGraduationSettings();
 
         // at creation all tokens are held by this contract
         tokenConfigs[token] = TokenConfig({
             bondingCurve: ILivoBondingCurve(bondingCurve),
             graduator: ILivoGraduator(graduator),
             creator: msg.sender,
-            graduationEthFee: baseGraduationFee,
-            ethGraduationThreshold: baseEthGraduationThreshold,
+            ethGraduationThreshold: graduationThreshold,
+            maxExcessOverThreshold: maxExcessOverThreshold,
             creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
+            graduationEthFee: baseGraduationFee,
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps
         });
@@ -164,9 +155,6 @@ contract LivoLaunchpad is Ownable2Step {
         // to which tokens cannot be transferred until graduation
         address pair = ILivoGraduator(graduator).initializePair(token);
 
-        // Initialize the new token instance
-        // It is responsibility of the token to distribute supply to the msg.sender
-        // so that we can update the token implementation with new rules for future tokens
         LivoToken(token).initialize(
             name,
             symbol,
@@ -206,9 +194,8 @@ contract LivoLaunchpad is Ownable2Step {
 
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
         require(tokensToReceive <= _availableTokensForPurchase(token), NotEnoughSupply());
-        // the excess cap and graduation are denominated in eth reserves, without the fees
         require(
-            tokenState.ethCollected + ethForReserves < tokenConfig.ethGraduationThreshold + graduationExcessCap,
+            tokenState.ethCollected + ethForReserves <= tokenConfig.maxEthReserves(),
             PurchaseExceedsLimitPostGraduation()
         );
 
@@ -343,28 +330,6 @@ contract LivoLaunchpad is Ownable2Step {
 
     //////////////////////////// Admin functions //////////////////////////
 
-    /// @notice Updates the ERC20 token implementation, which only affects new token deployments
-    /// @param newImplementation Address of the new token implementation
-    function setLivoTokenImplementation(address newImplementation) public onlyOwner {
-        tokenImplementation = newImplementation;
-        emit TokenImplementationUpdated(address(newImplementation));
-    }
-
-    /// @notice Updates the graduation threshold, which only affects new token deployments
-    /// @param ethThreshold The new ETH graduation threshold in wei
-    function setEthGraduationThreshold(uint256 ethThreshold) public onlyOwner {
-        baseEthGraduationThreshold = ethThreshold;
-        emit EthGraduationThresholdUpdated(ethThreshold);
-    }
-
-    /// @notice Updates the excess cap above the graduation threshold
-    /// @dev When reserves exceed this amount above the graduation, purchases revert
-    /// @param ethExcessCap The new excess cap in wei
-    function setExcessCap(uint256 ethExcessCap) public onlyOwner {
-        graduationExcessCap = ethExcessCap;
-        emit ExcessCapUpdated(ethExcessCap);
-    }
-
     /// @notice Updates the graduation fee, which only affects new token deployments
     /// @param ethAmount The new graduation fee in wei
     function setGraduationFee(uint256 ethAmount) public onlyOwner {
@@ -385,15 +350,16 @@ contract LivoLaunchpad is Ownable2Step {
 
     /// @notice Whitelist a combination of bonding curve and graduator
     /// @dev A combination of bonding curve & graduator can only be used if they are both whitelisted as a pair
+    /// @param implementation Token implementation address
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
     /// @param whitelisted True to whitelist combination, false to remove from whitelist
-    function whitelistCurveAndGraduator(address bondingCurve, address graduator, bool whitelisted) external onlyOwner {
-        if (whitelistedComponents[bondingCurve][graduator] == whitelisted) revert WhitelistAlreadySet();
+    function whitelistCurveAndGraduator(address implementation, address bondingCurve, address graduator, bool whitelisted) external onlyOwner {
+        if (whitelistedComponents[implementation][bondingCurve][graduator] == whitelisted) revert WhitelistAlreadySet();
 
-        whitelistedComponents[bondingCurve][graduator] = whitelisted;
+        whitelistedComponents[implementation][bondingCurve][graduator] = whitelisted;
 
-        emit CurveAndGraduatorWhitelistedSet(bondingCurve, graduator, whitelisted);
+        emit ComponentsSetWhitelisted(implementation, bondingCurve, graduator, whitelisted);
     }
 
     /// @notice Updates the treasury address
@@ -463,8 +429,7 @@ contract LivoLaunchpad is Ownable2Step {
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
 
     function _maxEthToSpend(address token) internal view returns (uint256 ethBuy) {
-        uint256 maxEthReserves = tokenConfigs[token].ethGraduationThreshold + graduationExcessCap - 1;
-        uint256 remainingReserves = maxEthReserves - tokenStates[token].ethCollected;
+        uint256 remainingReserves = tokenConfigs[token].maxEthReserves() - tokenStates[token].ethCollected;
 
         // apply inverse fees
         ethBuy = (remainingReserves * BASIS_POINTS) / (BASIS_POINTS - tokenConfigs[token].buyFeeBps);
@@ -508,7 +473,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// and it is taken from the remaining tokens in this contract at graduation
     function _availableTokensForPurchase(address token) internal view returns (uint256) {
         // This is equivalent to:  return IERC20(token).balanceOf(address(this)) - CREATOR_RESERVED_SUPPLY;
-        // But this implementation is more gas efficient as it avoids an external call
+        // But the below formulation is more gas efficient as it avoids an external call
         return TOTAL_SUPPLY - tokenStates[token].releasedSupply - CREATOR_RESERVED_SUPPLY;
     }
 

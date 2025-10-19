@@ -4,6 +4,13 @@ pragma solidity 0.8.28;
 import {ILivoBondingCurve} from "../interfaces/ILivoBondingCurve.sol";
 
 contract ConstantProductBondingCurve is ILivoBondingCurve {
+
+    /// @notice Graduation threshold above which graduation can happen
+    uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~8 ether
+
+    /// @notice Max excess eth over graduation threshold
+    uint256 constant MAX_EXCESS_OVER_THRESHOLD = 0.1 ether;
+
     // the bonding curve follows the constant product formula:
     // K = (t + T0) * (e + E0)
     // `t` is the reserves of the token in the bonding curve (not sold yet )
@@ -73,4 +80,11 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         // For the current graduation setup it should be safe, as the graduation happens at around 8 ether
         return K / (ethReserves + E0) - T0;
     }
+
+    /// @notice Returns the graduation threshold and the margin above it that ETH reserves can reach at graduation
+    function getGraduationSettings() external pure returns (uint256 graduationThreshold, uint256 maxExcessOverThreshold) {
+        graduationThreshold = GRADUATION_THRESHOLD;
+        maxExcessOverThreshold = MAX_EXCESS_OVER_THRESHOLD;
+    }
+
 }
