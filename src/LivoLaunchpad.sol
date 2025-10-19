@@ -127,7 +127,7 @@ contract LivoLaunchpad is Ownable2Step {
     function createToken(
         string calldata name,
         string calldata symbol,
-	address implementation,
+	    address implementation,
         address bondingCurve,
         address graduator,
         bytes32 salt
@@ -143,7 +143,7 @@ contract LivoLaunchpad is Ownable2Step {
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
-        token = Clones.cloneDeterministic(tokenImplementation, salt_);
+        token = Clones.cloneDeterministic(implementation, salt_);
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
         emit TokenCreated(token, msg.sender, name, symbol, implementation, bondingCurve, graduator);
