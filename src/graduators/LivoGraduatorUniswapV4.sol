@@ -108,6 +108,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /////////////////////// Events ///////////////////////
 
     event EthFeeCollectionTransferFailed(address indexed creator, uint256 amount);
+    event TokenGraduated(
+        address indexed token, bytes32 poolId, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
+    );
 
     //////////////////////////////////////////////////////
 
@@ -223,9 +226,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
         uint256 tokensDeposited = tokenAmount - tokenBalanceAfterDeposit;
 
-        emit TokenGraduated(
-            tokenAddress, address(UNIV4_POOL_MANAGER), tokensDeposited, ethValue, liquidity1 + liquidity2
-        );
+        bytes32 poolId = PoolId.unwrap(pool.toId());
+        emit TokenGraduated(tokenAddress, poolId, tokensDeposited, ethValue, liquidity1 + liquidity2);
     }
 
     /// @notice Collects ETH fees from graduated tokens and distributes them to creators and treasury

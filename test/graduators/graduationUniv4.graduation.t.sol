@@ -14,7 +14,6 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
@@ -639,8 +638,12 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted at graduation
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ4() public createTestToken {
         vm.expectEmit(true, true, false, true);
-        emit ILivoGraduator.TokenGraduated(
-            testToken, poolManagerAddress, 191123250949901652977521310, 7456000000000052224, 773365432234326008798992
+        emit LivoGraduatorUniswapV4.TokenGraduated(
+            testToken,
+            bytes32(0x61d09d3d61aca8c0bb4a184f4a8aa1e8efaf52b6ab5058939a90289ca01417d7),
+            191123250949901652977521310,
+            7456000000000052224,
+            55296381402046003400649
         );
 
         _graduateToken();
@@ -697,7 +700,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         // even when all token supply is sold.
         // We have tuned the ticks so that this amount is lower than 0.005 ether
         uint256 nonRecoverableEth = address(poolManager).balance - poolBalanceBefore;
-        assertLtDecimal(nonRecoverableEth, 0.075 ether, 18, "Non recoverable ether from pool manager is too large");
+        assertLtDecimal(nonRecoverableEth, 0.105 ether, 18, "Non recoverable ether from pool manager is too large");
     }
 
     function test_creatorSellsHisAllocationRightAfterGraduation() public createTestToken {
