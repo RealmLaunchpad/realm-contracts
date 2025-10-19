@@ -78,7 +78,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokenAmount);
 
         // syncs and reads the actual reserves in the pair (in case there is unsynced WETH)
-        uint256 ethReserve = _getUpdatedEthReserves(pair, tokenAddress);
+        uint256 ethReserve = _syncedEthReserves(pair, tokenAddress);
 
         uint256 amountToken;
         uint256 amountEth;
@@ -101,8 +101,9 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     }
 
     /// @dev Reads the actual eth reserves after syncing
-    function _getUpdatedEthReserves(address pair, address tokenAddress) internal view returns (uint256 ethReserve) {
+    function _syncedEthReserves(address pair, address tokenAddress) internal returns (uint256 ethReserve) {
         IUniswapV2Pair pairContract = IUniswapV2Pair(pair);
+        pairContract.sync();
 
         (uint112 reserve0, uint112 reserve1,) = pairContract.getReserves();
 
