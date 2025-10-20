@@ -337,9 +337,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
         // the actual call to the position manager to mint the liquidity position
         // deadline = block.timestamp (no effective deadline)
-        IPositionManager(UNIV4_POSITION_MANAGER).modifyLiquidities{value: ethValue}(
-            abi.encode(actions, params), block.timestamp
-        );
+        IPositionManager(UNIV4_POSITION_MANAGER)
+        .modifyLiquidities{value: ethValue}(abi.encode(actions, params), block.timestamp);
 
         // locks the liquidity position NFT in the liquidity lock contract
         LIQUIDITY_LOCK.lockUniV4Position(positionId, address(this));
