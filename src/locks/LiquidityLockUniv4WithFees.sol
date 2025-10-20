@@ -76,10 +76,11 @@ contract LiquidityLockUniv4WithFees {
         params[1] = abi.encode(currency0, currency1, recipient);
 
         // There is no real modification of the liquidity position, this only collects fees
-        IPositionManager(UNISWAPV4_POSITION_MANAGER).modifyLiquidities(
-            abi.encode(actions, params),
-            block.timestamp // no deadline
-        );
+        IPositionManager(UNISWAPV4_POSITION_MANAGER)
+            .modifyLiquidities(
+                abi.encode(actions, params),
+                block.timestamp // no deadline
+            );
 
         emit PositionFeesClaimed(msg.sender, positionId, token0, token1, recipient);
 

@@ -127,7 +127,7 @@ contract LivoLaunchpad is Ownable2Step {
     function createToken(
         string calldata name,
         string calldata symbol,
-	    address implementation,
+        address implementation,
         address bondingCurve,
         address graduator,
         bytes32 salt
@@ -166,14 +166,15 @@ contract LivoLaunchpad is Ownable2Step {
         // to which tokens cannot be transferred until graduation
         address pair = ILivoGraduator(graduator).initializePair(token);
 
-        LivoToken(token).initialize(
-            name,
-            symbol,
-            graduator, // graduator address
-            pair, // uniswap pair
-            address(this), // supply receiver, all tokens are held by the launchpad initially
-            TOTAL_SUPPLY
-        );
+        LivoToken(token)
+            .initialize(
+                name,
+                symbol,
+                graduator, // graduator address
+                pair, // uniswap pair
+                address(this), // supply receiver, all tokens are held by the launchpad initially
+                TOTAL_SUPPLY
+            );
 
         return token;
     }

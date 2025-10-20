@@ -147,9 +147,9 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
 
         // Add remaining tokens and ETH as liquidity
         uint256 remainingTokens = tokenBalance - tokensToTransfer;
-        (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethValue}(
-            tokenAddress, remainingTokens, 0, 0, DEAD_ADDRESS, block.timestamp
-        );
+        (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{
+            value: ethValue
+        }(tokenAddress, remainingTokens, 0, 0, DEAD_ADDRESS, block.timestamp);
         // the tokens sent as sync also count as liquidity added ofc
         amountToken += tokensToTransfer;
     }
@@ -159,9 +159,9 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         internal
         returns (uint256 amountToken, uint256 amountEth, uint256 liquidity)
     {
-        (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{value: ethValue}(
-            tokenAddress, tokenBalance, 0, 0, DEAD_ADDRESS, block.timestamp
-        );
+        (amountToken, amountEth, liquidity) = UNISWAP_ROUTER.addLiquidityETH{
+            value: ethValue
+        }(tokenAddress, tokenBalance, 0, 0, DEAD_ADDRESS, block.timestamp);
     }
 
     function _cleanup(address tokenAddress) internal {

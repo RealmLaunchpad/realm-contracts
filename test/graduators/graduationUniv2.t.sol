@@ -40,9 +40,8 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
         path[0] = address(WETH);
         path[1] = token;
 
-        IUniswapV2Router02(UNISWAP_V2_ROUTER).swapExactTokensForTokens(
-            ethAmount, minTokens, path, account, block.timestamp + 1 hours
-        );
+        IUniswapV2Router02(UNISWAP_V2_ROUTER)
+            .swapExactTokensForTokens(ethAmount, minTokens, path, account, block.timestamp + 1 hours);
         vm.stopPrank();
     }
 
@@ -54,9 +53,8 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
         path[0] = token;
         path[1] = address(WETH);
 
-        IUniswapV2Router02(UNISWAP_V2_ROUTER).swapExactTokensForTokens(
-            tokenAmount, minEth, path, account, block.timestamp + 1 hours
-        );
+        IUniswapV2Router02(UNISWAP_V2_ROUTER)
+            .swapExactTokensForTokens(tokenAmount, minEth, path, account, block.timestamp + 1 hours);
         vm.stopPrank();
     }
 }

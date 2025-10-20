@@ -744,8 +744,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
         // the second buy triggers graduation, and can exceed until permitted
-        uint256 remainingEthUntilGraduation =
-            GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
+        uint256 remainingEthUntilGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         uint256 maxEthPurchase = launchpad.getMaxEthToSpend(testToken);
         uint256 graduationPurchaseAmount = bound(secondBuy, remainingEthUntilGraduation, maxEthPurchase);
 
