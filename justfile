@@ -25,18 +25,21 @@ lean-invariants:
 error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
 
-##################### Deployed addresses #######################
-launchpad := "0x8024f24dF3fe8B45dAa0D9D94F59AA7e98DA1B7f"
+##################### Deployed addresses (sepolia) #######################
+launchpad := "0xCbcaB7c9d9Ce45CEFb17bBEbd419881b253d7371"
 
-bondingCurve := "0x43f8bc6d25be185711680987019d20543e6b53f6"
-graduator := "0x3ddc687a57674F5AD6e3b25f8c41cf41E70c0402"
+implementation := "0x92A71B6A578D2345946DeCeDbCA3874702a3fCa3"
+bondingCurve := "0x2Bf62383a4A1349461bB744b4eC561338D8b4CF9"
+graduatorV2 := "0xF74aD241bDe9e2DAe7849D06ee4935731c1B5258"
+graduatorV4 := "0x08feCd4F6340EdEb8F34a8e117fa248eD4A722d6"
 
 # ##################### Actions #######################
-# whitelist-curve-and-graduator curve graduator:
-#     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "whitelistCurveAndGraduator(address,address,bool)" {{curve}} {{graduator}} true
 
-# create-token tokenName:
-#     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,string,address,address)" {{tokenName}} {{uppercase(tokenName)}} "/dummy/metadata/url" {{bondingCurve}} {{graduator}}
+create-token-v2 tokenName:
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,bytes32)" {{tokenName}} {{uppercase(tokenName)}} {{implementation}} {{bondingCurve}} {{graduatorV2}} 0x1230000000000000000000000000000000000000000000000000000000000000
+
+create-token-v4 tokenName:
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,bytes32)" {{tokenName}} {{uppercase(tokenName)}} {{implementation}} {{bondingCurve}} {{graduatorV4}} 0x1230000000000000000000000000000000000000000000000000000000000001
 
 # buy tokenAddress value:
 #     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "buyTokensWithExactEth(address,uint256,uint256)" {{tokenAddress}} 1 175542935100 --value {{value}}

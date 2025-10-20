@@ -201,7 +201,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
                 type(uint48).max // expiration
             );
 
-        /////////////// todo move all this to a single function
         PoolKey memory pool = _getPoolKey(tokenAddress);
         address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
         uint256 ethBalanceBefore = address(this).balance;
