@@ -104,12 +104,27 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     error NoTokensToCollectFees();
     error TooManyTokensToCollectFees();
     error InvalidPositionIndex();
+    error InvalidPositionIndexes();
 
     /////////////////////// Events ///////////////////////
 
-    event EthFeeCollectionTransferFailed(address indexed creator, uint256 amount);
     event TokenGraduated(
         address indexed token, bytes32 poolId, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
+    );
+
+    event LpFeesCollected(
+        address indexed token,
+        uint256 indexed positionId,
+        address tokenCreator,
+        uint256 positionIndex,
+        uint256 creatorFees
+    );
+    event LpFeesCollectionTransferFailed(
+        address indexed token,
+        uint256 indexed positionId,
+        address tokenCreator,
+        uint256 positionIndex,
+        uint256 creatorFees
     );
 
     //////////////////////////////////////////////////////
@@ -235,25 +250,37 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @dev Token fees are left in this contract (effectively burned, but without gas waste)
     /// @dev Each token fees are claimed and distributed independently
     /// @param tokens Array of token addresses to collect fees from
-    function collectEthFees(address[] calldata tokens, uint256 positionIndex) external {
-        uint256 len = tokens.length;
-        require(len > 0, NoTokensToCollectFees());
-        require(len < 100, TooManyTokensToCollectFees());
-        require(positionIndex < 2, InvalidPositionIndex());
+    function collectEthFees(address[] calldata tokens, uint256[] calldata positionIndexes) external {
+        uint256 nTokens = tokens.length;
+        require(nTokens > 0, NoTokensToCollectFees());
+        require(nTokens < 100, TooManyTokensToCollectFees());
+        require(positionIndexes.length > 0, InvalidPositionIndexes());
+        require(positionIndexes.length <= 2, InvalidPositionIndexes());
 
-        uint256 totalTreasuryFees = 0;
-        for (uint256 i = 0; i < len; i++) {
-            address token = tokens[i];
-            // collect fees from uniswap4 into this contract (both eth and tokens)
-            (uint256 creatorFees, uint256 treasuryFees) = _claimFromUniswap(token, positionIndex);
-            totalTreasuryFees += treasuryFees;
+        for (uint256 p = 0; p < positionIndexes.length; p++) {
+            uint256 positionIndex = positionIndexes[p];
+            require(positionIndex <= 1, InvalidPositionIndex());
 
-            address tokenCreator = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenCreator(token);
-            // attempt to transfer ether. If it fails, the transfer is skip and the funds are considered part of the treasury
-            // This is to prevent fallback functions DOS the fee collection for the treasury.
-            (bool success,) = address(tokenCreator).call{value: creatorFees}("");
-            // emit event for transparency, in case we needed to manually transfer the funds later
-            if (!success) emit EthFeeCollectionTransferFailed(tokenCreator, creatorFees);
+            for (uint256 i = 0; i < nTokens; i++) {
+                address token = tokens[i];
+                // collect fees from uniswap4 into this contract (both eth and tokens)
+                uint256 positionId = positionIds[token][positionIndex];
+                (uint256 creatorFees,) = _claimFromUniswapLock(token, positionId);
+                // skip eth transfer if no fees collected for creator. Eth balance is considered part of the treasury
+                if (creatorFees == 0) continue;
+
+                address tokenCreator = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenCreator(token);
+                // attempt to transfer ether. If it fails, the transfer is skip and the funds are considered part of the treasury
+                // This is to prevent fallback functions DOS the fee collection for the treasury.
+                (bool success,) = address(tokenCreator).call{value: creatorFees}("");
+
+                if (success) {
+                    emit LpFeesCollected(token, positionId, tokenCreator, positionIndex, creatorFees);
+                } else {
+                    // emit event for transparency, in case we needed to manually transfer the funds later
+                    emit LpFeesCollectionTransferFailed(token, positionId, tokenCreator, positionIndex, creatorFees);
+                }
+            }
         }
         // the remaining eth balance is considered part of the treasury, and can be collected with sweep()
     }
@@ -345,7 +372,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         LIQUIDITY_LOCK.lockUniV4Position(positionId, address(this));
     }
 
-    function _claimFromUniswap(address token, uint256 positionIndex)
+    function _claimFromUniswapLock(address token, uint256 positionId)
         internal
         returns (uint256 creatorFees, uint256 treasuryFees)
     {
@@ -353,7 +380,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         uint256 balanceBefore = address(this).balance;
 
         // claim fees to this contract and distribute between livo treasury and token creator
-        LIQUIDITY_LOCK.claimUniV4PositionFees(positionIds[token][positionIndex], address(0), token, address(this));
+        LIQUIDITY_LOCK.claimUniV4PositionFees(positionId, address(0), token, address(this));
 
         // eth fees collected in this call
         uint256 collectedEthFees = address(this).balance - balanceBefore;

@@ -27,7 +27,7 @@ import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 interface ILivoGraduatorWithFees is ILivoGraduator {
-    function collectEthFees(address[] calldata tokens, uint256 positionIndex) external;
+    function collectEthFees(address[] calldata tokens, uint256[] calldata positionIndexes) external;
     function positionIds(address token, uint256 positionIndex) external view returns (uint256);
     function getClaimableFees(address[] calldata tokens, uint256 positionIndex)
         external
@@ -91,7 +91,9 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     function _collectFees(address token) internal {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        graduatorWithFees.collectEthFees(tokens, 0);
+        uint256[] memory positionIndexes = new uint256[](1);
+        positionIndexes[0] = 0;
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
     }
 }
 
@@ -274,7 +276,8 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
-        graduatorWithFees.collectEthFees(tokens, 0);
+        _collectFees(tokens[0]);
+        _collectFees(tokens[1]);
         graduatorWithFees.sweep();
 
         uint256 creatorEthBalanceAfter = creator.balance;
@@ -303,7 +306,10 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
-        graduatorWithFees.collectEthFees(tokens, 0);
+        uint256[] memory positionIndexes = new uint256[](1);
+        positionIndexes[0] = 0;
+
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
         graduatorWithFees.sweep();
 
         uint256 creatorEthBalanceAfter = creator.balance;
@@ -327,18 +333,22 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         tokens[0] = testToken1;
         tokens[1] = testToken2;
 
+        uint256[] memory positionIndexes = new uint256[](2);
+        positionIndexes[0] = 0;
+        positionIndexes[1] = 1;
+
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
         _swap(buyer, testToken1, 1 ether, 12342, true, true);
         _swap(buyer, testToken2, 1 ether, 12342, true, true);
 
-        graduatorWithFees.collectEthFees(tokens, 0);
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
 
         _swap(buyer, testToken1, 2 ether, 12342, true, true);
         _swap(buyer, testToken2, 2 ether, 12342, true, true);
 
-        graduatorWithFees.collectEthFees(tokens, 0);
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
         graduatorWithFees.sweep();
 
         uint256 creatorEarned = creator.balance - creatorEthBalanceBefore;
@@ -373,16 +383,52 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](2);
+        positionIndexes[0] = 0;
+        positionIndexes[1] = 1;
 
         uint256 creatorBalanceBefore = creator.balance;
-        graduatorWithFees.collectEthFees(tokens, 0);
-        graduatorWithFees.collectEthFees(tokens, 1);
+
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+
         uint256 totalCreatorFees = creator.balance - creatorBalanceBefore;
 
         // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
         // So creator gets 0.5% = buyAmount / 200
         uint256 expectedFees = buyAmount / 200;
         assertApproxEqAbsDecimal(totalCreatorFees, expectedFees, 1, 18, "creator fees should be 0.5% of buy amount");
+    }
+
+    function test_claimFeesInvalidPositionIndexesEmptyArray() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](0);
+
+        vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+    }
+
+    function test_claimFeesInvalidPositionIndexesTooMany() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](3);
+        positionIndexes[0] = 0;
+        positionIndexes[1] = 0;
+        positionIndexes[2] = 0;
+
+        vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+    }
+
+    function test_claimFeesInvalidPositionIndex_TooHigh() public createAndGraduateToken {
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](2);
+        positionIndexes[0] = 1;
+        positionIndexes[0] = 2;
+
+        vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndex()"));
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
     }
 }
 
