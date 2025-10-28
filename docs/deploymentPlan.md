@@ -26,11 +26,12 @@ GRADUATION_ETH_FEE = 500000000000000000
     
 # Whiteslisting sets
 cast send LAUNCHPAD "whitelistComponents(address,address,address,uint256,uint256,uint256)" TOKENIMPLEMENTATION BONDINGCURVE GRADUATORV2 GRADUATIONTHRESHOLD MAXEXCESSOVERTHRESHOLD GRADUATIONFEE
+
 cast send LAUNCHPAD "whitelistComponents(address,address,address,uint256,uint256,uint256)" TOKENIMPLEMENTATION BONDINGCURVE GRADUATORV4 GRADUATIONTHRESHOLD MAXEXCESSOVERTHRESHOLD GRADUATIONFEE
 
 # Transfer ownerhips ? 
 
 
 ```
-
+- update addresses in justfile
 - update launchpad address in envio
