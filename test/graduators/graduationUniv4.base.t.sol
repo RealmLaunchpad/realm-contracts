@@ -248,8 +248,9 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         if (!expectSuccess) vm.expectRevert();
         // the actual call to the position manager to mint the liquidity position
         // deadline = block.timestamp (no effective deadline)
-        IPositionManager(positionManagerAddress)
-        .modifyLiquidities{value: ethValue}(abi.encode(actions, params), block.timestamp);
+        IPositionManager(positionManagerAddress).modifyLiquidities{value: ethValue}(
+            abi.encode(actions, params), block.timestamp
+        );
 
         vm.stopPrank();
     }
