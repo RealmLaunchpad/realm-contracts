@@ -250,6 +250,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @dev Token fees are left in this contract (effectively burned, but without gas waste)
     /// @dev Each token fees are claimed and distributed independently
     /// @param tokens Array of token addresses to collect fees from
+    /// @param positionIndexes Array of position indexes to collect fees from (only 0 or 1 are valid values)
     function collectEthFees(address[] calldata tokens, uint256[] calldata positionIndexes) external {
         uint256 nTokens = tokens.length;
         require(nTokens > 0, NoTokensToCollectFees());
