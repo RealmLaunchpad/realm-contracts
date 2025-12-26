@@ -36,7 +36,7 @@ contract LaunchpadBaseTests is Test {
 
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
-    uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
+    uint256 public constant OWNER_RESERVED_SUPPLY = 10_000_000e18;
     uint16 public constant BASE_BUY_FEE_BPS = 100;
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
@@ -117,7 +117,7 @@ contract LaunchpadBaseTests is Test {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
         testToken = launchpad.createToken(
-            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), "0x003"
+            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x003"
         );
         _;
     }

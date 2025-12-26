@@ -25,8 +25,8 @@ contract LivoLaunchpad is Ownable2Step {
     /// @dev 1 billion tokens with 18 decimals
     uint256 private constant TOTAL_SUPPLY = 1_000_000_000e18; // 1B tokens
 
-    /// @notice Supply reserved to the token creator, but only transferred at token graduation
-    uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
+    /// @notice Supply reserved to the token owner, but only transferred at token graduation
+    uint256 public constant OWNER_RESERVED_SUPPLY = 10_000_000e18;
 
     /// @notice Total fees collected by the treasury (in wei)
     uint256 public treasuryEthFeesCollected;
@@ -64,6 +64,7 @@ contract LivoLaunchpad is Ownable2Step {
     error ReceivingZeroAmount();
     error InvalidParameter(uint256 parameter);
     error InvalidToken();
+    error InvalidTokenOwner();
     error NotEnoughSupply();
     error AlreadyGraduated();
     error InsufficientETHReserves();
@@ -79,6 +80,7 @@ contract LivoLaunchpad is Ownable2Step {
     event TokenCreated(
         address indexed token,
         address indexed creator,
+        address indexed tokenOwner,
         string name,
         string symbol,
         address implementation,
@@ -122,6 +124,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param implementation Token implementation contract
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
+    /// @param tokenOwner Address of the token owner (receives reserved supply and fees)
     /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
     /// @return token The address of the newly created token
     function createToken(
@@ -130,10 +133,12 @@ contract LivoLaunchpad is Ownable2Step {
         address implementation,
         address bondingCurve,
         address graduator,
+        address tokenOwner,
         bytes32 salt
     ) external returns (address token) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
+        require(tokenOwner != address(0), InvalidTokenOwner());
 
         GraduationSettings storage graduationSettings = whitelistedComponents[implementation][bondingCurve][graduator];
 
@@ -146,17 +151,17 @@ contract LivoLaunchpad is Ownable2Step {
         token = Clones.cloneDeterministic(implementation, salt_);
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(token, msg.sender, name, symbol, implementation, bondingCurve, graduator);
+        emit TokenCreated(token, msg.sender, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
 
         // at creation all tokens are held by this contract
         tokenConfigs[token] = TokenConfig({
             bondingCurve: ILivoBondingCurve(bondingCurve),
             graduator: ILivoGraduator(graduator),
-            creator: msg.sender,
+            tokenOwner: tokenOwner,
             ethGraduationThreshold: graduationSettings.ethGraduationThreshold,
             maxExcessOverThreshold: graduationSettings.maxExcessOverThreshold,
             graduationEthFee: graduationSettings.graduationEthFee,
-            creatorReservedSupply: CREATOR_RESERVED_SUPPLY,
+            ownerReservedSupply: OWNER_RESERVED_SUPPLY,
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps
         });
@@ -331,13 +336,13 @@ contract LivoLaunchpad is Ownable2Step {
         return tokenConfigs[token];
     }
 
-    /// @notice Returns the creator of a token
+    /// @notice Returns the owner of a token
     /// @param token The address of the token
-    /// @return The address of the token creator
-    function getTokenCreator(address token) external view returns (address) {
+    /// @return The address of the token owner
+    function getTokenOwner(address token) external view returns (address) {
         TokenConfig storage config = tokenConfigs[token];
         if (!config.exists()) revert InvalidToken();
-        return config.creator;
+        return config.tokenOwner;
     }
 
     /// @notice Retrieves the graduation settings for a given launchpad implementation.
@@ -453,12 +458,12 @@ contract LivoLaunchpad is Ownable2Step {
         uint256 ethForGraduation = ethCollected - tokenConfig.graduationEthFee;
         treasuryEthFeesCollected += tokenConfig.graduationEthFee;
 
-        uint256 tokensForCreator = tokenConfig.creatorReservedSupply;
-        uint256 tokensForGraduation = token.balanceOf(address(this)) - tokensForCreator;
+        uint256 tokensForOwner = tokenConfig.ownerReservedSupply;
+        uint256 tokensForGraduation = token.balanceOf(address(this)) - tokensForOwner;
 
         // update token state
         tokenState.ethCollected = 0;
-        tokenState.releasedSupply += tokensForCreator + tokensForGraduation;
+        tokenState.releasedSupply += tokensForOwner + tokensForGraduation;
 
         // If the last purchase is a large one, the resulting price in the pool will be higher
         // I don't see a security risk in this.
@@ -466,7 +471,7 @@ contract LivoLaunchpad is Ownable2Step {
         // The larger the last purchase, the larger the price difference from the bonding curve to the univ2 pool
         // But I think that simply encourages graduation, so I don't see a big problem
         // The larger the buy, the larger the instant profit of the last purchase
-        token.safeTransfer(tokenConfig.creator, tokensForCreator);
+        token.safeTransfer(tokenConfig.tokenOwner, tokensForOwner);
         token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
 
         // pass here the tokensForGraduation to avoid deflation attack in the graduator
@@ -525,12 +530,12 @@ contract LivoLaunchpad is Ownable2Step {
     }
 
     /// @dev The supply of a token that can be purchased
-    /// @dev The reserved creator supply is only effective at graduation,
+    /// @dev The reserved token owner supply is only effective at graduation,
     /// and it is taken from the remaining tokens in this contract at graduation
     function _availableTokensForPurchase(address token) internal view returns (uint256) {
-        // This is equivalent to:  return IERC20(token).balanceOf(address(this)) - CREATOR_RESERVED_SUPPLY;
+        // This is equivalent to:  return IERC20(token).balanceOf(address(this)) - OWNER_RESERVED_SUPPLY;
         // But the below formulation is more gas efficient as it avoids an external call
-        return TOTAL_SUPPLY - tokenStates[token].releasedSupply - CREATOR_RESERVED_SUPPLY;
+        return TOTAL_SUPPLY - tokenStates[token].releasedSupply - OWNER_RESERVED_SUPPLY;
     }
 
     function _availableEthFromReserves(address token) internal view returns (uint256) {
