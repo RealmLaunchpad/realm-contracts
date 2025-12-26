@@ -29,6 +29,7 @@
 | **Name**                    | **Address**                                  |
 | --------------------------- | -------------------------------------------- |
 | uniswap v2 router           | `0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24` |
+| uniswap v2 WETH             | `0x4200000000000000000000000000000000000006` |
 | Uniswap V4 Pool Manager     | `0x498581ff718922c3f8e6a244956af099b2652b2b` |
 | Uniswap V4 position manager | `0x7c5f5a4bbd8fd63184577525326123b519429bdc` |
 | Uniswap V4 Permit2          | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |

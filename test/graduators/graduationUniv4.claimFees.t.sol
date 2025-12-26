@@ -592,4 +592,20 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         uint256 expectedFees = buyAmount / 200;
         assertApproxEqAbsDecimal(totalFees, expectedFees, 1, 18, "creator fees should be 0.5% of buy amount");
     }
+
+    function test_claimFeesOfBothPsitionsDontRevertIfNoFeesToClaim() public createAndGraduateToken {
+        // there shouldn't be any fees to claim yet
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](2);
+        positionIndexes[0] = 0;
+        positionIndexes[1] = 1;
+
+        uint256 creatorEthBalanceBefore = creator.balance;
+
+        // should not revert even if there are no fees to claim
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+
+        assertEq(creator.balance, creatorEthBalanceBefore, "creator eth balance should not change");
+    }
 }
