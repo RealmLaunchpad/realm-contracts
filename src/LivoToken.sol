@@ -3,8 +3,9 @@ pragma solidity 0.8.28;
 
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
-contract LivoToken is ERC20, Initializable {
+contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice The only graduator allowed to graduate this token
     address public graduator;
 
@@ -47,13 +48,15 @@ contract LivoToken is ERC20, Initializable {
     /// @param pair_ Address of the Uniswap pair
     /// @param supplyReceiver_ Address receiving the total supply of tokens
     /// @param totalSupply_ Total supply to mint
+    /// @param tokenCalldata Extra initialization parameters for the token
     function initialize(
         string memory name_,
         string memory symbol_,
         address graduator_,
         address pair_,
         address supplyReceiver_,
-        uint256 totalSupply_
+        uint256 totalSupply_,
+        bytes memory tokenCalldata
     ) external initializer {
         require(graduator_ != address(0), InvalidGraduator());
 
@@ -64,6 +67,8 @@ contract LivoToken is ERC20, Initializable {
 
         // all is minted back to the launchpad
         _mint(supplyReceiver_, totalSupply_);
+
+        // tokenCalldata is ignored in this implementation
     }
 
     //////////////////////// restricted access functions ////////////////////////

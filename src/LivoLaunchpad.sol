@@ -80,7 +80,6 @@ contract LivoLaunchpad is Ownable2Step {
 
     event TokenCreated(
         address indexed token,
-        address indexed creator,
         address indexed tokenOwner,
         string name,
         string symbol,
@@ -128,6 +127,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param graduator Address of the graduator contract
     /// @param tokenOwner Address of the token owner (receives reserved supply and fees)
     /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
+    /// @param tokenCalldata Extra initialization parameters for the token
     /// @return token The address of the newly created token
     function createToken(
         string calldata name,
@@ -136,14 +136,14 @@ contract LivoLaunchpad is Ownable2Step {
         address bondingCurve,
         address graduator,
         address tokenOwner,
-        bytes32 salt
+        bytes32 salt,
+        bytes memory tokenCalldata
     ) external returns (address token) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
         require(tokenOwner != address(0), InvalidTokenOwner());
 
         GraduationSettings storage graduationSettings = whitelistedComponents[implementation][bondingCurve][graduator];
-
         require(_isSetWhitelisted(graduationSettings), NotWhitelistedComponents());
 
         bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
@@ -153,7 +153,7 @@ contract LivoLaunchpad is Ownable2Step {
         token = Clones.cloneDeterministic(implementation, salt_);
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(token, msg.sender, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
+        emit TokenCreated(token, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
 
         // at creation all tokens are held by this contract
         tokenConfigs[token] = TokenConfig({
@@ -180,7 +180,8 @@ contract LivoLaunchpad is Ownable2Step {
                 graduator, // graduator address
                 pair, // uniswap pair
                 address(this), // supply receiver, all tokens are held by the launchpad initially
-                TOTAL_SUPPLY
+                TOTAL_SUPPLY,
+                tokenCalldata // this may carry extra arguments, implementation specific
             );
 
         return token;
