@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoToken} from "src/LivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";

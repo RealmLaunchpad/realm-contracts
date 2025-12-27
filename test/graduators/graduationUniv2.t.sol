@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
-import {LivoToken} from "src/LivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";

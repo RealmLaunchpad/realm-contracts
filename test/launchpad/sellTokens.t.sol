@@ -9,7 +9,7 @@ import {
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
-import {LivoToken} from "src/LivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 
 abstract contract SellTokensTest is LaunchpadBaseTests {
     uint256 constant ONE_ETH_BUY = 1 ether;

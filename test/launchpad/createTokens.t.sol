@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoToken} from "src/LivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 
 contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {

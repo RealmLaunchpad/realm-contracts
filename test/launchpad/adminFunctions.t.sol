@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
-import {LivoToken} from "src/LivoToken.sol";
+import {LivoToken} from "src/token/LivoToken.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
