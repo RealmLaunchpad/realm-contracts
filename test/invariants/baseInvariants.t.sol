@@ -36,7 +36,7 @@ contract LaunchpadInvariants is Test {
 
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
-    uint256 public constant CREATOR_RESERVED_SUPPLY = 10_000_000e18;
+    uint256 public constant OWNER_RESERVED_SUPPLY = 10_000_000e18;
     uint16 public constant BASE_BUY_FEE_BPS = 100;
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
@@ -121,14 +121,14 @@ contract LaunchpadInvariants is Test {
         );
     }
 
-    /// @notice each non-graduated token should have a balance in the launchpad above CREATOR_RESERVED_SUPPLY
-    function invariant_nonGraduatedTokensAboveCreatorReserved() public view {
+    /// @notice each non-graduated token should have a balance in the launchpad above OWNER_RESERVED_SUPPLY
+    function invariant_nonGraduatedTokensAboveOwnerReserved() public view {
         for (uint256 i = 0; i < helper.nTokens(); i++) {
             address token = helper.tokenAt(i);
             assertGt(
                 IERC20(token).balanceOf(address(launchpad)),
-                CREATOR_RESERVED_SUPPLY,
-                "non-graduated token has balance in launchpad below CREATOR_RESERVED_SUPPLY"
+                OWNER_RESERVED_SUPPLY,
+                "non-graduated token has balance in launchpad below OWNER_RESERVED_SUPPLY"
             );
         }
     }

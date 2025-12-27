@@ -115,14 +115,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     event LpFeesCollected(
         address indexed token,
         uint256 indexed positionId,
-        address tokenCreator,
+        address tokenOwner,
         uint256 positionIndex,
         uint256 creatorFees
     );
     event LpFeesCollectionTransferFailed(
         address indexed token,
         uint256 indexed positionId,
-        address tokenCreator,
+        address tokenOwner,
         uint256 positionIndex,
         uint256 creatorFees
     );
@@ -245,7 +245,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         emit TokenGraduated(tokenAddress, poolId, tokensDeposited, ethValue, liquidity1 + liquidity2);
     }
 
-    /// @notice Collects ETH fees from graduated tokens and distributes them to creators and treasury
+    /// @notice Collects ETH fees from graduated tokens and distributes them to token owners and treasury
     /// @dev Any account can call this function.
     /// @dev Token fees are left in this contract (effectively burned, but without gas waste)
     /// @dev Each token fees are claimed and distributed independently
@@ -267,19 +267,19 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
                 // collect fees from uniswap4 into this contract (both eth and tokens)
                 uint256 positionId = positionIds[token][positionIndex];
                 (uint256 creatorFees,) = _claimFromUniswapLock(token, positionId);
-                // skip eth transfer if no fees collected for creator. Eth balance is considered part of the treasury
+                // skip eth transfer if no fees collected for token owner. Eth balance is considered part of the treasury
                 if (creatorFees == 0) continue;
 
-                address tokenCreator = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenCreator(token);
+                address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
                 // attempt to transfer ether. If it fails, the transfer is skip and the funds are considered part of the treasury
                 // This is to prevent fallback functions DOS the fee collection for the treasury.
-                (bool success,) = address(tokenCreator).call{value: creatorFees}("");
+                (bool success,) = address(tokenOwner).call{value: creatorFees}("");
 
                 if (success) {
-                    emit LpFeesCollected(token, positionId, tokenCreator, positionIndex, creatorFees);
+                    emit LpFeesCollected(token, positionId, tokenOwner, positionIndex, creatorFees);
                 } else {
                     // emit event for transparency, in case we needed to manually transfer the funds later
-                    emit LpFeesCollectionTransferFailed(token, positionId, tokenCreator, positionIndex, creatorFees);
+                    emit LpFeesCollectionTransferFailed(token, positionId, tokenOwner, positionIndex, creatorFees);
                 }
             }
         }
@@ -305,7 +305,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @dev For each amount in creatorEthFees, the treasury can expect the same amount as well
     /// @param tokens Array of token addresses
     /// @param positionIndex Index of the position to check for each token. Use 0 as default, as it collects the majority of the fees
-    /// @return creatorEthFees Array of claimable ETH fees for creators
+    /// @return creatorEthFees Array of claimable ETH fees for token owners
     function getClaimableFees(address[] calldata tokens, uint256 positionIndex)
         public
         view
@@ -380,13 +380,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // collect fees will result in an eth transfer to this contract
         uint256 balanceBefore = address(this).balance;
 
-        // claim fees to this contract and distribute between livo treasury and token creator
+        // claim fees to this contract and distribute between livo treasury and token owner
         LIQUIDITY_LOCK.claimUniV4PositionFees(positionId, address(0), token, address(this));
 
         // eth fees collected in this call
         uint256 collectedEthFees = address(this).balance - balanceBefore;
 
-        // 50/50 split of the eth fees between livo treasury and token creator
+        // 50/50 split of the eth fees between livo treasury and token owner
         treasuryFees = collectedEthFees / 2;
         creatorFees = collectedEthFees - treasuryFees;
     }

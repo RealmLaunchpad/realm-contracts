@@ -15,10 +15,10 @@ struct TokenConfig {
     uint256 ethGraduationThreshold;
     /// @notice Max excess eth over graduation threshold
     uint256 maxExcessOverThreshold;
-    /// @notice Reserved supply of tokens for creator at graduation
-    uint256 creatorReservedSupply;
-    /// @notice Creator of the token. Cannot be altered once is set
-    address creator;
+    /// @notice Reserved supply of tokens for token owner at graduation
+    uint256 ownerReservedSupply;
+    /// @notice Owner of the token (receives reserved supply and fees). Cannot be altered once is set
+    address tokenOwner;
     /// @notice Trading (buy) fee in basis points (100 bps = 1%). Only applies before graduation
     uint16 buyFeeBps;
     /// @notice Trading (sell) fee in basis points (100 bps = 1%). Only applies before graduation
@@ -36,7 +36,8 @@ struct TokenState {
 
 library TokenDataLib {
     function exists(TokenConfig storage config) internal view returns (bool) {
-        return config.creator != address(0);
+        // NB: in createToken, tokenOwner==address(0) is not allowed
+        return config.tokenOwner != address(0);
     }
 
     function notGraduated(TokenState storage state) internal view returns (bool) {

@@ -53,7 +53,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
         testToken = launchpad.createToken(
-            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), "0x12"
+            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12"
         );
 
         _graduateToken();
@@ -63,10 +63,10 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     modifier twoGraduatedTokensWithBuys(uint256 buyAmount) {
         vm.startPrank(creator);
         testToken1 = launchpad.createToken(
-            "TestToken1", "TEST1", address(implementation), address(bondingCurve), address(graduator), "0x1a3a"
+            "TestToken1", "TEST1", address(implementation), address(bondingCurve), address(graduator), creator, "0x1a3a"
         );
         testToken2 = launchpad.createToken(
-            "TestToken2", "TEST2", address(implementation), address(bondingCurve), address(graduator), "0x1a3a"
+            "TestToken2", "TEST2", address(implementation), address(bondingCurve), address(graduator), creator, "0x1a3a"
         );
         vm.stopPrank();
 
@@ -591,5 +591,21 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         // So creator gets 0.5% = buyAmount / 200
         uint256 expectedFees = buyAmount / 200;
         assertApproxEqAbsDecimal(totalFees, expectedFees, 1, 18, "creator fees should be 0.5% of buy amount");
+    }
+
+    function test_claimFeesOfBothPsitionsDontRevertIfNoFeesToClaim() public createAndGraduateToken {
+        // there shouldn't be any fees to claim yet
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](2);
+        positionIndexes[0] = 0;
+        positionIndexes[1] = 1;
+
+        uint256 creatorEthBalanceBefore = creator.balance;
+
+        // should not revert even if there are no fees to claim
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+
+        assertEq(creator.balance, creatorEthBalanceBefore, "creator eth balance should not change");
     }
 }
