@@ -64,7 +64,9 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.NotWhitelistedComponents.selector));
-        launchpad.createToken("TestToken", "TEST", address(implementation), invalidCurve, address(graduator), creator, "0x12");
+        launchpad.createToken(
+            "TestToken", "TEST", address(implementation), invalidCurve, address(graduator), creator, "0x12"
+        );
     }
 
     function testCannotCreateTokenWith_InvalidGraduator_ValidCurve() public {
@@ -72,7 +74,9 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.NotWhitelistedComponents.selector));
-        launchpad.createToken("TestToken", "TEST", address(implementation), invalidCurve, address(graduator), creator, "0x12");
+        launchpad.createToken(
+            "TestToken", "TEST", address(implementation), invalidCurve, address(graduator), creator, "0x12"
+        );
     }
 
     function testCannotCreateTokenWith_blaklistedComponents() public {
@@ -95,7 +99,9 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testCannotCreateTokenWithEmptyName() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidNameOrSymbol.selector));
-        launchpad.createToken("", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12");
+        launchpad.createToken(
+            "", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12"
+        );
     }
 
     function testCannotCreateTokenWithEmptySymbol() public {
