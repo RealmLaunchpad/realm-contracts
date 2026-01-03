@@ -108,7 +108,7 @@ contract LivoLaunchpad is Ownable2Step {
     );
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
     event TokenOwnerUpdated(address indexed newOwner);
-    
+
     /////////////////////////////////////////////////
 
     /// @param _treasury Address of the treasury to receive fees

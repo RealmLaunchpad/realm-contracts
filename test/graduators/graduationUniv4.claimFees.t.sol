@@ -608,4 +608,21 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
 
         assertEq(creator.balance, creatorEthBalanceBefore, "creator eth balance should not change");
     }
+
+    function test_tokenOwnershipTransferred_givesFeesToNewOwner() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        _swapBuy(buyer, 1 ether, 10e18, true);
+
+        // some fees should have been accumulated by now. Let's transfer ownership
+        vm.prank(creator);
+        launchpad.transferTokenOwnership(testToken, alice);
+
+        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 aliceEthBalanceBefore = alice.balance;
+
+        _collectFees(testToken);
+
+        assertEq(creator.balance, creatorEthBalanceBefore, "creator should not have gotten fees");
+        assertGt(alice.balance, aliceEthBalanceBefore, "fees should have gone to alice");
+    }
 }
