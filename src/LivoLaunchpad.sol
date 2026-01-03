@@ -74,6 +74,7 @@ contract LivoLaunchpad is Ownable2Step {
     error PurchaseExceedsLimitPostGraduation();
     error AlreadyConfigured();
     error AlreadyBlacklisted();
+    error OnlyTokenOwner();
 
     ///////////////////// Events /////////////////////
 
@@ -106,7 +107,8 @@ contract LivoLaunchpad is Ownable2Step {
         uint256 graduationEthFee
     );
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
-
+    event TokenOwnerUpdated(address indexed newOwner);
+    
     /////////////////////////////////////////////////
 
     /// @param _treasury Address of the treasury to receive fees
@@ -275,6 +277,16 @@ contract LivoLaunchpad is Ownable2Step {
         emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
 
         return ethForSeller;
+    }
+
+    /// @notice Allows the token owner to transfer ownership to another address
+    /// @param token The address of the token
+    /// @param newTokenOwner The address of the new tokenOwner
+    function transferTokenOwnership(address token, address newTokenOwner) external {
+        require(tokenConfigs[token].tokenOwner == msg.sender, OnlyTokenOwner());
+
+        tokenConfigs[token].tokenOwner = newTokenOwner;
+        emit TokenOwnerUpdated(newTokenOwner);
     }
 
     //////////////////////////// view functions //////////////////////////
