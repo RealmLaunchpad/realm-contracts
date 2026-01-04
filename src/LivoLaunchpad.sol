@@ -74,6 +74,7 @@ contract LivoLaunchpad is Ownable2Step {
     error PurchaseExceedsLimitPostGraduation();
     error AlreadyConfigured();
     error AlreadyBlacklisted();
+    error OnlyTokenOwner();
 
     ///////////////////// Events /////////////////////
 
@@ -106,6 +107,7 @@ contract LivoLaunchpad is Ownable2Step {
         uint256 graduationEthFee
     );
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
+    event TokenOwnerUpdated(address indexed newOwner);
 
     /////////////////////////////////////////////////
 
@@ -277,6 +279,16 @@ contract LivoLaunchpad is Ownable2Step {
         return ethForSeller;
     }
 
+    /// @notice Allows the token owner to transfer ownership to another address
+    /// @param token The address of the token
+    /// @param newTokenOwner The address of the new tokenOwner
+    function transferTokenOwnership(address token, address newTokenOwner) external {
+        require(tokenConfigs[token].tokenOwner == msg.sender, OnlyTokenOwner());
+
+        // updaes storage and emits event
+        _transferTokenOwnership(token, newTokenOwner);
+    }
+
     //////////////////////////// view functions //////////////////////////
 
     /// @notice Quotes the result of buying tokens with exact ETH amount
@@ -443,6 +455,16 @@ contract LivoLaunchpad is Ownable2Step {
         emit TreasuryFeesCollected(treasury, amount);
     }
 
+    /// @notice If a token is abandoned by original creators and the community wants to step in,
+    ///         the contract admins can overtake ownership and give it to a new more committed owner
+    /// @dev A malicious team can potentially take over any token, but that would undermine the community trust so the incentives are little.
+    /// @param token The address of the token
+    /// @param newTokenOwner The address of the new tokenOwner
+    function communityTakeOver(address token, address newTokenOwner) external onlyOwner {
+        // no other requirements besides being an permissioned onlyOwner function
+        _transferTokenOwnership(token, newTokenOwner);
+    }
+
     //////////////////////////// Internal functions //////////////////////////
 
     /// @dev This function assumes that the graduation criteria is met
@@ -485,6 +507,11 @@ contract LivoLaunchpad is Ownable2Step {
         // note: this call happens always after all state changes in all callers of this function to protect against re-entrancy
         (bool success,) = recipient.call{value: amount}("");
         require(success, EthTransferFailed());
+    }
+
+    function _transferTokenOwnership(address token, address newTokenOwner) internal {
+        tokenConfigs[token].tokenOwner = newTokenOwner;
+        emit TokenOwnerUpdated(newTokenOwner);
     }
 
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////

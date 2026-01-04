@@ -270,6 +270,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
                 // skip eth transfer if no fees collected for token owner. Eth balance is considered part of the treasury
                 if (creatorFees == 0) continue;
 
+                // the token owner can be updated in the launchpad even after graduation (only by the current owner)
                 address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
                 // attempt to transfer ether. If it fails, the transfer is skip and the funds are considered part of the treasury
                 // This is to prevent fallback functions DOS the fee collection for the treasury.

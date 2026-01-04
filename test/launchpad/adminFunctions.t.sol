@@ -5,6 +5,7 @@ import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {LivoToken} from "src/LivoToken.sol";
+import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     address public nonOwner = makeAddr("nonOwner");
@@ -251,4 +252,42 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
     event TreasuryAddressUpdated(address newTreasury);
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
+
+    function test_tokenOwnershipTransfer_onlyTokenOwner() public createTestToken {
+        vm.expectRevert(LivoLaunchpad.OnlyTokenOwner.selector);
+        vm.prank(alice);
+        launchpad.transferTokenOwnership(testToken, alice);
+
+        assertEq(launchpad.getTokenOwner(testToken), creator);
+    }
+
+    function test_tokenOwnershipTransfer_newOwnerReflected() public createTestToken {
+        vm.prank(creator);
+        launchpad.transferTokenOwnership(testToken, alice);
+
+        assertEq(launchpad.getTokenOwner(testToken), alice);
+    }
+
+    function test_tokenOwnershipTransfer_twoTransfers() public createTestToken {
+        vm.prank(creator);
+        launchpad.transferTokenOwnership(testToken, alice);
+
+        vm.prank(alice);
+        launchpad.transferTokenOwnership(testToken, bob);
+
+        assertEq(launchpad.getTokenOwner(testToken), bob);
+    }
+
+    error OwnableUnauthorizedAccount(address caller);
+
+    function test_communityTakeOver_onlyOwnerAllowed() public createTestToken {
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, creator));
+        launchpad.communityTakeOver(testToken, alice);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        assertEq(launchpad.getTokenOwner(testToken), alice);
+    }
 }
