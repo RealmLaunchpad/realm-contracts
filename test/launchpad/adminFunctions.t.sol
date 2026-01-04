@@ -4,8 +4,11 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
-import {LivoToken} from "src/token/LivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
+import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
+import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 
 contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     address public nonOwner = makeAddr("nonOwner");
@@ -289,5 +292,37 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         launchpad.communityTakeOver(testToken, alice);
 
         assertEq(launchpad.getTokenOwner(testToken), alice);
+    }
+
+    function test_createCustomToken_onlyOwnerAllowed() public {
+        LivoToken otherImplementation = new LivoToken();
+        ConstantProductBondingCurve otherBondingCurve = new ConstantProductBondingCurve();
+        LivoGraduatorUniswapV2 otherGraduator = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, alice));
+        launchpad.createCustomToken(
+            "CustomToken",
+            "CTK",
+            address(otherImplementation),
+            address(otherBondingCurve),
+            address(otherGraduator),
+            alice,
+            0,
+            ""
+        );
+
+        // the owner can create a weird components combination without restrictions
+        vm.prank(admin);
+        launchpad.createCustomToken(
+            "CustomToken",
+            "CTK",
+            address(otherImplementation),
+            address(otherBondingCurve),
+            address(otherGraduator),
+            alice,
+            0,
+            ""
+        );
     }
 }

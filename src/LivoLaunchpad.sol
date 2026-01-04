@@ -157,7 +157,6 @@ contract LivoLaunchpad is Ownable2Step {
         bytes32 salt,
         bytes memory tokenCalldata
     ) external onlyOwner returns (address token) {
-
         token = _createToken(name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata);
     }
 
@@ -491,7 +490,7 @@ contract LivoLaunchpad is Ownable2Step {
 
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
 
-        /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
+    /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
     /// @dev Selected bonding curve and graduator must be a whitelisted pair
     /// @param name The name of the token
     /// @param symbol The symbol of the token (max 32 characters)
@@ -558,7 +557,6 @@ contract LivoLaunchpad is Ownable2Step {
 
         return token;
     }
-
 
     function _maxEthToSpend(address token) internal view returns (uint256 ethBuy) {
         uint256 remainingReserves = tokenConfigs[token].maxEthReserves() - tokenStates[token].ethCollected;
