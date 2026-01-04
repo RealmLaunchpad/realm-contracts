@@ -277,4 +277,17 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         assertEq(launchpad.getTokenOwner(testToken), bob);
     }
+
+    error OwnableUnauthorizedAccount(address caller);
+
+    function test_communityTakeOver_onlyOwnerAllowed() public createTestToken {
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, creator));
+        launchpad.communityTakeOver(testToken, alice);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        assertEq(launchpad.getTokenOwner(testToken), alice);
+    }
 }
