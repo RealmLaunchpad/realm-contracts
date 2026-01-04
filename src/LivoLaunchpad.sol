@@ -5,7 +5,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
-import {LivoToken} from "src/LivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState, TokenDataLib} from "src/types/tokenData.sol";
@@ -80,7 +80,6 @@ contract LivoLaunchpad is Ownable2Step {
 
     event TokenCreated(
         address indexed token,
-        address indexed creator,
         address indexed tokenOwner,
         string name,
         string symbol,
@@ -128,6 +127,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param graduator Address of the graduator contract
     /// @param tokenOwner Address of the token owner (receives reserved supply and fees)
     /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
+    /// @param tokenCalldata Extra initialization parameters for the token
     /// @return token The address of the newly created token
     function createToken(
         string calldata name,
@@ -136,54 +136,28 @@ contract LivoLaunchpad is Ownable2Step {
         address bondingCurve,
         address graduator,
         address tokenOwner,
-        bytes32 salt
+        bytes32 salt,
+        bytes memory tokenCalldata
     ) external returns (address token) {
-        require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
-        require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
-        require(tokenOwner != address(0), InvalidTokenOwner());
-
         GraduationSettings storage graduationSettings = whitelistedComponents[implementation][bondingCurve][graduator];
-
         require(_isSetWhitelisted(graduationSettings), NotWhitelistedComponents());
 
-        bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
-        // minimal proxy pattern to deploy a new LivoToken instance
-        // Deploying the contracts with new() costs 3-4 times more gas than cloning
-        // trading will be a bit more expensive, as variables cannot be immutable
-        token = Clones.cloneDeterministic(implementation, salt_);
+        token = _createToken(name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata);
+    }
 
-        // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(token, msg.sender, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
-
-        // at creation all tokens are held by this contract
-        tokenConfigs[token] = TokenConfig({
-            bondingCurve: ILivoBondingCurve(bondingCurve),
-            graduator: ILivoGraduator(graduator),
-            tokenOwner: tokenOwner,
-            ethGraduationThreshold: graduationSettings.ethGraduationThreshold,
-            maxExcessOverThreshold: graduationSettings.maxExcessOverThreshold,
-            graduationEthFee: graduationSettings.graduationEthFee,
-            ownerReservedSupply: OWNER_RESERVED_SUPPLY,
-            buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps
-        });
-
-        // Creates the Uniswap Pair or whatever other initialization is necessary
-        // in the case of univ4, the pair will be the address of the pool manager,
-        // to which tokens cannot be transferred until graduation
-        address pair = ILivoGraduator(graduator).initializePair(token);
-
-        LivoToken(token)
-            .initialize(
-                name,
-                symbol,
-                graduator, // graduator address
-                pair, // uniswap pair
-                address(this), // supply receiver, all tokens are held by the launchpad initially
-                TOTAL_SUPPLY
-            );
-
-        return token;
+    /// Same as createToken, but allows admin to create a token bypassing the whitelisting sets of graduator, bonding curve and token implementation
+    /// Projects can contact the team for custom implementations that can only be deployed by admins
+    function createCustomToken(
+        string calldata name,
+        string calldata symbol,
+        address implementation,
+        address bondingCurve,
+        address graduator,
+        address tokenOwner,
+        bytes32 salt,
+        bytes memory tokenCalldata
+    ) external onlyOwner returns (address token) {
+        token = _createToken(name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata);
     }
 
     /// @notice Buys tokens with exact ETH amount
@@ -515,6 +489,74 @@ contract LivoLaunchpad is Ownable2Step {
     }
 
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
+
+    /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
+    /// @dev Selected bonding curve and graduator must be a whitelisted pair
+    /// @param name The name of the token
+    /// @param symbol The symbol of the token (max 32 characters)
+    /// @param implementation Token implementation contract
+    /// @param bondingCurve Address of the bonding curve contract
+    /// @param graduator Address of the graduator contract
+    /// @param tokenOwner Address of the token owner (receives reserved supply and fees)
+    /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
+    /// @param tokenCalldata Extra initialization parameters for the token
+    /// @return token The address of the newly created token
+    function _createToken(
+        string calldata name,
+        string calldata symbol,
+        address implementation,
+        address bondingCurve,
+        address graduator,
+        address tokenOwner,
+        bytes32 salt,
+        bytes memory tokenCalldata
+    ) internal returns (address token) {
+        require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
+        require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
+        require(tokenOwner != address(0), InvalidTokenOwner());
+
+        bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
+        // minimal proxy pattern to deploy a new LivoToken instance
+        // Deploying the contracts with new() costs 3-4 times more gas than cloning
+        // trading will be a bit more expensive, as variables cannot be immutable
+        token = Clones.cloneDeterministic(implementation, salt_);
+
+        // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
+        emit TokenCreated(token, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
+
+        GraduationSettings storage graduationSettings = whitelistedComponents[implementation][bondingCurve][graduator];
+
+        // at creation all tokens are held by this contract
+        tokenConfigs[token] = TokenConfig({
+            bondingCurve: ILivoBondingCurve(bondingCurve),
+            graduator: ILivoGraduator(graduator),
+            tokenOwner: tokenOwner,
+            ethGraduationThreshold: graduationSettings.ethGraduationThreshold,
+            maxExcessOverThreshold: graduationSettings.maxExcessOverThreshold,
+            graduationEthFee: graduationSettings.graduationEthFee,
+            ownerReservedSupply: OWNER_RESERVED_SUPPLY,
+            buyFeeBps: baseBuyFeeBps,
+            sellFeeBps: baseSellFeeBps
+        });
+
+        // Creates the Uniswap Pair or whatever other initialization is necessary
+        // in the case of univ4, the pair will be the address of the pool manager,
+        // to which tokens cannot be transferred until graduation
+        address pair = ILivoGraduator(graduator).initializePair(token);
+
+        LivoToken(token)
+            .initialize(
+                name,
+                symbol,
+                graduator, // graduator address
+                pair, // uniswap pair
+                address(this), // supply receiver, all tokens are held by the launchpad initially
+                TOTAL_SUPPLY,
+                tokenCalldata // this may carry extra arguments, implementation specific
+            );
+
+        return token;
+    }
 
     function _maxEthToSpend(address token) internal view returns (uint256 ethBuy) {
         uint256 remainingReserves = tokenConfigs[token].maxEthReserves() - tokenStates[token].ethCollected;

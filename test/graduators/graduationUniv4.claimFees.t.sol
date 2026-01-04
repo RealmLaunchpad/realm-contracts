@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
-import {LivoToken} from "src/LivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
@@ -53,7 +53,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
         testToken = launchpad.createToken(
-            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12"
+            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12", ""
         );
 
         _graduateToken();
@@ -63,10 +63,24 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     modifier twoGraduatedTokensWithBuys(uint256 buyAmount) {
         vm.startPrank(creator);
         testToken1 = launchpad.createToken(
-            "TestToken1", "TEST1", address(implementation), address(bondingCurve), address(graduator), creator, "0x1a3a"
+            "TestToken1",
+            "TEST1",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            ""
         );
         testToken2 = launchpad.createToken(
-            "TestToken2", "TEST2", address(implementation), address(bondingCurve), address(graduator), creator, "0x1a3a"
+            "TestToken2",
+            "TEST2",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            ""
         );
         vm.stopPrank();
 

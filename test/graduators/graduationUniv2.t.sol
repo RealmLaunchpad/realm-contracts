@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
-import {LivoToken} from "src/LivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
@@ -25,7 +25,14 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     modifier createTestTokenWithPair() {
         vm.prank(creator);
         testToken = launchpad.createToken(
-            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x003"
+            "TestToken",
+            "TEST",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x003",
+            ""
         );
         uniswapPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
         _;
@@ -123,7 +130,14 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     function test_cannotCreateUniV2PairRightAfterTokenDeployment() public {
         vm.prank(creator);
         testToken = launchpad.createToken(
-            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x003"
+            "TestToken",
+            "TEST",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x003",
+            ""
         );
 
         address existingPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));

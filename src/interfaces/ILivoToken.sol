@@ -5,18 +5,20 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 
 interface ILivoToken is IERC20 {
     function initialize(
-        string memory _name,
-        string memory _symbol,
-        address _creator,
-        address _launchpad,
-        address _graduator,
-        address _pair,
-        uint256 _totalSupply,
-        uint256 _buyFeeBps,
-        uint256 _sellFeeBps
+        string memory name_,
+        string memory symbol_,
+        address graduator_,
+        address pair_,
+        address supplyReceiver_,
+        uint256 totalSupply_,
+        bytes memory tokenCalldata
     ) external;
 
     function markGraduated() external;
 
-    function creator() external view returns (address);
+    function graduator() external view returns (address);
+
+    function graduated() external view returns (bool);
+
+    function pair() external view returns (address);
 }

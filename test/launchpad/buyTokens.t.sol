@@ -9,7 +9,7 @@ import {
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
-import {LivoToken} from "src/LivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {console} from "forge-std/console.sol";
 
 abstract contract BuyTokensTest is LaunchpadBaseTests {
@@ -296,7 +296,14 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         // Reset state by creating a new token for the second scenario
         vm.prank(creator);
         address testToken2 = launchpad.createToken(
-            "Test Token 2", "TT2", address(implementation), address(bondingCurve), address(graduator), creator, "0x12"
+            "Test Token 2",
+            "TT2",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            ""
         );
 
         // Scenario 2: One big buy
