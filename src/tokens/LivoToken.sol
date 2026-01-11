@@ -16,10 +16,10 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     address public pair;
 
     /// @notice Token name
-    string private _tokenName;
+    string internal _tokenName;
 
     /// @notice Token symbol
-    string private _tokenSymbol;
+    string internal _tokenSymbol;
 
     //////////////////////// Events //////////////////////
 
@@ -57,7 +57,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         address supplyReceiver_,
         uint256 totalSupply_,
         bytes memory tokenCalldata
-    ) external initializer {
+    ) external virtual initializer {
         require(graduator_ != address(0), InvalidGraduator());
 
         _tokenName = name_;
@@ -75,7 +75,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     /// @notice Marks the token as graduated, which unlocks transfers to the pair
     /// @dev Can only be called by the pre-set graduator contract
-    function markGraduated() external {
+    function markGraduated() external virtual {
         require(msg.sender == graduator, OnlyGraduatorAllowed());
 
         graduated = true;
@@ -92,6 +92,13 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @dev ERC20 interface compliance
     function symbol() public view override returns (string memory) {
         return _tokenSymbol;
+    }
+
+    /// @notice Returns the encoded tokenCalldata for this token implementation
+    /// @dev For LivoToken, no additional calldata is needed, so returns empty bytes
+    /// @return Empty bytes since tokenCalldata is unused in LivoToken
+    function encodeTokenCalldata() external pure returns (bytes memory) {
+        return "";
     }
 
     //////////////////////// internal functions ////////////////////////

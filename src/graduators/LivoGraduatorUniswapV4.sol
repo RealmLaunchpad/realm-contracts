@@ -322,7 +322,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
-    function _getPoolKey(address tokenAddress) internal pure returns (PoolKey memory) {
+    function _getPoolKey(address tokenAddress) internal view virtual returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(tokenAddress)),
