@@ -312,3 +312,30 @@ When adding liquidity to Uniswap V4, a small amount of tokens (~0.000001% of sup
 The `ConstantProductBondingCurve` has numerical limits and will revert if `ethReserves > ~37 ETH`.
 
 **Mitigation**: Graduation threshold (7.956 ETH) + max excess (0.1 ETH), well below 37 ETH limit.
+
+
+
+---------------------------------
+
+## Updates
+
+### Uniswap hooks
+
+To find the hook address with create2, run the script:
+
+   forge script MineHookAddressForTests
+
+This should be run for the latest version of the hook, since it uses its creation code. 
+
+This should print an output like this:
+
+```
+  === MINED ADDRESS ===
+  Hook Address: 0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044
+  Salt: 0x0x3b57
+  
+  === Copy this to your test file ===
+  address constant PRECOMPUTED_HOOK_ADDRESS = 0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044;
+  bytes32 constant HOOK_SALT = bytes32(uint256(0x0x3b57));
+```
+
