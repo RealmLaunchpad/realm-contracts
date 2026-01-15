@@ -90,7 +90,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         uint256 minAmountOut,
         bool isBuy,
         bool expectSuccess
-    ) internal {
+    ) internal virtual {
         vm.startPrank(caller);
         IERC20(token).approve(address(permit2Address), type(uint256).max);
         IPermit2(permit2Address).approve(address(token), universalRouter, type(uint160).max, type(uint48).max);

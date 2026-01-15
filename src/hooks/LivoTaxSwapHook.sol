@@ -104,19 +104,23 @@ contract LivoTaxSwapHook is BaseHook {
         int128 ethDelta = delta.amount0();
         uint256 absEthAmount = uint256(uint128(ethDelta > 0 ? ethDelta : -ethDelta));
 
-        // Calculate tax: (ethAmount * taxBps) / 10000
+        // Tax collection uses the OUTPUT currency to avoid settlement issues.
+        // For ExactIn: output is the unspecified currency that afterSwapReturnDelta modifies.
+        // - SELL (tokens in → ETH out): Take ETH
+        // - BUY (ETH in → tokens out): Take tokens (calculated as % of token output)
+        if (isBuy) {
+            // BUY: Tax is taken from token output (buyer receives fewer tokens)
+            int128 tokenDelta = delta.amount1();
+            uint256 tokenTaxAmount =
+                (uint256(uint128(tokenDelta > 0 ? tokenDelta : -tokenDelta)) * taxBps) / BASIS_POINTS;
+
+            poolManager.take(key.currency1, config.taxRecipient, tokenTaxAmount);
+            return (IHooks.afterSwap.selector, int128(uint128(tokenTaxAmount)));
+        }
+
+        // SELL: Tax is taken from ETH output (seller receives less ETH)
         uint256 taxAmount = (absEthAmount * taxBps) / BASIS_POINTS;
-
-        // Take tax from pool and send to tax recipient
-        // manager.take() transfers currency from the pool to the specified recipient
-        poolManager.take(
-            key.currency0, // Always ETH (currency0)
-            config.taxRecipient,
-            taxAmount
-        );
-
-        // Return success selector and tax amount as delta
-        // Positive delta means hook took funds from the pool
+        poolManager.take(key.currency0, config.taxRecipient, taxAmount);
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }
 }
