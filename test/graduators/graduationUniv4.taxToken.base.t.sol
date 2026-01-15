@@ -105,8 +105,16 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         internal
         returns (address tokenAddress)
     {
-        // Encode tax configuration
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(buyTaxBps, sellTaxBps, taxDurationSeconds);
+        // Encode tax configuration with V4 integration parameters
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(
+            buyTaxBps,
+            sellTaxBps,
+            taxDurationSeconds,
+            universalRouter, // v4Router for tax swaps
+            PRECOMPUTED_HOOK_ADDRESS, // hook address
+            lpFee, // pool fee
+            tickSpacing // pool tick spacing
+        );
 
         vm.prank(creator);
         tokenAddress = launchpad.createToken(

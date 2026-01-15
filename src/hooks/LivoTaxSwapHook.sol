@@ -47,80 +47,87 @@ contract LivoTaxSwapHook is BaseHook {
     }
 
     /// @notice Hook callback executed after each swap to collect taxes
-    /// @param sender The address initiating the swap
     /// @param key The pool key identifying the pool
     /// @param params The swap parameters including direction
     /// @param delta The balance changes from the swap
-    /// @param hookData Additional data passed to the hook (unused)
     /// @return bytes4 The function selector to indicate successful execution
     /// @return int128 The tax amount taken from the pool (positive = hook took from pool)
-    function _afterSwap(
-        address sender,
-        PoolKey calldata key,
-        SwapParams calldata params,
-        BalanceDelta delta,
-        bytes calldata hookData
-    ) internal override returns (bytes4, int128) {
-        // Query token tax configuration (try/catch for backwards compatibility with non-taxable tokens)
-        ILivoTokenTaxable.TaxConfig memory config;
-        try ILivoTokenTaxable(Currency.unwrap(key.currency1)).getTaxConfig() returns (
-            ILivoTokenTaxable.TaxConfig memory c
-        ) {
-            config = c;
-        } catch {
-            // Token doesn't implement tax interface or call reverted - no tax applied
-            // review if non-taxable tokens are actually catched in this try/catch (since signature may not exist at all)
+    function _afterSwap(address, PoolKey calldata key, SwapParams calldata params, BalanceDelta delta, bytes calldata)
+        internal
+        override
+        returns (bytes4, int128)
+    {
+        // Get token address and tax config
+        address tokenAddress = Currency.unwrap(key.currency1);
+        (bool shouldTax, uint16 taxBps, address taxRecipient) = _getTaxParams(tokenAddress, params.zeroForOne);
+
+        if (!shouldTax) {
             return (IHooks.afterSwap.selector, 0);
         }
 
-        // Check if token has graduated (graduationTimestamp == 0 means not graduated yet)
-        if (config.graduationTimestamp == 0) {
-            return (IHooks.afterSwap.selector, 0);
-        }
-
-        // Check if tax period has expired
-        if (block.timestamp > config.graduationTimestamp + config.taxDurationSeconds) {
-            return (IHooks.afterSwap.selector, 0);
-        }
-
-        // Determine swap direction
-        // Pool structure: (currency0=ETH, currency1=Token)
-        // zeroForOne=true → Swapping ETH (currency0) for Token (currency1) → BUY → apply buyTaxBps
-        // zeroForOne=false → Swapping Token (currency1) for ETH (currency0) → SELL → apply sellTaxBps
-        bool isBuy = params.zeroForOne;
-        uint16 taxBps = isBuy ? config.buyTaxBps : config.sellTaxBps;
-
-        // If tax rate is 0%, no tax to collect
-        if (taxBps == 0) {
-            return (IHooks.afterSwap.selector, 0);
-        }
-
-        // review this thing with positive/negative and who loses the ETH
-        // Calculate tax on ETH amount
-        // delta.amount0() represents the change in ETH:
-        //   - For BUY: delta.amount0() > 0 (pool gains ETH from buyer)
-        //   - For SELL: delta.amount0() < 0 (pool loses ETH to seller)
-        // We always tax ETH, so use absolute value of delta.amount0()
-        int128 ethDelta = delta.amount0();
-        uint256 absEthAmount = uint256(uint128(ethDelta > 0 ? ethDelta : -ethDelta));
-
-        // Tax collection uses the OUTPUT currency to avoid settlement issues.
-        // For ExactIn: output is the unspecified currency that afterSwapReturnDelta modifies.
-        // - SELL (tokens in → ETH out): Take ETH
-        // - BUY (ETH in → tokens out): Take tokens (calculated as % of token output)
-        if (isBuy) {
-            // BUY: Tax is taken from token output (buyer receives fewer tokens)
-            int128 tokenDelta = delta.amount1();
-            uint256 tokenTaxAmount =
-                (uint256(uint128(tokenDelta > 0 ? tokenDelta : -tokenDelta)) * taxBps) / BASIS_POINTS;
-
-            poolManager.take(key.currency1, config.taxRecipient, tokenTaxAmount);
-            return (IHooks.afterSwap.selector, int128(uint128(tokenTaxAmount)));
+        // BUY: Tax is taken from token output and sent to token contract for accumulation
+        if (params.zeroForOne) {
+            return _collectBuyTax(key.currency1, tokenAddress, delta.amount1(), taxBps);
         }
 
         // SELL: Tax is taken from ETH output (seller receives less ETH)
+        return _collectSellTax(key.currency0, taxRecipient, delta.amount0(), taxBps);
+    }
+
+    /// @notice Get tax parameters for a token
+    /// @return shouldTax Whether tax should be collected
+    /// @return taxBps The tax rate in basis points
+    /// @return taxRecipient The address to receive sell taxes
+    function _getTaxParams(address tokenAddress, bool isBuy)
+        internal
+        view
+        returns (bool shouldTax, uint16 taxBps, address taxRecipient)
+    {
+        // Query token tax configuration (try/catch for backwards compatibility with non-taxable tokens)
+        try ILivoTokenTaxable(tokenAddress).getTaxConfig() returns (ILivoTokenTaxable.TaxConfig memory config) {
+            // Check if token has graduated
+            if (config.graduationTimestamp == 0) {
+                return (false, 0, address(0));
+            }
+
+            // Check if tax period has expired
+            if (block.timestamp > config.graduationTimestamp + config.taxDurationSeconds) {
+                return (false, 0, address(0));
+            }
+
+            taxBps = isBuy ? config.buyTaxBps : config.sellTaxBps;
+            if (taxBps == 0) {
+                return (false, 0, address(0));
+            }
+
+            return (true, taxBps, config.taxRecipient);
+        } catch {
+            return (false, 0, address(0));
+        }
+    }
+
+    /// @notice Collect buy tax (tokens sent to token contract for later swap to ETH)
+    function _collectBuyTax(Currency currency, address tokenAddress, int128 tokenDelta, uint16 taxBps)
+        internal
+        returns (bytes4, int128)
+    {
+        uint256 absTokenAmount = uint256(uint128(tokenDelta > 0 ? tokenDelta : -tokenDelta));
+        uint256 taxAmount = (absTokenAmount * taxBps) / BASIS_POINTS;
+
+        // Send tokens to the token contract itself (for accumulation and later swap to ETH)
+        poolManager.take(currency, tokenAddress, taxAmount);
+        return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
+    }
+
+    /// @notice Collect sell tax (ETH sent directly to tax recipient)
+    function _collectSellTax(Currency currency, address taxRecipient, int128 ethDelta, uint16 taxBps)
+        internal
+        returns (bytes4, int128)
+    {
+        uint256 absEthAmount = uint256(uint128(ethDelta > 0 ? ethDelta : -ethDelta));
         uint256 taxAmount = (absEthAmount * taxBps) / BASIS_POINTS;
-        poolManager.take(key.currency0, config.taxRecipient, taxAmount);
+
+        poolManager.take(currency, taxRecipient, taxAmount);
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }
 }

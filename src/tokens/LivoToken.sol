@@ -103,7 +103,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     //////////////////////// internal functions ////////////////////////
 
-    function _update(address from, address to, uint256 amount) internal override {
+    function _update(address from, address to, uint256 amount) internal virtual override {
         require(from != to, CannotSelfTransfer());
 
         // this ensures tokens don't arrive to the pair before graduation
