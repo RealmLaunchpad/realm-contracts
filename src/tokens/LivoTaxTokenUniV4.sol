@@ -13,6 +13,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
+import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 /// @title LivoTaxTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks
@@ -24,6 +26,36 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
     /// @notice Maximum duration for the tax period after graduation timestamp
     uint40 public constant MAX_TAX_DURATION_SECONDS = 14 days;
 
+    ///////////////////////////////// uniswap v4 related /////////////////////////////////////////
+
+    /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
+    /// @dev 10000 pips = 1%
+    /// @dev IMPORTANT: this needs to match the graduator settings. Clearly a weak point. 
+    /// @dev this weak structure is done to save gas by having these as constants in the token and make deployment cheaper
+    uint24 constant LP_FEE = 10000;
+
+    // todo include a test that makes sure this token contract has the same settings as the graduator. 
+    /// @notice Tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
+    /// @dev IMPORTANT: this needs to match the graduator settings. Clearly a weak point. 
+    /// @dev this weak structure is done to save gas by having these as constants in the token and make deployment cheaper
+    int24 public constant TICK_SPACING = 200;
+
+    /// @notice Pool manager for lock state checking
+    /// @dev Ethereum mainnet address. Needs change if deployed in other chains
+    IPoolManager public constant UNIV4_POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
+
+    /// @notice V4 Router for executing tax swaps
+    /// @dev Ethereum mainnet address. Needs change if deployed in other chains
+    address public constant UNIV4_ROUTER = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+
+    /// @notice the hook address which will charge the buy/sell taxes
+    /// todo update this tax hook address when mined
+    address constant TAX_HOOK = 0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044;
+
+    //////////////////////// potentially immutable //////////////////
+
+    LivoLaunchpad public launchpad;
+
     /// @notice Buy tax rate in basis points (set during initialization, cannot be changed)
     uint16 public buyTaxBps;
 
@@ -33,22 +65,10 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
     /// @notice Duration in seconds after graduation during which taxes apply (set during initialization, cannot be changed)
     uint40 public taxDurationSeconds;
 
-    // todo change this to tokenOwner
-    /// @notice Address receiving tax payments (set during initialization, cannot be changed)
-    address public taxRecipient;
+    /////////////////////////// pure storage ///////////////////////
 
     /// @notice Timestamp when token graduated (0 if not graduated)
     uint40 public graduationTimestamp;
-
-    // todo all these args ... can we have them as immutable args with the immutable cloning thing?
-    /// @notice Pool manager for lock state checking
-    IPoolManager public poolManager;
-
-    /// @notice V4 Router for executing tax swaps
-    address public v4Router;
-
-    /// @notice Pool key for this token's ETH pair
-    PoolKey public poolKey;
 
     /// @notice Reentrancy guard for tax swap
     bool private _inSwap;
@@ -57,10 +77,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
 
     error InvalidTaxRate(uint16 rate);
     error InvalidTaxDuration();
-    error InvalidTaxRecipient();
     error InvalidTaxCalldata();
-    error InvalidV4Router();
-    error InvalidHook();
 
     //////////////////////////////////////////////////////
 
@@ -78,7 +95,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
     /// @param pair_ Address of the pool manager for V4
     /// @param supplyReceiver_ Address receiving the total supply of tokens (launchpad)
     /// @param totalSupply_ Total supply to mint
-    /// @param tokenCalldata Extended tax config: (buyTaxBps, sellTaxBps, taxDurationSeconds, v4Router, hook, fee, tickSpacing)
+    /// @param tokenCalldata Extended tax config: (buyTaxBps, sellTaxBps, taxDurationSeconds, UNIV4_ROUTER, hook, fee, tickSpacing)
     function initialize(
         string memory name_,
         string memory symbol_,
@@ -92,10 +109,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         if (tokenCalldata.length == 0) revert InvalidTaxCalldata();
 
         // Decode and validate tax configuration (scoped to limit stack)
-        _initializeTaxConfig(tokenCalldata, supplyReceiver_);
-
-        // Store V4 integration parameters
-        poolManager = IPoolManager(pair_);
+        _initializeTaxConfig(graduator_, tokenCalldata, supplyReceiver_);
 
         // storage variables inherited from LivoToken
         _tokenName = name_;
@@ -103,49 +117,43 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         graduator = graduator_;
         pair = pair_;
 
+        launchpad = LivoLaunchpad(supplyReceiver_);
+
         // all is minted back to the launchpad
         _mint(supplyReceiver_, totalSupply_);
     }
 
+    function getTaxConfig() external view returns (TaxConfig memory config) {
+        address taxRecipient = launchpad.getTokenOwner(address(this));
+
+        config = TaxConfig({
+            buyTaxBps: buyTaxBps,
+            sellTaxBps: sellTaxBps,
+            taxDurationSeconds: taxDurationSeconds,
+            graduationTimestamp: graduationTimestamp,
+            taxRecipient: taxRecipient
+        });
+    }
+
     /// @notice Internal helper to decode and validate tax configuration
     /// @dev Separated to reduce stack depth in initialize()
-    function _initializeTaxConfig(bytes memory tokenCalldata, address supplyReceiver_) internal {
+    function _initializeTaxConfig(address graduator_, bytes memory tokenCalldata, address supplyReceiver_) internal {
+        
         (
             uint16 _buyTaxBps,
             uint16 _sellTaxBps,
-            uint40 _taxDurationSeconds,
-            address _v4Router,
-            address _hook,
-            uint24 _fee,
-            int24 _tickSpacing
-        ) = abi.decode(tokenCalldata, (uint16, uint16, uint40, address, address, uint24, int24));
+            uint40 _taxDurationSeconds
+        ) = _decodeTokenCalldata(tokenCalldata);
 
         // Validate tax rates
         if (_buyTaxBps > MAX_TAX_BPS) revert InvalidTaxRate(_buyTaxBps);
         if (_sellTaxBps > MAX_TAX_BPS) revert InvalidTaxRate(_sellTaxBps);
         if (_taxDurationSeconds > MAX_TAX_DURATION_SECONDS) revert InvalidTaxDuration();
-        if (_v4Router == address(0)) revert InvalidV4Router();
-        if (_hook == address(0)) revert InvalidHook();
-
-        // Get tax recipient (token owner) from the launchpad
-        address _taxRecipient = ILivoLaunchpad(supplyReceiver_).getTokenOwner(address(this));
-        if (_taxRecipient == address(0)) revert InvalidTaxRecipient();
 
         // Store tax configuration
         buyTaxBps = _buyTaxBps;
         sellTaxBps = _sellTaxBps;
         taxDurationSeconds = _taxDurationSeconds;
-        taxRecipient = _taxRecipient;
-        v4Router = _v4Router;
-
-        // Construct pool key for this token's ETH pair
-        poolKey = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(address(this)),
-            fee: _fee,
-            tickSpacing: _tickSpacing,
-            hooks: IHooks(_hook)
-        });
     }
 
     /// @notice Marks the token as graduated and records the timestamp
@@ -159,39 +167,22 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         emit Graduated();
     }
 
-    /// @notice Returns the complete tax configuration for this token
-    /// @dev Called by LivoTaxSwapHook to determine tax rates and validity
-    /// @return config The complete tax configuration including rates, duration, timestamp, and recipient
-    function getTaxConfig() external view override returns (TaxConfig memory config) {
-        return TaxConfig({
-            buyTaxBps: buyTaxBps,
-            sellTaxBps: sellTaxBps,
-            taxDurationSeconds: taxDurationSeconds,
-            graduationTimestamp: graduationTimestamp,
-            taxRecipient: taxRecipient
-        });
-    }
-
     /// @notice Encodes the tax configuration parameters for token initialization
     /// @dev Frontend should call this on the deployed implementation contract to construct tokenCalldata
     /// @param _buyTaxBps Buy tax rate in basis points (max 500 = 5%)
     /// @param _sellTaxBps Sell tax rate in basis points (max 500 = 5%)
     /// @param _taxDurationSeconds Duration in seconds after graduation during which taxes apply
-    /// @param _v4Router Address of the V4 router for executing tax swaps
-    /// @param _hook Address of the LivoTaxSwapHook
-    /// @param _fee Pool fee in hundredths of a bip
-    /// @param _tickSpacing Pool tick spacing
     /// @return Encoded bytes to pass as tokenCalldata to initialize()
     function encodeTokenCalldata(
         uint16 _buyTaxBps,
         uint16 _sellTaxBps,
-        uint40 _taxDurationSeconds,
-        address _v4Router,
-        address _hook,
-        uint24 _fee,
-        int24 _tickSpacing  // todo the frontend has no idea about this, and they should not now. Get this info from somewhere else. Call the graduator perhaps. 
+        uint40 _taxDurationSeconds
     ) external pure returns (bytes memory) {
-        return abi.encode(_buyTaxBps, _sellTaxBps, _taxDurationSeconds, _v4Router, _hook, _fee, _tickSpacing);
+        return abi.encode(_buyTaxBps, _sellTaxBps, _taxDurationSeconds);
+    }
+
+    function _decodeTokenCalldata(bytes memory tokenCalldata) internal returns (uint16 _buyTaxBps, uint16 _sellTaxBps, uint40 _taxDurationSeconds) {
+        (_buyTaxBps, _sellTaxBps, _taxDurationSeconds) = abi.decode(tokenCalldata, (uint16, uint16, uint40));
     }
 
     //////////////////////// internal functions ////////////////////////
@@ -214,18 +205,26 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
 
         // Only swap if PoolManager is unlocked (not during V4 swaps)
         // During V4 swaps, the manager is locked, so this check prevents reentrancy
-        if (!TransientStateLibrary.isUnlocked(poolManager)) return;
+        if (!TransientStateLibrary.isUnlocked(UNIV4_POOL_MANAGER)) return;
 
         _inSwap = true;
         _swapAccumulatedTaxes(accumulated);
         _inSwap = false;
     }
 
-    /// @notice Swaps accumulated token taxes to ETH and sends to taxRecipient
+    /// @notice Swaps accumulated token taxes to ETH and sends to token creator
     /// @param amount The amount of tokens to swap
     function _swapAccumulatedTaxes(uint256 amount) internal {
         // Approve router to spend tokens
-        _approve(address(this), v4Router, amount);
+        _approve(address(this), UNIV4_ROUTER, amount);
+
+        PoolKey memory poolKey = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(this)),
+            fee: LP_FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(TAX_HOOK)
+        });
 
         // Build swap action: TOKEN -> ETH (zeroForOne = false)
         IV4Router.ExactInputSingleParams memory swapParams = IV4Router.ExactInputSingleParams({
@@ -243,23 +242,26 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         actions[1] = bytes1(uint8(0x0b)); // SETTLE
         actions[2] = bytes1(uint8(0x0e)); // TAKE
 
+        // Get tax recipient (token owner) from the launchpad dynamically, as it can be updated there
+        address tokenOwner = launchpad.getTokenOwner(address(this));
+
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(swapParams);
         // SETTLE: currency, amount, payerIsUser (false = router pays from its balance, but we approved it)
         params[1] = abi.encode(Currency.wrap(address(this)), amount, false);
         // TAKE: currency, recipient, amount (max = take all output)
-        params[2] = abi.encode(Currency.wrap(address(0)), taxRecipient, type(uint256).max);
+        params[2] = abi.encode(Currency.wrap(address(0)), tokenOwner, type(uint256).max);
 
         bytes memory data = abi.encode(actions, params);
 
-        // Execute swap via V4 router - ETH goes directly to taxRecipient
+        // Execute swap via V4 router - ETH goes directly to tokenOwner
         // solhint-disable-next-line avoid-low-level-calls
-        (bool success,) = v4Router.call(abi.encodeWithSignature("executeActions(bytes)", data));
+        (bool success,) = UNIV4_ROUTER.call(abi.encodeWithSignature("executeActions(bytes)", data));
         // If swap fails, we silently continue - tokens remain accumulated for next attempt
         // This prevents a failing swap from blocking all token transfers
         if (!success) {
             // Reset approval on failure
-            _approve(address(this), v4Router, 0);
+            _approve(address(this), UNIV4_ROUTER, 0);
         }
     }
 }

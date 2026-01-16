@@ -109,11 +109,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(
             buyTaxBps,
             sellTaxBps,
-            taxDurationSeconds,
-            universalRouter, // v4Router for tax swaps
-            PRECOMPUTED_HOOK_ADDRESS, // hook address
-            lpFee, // pool fee
-            tickSpacing // pool tick spacing
+            taxDurationSeconds
         );
 
         vm.prank(creator);

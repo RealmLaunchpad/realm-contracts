@@ -355,11 +355,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(
             600, // > MAX_TAX_BPS (500)
             300,
-            14 days,
-            universalRouter,
-            PRECOMPUTED_HOOK_ADDRESS,
-            lpFee,
-            tickSpacing
+            14 days
         );
 
         vm.expectRevert();
