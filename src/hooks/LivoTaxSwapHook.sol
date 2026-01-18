@@ -110,6 +110,7 @@ contract LivoTaxSwapHook is BaseHook {
 
             return (true, taxBps, config.taxRecipient);
         } catch {
+            // in case tax configuration is not available, assume no taxes
             return (false, 0, address(0));
         }
     }

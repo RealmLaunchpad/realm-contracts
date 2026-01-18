@@ -120,6 +120,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
     ) external override(ILivoToken, LivoToken) initializer {
         require(graduator_ != address(0), InvalidGraduator());
         if (tokenCalldata.length == 0) revert InvalidTaxCalldata();
+        require(pair_ == address(UNIV4_POOL_MANAGER), "Invalid pair address");
 
         // Decode and validate tax configuration (scoped to limit stack)
         _initializeTaxConfig(tokenCalldata);
@@ -221,13 +222,14 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
     function _update(address from, address to, uint256 amount) internal override {
         super._update(from, to, amount);
 
+        // this ensures tokens don't arrive to the pair before graduation
+        // to avoid exploits/DOS related to liquidity addition at graduation
+        if ((!graduated) && (to == pair)) {
+            revert TransferToPairBeforeGraduationNotAllowed();
+        }
+
         // Skip if: already swapping, not graduated, or transfer to self (accumulation from hook)
         if (_inSwap || graduationTimestamp == 0 || to == address(this)) return;
-
-        // Check accumulated balance vs threshold (0.1% of supply)
-        uint256 accumulated = balanceOf(address(this));
-        uint256 threshold = totalSupply() / 1000;
-        if (accumulated < threshold) return;
 
         // Skip if PoolManager is already unlocked (we're inside a V4 swap callback).
         // We can only initiate a new swap when the PoolManager is locked (idle).
@@ -236,9 +238,19 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         // unlocked == ongoing swap (a bit counter intuitive)
         if (TransientStateLibrary.isUnlocked(UNIV4_POOL_MANAGER)) return;
 
-        _inSwap = true;
-        _swapAccumulatedTaxes(accumulated);
-        _inSwap = false;
+        // if accumulated tax is above threshold
+        uint256 accumulated = balanceOf(address(this));
+
+        // No taxes to swap. 
+        if (accumulated == 0) return;
+
+        // the threshold is 0.1% of the totalSupply
+        // swap if the accumulated is above the threshold or the tax period is over
+        if ((accumulated >= totalSupply() / 1000) || (block.timestamp > graduationTimestamp + taxDurationSeconds)) {
+            _inSwap = true;
+            _swapAccumulatedTaxes(accumulated);
+            _inSwap = false;
+        }
     }
 
     /// @notice Swaps accumulated token taxes to WETH and sends to token creator

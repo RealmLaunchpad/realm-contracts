@@ -130,16 +130,17 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 ethReceived = buyerEthBalanceAfter - buyerEthBalanceBefore;
 
         // Calculate expected tax on ETH output
-        // Note: Tax is calculated on the ETH amount in the swap
-        // The exact calculation depends on the pool state, but creator should receive some tax
-        uint256 expectedTaxApprox = (ethReceived * DEFAULT_SELL_TAX_BPS) / 10000;
+        // Note: Tax is calculated on the pre-tax ETH amount. Since ethReceived is post-tax:
+        // taxCharged / (ethReceived + taxCharged) = DEFAULT_SELL_TAX_BPS / 10000
+        // Solving for taxCharged: taxCharged = ethReceived * taxBps / (10000 - taxBps)
+        uint256 expectedTaxApprox = (ethReceived * DEFAULT_SELL_TAX_BPS) / (10000 - DEFAULT_SELL_TAX_BPS);
 
         // Verify tax was sent to creator as WETH (allow for some variance due to pool math)
         assertGt(IERC20(WETH_ADDRESS).balanceOf(creator), creatorWethBalanceBefore, "Creator should receive sell tax as WETH");
         assertApproxEqRel(
             IERC20(WETH_ADDRESS).balanceOf(creator) - creatorWethBalanceBefore,
             expectedTaxApprox,
-            0.15e18, // 15% tolerance for pool math variance
+            0.00015e18, // 15% tolerance for pool math variance
             "Creator should receive approximately the expected sell tax as WETH"
         );
     }
