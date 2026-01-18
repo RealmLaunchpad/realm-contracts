@@ -33,13 +33,13 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
 
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
     /// @dev 10000 pips = 1%
-    /// @dev IMPORTANT: this needs to match the graduator settings. Clearly a weak point. 
+    /// @dev IMPORTANT: this needs to match the graduator settings. Clearly a weak point.
     /// @dev this weak structure is done to save gas by having these as constants in the token and make deployment cheaper
     uint24 constant LP_FEE = 10000;
 
-    // todo include a test that makes sure this token contract has the same settings as the graduator. 
+    // todo include a test that makes sure this token contract has the same settings as the graduator.
     /// @notice Tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
-    /// @dev IMPORTANT: this needs to match the graduator settings. Clearly a weak point. 
+    /// @dev IMPORTANT: this needs to match the graduator settings. Clearly a weak point.
     /// @dev this weak structure is done to save gas by having these as constants in the token and make deployment cheaper
     int24 public constant TICK_SPACING = 200;
 
@@ -165,12 +165,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
     /// @notice Internal helper to decode and validate tax configuration
     /// @dev Separated to reduce stack depth in initialize()
     function _initializeTaxConfig(bytes memory tokenCalldata) internal {
-        
-        (
-            uint16 _buyTaxBps,
-            uint16 _sellTaxBps,
-            uint40 _taxDurationSeconds
-        ) = _decodeTokenCalldata(tokenCalldata);
+        (uint16 _buyTaxBps, uint16 _sellTaxBps, uint40 _taxDurationSeconds) = _decodeTokenCalldata(tokenCalldata);
 
         // Validate tax rates
         if (_buyTaxBps > MAX_TAX_BPS) revert InvalidTaxRate(_buyTaxBps);
@@ -200,15 +195,19 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
     /// @param _sellTaxBps Sell tax rate in basis points (max 500 = 5%)
     /// @param _taxDurationSeconds Duration in seconds after graduation during which taxes apply
     /// @return Encoded bytes to pass as tokenCalldata to initialize()
-    function encodeTokenCalldata(
-        uint16 _buyTaxBps,
-        uint16 _sellTaxBps,
-        uint40 _taxDurationSeconds
-    ) external pure returns (bytes memory) {
+    function encodeTokenCalldata(uint16 _buyTaxBps, uint16 _sellTaxBps, uint40 _taxDurationSeconds)
+        external
+        pure
+        returns (bytes memory)
+    {
         return abi.encode(_buyTaxBps, _sellTaxBps, _taxDurationSeconds);
     }
 
-    function _decodeTokenCalldata(bytes memory tokenCalldata) internal returns (uint16 _buyTaxBps, uint16 _sellTaxBps, uint40 _taxDurationSeconds) {
+    function _decodeTokenCalldata(bytes memory tokenCalldata)
+        internal
+        pure
+        returns (uint16 _buyTaxBps, uint16 _sellTaxBps, uint40 _taxDurationSeconds)
+    {
         (_buyTaxBps, _sellTaxBps, _taxDurationSeconds) = abi.decode(tokenCalldata, (uint16, uint16, uint40));
     }
 
@@ -241,7 +240,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         // if accumulated tax is above threshold
         uint256 accumulated = balanceOf(address(this));
 
-        // No taxes to swap. 
+        // No taxes to swap.
         if (accumulated == 0) return;
 
         // the threshold is 0.1% of the totalSupply
@@ -259,12 +258,13 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         // Approve Permit2 to spend tokens, then Permit2 approves router
         // The Universal Router uses Permit2 for token transfers
         _approve(address(this), PERMIT2, type(uint256).max);
-        IAllowanceTransfer(PERMIT2).approve(
-            address(this), // token
-            UNIV4_ROUTER, // spender
-            type(uint160).max, // amount
-            type(uint48).max // expiration
-        );
+        IAllowanceTransfer(PERMIT2)
+            .approve(
+                address(this), // token
+                UNIV4_ROUTER, // spender
+                type(uint160).max, // amount
+                type(uint48).max // expiration
+            );
 
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(address(0)),
@@ -284,11 +284,8 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         });
 
         // Encode actions using Actions library constants
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.SWAP_EXACT_IN_SINGLE),
-            uint8(Actions.SETTLE_ALL),
-            uint8(Actions.TAKE_ALL)
-        );
+        bytes memory actions =
+            abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL));
 
         // Get tax recipient (token owner) from the launchpad dynamically, as it can be updated there
         address tokenOwner = launchpad.getTokenOwner(address(this));

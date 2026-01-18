@@ -24,6 +24,7 @@ import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IA
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
 /// @notice Tests for Uniswap V4 graduator functionality
 contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
@@ -764,5 +765,23 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         // if the seller sells all tokens he purchased for 0.02 eth, he should not be at profit due to trading fees
         // otherwise there is an arbitrage opportunity
         assertLtDecimal(sellerBalanceAfter, sellerBalanceBefore, 18, "Seller should not be at profit");
+    }
+
+    /// @notice test that if a swapBuy happens on a token pregraduation, this doesn't alter the graduation transaction
+    function test_swapBuyBeforeGraduation_doesntAffectGraduation() public createTestToken {
+        // Token is created but not graduated
+        assertFalse(ILivoToken(testToken).graduated(), "Token should not be graduated");
+
+        // Perform a large swap buy before graduation
+        deal(buyer, 10 ether);
+        _swapBuy(buyer, 10 ether, 0, true);
+
+        // Graduate the token
+        _graduateToken();
+
+        // Verify that graduation was successful and pool is initialized correctly
+        assertTrue(ILivoToken(testToken).graduated(), "Token should be graduated successfully");
+
+        // Further checks can be added to verify pool state if needed
     }
 }

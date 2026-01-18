@@ -50,11 +50,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         // Deploy hook directly to pre-computed address using deployCodeTo
         // This bypasses the temp deployment issue where BaseHook constructor validates
         // that the deployed address has correct permission flags (0x44)
-        deployCodeTo(
-            "LivoTaxSwapHook.sol:LivoTaxSwapHook",
-            abi.encode(poolManager),
-            PRECOMPUTED_HOOK_ADDRESS
-        );
+        deployCodeTo("LivoTaxSwapHook.sol:LivoTaxSwapHook", abi.encode(poolManager), PRECOMPUTED_HOOK_ADDRESS);
         taxHook = LivoTaxSwapHook(PRECOMPUTED_HOOK_ADDRESS);
 
         // Deploy tax token implementation
@@ -109,11 +105,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         returns (address tokenAddress)
     {
         // Encode tax configuration with V4 integration parameters
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(
-            buyTaxBps,
-            sellTaxBps,
-            taxDurationSeconds
-        );
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(buyTaxBps, sellTaxBps, taxDurationSeconds);
 
         vm.prank(creator);
         tokenAddress = launchpad.createToken(
@@ -128,27 +120,10 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         );
     }
 
-    /// @notice Helper to create a standard (non-taxable) token with the tax hook graduator
-    /// @dev Used for backward compatibility testing
-    /// @return tokenAddress The address of the created standard token
-    function _createStandardTokenWithTaxHookGraduator() internal returns (address tokenAddress) {
-        vm.prank(creator);
-        tokenAddress = launchpad.createToken(
-            "StandardToken",
-            "STD",
-            address(standardTokenImpl),
-            address(bondingCurve),
-            address(graduatorWithTaxHooks), // Uses tax hook graduator
-            creator,
-            "0x003",
-            "" // No tokenCalldata needed for standard token
-        );
-    }
-
     /// @notice Helper to get pool key with tax hook
     /// @param tokenAddress The token address
     /// @return PoolKey with tax hook configured
-    function _getPoolKeyWithTaxHook(address tokenAddress) internal view returns (PoolKey memory) {
+    function _getPoolKeyWithTaxHook(address tokenAddress) internal pure returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(tokenAddress)),

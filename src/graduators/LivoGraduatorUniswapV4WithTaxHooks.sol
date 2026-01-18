@@ -27,9 +27,7 @@ contract LivoGraduatorUniswapV4WithTaxHooks is LivoGraduatorUniswapV4 {
         address _positionManager,
         address _permit2,
         address _taxHook
-    )
-        LivoGraduatorUniswapV4(_launchpad, _liquidityLock, _poolManager, _positionManager, _permit2)
-    {
+    ) LivoGraduatorUniswapV4(_launchpad, _liquidityLock, _poolManager, _positionManager, _permit2) {
         TAX_HOOK = _taxHook;
     }
 
