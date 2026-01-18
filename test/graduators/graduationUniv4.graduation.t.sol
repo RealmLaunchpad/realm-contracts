@@ -641,7 +641,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         vm.expectEmit(true, true, false, true);
         emit LivoGraduatorUniswapV4.TokenGraduated(
             testToken,
-            bytes32(0xac4023835d8279a53bbbab32938ad899812e4219c5d907fba98ec8924f9aa229),
+            bytes32(0x972853a4f295536d8f1368f5f12bf7b992b477e478b2479ff995ae659a7d0b5b),
             191123250949901652977521310,
             7456000000000052224,
             55296381402046003400649
@@ -752,11 +752,15 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         uint256 sellerBalanceBefore = seller.balance;
 
         vm.startPrank(seller);
-        launchpad.buyTokensWithExactEth{value: graduationPurchaseAmount}(testToken, 0, DEADLINE);
+        uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
+        uint256 missingForGraduation = _increaseWithFees(GRADUATION_THRESHOLD - ethReserves);
+        vm.deal(seller, missingForGraduation);
+        launchpad.buyTokensWithExactEth{value: missingForGraduation}(testToken, 0, DEADLINE);
+        vm.stopPrank();
 
-        LivoToken(testToken).approve(address(launchpad), type(uint256).max);
+        assertTrue(LivoToken(testToken).graduated(), "graduation should have been triggered already");
+
         uint256 tokenBalance = LivoToken(testToken).balanceOf(seller);
-
         _swapSell(seller, tokenBalance, 0, true);
         vm.stopPrank();
 
@@ -774,7 +778,9 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
         // Perform a large swap buy before graduation
         deal(buyer, 10 ether);
-        _swapBuy(buyer, 10 ether, 0, true);
+        // swaps should revert before the token is graduated
+        // todo implement this hook for non-taxable tokens (or for any token?)
+        _swapBuy(buyer, 10 ether, 0, false);
 
         // Graduate the token
         _graduateToken();

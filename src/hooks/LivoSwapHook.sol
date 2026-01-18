@@ -6,17 +6,22 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTokenTaxable} from "src/interfaces/ILivoTokenTaxable.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 
-/// @title LivoTaxSwapHook
+/// @title LivoSwapHook
 /// @notice Uniswap V4 hook that collects time-limited buy/sell taxes on token swaps
-/// @dev Singleton hook serving all taxable tokens graduated via LivoGraduatorUniswapV4WithTaxHooks
+/// @dev Singleton hook serving all taxable tokens graduated via LivoGraduatorUniswapV4
 /// @dev Hook queries each token for tax configuration and applies taxes only during the configured period
-contract LivoTaxSwapHook is BaseHook {
+contract LivoSwapHook is BaseHook {
+    /// @notice Custom error for preventing swaps before graduation
+    error NoSwapsBeforeGraduation();
+
     /// @notice Basis points denominator (10000 = 100%)
     uint256 private constant BASIS_POINTS = 10000;
 
@@ -43,8 +48,8 @@ contract LivoTaxSwapHook is BaseHook {
             afterAddLiquidity: false,
             beforeRemoveLiquidity: false,
             afterRemoveLiquidity: false,
-            beforeSwap: false,
-            afterSwap: true,
+            beforeSwap: true, // to prevent swaps without liquidity
+            afterSwap: true, // to charge the taxes
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: false,
@@ -80,6 +85,25 @@ contract LivoTaxSwapHook is BaseHook {
 
         // SELL: Tax is taken from ETH output (seller receives less ETH)
         return _collectSellTax(key.currency0, taxRecipient, delta.amount0(), taxBps);
+    }
+
+    /// @notice Prevents swaps if the token has not been graduated
+    /// @param key The pool key identifying the pool
+    /// @param params The swap parameters
+    /// @return bytes4 The function selector to indicate successful execution
+    function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
+        internal
+        override
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
+        // Get token address (currency1 is always the token, currency0 is ETH)
+        address tokenAddress = Currency.unwrap(key.currency1);
+
+        // Check if token has graduated
+        if (!ILivoToken(tokenAddress).graduated()) {
+            revert NoSwapsBeforeGraduation();
+        }
+        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     /// @notice Get tax parameters for a token

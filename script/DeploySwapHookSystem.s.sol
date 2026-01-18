@@ -6,13 +6,14 @@ import {console} from "lib/forge-std/src/console.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
-import {LivoTaxSwapHook} from "src/hooks/LivoTaxSwapHook.sol";
+import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxTokenUniV4} from "src/tokens/LivoTaxTokenUniV4.sol";
-import {LivoGraduatorUniswapV4WithTaxHooks} from "src/graduators/LivoGraduatorUniswapV4WithTaxHooks.sol";
+import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {HookAddresses} from "src/config/HookAddresses.sol";
 
 /// @notice Deploys the complete tax hook system including hook, token implementation, and graduator
 /// @dev This script mines the hook address and deploys all necessary contracts for taxable tokens
-contract DeployTaxHookSystem is Script {
+contract DeploySwapHookSystem is Script {
     // review this
     /// @notice Standard CREATE2 deployer address (same on all chains)
     address constant CREATE2_DEPLOYER = address(0x4e59b44847b379578588920cA78FbF26c0B4956C);
@@ -49,6 +50,8 @@ contract DeployTaxHookSystem is Script {
     }
 
     function run() public {
+        revert("Review this before deploying");
+
         // Determine configuration based on chain
         DeployConfig memory config;
         if (block.chainid == 1) {
@@ -68,7 +71,7 @@ contract DeployTaxHookSystem is Script {
         require(config.positionManager != address(0), "PositionManager address not set");
         require(config.permit2 != address(0), "Permit2 address not set");
 
-        console.log("=== Tax Hook System Deployment ===");
+        console.log("=== Swap Hook System Deployment ===");
         console.log("");
 
         // Step 1: Mine hook address
@@ -79,9 +82,9 @@ contract DeployTaxHookSystem is Script {
         console.log("");
 
         // Step 2: Deploy hook
-        console.log("Step 2: Deploying LivoTaxSwapHook...");
+        console.log("Step 2: Deploying LivoSwapHook...");
         vm.startBroadcast();
-        LivoTaxSwapHook hook = new LivoTaxSwapHook{salt: salt}(IPoolManager(config.poolManager));
+        LivoSwapHook hook = new LivoSwapHook{salt: salt}(IPoolManager(config.poolManager));
         require(address(hook) == hookAddress, "Hook address mismatch");
         vm.stopBroadcast();
         console.log("  Deployed at:", address(hook));
@@ -95,24 +98,24 @@ contract DeployTaxHookSystem is Script {
         console.log("");
 
         // Step 4: Deploy graduator
-        console.log("Step 4: Deploying LivoGraduatorUniswapV4WithTaxHooks...");
-        vm.broadcast();
-        LivoGraduatorUniswapV4WithTaxHooks graduator = new LivoGraduatorUniswapV4WithTaxHooks(
+        console.log("Step 4: Deploying LivoGraduatorUniswapV4...");
+        vm.startBroadcast();
+        LivoGraduatorUniswapV4 graduator = new LivoGraduatorUniswapV4(
             config.launchpad,
             config.liquidityLock,
             config.poolManager,
             config.positionManager,
             config.permit2,
-            address(hook)
+            HookAddresses.LIVO_SWAP_HOOK
         );
         console.log("  Deployed at:", address(graduator));
         console.log("");
 
         // Summary
         console.log("=== Deployment Summary ===");
-        console.log("LivoTaxSwapHook:", address(hook));
+        console.log("LivoSwapHook:", address(hook));
         console.log("LivoTaxTokenUniV4 (impl):", address(tokenImpl));
-        console.log("LivoGraduatorUniswapV4WithTaxHooks:", address(graduator));
+        console.log("LivoGraduatorUniswapV4:", address(graduator));
         console.log("");
         console.log("=== Next Steps ===");
         console.log("1. Whitelist components in LivoLaunchpad:");
@@ -132,13 +135,14 @@ contract DeployTaxHookSystem is Script {
     /// @return salt The salt used to generate the address
     function mineHookAddress(address poolManager) internal view returns (address hookAddress, bytes32 salt) {
         // Hook permission flags
+        // BEFORE_SWAP_FLAG = 1 << 7 = 0x80
         // AFTER_SWAP_FLAG = 1 << 6 = 0x40
         // AFTER_SWAP_RETURNS_DELTA_FLAG = 1 << 2 = 0x04
-        // Combined = 0x44
-        uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
+        // Combined = 0xC4
+        uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
 
         bytes memory constructorArgs = abi.encode(IPoolManager(poolManager));
-        bytes memory creationCode = type(LivoTaxSwapHook).creationCode;
+        bytes memory creationCode = type(LivoSwapHook).creationCode;
 
         // Mine the salt
         (hookAddress, salt) = HookMiner.find(CREATE2_DEPLOYER, flags, creationCode, constructorArgs);

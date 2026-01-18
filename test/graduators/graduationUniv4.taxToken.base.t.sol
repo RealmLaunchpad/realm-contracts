@@ -3,8 +3,9 @@ pragma solidity 0.8.28;
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {LivoTaxTokenUniV4} from "src/tokens/LivoTaxTokenUniV4.sol";
-import {LivoTaxSwapHook} from "src/hooks/LivoTaxSwapHook.sol";
-import {LivoGraduatorUniswapV4WithTaxHooks} from "src/graduators/LivoGraduatorUniswapV4WithTaxHooks.sol";
+import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {HookAddresses} from "src/config/HookAddresses.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -20,12 +21,7 @@ import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 /// @dev Extends BaseUniswapV4GraduationTests and sets up tax-specific components
 contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     // Tax system components
-    LivoTaxSwapHook public taxHook;
     LivoTaxTokenUniV4 public taxTokenImpl;
-    LivoGraduatorUniswapV4WithTaxHooks public graduatorWithTaxHooks;
-
-    // Standard LivoToken implementation (for backward compatibility tests)
-    LivoToken public standardTokenImpl;
 
     // Default tax configuration
     uint16 public constant DEFAULT_BUY_TAX_BPS = 300; // 3%
@@ -35,55 +31,22 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     // WETH address for tax assertions
     address public constant WETH_ADDRESS = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
-    // TODO: Replace with actual pre-computed hook address
-    // Required permissions: AFTER_SWAP_FLAG (0x04) | AFTER_SWAP_RETURNS_DELTA_FLAG (0x40) = 0x44
-    // Hook address must have these flags encoded in its address per UniV4 requirements
-    address payable public constant PRECOMPUTED_HOOK_ADDRESS = payable(0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044); // PLACEHOLDER
     // I think this is only used to deploy, but since we are etching, it is not needed in this test
-    bytes32 constant HOOK_SALT = bytes32(uint256(0x3b57));
+    bytes32 constant HOOK_SALT = bytes32(uint256(0x3088));
 
     function setUp() public virtual override {
         super.setUp();
 
         vm.startPrank(admin);
 
-        // Deploy hook directly to pre-computed address using deployCodeTo
-        // This bypasses the temp deployment issue where BaseHook constructor validates
-        // that the deployed address has correct permission flags (0x44)
-        deployCodeTo("LivoTaxSwapHook.sol:LivoTaxSwapHook", abi.encode(poolManager), PRECOMPUTED_HOOK_ADDRESS);
-        taxHook = LivoTaxSwapHook(PRECOMPUTED_HOOK_ADDRESS);
-
         // Deploy tax token implementation
         taxTokenImpl = new LivoTaxTokenUniV4();
 
-        // Deploy graduator with tax hooks
-        graduatorWithTaxHooks = new LivoGraduatorUniswapV4WithTaxHooks(
-            address(launchpad),
-            address(liquidityLock),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            PRECOMPUTED_HOOK_ADDRESS
-        );
-
-        // Whitelist tax token implementation with tax graduator
+        // Whitelist tax-token implementation with graduatorV4 (which already has the right hook)
         launchpad.whitelistComponents(
             address(taxTokenImpl),
             address(bondingCurve),
-            address(graduatorWithTaxHooks),
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
-        );
-
-        // Also deploy standard token implementation for backward compatibility tests
-        standardTokenImpl = new LivoToken();
-
-        // Whitelist standard token with tax graduator (for backward compatibility testing)
-        launchpad.whitelistComponents(
-            address(standardTokenImpl),
-            address(bondingCurve),
-            address(graduatorWithTaxHooks),
+            address(graduatorV4), // includes LivoSwapHook by default
             GRADUATION_THRESHOLD,
             MAX_THRESHOLD_EXCESS,
             GRADUATION_FEE
@@ -92,7 +55,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         vm.stopPrank();
 
         // Set graduator to tax-enabled version for tests
-        graduator = graduatorWithTaxHooks;
+        graduator = graduatorV4;
     }
 
     /// @notice Helper to create a tax token with custom configuration
@@ -113,7 +76,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             "TAX",
             address(taxTokenImpl),
             address(bondingCurve),
-            address(graduatorWithTaxHooks),
+            address(graduatorV4),
             creator, // token owner (will receive taxes)
             "0x003", // imageUrl
             tokenCalldata // tax configuration
@@ -129,7 +92,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             currency1: Currency.wrap(address(tokenAddress)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(PRECOMPUTED_HOOK_ADDRESS)
+            hooks: IHooks(HookAddresses.LIVO_SWAP_HOOK)
         });
     }
 
@@ -140,7 +103,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     }
 
     /// @notice Override _swap to use the tax hook address in the pool key
-    /// @dev The base class uses hooks: IHooks(address(0)), but tax token pools use the tax hook
+    /// @dev Both taxable and non-tax tokens use the same LivoSwapHook
     function _swap(
         address caller,
         address token,
@@ -159,7 +122,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             currency1: Currency.wrap(address(token)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(PRECOMPUTED_HOOK_ADDRESS)
+            hooks: IHooks(HookAddresses.LIVO_SWAP_HOOK)
         });
 
         bytes[] memory params = new bytes[](3);
@@ -201,5 +164,15 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         uint256 valueIn = isBuy ? amountIn : 0;
         IUniversalRouter(universalRouter).execute{value: valueIn}(commands, inputs, block.timestamp);
         vm.stopPrank();
+    }
+
+    /// @notice make sure the hook precomputed for the tests is set in the LivoSwapHook correctly
+    function test_percomputedHookInLivoSwapHook() public {
+        LivoTaxTokenUniV4 taxToken = new LivoTaxTokenUniV4();
+        address taxHook_inToken = taxToken.TAX_HOOK();
+
+        address taxHook_inTests = HookAddresses.LIVO_SWAP_HOOK;
+
+        assertEq(taxHook_inToken, taxHook_inTests, "missmatching hook address in tests and in LivoTaxTokenUniV4");
     }
 }

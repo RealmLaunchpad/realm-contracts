@@ -7,6 +7,7 @@ import {LivoTaxTokenUniV4} from "src/tokens/LivoTaxTokenUniV4.sol";
 import {ILivoTokenTaxable} from "src/interfaces/ILivoTokenTaxable.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 
 /// @notice Comprehensive tests for LivoTaxTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
@@ -426,43 +427,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         );
     }
 
-    /////////////////////////////////// CATEGORY 4: BACKWARD COMPATIBILITY ///////////////////////////////////
-
-    /// @notice Test that non-taxable tokens don't revert when using tax hook
-    function test_nonTaxableToken_hookDoesntRevert() public {
-        // Create standard LivoToken (no tax functionality) with tax hook graduator
-        revert("Implement this test");
-
-        // Verify token owner doesn't receive any "tax" (there shouldn't be any)
-        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
-
-        _graduateToken();
-
-        // Track token contract balance (should remain 0 for non-taxable tokens)
-        uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
-
-        // Perform buy and sell swaps - these should succeed without reverting
-        deal(buyer, 1 ether);
-        _swapBuy(buyer, 1 ether, 0, true);
-
-        // Verify no buy tax accumulated in token contract
-        assertEq(
-            IERC20(testToken).balanceOf(testToken),
-            tokenContractBalanceBefore,
-            "No buy tax should accumulate for non-taxable token"
-        );
-
-        uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
-        _swapSell(buyer, buyerTokenBalance / 2, 0, true);
-
-        // Verify no sell tax was collected as WETH (hook handled missing getTaxConfig() gracefully)
-        assertEq(
-            IERC20(WETH_ADDRESS).balanceOf(creator),
-            creatorWethBalanceBefore,
-            "No WETH tax should be collected from non-taxable token"
-        );
-    }
-
     /////////////////////////////////// CATEGORY 5: EDGE CASES & SECURITY ///////////////////////////////////
 
     /// @notice Test maximum tax rate (5% = 500 bps)
@@ -506,7 +470,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             "INV",
             address(taxTokenImpl),
             address(bondingCurve),
-            address(graduatorWithTaxHooks),
+            address(graduatorV4),
             creator,
             "0x003",
             tokenCalldata
@@ -527,12 +491,11 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Using expectRevert = false and checking the result instead
         uint256 buyerTokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
 
-        _swapBuy(buyer, 1 ether, 0, true);
+        // this swap should revert, as there is no liquidity (expectSuccess=false)
+        _swapBuy(buyer, 1 ether, 0, false);
 
         uint256 tokensReceived = IERC20(testToken).balanceOf(buyer) - buyerTokenBalanceBefore;
         assertEq(tokensReceived, 0, "Should receive 0 tokens before graduation (no liquidity)");
-
-        // todo question I wonder what happens when this is done. Is the price moved?
     }
 
     /// @notice test that a large swapBuy before graduation doesn't alter the gratuation conditions / set point
@@ -542,7 +505,14 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Perform a large buy swap before graduation
         deal(buyer, 10 ether);
-        _swapBuy(buyer, 10 ether, 0, true);
+        uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
+        // this swap should revert, since token is not graduated yet (excpectSuccess=false)
+        _swapBuy(buyer, 10 ether, 0, false);
+        assertEq(
+            IERC20(testToken).balanceOf(buyer),
+            tokenBalanceBefore,
+            "Balance shouldn't change because swap should have reverted"
+        );
 
         // Graduate the token
         // if this reverts, we have DOSed the token which cannot ever graduate

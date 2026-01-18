@@ -6,7 +6,7 @@ import {console} from "lib/forge-std/src/console.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
-import {LivoTaxSwapHook} from "src/hooks/LivoTaxSwapHook.sol";
+import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 
 /// @notice Simple script to mine a hook address for testing purposes
 /// @dev Run this once to get a valid hook address and salt, then hardcode in tests
@@ -18,13 +18,13 @@ contract MineHookAddressForTests is Script {
         console.log("=== Mining Hook Address for Tests ===");
         console.log("");
 
-        // Hook permission flags: AFTER_SWAP_FLAG | AFTER_SWAP_RETURNS_DELTA_FLAG
-        uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
-        console.log("Required flags: 0x%x", flags);
+        // Hook permission flags: AFTER_SWAP_FLAG | AFTER_SWAP_RETURNS_DELTA_FLAG | BEFORE_SWAP_FLAG
+        uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_SWAP_FLAG);
+        console.log("Required flags: %x", flags);
         console.log("");
 
         bytes memory constructorArgs = abi.encode(IPoolManager(POOL_MANAGER));
-        bytes memory creationCode = type(LivoTaxSwapHook).creationCode;
+        bytes memory creationCode = type(LivoSwapHook).creationCode;
 
         console.log("Mining... (this may take 30-60 seconds)");
         (address hookAddress, bytes32 salt) = HookMiner.find(CREATE2_DEPLOYER, flags, creationCode, constructorArgs);

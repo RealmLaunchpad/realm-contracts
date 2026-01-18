@@ -22,6 +22,7 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {HookAddresses} from "src/config/HookAddresses.sol";
 
 /// @notice Tests for Uniswap V4 graduator functionality
 contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
@@ -51,7 +52,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
             currency1: Currency.wrap(address(tokenAddress)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(address(0))
+            hooks: IHooks(HookAddresses.LIVO_SWAP_HOOK)
         });
     }
 
@@ -100,7 +101,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
             currency1: Currency.wrap(address(token)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(address(0))
+            hooks: IHooks(HookAddresses.LIVO_SWAP_HOOK)
         });
 
         bytes[] memory params = new bytes[](3);

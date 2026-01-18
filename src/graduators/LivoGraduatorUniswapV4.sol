@@ -50,6 +50,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @notice Uniswap V4 position manager contract
     address public immutable UNIV4_POSITION_MANAGER;
 
+    /// @notice Hook contract address for pool interactions
+    address public immutable HOOK_ADDRESS;
+
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
     /// @dev 10000 pips = 1%
     uint24 constant LP_FEE = 10000;
@@ -135,18 +138,21 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @param _poolManager Address of the Uniswap V4 pool manager
     /// @param _positionManager Address of the Uniswap V4 position manager
     /// @param _permit2 Address of the Permit2 contract
+    /// @param _hook Address of the hook contract (use HookAddresses.LIVO_SWAP_HOOK for standard setup)
     constructor(
         address _launchpad,
         address _liquidityLock,
         address _poolManager,
         address _positionManager,
-        address _permit2
+        address _permit2,
+        address _hook
     ) {
         LIVO_LAUNCHPAD = _launchpad;
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
         UNIV4_POSITION_MANAGER = _positionManager;
         PERMIT2 = _permit2;
         LIQUIDITY_LOCK = ILiquidityLockUniv4WithFees(_liquidityLock);
+        HOOK_ADDRESS = _hook;
 
         SQRT_PRICEX96_LOWER_TICK = uint160(TickMath.getSqrtPriceAtTick(TICK_LOWER));
         SQRT_PRICEX96_UPPER_TICK = uint160(TickMath.getSqrtPriceAtTick(TICK_UPPER));
@@ -328,7 +334,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
             currency1: Currency.wrap(address(tokenAddress)),
             fee: LP_FEE,
             tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(0)) // no hooks
+            hooks: IHooks(HOOK_ADDRESS)
         });
     }
 

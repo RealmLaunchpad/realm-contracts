@@ -21,7 +21,7 @@ import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IA
 
 /// @title LivoTaxTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks
-/// @dev Extends LivoToken to add tax configuration that is queried by LivoTaxSwapHook
+/// @dev Extends LivoToken to add tax configuration that is queried by LivoSwapHook
 contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
     /// @notice Maximum allowed tax rate (500 basis points = 5%)
     uint16 public constant MAX_TAX_BPS = 500;
@@ -53,7 +53,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
 
     /// @notice the hook address which will charge the buy/sell taxes
     /// todo update this tax hook address when mined
-    address constant TAX_HOOK = 0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044;
+    address public constant TAX_HOOK = 0x75BDB48EFe32d231cC24c38c9A27a925d91a80C4;
 
     /// @notice WETH address on Ethereum mainnet
     /// @dev Needs change if deployed on other chains
