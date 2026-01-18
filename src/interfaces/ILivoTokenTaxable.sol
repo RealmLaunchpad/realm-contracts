@@ -21,4 +21,7 @@ interface ILivoTokenTaxable is ILivoToken {
     /// @dev Called by the tax hook to determine tax rates and validity
     /// @return config The complete tax configuration
     function getTaxConfig() external view returns (TaxConfig memory config);
+
+    /// @notice Returns the graduation timestamp for this token
+    function graduationTimestamp() external view returns (uint40);
 }

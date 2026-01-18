@@ -10,6 +10,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILivoTokenTaxable} from "src/interfaces/ILivoTokenTaxable.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IWETH} from "src/interfaces/IWETH.sol";
 
 /// @title LivoTaxSwapHook
 /// @notice Uniswap V4 hook that collects time-limited buy/sell taxes on token swaps
@@ -19,10 +20,17 @@ contract LivoTaxSwapHook is BaseHook {
     /// @notice Basis points denominator (10000 = 100%)
     uint256 private constant BASIS_POINTS = 10000;
 
+    /// @notice WETH address on Ethereum mainnet
+    /// @dev Needs change if deployed on other chains
+    IWETH private constant WETH = IWETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+
     /// @notice Initializes the hook with the pool manager address
     /// @param _poolManager The Uniswap V4 pool manager contract
     /// @dev Constructor validates that the deployed address matches the required hook permissions
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+
+    /// @notice Allows contract to receive ETH from poolManager.take()
+    receive() external payable {}
 
     /// @notice Returns the hook permissions indicating which callbacks are implemented
     /// @dev Hook address must have these permission flags encoded in its address (via CREATE2)
@@ -119,7 +127,7 @@ contract LivoTaxSwapHook is BaseHook {
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }
 
-    /// @notice Collect sell tax (ETH sent directly to tax recipient)
+    /// @notice Collect sell tax (ETH wrapped to WETH and sent to tax recipient)
     function _collectSellTax(Currency currency, address taxRecipient, int128 ethDelta, uint16 taxBps)
         internal
         returns (bytes4, int128)
@@ -127,7 +135,15 @@ contract LivoTaxSwapHook is BaseHook {
         uint256 absEthAmount = uint256(uint128(ethDelta > 0 ? ethDelta : -ethDelta));
         uint256 taxAmount = (absEthAmount * taxBps) / BASIS_POINTS;
 
-        poolManager.take(currency, taxRecipient, taxAmount);
+        // Take ETH to this contract instead of taxRecipient
+        poolManager.take(currency, address(this), taxAmount);
+
+        // Wrap ETH to WETH and transfer to taxRecipient
+        // Silent failure - if wrap/transfer fails, ETH remains in contract
+        // TODO: Consider adding rescue function for stuck ETH and event emission on failure
+        WETH.deposit{value: taxAmount}();
+        WETH.transfer(taxRecipient, taxAmount);
+
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }
 }

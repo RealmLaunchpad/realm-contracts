@@ -69,6 +69,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         _mint(supplyReceiver_, totalSupply_);
 
         // tokenCalldata is ignored in this implementation
+        tokenCalldata;
     }
 
     //////////////////////// restricted access functions ////////////////////////

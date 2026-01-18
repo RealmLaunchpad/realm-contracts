@@ -32,10 +32,13 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     uint16 public constant DEFAULT_SELL_TAX_BPS = 500; // 5%
     uint40 public constant DEFAULT_TAX_DURATION = 14 days;
 
+    // WETH address for tax assertions
+    address public constant WETH_ADDRESS = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
     // TODO: Replace with actual pre-computed hook address
     // Required permissions: AFTER_SWAP_FLAG (0x04) | AFTER_SWAP_RETURNS_DELTA_FLAG (0x40) = 0x44
     // Hook address must have these flags encoded in its address per UniV4 requirements
-    address public constant PRECOMPUTED_HOOK_ADDRESS = 0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044; // PLACEHOLDER
+    address payable public constant PRECOMPUTED_HOOK_ADDRESS = payable(0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044); // PLACEHOLDER
     // I think this is only used to deploy, but since we are etching, it is not needed in this test
     bytes32 constant HOOK_SALT = bytes32(uint256(0x3b57));
 

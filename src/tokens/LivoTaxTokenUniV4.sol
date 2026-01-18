@@ -5,6 +5,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTokenTaxable} from "src/interfaces/ILivoTokenTaxable.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
+import {IWETH} from "src/interfaces/IWETH.sol";
 
 // UniswapV4 imports for tax swap functionality
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
@@ -13,8 +14,10 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
+import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title LivoTaxTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks
@@ -52,6 +55,13 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
     /// todo update this tax hook address when mined
     address constant TAX_HOOK = 0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044;
 
+    /// @notice WETH address on Ethereum mainnet
+    /// @dev Needs change if deployed on other chains
+    IWETH private constant WETH = IWETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+
+    /// @notice Permit2 address (same across all chains)
+    address private constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
     //////////////////////// potentially immutable //////////////////
 
     LivoLaunchpad public launchpad;
@@ -88,6 +98,9 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         // All initialization happens in initialize() due to minimal proxy pattern
     }
 
+    /// @notice Allows contract to receive ETH from V4 Router during tax swaps
+    receive() external payable {}
+
     /// @notice Initializes the token clone with its parameters including tax configuration
     /// @param name_ The token name
     /// @param symbol_ The token symbol
@@ -109,7 +122,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         if (tokenCalldata.length == 0) revert InvalidTaxCalldata();
 
         // Decode and validate tax configuration (scoped to limit stack)
-        _initializeTaxConfig(graduator_, tokenCalldata, supplyReceiver_);
+        _initializeTaxConfig(tokenCalldata);
 
         // storage variables inherited from LivoToken
         _tokenName = name_;
@@ -121,6 +134,19 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
 
         // all is minted back to the launchpad
         _mint(supplyReceiver_, totalSupply_);
+    }
+
+    /// @notice allows anyone to trigger the tax swap & collection
+    /// @dev This is needed because taxes are only collected for a certain period, and after that period, the collected taxes may not meet the minimum threshold of 0.1% of total supply
+    /// @dev Permisionless function. Anyone can call it, but taxes go to the token creators regardless
+    // todo review if permisionless, an attacker could sandwich it on purpose
+    function collectSwapTaxes() external {
+        uint256 accumulated = balanceOf(address(this));
+        if (accumulated == 0) return;
+
+        _inSwap = true;
+        _swapAccumulatedTaxes(accumulated);
+        _inSwap = false;
     }
 
     function getTaxConfig() external view returns (TaxConfig memory config) {
@@ -137,7 +163,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
 
     /// @notice Internal helper to decode and validate tax configuration
     /// @dev Separated to reduce stack depth in initialize()
-    function _initializeTaxConfig(address graduator_, bytes memory tokenCalldata, address supplyReceiver_) internal {
+    function _initializeTaxConfig(bytes memory tokenCalldata) internal {
         
         (
             uint16 _buyTaxBps,
@@ -203,20 +229,30 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
         uint256 threshold = totalSupply() / 1000;
         if (accumulated < threshold) return;
 
-        // Only swap if PoolManager is unlocked (not during V4 swaps)
-        // During V4 swaps, the manager is locked, so this check prevents reentrancy
-        if (!TransientStateLibrary.isUnlocked(UNIV4_POOL_MANAGER)) return;
+        // Skip if PoolManager is already unlocked (we're inside a V4 swap callback).
+        // We can only initiate a new swap when the PoolManager is locked (idle).
+        // The router is locked by default, and it is only temporarily unlocked during a valid, explicitly initiated execution flow.
+        // “Unlocked” means the router is actively and safely coordinating execution
+        // unlocked == ongoing swap (a bit counter intuitive)
+        if (TransientStateLibrary.isUnlocked(UNIV4_POOL_MANAGER)) return;
 
         _inSwap = true;
         _swapAccumulatedTaxes(accumulated);
         _inSwap = false;
     }
 
-    /// @notice Swaps accumulated token taxes to ETH and sends to token creator
+    /// @notice Swaps accumulated token taxes to WETH and sends to token creator
     /// @param amount The amount of tokens to swap
     function _swapAccumulatedTaxes(uint256 amount) internal {
-        // Approve router to spend tokens
-        _approve(address(this), UNIV4_ROUTER, amount);
+        // Approve Permit2 to spend tokens, then Permit2 approves router
+        // The Universal Router uses Permit2 for token transfers
+        _approve(address(this), PERMIT2, type(uint256).max);
+        IAllowanceTransfer(PERMIT2).approve(
+            address(this), // token
+            UNIV4_ROUTER, // spender
+            type(uint160).max, // amount
+            type(uint48).max // expiration
+        );
 
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(address(0)),
@@ -235,33 +271,51 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
             hookData: ""
         });
 
-        // Encode actions: SWAP + SETTLE + TAKE
-        // Action codes from v4-periphery/src/libraries/Actions.sol
-        bytes memory actions = new bytes(3);
-        actions[0] = bytes1(uint8(0x06)); // SWAP_EXACT_IN_SINGLE
-        actions[1] = bytes1(uint8(0x0b)); // SETTLE
-        actions[2] = bytes1(uint8(0x0e)); // TAKE
+        // Encode actions using Actions library constants
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.SWAP_EXACT_IN_SINGLE),
+            uint8(Actions.SETTLE_ALL),
+            uint8(Actions.TAKE_ALL)
+        );
 
         // Get tax recipient (token owner) from the launchpad dynamically, as it can be updated there
         address tokenOwner = launchpad.getTokenOwner(address(this));
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(swapParams);
-        // SETTLE: currency, amount, payerIsUser (false = router pays from its balance, but we approved it)
-        params[1] = abi.encode(Currency.wrap(address(this)), amount, false);
-        // TAKE: currency, recipient, amount (max = take all output)
-        params[2] = abi.encode(Currency.wrap(address(0)), tokenOwner, type(uint256).max);
+        // SETTLE_ALL: currency, maxAmount
+        params[1] = abi.encode(Currency.wrap(address(this)), amount);
+        // TAKE_ALL: currency, minAmount (0 = accept any amount)
+        params[2] = abi.encode(Currency.wrap(address(0)), 0);
 
-        bytes memory data = abi.encode(actions, params);
+        // Encode for Universal Router's execute function
+        // Command 0x10 = V4_SWAP
+        bytes memory commands = abi.encodePacked(uint8(0x10));
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = abi.encode(actions, params);
 
-        // Execute swap via V4 router - ETH goes directly to tokenOwner
+        uint256 ethBalanceBefore = address(this).balance;
+
         // solhint-disable-next-line avoid-low-level-calls
-        (bool success,) = UNIV4_ROUTER.call(abi.encodeWithSignature("executeActions(bytes)", data));
+        (bool success,) = UNIV4_ROUTER.call(
+            abi.encodeWithSignature("execute(bytes,bytes[],uint256)", commands, inputs, block.timestamp)
+        );
         // If swap fails, we silently continue - tokens remain accumulated for next attempt
         // This prevents a failing swap from blocking all token transfers
+        // todo review this behavior
         if (!success) {
-            // Reset approval on failure
-            _approve(address(this), UNIV4_ROUTER, 0);
+            // Reset approvals on failure
+            _approve(address(this), PERMIT2, 0);
+            return;
+        }
+
+        // Wrap ETH to WETH and transfer to tokenOwner
+        // Silent failure - if wrap/transfer fails, ETH remains in contract
+        // TODO: Consider adding rescue function for stuck ETH and event emission on failure
+        uint256 ethReceived = address(this).balance - ethBalanceBefore;
+        if (ethReceived > 0) {
+            WETH.deposit{value: ethReceived}();
+            WETH.transfer(tokenOwner, ethReceived);
         }
     }
 }

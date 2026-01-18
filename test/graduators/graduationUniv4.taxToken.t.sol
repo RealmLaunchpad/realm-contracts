@@ -6,6 +6,7 @@ import {TaxTokenUniV4BaseTests} from "test/graduators/graduationUniv4.taxToken.b
 import {LivoTaxTokenUniV4} from "src/tokens/LivoTaxTokenUniV4.sol";
 import {ILivoTokenTaxable} from "src/interfaces/ILivoTokenTaxable.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
 /// @notice Comprehensive tests for LivoTaxTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
@@ -17,47 +18,50 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
     /// @notice Test that no taxes are charged before graduation when purchasing through launchpad
     function test_noTaxesBeforeGraduation_launchpadPurchases() public createDefaultTaxToken {
-        uint256 creatorBalanceBefore = creator.balance;
+        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
 
+        (, , uint256 tokensToReceive) = launchpad.quoteBuyWithExactEth(testToken, 1 ether);
+
+        uint256 buyerTokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
         // Multiple users buy tokens through launchpad
         vm.deal(buyer, 2 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        assertEq(IERC20(testToken).balanceOf(buyer), buyerTokenBalanceBefore + tokensToReceive, "Buyer should receive the correct amount of tokens, no taxes involved");
 
         vm.deal(alice, 2 ether);
         vm.prank(alice);
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
 
-        // Verify token owner (creator) received no tax
-        assertEq(creator.balance, creatorBalanceBefore, "Creator should not receive any tax before graduation");
+        // Verify token owner (creator) received no WETH tax
+        assertEq(IERC20(WETH_ADDRESS).balanceOf(creator), creatorWethBalanceBefore, "Creator should not receive any WETH tax before graduation");
 
         // Verify buyers received tokens (only launchpad fees deducted, no tax)
         assertGt(IERC20(testToken).balanceOf(buyer), 0, "Buyer should have received tokens");
         assertGt(IERC20(testToken).balanceOf(alice), 0, "Alice should have received tokens");
 
         // Token is not graduated yet
-        assertFalse(LivoTaxTokenUniV4(testToken).graduated(), "Token should not be graduated yet");
+        assertFalse(ILivoToken(testToken).graduated(), "Token should not be graduated yet");
     }
 
     /////////////////////////////////// CATEGORY 2: TAX COLLECTION (ACTIVE PERIOD) ///////////////////////////////////
 
     /// @notice Test that buy tax is collected correctly after graduation within tax period
-    /// @dev Buy tax is collected in TOKENS (not ETH) due to UniV4 settlement constraints.
-    ///      The buyer receives fewer tokens, and the tax recipient receives tokens.
+    /// @dev buy taxes are collected as tokens in the token contract, and then swapped for WETH and sent to the creator.
+    /// @dev The swap is triggered by a normal transfer ONLY when accumulated tokens >= 0.1% of totalSupply
     function test_buyTaxCollected_withinTaxPeriod() public createDefaultTaxToken {
         _graduateToken();
 
-        uint256 creatorTokenBalanceBefore = IERC20(testToken).balanceOf(creator);
+        assertEq(IERC20(testToken).balanceOf(address(testToken)), 0, "there should be no taxes collected yet");
+        
         uint256 buyerTokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
 
-        uint256 ethIn = 1 ether;
-        deal(buyer, ethIn);
+        // First small buy to verify tax accumulation mechanics
+        uint256 smallEthIn = 1 ether;
+        deal(buyer, smallEthIn);
 
-        // Track token contract balance (where buy taxes now accumulate)
         uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
-
-        // Buyer swaps ETH for tokens via UniV4
-        _swapBuy(buyer, ethIn, 0, true);
+        _swapBuy(buyer, smallEthIn, 0, true);
 
         uint256 buyerTokenBalanceAfter = IERC20(testToken).balanceOf(buyer);
         uint256 tokenContractBalanceAfter = IERC20(testToken).balanceOf(testToken);
@@ -65,17 +69,41 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 taxAccumulatedInToken = tokenContractBalanceAfter - tokenContractBalanceBefore;
 
         // Buy tax is collected as tokens and sent to the token contract for accumulation
-        // (will be swapped to ETH and sent to taxRecipient on next unlocked transfer)
         assertGt(taxAccumulatedInToken, 0, "Token contract should accumulate buy tax");
 
         // Verify the tax is approximately buyTaxBps % of what buyer received
-        // taxReceived / (tokensReceivedByBuyer + taxReceived) ≈ buyTaxBps / 10000
         uint256 totalTokensSwapped = tokensReceivedByBuyer + taxAccumulatedInToken;
         uint256 actualTaxPercentage = (taxAccumulatedInToken * 10000) / totalTokensSwapped;
         assertApproxEqAbs(actualTaxPercentage, DEFAULT_BUY_TAX_BPS, 1, "Tax percentage should match buyTaxBps");
 
         // Verify buyer received tokens
         assertGt(tokensReceivedByBuyer, 0, "Buyer should have received tokens");
+
+        // Verify creator hasn't received WETH yet (threshold not met)
+        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
+        assertEq(creatorWethBalanceBefore, 0, "Creator should not have received WETH tax yet");
+
+        //////////////////////////// large buy to meet threshold //////////////////////////
+        // Do a large buy (200 ETH) to ensure accumulated tokens exceed the 0.1% threshold
+        
+        uint256 largeEthIn = 200 ether;
+        deal(buyer, largeEthIn);
+        _swapBuy(buyer, largeEthIn, 0, true);
+
+        // Verify threshold is now met
+        uint256 threshold = IERC20(testToken).totalSupply() / 1000;
+        uint256 accumulatedTax = IERC20(testToken).balanceOf(testToken);
+        assertGe(accumulatedTax, threshold, "Accumulated tax should meet threshold after large buy");
+
+        //////////////////////////// trigger swap and verify WETH payment //////////////////////////
+        // Transfer triggers the swap of accumulated tokens to WETH for the creator
+        
+        vm.prank(buyer);
+        IERC20(testToken).transfer(alice, 1e18);
+
+        uint256 creatorWethBalanceAfter = IERC20(WETH_ADDRESS).balanceOf(creator);
+        assertGt(creatorWethBalanceAfter, creatorWethBalanceBefore, "Creator should receive WETH tax after threshold met");
+        assertGt(creatorWethBalanceAfter, 0, "Creator should receive WETH tax greater than 0");
     }
 
     /// @notice Test that sell tax is collected correctly after graduation within tax period
@@ -90,7 +118,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         _graduateToken();
 
-        uint256 creatorBalanceBefore = creator.balance;
+        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
         uint256 buyerEthBalanceBefore = buyer.balance;
 
         uint256 sellAmount = buyerTokenBalance / 2;
@@ -106,13 +134,13 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // The exact calculation depends on the pool state, but creator should receive some tax
         uint256 expectedTaxApprox = (ethReceived * DEFAULT_SELL_TAX_BPS) / 10000;
 
-        // Verify tax was sent to creator (allow for some variance due to pool math)
-        assertGt(creator.balance, creatorBalanceBefore, "Creator should receive sell tax");
+        // Verify tax was sent to creator as WETH (allow for some variance due to pool math)
+        assertGt(IERC20(WETH_ADDRESS).balanceOf(creator), creatorWethBalanceBefore, "Creator should receive sell tax as WETH");
         assertApproxEqRel(
-            creator.balance - creatorBalanceBefore,
+            IERC20(WETH_ADDRESS).balanceOf(creator) - creatorWethBalanceBefore,
             expectedTaxApprox,
             0.15e18, // 15% tolerance for pool math variance
-            "Creator should receive approximately the expected sell tax"
+            "Creator should receive approximately the expected sell tax as WETH"
         );
     }
 
@@ -145,17 +173,17 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 actualBuyTaxPercentage = (buyTaxAccumulated * 10000) / totalTokens;
         assertApproxEqAbs(actualBuyTaxPercentage, 200, 1, "Buy tax should be ~2%");
 
-        // Test sell tax (5%) - collected as ETH directly to creator
+        // Test sell tax (5%) - collected as WETH directly to creator
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         uint256 sellAmount = buyerTokenBalance / 3;
 
-        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
         _swapSell(buyer, sellAmount, 0, true);
-        uint256 sellTaxCollectedEth = creator.balance - creatorEthBalanceBefore;
+        uint256 sellTaxCollectedWeth = IERC20(WETH_ADDRESS).balanceOf(creator) - creatorWethBalanceBefore;
 
         // Verify both taxes were collected
         assertGt(buyTaxAccumulated, 0, "Buy tax should accumulate in token contract");
-        assertGt(sellTaxCollectedEth, 0, "Sell tax should be collected in ETH");
+        assertGt(sellTaxCollectedWeth, 0, "Sell tax should be collected as WETH");
     }
 
     /// @notice Test that zero tax rate results in no tax collection
@@ -170,17 +198,17 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         _graduateToken();
 
-        // Test buy with 0% tax
-        uint256 creatorBalanceBefore = creator.balance;
+        // Test buy with 0% tax - should accumulate no tokens in token contract
+        uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, true);
-        assertEq(creator.balance, creatorBalanceBefore, "Creator should receive no buy tax (0% rate)");
+        assertEq(IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should accumulate (0% rate)");
 
-        // Test sell with 5% tax
+        // Test sell with 5% tax - creator receives WETH directly
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
-        creatorBalanceBefore = creator.balance;
+        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
         _swapSell(buyer, buyerTokenBalance / 2, 0, true);
-        assertGt(creator.balance, creatorBalanceBefore, "Creator should receive sell tax (5% rate)");
+        assertGt(IERC20(WETH_ADDRESS).balanceOf(creator), creatorWethBalanceBefore, "Creator should receive sell tax as WETH (5% rate)");
     }
 
     /// @notice Test that buy taxes accumulate in token contract during swaps
@@ -244,7 +272,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1 seconds);
 
         uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
-        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
 
         // Perform buy swap - should collect no TOKEN tax
         deal(buyer, 1 ether);
@@ -255,10 +283,10 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             "No buy tax (tokens) should accumulate after period expires"
         );
 
-        // Perform sell swap - should collect no ETH tax
+        // Perform sell swap - should collect no WETH tax
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         _swapSell(buyer, buyerTokenBalance / 2, 0, true);
-        assertEq(creator.balance, creatorEthBalanceBefore, "No sell tax (ETH) should be collected after period expires");
+        assertEq(IERC20(WETH_ADDRESS).balanceOf(creator), creatorWethBalanceBefore, "No sell tax (WETH) should be collected after period expires");
     }
 
     /// @notice Test exact boundary conditions for tax period
@@ -267,7 +295,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_taxPeriodBoundaries() public createDefaultTaxToken {
         _graduateToken();
 
-        uint40 graduationTimestamp = LivoTaxTokenUniV4(testToken).graduationTimestamp();
+        uint40 graduationTimestamp = ILivoTokenTaxable(testToken).graduationTimestamp();
         uint256 tokenContractBalance;
 
         // Test at t = 0 (graduation) - token tax should accumulate
@@ -307,19 +335,25 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         testToken = _createStandardTokenWithTaxHookGraduator();
 
         // Verify token owner doesn't receive any "tax" (there shouldn't be any)
-        uint256 creatorBalanceBefore = creator.balance;
+        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
 
         _graduateToken();
+
+        // Track token contract balance (should remain 0 for non-taxable tokens)
+        uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
 
         // Perform buy and sell swaps - these should succeed without reverting
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, true);
 
+        // Verify no buy tax accumulated in token contract
+        assertEq(IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should accumulate for non-taxable token");
+
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         _swapSell(buyer, buyerTokenBalance / 2, 0, true);
 
-        // Verify no tax was collected (hook handled missing getTaxConfig() gracefully)
-        assertEq(creator.balance, creatorBalanceBefore, "No tax should be collected from non-taxable token");
+        // Verify no sell tax was collected as WETH (hook handled missing getTaxConfig() gracefully)
+        assertEq(IERC20(WETH_ADDRESS).balanceOf(creator), creatorWethBalanceBefore, "No WETH tax should be collected from non-taxable token");
     }
 
     /////////////////////////////////// CATEGORY 5: EDGE CASES & SECURITY ///////////////////////////////////
@@ -377,7 +411,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_taxRecipient_immutableAfterGraduation() public createDefaultTaxToken {
         _graduateToken();
 
-        ILivoTokenTaxable.TaxConfig memory config = LivoTaxTokenUniV4(testToken).getTaxConfig();
+        ILivoTokenTaxable.TaxConfig memory config = ILivoTokenTaxable(testToken).getTaxConfig();
         address initialTaxRecipient = config.taxRecipient;
 
         assertEq(initialTaxRecipient, creator, "Tax recipient should be creator");
@@ -385,7 +419,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Fast forward and verify tax recipient hasn't changed
         vm.warp(block.timestamp + 7 days);
 
-        config = LivoTaxTokenUniV4(testToken).getTaxConfig();
+        config = ILivoTokenTaxable(testToken).getTaxConfig();
         assertEq(config.taxRecipient, initialTaxRecipient, "Tax recipient should remain unchanged");
 
         // Verify buy taxes accumulate in token contract (will be swapped to ETH for recipient later)
@@ -400,20 +434,21 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     /// @notice Test tax on very small swaps
+    /// @dev Buy taxes accumulate as tokens in the token contract (not WETH directly)
     function test_verySmallSwap_taxRoundsCorrectly() public createDefaultTaxToken {
         _graduateToken();
 
-        uint256 creatorBalanceBefore = creator.balance;
+        uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
         uint256 verySmallAmount = 0.0001 ether; // 100000 gwei
 
         deal(buyer, verySmallAmount);
         _swapBuy(buyer, verySmallAmount, 0, true);
 
         // Tax might round to a very small amount or zero, but should not revert
-        uint256 taxCollected = creator.balance - creatorBalanceBefore;
-        console.log("Tax collected on 0.0001 ETH swap:", taxCollected);
+        uint256 tokenTaxAccumulated = IERC20(testToken).balanceOf(testToken) - tokenContractBalanceBefore;
+        console.log("Token tax accumulated on 0.0001 ETH swap:", tokenTaxAccumulated);
 
-        // Just verify no revert occurred
+        // Just verify no revert occurred - small tax may round to 0 or accumulate a tiny amount
         assertTrue(true, "Very small swap should not revert");
     }
 
@@ -421,7 +456,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Pool is initialized but has no liquidity until graduation adds it
     function test_notGraduated_swapHasNoLiquidity() public createDefaultTaxToken {
         // Token is created but not graduated
-        assertFalse(LivoTaxTokenUniV4(testToken).graduated(), "Token should not be graduated");
+        assertFalse(ILivoToken(testToken).graduated(), "Token should not be graduated");
 
         // Before graduation, the pool exists but has no liquidity
         // A buy swap will fail due to lack of liquidity or token transfer restrictions
@@ -460,7 +495,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _graduateToken();
 
         uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
-        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
 
         // Buy more tokens via UniV4 (buy tax accumulates in token contract)
         deal(buyer, 1 ether);
@@ -468,15 +503,15 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 buyTaxAccumulated = IERC20(testToken).balanceOf(testToken) - tokenContractBalanceBefore;
         assertGt(buyTaxAccumulated, 0, "Buy tax (tokens) should accumulate");
 
-        // Sell some tokens via UniV4 (pay sell tax in ETH)
+        // Sell some tokens via UniV4 (pay sell tax as WETH)
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         _swapSell(buyer, buyerTokenBalance / 3, 0, true);
-        uint256 sellTaxCollectedEth = creator.balance - creatorEthBalanceBefore;
-        assertGt(sellTaxCollectedEth, 0, "Sell tax (ETH) should be collected");
+        uint256 sellTaxCollectedWeth = IERC20(WETH_ADDRESS).balanceOf(creator) - creatorWethBalanceBefore;
+        assertGt(sellTaxCollectedWeth, 0, "Sell tax (WETH) should be collected");
 
         // Both taxes were collected
         assertGt(buyTaxAccumulated, 0, "Token contract should accumulate buy tax");
-        assertGt(sellTaxCollectedEth, 0, "Creator should receive sell tax in ETH");
+        assertGt(sellTaxCollectedWeth, 0, "Creator should receive sell tax as WETH");
     }
 
     /////////////////////////////////// CATEGORY 7: INTEGRATION TESTS ///////////////////////////////////
@@ -495,7 +530,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // 2. Graduate token
         _graduateToken();
-        uint40 graduationTimestamp = LivoTaxTokenUniV4(testToken).graduationTimestamp();
+        uint40 graduationTimestamp = ILivoTokenTaxable(testToken).graduationTimestamp();
         assertGt(graduationTimestamp, 0, "Graduation timestamp should be set");
 
         // Token contract balance after graduation
