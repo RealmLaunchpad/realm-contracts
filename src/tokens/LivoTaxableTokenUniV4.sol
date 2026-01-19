@@ -7,7 +7,6 @@ import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol"
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {HookAddresses} from "src/config/HookAddresses.sol";
 
 // UniswapV4 imports for tax swap functionality
@@ -21,6 +20,9 @@ import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
+
+import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+
 
 /// @title LivoTaxableTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks
@@ -48,16 +50,16 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     int24 public constant TICK_SPACING = 200;
 
     /// @notice Pool manager for lock state checking
-    IPoolManager public constant UNIV4_POOL_MANAGER = IPoolManager(DeploymentAddressesMainnet.UNIV4_POOL_MANAGER);
+    IPoolManager public constant UNIV4_POOL_MANAGER = IPoolManager(DeploymentAddresses.UNIV4_POOL_MANAGER);
 
     /// @notice V4 Router for executing tax swaps
-    address public constant UNIV4_ROUTER = DeploymentAddressesMainnet.UNIV4_UNIVERSAL_ROUTER;
+    address public constant UNIV4_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
 
     /// @notice WETH address on Ethereum mainnet
-    IWETH private constant WETH = IWETH(DeploymentAddressesMainnet.WETH);
+    IWETH private constant WETH = IWETH(DeploymentAddresses.WETH);
 
     /// @notice Permit2 address
-    address private constant PERMIT2 = DeploymentAddressesMainnet.PERMIT2;
+    address private constant PERMIT2 = DeploymentAddresses.PERMIT2;
 
     /// @notice the hook address which will charge the buy/sell taxes
     address public constant TAX_HOOK = HookAddresses.LIVO_SWAP_HOOK;
@@ -98,6 +100,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     constructor() LivoToken() {
         // Constructor body intentionally left empty
         // All initialization happens in initialize() due to minimal proxy pattern
+        require(block.chainid == DeploymentAddresses.BLOCKCHAIN_ID, "configuration for wrong chainId");
     }
 
     /// @notice Allows contract to receive ETH from V4 Router during tax swaps

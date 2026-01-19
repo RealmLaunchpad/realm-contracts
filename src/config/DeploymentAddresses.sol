@@ -5,6 +5,9 @@ pragma solidity 0.8.28;
 /// @notice Centralized constants for protocol infrastructure addresses on Ethereum Mainnet
 /// @dev These addresses are network-specific and must be updated for other chains
 library DeploymentAddressesMainnet {
+    /// @notice Blockchain ID for Ethereum Mainnet
+    uint256 public constant BLOCKCHAIN_ID = 1;
+    
     /// @notice Uniswap V4 Pool Manager contract
     /// @dev Core contract managing all V4 pools and their lifecycle
     address public constant UNIV4_POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
@@ -43,6 +46,9 @@ library DeploymentAddressesMainnet {
 /// @notice Centralized constants for protocol infrastructure addresses on Sepolia Testnet
 /// @dev TODO: Update these addresses with actual Sepolia deployments
 library DeploymentAddressesSepolia {
+    /// @notice Blockchain ID for Sepolia Testnet
+    uint256 public constant BLOCKCHAIN_ID = 11155111;
+
     /// @notice Uniswap V4 Pool Manager contract
     address public constant UNIV4_POOL_MANAGER = 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
 
