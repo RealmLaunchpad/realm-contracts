@@ -22,6 +22,7 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {HookAddresses} from "src/config/HookAddresses.sol";
 
 /// @notice Tests for Uniswap V4 graduator functionality
 contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
@@ -51,7 +52,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
             currency1: Currency.wrap(address(tokenAddress)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(address(0))
+            hooks: IHooks(HookAddresses.LIVO_SWAP_HOOK)
         });
     }
 
@@ -90,7 +91,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         uint256 minAmountOut,
         bool isBuy,
         bool expectSuccess
-    ) internal {
+    ) internal virtual {
         vm.startPrank(caller);
         IERC20(token).approve(address(permit2Address), type(uint256).max);
         IPermit2(permit2Address).approve(address(token), universalRouter, type(uint160).max, type(uint48).max);
@@ -100,7 +101,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
             currency1: Currency.wrap(address(token)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(address(0))
+            hooks: IHooks(HookAddresses.LIVO_SWAP_HOOK)
         });
 
         bytes[] memory params = new bytes[](3);

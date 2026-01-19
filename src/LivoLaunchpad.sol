@@ -145,8 +145,9 @@ contract LivoLaunchpad is Ownable2Step {
         token = _createToken(name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata);
     }
 
-    /// Same as createToken, but allows admin to create a token bypassing the whitelisting sets of graduator, bonding curve and token implementation
-    /// Projects can contact the team for custom implementations that can only be deployed by admins
+    /// @notice Same as createToken, but allows admin to create a token bypassing the whitelisting sets of graduator, bonding curve and token implementation
+    /// @dev Projects can contact the team for custom implementations that can only be deployed by admins
+    /// @dev example: if a project wants to deploy with longer tax period, admins deploy a taxable-token without the 14day restriction, and use this function without whitelisting such token implementation.
     function createCustomToken(
         string calldata name,
         string calldata symbol,

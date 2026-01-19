@@ -7,6 +7,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {HookAddresses} from "src/config/HookAddresses.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
@@ -14,6 +15,7 @@ import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4Wit
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
+import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 
 contract LaunchpadBaseTests is Test {
     LivoLaunchpad public launchpad;
@@ -69,6 +71,7 @@ contract LaunchpadBaseTests is Test {
     LiquidityLockUniv4WithFees public liquidityLock;
     LivoGraduatorUniswapV2 public graduatorV2;
     LivoGraduatorUniswapV4 public graduatorV4;
+    LivoSwapHook public taxHook;
 
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
@@ -98,9 +101,25 @@ contract LaunchpadBaseTests is Test {
 
         // V4 graduator
         liquidityLock = new LiquidityLockUniv4WithFees(positionManagerAddress);
-        graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad), address(liquidityLock), poolManagerAddress, positionManagerAddress, permit2Address
+
+        // Deploy hook directly to pre-computed address using deployCodeTo
+        // This bypasses the temp deployment issue where BaseHook constructor validates
+        // that the deployed address has correct permission flags (0x44)
+        deployCodeTo(
+            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(WETH)), HookAddresses.LIVO_SWAP_HOOK
         );
+        taxHook = LivoSwapHook(HookAddresses.LIVO_SWAP_HOOK);
+
+        // deploy graduator, pointing to the common hook (for tax and non-tax tokens)
+        graduatorV4 = new LivoGraduatorUniswapV4(
+            address(launchpad),
+            address(liquidityLock),
+            poolManagerAddress,
+            positionManagerAddress,
+            permit2Address,
+            HookAddresses.LIVO_SWAP_HOOK
+        );
+
         launchpad.whitelistComponents(
             address(implementation),
             address(bondingCurve),
