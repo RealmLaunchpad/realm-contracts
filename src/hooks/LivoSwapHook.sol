@@ -55,7 +55,7 @@ contract LivoSwapHook is BaseHook {
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: false,
-            afterSwapReturnDelta: true,
+            afterSwapReturnDelta: true, // to calculate how much tax should be collected
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
@@ -76,13 +76,19 @@ contract LivoSwapHook is BaseHook {
         address tokenAddress = Currency.unwrap(key.currency1);
         (bool shouldTax, uint16 taxBps, address taxRecipient) = _getTaxParams(tokenAddress, params.zeroForOne);
 
+        // if tax=0 or, out of tax period, or no tax config, then we exit here without taxation
         if (!shouldTax) {
             return (IHooks.afterSwap.selector, 0);
         }
 
         // BUY: Tax is taken from token output and sent to token contract for accumulation
         if (params.zeroForOne) {
-            return _collectBuyTax(key.currency1, tokenAddress, delta.amount1(), taxBps);
+            return _collectBuyTax(
+                key.currency1,
+                tokenAddress, // recipient (token contract)
+                delta.amount1(),
+                taxBps
+            );
         }
 
         // SELL: Tax is taken from ETH output (seller receives less ETH)
@@ -101,7 +107,7 @@ contract LivoSwapHook is BaseHook {
         // Get token address (currency1 is always the token, currency0 is ETH)
         address tokenAddress = Currency.unwrap(key.currency1);
 
-        // Check if token has graduated
+        // Check if token has graduated. Swaps not allowed before graduation
         if (!ILivoToken(tokenAddress).graduated()) {
             revert NoSwapsBeforeGraduation();
         }
@@ -135,7 +141,7 @@ contract LivoSwapHook is BaseHook {
             if (taxBps == 0) {
                 return (false, 0, address(0));
             }
-
+            // here we know taxBps is not zero and we have a tax recipient from config. blindly trust the recipient here.
             return (true, taxBps, config.taxRecipient);
         } catch {
             // in case tax configuration is not available, assume no taxes
@@ -146,7 +152,7 @@ contract LivoSwapHook is BaseHook {
     /// @notice Collect buy tax (tokens sent to token contract for later swap to ETH)
     function _collectBuyTax(Currency currency, address tokenAddress, int128 tokenDelta, uint16 taxBps)
         internal
-        returns (bytes4, int128)
+        returns (bytes4 selector, int128 taxCollected)
     {
         uint256 absTokenAmount = uint256(uint128(tokenDelta > 0 ? tokenDelta : -tokenDelta));
         uint256 taxAmount = (absTokenAmount * taxBps) / BASIS_POINTS;
@@ -159,17 +165,15 @@ contract LivoSwapHook is BaseHook {
     /// @notice Collect sell tax (ETH wrapped to WETH and sent to tax recipient)
     function _collectSellTax(Currency currency, address taxRecipient, int128 ethDelta, uint16 taxBps)
         internal
-        returns (bytes4, int128)
+        returns (bytes4 selector, int128 taxCollected)
     {
         uint256 absEthAmount = uint256(uint128(ethDelta > 0 ? ethDelta : -ethDelta));
         uint256 taxAmount = (absEthAmount * taxBps) / BASIS_POINTS;
 
-        // Take ETH to this contract instead of taxRecipient
+        // Take ETH to this contract instead of taxRecipient, for WETH wrapping
         poolManager.take(currency, address(this), taxAmount);
 
         // Wrap ETH to WETH and transfer to taxRecipient
-        // Silent failure - if wrap/transfer fails, ETH remains in contract
-        // TODO: Consider adding rescue function for stuck ETH and event emission on failure
         WETH.deposit{value: taxAmount}();
         WETH.transfer(taxRecipient, taxAmount);
 
