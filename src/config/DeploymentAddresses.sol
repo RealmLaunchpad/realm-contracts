@@ -7,7 +7,7 @@ pragma solidity 0.8.28;
 library DeploymentAddressesMainnet {
     /// @notice Blockchain ID for Ethereum Mainnet
     uint256 public constant BLOCKCHAIN_ID = 1;
-    
+
     /// @notice Uniswap V4 Pool Manager contract
     /// @dev Core contract managing all V4 pools and their lifecycle
     address public constant UNIV4_POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
