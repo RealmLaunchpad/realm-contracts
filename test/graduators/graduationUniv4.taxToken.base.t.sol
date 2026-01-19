@@ -6,6 +6,7 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {HookAddresses} from "src/config/HookAddresses.sol";
+import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -29,7 +30,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     uint40 public constant DEFAULT_TAX_DURATION = 14 days;
 
     // WETH address for tax assertions
-    address public constant WETH_ADDRESS = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address public constant WETH_ADDRESS = DeploymentAddressesMainnet.WETH;
 
     function setUp() public virtual override {
         super.setUp();

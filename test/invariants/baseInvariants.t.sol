@@ -7,6 +7,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
@@ -20,7 +21,7 @@ contract LaunchpadInvariants is Test {
 
     InvariantsHelperLaunchpad public helper;
 
-    address constant poolManagerAddress = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+    address constant poolManagerAddress = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");

@@ -95,6 +95,7 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         uint256 ethAmount = 0.01 ether;
         uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
         _uniswapBuy(buyer, ethAmount);
+
         uint256 tokensBoughtSwap = IERC20(testToken).balanceOf(buyer) - tokenBalanceBefore;
         uint256 effectiveSwapPrice = (ethAmount * 1e18) / tokensBoughtSwap;
         uint256 tokensInPair = IERC20(testToken).balanceOf(LivoToken(testToken).pair());
@@ -233,6 +234,7 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         // buy on uniswap with small amount to register price
         uint256 tokenBalanceBeforeSwap = IERC20(testToken).balanceOf(buyer);
         _uniswapBuy(buyer, smallBuyAmount);
+
         uint256 tokensBoughtSwap = IERC20(testToken).balanceOf(buyer) - tokenBalanceBeforeSwap;
         uint256 effectiveSwapPrice = (smallBuyAmount * 1e18) / tokensBoughtSwap;
 
