@@ -32,22 +32,17 @@ library DeploymentAddressesMainnet {
 /// @dev TODO: Update these addresses with actual Sepolia deployments
 library DeploymentAddressesSepolia {
     /// @notice Uniswap V4 Pool Manager contract
-    /// @dev TODO: Add Sepolia V4 Pool Manager address
-    address public constant UNIV4_POOL_MANAGER = address(0); // TODO: Update with Sepolia address
+    address public constant UNIV4_POOL_MANAGER = 0x00b036b58a818b1bc34d502d3fe730db729e62ac;
 
     /// @notice Uniswap V4 Position Manager contract
-    /// @dev TODO: Add Sepolia V4 Position Manager address
-    address public constant UNIV4_POSITION_MANAGER = address(0); // TODO: Update with Sepolia address
+    address public constant UNIV4_POSITION_MANAGER = 0xf969aee60879c54baaed9f3ed26147db216fd664;
 
     /// @notice Uniswap V4 Universal Router contract
-    /// @dev TODO: Add Sepolia V4 Universal Router address
-    address public constant UNIV4_UNIVERSAL_ROUTER = address(0); // TODO: Update with Sepolia address
+    address public constant UNIV4_UNIVERSAL_ROUTER = 0xf70536b3bcc1bd1a972dc186a2cf84cc6da6be5d;
 
     /// @notice Permit2 contract
-    /// @dev TODO: Verify if Permit2 uses the same address on Sepolia or update accordingly
-    address public constant PERMIT2 = address(0); // TODO: Update with Sepolia address
+    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     /// @notice Wrapped Ether (WETH) token contract
-    /// @dev TODO: Add Sepolia WETH address
-    address public constant WETH = address(0); // TODO: Update with Sepolia address
+    address public constant WETH = 0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9; // this is WETH deployed by uniswap for uniswap tests
 }
