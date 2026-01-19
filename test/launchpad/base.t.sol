@@ -8,6 +8,7 @@ import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBond
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {HookAddresses} from "src/config/HookAddresses.sol";
+import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
@@ -49,21 +50,21 @@ contract LaunchpadBaseTests is Test {
 
     // we don't test deadlines mostly
     uint256 constant DEADLINE = type(uint256).max;
-    address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+    address constant DEAD_ADDRESS = DeploymentAddressesMainnet.DEAD_ADDRESS;
 
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
     // uniswapv4 addresses in mainnet
-    address constant poolManagerAddress = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-    address constant positionManagerAddress = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
-    address constant permit2Address = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-    address constant universalRouter = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+    address constant poolManagerAddress = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
+    address constant positionManagerAddress = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
+    address constant permit2Address = DeploymentAddressesMainnet.PERMIT2;
+    address constant universalRouter = DeploymentAddressesMainnet.UNIV4_UNIVERSAL_ROUTER;
 
     // Uniswap V2 router address on mainnet
-    address constant UNISWAP_V2_ROUTER = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
-    IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
-    IWETH constant WETH = IWETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    address constant UNISWAP_V2_ROUTER = DeploymentAddressesMainnet.UNIV2_ROUTER;
+    IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(DeploymentAddressesMainnet.UNIV2_FACTORY);
+    IWETH constant WETH = IWETH(DeploymentAddressesMainnet.WETH);
 
     // This is the price setpoint, but does not include trading fees
     uint256 constant GRADUATION_PRICE = 39011306440; // ETH/token (eth per token, expressed in wei)

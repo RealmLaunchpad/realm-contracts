@@ -7,6 +7,7 @@ import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol"
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {HookAddresses} from "src/config/HookAddresses.sol";
 
 // UniswapV4 imports for tax swap functionality
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
@@ -20,6 +21,9 @@ import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol"
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 
+/// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
+import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+
 /// @title LivoTaxableTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks
 /// @dev Extends LivoToken to add tax configuration that is queried by LivoSwapHook
@@ -31,6 +35,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     uint40 public constant MAX_TAX_DURATION_SECONDS = 14 days;
 
     ///////////////////////////////// uniswap v4 related /////////////////////////////////////////
+    // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
 
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
     /// @dev 10000 pips = 1%
@@ -45,22 +50,19 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     int24 public constant TICK_SPACING = 200;
 
     /// @notice Pool manager for lock state checking
-    /// @dev Ethereum mainnet address. Needs change if deployed in other chains
-    IPoolManager public constant UNIV4_POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
+    IPoolManager public constant UNIV4_POOL_MANAGER = IPoolManager(DeploymentAddresses.UNIV4_POOL_MANAGER);
 
     /// @notice V4 Router for executing tax swaps
-    /// @dev Ethereum mainnet address. Needs change if deployed in other chains
-    address public constant UNIV4_ROUTER = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
-
-    /// @notice the hook address which will charge the buy/sell taxes
-    address public constant TAX_HOOK = 0x62Be1B74f2dCEE6C61d0c3B2E1571834762180c4;
+    address public constant UNIV4_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
 
     /// @notice WETH address on Ethereum mainnet
-    /// @dev Needs change if deployed on other chains
-    IWETH private constant WETH = IWETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    IWETH private constant WETH = IWETH(DeploymentAddresses.WETH);
 
-    /// @notice Permit2 address (same across all chains)
-    address private constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    /// @notice Permit2 address
+    address private constant PERMIT2 = DeploymentAddresses.PERMIT2;
+
+    /// @notice the hook address which will charge the buy/sell taxes
+    address public constant TAX_HOOK = HookAddresses.LIVO_SWAP_HOOK;
 
     //////////////////////// potentially immutable //////////////////
 
@@ -98,6 +100,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     constructor() LivoToken() {
         // Constructor body intentionally left empty
         // All initialization happens in initialize() due to minimal proxy pattern
+        require(block.chainid == DeploymentAddresses.BLOCKCHAIN_ID, "configuration for wrong chainId");
     }
 
     /// @notice Allows contract to receive ETH from V4 Router during tax swaps

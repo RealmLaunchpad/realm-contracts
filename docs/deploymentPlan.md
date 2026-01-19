@@ -17,6 +17,9 @@ forge create LivoGraduatorUniswapV2 --constructor-args UNISWAPROUTER LAUNCHPAD
 
 forge create LiquidityLockUniv4WithFees --constructor-args UNIV4POSITIONMANAGER
 
+# mine hook
+# update hook address in HookAddresses 
+
 forge create LivoGraduatorUniswapV4 --constructor-args LAUNCHPAD LIQUIDITYLOCK POOLMANAGER POSITIONMANAGER PERMIT2
 
 # graduation parameters for whitelisting sets:
