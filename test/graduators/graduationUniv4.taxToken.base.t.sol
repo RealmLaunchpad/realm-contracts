@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
-import {LivoTaxTokenUniV4} from "src/tokens/LivoTaxTokenUniV4.sol";
+import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {HookAddresses} from "src/config/HookAddresses.sol";
@@ -17,11 +17,11 @@ import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 
-/// @notice Base test class for LivoTaxTokenUniV4 with LivoTaxSwapHook functionality
+/// @notice Base test class for LivoTaxableTokenUniV4 with LivoTaxSwapHook functionality
 /// @dev Extends BaseUniswapV4GraduationTests and sets up tax-specific components
 contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     // Tax system components
-    LivoTaxTokenUniV4 public taxTokenImpl;
+    LivoTaxableTokenUniV4 public taxTokenImpl;
 
     // Default tax configuration
     uint16 public constant DEFAULT_BUY_TAX_BPS = 300; // 3%
@@ -37,7 +37,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         vm.startPrank(admin);
 
         // Deploy tax token implementation
-        taxTokenImpl = new LivoTaxTokenUniV4();
+        taxTokenImpl = new LivoTaxableTokenUniV4();
 
         // Whitelist tax-token implementation with graduatorV4 (which already has the right hook)
         launchpad.whitelistComponents(
@@ -165,11 +165,11 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
 
     /// @notice make sure the hook precomputed for the tests is set in the LivoSwapHook correctly
     function test_percomputedHookInLivoSwapHook() public {
-        LivoTaxTokenUniV4 taxToken = new LivoTaxTokenUniV4();
+        LivoTaxableTokenUniV4 taxToken = new LivoTaxableTokenUniV4();
         address taxHook_inToken = taxToken.TAX_HOOK();
 
         address taxHook_inTests = HookAddresses.LIVO_SWAP_HOOK;
 
-        assertEq(taxHook_inToken, taxHook_inTests, "missmatching hook address in tests and in LivoTaxTokenUniV4");
+        assertEq(taxHook_inToken, taxHook_inTests, "missmatching hook address in tests and in LivoTaxableTokenUniV4");
     }
 }

@@ -3,10 +3,10 @@ pragma solidity 0.8.28;
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
-/// @title ILivoTokenTaxable
+/// @title ILivoTaxableTokenUniV4
 /// @notice Interface for tokens that support time-limited buy/sell taxes via Uniswap V4 hooks
 /// @dev Extends ILivoToken to add tax configuration functionality
-interface ILivoTokenTaxable is ILivoToken {
+interface ILivoTaxableTokenUniV4 is ILivoToken {
     /// @notice Tax configuration for a token
     /// @dev All values are immutable once set during initialization
     struct TaxConfig {

@@ -9,7 +9,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoTokenTaxable} from "src/interfaces/ILivoTokenTaxable.sol";
+import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
@@ -118,7 +118,7 @@ contract LivoSwapHook is BaseHook {
         returns (bool shouldTax, uint16 taxBps, address taxRecipient)
     {
         // Query token tax configuration (try/catch for backwards compatibility with non-taxable tokens)
-        try ILivoTokenTaxable(tokenAddress).getTaxConfig() returns (ILivoTokenTaxable.TaxConfig memory config) {
+        try ILivoTaxableTokenUniV4(tokenAddress).getTaxConfig() returns (ILivoTaxableTokenUniV4.TaxConfig memory config) {
             // Check if token has graduated
             if (config.graduationTimestamp == 0) {
                 return (false, 0, address(0));

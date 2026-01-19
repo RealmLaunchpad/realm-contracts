@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoTokenTaxable} from "src/interfaces/ILivoTokenTaxable.sol";
+import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 
@@ -19,10 +19,10 @@ import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol"
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 
-/// @title LivoTaxTokenUniV4
+/// @title LivoTaxableTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks
 /// @dev Extends LivoToken to add tax configuration that is queried by LivoSwapHook
-contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
+contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @notice Maximum allowed tax rate (500 basis points = 5%)
     uint16 public constant MAX_TAX_BPS = 500;
 
@@ -90,7 +90,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
 
     //////////////////////////////////////////////////////
 
-    /// @notice Creates a new LivoTaxTokenUniV4 instance which will be used as implementation for clones
+    /// @notice Creates a new LivoTaxableTokenUniV4 instance which will be used as implementation for clones
     /// @dev Token configuration is set during initialization, not in constructor
     constructor() LivoToken() {
         // Constructor body intentionally left empty

@@ -3,13 +3,13 @@ pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/graduationUniv4.taxToken.base.t.sol";
-import {LivoTaxTokenUniV4} from "src/tokens/LivoTaxTokenUniV4.sol";
-import {ILivoTokenTaxable} from "src/interfaces/ILivoTokenTaxable.sol";
+import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 
-/// @notice Comprehensive tests for LivoTaxTokenUniV4 and LivoTaxSwapHook functionality
+/// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function setUp() public override {
         super.setUp();
@@ -381,7 +381,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_taxPeriodBoundaries() public createDefaultTaxToken {
         _graduateToken();
 
-        uint40 graduationTimestamp = ILivoTokenTaxable(testToken).graduationTimestamp();
+        uint40 graduationTimestamp = ILivoTaxableTokenUniV4(testToken).graduationTimestamp();
         uint256 tokenContractBalance;
 
         // Test at t = 0 (graduation) - token tax should accumulate
@@ -463,7 +463,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             14 days
         );
 
-        vm.expectRevert(abi.encodeWithSelector(LivoTaxTokenUniV4.InvalidTaxRate.selector, 600));
+        vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, 600));
         vm.prank(creator);
         launchpad.createToken(
             "InvalidToken",
