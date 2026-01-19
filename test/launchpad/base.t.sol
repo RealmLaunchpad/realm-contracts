@@ -105,7 +105,9 @@ contract LaunchpadBaseTests is Test {
         // Deploy hook directly to pre-computed address using deployCodeTo
         // This bypasses the temp deployment issue where BaseHook constructor validates
         // that the deployed address has correct permission flags (0x44)
-        deployCodeTo("LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(WETH)), HookAddresses.LIVO_SWAP_HOOK);
+        deployCodeTo(
+            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(WETH)), HookAddresses.LIVO_SWAP_HOOK
+        );
         taxHook = LivoSwapHook(HookAddresses.LIVO_SWAP_HOOK);
 
         // deploy graduator, pointing to the common hook (for tax and non-tax tokens)

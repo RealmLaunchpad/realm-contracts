@@ -6,6 +6,7 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 // UniswapV4 imports for tax swap functionality
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
@@ -80,13 +81,15 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     uint40 public graduationTimestamp;
 
     /// @notice Reentrancy guard for tax swap
-    bool private _inSwap;
+    /// make sure this can be transient-storage // review
+    bool private transient _inSwap;
 
     //////////////////////// Errors //////////////////////
 
     error InvalidTaxRate(uint16 rate);
     error InvalidTaxDuration();
     error InvalidTaxCalldata();
+    error NotTokenOwner();
 
     //////////////////////////////////////////////////////
 
@@ -241,12 +244,12 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     function _swapAccumulatedTaxes(uint256 amount) internal {
         // Approve Permit2 to spend tokens, then Permit2 approves router
         // The Universal Router uses Permit2 for token transfers
-        _approve(address(this), PERMIT2, type(uint256).max);
+        _approve(address(this), PERMIT2, amount);
         IAllowanceTransfer(PERMIT2)
             .approve(
                 address(this), // token
                 UNIV4_ROUTER, // spender
-                type(uint160).max, // amount
+                uint160(amount), // amount - uint160 casting is safe as it is below the total supply of tokens
                 type(uint48).max // expiration
             );
 
@@ -267,12 +270,12 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
             hookData: ""
         });
 
+        // Get tax recipient (token owner) from the launchpad dynamically, as it can be updated there
+        address tokenOwner = launchpad.getTokenOwner(address(this));
+
         // Encode actions using Actions library constants
         bytes memory actions =
             abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL));
-
-        // Get tax recipient (token owner) from the launchpad dynamically, as it can be updated there
-        address tokenOwner = launchpad.getTokenOwner(address(this));
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(swapParams);
@@ -295,20 +298,31 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         );
         // If swap fails, we silently continue - tokens remain accumulated for next attempt
         // This prevents a failing swap from blocking all token transfers
-        // todo review this behavior
         if (!success) {
             // Reset approvals on failure
             _approve(address(this), PERMIT2, 0);
-            return;
         }
 
         // Wrap ETH to WETH and transfer to tokenOwner
         // Silent failure - if wrap/transfer fails, ETH remains in contract
-        // TODO: Consider adding rescue function for stuck ETH and event emission on failure
         uint256 ethReceived = address(this).balance - ethBalanceBefore;
         if (ethReceived > 0) {
             WETH.deposit{value: ethReceived}();
             WETH.transfer(tokenOwner, ethReceived);
+        }
+    }
+
+    /// @notice allows the token owner to rescue any potential tokens/WETH/native-ETH that may be stuck in this contract
+    /// @dev pass token=address(0) to rescue native ETH
+    /// @dev This contract is not supposed to hold any balance, so any balance is considered as tax
+    function rescueTax(address token) external {
+        require(msg.sender == launchpad.getTokenOwner(address(this)), NotTokenOwner());
+
+        if (token == address(0)) {
+            payable(msg.sender).transfer(address(this).balance);
+        } else {
+            uint256 balance = IERC20(token).balanceOf(address(this));
+            IERC20(token).transfer(msg.sender, balance);
         }
     }
 }

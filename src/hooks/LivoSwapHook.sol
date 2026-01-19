@@ -118,7 +118,9 @@ contract LivoSwapHook is BaseHook {
         returns (bool shouldTax, uint16 taxBps, address taxRecipient)
     {
         // Query token tax configuration (try/catch for backwards compatibility with non-taxable tokens)
-        try ILivoTaxableTokenUniV4(tokenAddress).getTaxConfig() returns (ILivoTaxableTokenUniV4.TaxConfig memory config) {
+        try ILivoTaxableTokenUniV4(tokenAddress).getTaxConfig() returns (
+            ILivoTaxableTokenUniV4.TaxConfig memory config
+        ) {
             // Check if token has graduated
             if (config.graduationTimestamp == 0) {
                 return (false, 0, address(0));
