@@ -205,13 +205,11 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     ///      2. Accumulated balance exceeds 0.1% of total supply
     ///      3. PoolManager is unlocked (not during a V4 swap)
     function _update(address from, address to, uint256 amount) internal override {
+        // LivoToken checks we're not sending tokens to the pair (pool manager)
+        // then the actual transfer happens
         super._update(from, to, amount);
 
-        // this ensures tokens don't arrive to the pair before graduation
-        // to avoid exploits/DOS related to liquidity addition at graduation
-        if ((!graduated) && (to == pair)) {
-            revert TransferToPairBeforeGraduationNotAllowed();
-        }
+        // and only after the transfer we attempt to swap the taxes if applicable
 
         // Skip if: already swapping, not graduated, or transfer to self (accumulation from hook)
         if (_inSwap || graduationTimestamp == 0 || to == address(this)) return;

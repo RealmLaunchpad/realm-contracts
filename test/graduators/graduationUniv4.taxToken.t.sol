@@ -7,6 +7,7 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
@@ -565,5 +566,11 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertEq(IERC20(testToken).balanceOf(alice), 1 ether, "No tax should be collected on normal transfers");
     }
 
-    /// @notice test that tax collection can be done manually by the token creator only or admin
+    /// @notice test that we can't transfer tokens to the pool manager before graduation
+    function test_cannotTransferToPoolManagerBeforeGraduation() public createDefaultTaxToken {
+        // Attempt to transfer tokens to the pool manager before graduation
+        vm.prank(buyer);
+        vm.expectRevert(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector);
+        IERC20(testToken).transfer(address(poolManagerAddress), 1 ether);
+    }
 }
