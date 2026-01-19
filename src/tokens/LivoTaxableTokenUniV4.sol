@@ -136,19 +136,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         _mint(supplyReceiver_, totalSupply_);
     }
 
-    /// @notice allows anyone to trigger the tax swap & collection
-    /// @dev This is needed because taxes are only collected for a certain period, and after that period, the collected taxes may not meet the minimum threshold of 0.1% of total supply
-    /// @dev Permisionless function. Anyone can call it, but taxes go to the token creators regardless
-    // todo review if permisionless, an attacker could sandwich it on purpose
-    function collectSwapTaxes() external {
-        uint256 accumulated = balanceOf(address(this));
-        if (accumulated == 0) return;
-
-        _inSwap = true;
-        _swapAccumulatedTaxes(accumulated);
-        _inSwap = false;
-    }
-
     function getTaxConfig() external view returns (TaxConfig memory config) {
         address taxRecipient = launchpad.getTokenOwner(address(this));
 
