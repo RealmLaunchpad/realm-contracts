@@ -13,6 +13,7 @@ import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 contract MineHookAddressForTests is Script {
     address constant CREATE2_DEPLOYER = address(0xBa489180Ea6EEB25cA65f123a46F3115F388f181);
     address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90; // Mainnet pool manager
+    address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // Mainnet WETH
 
     function run() public view {
         console.log("=== Mining Hook Address for Tests ===");
@@ -23,7 +24,7 @@ contract MineHookAddressForTests is Script {
         console.log("Required flags: %x", flags);
         console.log("");
 
-        bytes memory constructorArgs = abi.encode(IPoolManager(POOL_MANAGER));
+        bytes memory constructorArgs = abi.encode(IPoolManager(POOL_MANAGER), WETH);
         bytes memory creationCode = type(LivoSwapHook).creationCode;
 
         console.log("Mining... (this may take 30-60 seconds)");
@@ -33,13 +34,10 @@ contract MineHookAddressForTests is Script {
         console.log("=== MINED ADDRESS ===");
         console.log("Hook Address: %s", hookAddress);
         console.log("Salt: %x", uint256(salt));
-        console.log("");
-        console.log("=== Copy this to your test file ===");
-        console.log("address constant PRECOMPUTED_HOOK_ADDRESS = %s;", hookAddress);
-        console.log("bytes32 constant HOOK_SALT = bytes32(uint256(%x));", uint256(salt));
-        console.log("");
-        console.log("=== Verification ===");
-        console.log("Address has correct permission flags: true");
+        // console.log("");
+        // console.log("=== Copy this to your test file ===");
+        // console.log("address constant PRECOMPUTED_HOOK_ADDRESS = %s;", hookAddress);
+        // console.log("bytes32 constant HOOK_SALT = bytes32(uint256(%x));", uint256(salt));
 
         // Verify the address has the correct flags
         uint160 addressFlags = uint160(uint256(uint160(hookAddress)));

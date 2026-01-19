@@ -52,8 +52,7 @@ contract LivoTaxTokenUniV4 is LivoToken, ILivoTokenTaxable {
     address public constant UNIV4_ROUTER = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
 
     /// @notice the hook address which will charge the buy/sell taxes
-    /// todo update this tax hook address when mined
-    address public constant TAX_HOOK = 0x75BDB48EFe32d231cC24c38c9A27a925d91a80C4;
+    address public constant TAX_HOOK = 0x62Be1B74f2dCEE6C61d0c3B2E1571834762180c4;
 
     /// @notice WETH address on Ethereum mainnet
     /// @dev Needs change if deployed on other chains

@@ -641,7 +641,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         vm.expectEmit(true, true, false, true);
         emit LivoGraduatorUniswapV4.TokenGraduated(
             testToken,
-            bytes32(0x972853a4f295536d8f1368f5f12bf7b992b477e478b2479ff995ae659a7d0b5b),
+            bytes32(0xfa3759ffb3491942484142296b3fb6955c6b5c5c171d2780286e21d3726bd4aa),
             191123250949901652977521310,
             7456000000000052224,
             55296381402046003400649

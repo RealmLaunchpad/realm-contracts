@@ -25,14 +25,16 @@ contract LivoSwapHook is BaseHook {
     /// @notice Basis points denominator (10000 = 100%)
     uint256 private constant BASIS_POINTS = 10000;
 
-    /// @notice WETH address on Ethereum mainnet
-    /// @dev Needs change if deployed on other chains
-    IWETH private constant WETH = IWETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    /// @notice WETH contract address
+    IWETH private immutable WETH;
 
-    /// @notice Initializes the hook with the pool manager address
+    /// @notice Initializes the hook with the pool manager and WETH addresses
     /// @param _poolManager The Uniswap V4 pool manager contract
+    /// @param _weth The WETH contract address for this chain
     /// @dev Constructor validates that the deployed address matches the required hook permissions
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+    constructor(IPoolManager _poolManager, address _weth) BaseHook(_poolManager) {
+        WETH = IWETH(_weth);
+    }
 
     /// @notice Allows contract to receive ETH from poolManager.take()
     receive() external payable {}

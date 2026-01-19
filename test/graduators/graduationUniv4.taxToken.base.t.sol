@@ -31,9 +31,6 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     // WETH address for tax assertions
     address public constant WETH_ADDRESS = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
-    // I think this is only used to deploy, but since we are etching, it is not needed in this test
-    bytes32 constant HOOK_SALT = bytes32(uint256(0x3088));
-
     function setUp() public virtual override {
         super.setUp();
 
