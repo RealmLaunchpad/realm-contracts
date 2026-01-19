@@ -50,7 +50,7 @@ contract LaunchpadBaseTests is Test {
 
     // we don't test deadlines mostly
     uint256 constant DEADLINE = type(uint256).max;
-    address constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+    address constant DEAD_ADDRESS = DeploymentAddressesMainnet.DEAD_ADDRESS;
 
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
@@ -62,8 +62,8 @@ contract LaunchpadBaseTests is Test {
     address constant universalRouter = DeploymentAddressesMainnet.UNIV4_UNIVERSAL_ROUTER;
 
     // Uniswap V2 router address on mainnet
-    address constant UNISWAP_V2_ROUTER = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
-    IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
+    address constant UNISWAP_V2_ROUTER = DeploymentAddressesMainnet.UNIV2_ROUTER;
+    IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(DeploymentAddressesMainnet.UNIV2_FACTORY);
     IWETH constant WETH = IWETH(DeploymentAddressesMainnet.WETH);
 
     // This is the price setpoint, but does not include trading fees
