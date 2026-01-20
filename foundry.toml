@@ -22,3 +22,13 @@ fail_on_revert = false
 # include_storage = true
 # include_push_bytes = true
 # shrink_run_limit = 5000
+
+# RPC endpoints (uses env vars)
+[rpc_endpoints]
+mainnet = "${ETH_RPC_URL}"
+sepolia = "${SEPOLIA_RPC_URL}"
+
+# Etherscan verification
+[etherscan]
+mainnet = { key = "${ETHERSCAN_API_KEY}" }
+sepolia = { key = "${ETHERSCAN_API_KEY}" }
