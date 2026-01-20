@@ -1,0 +1,142 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
+
+import {Script, console} from "forge-std/Script.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
+import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
+import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
+import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
+import {HookAddresses} from "src/config/HookAddresses.sol";
+
+/// @title Livo Protocol Deployment Script
+/// @notice Deploys all core Livo contracts and configures whitelisted component sets
+/// @dev Run with: forge script script/Deployments.s.sol --rpc-url <mainnet|sepolia> --broadcast --verify
+contract Deployments is Script {
+    // ========================= Configuration =========================
+
+    // TODO: Set treasury address before deployment
+    address constant TREASURY = address(0); // TODO: Set before deployment
+
+    // Graduation parameters for whitelisting sets
+    uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~7.956 ETH
+    uint256 constant MAX_EXCESS_OVER_THRESHOLD = 100000000000000000; // 0.1 ETH
+    uint256 constant GRADUATION_ETH_FEE = 500000000000000000; // 0.5 ETH
+
+    // ========================= Network Config =========================
+
+    function _getNetworkAddresses()
+        internal
+        view
+        returns (
+            address univ2Router,
+            address univ4PoolManager,
+            address univ4PositionManager,
+            address permit2
+        )
+    {
+        if (block.chainid == 1) {
+            // Mainnet
+            univ2Router = DeploymentAddressesMainnet.UNIV2_ROUTER;
+            univ4PoolManager = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
+            univ4PositionManager = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
+            permit2 = DeploymentAddressesMainnet.PERMIT2;
+        } else if (block.chainid == 11155111) {
+            // Sepolia
+            univ2Router = DeploymentAddressesSepolia.UNIV2_ROUTER;
+            univ4PoolManager = DeploymentAddressesSepolia.UNIV4_POOL_MANAGER;
+            univ4PositionManager = DeploymentAddressesSepolia.UNIV4_POSITION_MANAGER;
+            permit2 = DeploymentAddressesSepolia.PERMIT2;
+        } else {
+            revert("Unsupported chain");
+        }
+    }
+
+    // ========================= Deployment =========================
+
+    function run() public {
+        require(TREASURY != address(0), "TREASURY address not set");
+
+        (
+            address univ2Router,
+            address univ4PoolManager,
+            address univ4PositionManager,
+            address permit2
+        ) = _getNetworkAddresses();
+
+        console.log("=== Livo Protocol Deployment ===");
+        console.log("Chain ID:", block.chainid);
+        console.log("Deployer:", msg.sender);
+        console.log("Treasury:", TREASURY);
+        console.log("");
+
+        vm.startBroadcast();
+
+        // 1. Deploy LivoToken (implementation for clones)
+        LivoToken livoToken = new LivoToken();
+        console.log("LivoToken deployed at:", address(livoToken));
+
+        // 2. Deploy ConstantProductBondingCurve
+        ConstantProductBondingCurve bondingCurve = new ConstantProductBondingCurve();
+        console.log("ConstantProductBondingCurve deployed at:", address(bondingCurve));
+
+        // 3. Deploy LivoLaunchpad
+        LivoLaunchpad launchpad = new LivoLaunchpad(TREASURY);
+        console.log("LivoLaunchpad deployed at:", address(launchpad));
+
+        // 4. Deploy LivoGraduatorUniswapV2
+        LivoGraduatorUniswapV2 graduatorV2 = new LivoGraduatorUniswapV2(univ2Router, address(launchpad));
+        console.log("LivoGraduatorUniswapV2 deployed at:", address(graduatorV2));
+
+        // 5. Deploy LiquidityLockUniv4WithFees
+        LiquidityLockUniv4WithFees liquidityLock = new LiquidityLockUniv4WithFees(univ4PositionManager);
+        console.log("LiquidityLockUniv4WithFees deployed at:", address(liquidityLock));
+
+        // 6. Deploy LivoGraduatorUniswapV4
+        // NOTE: Hook address must be mined first and updated in HookAddresses.sol
+        LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
+            address(launchpad),
+            address(liquidityLock),
+            univ4PoolManager,
+            univ4PositionManager,
+            permit2,
+            HookAddresses.LIVO_SWAP_HOOK
+        );
+        console.log("LivoGraduatorUniswapV4 deployed at:", address(graduatorV4));
+
+        // 7. Whitelist component sets on launchpad
+        // V2 graduator set
+        launchpad.whitelistComponents(
+            address(livoToken),
+            address(bondingCurve),
+            address(graduatorV2),
+            GRADUATION_THRESHOLD,
+            MAX_EXCESS_OVER_THRESHOLD,
+            GRADUATION_ETH_FEE
+        );
+        console.log("Whitelisted V2 component set");
+
+        // V4 graduator set
+        launchpad.whitelistComponents(
+            address(livoToken),
+            address(bondingCurve),
+            address(graduatorV4),
+            GRADUATION_THRESHOLD,
+            MAX_EXCESS_OVER_THRESHOLD,
+            GRADUATION_ETH_FEE
+        );
+        console.log("Whitelisted V4 component set");
+
+        vm.stopBroadcast();
+
+        console.log("");
+        console.log("=== Deployment Complete ===");
+        console.log("");
+        console.log("Next steps:");
+        console.log("1. Update deployed addresses in justfile");
+        console.log("2. Update launchpad address in envio");
+        console.log("3. (Optional) Transfer ownership if needed");
+    }
+}
