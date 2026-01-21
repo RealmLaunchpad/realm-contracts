@@ -7,7 +7,6 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
-import {HookAddresses} from "src/config/HookAddresses.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
@@ -107,9 +106,9 @@ contract LaunchpadBaseTests is Test {
         // This bypasses the temp deployment issue where BaseHook constructor validates
         // that the deployed address has correct permission flags (0x44)
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(WETH)), HookAddresses.LIVO_SWAP_HOOK
+            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(WETH)), DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
-        taxHook = LivoSwapHook(HookAddresses.LIVO_SWAP_HOOK);
+        taxHook = LivoSwapHook(payable(DeploymentAddressesMainnet.LIVO_SWAP_HOOK));
 
         // deploy graduator, pointing to the common hook (for tax and non-tax tokens)
         graduatorV4 = new LivoGraduatorUniswapV4(
@@ -118,7 +117,7 @@ contract LaunchpadBaseTests is Test {
             poolManagerAddress,
             positionManagerAddress,
             permit2Address,
-            HookAddresses.LIVO_SWAP_HOOK
+            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
 
         launchpad.whitelistComponents(

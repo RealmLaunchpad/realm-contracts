@@ -20,6 +20,8 @@
 | TOKENIZER                    | `0x530Cd72Cf87c483cA14aF62A8241Bc6101929cD2` |
 | AGONIZER                     | `0xf12c6cf1580411065Ed87D4042Dc50bb522A0780` |
 | CRUSHER                      | `0xD463dF94B360474f6D38a4117102dF358e7c2154` |
+| **Hooks**                    |                                              |
+| LivoSwapHook                 | `0xa0eAe89b139F9B0b76E40Ed23D5f867Ffe1580C4` |
 
 ## Accounts
 

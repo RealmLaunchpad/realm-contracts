@@ -10,7 +10,6 @@ import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.s
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
-import {HookAddresses} from "src/config/HookAddresses.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
@@ -38,7 +37,8 @@ contract Deployments is Script {
             address univ2Router,
             address univ4PoolManager,
             address univ4PositionManager,
-            address permit2
+            address permit2,
+            address hookAddress
         )
     {
         if (block.chainid == 1) {
@@ -47,12 +47,14 @@ contract Deployments is Script {
             univ4PoolManager = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
             univ4PositionManager = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
             permit2 = DeploymentAddressesMainnet.PERMIT2;
+            hookAddress = DeploymentAddressesMainnet.LIVO_SWAP_HOOK;
         } else if (block.chainid == 11155111) {
             // Sepolia
             univ2Router = DeploymentAddressesSepolia.UNIV2_ROUTER;
             univ4PoolManager = DeploymentAddressesSepolia.UNIV4_POOL_MANAGER;
             univ4PositionManager = DeploymentAddressesSepolia.UNIV4_POSITION_MANAGER;
             permit2 = DeploymentAddressesSepolia.PERMIT2;
+            hookAddress = DeploymentAddressesSepolia.LIVO_SWAP_HOOK;
         } else {
             revert("Unsupported chain");
         }
@@ -72,7 +74,8 @@ contract Deployments is Script {
             address univ2Router,
             address univ4PoolManager,
             address univ4PositionManager,
-            address permit2
+            address permit2,
+            address hookAddress
         ) = _getNetworkAddresses();
 
         console.log("=== Livo Protocol Deployment ===");
@@ -104,14 +107,14 @@ contract Deployments is Script {
         console.log("LiquidityLockUniv4WithFees deployed at:", address(liquidityLock));
 
         // 6. Deploy LivoGraduatorUniswapV4
-        // NOTE: Hook address must be mined first and updated in HookAddresses.sol
+        // NOTE: Hook address must be mined first and updated in DeploymentAddresses.sol
         LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad),
             address(liquidityLock),
             univ4PoolManager,
             univ4PositionManager,
             permit2,
-            HookAddresses.LIVO_SWAP_HOOK
+            hookAddress
         );
         console.log("LivoGraduatorUniswapV4 deployed at:", address(graduatorV4));
 

@@ -22,7 +22,6 @@ forge script MineHookAddressForTests.s.sol
 
 # Deploy the hook with create2 and the found salt
 forge script script/DeployHook.s.sol --rpc-url sepolia --broadcast --verify  (NO --ACCOUNT)
-cast create2 --salt <SALT> --depolyer <>
 
 # update hook address in HookAddresses 
 
