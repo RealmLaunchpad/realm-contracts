@@ -14,11 +14,11 @@ import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config
 contract DeployHook is Script {
     // Foundry's deterministic deployment proxy (Create2 deployer)
     address constant FOUNDRY_CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
-    
+
     function run() public {
         // Get deployment addresses based on chain ID
         (address poolManager, address weth) = _getDeploymentAddresses();
-        
+
         console.log("Deploying on chain ID:", block.chainid);
         console.log("Pool Manager:", poolManager);
         console.log("WETH:", weth);
@@ -31,19 +31,17 @@ contract DeployHook is Script {
 
         console.log("Mining hook address...");
         console.log("Using Foundry CREATE2 deployer:", FOUNDRY_CREATE2_DEPLOYER);
-        
+
         // Mine a salt using the Foundry CREATE2 deployer address
-        (address hookAddress, bytes32 salt) = HookMiner.find(FOUNDRY_CREATE2_DEPLOYER, flags, creationCode, constructorArgs);
+        (address hookAddress, bytes32 salt) =
+            HookMiner.find(FOUNDRY_CREATE2_DEPLOYER, flags, creationCode, constructorArgs);
 
         console.log("Mined hook address:", hookAddress);
         console.log("Salt:", uint256(salt));
 
         // Deploy the hook using CREATE2
         vm.broadcast();
-        LivoSwapHook livoSwapHook = new LivoSwapHook{salt: salt}(
-            IPoolManager(poolManager),
-            weth
-        );
+        LivoSwapHook livoSwapHook = new LivoSwapHook{salt: salt}(IPoolManager(poolManager), weth);
 
         console.log("Deployed hook at:", address(livoSwapHook));
         require(address(livoSwapHook) == hookAddress, "DeployHook: hook address mismatch");

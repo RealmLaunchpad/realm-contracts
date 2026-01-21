@@ -13,7 +13,6 @@ import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
-
 /// @title Livo Protocol Deployment Script
 /// @notice Deploys all core Livo contracts and configures whitelisted component sets
 /// @dev Run with: forge script script/Deployments.s.sol --rpc-url <mainnet|sepolia> --broadcast --verify
@@ -62,7 +61,10 @@ contract Deployments is Script {
         // NOTE: LivoTaxableTokenUniV4 has hardcoded addresses corresponding to the imported configs
         // this makes sure we have the right imports in both places
         // if the pool manager is in the right network, all other addresses are
-        require(address(AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER) == univ4PoolManager, "Invalid UNIV4_POOL_MANAGER address. Wrong chain id");
+        require(
+            address(AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER) == univ4PoolManager,
+            "Invalid UNIV4_POOL_MANAGER address. Wrong chain id"
+        );
     }
 
     // ========================= Deployment =========================
@@ -112,12 +114,7 @@ contract Deployments is Script {
         // 6. Deploy LivoGraduatorUniswapV4
         // NOTE: Hook address must be mined first and updated in DeploymentAddresses.sol
         LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad),
-            address(liquidityLock),
-            univ4PoolManager,
-            univ4PositionManager,
-            permit2,
-            hookAddress
+            address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, permit2, hookAddress
         );
         console.log("LivoGraduatorUniswapV4 deployed at:", address(graduatorV4));
 
