@@ -17,10 +17,16 @@ forge create LivoGraduatorUniswapV2 --constructor-args UNISWAPROUTER LAUNCHPAD
 
 forge create LiquidityLockUniv4WithFees --constructor-args UNIV4POSITIONMANAGER
 
-# mine hook
+# mine hook with the 
+forge script MineHookAddressForTests.s.sol
+
+# Deploy the hook with create2 and the found salt
+forge script script/DeployHook.s.sol --rpc-url sepolia --broadcast --verify  (NO --ACCOUNT)
+cast create2 --salt <SALT> --depolyer <>
+
 # update hook address in HookAddresses 
 
-forge create LivoGraduatorUniswapV4 --constructor-args LAUNCHPAD LIQUIDITYLOCK POOLMANAGER POSITIONMANAGER PERMIT2
+forge create LivoGraduatorUniswapV4 --constructor-args LAUNCHPAD LIQUIDITYLOCK POOLMANAGER POSITIONMANAGER PERMIT2 HOOK
 
 # graduation parameters for whitelisting sets:
 GRADUATION_THRESHOLD = 7956000000000052224

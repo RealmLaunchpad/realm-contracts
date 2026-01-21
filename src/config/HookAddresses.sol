@@ -10,5 +10,5 @@ library HookAddresses {
     /// @dev Hook address must have these flags encoded in its address per UniV4 requirements
     /// @dev Constructor args: (IPoolManager poolManager, address weth)
     /// @dev Since this uses create2 and a salt, the address is deterministic and will be the same in any chain
-    address payable public constant LIVO_SWAP_HOOK = payable(0x62Be1B74f2dCEE6C61d0c3B2E1571834762180c4);
+    address payable public constant LIVO_SWAP_HOOK = payable(0x8daE8b14dEA4320E84414CFEB792Eeb954Ef80c4);
 }

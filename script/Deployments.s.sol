@@ -8,8 +8,12 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 import {HookAddresses} from "src/config/HookAddresses.sol";
+
+import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
+
 
 /// @title Livo Protocol Deployment Script
 /// @notice Deploys all core Livo contracts and configures whitelisted component sets
@@ -18,7 +22,7 @@ contract Deployments is Script {
     // ========================= Configuration =========================
 
     // TODO: Set treasury address before deployment
-    address constant TREASURY = address(0); // TODO: Set before deployment
+    address constant TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181; // TODO: Set before deployment
 
     // Graduation parameters for whitelisting sets
     uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~7.956 ETH
@@ -52,6 +56,11 @@ contract Deployments is Script {
         } else {
             revert("Unsupported chain");
         }
+
+        // NOTE: LivoTaxableTokenUniV4 has hardcoded addresses corresponding to the imported configs
+        // this makes sure we have the right imports in both places
+        // if the pool manager is in the right network, all other addresses are
+        require(address(AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER) == univ4PoolManager, "Invalid UNIV4_POOL_MANAGER address. Wrong chain id");
     }
 
     // ========================= Deployment =========================
@@ -106,7 +115,12 @@ contract Deployments is Script {
         );
         console.log("LivoGraduatorUniswapV4 deployed at:", address(graduatorV4));
 
-        // 7. Whitelist component sets on launchpad
+        // 7. Deploy LivoTaxableTokenUniV4 (implementation for clones)
+        // note: the right chainid config is checked when reading configs
+        LivoTaxableTokenUniV4 livoTaxableToken = new LivoTaxableTokenUniV4();
+        console.log("LivoTaxableTokenUniV4 deployed at:", address(livoTaxableToken));
+
+        // 8. Whitelist component sets on launchpad
         // V2 graduator set
         launchpad.whitelistComponents(
             address(livoToken),
@@ -118,7 +132,7 @@ contract Deployments is Script {
         );
         console.log("Whitelisted V2 component set");
 
-        // V4 graduator set
+        // V4 graduator set (LivoToken)
         launchpad.whitelistComponents(
             address(livoToken),
             address(bondingCurve),
@@ -127,7 +141,18 @@ contract Deployments is Script {
             MAX_EXCESS_OVER_THRESHOLD,
             GRADUATION_ETH_FEE
         );
-        console.log("Whitelisted V4 component set");
+        console.log("Whitelisted V4 component set (LivoToken)");
+
+        // V4 graduator set (LivoTaxableTokenUniV4)
+        launchpad.whitelistComponents(
+            address(livoTaxableToken),
+            address(bondingCurve),
+            address(graduatorV4),
+            GRADUATION_THRESHOLD,
+            MAX_EXCESS_OVER_THRESHOLD,
+            GRADUATION_ETH_FEE
+        );
+        console.log("Whitelisted V4 component set (LivoTaxableTokenUniV4)");
 
         vm.stopBroadcast();
 

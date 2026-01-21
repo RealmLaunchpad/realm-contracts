@@ -22,6 +22,7 @@
 | MEMECOIN (v2)                    | `0x96Ab5eb1fD597B15FFD9615FCd7F960040322E19` |
 | FEESCOIN (V4)                    | `0xaCB72a25F6a1c5abe1783ADCBE06b40C5486ACC7` |
 | TESTOKENUNIV4 (V4)               | `0x7eA101Bb2092Cf025f27D63Ad4290302e7Af71Db` |
+| **LivoSwapHook**                 | `0x5bc9f6260a93f6fe2c16cf536b6479fc188e00c4` |
 
 ## Accounts
 
