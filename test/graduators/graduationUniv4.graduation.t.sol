@@ -641,7 +641,7 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         vm.expectEmit(true, true, false, true);
         emit LivoGraduatorUniswapV4.TokenGraduated(
             testToken,
-            bytes32(0xfa3759ffb3491942484142296b3fb6955c6b5c5c171d2780286e21d3726bd4aa),
+            bytes32(0xe7fa8c20c92d8bd6109d57c9ff797f4068180bed8eaca385b2435d157aa63d2c),
             191123250949901652977521310,
             7456000000000052224,
             55296381402046003400649
@@ -747,7 +747,6 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         // the second buy triggers graduation, and can exceed until permitted
         uint256 remainingEthUntilGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
         uint256 maxEthPurchase = launchpad.getMaxEthToSpend(testToken);
-        uint256 graduationPurchaseAmount = bound(secondBuy, remainingEthUntilGraduation, maxEthPurchase);
 
         uint256 sellerBalanceBefore = seller.balance;
 

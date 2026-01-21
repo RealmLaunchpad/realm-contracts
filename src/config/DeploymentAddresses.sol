@@ -40,6 +40,10 @@ library DeploymentAddressesMainnet {
     /// @notice Dead address used for burning LP tokens
     /// @dev Standard burn address that works on all chains
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    /// @notice LivoSwapHook address for Uniswap V4
+    /// @dev TODO: Update with actual mainnet hook address
+    address public constant LIVO_SWAP_HOOK = 0xa0eAe89b139F9B0b76E40Ed23D5f867Ffe1580C4;
 }
 
 /// @title Deployment Address Constants for Sepolia Testnet
@@ -50,13 +54,13 @@ library DeploymentAddressesSepolia {
     uint256 public constant BLOCKCHAIN_ID = 11155111;
 
     /// @notice Uniswap V4 Pool Manager contract
-    address public constant UNIV4_POOL_MANAGER = 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
+    address public constant UNIV4_POOL_MANAGER = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543;
 
     /// @notice Uniswap V4 Position Manager contract
-    address public constant UNIV4_POSITION_MANAGER = 0xf969Aee60879C54bAAed9F3eD26147Db216Fd664;
+    address public constant UNIV4_POSITION_MANAGER = 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4;
 
     /// @notice Uniswap V4 Universal Router contract
-    address public constant UNIV4_UNIVERSAL_ROUTER = 0xf70536B3bcC1bD1a972dc186A2cf84cC6da6Be5D;
+    address public constant UNIV4_UNIVERSAL_ROUTER = 0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b;
 
     /// @notice Permit2 contract
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
@@ -69,9 +73,13 @@ library DeploymentAddressesSepolia {
 
     /// @notice Uniswap V2 Factory contract
     /// @dev TODO: Sepolia V2 Factory address not documented - can be queried from router.factory()
-    address public constant UNIV2_FACTORY = address(0); // TODO: Get from router.factory() or Sepolia docs
+    address public constant UNIV2_FACTORY = 0x7E0987E5b3a30e3f2828572Bb659A548460a3003;
 
     /// @notice Dead address used for burning LP tokens
     /// @dev Standard burn address that works on all chains
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    /// @notice LivoSwapHook address for Uniswap V4
+    /// @dev TODO: Update with actual Sepolia hook address
+    address public constant LIVO_SWAP_HOOK = 0x5bc9F6260a93f6FE2c16cF536B6479fc188e00C4;
 }

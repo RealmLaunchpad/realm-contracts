@@ -97,10 +97,16 @@ contract LivoSwapHook is BaseHook {
 
     /// @notice Prevents swaps if the token has not been graduated
     /// @param key The pool key identifying the pool
-    /// @param params The swap parameters
     /// @return bytes4 The function selector to indicate successful execution
-    function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
+    function _beforeSwap(
+        address,
+        PoolKey calldata key,
+        SwapParams calldata,
+        /*params*/
+        bytes calldata
+    )
         internal
+        view
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {

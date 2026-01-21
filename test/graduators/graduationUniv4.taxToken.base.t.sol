@@ -5,7 +5,6 @@ import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
-import {HookAddresses} from "src/config/HookAddresses.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -90,7 +89,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             currency1: Currency.wrap(address(tokenAddress)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(HookAddresses.LIVO_SWAP_HOOK)
+            hooks: IHooks(DeploymentAddressesMainnet.LIVO_SWAP_HOOK)
         });
     }
 
@@ -120,7 +119,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             currency1: Currency.wrap(address(token)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(HookAddresses.LIVO_SWAP_HOOK)
+            hooks: IHooks(DeploymentAddressesMainnet.LIVO_SWAP_HOOK)
         });
 
         bytes[] memory params = new bytes[](3);
@@ -169,7 +168,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         LivoTaxableTokenUniV4 taxToken = new LivoTaxableTokenUniV4();
         address taxHook_inToken = taxToken.TAX_HOOK();
 
-        address taxHook_inTests = HookAddresses.LIVO_SWAP_HOOK;
+        address taxHook_inTests = DeploymentAddressesMainnet.LIVO_SWAP_HOOK;
 
         assertEq(taxHook_inToken, taxHook_inTests, "missmatching hook address in tests and in LivoTaxableTokenUniV4");
     }

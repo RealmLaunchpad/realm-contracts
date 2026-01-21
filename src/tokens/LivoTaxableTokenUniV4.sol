@@ -7,7 +7,6 @@ import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol"
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {HookAddresses} from "src/config/HookAddresses.sol";
 
 // UniswapV4 imports for tax swap functionality
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
@@ -62,7 +61,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     address private constant PERMIT2 = DeploymentAddresses.PERMIT2;
 
     /// @notice the hook address which will charge the buy/sell taxes
-    address public constant TAX_HOOK = HookAddresses.LIVO_SWAP_HOOK;
+    address public constant TAX_HOOK = DeploymentAddresses.LIVO_SWAP_HOOK;
 
     //////////////////////// potentially immutable //////////////////
 

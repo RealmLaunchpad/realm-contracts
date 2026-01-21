@@ -138,7 +138,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @param _poolManager Address of the Uniswap V4 pool manager
     /// @param _positionManager Address of the Uniswap V4 position manager
     /// @param _permit2 Address of the Permit2 contract
-    /// @param _hook Address of the hook contract (use HookAddresses.LIVO_SWAP_HOOK for standard setup)
+    /// @param _hook Address of the hook contract (use DeploymentAddresses.LIVO_SWAP_HOOK for standard setup)
     constructor(
         address _launchpad,
         address _liquidityLock,
