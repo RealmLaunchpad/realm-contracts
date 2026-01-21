@@ -24,4 +24,10 @@ interface ILivoTaxableTokenUniV4 is ILivoToken {
 
     /// @notice Returns the graduation timestamp for this token
     function graduationTimestamp() external view returns (uint40);
+
+    /// @notice Returns the encoded token calldata for this token
+    function encodeTokenCalldata(uint16 _buyTaxBps, uint16 _sellTaxBps, uint40 _taxDurationSeconds)
+        external
+        pure
+        returns (bytes memory);
 }
