@@ -37,6 +37,7 @@
 | **Name**                    | **Address**                                  |
 | --------------------------- | -------------------------------------------- |
 | Uniswap V2 router           | `0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008` |
+| Uniswap V2 factory          | `0x7E0987E5b3a30e3f2828572Bb659A548460a3003` |
 | Uniswap V2 WETH             | `0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9` |
 | Uniswap V4 Pool Manager     | `0xE03A1074c86CFeDd5C142C4F04F1a1536e203543` |
 | Uniswap V4 position manager | `0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4` |

@@ -54,13 +54,13 @@ library DeploymentAddressesSepolia {
     uint256 public constant BLOCKCHAIN_ID = 11155111;
 
     /// @notice Uniswap V4 Pool Manager contract
-    address public constant UNIV4_POOL_MANAGER = 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
+    address public constant UNIV4_POOL_MANAGER = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543;
 
     /// @notice Uniswap V4 Position Manager contract
-    address public constant UNIV4_POSITION_MANAGER = 0xf969Aee60879C54bAAed9F3eD26147Db216Fd664;
+    address public constant UNIV4_POSITION_MANAGER = 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4;
 
     /// @notice Uniswap V4 Universal Router contract
-    address public constant UNIV4_UNIVERSAL_ROUTER = 0xf70536B3bcC1bD1a972dc186A2cf84cC6da6Be5D;
+    address public constant UNIV4_UNIVERSAL_ROUTER = 0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b;
 
     /// @notice Permit2 contract
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;

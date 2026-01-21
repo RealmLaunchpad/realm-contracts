@@ -84,6 +84,9 @@ contract Deployments is Script {
         console.log("Treasury:", TREASURY);
         console.log("");
 
+        console.log("");
+        console.log("Deploying contracts...");
+
         vm.startBroadcast();
 
         // 1. Deploy LivoToken (implementation for clones)
@@ -122,6 +125,9 @@ contract Deployments is Script {
         // note: the right chainid config is checked when reading configs
         LivoTaxableTokenUniV4 livoTaxableToken = new LivoTaxableTokenUniV4();
         console.log("LivoTaxableTokenUniV4 deployed at:", address(livoTaxableToken));
+
+        console.log("");
+        console.log("Whitelisting components...");
 
         // 8. Whitelist component sets on launchpad
         // V2 graduator set

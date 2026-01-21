@@ -21,8 +21,7 @@ forge create LiquidityLockUniv4WithFees --constructor-args UNIV4POSITIONMANAGER
 forge script MineHookAddressForTests.s.sol
 
 # Deploy the hook with create2 and the found salt
-forge script script/DeployHook.s.sol --rpc-url sepolia --broadcast --verify  (NO --ACCOUNT)
-
+forge script script/DeployHook.s.sol --rpc-url sepolia --broadcast --verify  --account ...
 # update hook address in HookAddresses 
 
 forge create LivoGraduatorUniswapV4 --constructor-args LAUNCHPAD LIQUIDITYLOCK POOLMANAGER POSITIONMANAGER PERMIT2 HOOK
