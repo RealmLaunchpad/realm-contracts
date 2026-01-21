@@ -9,11 +9,34 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+
+interface ILivoGraduatorWithFees is ILivoGraduator {
+    function collectEthFees(address[] calldata tokens, uint256[] calldata positionIndexes) external;
+    function positionIds(address token, uint256 positionIndex) external view returns (uint256);
+    function getClaimableFees(address[] calldata tokens, uint256 positionIndex)
+        external
+        view
+        returns (uint256[] memory creatorFees);
+    function sweep() external;
+}
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
+    ILivoGraduatorWithFees graduatorWithFees;
+
     function setUp() public override {
         super.setUp();
+        graduatorWithFees = ILivoGraduatorWithFees(address(graduator));
+    }
+
+    /// @notice Helper to collect LP fees from a single token
+    function _collectFees(address token) internal {
+        address[] memory tokens = new address[](1);
+        tokens[0] = token;
+        uint256[] memory positionIndexes = new uint256[](1);
+        positionIndexes[0] = 0;
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
     }
 
     /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////
@@ -572,5 +595,251 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         vm.prank(buyer);
         vm.expectRevert(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector);
         IERC20(testToken).transfer(address(poolManagerAddress), 1 ether);
+    }
+
+    /////////////////////////////////// CATEGORY 7: LP FEE CLAIMING ///////////////////////////////////
+
+    /// @notice Test that LP fees can be claimed by token owner for graduated tax token
+    function test_claimLPFees_happyPath_tokenOwnerReceivesFees() public createDefaultTaxToken {
+        _graduateToken();
+
+        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 treasuryEthBalanceBefore = treasury.balance;
+
+        // Perform buy swap to generate LP fees (1% total: 0.5% creator, 0.5% treasury)
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        // Verify fees accumulated
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, 0);
+        assertGt(fees[0], 0, "Fees should have accumulated");
+        assertApproxEqAbs(fees[0], buyAmount / 200, 1, "Expected ~0.5% of buy amount");
+
+        // Claim LP fees
+        _collectFees(testToken);
+        graduatorWithFees.sweep();
+
+        uint256 creatorEthBalanceAfter = creator.balance;
+        uint256 treasuryEthBalanceAfter = treasury.balance;
+
+        // Verify creator received ~0.5% of buy amount
+        assertApproxEqAbs(
+            creatorEthBalanceAfter - creatorEthBalanceBefore, buyAmount / 200, 1, "Creator should receive ~0.5% LP fees"
+        );
+
+        // Verify treasury received ~0.5% of buy amount
+        assertApproxEqAbs(
+            treasuryEthBalanceAfter - treasuryEthBalanceBefore,
+            buyAmount / 200,
+            1,
+            "Treasury should receive ~0.5% LP fees"
+        );
+    }
+
+    /// @notice Test that LP fees (ETH) and buy taxes (tokens) are collected independently during active tax period
+    function test_claimLPFees_duringTaxPeriod_separateFromTaxes() public createDefaultTaxToken {
+        _graduateToken();
+
+        uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
+        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
+
+        // Perform large buy swap during active tax period
+        // This generates both: buy tax tokens (~3%) + LP fees (~1% ETH)
+        uint256 buyAmount = 200 ether;
+        deal(buyer, buyAmount);
+        uint256 buyerBalanceBefore = IERC20(testToken).balanceOf(buyer);
+        _swapBuy(buyer, buyAmount, 0, true);
+        uint256 buyerBalanceAfter = IERC20(testToken).balanceOf(buyer);
+
+        // Verify buy tax tokens accumulated in token contract
+        uint256 tokenContractBalanceAfter = IERC20(testToken).balanceOf(testToken);
+        uint256 taxTokensAccumulated = tokenContractBalanceAfter - tokenContractBalanceBefore;
+        assertGt(taxTokensAccumulated, 0, "Buy tax tokens should have accumulated");
+
+        // Calculate expected buy tax: ~3% of tokens received
+        uint256 tokensReceived = buyerBalanceAfter - buyerBalanceBefore;
+        uint256 expectedTaxTokens = (tokensReceived * DEFAULT_BUY_TAX_BPS) / (10000 - DEFAULT_BUY_TAX_BPS);
+        assertApproxEqRel(taxTokensAccumulated, expectedTaxTokens, 0.0001e18, "Should accumulate ~3% buy tax");
+
+        // Verify LP fees accumulated separately (in ETH, not tokens)
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory claimableFees = graduatorWithFees.getClaimableFees(tokens, 0);
+        assertApproxEqAbs(claimableFees[0], buyAmount / 200, 2, "LP fees should be ~0.5% of buy amount in ETH");
+
+        // Claim LP fees (paid in native ETH to creator)
+        _collectFees(testToken);
+        graduatorWithFees.sweep();
+
+        uint256 creatorEthBalanceAfterLPClaim = creator.balance;
+        uint256 lpFeesReceivedEth = creatorEthBalanceAfterLPClaim - creatorEthBalanceBefore;
+        assertApproxEqAbs(lpFeesReceivedEth, buyAmount / 200, 2, "Creator should receive ~1 ETH from LP fees");
+
+        // Verify token contract still has tax tokens (threshold met, will swap on next transfer)
+        assertGt(IERC20(testToken).balanceOf(testToken), 0, "Tax tokens should remain in contract");
+
+        // Trigger tax swap by transferring tokens (accumulated > 0.1% threshold)
+        // Tax swap converts accumulated tokens to WETH and sends to creator
+        vm.prank(buyer);
+        IERC20(testToken).transfer(alice, 1e18);
+
+        uint256 creatorWethBalanceAfterTaxSwap = IERC20(WETH_ADDRESS).balanceOf(creator);
+        uint256 taxWethReceived = creatorWethBalanceAfterTaxSwap - creatorWethBalanceBefore;
+
+        // Verify creator received WETH from tax swap (separate from LP fees which are native ETH)
+        assertGt(taxWethReceived, 0, "Creator should have received WETH from tax swap");
+
+        // Verify the two fee streams are separate:
+        // - LP fees: native ETH from Uniswap pool (lpFeesReceivedEth)
+        // - Tax fees: WETH from swapping accumulated tax tokens (taxWethReceived)
+        assertGt(lpFeesReceivedEth, 0, "LP fees should be in native ETH");
+        assertGt(taxWethReceived, 0, "Tax fees should be in WETH");
+
+        // Verify tax tokens were swapped (contract balance should be near 0 now)
+        assertLt(
+            IERC20(testToken).balanceOf(testToken),
+            taxTokensAccumulated / 100,
+            "Most tax tokens should have been swapped"
+        );
+    }
+
+    /// @notice Test that LP fees continue to be claimable after tax period expires
+    function test_claimLPFees_afterTaxPeriodExpires_stillClaimable() public createDefaultTaxToken {
+        _graduateToken();
+
+        // Fast-forward past tax period
+        vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
+
+        uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
+        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 treasuryEthBalanceBefore = treasury.balance;
+
+        // Perform buy swap (no taxes should be charged)
+        uint256 buyAmount = 2 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        // Verify no tax tokens accumulated
+        assertEq(
+            IERC20(testToken).balanceOf(testToken),
+            tokenContractBalanceBefore,
+            "No buy tax should accumulate after period expires"
+        );
+
+        // Perform sell swap (no taxes should be charged)
+        uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
+        uint256 sellAmount = buyerTokenBalance / 2;
+        _swapSell(buyer, sellAmount, 0, true);
+
+        // Verify still no tax tokens accumulated
+        assertEq(
+            IERC20(testToken).balanceOf(testToken),
+            tokenContractBalanceBefore,
+            "No sell tax should accumulate after period expires"
+        );
+
+        // Claim LP fees from both swaps
+        _collectFees(testToken);
+        graduatorWithFees.sweep();
+
+        uint256 creatorEthBalanceAfter = creator.balance;
+        uint256 treasuryEthBalanceAfter = treasury.balance;
+
+        // Verify creator + treasury received LP fees (~0.5% each from ~2 ETH volume)
+        uint256 creatorFeesReceived = creatorEthBalanceAfter - creatorEthBalanceBefore;
+        uint256 treasuryFeesReceived = treasuryEthBalanceAfter - treasuryEthBalanceBefore;
+
+        assertGt(creatorFeesReceived, 0, "Creator should receive LP fees");
+        assertGt(treasuryFeesReceived, 0, "Treasury should receive LP fees");
+
+        // Total fees should be ~1% of buy amount (buy generates more fees than sell due to amounts)
+        assertApproxEqAbs(
+            creatorFeesReceived + treasuryFeesReceived, buyAmount / 100, 2, "Total LP fees should be ~1% of buy volume"
+        );
+    }
+
+    /// @notice Test that LP fees are redirected to new owner after token ownership transfer
+    function test_claimLPFees_withTokenOwnershipTransfer_feesGoToNewOwner() public createDefaultTaxToken {
+        _graduateToken();
+
+        // Perform buy swap to generate LP fees
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        // Transfer ownership to alice
+        vm.prank(creator);
+        launchpad.transferTokenOwnership(testToken, alice);
+        assertEq(launchpad.getTokenOwner(testToken), alice, "Alice should be the new token owner");
+
+        // Record balances before claiming
+        uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 aliceEthBalanceBefore = alice.balance;
+
+        // Claim LP fees
+        _collectFees(testToken);
+        graduatorWithFees.sweep();
+
+        uint256 creatorEthBalanceAfter = creator.balance;
+        uint256 aliceEthBalanceAfter = alice.balance;
+
+        // Verify alice received fees, creator did not
+        assertGt(aliceEthBalanceAfter, aliceEthBalanceBefore, "Alice should receive LP fees as new owner");
+        assertEq(creatorEthBalanceAfter, creatorEthBalanceBefore, "Creator should not receive fees after transfer");
+
+        // Verify alice received ~0.5% of buy amount
+        assertApproxEqAbs(
+            aliceEthBalanceAfter - aliceEthBalanceBefore, buyAmount / 200, 1, "Alice should receive ~0.5% LP fees"
+        );
+    }
+
+    /// @notice Test claiming LP fees from both positions (main + single-sided ETH) after price dips below graduation
+    function test_claimLPFees_bothPositions_afterPriceDip() public createDefaultTaxToken {
+        _graduateToken();
+
+        // Perform large sell to dip price below graduation
+        // This activates the second single-sided ETH position
+        _swapSell(buyer, 10_000_000e18, 0.1 ether, true);
+
+        // Perform buy to cross back through both positions
+        uint256 buyAmount = 4 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        // Check fees from both positions
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+
+        uint256[] memory fees0 = graduatorWithFees.getClaimableFees(tokens, 0);
+        uint256[] memory fees1 = graduatorWithFees.getClaimableFees(tokens, 1);
+
+        uint256 totalClaimableFees = fees0[0] + fees1[0];
+        assertGt(fees0[0], 0, "Position 0 should have fees");
+        assertGt(fees1[0], 0, "Position 1 should have fees");
+
+        // Record balances
+        uint256 creatorEthBalanceBefore = creator.balance;
+
+        // Claim from both positions
+        uint256[] memory positionIndexes = new uint256[](2);
+        positionIndexes[0] = 0;
+        positionIndexes[1] = 1;
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+        graduatorWithFees.sweep();
+
+        uint256 creatorEthBalanceAfter = creator.balance;
+        uint256 totalCreatorFees = creatorEthBalanceAfter - creatorEthBalanceBefore;
+
+        // Verify total creator fees ≈ 0.5% of buy amount (0.02 ETH)
+        assertApproxEqAbsDecimal(
+            totalCreatorFees, buyAmount / 200, 1, 18, "Creator should receive ~0.5% of buy amount from both positions"
+        );
+
+        // Verify claimed amount matches what was claimable
+        assertApproxEqAbs(totalCreatorFees, totalClaimableFees, 1, "Claimed fees should match getClaimableFees total");
     }
 }

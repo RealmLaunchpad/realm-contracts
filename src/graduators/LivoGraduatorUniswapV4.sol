@@ -293,10 +293,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // the remaining eth balance is considered part of the treasury, and can be collected with sweep()
     }
 
-    /// @notice Sweeps any remaining ETH in this contract to the treasury
-    /// @dev No ETH balance should be in this contract at any point.
-    ///      It should be either deposited as liquidity or collected as fees and immediately transferred out
-    ///      So this is just a cautionary measure
+    /// @notice Sweeps the ETH fees collected in this contract to the treasury
+    /// @dev Any ETH in this contract balance is considered part of the treasury
+    /// @dev When claiming LPfees, the treasury ETH is left here to save gas and to avoid that the treasury can cause reverts on fee claims
     function sweep() external {
         uint256 ethBalance = address(this).balance;
         if (ethBalance > 0) {
