@@ -42,7 +42,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @dev this weak structure is done to save gas by having these as constants in the token and make deployment cheaper
     uint24 constant LP_FEE = 10000;
 
-    // todo include a test that makes sure this token contract has the same settings as the graduator.
     /// @notice Tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
     /// @dev IMPORTANT: this needs to match the graduator settings. Clearly a weak point.
     /// @dev this weak structure is done to save gas by having these as constants in the token and make deployment cheaper
@@ -82,7 +81,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     uint40 public graduationTimestamp;
 
     /// @notice Reentrancy guard for tax swap
-    /// make sure this can be transient-storage // review
+    /// make sure this can be transient-storage // auditor please review!
     bool private transient _inSwap;
 
     //////////////////////// Errors //////////////////////

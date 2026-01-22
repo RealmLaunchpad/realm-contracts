@@ -778,7 +778,6 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
         // Perform a large swap buy before graduation
         deal(buyer, 10 ether);
         // swaps should revert before the token is graduated
-        // todo implement this hook for non-taxable tokens (or for any token?)
         _swapBuy(buyer, 10 ether, 0, false);
 
         // Graduate the token
