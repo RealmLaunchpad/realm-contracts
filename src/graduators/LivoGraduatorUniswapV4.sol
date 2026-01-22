@@ -266,32 +266,37 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         require(positionIndexes.length > 0, InvalidPositionIndexes());
         require(positionIndexes.length <= 2, InvalidPositionIndexes());
 
-        // NB: this loop here is to save gas. Check all ownerships first and then spend gas in the remaining operations
+        // Validate all position indexes upfront
+        for (uint256 p = 0; p < positionIndexes.length; p++) {
+            require(positionIndexes[p] <= 1, InvalidPositionIndex());
+        }
+
         // Access control: only contract owner can claim on behalf of others
         // Token owners can only claim for their own tokens
         bool isContractOwner = msg.sender == owner();
-        if (!isContractOwner) {
-            // Verify caller owns all tokens they're claiming for
-            for (uint256 i = 0; i < nTokens; i++) {
-                address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(tokens[i]);
+
+        // Iterate over tokens first (outer loop) to cache tokenOwner and reduce external calls
+        for (uint256 i = 0; i < nTokens; i++) {
+            address token = tokens[i];
+            // Cache token owner once per token (instead of calling getTokenOwner multiple times)
+            // the token owner can be updated in the launchpad even after graduation (only by the current owner)
+            address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
+            
+            // Authorization check: verify caller owns this token (unless they're the contract owner)
+            if (!isContractOwner) {
                 require(msg.sender == tokenOwner, UnauthorizedFeeCollection());
             }
-        }
 
-        for (uint256 p = 0; p < positionIndexes.length; p++) {
-            uint256 positionIndex = positionIndexes[p];
-            require(positionIndex <= 1, InvalidPositionIndex());
-
-            for (uint256 i = 0; i < nTokens; i++) {
-                address token = tokens[i];
+            // Iterate over position indexes (inner loop)
+            for (uint256 p = 0; p < positionIndexes.length; p++) {
+                uint256 positionIndex = positionIndexes[p];
+                
                 // collect fees from uniswap4 into this contract (both eth and tokens)
                 uint256 positionId = positionIds[token][positionIndex];
                 (uint256 creatorFees,) = _claimFromUniswapLock(token, positionId);
                 // skip eth transfer if no fees collected for token owner. Eth balance is considered part of the treasury
                 if (creatorFees == 0) continue;
 
-                // the token owner can be updated in the launchpad even after graduation (only by the current owner)
-                address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
                 // attempt to transfer ether. If it fails, the transfer is skip and the funds are considered part of the treasury
                 // This is to prevent fallback functions DOS the fee collection for the treasury.
                 (bool success,) = address(tokenOwner).call{value: creatorFees}("");
