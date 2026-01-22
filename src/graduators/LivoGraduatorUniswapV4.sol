@@ -327,7 +327,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @param positionIndex Index of the position to check for each token. Use 0 as default, as it collects the majority of the fees
     /// @return creatorEthFees Array of claimable ETH fees for token owners
     function getClaimableFees(address[] calldata tokens, uint256 positionIndex)
-        public
+        external
         view
         returns (uint256[] memory creatorEthFees)
     {

@@ -39,6 +39,16 @@ contract LivoSwapHook is BaseHook {
     /// @notice Allows contract to receive ETH from poolManager.take()
     receive() external payable {}
 
+    /// @notice Function to avoid ETH stuck in this contract is lost forever
+    /// @dev as part of the normal flow, there shouldn't be any ETH in this contract for longer than one transaction
+    /// @dev intentionally, anyone can rescue ETH
+    /// question for auditor: does this introduce any security risks? would it be safer to not have this this function accepting the risk of stuck ETH?
+    function rescueEth() external {
+        WETH.withdraw(WETH.balanceOf(address(this)));
+        (bool success, ) = msg.sender.call{value: address(this).balance}("");
+        require(success, "ETH_TRANSFER_FAILED");
+    }
+
     /// @notice Returns the hook permissions indicating which callbacks are implemented
     /// @dev Hook address must have these permission flags encoded in its address (via CREATE2)
     /// @return Permissions struct with afterSwap and afterSwapReturnDelta set to true
@@ -165,6 +175,7 @@ contract LivoSwapHook is BaseHook {
 
         // Send tokens to the token contract itself (for accumulation and later swap to ETH)
         poolManager.take(currency, tokenAddress, taxAmount);
+        // safe casting as taxAmount cannot be greater than the token totalSupply, which is less than uint128.max
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }
 

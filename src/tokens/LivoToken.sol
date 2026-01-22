@@ -28,7 +28,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     //////////////////////// Errors //////////////////////
 
     error OnlyGraduatorAllowed();
-    error AlreadyInitialized();
     error TransferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
     error InvalidGraduator();
@@ -48,7 +47,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @param pair_ Address of the Uniswap pair
     /// @param supplyReceiver_ Address receiving the total supply of tokens
     /// @param totalSupply_ Total supply to mint
-    /// @param tokenCalldata Extra initialization parameters for the token
     function initialize(
         string memory name_,
         string memory symbol_,
@@ -56,7 +54,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         address pair_,
         address supplyReceiver_,
         uint256 totalSupply_,
-        bytes memory tokenCalldata
+        bytes memory /*tokenCalldata*/
     ) external virtual initializer {
         require(graduator_ != address(0), InvalidGraduator());
 
@@ -69,7 +67,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         _mint(supplyReceiver_, totalSupply_);
 
         // tokenCalldata is ignored in this implementation
-        tokenCalldata;
     }
 
     //////////////////////// restricted access functions ////////////////////////
