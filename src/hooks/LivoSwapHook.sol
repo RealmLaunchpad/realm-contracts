@@ -37,6 +37,7 @@ contract LivoSwapHook is BaseHook {
     }
 
     /// @notice Allows contract to receive ETH from poolManager.take()
+    /// question for auditor: ETH could get stuck here as there is no way to rescue eth. But I don't want to make this contract Ownable, and I don't want to add a permisionless rescueEth() function to avoid introducing security risks.
     receive() external payable {}
 
     /// @notice Returns the hook permissions indicating which callbacks are implemented
@@ -165,6 +166,7 @@ contract LivoSwapHook is BaseHook {
 
         // Send tokens to the token contract itself (for accumulation and later swap to ETH)
         poolManager.take(currency, tokenAddress, taxAmount);
+        // safe casting as taxAmount cannot be greater than the token totalSupply, which is less than uint128.max
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }
 

@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
-import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
@@ -16,7 +15,6 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
-import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 
@@ -42,7 +40,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @dev this weak structure is done to save gas by having these as constants in the token and make deployment cheaper
     uint24 constant LP_FEE = 10000;
 
-    // todo include a test that makes sure this token contract has the same settings as the graduator.
     /// @notice Tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
     /// @dev IMPORTANT: this needs to match the graduator settings. Clearly a weak point.
     /// @dev this weak structure is done to save gas by having these as constants in the token and make deployment cheaper
@@ -82,7 +79,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     uint40 public graduationTimestamp;
 
     /// @notice Reentrancy guard for tax swap
-    /// make sure this can be transient-storage // review
+    /// make sure this can be transient-storage // auditor please review!
     bool private transient _inSwap;
 
     //////////////////////// Errors //////////////////////
@@ -221,7 +218,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
         // Skip if PoolManager is already unlocked (we're inside a V4 swap callback).
         // We can only initiate a new swap when the PoolManager is locked (idle).
-        // The router is locked by default, and it is only temporarily unlocked during a valid, explicitly initiated execution flow.
+        // The PoolManager is locked by default, and it is only temporarily unlocked during a valid, explicitly initiated execution flow.
         // “Unlocked” means the router is actively and safely coordinating execution
         // unlocked == ongoing swap (a bit counter intuitive)
         if (TransientStateLibrary.isUnlocked(UNIV4_POOL_MANAGER)) return;

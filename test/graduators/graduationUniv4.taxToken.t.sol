@@ -36,6 +36,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         tokens[0] = token;
         uint256[] memory positionIndexes = new uint256[](1);
         positionIndexes[0] = 0;
+        vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
     }
 
@@ -781,7 +782,14 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 aliceEthBalanceBefore = alice.balance;
 
         // Claim LP fees
-        _collectFees(testToken);
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](1);
+        positionIndexes[0] = 0;
+
+        vm.prank(alice);
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+
         graduatorWithFees.sweep();
 
         uint256 creatorEthBalanceAfter = creator.balance;
@@ -828,6 +836,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256[] memory positionIndexes = new uint256[](2);
         positionIndexes[0] = 0;
         positionIndexes[1] = 1;
+        vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
         graduatorWithFees.sweep();
 

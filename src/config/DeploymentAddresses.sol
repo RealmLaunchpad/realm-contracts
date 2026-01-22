@@ -42,13 +42,11 @@ library DeploymentAddressesMainnet {
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     /// @notice LivoSwapHook address for Uniswap V4
-    /// @dev TODO: Update with actual mainnet hook address
     address public constant LIVO_SWAP_HOOK = 0xa0eAe89b139F9B0b76E40Ed23D5f867Ffe1580C4;
 }
 
 /// @title Deployment Address Constants for Sepolia Testnet
 /// @notice Centralized constants for protocol infrastructure addresses on Sepolia Testnet
-/// @dev TODO: Update these addresses with actual Sepolia deployments
 library DeploymentAddressesSepolia {
     /// @notice Blockchain ID for Sepolia Testnet
     uint256 public constant BLOCKCHAIN_ID = 11155111;
@@ -72,7 +70,6 @@ library DeploymentAddressesSepolia {
     address public constant UNIV2_ROUTER = 0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008;
 
     /// @notice Uniswap V2 Factory contract
-    /// @dev TODO: Sepolia V2 Factory address not documented - can be queried from router.factory()
     address public constant UNIV2_FACTORY = 0x7E0987E5b3a30e3f2828572Bb659A548460a3003;
 
     /// @notice Dead address used for burning LP tokens
@@ -80,6 +77,5 @@ library DeploymentAddressesSepolia {
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     /// @notice LivoSwapHook address for Uniswap V4
-    /// @dev TODO: Update with actual Sepolia hook address
     address public constant LIVO_SWAP_HOOK = 0x5bc9F6260a93f6FE2c16cF536B6479fc188e00C4;
 }

@@ -21,8 +21,9 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract LivoGraduatorUniswapV4 is ILivoGraduator {
+contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     using SafeERC20 for ILivoToken;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
@@ -108,6 +109,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     error TooManyTokensToCollectFees();
     error InvalidPositionIndex();
     error InvalidPositionIndexes();
+    error UnauthorizedFeeCollection();
 
     /////////////////////// Events ///////////////////////
 
@@ -146,7 +148,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         address _positionManager,
         address _permit2,
         address _hook
-    ) {
+    ) Ownable(msg.sender) {
         LIVO_LAUNCHPAD = _launchpad;
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
         UNIV4_POSITION_MANAGER = _positionManager;
@@ -212,7 +214,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         // so no problem with having these dangling approvals
 
         // approve PERMIT2 as a spender
-        token.approve(PERMIT2, type(uint256).max);
+        token.forceApprove(PERMIT2, type(uint256).max);
         // approve `PositionManager` as a spender
         IAllowanceTransfer(PERMIT2)
             .approve(
@@ -252,7 +254,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     }
 
     /// @notice Collects ETH fees from graduated tokens and distributes them to token owners and treasury
-    /// @dev Any account can call this function.
+    /// @dev Token owners can only claim for their own tokens. Contract owner can claim on behalf of anyone.
     /// @dev Token fees are left in this contract (effectively burned, but without gas waste)
     /// @dev Each token fees are claimed and distributed independently
     /// @param tokens Array of token addresses to collect fees from
@@ -264,20 +266,37 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         require(positionIndexes.length > 0, InvalidPositionIndexes());
         require(positionIndexes.length <= 2, InvalidPositionIndexes());
 
+        // Validate all position indexes upfront
         for (uint256 p = 0; p < positionIndexes.length; p++) {
-            uint256 positionIndex = positionIndexes[p];
-            require(positionIndex <= 1, InvalidPositionIndex());
+            require(positionIndexes[p] <= 1, InvalidPositionIndex());
+        }
 
-            for (uint256 i = 0; i < nTokens; i++) {
-                address token = tokens[i];
+        // Access control: only contract owner can claim on behalf of others
+        // Token owners can only claim for their own tokens
+        bool isContractOwner = msg.sender == owner();
+
+        // Iterate over tokens first (outer loop) to cache tokenOwner and reduce external calls
+        for (uint256 i = 0; i < nTokens; i++) {
+            address token = tokens[i];
+            // Cache token owner once per token (instead of calling getTokenOwner multiple times)
+            // the token owner can be updated in the launchpad even after graduation (only by the current owner)
+            address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
+
+            // Authorization check: verify caller owns this token (unless they're the contract owner)
+            if (!isContractOwner) {
+                require(msg.sender == tokenOwner, UnauthorizedFeeCollection());
+            }
+
+            // Iterate over position indexes (inner loop)
+            for (uint256 p = 0; p < positionIndexes.length; p++) {
+                uint256 positionIndex = positionIndexes[p];
+
                 // collect fees from uniswap4 into this contract (both eth and tokens)
                 uint256 positionId = positionIds[token][positionIndex];
                 (uint256 creatorFees,) = _claimFromUniswapLock(token, positionId);
                 // skip eth transfer if no fees collected for token owner. Eth balance is considered part of the treasury
                 if (creatorFees == 0) continue;
 
-                // the token owner can be updated in the launchpad even after graduation (only by the current owner)
-                address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
                 // attempt to transfer ether. If it fails, the transfer is skip and the funds are considered part of the treasury
                 // This is to prevent fallback functions DOS the fee collection for the treasury.
                 (bool success,) = address(tokenOwner).call{value: creatorFees}("");
@@ -313,7 +332,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     /// @param positionIndex Index of the position to check for each token. Use 0 as default, as it collects the majority of the fees
     /// @return creatorEthFees Array of claimable ETH fees for token owners
     function getClaimableFees(address[] calldata tokens, uint256 positionIndex)
-        public
+        external
         view
         returns (uint256[] memory creatorEthFees)
     {
