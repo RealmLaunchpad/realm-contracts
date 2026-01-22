@@ -107,6 +107,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         tokens[0] = token;
         uint256[] memory positionIndexes = new uint256[](1);
         positionIndexes[0] = 0;
+        vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
     }
 }
@@ -323,6 +324,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         uint256[] memory positionIndexes = new uint256[](1);
         positionIndexes[0] = 0;
 
+        vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
         graduatorWithFees.sweep();
 
@@ -357,11 +359,13 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         _swap(buyer, testToken1, 1 ether, 12342, true, true);
         _swap(buyer, testToken2, 1 ether, 12342, true, true);
 
+        vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
 
         _swap(buyer, testToken1, 2 ether, 12342, true, true);
         _swap(buyer, testToken2, 2 ether, 12342, true, true);
 
+        vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
         graduatorWithFees.sweep();
 
@@ -403,6 +407,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
 
         uint256 creatorBalanceBefore = creator.balance;
 
+        vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
 
         uint256 totalCreatorFees = creator.balance - creatorBalanceBefore;
@@ -418,6 +423,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         tokens[0] = testToken;
         uint256[] memory positionIndexes = new uint256[](0);
 
+        vm.prank(creator);
         vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
     }
@@ -430,6 +436,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         positionIndexes[1] = 0;
         positionIndexes[2] = 0;
 
+        vm.prank(creator);
         vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
     }
@@ -441,6 +448,7 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
         positionIndexes[0] = 1;
         positionIndexes[0] = 2;
 
+        vm.prank(creator);
         vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndex()"));
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
     }
@@ -618,9 +626,29 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         uint256 creatorEthBalanceBefore = creator.balance;
 
         // should not revert even if there are no fees to claim
+        vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
 
         assertEq(creator.balance, creatorEthBalanceBefore, "creator eth balance should not change");
+    }
+
+    function test_claimFeesOnlyByAdminOrTokenOwner() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        _swapBuy(buyer, 1 ether, 10e18, true);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](1);
+        positionIndexes[0] = 0;
+
+        // the old owner should not be able to claim fees
+        vm.expectRevert(LivoGraduatorUniswapV4.UnauthorizedFeeCollection.selector);
+        vm.prank(alice);
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+
+        // Alice should be able to claim fees
+        vm.prank(creator);
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
     }
 
     function test_tokenOwnershipTransferred_givesFeesToNewOwner() public createAndGraduateToken {
@@ -634,9 +662,39 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 aliceEthBalanceBefore = alice.balance;
 
-        _collectFees(testToken);
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](1);
+        positionIndexes[0] = 0;
+        vm.prank(alice);
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+
 
         assertEq(creator.balance, creatorEthBalanceBefore, "creator should not have gotten fees");
         assertGt(alice.balance, aliceEthBalanceBefore, "fees should have gone to alice");
     }
+
+    function test_tokenOwnershipTransferred_onlyNewOwnerCanClaimFees() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        _swapBuy(buyer, 1 ether, 10e18, true);
+
+        // Transfer ownership to Alice
+        vm.prank(creator);
+        launchpad.transferTokenOwnership(testToken, alice);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](1);
+        positionIndexes[0] = 0;
+
+        // the old owner should not be able to claim fees
+        vm.expectRevert(LivoGraduatorUniswapV4.UnauthorizedFeeCollection.selector);
+        vm.prank(creator);
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+
+        // Alice should be able to claim fees
+        vm.prank(alice);
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+    }
+
 }
