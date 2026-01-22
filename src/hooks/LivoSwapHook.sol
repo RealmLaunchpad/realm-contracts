@@ -37,17 +37,8 @@ contract LivoSwapHook is BaseHook {
     }
 
     /// @notice Allows contract to receive ETH from poolManager.take()
+    /// question for auditor: ETH could get stuck here as there is no way to rescue eth. But I don't want to make this contract Ownable, and I don't want to add a permisionless rescueEth() function to avoid introducing security risks.
     receive() external payable {}
-
-    /// @notice Function to avoid ETH stuck in this contract is lost forever
-    /// @dev as part of the normal flow, there shouldn't be any ETH in this contract for longer than one transaction
-    /// @dev intentionally, anyone can rescue ETH
-    /// question for auditor: does this introduce any security risks? would it be safer to not have this this function accepting the risk of stuck ETH?
-    function rescueEth() external {
-        WETH.withdraw(WETH.balanceOf(address(this)));
-        (bool success, ) = msg.sender.call{value: address(this).balance}("");
-        require(success, "ETH_TRANSFER_FAILED");
-    }
 
     /// @notice Returns the hook permissions indicating which callbacks are implemented
     /// @dev Hook address must have these permission flags encoded in its address (via CREATE2)
