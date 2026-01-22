@@ -93,13 +93,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         return _tokenSymbol;
     }
 
-    /// @notice Returns the encoded tokenCalldata for this token implementation
-    /// @dev For LivoToken, no additional calldata is needed, so returns empty bytes
-    /// @return Empty bytes since tokenCalldata is unused in LivoToken
-    function encodeTokenCalldata() external pure returns (bytes memory) {
-        return "";
-    }
-
     //////////////////////// internal functions ////////////////////////
 
     function _update(address from, address to, uint256 amount) internal virtual override {
