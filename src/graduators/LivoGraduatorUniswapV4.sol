@@ -214,7 +214,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         // so no problem with having these dangling approvals
 
         // approve PERMIT2 as a spender
-        token.approve(PERMIT2, type(uint256).max);
+        token.forceApprove(PERMIT2, type(uint256).max);
         // approve `PositionManager` as a spender
         IAllowanceTransfer(PERMIT2)
             .approve(
