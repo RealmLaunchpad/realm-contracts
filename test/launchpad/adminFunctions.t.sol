@@ -77,6 +77,45 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         );
     }
 
+    function test_whitelistComponentsZeroEthGraduationThreshold() public {
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSignature("InvalidParameter(uint256)", 0));
+        launchpad.whitelistComponents(
+            address(implementation), address(bondingCurve), address(graduator), 0, MAX_THRESHOLD_EXCESS, GRADUATION_FEE
+        );
+    }
+
+    function test_whitelistAlreadyWhitelistedCombination() public {
+        assertTrue(launchpad.isSetWhitelisted(address(implementation), address(bondingCurve), address(graduator)));
+
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSignature("AlreadyConfigured()"));
+        launchpad.whitelistComponents(
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
+    }
+
+    function test_blacklistNonWhitelistedComponents() public {
+        assertTrue(launchpad.isSetWhitelisted(address(implementation), address(bondingCurve), address(graduator)));
+
+        vm.prank(admin);
+        launchpad.blacklistComponents(address(implementation), address(bondingCurve), address(graduator));
+
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSignature("AlreadyBlacklisted()"));
+        launchpad.blacklistComponents(address(implementation), address(bondingCurve), address(graduator));
+
+        // also should revert if trying to blacklist something that was never whitelisted
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSignature("AlreadyBlacklisted()"));
+        launchpad.blacklistComponents(address(0), address(0), address(0));
+    }
+
     function test_whitelisting_SucceedsForOwner() public {
         vm.expectEmit(false, false, false, true);
         emit ComponentsSetWhitelisted(
@@ -262,6 +301,11 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         launchpad.transferTokenOwnership(testToken, alice);
 
         assertEq(launchpad.getTokenOwner(testToken), creator);
+    }
+
+    function test_readTokenOwnerInvalidToken() public {
+        vm.expectRevert(LivoLaunchpad.InvalidToken.selector);
+        launchpad.getTokenOwner(address(0));
     }
 
     function test_tokenOwnershipTransfer_newOwnerReflected() public createTestToken {

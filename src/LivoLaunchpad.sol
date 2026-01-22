@@ -328,6 +328,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @return The address of the token owner
     function getTokenOwner(address token) external view returns (address) {
         TokenConfig storage config = tokenConfigs[token];
+        // reverts on purpose because other parts of the system rely on the veracity of this output
         if (!config.exists()) revert InvalidToken();
         return config.tokenOwner;
     }

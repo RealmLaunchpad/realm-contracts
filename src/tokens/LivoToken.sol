@@ -54,9 +54,10 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         address pair_,
         address supplyReceiver_,
         uint256 totalSupply_,
-        bytes memory /*tokenCalldata*/
+        bytes memory tokenCalldata
     ) external virtual initializer {
         require(graduator_ != address(0), InvalidGraduator());
+        require(tokenCalldata.length == 0, "Token calldata must be empty");
 
         _tokenName = name_;
         _tokenSymbol = symbol_;

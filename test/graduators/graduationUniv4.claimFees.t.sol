@@ -632,6 +632,15 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         assertEq(creator.balance, creatorEthBalanceBefore, "creator eth balance should not change");
     }
 
+    function test_claimFees_arrayOfZeroTokens() public createAndGraduateToken {
+        address[] memory tokens = new address[](0);
+        uint256[] memory positionIndexes = new uint256[](0);
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSignature("NoTokensToCollectFees()"));
+        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+    }
+
     function test_claimFeesOnlyByAdminOrTokenOwner() public createAndGraduateToken {
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);

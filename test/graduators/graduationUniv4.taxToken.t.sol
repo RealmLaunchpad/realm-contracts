@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
-import {TaxTokenUniV4BaseTests} from "test/graduators/graduationUniv4.taxToken.base.t.sol";
+import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -850,5 +850,37 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Verify claimed amount matches what was claimable
         assertApproxEqAbs(totalCreatorFees, totalClaimableFees, 1, "Claimed fees should match getClaimableFees total");
+    }
+
+    function test_deployLivoToken_withEncodedCalldataFromWrongImplementation() public {
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(500, 550, 4 days);
+
+        vm.expectRevert("Token calldata must be empty");
+        launchpad.createToken(
+            "TestToken",
+            "TEST",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            tokenCalldata
+        );
+    }
+
+    function test_deployTaxTokenWithTooHighSellTaxes() public {
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(500, 550, 4 days);
+
+        vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, uint16(550)));
+        launchpad.createToken(
+            "TestToken",
+            "TEST",
+            address(taxTokenImpl),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            tokenCalldata
+        );
     }
 }
