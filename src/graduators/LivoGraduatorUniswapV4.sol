@@ -21,8 +21,9 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract LivoGraduatorUniswapV4 is ILivoGraduator {
+contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     using SafeERC20 for ILivoToken;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
@@ -108,6 +109,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     error TooManyTokensToCollectFees();
     error InvalidPositionIndex();
     error InvalidPositionIndexes();
+    error UnauthorizedFeeCollection();
 
     /////////////////////// Events ///////////////////////
 
@@ -146,7 +148,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         address _positionManager,
         address _permit2,
         address _hook
-    ) {
+    ) Ownable(msg.sender) {
         LIVO_LAUNCHPAD = _launchpad;
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
         UNIV4_POSITION_MANAGER = _positionManager;
@@ -252,7 +254,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
     }
 
     /// @notice Collects ETH fees from graduated tokens and distributes them to token owners and treasury
-    /// @dev Any account can call this function.
+    /// @dev Token owners can only claim for their own tokens. Contract owner can claim on behalf of anyone.
     /// @dev Token fees are left in this contract (effectively burned, but without gas waste)
     /// @dev Each token fees are claimed and distributed independently
     /// @param tokens Array of token addresses to collect fees from
@@ -263,6 +265,18 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator {
         require(nTokens < 100, TooManyTokensToCollectFees());
         require(positionIndexes.length > 0, InvalidPositionIndexes());
         require(positionIndexes.length <= 2, InvalidPositionIndexes());
+
+        // NB: this loop here is to save gas. Check all ownerships first and then spend gas in the remaining operations
+        // Access control: only contract owner can claim on behalf of others
+        // Token owners can only claim for their own tokens
+        bool isContractOwner = msg.sender == owner();
+        if (!isContractOwner) {
+            // Verify caller owns all tokens they're claiming for
+            for (uint256 i = 0; i < nTokens; i++) {
+                address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(tokens[i]);
+                require(msg.sender == tokenOwner, UnauthorizedFeeCollection());
+            }
+        }
 
         for (uint256 p = 0; p < positionIndexes.length; p++) {
             uint256 positionIndex = positionIndexes[p];
