@@ -1,3 +1,30 @@
+# Foundry
+
+For Sherlock auditors for January 2026, please read ./audit-info.md .
+
+## Build the project
+
+      forge build
+
+## Running tests
+
+Excluding invariants:
+
+      forge test --no-match-contract Invariant
+
+Only invariants
+
+      forge test --match-contract Invariant
+
+## Coverage
+
+This displays also coverage for the /script/ files, which are out of scope (and have 0% coverage) which takes down the average to 87%
+
+      forge coverage --nmc Invariant --exclude-tests
+
+
+---------------
+
 # Livo Launchpad
 
 Livo Launchpad is a decentralized token launch platform that enables fair token distribution through a bonding curve mechanism, with automatic liquidity provision to either Uniswap V2 or Uniswap V4 upon reaching graduation criteria.
@@ -339,24 +366,3 @@ This should print an output like this:
   bytes32 constant HOOK_SALT = bytes32(uint256(0x0x3b57));
 ```
 
-# Foundry
-
-## Build the project
-
-   forge build
-
-## Running tests
-
-Excluding invariants:
-
-   forge test --no-match-contract Invariant
-
-Only invariants
-
-   forge test --match-contract Invariant
-
-## Coverage
-
-This displays also coverage for the /script/ files, which are out of scope (and have 0% coverage) which takes down the average to 87%
-
-   forge coverage --nmc Invariant --exclude-tests
