@@ -260,7 +260,7 @@ contract LivoLaunchpad is Ownable2Step {
     function transferTokenOwnership(address token, address newTokenOwner) external {
         require(tokenConfigs[token].tokenOwner == msg.sender, OnlyTokenOwner());
 
-        // updaes storage and emits event
+        // updates storage and emits event
         _transferTokenOwnership(token, newTokenOwner);
     }
 

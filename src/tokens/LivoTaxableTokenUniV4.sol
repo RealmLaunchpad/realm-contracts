@@ -220,7 +220,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
         // Skip if PoolManager is already unlocked (we're inside a V4 swap callback).
         // We can only initiate a new swap when the PoolManager is locked (idle).
-        // The router is locked by default, and it is only temporarily unlocked during a valid, explicitly initiated execution flow.
+        // The PoolManager is locked by default, and it is only temporarily unlocked during a valid, explicitly initiated execution flow.
         // “Unlocked” means the router is actively and safely coordinating execution
         // unlocked == ongoing swap (a bit counter intuitive)
         if (TransientStateLibrary.isUnlocked(UNIV4_POOL_MANAGER)) return;
