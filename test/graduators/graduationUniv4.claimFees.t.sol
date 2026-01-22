@@ -669,7 +669,6 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         vm.prank(alice);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
 
-
         assertEq(creator.balance, creatorEthBalanceBefore, "creator should not have gotten fees");
         assertGt(alice.balance, aliceEthBalanceBefore, "fees should have gone to alice");
     }
@@ -696,5 +695,4 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         vm.prank(alice);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
     }
-
 }

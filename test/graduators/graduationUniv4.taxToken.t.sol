@@ -786,7 +786,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         tokens[0] = testToken;
         uint256[] memory positionIndexes = new uint256[](1);
         positionIndexes[0] = 0;
-        
+
         vm.prank(alice);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
 

@@ -281,7 +281,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
             // Cache token owner once per token (instead of calling getTokenOwner multiple times)
             // the token owner can be updated in the launchpad even after graduation (only by the current owner)
             address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
-            
+
             // Authorization check: verify caller owns this token (unless they're the contract owner)
             if (!isContractOwner) {
                 require(msg.sender == tokenOwner, UnauthorizedFeeCollection());
@@ -290,7 +290,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
             // Iterate over position indexes (inner loop)
             for (uint256 p = 0; p < positionIndexes.length; p++) {
                 uint256 positionIndex = positionIndexes[p];
-                
+
                 // collect fees from uniswap4 into this contract (both eth and tokens)
                 uint256 positionId = positionIds[token][positionIndex];
                 (uint256 creatorFees,) = _claimFromUniswapLock(token, positionId);
