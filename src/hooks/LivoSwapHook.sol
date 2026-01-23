@@ -161,7 +161,8 @@ contract LivoSwapHook is BaseHook {
         internal
         returns (bytes4 selector, int128 taxCollected)
     {
-        uint256 absTokenAmount = uint256(uint128(tokenDelta > 0 ? tokenDelta : -tokenDelta));
+        // tokenDelta is always positive since they are the tokens given to the buyer
+        uint256 absTokenAmount = uint256(uint128(tokenDelta));
         uint256 taxAmount = (absTokenAmount * taxBps) / BASIS_POINTS;
 
         // Send tokens to the token contract itself (for accumulation and later swap to ETH)
@@ -175,7 +176,7 @@ contract LivoSwapHook is BaseHook {
         internal
         returns (bytes4 selector, int128 taxCollected)
     {
-        uint256 absEthAmount = uint256(uint128(ethDelta > 0 ? ethDelta : -ethDelta));
+        uint256 absEthAmount = uint256(uint128(ethDelta));
         uint256 taxAmount = (absEthAmount * taxBps) / BASIS_POINTS;
 
         // Take ETH to this contract instead of taxRecipient, for WETH wrapping
