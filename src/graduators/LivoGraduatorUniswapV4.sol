@@ -33,9 +33,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @dev Each token has two liquidity positions added (one of them is one-sided, only ETH)
     mapping(address token => uint256[] tokenId) public positionIds;
 
-    /// @notice Treasury eth fees collected
-    uint256 public treasuryEthFees;
-
     /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
 
