@@ -140,15 +140,27 @@ contract LivoLaunchpad is Ownable2Step {
         bytes32 salt,
         bytes memory tokenCalldata
     ) external returns (address token) {
-        GraduationSettings storage graduationSettings = whitelistedComponents[implementation][bondingCurve][graduator];
-        require(_isSetWhitelisted(graduationSettings), NotWhitelistedComponents());
+        GraduationSettings memory graduationSettings = whitelistedComponents[implementation][bondingCurve][graduator];
+        // manual check here to reduce number of SLOADs of this storage mapping
+        require(graduationSettings.ethGraduationThreshold > 0, NotWhitelistedComponents());
 
-        token = _createToken(name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata);
+        token = _createToken(
+            name,
+            symbol,
+            implementation,
+            bondingCurve,
+            graduator,
+            tokenOwner,
+            salt,
+            tokenCalldata,
+            graduationSettings
+        );
     }
 
     /// @notice Same as createToken, but allows admin to create a token bypassing the whitelisting sets of graduator, bonding curve and token implementation
     /// @dev Projects can contact the team for custom implementations that can only be deployed by admins
     /// @dev example: if a project wants to deploy with longer tax period, admins deploy a taxable-token without the 14day restriction, and use this function without whitelisting such token implementation.
+    /// @param graduationSettings Custom graduation settings for this token
     function createCustomToken(
         string calldata name,
         string calldata symbol,
@@ -157,9 +169,23 @@ contract LivoLaunchpad is Ownable2Step {
         address graduator,
         address tokenOwner,
         bytes32 salt,
-        bytes memory tokenCalldata
+        bytes memory tokenCalldata,
+        GraduationSettings memory graduationSettings
     ) external onlyOwner returns (address token) {
-        token = _createToken(name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata);
+        // Validate graduation settings
+        require(graduationSettings.ethGraduationThreshold > 0, InvalidParameter(graduationSettings.ethGraduationThreshold));
+
+        token = _createToken(
+            name,
+            symbol,
+            implementation,
+            bondingCurve,
+            graduator,
+            tokenOwner,
+            salt,
+            tokenCalldata,
+            graduationSettings
+        );
     }
 
     /// @notice Buys tokens with exact ETH amount
@@ -496,7 +522,6 @@ contract LivoLaunchpad is Ownable2Step {
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
 
     /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
-    /// @dev Selected bonding curve and graduator must be a whitelisted pair
     /// @param name The name of the token
     /// @param symbol The symbol of the token (max 32 characters)
     /// @param implementation Token implementation contract
@@ -505,6 +530,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param tokenOwner Address of the token owner (receives reserved supply and fees)
     /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
     /// @param tokenCalldata Extra initialization parameters for the token
+    /// @param graduationSettings Graduation settings for this token
     /// @return token The address of the newly created token
     function _createToken(
         string calldata name,
@@ -514,7 +540,8 @@ contract LivoLaunchpad is Ownable2Step {
         address graduator,
         address tokenOwner,
         bytes32 salt,
-        bytes memory tokenCalldata
+        bytes memory tokenCalldata,
+        GraduationSettings memory graduationSettings
     ) internal returns (address token) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
@@ -528,8 +555,6 @@ contract LivoLaunchpad is Ownable2Step {
 
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
         emit TokenCreated(token, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
-
-        GraduationSettings storage graduationSettings = whitelistedComponents[implementation][bondingCurve][graduator];
 
         // at creation all tokens are held by this contract
         tokenConfigs[token] = TokenConfig({
