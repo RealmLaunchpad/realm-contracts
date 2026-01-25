@@ -204,6 +204,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         require(tokenAmount > 0, NoTokensToGraduate());
         require(ethValue > 0, NoETHToGraduate());
 
+        uint256 tokenBalanceBeforeDeposit = token.balanceOf(address(this));
+
         // this opens the gate of transferring tokens to the uniswap pair
         token.markGraduated();
 
@@ -247,7 +249,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
         // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
-        uint256 tokensDeposited = tokenAmount - tokenBalanceAfterDeposit;
+        // we attempt to deposit tokenAmount, but this is the actual amount deposited
+        // any token not deposited is stuck here in this contract
+        uint256 tokensDeposited = tokenBalanceBeforeDeposit - tokenBalanceAfterDeposit;
 
         bytes32 poolId = PoolId.unwrap(pool.toId());
         emit TokenGraduated(tokenAddress, poolId, tokensDeposited, ethValue, liquidity1 + liquidity2);

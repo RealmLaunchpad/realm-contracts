@@ -480,6 +480,58 @@ contract UniswapV4GraduationTests is BaseUniswapV4GraduationTests {
 
     /////////////////////////////////// EXPLOITS / DOS / MISSUSAGE /////////////////////////////////////////
 
+    /// @notice Test that demonstrates DoS vulnerability where griefer can block graduation by sending tokens to graduator
+    /// @dev Griefer buys tokens early, then sends them to graduator contract before graduation
+    /// @dev This causes underflow in graduateToken() when calculating tokensDeposited = tokenAmount - tokenBalanceAfterDeposit
+    function test_griefing_dosGraduationByTokenTransfer() public createTestToken {
+        address griefer = makeAddr("griefer");
+        
+        // Step 1: Griefer buys tokens early to get approximately 190M tokens
+        // This is roughly the amount that will be sent to graduator during graduation
+        // Based on bonding curve, buying with ~0.625 ETH should give us the target amount
+        vm.deal(griefer, 1 ether);
+        vm.prank(griefer);
+        launchpad.buyTokensWithExactEth{value: 0.625 ether}(testToken, 0, DEADLINE);
+        
+        uint256 grieferTokenBalance = LivoToken(testToken).balanceOf(griefer);
+        assertGt(grieferTokenBalance, 180_000_000e18, "Griefer should have bought tokens");
+        assertLt(grieferTokenBalance, 210_000_000e18, "Griefer should have bought around 190M tokens");
+        
+        // Step 2: Normal user buys tokens to approach graduation threshold
+        address normalUser = makeAddr("normalUser");
+        vm.deal(normalUser, 10 ether);
+        vm.prank(normalUser);
+        launchpad.buyTokensWithExactEth{value: 7 ether}(testToken, 0, DEADLINE);
+        
+        // Verify we're close to graduation but not graduated yet
+        TokenState memory state = launchpad.getTokenState(testToken);
+        assertFalse(state.graduated, "Token should not be graduated yet");
+        assertGt(state.ethCollected, GRADUATION_THRESHOLD - 1 ether, "Should be close to graduation");
+        
+        // Step 3: Griefer transfers tokens to the graduator contract
+        // This is the key griefing action - tokens sent directly to graduator
+        vm.prank(griefer);
+        LivoToken(testToken).transfer(address(graduator), grieferTokenBalance);
+        
+        uint256 graduatorTokenBalance = LivoToken(testToken).balanceOf(address(graduator));
+        assertEq(graduatorTokenBalance, grieferTokenBalance, "Graduator should have received griefer's tokens");
+        
+        // Step 4: Attempt to graduate - this should revert due to underflow
+        // When graduateToken() is called, it will try to calculate:
+        // tokensDeposited = tokenAmount - tokenBalanceAfterDeposit
+        // But tokenBalanceAfterDeposit > tokenAmount, causing underflow
+        uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
+        uint256 missingForGraduation = _increaseWithFees(GRADUATION_THRESHOLD - ethReserves);
+        
+        vm.deal(buyer, missingForGraduation);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: missingForGraduation}(testToken, 0, DEADLINE);
+        
+        // Make sure the token has graduated
+        state = launchpad.getTokenState(testToken);
+        assertTrue(state.graduated, "Token should have graduated due to griefing");
+    }
+
     /// @notice Test that a large liquidity position involving only ETH before graduation doesn't affect graduation
     function test_largeEthLiquidityPosition_graduationSucceeds() public createTestToken {
         _addEthLiquidity(buyer, 50 ether); // add a large liquidity position with eth only
