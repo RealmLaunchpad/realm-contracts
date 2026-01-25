@@ -75,6 +75,7 @@ contract LivoLaunchpad is Ownable2Step {
     error AlreadyConfigured();
     error AlreadyBlacklisted();
     error OnlyTokenOwner();
+    error InvalidAddress();
 
     ///////////////////// Events /////////////////////
 
@@ -106,7 +107,7 @@ contract LivoLaunchpad is Ownable2Step {
         uint256 graduationEthFee
     );
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
-    event TokenOwnerUpdated(address indexed newOwner);
+    event TokenOwnerUpdated(address indexed token, address indexed newOwner);
 
     /////////////////////////////////////////////////
 
@@ -414,6 +415,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @notice Updates the treasury address
     /// @param recipient The new treasury address
     function setTreasuryAddress(address recipient) public onlyOwner {
+        require(recipient != address(0), InvalidAddress());
         treasury = recipient;
         emit TreasuryAddressUpdated(recipient);
     }
@@ -486,8 +488,9 @@ contract LivoLaunchpad is Ownable2Step {
     }
 
     function _transferTokenOwnership(address token, address newTokenOwner) internal {
+        require(newTokenOwner != address(0), InvalidTokenOwner());
         tokenConfigs[token].tokenOwner = newTokenOwner;
-        emit TokenOwnerUpdated(newTokenOwner);
+        emit TokenOwnerUpdated(token, newTokenOwner);
     }
 
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
