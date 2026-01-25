@@ -239,8 +239,11 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         // remaining eth = eth value - (deposited ETH liquidity 1)
         uint256 remainingEth = ethValue - (ethBalanceBefore - address(this).balance);
         uint128 liquidity2 = LiquidityAmounts.getLiquidityForAmount0(SQRT_LOWER_2, SQRT_UPPER_2, remainingEth);
-        // single sided ETH liquidity position to utilize remaining eth
-        _addLiquidity(pool, tokenAddress, TICK_LOWER_2, TICK_UPPER_2, liquidity2, remainingEth, 0, treasury);
+
+        if (liquidity2 > 0) {
+            // single sided ETH liquidity position to utilize remaining eth
+            _addLiquidity(pool, tokenAddress, TICK_LOWER_2, TICK_UPPER_2, liquidity2, remainingEth, 0, treasury);
+        }
 
         // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
