@@ -58,10 +58,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     /// @param sellTaxBps Sell tax rate in basis points (max 500)
     /// @param taxDurationSeconds Duration in seconds after graduation during which taxes apply
     /// @return tokenAddress The address of the created tax token
-    function _createTaxToken(uint16 sellTaxBps, uint40 taxDurationSeconds)
-        internal
-        returns (address tokenAddress)
-    {
+    function _createTaxToken(uint16 sellTaxBps, uint40 taxDurationSeconds) internal returns (address tokenAddress) {
         // Encode tax configuration with V4 integration parameters
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(sellTaxBps, taxDurationSeconds);
 

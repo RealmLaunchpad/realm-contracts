@@ -177,9 +177,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, true);
-        assertEq(
-            IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should be collected"
-        );
+        assertEq(IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should be collected");
 
         // Test sell tax (5%) - collected as WETH directly to creator
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
@@ -223,9 +221,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, true);
-        assertEq(
-            IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should be collected"
-        );
+        assertEq(IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should be collected");
 
         // Test sell with 0% tax - creator should NOT receive WETH
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
@@ -245,16 +241,14 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         vm.deal(buyer, 3 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
-        
+
         _graduateToken();
 
         // Verify no buy tax is collected
         uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, true);
-        assertEq(
-            IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should be collected"
-        );
+        assertEq(IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should be collected");
 
         // Test sell tax - first sell
         uint256 creatorWethBalance = IERC20(WETH_ADDRESS).balanceOf(creator);
@@ -287,7 +281,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             vm.prank(sellerAddrs[i]);
             launchpad.buyTokensWithExactEth{value: 0.5 ether}(testToken, 0, DEADLINE);
         }
-        
+
         _graduateToken();
 
         uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
@@ -326,9 +320,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, true);
         assertEq(
-            IERC20(testToken).balanceOf(testToken),
-            tokenContractBalanceBeforeBuy,
-            "No buy tax should ever be collected"
+            IERC20(testToken).balanceOf(testToken), tokenContractBalanceBeforeBuy, "No buy tax should ever be collected"
         );
         assertEq(
             IERC20(WETH_ADDRESS).balanceOf(creator),
@@ -414,18 +406,18 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_maxSellRate_collectedTaxMatchesExpectation() public {
         // Create token with max sell tax rate
         testToken = _createTaxToken(500, 14 days);
-        
+
         // Buy tokens through launchpad (buy enough to have tokens to sell)
         vm.deal(buyer, 3 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
-        
+
         _graduateToken();
 
         // Test sell with max 5% tax
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         uint256 sellAmount = buyerTokenBalance / 2;
-        
+
         uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
         uint256 buyerEthBalanceBefore = buyer.balance;
         _swapSell(buyer, sellAmount, 0, true);
@@ -433,7 +425,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         uint256 ethReceived = buyerEthBalanceAfter - buyerEthBalanceBefore;
         uint256 sellTaxCollectedWeth = IERC20(WETH_ADDRESS).balanceOf(creator) - creatorWethBalanceBefore;
-        
+
         // Calculate expected tax: taxCharged / (ethReceived + taxCharged) = 500 / 10000
         uint256 expectedSellTaxApprox = (ethReceived * 500) / (10000 - 500);
 
@@ -532,9 +524,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Buy more tokens via UniV4 (no buy tax should be collected)
         deal(buyer, 1 ether);
         _swapBuy(buyer, 1 ether, 0, true);
-        assertEq(
-            IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should be collected"
-        );
+        assertEq(IERC20(testToken).balanceOf(testToken), tokenContractBalanceBefore, "No buy tax should be collected");
 
         // Sell some tokens via UniV4 (pay sell tax as WETH)
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);

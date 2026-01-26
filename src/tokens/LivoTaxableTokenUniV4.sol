@@ -173,11 +173,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @param _sellTaxBps Sell tax rate in basis points (max 500 = 5%)
     /// @param _taxDurationSeconds Duration in seconds after graduation during which taxes apply
     /// @return Encoded bytes to pass as tokenCalldata to initialize()
-    function encodeTokenCalldata(uint16 _sellTaxBps, uint40 _taxDurationSeconds)
-        external
-        pure
-        returns (bytes memory)
-    {
+    function encodeTokenCalldata(uint16 _sellTaxBps, uint40 _taxDurationSeconds) external pure returns (bytes memory) {
         return abi.encode(_sellTaxBps, _taxDurationSeconds);
     }
 

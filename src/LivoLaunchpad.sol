@@ -145,15 +145,7 @@ contract LivoLaunchpad is Ownable2Step {
         require(graduationSettings.ethGraduationThreshold > 0, NotWhitelistedComponents());
 
         token = _createToken(
-            name,
-            symbol,
-            implementation,
-            bondingCurve,
-            graduator,
-            tokenOwner,
-            salt,
-            tokenCalldata,
-            graduationSettings
+            name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata, graduationSettings
         );
     }
 
@@ -173,18 +165,12 @@ contract LivoLaunchpad is Ownable2Step {
         GraduationSettings memory graduationSettings
     ) external onlyOwner returns (address token) {
         // Validate graduation settings
-        require(graduationSettings.ethGraduationThreshold > 0, InvalidParameter(graduationSettings.ethGraduationThreshold));
+        require(
+            graduationSettings.ethGraduationThreshold > 0, InvalidParameter(graduationSettings.ethGraduationThreshold)
+        );
 
         token = _createToken(
-            name,
-            symbol,
-            implementation,
-            bondingCurve,
-            graduator,
-            tokenOwner,
-            salt,
-            tokenCalldata,
-            graduationSettings
+            name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata, graduationSettings
         );
     }
 
