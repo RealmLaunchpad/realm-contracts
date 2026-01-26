@@ -883,4 +883,23 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             tokenCalldata
         );
     }
+
+    /// @notice Test that tax swap is triggered by a zero-amount transfer
+    function test_taxSwapTriggeredByZeroAmountTransfer() public createDefaultTaxToken {
+        _graduateToken();
+
+        // Perform large buy to accumulate taxes above 0.1% threshold
+        uint256 largeEthIn = 200 ether;
+        deal(buyer, largeEthIn);
+        _swapBuy(buyer, largeEthIn, 0, true);
+
+        uint256 creatorWethBalanceBefore = IERC20(WETH_ADDRESS).balanceOf(creator);
+
+        // Make a zero-amount transfer from an account with no balance
+        address zeroBalanceAccount = makeAddr("zeroBalanceAccount");
+        vm.prank(zeroBalanceAccount);
+        IERC20(testToken).transfer(alice, 0);
+
+        assertGt(IERC20(WETH_ADDRESS).balanceOf(creator), creatorWethBalanceBefore);
+    }
 }
