@@ -14,7 +14,7 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_deployLivoToken_withEncodedCalldataFromWrongImplementation() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(500, 550, 4 days);
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
 
         vm.expectRevert("Token calldata must be empty");
         launchpad.createToken(
@@ -30,7 +30,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(500, 550, 4 days);
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
 
         vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, uint16(550)));
         launchpad.createToken(
@@ -45,24 +45,10 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         );
     }
 
-    function test_deployTaxTokenWithTooHighBuyTaxes() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 500, 4 days);
-
-        vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, uint16(550)));
-        launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduator),
-            creator,
-            "0x12",
-            tokenCalldata
-        );
-    }
+    // This test is removed because buy taxes no longer exist in the implementation
 
     function test_deployTaxTokenWithTooLongTaxPeriod() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(500, 500, 15 days);
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(500, 15 days);
 
         vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxDuration.selector, 15 days));
         launchpad.createToken(

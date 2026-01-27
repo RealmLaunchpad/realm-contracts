@@ -15,7 +15,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 
 /// @title LivoSwapHook
-/// @notice Uniswap V4 hook that collects time-limited buy/sell taxes on token swaps
+/// @notice Uniswap V4 hook that collects time-limited sell taxes on token swaps
 /// @dev Singleton hook serving all taxable tokens graduated via LivoGraduatorUniswapV4
 /// @dev Hook queries each token for tax configuration and applies taxes only during the configured period
 contract LivoSwapHook is BaseHook {
@@ -82,14 +82,9 @@ contract LivoSwapHook is BaseHook {
             return (IHooks.afterSwap.selector, 0);
         }
 
-        // BUY: Tax is taken from token output and sent to token contract for accumulation
+        // BUY: No tax collected on buys
         if (params.zeroForOne) {
-            return _collectBuyTax(
-                key.currency1,
-                tokenAddress, // recipient (token contract)
-                delta.amount1(),
-                taxBps
-            );
+            return (IHooks.afterSwap.selector, 0);
         }
 
         // SELL: Tax is taken from ETH output (seller receives less ETH)
@@ -144,6 +139,7 @@ contract LivoSwapHook is BaseHook {
                 return (false, 0, address(0));
             }
 
+            // buy tax will always be zero in the current tax-token implementation
             taxBps = isBuy ? config.buyTaxBps : config.sellTaxBps;
             if (taxBps == 0) {
                 return (false, 0, address(0));
@@ -156,26 +152,12 @@ contract LivoSwapHook is BaseHook {
         }
     }
 
-    /// @notice Collect buy tax (tokens sent to token contract for later swap to ETH)
-    function _collectBuyTax(Currency currency, address tokenAddress, int128 tokenDelta, uint16 taxBps)
-        internal
-        returns (bytes4 selector, int128 taxCollected)
-    {
-        uint256 absTokenAmount = uint256(uint128(tokenDelta > 0 ? tokenDelta : -tokenDelta));
-        uint256 taxAmount = (absTokenAmount * taxBps) / BASIS_POINTS;
-
-        // Send tokens to the token contract itself (for accumulation and later swap to ETH)
-        poolManager.take(currency, tokenAddress, taxAmount);
-        // safe casting as taxAmount cannot be greater than the token totalSupply, which is less than uint128.max
-        return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
-    }
-
     /// @notice Collect sell tax (ETH wrapped to WETH and sent to tax recipient)
     function _collectSellTax(Currency currency, address taxRecipient, int128 ethDelta, uint16 taxBps)
         internal
         returns (bytes4 selector, int128 taxCollected)
     {
-        uint256 absEthAmount = uint256(uint128(ethDelta > 0 ? ethDelta : -ethDelta));
+        uint256 absEthAmount = uint256(uint128(ethDelta));
         uint256 taxAmount = (absEthAmount * taxBps) / BASIS_POINTS;
 
         // Take ETH to this contract instead of taxRecipient, for WETH wrapping

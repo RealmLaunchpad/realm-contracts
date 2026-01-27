@@ -33,9 +33,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @dev Each token has two liquidity positions added (one of them is one-sided, only ETH)
     mapping(address token => uint256[] tokenId) public positionIds;
 
-    /// @notice Treasury eth fees collected
-    uint256 public treasuryEthFees;
-
     /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
 
@@ -207,6 +204,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         require(tokenAmount > 0, NoTokensToGraduate());
         require(ethValue > 0, NoETHToGraduate());
 
+        uint256 tokenBalanceBeforeDeposit = token.balanceOf(address(this));
+
         // this opens the gate of transferring tokens to the uniswap pair
         token.markGraduated();
 
@@ -242,12 +241,17 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         // remaining eth = eth value - (deposited ETH liquidity 1)
         uint256 remainingEth = ethValue - (ethBalanceBefore - address(this).balance);
         uint128 liquidity2 = LiquidityAmounts.getLiquidityForAmount0(SQRT_LOWER_2, SQRT_UPPER_2, remainingEth);
-        // single sided ETH liquidity position to utilize remaining eth
-        _addLiquidity(pool, tokenAddress, TICK_LOWER_2, TICK_UPPER_2, liquidity2, remainingEth, 0, treasury);
+
+        if (liquidity2 > 0) {
+            // single sided ETH liquidity position to utilize remaining eth
+            _addLiquidity(pool, tokenAddress, TICK_LOWER_2, TICK_UPPER_2, liquidity2, remainingEth, 0, treasury);
+        }
 
         // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
-        uint256 tokensDeposited = tokenAmount - tokenBalanceAfterDeposit;
+        // we attempt to deposit tokenAmount, but this is the actual amount deposited
+        // any token not deposited is stuck here in this contract
+        uint256 tokensDeposited = tokenBalanceBeforeDeposit - tokenBalanceAfterDeposit;
 
         bytes32 poolId = PoolId.unwrap(pool.toId());
         emit TokenGraduated(tokenAddress, poolId, tokensDeposited, ethValue, liquidity1 + liquidity2);

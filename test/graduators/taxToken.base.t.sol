@@ -24,7 +24,6 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     LivoTaxableTokenUniV4 public taxTokenImpl;
 
     // Default tax configuration
-    uint16 public constant DEFAULT_BUY_TAX_BPS = 300; // 3%
     uint16 public constant DEFAULT_SELL_TAX_BPS = 500; // 5%
     uint40 public constant DEFAULT_TAX_DURATION = 14 days;
 
@@ -56,16 +55,12 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     }
 
     /// @notice Helper to create a tax token with custom configuration
-    /// @param buyTaxBps Buy tax rate in basis points (max 500)
     /// @param sellTaxBps Sell tax rate in basis points (max 500)
     /// @param taxDurationSeconds Duration in seconds after graduation during which taxes apply
     /// @return tokenAddress The address of the created tax token
-    function _createTaxToken(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds)
-        internal
-        returns (address tokenAddress)
-    {
+    function _createTaxToken(uint16 sellTaxBps, uint40 taxDurationSeconds) internal returns (address tokenAddress) {
         // Encode tax configuration with V4 integration parameters
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(buyTaxBps, sellTaxBps, taxDurationSeconds);
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(sellTaxBps, taxDurationSeconds);
 
         vm.prank(creator);
         tokenAddress = launchpad.createToken(
@@ -95,7 +90,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
 
     /// @notice Modifier to create a default tax token for testing
     modifier createDefaultTaxToken() {
-        testToken = _createTaxToken(DEFAULT_BUY_TAX_BPS, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        testToken = _createTaxToken(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
         _;
     }
 

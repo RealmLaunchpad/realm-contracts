@@ -353,7 +353,12 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             address(otherGraduator),
             alice,
             0,
-            ""
+            "",
+            LivoLaunchpad.GraduationSettings({
+                ethGraduationThreshold: GRADUATION_THRESHOLD,
+                maxExcessOverThreshold: MAX_THRESHOLD_EXCESS,
+                graduationEthFee: GRADUATION_FEE
+            })
         );
 
         // the owner can create a weird components combination without restrictions
@@ -366,7 +371,12 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             address(otherGraduator),
             alice,
             0,
-            ""
+            "",
+            LivoLaunchpad.GraduationSettings({
+                ethGraduationThreshold: GRADUATION_THRESHOLD,
+                maxExcessOverThreshold: MAX_THRESHOLD_EXCESS,
+                graduationEthFee: GRADUATION_FEE
+            })
         );
     }
 }
