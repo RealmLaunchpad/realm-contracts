@@ -3,40 +3,42 @@
 - foundry.toml: optimization runs : 200 or more
 
 
-```bash
 
 # Deployments
 
-forge create LivoToken
+### 1. Deploy the hook with create2 and the found salt (if not already deployed):
 
-forge create ConstantProductBondingCurve
+```bash
+forge script DeployHook --rpc-url sepolia --verify --account livo.dev --broadcast
+```
 
-forge create LivoLaunchpad --constructor-args TREASURY
+### 2. Update the hook address in deployments.md and in the `DeploymentAddresses` 
 
-forge create LivoGraduatorUniswapV2 --constructor-args UNISWAPROUTER LAUNCHPAD
+### 3. Deploy the remaining contracts. The `--slow` flag is to wait for transactions to succeed before broadcasting more.
 
-forge create LiquidityLockUniv4WithFees --constructor-args UNIV4POSITIONMANAGER
+```bash
+forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+```
+If it fails with "UNIV4_POOL_MANAGER address. Wrong chain id", update the import in `LivoTaxableTokenUniV4.sol`.
 
-# mine hook with the 
-forge script MineHookAddressForTests.s.sol
+### 4. Put back `LivoTaxableTokenUniV4.sol` imports to mainnet
 
-# Deploy the hook with create2 and the found salt
-forge script script/DeployHook.s.sol --rpc-url sepolia --broadcast --verify  --account ...
-# update hook address in HookAddresses 
+### 5. Update addresses in justfile (only nice to have)
+   
+### 6. Update addresses in envio
 
-forge create LivoGraduatorUniswapV4 --constructor-args LAUNCHPAD LIQUIDITYLOCK POOLMANAGER POSITIONMANAGER PERMIT2 HOOK
+### 7. Verify any contract of which verification failed
+Note that you can take the constructor args already encoded from the transaction logs of the deployment script. 
 
-# graduation parameters for whitelisting sets:
-GRADUATION_THRESHOLD = 7956000000000052224
-MAX_EXCESS_OVER_THRESHOLD = 100000000000000000
-GRADUATION_ETH_FEE = 500000000000000000
-    
-# Whiteslisting sets
-cast send LAUNCHPAD "whitelistComponents(address,address,address,uint256,uint256,uint256)" TOKENIMPLEMENTATION BONDINGCURVE GRADUATORV2 GRADUATIONTHRESHOLD MAXEXCESSOVERTHRESHOLD GRADUATIONFEE
+```bash
+forge verify-contract {{address}} {{contractName}} --compiler-version 0.8.28+commit.7893614a --chain-id 11155111 --watch --constructor-args $(cast abi-encode "constructor(address,address,address,address,address,address)" 0xd8861EBe9Ee353c4Dcaed86C7B90d354f064cc8D 0x812Cc2479174d1BA07Bb8788A09C6fe6dCD20e33 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4 0x000000000022D473030F116dDEE9F6B43aC78BA3 0x5bc9F6260a93f6FE2c16cF536B6479fc188e00C4)
+```
 
-cast send LAUNCHPAD "whitelistComponents(address,address,address,uint256,uint256,uint256)" TOKENIMPLEMENTATION BONDINGCURVE GRADUATORV4 GRADUATIONTHRESHOLD MAXEXCESSOVERTHRESHOLD GRADUATIONFEE
 
-# Transfer ownerhips ? 
+
+
+
+# Transfer ownerships ? 
 
 
 ```
