@@ -178,10 +178,8 @@ contract InvariantsHelperLaunchpad is Test {
 
         uint256 tokensToSell = _bound(amount, 1, tokenBalance);
 
-        vm.startPrank(currentActor);
-        IERC20(selectedToken).approve(address(launchpad), tokensToSell);
+        vm.prank(currentActor);
         uint256 ethReceived = launchpad.sellExactTokens(selectedToken, tokensToSell, 0, FAR_IN_FUTURE);
-        vm.stopPrank();
 
         aggregatedTokensSold[selectedToken] += tokensToSell;
         aggregatedEthFromSells[selectedToken] += ethReceived;

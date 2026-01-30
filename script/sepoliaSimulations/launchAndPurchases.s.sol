@@ -40,10 +40,6 @@ contract BuySellSimulations is Script {
 
         uint256 deadline = block.timestamp + 300 days;
 
-        IERC20(TOKEN1).approve(address(launchpad), type(uint256).max);
-        IERC20(TOKEN2).approve(address(launchpad), type(uint256).max);
-        IERC20(TOKEN3).approve(address(launchpad), type(uint256).max);
-
         // TOKEN1
         launchpad.buyTokensWithExactEth{value: 0.00005 ether}(TOKEN1, 0, deadline);
         launchpad.sellExactTokens(TOKEN1, 0.000008 ether, 0, deadline);

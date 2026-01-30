@@ -38,8 +38,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         uint256 tokensToSell = IERC20(testToken).balanceOf(alice) / 2;
         vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensToSell);
-        vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
         _;
     }
@@ -52,9 +50,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         (, uint256 expectedEthFee, uint256 expectedEthForSeller) =
             launchpad.quoteSellExactTokens(testToken, tokensToSell);
-
-        vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensToSell);
 
         vm.prank(alice);
         vm.expectEmit(true, true, false, true);
@@ -84,8 +79,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
 
         vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensToSell);
-        vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
 
         assertEq(IERC20(testToken).balanceOf(alice), tokensToKeep);
@@ -104,16 +97,12 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         // First sell
         vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), firstSell);
-        vm.prank(alice);
         launchpad.sellExactTokens(testToken, firstSell, 0, DEADLINE);
 
         TokenState memory stateAfterFirst = launchpad.getTokenState(testToken);
         uint256 ethAfterFirst = alice.balance;
 
         // Second sell
-        vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), secondSell);
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, secondSell, 0, DEADLINE);
 
@@ -135,15 +124,11 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         // Buyer sells
         vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), aliceTokensToSell);
-        vm.prank(alice);
         launchpad.sellExactTokens(testToken, aliceTokensToSell, 0, DEADLINE);
 
         uint256 aliceEthAfterSell = alice.balance;
 
         // Seller sells
-        vm.prank(bob);
-        IERC20(testToken).approve(address(launchpad), bobTokensToSell);
         vm.prank(bob);
         launchpad.sellExactTokens(testToken, bobTokensToSell, 0, DEADLINE);
 
@@ -159,8 +144,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         uint256 tokensOwned = IERC20(testToken).balanceOf(alice);
         uint256 ethSpentOnBuy = ONE_ETH_BUY;
 
-        vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensOwned);
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensOwned, 0, DEADLINE);
 
@@ -178,8 +161,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         uint256 tokensToSell = IERC20(testToken).balanceOf(alice) / 2;
 
         vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensToSell);
-        vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
 
         uint256 ethFromFirstSell = alice.balance - (INITIAL_ETH_BALANCE - TWO_ETH_BUY);
@@ -188,8 +169,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         uint256 remainingTokens = IERC20(testToken).balanceOf(alice);
         assertEq(remainingTokens, tokensToSell); // Should be the same amount
 
-        vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), remainingTokens);
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, remainingTokens, 0, DEADLINE);
 
@@ -204,8 +183,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         (,, uint256 expectedEthForSeller) = launchpad.quoteSellExactTokens(testToken, tokensToSell);
 
-        vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensToSell);
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensToSell, expectedEthForSeller, DEADLINE);
 
@@ -233,8 +210,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         skip(2 minutes);
 
         vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensToSell);
-        vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.DeadlineExceeded.selector));
         launchpad.sellExactTokens(testToken, tokensToSell, 0, deadline);
     }
@@ -245,8 +220,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         (,, uint256 expectedEthForSeller) = launchpad.quoteSellExactTokens(testToken, tokensToSell);
         uint256 minEthAmount = expectedEthForSeller + 1; // Set min higher than expected
 
-        vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensToSell);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.SlippageExceeded.selector));
         launchpad.sellExactTokens(testToken, tokensToSell, minEthAmount, DEADLINE);
@@ -264,8 +237,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         uint256 treasuryFeesBefore = launchpad.treasuryEthFeesCollected();
 
         vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensToSell);
-        vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
 
         uint256 treasuryFeesAfter = launchpad.treasuryEthFeesCollected();
@@ -282,8 +253,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
         uint256 ethBalanceBefore = alice.balance;
 
-        vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensToSell);
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
 
@@ -307,8 +276,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         (uint256 expectedEthFromSale,,) = launchpad.quoteSellExactTokens(testToken, aliceTokensToSell);
 
         vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), aliceTokensToSell);
-        vm.prank(alice);
         launchpad.sellExactTokens(testToken, aliceTokensToSell, 0, DEADLINE);
 
         TokenState memory stateAfter = launchpad.getTokenState(testToken);
@@ -324,8 +291,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         assertEq(stateBefore.releasedSupply, allTokens);
 
-        vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), allTokens);
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, allTokens, 0, DEADLINE);
 
@@ -345,8 +310,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         assertTrue(stateBefore.ethCollected > 0);
 
         // Now sell the remaining tokens
-        vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), remainingTokens);
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, remainingTokens, 0, DEADLINE);
 
@@ -378,7 +341,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         uint256 bob1InitialEth = bob1.balance;
         uint256 singleSellAmount = bob1InitialTokens / 4;
 
-        IERC20(testToken).approve(address(launchpad), type(uint256).max);
         for (uint256 i = 0; i < numberOfSells; i++) {
             launchpad.sellExactTokens(testToken, singleSellAmount, 0, DEADLINE);
         }
@@ -414,7 +376,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         uint256 bob2InitialEth = bob2.balance;
         uint256 totalSellAmount = singleSellAmount * numberOfSells;
 
-        IERC20(testToken2).approve(address(launchpad), type(uint256).max);
         launchpad.sellExactTokens(testToken2, totalSellAmount, 0, DEADLINE);
 
         uint256 ethFromBigSell = bob2.balance - bob2InitialEth;
@@ -469,17 +430,14 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         // All buyers sell all their tokens
         vm.startPrank(buyer1);
-        IERC20(testToken).approve(address(launchpad), buyer1Tokens);
         launchpad.sellExactTokens(testToken, buyer1Tokens, 0, DEADLINE);
         vm.stopPrank();
 
         vm.startPrank(buyer2);
-        IERC20(testToken).approve(address(launchpad), buyer2Tokens);
         launchpad.sellExactTokens(testToken, buyer2Tokens, 0, DEADLINE);
         vm.stopPrank();
 
         vm.startPrank(buyer3);
-        IERC20(testToken).approve(address(launchpad), buyer3Tokens);
         launchpad.sellExactTokens(testToken, buyer3Tokens, 0, DEADLINE);
         vm.stopPrank();
 
@@ -528,8 +486,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         uint256 ethBalanceBefore = alice.balance;
 
         vm.prank(alice);
-        IERC20(testToken).approve(address(launchpad), tokensOwned);
-        vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensOwned, 0, DEADLINE);
 
         uint256 ethReceived = alice.balance - ethBalanceBefore;
@@ -545,8 +501,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         uint256 bobEthBefore = bob.balance;
 
-        vm.prank(bob);
-        IERC20(testToken).approve(address(launchpad), tokensToSell);
         vm.prank(bob);
         launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
 
