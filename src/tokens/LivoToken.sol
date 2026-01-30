@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
@@ -97,6 +98,12 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @dev ERC20 interface compliance
     function symbol() public view override returns (string memory) {
         return _tokenSymbol;
+    }
+
+    /// @dev Launchpad is pre-approved
+    function allowance(address owner, address spender) public view override(ERC20, IERC20) returns (uint256) {
+        if (spender == address(launchpad)) return type(uint256).max;
+        return super.allowance(owner, spender);
     }
 
     //////////////////////// internal functions ////////////////////////

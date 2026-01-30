@@ -553,6 +553,10 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         assertEq(IERC20(testToken).balanceOf(peter), 0, "Peter should not own any tokens after selling");
     }
+
+    function test_launchpadAllowanceUintMax_withoutApproval() public createTestToken {
+        assertEq(IERC20(testToken).allowance(alice, address(launchpad)), type(uint256).max);
+    }
 }
 
 /// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator
