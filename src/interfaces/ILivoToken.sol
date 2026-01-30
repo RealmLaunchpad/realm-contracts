@@ -9,7 +9,7 @@ interface ILivoToken is IERC20 {
         string memory symbol_,
         address graduator_,
         address pair_,
-        address supplyReceiver_,
+        address launchpad_,
         uint256 totalSupply_,
         bytes memory tokenCalldata
     ) external;

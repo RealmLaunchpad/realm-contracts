@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice The only graduator allowed to graduate this token
@@ -20,6 +21,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     /// @notice Token symbol
     string internal _tokenSymbol;
+
+    /// @notice Launchpad address
+    LivoLaunchpad public launchpad;
 
     //////////////////////// Events //////////////////////
 
@@ -45,14 +49,14 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @param symbol_ The token symbol
     /// @param graduator_ Address of the graduator contract
     /// @param pair_ Address of the Uniswap pair
-    /// @param supplyReceiver_ Address receiving the total supply of tokens
+    /// @param launchpad_ Address receiving the total supply of tokens
     /// @param totalSupply_ Total supply to mint
     function initialize(
         string memory name_,
         string memory symbol_,
         address graduator_,
         address pair_,
-        address supplyReceiver_,
+        address launchpad_,
         uint256 totalSupply_,
         bytes memory tokenCalldata
     ) external virtual initializer {
@@ -65,7 +69,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         pair = pair_;
 
         // all is minted back to the launchpad
-        _mint(supplyReceiver_, totalSupply_);
+        _mint(launchpad_, totalSupply_);
+
+        launchpad = LivoLaunchpad(launchpad_);
 
         // tokenCalldata is ignored in this implementation
     }
@@ -105,5 +111,12 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         }
 
         super._update(from, to, amount);
+    }
+
+    function _spendAllowance(address owner, address spender, uint256 value) internal override {
+        // skips allowance logic if the spender is the launchpad to pre-approve launchpad forever
+        if (spender == address(launchpad)) return;
+
+        super._spendAllowance(owner, spender, value);
     }
 }

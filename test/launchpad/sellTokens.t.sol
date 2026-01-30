@@ -10,6 +10,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
+import {IERC20Errors} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 abstract contract SellTokensTest is LaunchpadBaseTests {
     uint256 constant ONE_ETH_BUY = 1 ether;
@@ -456,7 +457,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         TokenState memory stateAfterBuys = launchpad.getTokenState(testToken);
         uint256 totalCirculatingSupply = stateAfterBuys.releasedSupply;
-        uint256 launchpadBalanceAfterBuys = IERC20(testToken).balanceOf(address(launchpad));
 
         // Verify tokens are distributed to buyers
         uint256 buyer1Tokens = IERC20(testToken).balanceOf(buyer1);
@@ -552,6 +552,52 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         uint256 bobEthReceived = bob.balance - bobEthBefore;
         assertGt(bobEthReceived, 0, "Should receive non-zero ETH when selling reasonable amount");
     }
+
+    function test_launchpadCanTransferFromWithoutApproval() public createTestToken {
+        // alice buys some tokens
+        vm.prank(alice);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+
+        uint256 tokensOwned = IERC20(testToken).balanceOf(alice);
+        assertGt(tokensOwned, 0, "Alice should own tokens");
+
+        vm.prank(address(launchpad));
+        IERC20(testToken).transferFrom(alice, bob, tokensOwned);
+
+        assertEq(IERC20(testToken).balanceOf(bob), tokensOwned, "Bob should receive tokens");
+    }
+
+    function test_attackerCannotTransferFromWithoutApproval() public createTestToken {
+        // alice buys some tokens
+        vm.prank(alice);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+
+        uint256 tokensOwned = IERC20(testToken).balanceOf(alice);
+        assertGt(tokensOwned, 0, "Alice should own tokens");
+
+        vm.prank(address(bob));
+        vm.expectPartialRevert(IERC20Errors.ERC20InsufficientAllowance.selector);
+        IERC20(testToken).transferFrom(alice, bob, tokensOwned);
+
+        assertEq(IERC20(testToken).balanceOf(bob), 0, "Bob should not have tokens");
+    }
+
+    function test_buyerCanSellWithoutPreApprovingLaunchpad() public createTestToken {
+        address peter = makeAddr("peter");
+        deal(peter, 10 ether);
+
+        vm.prank(peter);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+
+        uint256 tokensOwned = IERC20(testToken).balanceOf(peter);
+        assertGt(tokensOwned, 0, "Peter should own tokens");
+
+        // Peter sells tokens without pre-approving the launchpad
+        vm.prank(peter);
+        launchpad.sellExactTokens(testToken, tokensOwned, 0, DEADLINE);
+
+        assertEq(IERC20(testToken).balanceOf(peter), 0, "Peter should not own any tokens after selling");
+    }
 }
 
 /// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator
@@ -567,3 +613,5 @@ contract SellTokenTests_Univ4 is SellTokensTest, LaunchpadBaseTestsWithUniv4Grad
         super.setUp();
     }
 }
+
+/// todo implement these with tax-tokens
