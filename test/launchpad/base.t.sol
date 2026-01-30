@@ -156,7 +156,7 @@ contract LaunchpadBaseTests is Test {
         vm.stopPrank();
     }
 
-    modifier createTestToken() {
+    modifier createTestToken() virtual {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
         testToken = launchpad.createToken(
