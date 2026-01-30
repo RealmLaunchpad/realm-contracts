@@ -26,12 +26,12 @@ error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
 
 ##################### Deployed addresses (sepolia) #######################
-launchpad := "0xF4A2C2403E7741d5A848071b34F5f3580089675E"
+launchpad := "0x356DF589B73f7a097F9029be3d387f3548478927"
 
-implementation := "0x05D8A0B1f49F6F04bd16eCC64fEeBd3e5ed78bFA"
-bondingCurve := "0x95e2C672aeeA71aE7a1b2058CF9de63B7261C7ca"
-graduatorV2 := "0x1EeF7801e9d6837605FdeaBBDd2F8c47e56D8eFB"
-graduatorV4 := "0xbE37359eE735886a651FccfCa0e7867bb6c3Bb72"
+implementation := "0xfb536Abb27f52DBb62DD91f789C6B9a12C48441b"
+bondingCurve := "0x854459b98Ef631A5D154761da705862c11AA10fc"
+graduatorV2 := "0x544CC1E598e267975a7B50C87e6A20c2E62eF190"
+graduatorV4 := "0xb22b28faf008C07b070311E8B9018a77c62475e1"
 
 # ##################### Create tokens #######################
 
