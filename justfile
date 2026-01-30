@@ -26,20 +26,20 @@ error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
 
 ##################### Deployed addresses (sepolia) #######################
-launchpad := "0xd8861EBe9Ee353c4Dcaed86C7B90d354f064cc8D"
+launchpad := "0xF4A2C2403E7741d5A848071b34F5f3580089675E"
 
-implementation := "0xA55FA059B9848490E1009EA6161e5c03c9fD69dB"
-bondingCurve := "0x9D305cd3A9C39d8f4A7D45DE30F420B1eBD38E52"
-graduatorV2 := "0x913412A11a33ad2381B08Dc287be476878d4a5b7"
-graduatorV4 := "0x035693207fb473358b41A81FF09445dB1f3889D1"
+implementation := "0x05D8A0B1f49F6F04bd16eCC64fEeBd3e5ed78bFA"
+bondingCurve := "0x95e2C672aeeA71aE7a1b2058CF9de63B7261C7ca"
+graduatorV2 := "0x1EeF7801e9d6837605FdeaBBDd2F8c47e56D8eFB"
+graduatorV4 := "0xbE37359eE735886a651FccfCa0e7867bb6c3Bb72"
 
 # ##################### Create tokens #######################
 
 create-token-v2 tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,bytes32)" {{tokenName}} {{uppercase(tokenName)}} {{implementation}} {{bondingCurve}} {{graduatorV2}} 0x1230000000000000000000000000000000000000000000000000000000000000
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{implementation}} {{bondingCurve}} {{graduatorV2}} $LIVODEVADDRESS 0x1230000000000000000000000000000000000000000000000000000000000000 "0x"
 
 create-token-v4 tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,bytes32)" {{tokenName}} {{uppercase(tokenName)}} {{implementation}} {{bondingCurve}} {{graduatorV4}} 0x1230000000000000000000000000000000000000000000000000000000000001
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{implementation}} {{bondingCurve}} {{graduatorV4}} $LIVODEVADDRESS 0x1230000000000000000000000000000000000000000000000000000000000001
 
 ####################### Buys / sells #################################
 
