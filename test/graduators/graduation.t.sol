@@ -72,9 +72,6 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         uint256 tokenBalance = IERC20(testToken).balanceOf(buyer);
 
         vm.prank(buyer);
-        IERC20(testToken).approve(address(launchpad), tokenBalance);
-
-        vm.prank(buyer);
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.AlreadyGraduated.selector));
         launchpad.sellExactTokens(testToken, tokenBalance, 0, DEADLINE);
     }

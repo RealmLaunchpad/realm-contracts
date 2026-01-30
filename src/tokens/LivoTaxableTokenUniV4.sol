@@ -62,8 +62,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
     //////////////////////// potentially immutable //////////////////
 
-    LivoLaunchpad public launchpad;
-
     /// @notice Sell tax rate in basis points (set during initialization, cannot be changed)
     uint16 public sellTaxBps;
 
@@ -100,7 +98,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @param symbol_ The token symbol
     /// @param graduator_ Address of the graduator contract
     /// @param pair_ Address of the pool manager for V4
-    /// @param supplyReceiver_ Address receiving the total supply of tokens (launchpad)
+    /// @param launchpad_ Address receiving the total supply of tokens (launchpad)
     /// @param totalSupply_ Total supply to mint
     /// @param tokenCalldata Extended tax config: (sellTaxBps, taxDurationSeconds)
     function initialize(
@@ -108,16 +106,13 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         string memory symbol_,
         address graduator_,
         address pair_,
-        address supplyReceiver_,
+        address launchpad_,
         uint256 totalSupply_,
         bytes memory tokenCalldata
     ) external override(ILivoToken, LivoToken) initializer {
         require(graduator_ != address(0), InvalidGraduator());
-        if (tokenCalldata.length == 0) revert InvalidTaxCalldata();
         require(pair_ == address(UNIV4_POOL_MANAGER), "Invalid pair address");
-
-        // Decode and validate tax configuration (scoped to limit stack)
-        _initializeTaxConfig(tokenCalldata);
+        if (tokenCalldata.length == 0) revert InvalidTaxCalldata();
 
         // storage variables inherited from LivoToken
         _tokenName = name_;
@@ -125,10 +120,13 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         graduator = graduator_;
         pair = pair_;
 
-        launchpad = LivoLaunchpad(supplyReceiver_);
+        // Decode and validate tax configuration (scoped to limit stack)
+        _initializeTaxConfig(tokenCalldata);
 
         // all is minted back to the launchpad
-        _mint(supplyReceiver_, totalSupply_);
+        _mint(launchpad_, totalSupply_);
+
+        launchpad = LivoLaunchpad(launchpad_);
     }
 
     function getTaxConfig() external view returns (TaxConfig memory config) {
@@ -151,6 +149,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         // Validate tax rates
         if (_sellTaxBps > MAX_TAX_BPS) revert InvalidTaxRate(_sellTaxBps);
         if (_taxDurationSeconds > MAX_TAX_DURATION_SECONDS) revert InvalidTaxDuration();
+        if ((_sellTaxBps == 0) && (_taxDurationSeconds == 0)) revert InvalidTaxCalldata();
 
         // Store tax configuration
         sellTaxBps = _sellTaxBps;

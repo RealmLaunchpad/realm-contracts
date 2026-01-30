@@ -25,6 +25,10 @@ import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IA
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
+import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
 interface ILivoGraduatorWithFees is ILivoGraduator {
     function collectEthFees(address[] calldata tokens, uint256[] calldata positionIndexes) external;
@@ -42,14 +46,14 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     address testToken1;
     address testToken2;
 
-    function setUp() public override {
+    function setUp() public virtual override {
         super.setUp();
 
         graduatorWithFees = ILivoGraduatorWithFees(address(graduator));
         deal(buyer, 10 ether);
     }
 
-    modifier createAndGraduateToken() {
+    modifier createAndGraduateToken() virtual {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
         testToken = launchpad.createToken(
@@ -60,7 +64,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         _;
     }
 
-    modifier twoGraduatedTokensWithBuys(uint256 buyAmount) {
+    modifier twoGraduatedTokensWithBuys(uint256 buyAmount) virtual {
         vm.startPrank(creator);
         testToken1 = launchpad.createToken(
             "TestToken1",
@@ -112,8 +116,8 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     }
 }
 
-/// @notice Tests for Uniswap V4 graduator functionality
-contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
+/// @notice Abstract base class for Uniswap V4 claim fees tests
+abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
     function test_rightPositionIdAfterGraduation() public createAndGraduateToken {
         uint256 positionId = LivoGraduatorUniswapV4(payable(address(graduator))).positionIds(testToken, 0);
 
@@ -454,7 +458,8 @@ contract BaseUniswapV4ClaimFees is BaseUniswapV4FeesTests {
     }
 }
 
-contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
+/// @notice Abstract base class for Uniswap V4 claim fees view function tests
+abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests {
     function test_viewFunction_positionId() public createAndGraduateToken {
         uint256 positionId = graduatorWithFees.positionIds(testToken, 0);
 
@@ -703,5 +708,201 @@ contract UniswapV4ClaimFeesViewFunctions is BaseUniswapV4FeesTests {
         // Alice should be able to claim fees
         vm.prank(alice);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
+    }
+}
+
+// ============================================
+// Concrete Implementations for Normal Tokens
+// ============================================
+
+/// @notice Concrete test contract for claim fees with normal (non-tax) tokens
+contract BaseUniswapV4ClaimFees_NormalToken is BaseUniswapV4ClaimFeesBase {
+    function setUp() public override {
+        super.setUp();
+        // Uses default implementation (livoToken) from base
+    }
+}
+
+/// @notice Concrete test contract for claim fees view functions with normal (non-tax) tokens
+contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFunctionsBase {
+    function setUp() public override {
+        super.setUp();
+        // Uses default implementation (livoToken) from base
+    }
+}
+
+// ============================================
+// Concrete Implementations for Tax Tokens
+// ============================================
+
+/// @notice Concrete test contract for claim fees with tax tokens
+contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV4ClaimFeesBase {
+    function setUp() public override(TaxTokenUniV4BaseTests, BaseUniswapV4FeesTests) {
+        super.setUp();
+        // Override implementation for this test suite to use tax tokens
+        implementation = ILivoToken(address(taxTokenImpl));
+    }
+
+    // Use TaxTokenUniV4BaseTests implementation of _swap
+    function _swap(
+        address caller,
+        address token,
+        uint256 amountIn,
+        uint256 minAmountOut,
+        bool isBuy,
+        bool expectSuccess
+    ) internal override(BaseUniswapV4GraduationTests, TaxTokenUniV4BaseTests) {
+        TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
+    }
+
+    /// @notice Override createAndGraduateToken modifier to provide tokenCalldata for tax configuration
+    modifier createAndGraduateToken() override {
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+
+        vm.prank(creator);
+        testToken = launchpad.createToken(
+            "TestToken",
+            "TEST",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            tokenCalldata
+        );
+
+        _graduateToken();
+        _;
+    }
+
+    /// @notice Override twoGraduatedTokensWithBuys modifier for tax tokens
+    modifier twoGraduatedTokensWithBuys(uint256 buyAmount) override {
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+
+        vm.startPrank(creator);
+        testToken1 = launchpad.createToken(
+            "TestToken1",
+            "TEST1",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            tokenCalldata
+        );
+        testToken2 = launchpad.createToken(
+            "TestToken2",
+            "TEST2",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            tokenCalldata
+        );
+        vm.stopPrank();
+
+        // graduate token1 and token2
+        uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
+        uint256 buyAmount2 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
+        vm.deal(buyer, 100 ether);
+        vm.startPrank(buyer);
+        launchpad.buyTokensWithExactEth{value: buyAmount1}(testToken1, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: buyAmount2}(testToken2, 0, DEADLINE);
+
+        assertTrue(launchpad.getTokenState(testToken1).graduated, "Token1 should be graduated");
+        assertTrue(launchpad.getTokenState(testToken2).graduated, "Token2 should be graduated");
+
+        // buy from token1 and token2 from uniswap
+        _swap(buyer, testToken1, buyAmount, 1, true, true);
+        _swap(buyer, testToken2, buyAmount, 1, true, true);
+        vm.stopPrank();
+        _;
+    }
+}
+
+/// @notice Concrete test contract for claim fees view functions with tax tokens
+contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, UniswapV4ClaimFeesViewFunctionsBase {
+    function setUp() public override(TaxTokenUniV4BaseTests, BaseUniswapV4FeesTests) {
+        super.setUp();
+        // Override implementation for this test suite to use tax tokens
+        implementation = ILivoToken(address(taxTokenImpl));
+    }
+
+    // Use TaxTokenUniV4BaseTests implementation of _swap
+    function _swap(
+        address caller,
+        address token,
+        uint256 amountIn,
+        uint256 minAmountOut,
+        bool isBuy,
+        bool expectSuccess
+    ) internal override(BaseUniswapV4GraduationTests, TaxTokenUniV4BaseTests) {
+        TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
+    }
+
+    /// @notice Override createAndGraduateToken modifier to provide tokenCalldata for tax configuration
+    modifier createAndGraduateToken() override {
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+
+        vm.prank(creator);
+        testToken = launchpad.createToken(
+            "TestToken",
+            "TEST",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            tokenCalldata
+        );
+
+        _graduateToken();
+        _;
+    }
+
+    /// @notice Override twoGraduatedTokensWithBuys modifier for tax tokens
+    modifier twoGraduatedTokensWithBuys(uint256 buyAmount) override {
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+
+        vm.startPrank(creator);
+        testToken1 = launchpad.createToken(
+            "TestToken1",
+            "TEST1",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            tokenCalldata
+        );
+        testToken2 = launchpad.createToken(
+            "TestToken2",
+            "TEST2",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            tokenCalldata
+        );
+        vm.stopPrank();
+
+        // graduate token1 and token2
+        uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
+        uint256 buyAmount2 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
+        vm.deal(buyer, 100 ether);
+        vm.startPrank(buyer);
+        launchpad.buyTokensWithExactEth{value: buyAmount1}(testToken1, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: buyAmount2}(testToken2, 0, DEADLINE);
+
+        assertTrue(launchpad.getTokenState(testToken1).graduated, "Token1 should be graduated");
+        assertTrue(launchpad.getTokenState(testToken2).graduated, "Token2 should be graduated");
+
+        // buy from token1 and token2 from uniswap
+        _swap(buyer, testToken1, buyAmount, 1, true, true);
+        _swap(buyer, testToken2, buyAmount, 1, true, true);
+        vm.stopPrank();
+        _;
     }
 }
