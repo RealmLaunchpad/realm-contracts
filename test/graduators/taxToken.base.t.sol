@@ -103,7 +103,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         uint256 minAmountOut,
         bool isBuy,
         bool expectSuccess
-    ) internal override {
+    ) internal virtual override {
         vm.startPrank(caller);
         IERC20(token).approve(address(permit2Address), type(uint256).max);
         IPermit2(permit2Address).approve(address(token), universalRouter, type(uint160).max, type(uint48).max);

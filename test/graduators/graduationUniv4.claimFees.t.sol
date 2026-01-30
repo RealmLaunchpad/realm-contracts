@@ -28,6 +28,7 @@ import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
+import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
 interface ILivoGraduatorWithFees is ILivoGraduator {
     function collectEthFees(address[] calldata tokens, uint256[] calldata positionIndexes) external;
@@ -735,29 +736,23 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
 // ============================================
 
 /// @notice Concrete test contract for claim fees with tax tokens
-contract BaseUniswapV4ClaimFees_TaxToken is BaseUniswapV4ClaimFeesBase {
-    LivoTaxableTokenUniV4 public taxTokenImpl;
-    uint16 public constant DEFAULT_SELL_TAX_BPS = 500;
-    uint40 public constant DEFAULT_TAX_DURATION = 14 days;
-
-    function setUp() public override {
+contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV4ClaimFeesBase {
+    function setUp() public override(TaxTokenUniV4BaseTests, BaseUniswapV4FeesTests) {
         super.setUp();
-
-        // Deploy and whitelist tax token implementation
-        vm.startPrank(admin);
-        taxTokenImpl = new LivoTaxableTokenUniV4();
-        launchpad.whitelistComponents(
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduatorV4),
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
-        );
-        vm.stopPrank();
-
-        // Override implementation for this test suite
+        // Override implementation for this test suite to use tax tokens
         implementation = ILivoToken(address(taxTokenImpl));
+    }
+
+    // Use TaxTokenUniV4BaseTests implementation of _swap
+    function _swap(
+        address caller,
+        address token,
+        uint256 amountIn,
+        uint256 minAmountOut,
+        bool isBuy,
+        bool expectSuccess
+    ) internal override(BaseUniswapV4GraduationTests, TaxTokenUniV4BaseTests) {
+        TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
     }
 
     /// @notice Override createAndGraduateToken modifier to provide tokenCalldata for tax configuration
@@ -823,96 +818,27 @@ contract BaseUniswapV4ClaimFees_TaxToken is BaseUniswapV4ClaimFeesBase {
         _swap(buyer, testToken2, buyAmount, 1, true, true);
         vm.stopPrank();
         _;
-    }
-
-    /// @notice Override _swap to use tax hook (same implementation as in graduation tests)
-    function _swap(
-        address caller,
-        address token,
-        uint256 amountIn,
-        uint256 minAmountOut,
-        bool isBuy,
-        bool expectSuccess
-    ) internal override {
-        vm.startPrank(caller);
-        IERC20(token).approve(address(permit2Address), type(uint256).max);
-        IPermit2(permit2Address).approve(address(token), universalRouter, type(uint160).max, type(uint48).max);
-
-        // Use tax hook address for pools created with tax graduator
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(0)), // native ETH
-            currency1: Currency.wrap(address(token)),
-            fee: lpFee,
-            tickSpacing: tickSpacing,
-            hooks: IHooks(DeploymentAddressesMainnet.LIVO_SWAP_HOOK)
-        });
-
-        bytes[] memory params = new bytes[](3);
-
-        // First parameter: swap configuration
-        params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
-                poolKey: key,
-                zeroForOne: isBuy,
-                amountIn: uint128(amountIn),
-                amountOutMinimum: uint128(minAmountOut),
-                hookData: bytes("")
-            })
-        );
-
-        // Encode the Universal Router command
-        uint256 V4_SWAP = 0x10;
-        bytes memory commands = abi.encodePacked(uint8(V4_SWAP));
-        bytes[] memory inputs = new bytes[](1);
-
-        // Encode V4Router actions
-        bytes memory actions =
-            abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL));
-
-        // the token we are getting rid of
-        Currency tokenIn = isBuy ? key.currency0 : key.currency1;
-        params[1] = abi.encode(tokenIn, amountIn);
-        // the token we are receiving
-        Currency tokenOut = isBuy ? key.currency1 : key.currency0;
-        params[2] = abi.encode(tokenOut, minAmountOut);
-
-        // Combine actions and params into inputs
-        inputs[0] = abi.encode(actions, params);
-
-        if (!expectSuccess) {
-            vm.expectRevert();
-        }
-        // Execute the swap
-        uint256 valueIn = isBuy ? amountIn : 0;
-        IUniversalRouter(universalRouter).execute{value: valueIn}(commands, inputs, block.timestamp);
-        vm.stopPrank();
     }
 }
 
 /// @notice Concrete test contract for claim fees view functions with tax tokens
-contract UniswapV4ClaimFeesViewFunctions_TaxToken is UniswapV4ClaimFeesViewFunctionsBase {
-    LivoTaxableTokenUniV4 public taxTokenImpl;
-    uint16 public constant DEFAULT_SELL_TAX_BPS = 500;
-    uint40 public constant DEFAULT_TAX_DURATION = 14 days;
-
-    function setUp() public override {
+contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, UniswapV4ClaimFeesViewFunctionsBase {
+    function setUp() public override(TaxTokenUniV4BaseTests, BaseUniswapV4FeesTests) {
         super.setUp();
-
-        // Deploy and whitelist tax token implementation
-        vm.startPrank(admin);
-        taxTokenImpl = new LivoTaxableTokenUniV4();
-        launchpad.whitelistComponents(
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduatorV4),
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
-        );
-        vm.stopPrank();
-
-        // Override implementation for this test suite
+        // Override implementation for this test suite to use tax tokens
         implementation = ILivoToken(address(taxTokenImpl));
+    }
+
+    // Use TaxTokenUniV4BaseTests implementation of _swap
+    function _swap(
+        address caller,
+        address token,
+        uint256 amountIn,
+        uint256 minAmountOut,
+        bool isBuy,
+        bool expectSuccess
+    ) internal override(BaseUniswapV4GraduationTests, TaxTokenUniV4BaseTests) {
+        TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
     }
 
     /// @notice Override createAndGraduateToken modifier to provide tokenCalldata for tax configuration
@@ -978,68 +904,5 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is UniswapV4ClaimFeesViewFunct
         _swap(buyer, testToken2, buyAmount, 1, true, true);
         vm.stopPrank();
         _;
-    }
-
-    /// @notice Override _swap to use tax hook
-    function _swap(
-        address caller,
-        address token,
-        uint256 amountIn,
-        uint256 minAmountOut,
-        bool isBuy,
-        bool expectSuccess
-    ) internal override {
-        vm.startPrank(caller);
-        IERC20(token).approve(address(permit2Address), type(uint256).max);
-        IPermit2(permit2Address).approve(address(token), universalRouter, type(uint160).max, type(uint48).max);
-
-        // Use tax hook address for pools created with tax graduator
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(0)), // native ETH
-            currency1: Currency.wrap(address(token)),
-            fee: lpFee,
-            tickSpacing: tickSpacing,
-            hooks: IHooks(DeploymentAddressesMainnet.LIVO_SWAP_HOOK)
-        });
-
-        bytes[] memory params = new bytes[](3);
-
-        // First parameter: swap configuration
-        params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
-                poolKey: key,
-                zeroForOne: isBuy,
-                amountIn: uint128(amountIn),
-                amountOutMinimum: uint128(minAmountOut),
-                hookData: bytes("")
-            })
-        );
-
-        // Encode the Universal Router command
-        uint256 V4_SWAP = 0x10;
-        bytes memory commands = abi.encodePacked(uint8(V4_SWAP));
-        bytes[] memory inputs = new bytes[](1);
-
-        // Encode V4Router actions
-        bytes memory actions =
-            abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL));
-
-        // the token we are getting rid of
-        Currency tokenIn = isBuy ? key.currency0 : key.currency1;
-        params[1] = abi.encode(tokenIn, amountIn);
-        // the token we are receiving
-        Currency tokenOut = isBuy ? key.currency1 : key.currency0;
-        params[2] = abi.encode(tokenOut, minAmountOut);
-
-        // Combine actions and params into inputs
-        inputs[0] = abi.encode(actions, params);
-
-        if (!expectSuccess) {
-            vm.expectRevert();
-        }
-        // Execute the swap
-        uint256 valueIn = isBuy ? amountIn : 0;
-        IUniversalRouter(universalRouter).execute{value: valueIn}(commands, inputs, block.timestamp);
-        vm.stopPrank();
     }
 }
