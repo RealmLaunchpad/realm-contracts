@@ -878,10 +878,7 @@ contract UniswapV4GraduationTests_TaxToken is UniswapV4GraduationTestsBase {
 
     /// @notice Override createTestToken modifier to provide tokenCalldata for tax configuration
     modifier createTestToken() override {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(
-            DEFAULT_SELL_TAX_BPS,
-            DEFAULT_TAX_DURATION
-        );
+        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
 
         vm.prank(creator);
         testToken = launchpad.createToken(
@@ -960,7 +957,7 @@ contract UniswapV4GraduationTests_TaxToken is UniswapV4GraduationTestsBase {
         vm.stopPrank();
     }
 
-        /// @notice test that after graduating, all the eth in the liquidity pool can be extracted again by selling all token supply
+    /// @notice test that after graduating, all the eth in the liquidity pool can be extracted again by selling all token supply
     function test_sellingFromUniv4AfterGraduation_sellFullSupply_whereIsTheEth() public override createTestToken {
         uint256 poolBalanceBefore = address(poolManager).balance;
         _graduateToken();
@@ -1005,5 +1002,4 @@ contract UniswapV4GraduationTests_TaxToken is UniswapV4GraduationTestsBase {
         uint256 nonRecoverableEth = address(poolManager).balance - poolBalanceBefore;
         assertLtDecimal(nonRecoverableEth, 0.105 ether, 18, "Non recoverable ether from pool manager is too large");
     }
-
 }
