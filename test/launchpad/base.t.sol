@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import "forge-std/Test.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
@@ -16,10 +17,16 @@ import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 contract LaunchpadBaseTests is Test {
     LivoLaunchpad public launchpad;
-    LivoToken public implementation;
+
+    LivoToken public livoToken;
+    LivoTaxableTokenUniV4 public livoTaxToken;
+
+    ILivoToken public implementation;
+
     ConstantProductBondingCurve public bondingCurve;
 
     ILivoGraduator public graduator;
@@ -84,7 +91,12 @@ contract LaunchpadBaseTests is Test {
         vm.deal(bob, INITIAL_ETH_BALANCE);
 
         vm.startPrank(admin);
-        implementation = new LivoToken();
+        livoToken = new LivoToken();
+        livoTaxToken = new LivoTaxableTokenUniV4();
+
+        // by default use the normal livo token
+        implementation = livoToken;
+
         launchpad = new LivoLaunchpad(treasury);
         bondingCurve = new ConstantProductBondingCurve();
 
@@ -126,6 +138,16 @@ contract LaunchpadBaseTests is Test {
             address(implementation),
             address(bondingCurve),
             address(graduatorV4),
+            GRADUATION_THRESHOLD,
+            MAX_THRESHOLD_EXCESS,
+            GRADUATION_FEE
+        );
+
+        // Whitelist tax-token implementation with graduatorV4 (which already has the right hook)
+        launchpad.whitelistComponents(
+            address(livoTaxToken),
+            address(bondingCurve),
+            address(graduatorV4), // includes LivoSwapHook by default
             GRADUATION_THRESHOLD,
             MAX_THRESHOLD_EXCESS,
             GRADUATION_FEE
@@ -180,5 +202,14 @@ contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
         super.setUp();
 
         graduator = graduatorV4;
+    }
+}
+
+contract LaunchpadBaseTestsWithUniv4GraduatorTaxableToken is LaunchpadBaseTests {
+    function setUp() public virtual override {
+        super.setUp();
+
+        graduator = graduatorV4;
+        implementation = livoTaxToken;
     }
 }
