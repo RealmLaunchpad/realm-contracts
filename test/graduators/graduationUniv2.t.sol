@@ -199,6 +199,36 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         uint256 totalLpSupply = IERC20(uniswapPair).totalSupply();
         assertApproxEqRel(lpTokensLocked, totalLpSupply, 0.01e18, "Most LP tokens should be locked");
     }
+
+    /// @notice Test that verifies WETH remaining in pool after all tokens are sold is not excessive (≤ 2 WETH)
+    /// @dev Due to Uniswap V2's constant product formula, some WETH will always remain (price approaches zero asymptotically)
+    function test_wethRemainingAfterAllTokensSold() public createTestTokenWithPair {
+        // Graduate the token
+        _graduateToken();
+
+        // Get initial WETH in pool for comparison
+        uint256 wethInPoolBefore = WETH.balanceOf(uniswapPair);
+
+        // Get token balances before selling
+        uint256 creatorBalance = IERC20(testToken).balanceOf(creator);
+        uint256 buyerBalance = IERC20(testToken).balanceOf(buyer);
+
+        // Sell all tokens from creator back to the pool
+        if (creatorBalance > 0) {
+            _swapSell(creator, testToken, creatorBalance, 0);
+        }
+
+        // Sell all tokens from buyer back to the pool
+        if (buyerBalance > 0) {
+            _swapSell(buyer, testToken, buyerBalance, 0);
+        }
+
+        // Get remaining WETH in the pool
+        uint256 wethRemaining = WETH.balanceOf(uniswapPair);
+
+        // unfortunately, as the supply deployed is roughly 20% of the total supply, when all the supply is sold, roughly 20% of the liquidity added as WETH (~7.5 WETH) will get stuck (1.5 ETH)
+        assertLe(wethRemaining, 1.5e18, "WETH remaining in pool should not exceed 1.5 WETH after all tokens sold");
+    }
 }
 
 contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
