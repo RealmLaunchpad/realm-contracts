@@ -14,7 +14,7 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 interface ILivoGraduatorWithFees is ILivoGraduator {
     function collectEthFees(address[] calldata tokens, uint256[] calldata positionIndexes) external;
     function positionIds(address token, uint256 positionIndex) external view returns (uint256);
-    function getClaimableFees(address[] calldata tokens, uint256 positionIndex)
+    function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes)
         external
         view
         returns (uint256[] memory creatorFees);
@@ -28,6 +28,12 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function setUp() public override {
         super.setUp();
         graduatorWithFees = ILivoGraduatorWithFees(address(graduator));
+    }
+
+    function _singleElementArray(uint256 value) internal pure returns (uint256[] memory) {
+        uint256[] memory arr = new uint256[](1);
+        arr[0] = value;
+        return arr;
     }
 
     /// @notice Helper to collect LP fees from a single token
@@ -571,7 +577,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Verify fees accumulated
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, 0);
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
         assertGt(fees[0], 0, "Fees should have accumulated");
         assertApproxEqAbs(fees[0], buyAmount / 200, 1, "Expected ~0.5% of buy amount");
 
@@ -620,7 +626,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Verify LP fees accumulated from buy (in ETH, not WETH)
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory claimableFees = graduatorWithFees.getClaimableFees(tokens, 0);
+        uint256[] memory claimableFees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
         assertApproxEqAbs(claimableFees[0], buyAmount / 200, 5, "LP fees should be ~0.5% of buy amount in ETH");
 
         // Perform sell swap during active tax period
@@ -761,8 +767,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees0 = graduatorWithFees.getClaimableFees(tokens, 0);
-        uint256[] memory fees1 = graduatorWithFees.getClaimableFees(tokens, 1);
+        uint256[] memory fees0 = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
+        uint256[] memory fees1 = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(1));
 
         uint256 totalClaimableFees = fees0[0] + fees1[0];
         assertGt(fees0[0], 0, "Position 0 should have fees");

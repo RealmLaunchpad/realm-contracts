@@ -333,18 +333,25 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice Returns the claimable ETH fees for each token in the array
     /// @dev For each amount in creatorEthFees, the treasury can expect the same amount as well
     /// @param tokens Array of token addresses
-    /// @param positionIndex Index of the position to check for each token. Use 0 as default, as it collects the majority of the fees
-    /// @return creatorEthFees Array of claimable ETH fees for token owners
-    function getClaimableFees(address[] calldata tokens, uint256 positionIndex)
+    /// @param positionIndexes Array of position indexes to accumulate fees from. PositionIndex 0 collects the majority of the fees
+    /// @return creatorEthFees Array of claimable ETH fees from each token from the tokens array
+    function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes)
         external
         view
         returns (uint256[] memory creatorEthFees)
     {
-        uint256 len = tokens.length;
-        creatorEthFees = new uint256[](len);
+        uint256 nTokens = tokens.length;
+        uint256 nPositions = positionIndexes.length;
 
-        for (uint256 i = 0; i < len; i++) {
-            creatorEthFees[i] = _viewClaimableEthFees(tokens[i], positionIndex);
+        require(1 <= nPositions && nPositions <= 2, InvalidPositionIndexes());
+
+        creatorEthFees = new uint256[](nTokens);
+
+        for (uint256 i = 0; i < nTokens; i++) {
+            for (uint256 posIndex = 0; posIndex < nPositions; posIndex++) {
+                require(positionIndexes[posIndex] < 2, InvalidPositionIndex());
+                creatorEthFees[i] += _viewClaimableEthFees(tokens[i], positionIndexes[posIndex]);
+            }
         }
     }
 
