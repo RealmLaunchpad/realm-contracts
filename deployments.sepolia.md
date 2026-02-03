@@ -2,23 +2,19 @@
 
 ## Livo
 
-| **Name**                   | **Address**                                  |
-| -------------------------- | -------------------------------------------- |
-| **Launchpad**              |                                              |
-| LivoToken (impl)           | `0x05D8A0B1f49F6F04bd16eCC64fEeBd3e5ed78bFA` |
-| LivoTaxToken (impl)        | `0x23355c2fAf5c2B7F477B796c8e2f27cc17c989b9` |
-| LivoLaunchpad              | `0xF4A2C2403E7741d5A848071b34F5f3580089675E` |
-|                            |
-| **Bonding Curves**         |
-| CosntantProductCurve       | `0x95e2C672aeeA71aE7a1b2058CF9de63B7261C7ca` |
-|                            |
-| **Graduators**             |
-| LivoGraduatorUniswapV2     | `0x1EeF7801e9d6837605FdeaBBDd2F8c47e56D8eFB` |
-| LivoGraduatorUniswapV4     | `0xbE37359eE735886a651FccfCa0e7867bb6c3Bb72` |
-| LiquidityLockUniv4WithFees | `0x53271607E6ef41b089c9553d6a4d92096cd9fF92` |
-|                            |
-| **Hooks**                  |                                              |
-| LivoSwapHook               | `0x10EE2b93Dd3b583D34d321d20A6c5Ccc1Eba40C4` |
+| Contract                    | Address                                      |
+| --------------------------- | -------------------------------------------- |
+| LivoToken                   | `0xfb536Abb27f52DBb62DD91f789C6B9a12C48441b` |
+| ConstantProductBondingCurve | `0x854459b98Ef631A5D154761da705862c11AA10fc` |
+| LivoLaunchpad               | `0x356DF589B73f7a097F9029be3d387f3548478927` |
+| LivoGraduatorUniswapV2      | `0x544CC1E598e267975a7B50C87e6A20c2E62eF190` |
+| LiquidityLockUniv4WithFees  | `0x5f51Ef55F4DC99BbBAa7cBe0b901E7fBcC29A73c` |
+| LivoGraduatorUniswapV4      | `0xb22b28faf008C07b070311E8B9018a77c62475e1` |
+| LivoTaxableTokenUniV4       | `0x91a946d9d0924265eCd89C6B91183c57F7ba0E69` |
+
+| Contract     | Address                                      |
+| ------------ | -------------------------------------------- |
+| LivoSwapHook | `0x10EE2b93Dd3b583D34d321d20A6c5Ccc1Eba40C4` |
 
 ## Accounts
 
