@@ -21,7 +21,6 @@ import {IUniversalRouter} from "../../src/interfaces/IUniswapV4UniversalRouter.s
   TOKEN_ADDRESS=0x... IS_BUY=false AMOUNT_IN=1000000000000000000 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --broadcast
 */
 
-
 /// @title Uniswap V4 Swap Simulations for Sepolia
 /// @notice Script to perform direct Uniswap V4 swaps (buy/sell) on Sepolia testnet
 /// @dev Uses environment variables for configuration. Assumes token is already graduated.
@@ -69,12 +68,13 @@ contract UniswapV4SwapSimulations is Script {
         // For sells, approve token to Permit2 and Universal Router
         if (!isBuy) {
             IERC20(token).approve(DeploymentAddressesSepolia.PERMIT2, type(uint256).max);
-            IPermit2(DeploymentAddressesSepolia.PERMIT2).approve(
-                address(token),
-                DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER,
-                type(uint160).max,
-                type(uint48).max
-            );
+            IPermit2(DeploymentAddressesSepolia.PERMIT2)
+                .approve(
+                    address(token),
+                    DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER,
+                    type(uint160).max,
+                    type(uint48).max
+                );
         }
 
         // Construct pool key
