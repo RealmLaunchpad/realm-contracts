@@ -180,7 +180,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice Initializes a Uniswap V4 pool for the token
     /// @param tokenAddress Address of the token
     /// @return Address of the pool manager (same for all tokens, but to comply with the ILivoGraduator interface)
-    function initializePair(address tokenAddress) external override onlyLaunchpad returns (address) {
+    function initialize(address tokenAddress) external override onlyLaunchpad returns (address) {
         PoolKey memory pool = _getPoolKey(tokenAddress);
 
         // this sets the price even if there is no liquidity yet

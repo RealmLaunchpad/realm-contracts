@@ -61,7 +61,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     /// @notice Creates a Uniswap V2 pair for the token to reserve the pair and know the pair address
     /// @param tokenAddress Address of the token
     /// @return pair Address of the created Uniswap V2 pair
-    function initializePair(address tokenAddress) external override onlyLaunchpad returns (address pair) {
+    function initialize(address tokenAddress) external override onlyLaunchpad returns (address pair) {
         pair = UNISWAP_FACTORY.createPair(tokenAddress, WETH);
         emit PairInitialized(tokenAddress, pair);
     }
