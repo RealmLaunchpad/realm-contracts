@@ -91,7 +91,7 @@ Implements the pricing formula for token purchases/sales:
 
 Handles graduation to Uniswap V2:
 
-- Creates Uniswap V2 pair at token creation via `initializePair()`
+- Creates Uniswap V2 pair at token creation via `initialize()`
 - Adds liquidity to Uniswap V2 via `graduateToken()`
 - Sends LP tokens to dead address (`0xdEaD`)
 - Handles edge case of ETH donations to pair before graduation preventing graduation DOS
@@ -101,7 +101,7 @@ Handles graduation to Uniswap V2:
 
 Handles graduation to Uniswap V4:
 
-- Initializes Uniswap V4 pool at token creation via `initializePair()`
+- Initializes Uniswap V4 pool at token creation via `initialize()`
 - Adds concentrated liquidity position via `graduateToken()`
 - Locks liquidity NFT in `LiquidityLockUniv4WithFees` contract
 - **Creator ETH fees enabled**

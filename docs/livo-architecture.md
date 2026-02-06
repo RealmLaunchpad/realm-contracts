@@ -90,12 +90,12 @@ When ETH reserves reach graduation threshold:
 
 #### V2 Graduation Path
 - Launchpad calls `graduateToken()` on **LivoGraduatorUniswapV2**
-- Creates **Uniswap V2 Pool** via `initializePair()`
+- Creates **Uniswap V2 Pool** via `initialize()`
 - Adds liquidity and locks LP tokens at dead address
 
 #### V4 Graduation Path
 - Launchpad calls `graduateToken()` on **LivoGraduatorUniswapV4**
-- Creates **Uniswap V4 Pool** via `initializePair()`
+- Creates **Uniswap V4 Pool** via `initialize()`
 - Adds two liquidity positions (balanced + single-sided ETH)
 - Locks LP NFTs in **LiquidityLockUniv4WithFees**
 - **LivoSwapHook** enforces time-limited sell taxes (0-14 days post-graduation)
