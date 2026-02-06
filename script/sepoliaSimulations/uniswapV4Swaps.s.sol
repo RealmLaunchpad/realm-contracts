@@ -15,10 +15,10 @@ import {IUniversalRouter} from "../../src/interfaces/IUniswapV4UniversalRouter.s
 
 /*
   Buy swap:
-  TOKEN_ADDRESS=0x... IS_BUY=true AMOUNT_IN=1000000000000000 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --broadcast
+  TOKEN_ADDRESS=0x... IS_BUY=true AMOUNT_IN=1000000000000000 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
   Sell swap:
-  TOKEN_ADDRESS=0x... IS_BUY=false AMOUNT_IN=1000000000000000000 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --broadcast
+  TOKEN_ADDRESS=0x... IS_BUY=false AMOUNT_IN=1000000000000000000 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 */
 
 /// @title Uniswap V4 Swap Simulations for Sepolia

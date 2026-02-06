@@ -73,6 +73,14 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @notice Timestamp when token graduated (0 if not graduated)
     uint40 public graduationTimestamp;
 
+    //////////////////////// Events //////////////////////
+
+    event LivoTaxableTokenInitialized(
+        uint16 buyTaxBps,
+        uint16 sellTaxBps,
+        uint40 taxDurationSeconds
+    );
+
     //////////////////////// Errors //////////////////////
 
     error InvalidTaxRate(uint16 rate);
@@ -150,6 +158,12 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         if (_sellTaxBps > MAX_TAX_BPS) revert InvalidTaxRate(_sellTaxBps);
         if (_taxDurationSeconds > MAX_TAX_DURATION_SECONDS) revert InvalidTaxDuration();
         if ((_sellTaxBps == 0) && (_taxDurationSeconds == 0)) revert InvalidTaxCalldata();
+
+        emit LivoTaxableTokenInitialized(
+            0, // Buy tax is always 0 in this token implementation
+            _sellTaxBps,
+            _taxDurationSeconds
+        );
 
         // Store tax configuration
         sellTaxBps = _sellTaxBps;
