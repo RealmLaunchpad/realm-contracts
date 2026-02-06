@@ -293,8 +293,6 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         assertTrue(taxInitIndex != type(uint256).max, "LivoTaxableTokenInitialized event not found");
 
         // Assert TokenCreated position < LivoTaxableTokenInitialized position
-        assertTrue(
-            tokenCreatedIndex < taxInitIndex, "TokenCreated must be emitted before LivoTaxableTokenInitialized"
-        );
+        assertTrue(tokenCreatedIndex < taxInitIndex, "TokenCreated must be emitted before LivoTaxableTokenInitialized");
     }
 }

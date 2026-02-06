@@ -75,11 +75,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
     //////////////////////// Events //////////////////////
 
-    event LivoTaxableTokenInitialized(
-        uint16 buyTaxBps,
-        uint16 sellTaxBps,
-        uint40 taxDurationSeconds
-    );
+    event LivoTaxableTokenInitialized(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds);
 
     //////////////////////// Errors //////////////////////
 
