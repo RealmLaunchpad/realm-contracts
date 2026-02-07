@@ -44,3 +44,28 @@ forge verify-contract {{address}} {{contractName}} --compiler-version 0.8.28+com
 ```
 - update addresses in justfile
 - update launchpad address in envio
+```
+
+
+
+# Operation
+
+## Collect graduation & trading fees from launchpad
+
+Any address can collect, but they go automatically to the treasury:
+
+```bash
+cast send {{LAUNCHPAD}} "collectTreasuryFees()" --rpc-url $SEPOLIA_RPC_URL --account livo.dev
+```
+
+## Collect LP fees from uniswap v4
+
+Any address can collect, but they go automatically to the treasury:
+
+```bash
+cast send {{GRADUATORV4}} "sweep()" --rpc-url $SEPOLIA_RPC_URL --account livo.dev
+```
+
+## Whitelisting new components etc
+
+...
