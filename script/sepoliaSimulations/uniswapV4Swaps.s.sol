@@ -65,16 +65,22 @@ contract UniswapV4SwapSimulations is Script {
     /// @param minAmountOut Minimum amount of output token
     /// @param isBuy True for ETH->Token, false for Token->ETH
     function _swap(address token, uint256 amountIn, uint256 minAmountOut, bool isBuy) internal {
-        // For sells, approve token to Permit2 and Universal Router
+        // For sells, approve token to Permit2 and Universal Router (skip if already sufficient)
         if (!isBuy) {
-            IERC20(token).approve(DeploymentAddressesSepolia.PERMIT2, type(uint256).max);
-            IPermit2(DeploymentAddressesSepolia.PERMIT2)
-                .approve(
-                    address(token),
-                    DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER,
-                    type(uint160).max,
-                    type(uint48).max
-                );
+            if (IERC20(token).allowance(msg.sender, DeploymentAddressesSepolia.PERMIT2) < amountIn) {
+                IERC20(token).approve(DeploymentAddressesSepolia.PERMIT2, type(uint256).max);
+            }
+            (uint160 permit2Allowance, uint48 permit2Expiration,) = IPermit2(DeploymentAddressesSepolia.PERMIT2)
+                .allowance(msg.sender, token, DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER);
+            if (permit2Allowance < amountIn || permit2Expiration < block.timestamp) {
+                IPermit2(DeploymentAddressesSepolia.PERMIT2)
+                    .approve(
+                        address(token),
+                        DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER,
+                        type(uint160).max,
+                        type(uint48).max
+                    );
+            }
         }
 
         // Construct pool key
