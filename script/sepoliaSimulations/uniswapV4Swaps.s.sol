@@ -132,8 +132,7 @@ contract UniswapV4SwapSimulations is Script {
 
         address token = vm.envAddress("TOKEN_ADDRESS");
         uint256 action = vm.envUint("ACTION");
-        uint256 amountIn = vm.envOr("AMOUNT_IN", uint256(0));
-        uint256 minAmountOut = vm.envOr("MIN_AMOUNT_OUT", uint256(0));
+        uint256 amountIn = vm.envUint("AMOUNT_IN");
 
         console.log("Executing V4 action on Sepolia");
         console.log("Token:", token);
@@ -145,11 +144,11 @@ contract UniswapV4SwapSimulations is Script {
             console.log("Approvals completed");
         } else if (action == 1) {
             console.log("Action: BUY");
-            _swapBuy(token, amountIn, minAmountOut);
+            _swapBuy(token, amountIn, 0);
             console.log("Buy completed");
         } else if (action == 2) {
             console.log("Action: SELL");
-            _swapSell(token, amountIn, minAmountOut);
+            _swapSell(token, amountIn, 0);
             console.log("Sell completed");
         } else {
             revert("Invalid ACTION. Use 0=approve, 1=buy, 2=sell");
