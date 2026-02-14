@@ -14,11 +14,14 @@ import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol
 import {IUniversalRouter} from "../../src/interfaces/IUniswapV4UniversalRouter.sol";
 
 /*
+  Approve for sell:
+  TOKEN_ADDRESS=0x... ACTION=1 AMOUNT_IN=1000000000000000000 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+
   Buy swap:
-  TOKEN_ADDRESS=0x... IS_BUY=true AMOUNT_IN=1000000000000000 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+  TOKEN_ADDRESS=0x... ACTION=2 AMOUNT_IN=1000000000000000 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
   Sell swap:
-  TOKEN_ADDRESS=0x... IS_BUY=false AMOUNT_IN=1000000000000000000 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+  TOKEN_ADDRESS=0x... ACTION=3 AMOUNT_IN=1000000000000000000 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 */
 
 /// @title Uniswap V4 Swap Simulations for Sepolia
@@ -59,30 +62,26 @@ contract UniswapV4SwapSimulations is Script {
         _swap(token, tokenAmountIn, minEthOut, false);
     }
 
+    /// @notice Approves token spending for sell operations
+    /// @param token The token to approve
+    function approvals(address token) internal {
+        IERC20(token).approve(DeploymentAddressesSepolia.PERMIT2, type(uint256).max);
+
+        IPermit2(DeploymentAddressesSepolia.PERMIT2)
+            .approve(
+                address(token),
+                DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER,
+                type(uint160).max,
+                type(uint48).max
+            );
+    }
+
     /// @notice Internal swap function for both buy and sell operations
     /// @param token The token to swap
     /// @param amountIn Amount of input token
     /// @param minAmountOut Minimum amount of output token
     /// @param isBuy True for ETH->Token, false for Token->ETH
     function _swap(address token, uint256 amountIn, uint256 minAmountOut, bool isBuy) internal {
-        // For sells, approve token to Permit2 and Universal Router (skip if already sufficient)
-        if (!isBuy) {
-            if (IERC20(token).allowance(msg.sender, DeploymentAddressesSepolia.PERMIT2) < amountIn) {
-                IERC20(token).approve(DeploymentAddressesSepolia.PERMIT2, type(uint256).max);
-            }
-            (uint160 permit2Allowance, uint48 permit2Expiration,) = IPermit2(DeploymentAddressesSepolia.PERMIT2)
-                .allowance(msg.sender, token, DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER);
-            if (permit2Allowance < amountIn || permit2Expiration < block.timestamp) {
-                IPermit2(DeploymentAddressesSepolia.PERMIT2)
-                    .approve(
-                        address(token),
-                        DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER,
-                        type(uint160).max,
-                        type(uint48).max
-                    );
-            }
-        }
-
         // Construct pool key
         PoolKey memory key = _getPoolKey(token);
 
@@ -128,29 +127,36 @@ contract UniswapV4SwapSimulations is Script {
     /// @notice Main entry point for the script
     /// @dev Reads configuration from environment variables:
     ///      - TOKEN_ADDRESS: The token to swap
-    ///      - IS_BUY: true for ETH->Token, false for Token->ETH
+    ///      - ACTION: 1=approve, 2=buy, 3=sell
     ///      - AMOUNT_IN: Amount of input token (in wei)
     ///      - MIN_AMOUNT_OUT: Minimum output (optional, defaults to 0)
     function run() public {
         vm.startBroadcast();
 
         address token = vm.envAddress("TOKEN_ADDRESS");
-        bool isBuy = vm.envBool("IS_BUY");
-        uint256 amountIn = vm.envUint("AMOUNT_IN");
+        uint256 action = vm.envUint("ACTION");
+        uint256 amountIn = vm.envOr("AMOUNT_IN", uint256(0));
         uint256 minAmountOut = vm.envOr("MIN_AMOUNT_OUT", uint256(0));
 
-        console.log("Executing V4 swap on Sepolia");
+        console.log("Executing V4 action on Sepolia");
         console.log("Token:", token);
-        console.log("Direction:", isBuy ? "BUY" : "SELL");
         console.log("Amount In:", amountIn);
 
-        if (isBuy) {
+        if (action == 0) {
+            console.log("Action: APPROVE");
+            approvals(token);
+            console.log("Approvals completed");
+        } else if (action == 1) {
+            console.log("Action: BUY");
             _swapBuy(token, amountIn, minAmountOut);
-        } else {
+            console.log("Buy completed");
+        } else if (action == 2) {
+            console.log("Action: SELL");
             _swapSell(token, amountIn, minAmountOut);
+            console.log("Sell completed");
+        } else {
+            revert("Invalid ACTION. Use 0=approve, 1=buy, 2=sell");
         }
-
-        console.log("Swap completed");
 
         vm.stopBroadcast();
     }
