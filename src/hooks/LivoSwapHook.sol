@@ -9,7 +9,6 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
@@ -125,31 +124,25 @@ contract LivoSwapHook is BaseHook {
         view
         returns (bool shouldTax, uint16 taxBps, address taxRecipient)
     {
-        // Query token tax configuration (try/catch for backwards compatibility with non-taxable tokens)
-        try ILivoTaxableTokenUniV4(tokenAddress).getTaxConfig() returns (
-            ILivoTaxableTokenUniV4.TaxConfig memory config
-        ) {
-            // Check if token has graduated
-            if (config.graduationTimestamp == 0) {
-                return (false, 0, address(0));
-            }
+        ILivoToken.TaxConfig memory config = ILivoToken(tokenAddress).getTaxConfig();
 
-            // Check if tax period has expired
-            if (block.timestamp > config.graduationTimestamp + config.taxDurationSeconds) {
-                return (false, 0, address(0));
-            }
-
-            // buy tax will always be zero in the current tax-token implementation
-            taxBps = isBuy ? config.buyTaxBps : config.sellTaxBps;
-            if (taxBps == 0) {
-                return (false, 0, address(0));
-            }
-            // here we know taxBps is not zero and we have a tax recipient from config. blindly trust the recipient here.
-            return (true, taxBps, config.taxRecipient);
-        } catch {
-            // in case tax configuration is not available, assume no taxes
+        // Check if token has graduated
+        if (config.graduationTimestamp == 0) {
             return (false, 0, address(0));
         }
+
+        // Check if tax period has expired
+        if (block.timestamp > config.graduationTimestamp + config.taxDurationSeconds) {
+            return (false, 0, address(0));
+        }
+
+        // buy tax will always be zero in the current tax-token implementation
+        taxBps = isBuy ? config.buyTaxBps : config.sellTaxBps;
+        if (taxBps == 0) {
+            return (false, 0, address(0));
+        }
+        // here we know taxBps is not zero and we have a tax recipient from config. blindly trust the recipient here.
+        return (true, taxBps, config.taxRecipient);
     }
 
     /// @notice Collect sell tax (ETH wrapped to WETH and sent to tax recipient)

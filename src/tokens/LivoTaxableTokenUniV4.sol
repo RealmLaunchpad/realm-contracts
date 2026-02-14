@@ -133,7 +133,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         launchpad = LivoLaunchpad(launchpad_);
     }
 
-    function getTaxConfig() external view returns (TaxConfig memory config) {
+    function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
         address taxRecipient = launchpad.getTokenOwner(address(this));
 
         config = TaxConfig({
