@@ -69,10 +69,7 @@ contract UniswapV4SwapSimulations is Script {
 
         IPermit2(DeploymentAddressesSepolia.PERMIT2)
             .approve(
-                address(token),
-                DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER,
-                type(uint160).max,
-                type(uint48).max
+                address(token), DeploymentAddressesSepolia.UNIV4_UNIVERSAL_ROUTER, type(uint160).max, type(uint48).max
             );
     }
 

@@ -90,6 +90,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     //////////////////////// view functions ////////////////////////
 
+    /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
+    function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
+
     /// @dev ERC20 interface compliance
     function name() public view override returns (string memory) {
         return _tokenName;
