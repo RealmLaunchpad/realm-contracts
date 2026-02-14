@@ -132,7 +132,7 @@ contract UniswapV4SwapSimulations is Script {
 
         address token = vm.envAddress("TOKEN_ADDRESS");
         uint256 action = vm.envUint("ACTION");
-        uint256 amountIn = vm.envUint("AMOUNT_IN");
+        uint256 amountIn = vm.envOr("AMOUNT_IN", uint256(0));
 
         console.log("Executing V4 action on Sepolia");
         console.log("Token:", token);
