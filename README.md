@@ -42,7 +42,7 @@ The Livo Launchpad protocol is a token factory and trading system that enables f
 
 1. **Token Creation**: Anyone can create an ERC20 token with a fixed supply of 1 billion tokens using a minimal proxy pattern for gas-efficient deployment
 2. **Bonding Curve Trading**: Users buy/sell tokens from the launchpad through a constant product bonding curve until graduation
-3. **Automatic Graduation**: When ETH reserves reach ~8 ETH (7.956 ETH exactly), tokens automatically graduate to Uniswap
+3. **Automatic Graduation**: When ETH reserves reach 8.5 ETH, tokens automatically graduate to Uniswap
 4. **Liquidity Provision**: All collected ETH (minus fees) is used to create a permanent, locked liquidity pool in Uniswap:
    - Uniswap V2: LP tokens sent to dead address
    - Uniswap V4: NFT liquidity position locked in a Liquidity Lock contract
@@ -83,9 +83,9 @@ Minimal ERC20 implementation with graduation controls:
 Implements the pricing formula for token purchases/sales:
 
 - Uses constant product formula: `K = (t + T0) * (e + E0)`
-- Numerically tuned constants ensure smooth price progression until graduation, which should happen at 7.956 ETH ~200M tokens remaining in reserves
+- Numerically tuned constants ensure smooth price progression until graduation, which should happen at 8.5 ETH with ~200M tokens remaining in reserves
   - Note: out of those ~200M tokens, 10M are allocated to token creator, so only ~190M are used for liquidity.
-- Total curve capacity: ~37.5 ETH if all tokens were sold through the bonding curve. Beyond that point the curve breaks. This point should never be reached, so graduation threshold should be far away from that limit (~8 ETH initially).
+- Total curve capacity: ~37.5 ETH if all tokens were sold through the bonding curve. Beyond that point the curve breaks. This point should never be reached, so graduation threshold should be far away from that limit (8.5 ETH currently).
 
 #### `LivoGraduatorUniswapV2.sol`
 
@@ -148,7 +148,7 @@ After graduation, tokens trade on Uniswap V2 or V4 like any other token.
 
 ### When Does Graduation Happen?
 
-Graduation is triggered automatically when `ethCollected >= ethGraduationThreshold` (~7.956 ETH initially).
+Graduation is triggered automatically when `ethCollected >= ethGraduationThreshold` (8.5 ETH currently).
 
 The threshold has a small excess allowance of 0.1 ETH. If a buy would exceed `threshold + 0.1 ETH`, the purchase reverts. This ensures that the price spread between the last launchpad buy and the uniswap pool doesn't deviate too much
 
@@ -168,9 +168,9 @@ Empirical forked tests show that:
 #### Calculation Example (Exact Graduation)
 
 ```
-ETH collected: 7.956 ETH
+ETH collected: 8.5 ETH
 Graduation fee: 0.5 ETH
-ETH to liquidity: 7.456 ETH
+ETH to liquidity: 8.0 ETH
 
 Total supply: 1,000,000,000 tokens
 Creator reserved: 10,000,000 tokens
@@ -338,7 +338,7 @@ When adding liquidity to Uniswap V4, a small amount of tokens (~0.000001% of sup
 
 The `ConstantProductBondingCurve` has numerical limits and will revert if `ethReserves > ~37 ETH`.
 
-**Mitigation**: Graduation threshold (7.956 ETH) + max excess (0.1 ETH), well below 37 ETH limit.
+**Mitigation**: Graduation threshold (8.5 ETH) + max excess (0.1 ETH), well below 37 ETH limit.
 
 
 
@@ -365,4 +365,3 @@ This should print an output like this:
   address constant PRECOMPUTED_HOOK_ADDRESS = 0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044;
   bytes32 constant HOOK_SALT = bytes32(uint256(0x0x3b57));
 ```
-

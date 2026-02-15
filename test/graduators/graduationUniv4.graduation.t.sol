@@ -713,9 +713,11 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted at graduation
 
     function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ4() public createTestToken {
+        uint256 expectedTokenBalance = TOTAL_SUPPLY - bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+
         vm.expectEmit(true, false, false, true);
         // After refactoring, launchpad emits full amounts (before fees/burning handled by graduator)
-        emit LivoLaunchpad.TokenGraduated(testToken, 7956000000000052224, 201123250949901652977523068);
+        emit LivoLaunchpad.TokenGraduated(testToken, GRADUATION_THRESHOLD, expectedTokenBalance);
 
         _graduateToken();
     }

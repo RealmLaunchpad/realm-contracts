@@ -23,7 +23,7 @@ contract Deployments is Script {
     address constant TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181; // TODO: Set before deployment
 
     // Graduation parameters for whitelisting sets
-    uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~7.956 ETH
+    uint256 constant GRADUATION_THRESHOLD = 8.5 ether;
     uint256 constant MAX_EXCESS_OVER_THRESHOLD = 100000000000000000; // 0.1 ETH
 
     // ========================= Network Config =========================

@@ -12,9 +12,9 @@ contract ConstantProductBondingCurveTest is Test {
 
     // Graduation parameters
     // These ones are set in the LivoLaunchpad contract, and the curves need to be compliant with them
-    uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~7.956 ETH
+    uint256 constant GRADUATION_THRESHOLD = 8.5 ether;
     uint256 constant GRADUATION_ETH_FEE = 0.5 ether;
-    uint256 constant GRADUATION_TOKEN_CREATOR_REWARD = 10_000_000e18;
+    uint256 constant GRADUATION_TOKEN_CREATOR_REWARD = 0;
 
     function setUp() public {
         curve = new ConstantProductBondingCurve();
@@ -36,7 +36,7 @@ contract ConstantProductBondingCurveTest is Test {
         // here we accept a 0.1%  error as 200,000,000 is pretty much arbitrary
         // note that 1M are for the token creator, included in this tokenReserves
         assertApproxEqRel(
-            tokenReserves, 201_000_000e18, 0.001e18, "Token reserves should be 201M at graduation (1M for creator)"
+            tokenReserves, 200_000_000e18, 0.001e18, "Token reserves should be 201M at graduation (1M for creator)"
         );
     }
 
@@ -116,7 +116,7 @@ contract ConstantProductBondingCurveTest is Test {
     }
 
     function test_fuzz_sellExactTokens(uint256 ethReserves, uint256 tokenAmount) public {
-        ethReserves = bound(ethReserves, 0.000001e18, 37e18);
+        ethReserves = bound(ethReserves, 0.000001e18, 30e18);
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
         tokenAmount = bound(tokenAmount, 1e18, tokenReserves / 10);
 
@@ -142,7 +142,7 @@ contract ConstantProductBondingCurveTest is Test {
     }
 
     function test_fuzz_getTokenReserves(uint256 ethReserves) public {
-        ethReserves = bound(ethReserves, 0, 37 ether);
+        ethReserves = bound(ethReserves, 0, 30 ether);
 
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
 

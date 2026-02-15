@@ -416,9 +416,11 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted by the Launchpad
     /// @dev After refactoring, launchpad emits full amounts (before fees/burning handled by graduator)
     function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ2() public createTestToken {
+        uint256 expectedTokenBalance = TOTAL_SUPPLY - bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+
         vm.expectEmit(true, false, false, true);
         // Full ethCollected and tokenBalance (graduator handles fees/burning)
-        emit LivoLaunchpad.TokenGraduated(testToken, 7956000000000052224, 201123250949901652977523068);
+        emit LivoLaunchpad.TokenGraduated(testToken, GRADUATION_THRESHOLD, expectedTokenBalance);
 
         _graduateToken();
     }
