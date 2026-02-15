@@ -714,9 +714,8 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
     function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ4() public createTestToken {
         vm.expectEmit(true, false, false, true);
-        // note the tokens reported by the Launchpad will be higher than from the graduator
-        // as the graduator will try to allocate the max, but will burn the excess (just a few cents)
-        emit LivoLaunchpad.TokenGraduated(testToken, 7456000000000052224, 191123250949901652977523068);
+        // After refactoring, launchpad emits full amounts (before fees/burning handled by graduator)
+        emit LivoLaunchpad.TokenGraduated(testToken, 7956000000000052224, 201123250949901652977523068);
 
         _graduateToken();
     }

@@ -404,10 +404,12 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         uint256 launchpadEthAfter = address(launchpad).balance;
 
-        // Before: launchpad balance + purchaseValue == lauchpad balance + uniswap balance
+        // After refactoring: graduator pays fees directly, so we need to account for treasury's graduation fee share
+        // Treasury receives: graduationFee (0.5 ETH) - creatorCompensation (0.1 ETH) = 0.4 ETH
+        uint256 treasuryGraduationFee = 0.5 ether - CREATOR_GRADUATION_COMPENSATION;
         assertEq(
             launchpadEthBefore + purchaseValue,
-            launchpadEthAfter + WETH.balanceOf(uniswapPair) + CREATOR_GRADUATION_COMPENSATION,
+            launchpadEthAfter + WETH.balanceOf(uniswapPair) + CREATOR_GRADUATION_COMPENSATION + treasuryGraduationFee,
             "failed in funds conservation check"
         );
     }
@@ -426,9 +428,11 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     }
 
     /// @notice Test that the TokenGraduated event is emitted by the Launchpad
+    /// @dev After refactoring, launchpad emits full amounts (before fees/burning handled by graduator)
     function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ2() public createTestToken {
         vm.expectEmit(true, false, false, true);
-        emit LivoLaunchpad.TokenGraduated(testToken, 7456000000000052224, 191123250949901652977523068);
+        // Full ethCollected and tokenBalance (graduator handles fees/burning)
+        emit LivoLaunchpad.TokenGraduated(testToken, 7956000000000052224, 201123250949901652977523068);
 
         _graduateToken();
     }
