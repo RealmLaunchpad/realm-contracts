@@ -161,8 +161,7 @@ contract LivoLaunchpad is Ownable2Step {
     ) external onlyOwner returns (address token) {
         // Validate threshold settings
         require(
-            thresholdSettings.ethGraduationThreshold > 0,
-            InvalidParameter(thresholdSettings.ethGraduationThreshold)
+            thresholdSettings.ethGraduationThreshold > 0, InvalidParameter(thresholdSettings.ethGraduationThreshold)
         );
 
         // note: the graduation threshold must be higher than the graduatoin fee in the graduators, but that is the graduators' responsibility
@@ -398,8 +397,7 @@ contract LivoLaunchpad is Ownable2Step {
         require(!_isSetWhitelisted(whitelistedComponents[implementation][bondingCurve][graduator]), AlreadyConfigured());
 
         whitelistedComponents[implementation][bondingCurve][graduator] = ThresholdSettings({
-            ethGraduationThreshold: ethGraduationThreshold,
-            maxExcessOverThreshold: maxExcessOverThreshold
+            ethGraduationThreshold: ethGraduationThreshold, maxExcessOverThreshold: maxExcessOverThreshold
         });
 
         emit ComponentsSetWhitelisted(

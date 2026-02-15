@@ -37,7 +37,6 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     /// @notice Token supply burned at graduation
     uint256 public constant BURNABLE_SUPPLY_AT_GRADUATION = 10_000_000e18;
 
-
     //////////////////////// EVENTS ////////////////////////
 
     event SweepedRemainingEth(address graduatedToken, uint256 amount);
@@ -103,7 +102,8 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         uint256 amountEth;
         uint256 liquidity;
         if (ethReserve == 0) {
-            (amountToken, amountEth, liquidity) = _naiveLiquidityAddition(tokenAddress, tokensForLiquidity, ethForLiquidity);
+            (amountToken, amountEth, liquidity) =
+                _naiveLiquidityAddition(tokenAddress, tokensForLiquidity, ethForLiquidity);
         } else {
             (amountToken, amountEth, liquidity) =
                 _addLiquidityWithPriceMatching(tokenAddress, ethReserve, tokensForLiquidity, ethForLiquidity, pair);

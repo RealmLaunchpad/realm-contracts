@@ -250,7 +250,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
             tokensForLiquidity // desired amount1
         );
         // receive the excess eth here, to add the next position
-        _addLiquidity(pool, tokenAddress, TICK_LOWER, TICK_UPPER, liquidity1, ethForLiquidity, tokensForLiquidity, address(this));
+        _addLiquidity(
+            pool, tokenAddress, TICK_LOWER, TICK_UPPER, liquidity1, ethForLiquidity, tokensForLiquidity, address(this)
+        );
 
         // remaining eth = eth value - (deposited ETH liquidity 1)
         uint256 remainingEth = ethForLiquidity - (ethBalanceBefore - address(this).balance);
@@ -371,7 +373,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
-    function _handleGraduationFeesV4(address tokenAddress) internal returns (uint256 ethForLiquidity, address treasury) {
+    function _handleGraduationFeesV4(address tokenAddress)
+        internal
+        returns (uint256 ethForLiquidity, address treasury)
+    {
         address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(tokenAddress);
         treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
 

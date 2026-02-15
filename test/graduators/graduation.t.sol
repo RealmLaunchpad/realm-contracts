@@ -64,11 +64,15 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     /// @notice creator gets the CREATOR_GRADUATION_COMPENSATION at graduation
     function test_creatorGetsGraduationCompensation() public createTestToken {
         uint256 balanceBefore = creator.balance;
-        
+
         _graduateToken();
 
         uint256 creatorBalanceAfter = creator.balance;
-        assertEq(creatorBalanceAfter, balanceBefore + CREATOR_GRADUATION_COMPENSATION, "Creator should receive graduation compensation");
+        assertEq(
+            creatorBalanceAfter,
+            balanceBefore + CREATOR_GRADUATION_COMPENSATION,
+            "Creator should receive graduation compensation"
+        );
     }
 
     /// @notice Test that tokens cannot be sold to the launchpad after graduation
