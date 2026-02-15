@@ -106,9 +106,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
 
-    /// @notice Token supply burned at graduation
-    uint256 public constant BURNABLE_SUPPLY_AT_GRADUATION = 0;
-
     /////////////////////// Errors ///////////////////////
 
     error EthTransferFailed();
@@ -211,13 +208,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         require(tokenAmount > 0, NoTokensToGraduate());
         require(msg.value > 0, NoETHToGraduate());
 
-        // 1. Burn tokens
-        token.safeTransfer(address(0xDead), BURNABLE_SUPPLY_AT_GRADUATION);
-
-        // 2. Handle fee split
+        // 1. Handle fee split
         (uint256 ethForLiquidity, address treasury) = _handleGraduationFeesV4(tokenAddress);
 
-        // 3. Continue with V4 liquidity logic
+        // 2. Continue with V4 liquidity logic
         uint256 tokenBalanceBeforeDeposit = token.balanceOf(address(this));
 
         // this opens the gate of transferring tokens to the uniswap pair
@@ -240,7 +234,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         PoolKey memory pool = _getPoolKey(tokenAddress);
         uint256 ethBalanceBefore = address(this).balance;
 
-        uint256 tokensForLiquidity = tokenAmount - BURNABLE_SUPPLY_AT_GRADUATION;
+        // renaming just for readability
+        uint256 tokensForLiquidity = tokenAmount;
         // uniswap v4 liquidity position creation
         uint128 liquidity1 = LiquidityAmounts.getLiquidityForAmounts(
             SQRT_PRICEX96_GRADUATION, // current pool price --> presumably the starting price which cannot be modified until graduation

@@ -392,10 +392,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         // 39405360036 raw
         // 39011306436 as if there were no fees
         assertApproxEqRel(
-            effectivePrice,
-            poolPrice,
-            0.011e18,
-            "Effective price at graduation should match pool price (small last tx)"
+            effectivePrice, poolPrice, 0.011e18, "Effective price at graduation should match pool price (small last tx)"
         );
         assertGt(poolPrice, effectivePrice, "Pool price should be above effective price at graduation (small last tx)");
     }

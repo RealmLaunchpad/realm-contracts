@@ -113,7 +113,9 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 ethReservesForUniswap = ethReserves - GRADUATION_ETH_FEE;
         uint256 uniswapPrice = _uniswapV2EstimatedPrice(tokenReservesForUniswap, ethReservesForUniswap);
 
-        assertApproxEqRel(curvePrice, uniswapPrice, 0.01e18, "Sell prices should match at graduation point (1% error margin)");
+        assertApproxEqRel(
+            curvePrice, uniswapPrice, 0.01e18, "Sell prices should match at graduation point (1% error margin)"
+        );
     }
 
     function test_fuzz_sellExactTokens(uint256 ethReserves, uint256 tokenAmount) public {

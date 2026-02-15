@@ -43,7 +43,6 @@ contract LaunchpadBaseTests is Test {
 
     address public testToken;
 
-
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
