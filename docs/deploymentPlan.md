@@ -50,7 +50,11 @@ forge verify-contract {{address}} {{contractName}} --compiler-version 0.8.28+com
 
 # Operation
 
-## Collect graduation & trading fees from launchpad
+## 1. Graduation fees
+
+Sent directly to the treasury in graduation transactions
+
+## 2. Collect trading fees from launchpad
 
 Any address can collect, but they go automatically to the treasury:
 
@@ -58,7 +62,7 @@ Any address can collect, but they go automatically to the treasury:
 cast send {{LAUNCHPAD}} "collectTreasuryFees()" --rpc-url $SEPOLIA_RPC_URL --account livo.dev
 ```
 
-## Collect LP fees from uniswap v4
+## 3. Collect LP fees from uniswap v4
 
 Any address can collect, but they go automatically to the treasury:
 

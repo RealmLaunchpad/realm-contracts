@@ -72,8 +72,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             address(bondingCurve),
             address(graduator),
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
     }
 
@@ -81,7 +80,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSignature("InvalidParameter(uint256)", 0));
         launchpad.whitelistComponents(
-            address(implementation), address(bondingCurve), address(graduator), 0, MAX_THRESHOLD_EXCESS, GRADUATION_FEE
+            address(implementation), address(bondingCurve), address(graduator), 0, MAX_THRESHOLD_EXCESS
         );
     }
 
@@ -95,8 +94,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             address(bondingCurve),
             address(graduator),
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
     }
 
@@ -119,21 +117,11 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_whitelisting_SucceedsForOwner() public {
         vm.expectEmit(false, false, false, true);
         emit ComponentsSetWhitelisted(
-            address(implementation),
-            newBondingCurve,
-            newGraduator,
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            address(implementation), newBondingCurve, newGraduator, GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS
         );
         vm.prank(admin);
         launchpad.whitelistComponents(
-            address(implementation),
-            newBondingCurve,
-            newGraduator,
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            address(implementation), newBondingCurve, newGraduator, GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS
         );
 
         assertTrue(launchpad.isSetWhitelisted(address(implementation), newBondingCurve, newGraduator));
@@ -142,12 +130,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_blacklisting_SucceedsForOwner() public {
         vm.prank(admin);
         launchpad.whitelistComponents(
-            address(implementation),
-            newBondingCurve,
-            newGraduator,
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            address(implementation), newBondingCurve, newGraduator, GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS
         );
 
         // Test blacklisting
@@ -163,12 +146,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_whitelistCurveAndGraduator_GivesFalseFor_wCurve_notGraduator() public {
         vm.prank(admin);
         launchpad.whitelistComponents(
-            address(implementation),
-            newBondingCurve,
-            newGraduator,
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            address(implementation), newBondingCurve, newGraduator, GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS
         );
 
         assertFalse(launchpad.isSetWhitelisted(address(implementation), address(bondingCurve), newGraduator));
@@ -177,12 +155,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_whitelistCurveAndGraduator_GivesFalseFor_notCurve_wGraduator() public {
         vm.prank(admin);
         launchpad.whitelistComponents(
-            address(implementation),
-            newBondingCurve,
-            newGraduator,
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            address(implementation), newBondingCurve, newGraduator, GRADUATION_THRESHOLD, MAX_THRESHOLD_EXCESS
         );
 
         assertFalse(launchpad.isSetWhitelisted(address(implementation), newBondingCurve, address(graduator)));
@@ -288,8 +261,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         address bondingCurve,
         address graduator,
         uint256 ethGraduationThreshold,
-        uint256 maxExcessOverThreshold,
-        uint256 graduationEthFee
+        uint256 maxExcessOverThreshold
     );
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
     event TreasuryAddressUpdated(address newTreasury);
@@ -354,10 +326,8 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             alice,
             0,
             "",
-            LivoLaunchpad.GraduationSettings({
-                ethGraduationThreshold: GRADUATION_THRESHOLD,
-                maxExcessOverThreshold: MAX_THRESHOLD_EXCESS,
-                graduationEthFee: GRADUATION_FEE
+            LivoLaunchpad.ThresholdSettings({
+                ethGraduationThreshold: GRADUATION_THRESHOLD, maxExcessOverThreshold: MAX_THRESHOLD_EXCESS
             })
         );
 
@@ -372,10 +342,8 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             alice,
             0,
             "",
-            LivoLaunchpad.GraduationSettings({
-                ethGraduationThreshold: GRADUATION_THRESHOLD,
-                maxExcessOverThreshold: MAX_THRESHOLD_EXCESS,
-                graduationEthFee: GRADUATION_FEE
+            LivoLaunchpad.ThresholdSettings({
+                ethGraduationThreshold: GRADUATION_THRESHOLD, maxExcessOverThreshold: MAX_THRESHOLD_EXCESS
             })
         );
     }

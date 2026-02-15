@@ -9,8 +9,6 @@ struct TokenConfig {
     ILivoBondingCurve bondingCurve;
     /// @notice Graduation manager address assigned to this token. Cannot be altered once is set
     ILivoGraduator graduator;
-    /// @notice Graduation fee in ETH, paid at graduation
-    uint256 graduationEthFee;
     /// @notice Threshold in ETH that must be collected for graduation to happen
     uint256 ethGraduationThreshold;
     /// @notice Max excess eth over graduation threshold

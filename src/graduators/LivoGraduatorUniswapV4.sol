@@ -99,6 +99,16 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     uint160 immutable SQRT_LOWER_2;
     uint160 immutable SQRT_UPPER_2;
 
+    /// @notice Graduation ETH fee split between creator and treasury
+    uint256 public constant GRADUATION_ETH_FEE = 0.5 ether;
+
+    /// @notice ETH compensation paid to token creator at graduation
+    /// @dev this is part of the GRADUATION_ETH_FEE
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
+
+    /// @notice Token supply burned at graduation
+    uint256 public constant BURNABLE_SUPPLY_AT_GRADUATION = 10_000_000e18;
+
     /////////////////////// Errors ///////////////////////
 
     error EthTransferFailed();
@@ -198,12 +208,16 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @param tokenAddress Address of the token to graduate
     function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override onlyLaunchpad {
         ILivoToken token = ILivoToken(tokenAddress);
-
-        // the tokenAmount needs to be in this contract balance before the call. Otherwise it reverts
-        uint256 ethValue = msg.value;
         require(tokenAmount > 0, NoTokensToGraduate());
-        require(ethValue > 0, NoETHToGraduate());
+        require(msg.value > 0, NoETHToGraduate());
 
+        // 1. Burn tokens
+        token.safeTransfer(address(0xDead), BURNABLE_SUPPLY_AT_GRADUATION);
+
+        // 2. Handle fee split
+        (uint256 ethForLiquidity, address treasury) = _handleGraduationFeesV4(tokenAddress);
+
+        // 3. Continue with V4 liquidity logic
         uint256 tokenBalanceBeforeDeposit = token.balanceOf(address(this));
 
         // this opens the gate of transferring tokens to the uniswap pair
@@ -224,22 +238,24 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
             );
 
         PoolKey memory pool = _getPoolKey(tokenAddress);
-        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
         uint256 ethBalanceBefore = address(this).balance;
 
+        uint256 tokensForLiquidity = tokenAmount - BURNABLE_SUPPLY_AT_GRADUATION;
         // uniswap v4 liquidity position creation
         uint128 liquidity1 = LiquidityAmounts.getLiquidityForAmounts(
             SQRT_PRICEX96_GRADUATION, // current pool price --> presumably the starting price which cannot be modified until graduation
             SQRT_PRICEX96_LOWER_TICK, // lower tick price -> max token price denominated in eth
             SQRT_PRICEX96_UPPER_TICK, // upper tick price -> min token price denominated in eth
-            ethValue, // desired amount0
-            tokenAmount // desired amount1
+            ethForLiquidity, // desired amount0
+            tokensForLiquidity // desired amount1
         );
         // receive the excess eth here, to add the next position
-        _addLiquidity(pool, tokenAddress, TICK_LOWER, TICK_UPPER, liquidity1, ethValue, tokenAmount, address(this));
+        _addLiquidity(
+            pool, tokenAddress, TICK_LOWER, TICK_UPPER, liquidity1, ethForLiquidity, tokensForLiquidity, address(this)
+        );
 
         // remaining eth = eth value - (deposited ETH liquidity 1)
-        uint256 remainingEth = ethValue - (ethBalanceBefore - address(this).balance);
+        uint256 remainingEth = ethForLiquidity - (ethBalanceBefore - address(this).balance);
         uint128 liquidity2 = LiquidityAmounts.getLiquidityForAmount0(SQRT_LOWER_2, SQRT_UPPER_2, remainingEth);
 
         if (liquidity2 > 0) {
@@ -249,12 +265,12 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
         // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
-        // we attempt to deposit tokenAmount, but this is the actual amount deposited
+        // we attempt to deposit tokensForLiquidity, but this is the actual amount deposited
         // any token not deposited is stuck here in this contract
         uint256 tokensDeposited = tokenBalanceBeforeDeposit - tokenBalanceAfterDeposit;
 
         bytes32 poolId = PoolId.unwrap(pool.toId());
-        emit TokenGraduated(tokenAddress, poolId, tokensDeposited, ethValue, liquidity1 + liquidity2);
+        emit TokenGraduated(tokenAddress, poolId, tokensDeposited, ethForLiquidity, liquidity1 + liquidity2);
     }
 
     /// @notice Collects ETH fees from graduated tokens and distributes them to token owners and treasury
@@ -356,6 +372,32 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     }
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
+
+    function _handleGraduationFeesV4(address tokenAddress)
+        internal
+        returns (uint256 ethForLiquidity, address treasury)
+    {
+        address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(tokenAddress);
+        treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+
+        ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
+        uint256 treasuryShare = GRADUATION_ETH_FEE;
+
+        // Pay creator (non-reverting)
+        if (_transferEth(tokenOwner, CREATOR_GRADUATION_COMPENSATION, false)) {
+            treasuryShare -= CREATOR_GRADUATION_COMPENSATION;
+        }
+
+        // Pay treasury
+        _transferEth(treasury, treasuryShare, true);
+    }
+
+    function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
+        if (amount == 0) return true;
+        (bool success,) = recipient.call{value: amount}("");
+        require(!requireSuccess || success, EthTransferFailed());
+        return success;
+    }
 
     function _getPoolKey(address tokenAddress) internal view virtual returns (PoolKey memory) {
         return PoolKey({

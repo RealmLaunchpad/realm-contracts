@@ -52,7 +52,6 @@ contract LaunchpadBaseTests is Test {
     // used for both combinations of curves,graduators for univ2 and univ4
     uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~8 ether
     uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
-    uint256 constant GRADUATION_FEE = 0.5 ether;
 
     // we don't test deadlines mostly
     uint256 constant DEADLINE = type(uint256).max;
@@ -107,8 +106,7 @@ contract LaunchpadBaseTests is Test {
             address(bondingCurve),
             address(graduatorV2),
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
 
         // V4 graduator
@@ -139,8 +137,7 @@ contract LaunchpadBaseTests is Test {
             address(bondingCurve),
             address(graduatorV4),
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
 
         // Whitelist tax-token implementation with graduatorV4 (which already has the right hook)
@@ -149,8 +146,7 @@ contract LaunchpadBaseTests is Test {
             address(bondingCurve),
             address(graduatorV4), // includes LivoSwapHook by default
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
 
         vm.stopPrank();

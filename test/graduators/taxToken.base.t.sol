@@ -44,8 +44,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             address(bondingCurve),
             address(graduatorV4), // includes LivoSwapHook by default
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
 
         vm.stopPrank();
