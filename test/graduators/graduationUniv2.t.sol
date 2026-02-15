@@ -106,18 +106,8 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         // First graduate the token, then buy some tokens to test transfers
         _graduateToken();
 
-        // After graduation, we can still buy tokens from the creator's reserved supply if they sell
-        // But we can't buy from launchpad, so let's transfer some from the creator instead
-        uint256 creatorBalance = IERC20(testToken).balanceOf(creator);
-        assertTrue(creatorBalance > 0, "Creator should have tokens after graduation");
-
-        uint256 transferAmount = creatorBalance / 2;
-        vm.prank(creator);
-        IERC20(testToken).transfer(buyer, transferAmount);
-
         uint256 buyerBalance = IERC20(testToken).balanceOf(buyer);
 
-        // Now test that buyer can transfer to pair after graduation
         uint256 pairTransferAmount = buyerBalance / 2;
         vm.prank(buyer);
         IERC20(testToken).transfer(uniswapPair, pairTransferAmount);
@@ -205,9 +195,6 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     function test_wethRemainingAfterAllTokensSold() public createTestTokenWithPair {
         // Graduate the token
         _graduateToken();
-
-        // Get initial WETH in pool for comparison
-        uint256 wethInPoolBefore = WETH.balanceOf(uniswapPair);
 
         // Get token balances before selling
         uint256 creatorBalance = IERC20(testToken).balanceOf(creator);
@@ -420,7 +407,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         // Before: launchpad balance + purchaseValue == lauchpad balance + uniswap balance
         assertEq(
             launchpadEthBefore + purchaseValue,
-            launchpadEthAfter + WETH.balanceOf(uniswapPair),
+            launchpadEthAfter + WETH.balanceOf(uniswapPair) + CREATOR_GRADUATION_COMPENSATION,
             "failed in funds conservation check"
         );
     }
