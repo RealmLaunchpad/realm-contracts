@@ -199,8 +199,9 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         // Get remaining WETH in the pool
         uint256 wethRemaining = WETH.balanceOf(uniswapPair);
 
-        // unfortunately, as the supply deployed is roughly 20% of the total supply, when all the supply is sold, roughly 20% of the liquidity added as WETH (~7.5 WETH) will get stuck (1.5 ETH)
-        assertLe(wethRemaining, 1.5e18, "WETH remaining in pool should not exceed 1.5 WETH after all tokens sold");
+        // unfortunately, as the supply deployed is roughly 20% of the total supply, when all the supply is sold, roughly 20% of the liquidity added as WETH will get stuck
+        // ETH added as liquidity ~8 ETH. Stuck in the pool ~1.6 ETH
+        assertLe(wethRemaining, 1.61e18, "WETH remaining in pool should not exceed 1.75 WETH after all tokens sold");
     }
 }
 

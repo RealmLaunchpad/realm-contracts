@@ -43,7 +43,6 @@ contract LaunchpadBaseTests is Test {
 
     address public testToken;
 
-    uint256 public constant EXPECTED_GRADUATION_PRICE = 42500000000; // ETH *1e18 / token
 
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
@@ -74,7 +73,7 @@ contract LaunchpadBaseTests is Test {
     IWETH constant WETH = IWETH(DeploymentAddressesMainnet.WETH);
 
     // This is the price setpoint, but does not include trading fees
-    uint256 constant GRADUATION_PRICE = 39011306440; // ETH/token (eth per token, expressed in wei)
+    uint256 constant GRADUATION_PRICE = 40151462828; // ETH/token (eth per token, expressed in wei)
 
     LiquidityLockUniv4WithFees public liquidityLock;
     LivoGraduatorUniswapV2 public graduatorV2;

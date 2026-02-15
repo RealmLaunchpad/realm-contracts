@@ -36,8 +36,8 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     uint24 constant lpFee = 10000;
     int24 constant tickSpacing = 200;
 
-    // note this is hardcoded and should match the contract but it is not exposed as a public variable
-    uint160 constant startingPriceX96 = 401129254579132618442796085280768;
+    // this is the price set when creating the pool, which is the starting price ONCE GRADUATED
+    uint160 constant startingPriceX96 = 395392928243069119481342754553856;
 
     function setUp() public virtual override {
         super.setUp();

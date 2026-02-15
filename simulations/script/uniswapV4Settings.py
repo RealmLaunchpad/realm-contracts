@@ -26,7 +26,7 @@ def main() -> None:
     tick_upper = 203600
 
     # Target graduation price
-    graduation_wei_per_token = 42_500_000_000
+    graduation_wei_per_token = 40151462828
     
 
     # Secondary ETH-only position config
@@ -42,11 +42,11 @@ def main() -> None:
     print(f"int24 constant TICK_UPPER = {tick_upper};")
     print(f"uint160 constant SQRT_PRICEX96_GRADUATION = {sqrt_pricex96_graduation};")
     print(f"int24 constant TICK_GRADUATION = {tick_graduation};")
-    print(f"int24 constant TICK_LOWER_2 = TICK_GRADUATION + TICK_SPACING; // {tick_lower_2}")
-    print(
-        "int24 constant TICK_UPPER_2 = TICK_UPPER "
-        f"- ({secondary_upper_offset_steps} * TICK_SPACING); // {tick_upper_2}"
-    )
+    # print(f"int24 constant TICK_LOWER_2 = TICK_GRADUATION + TICK_SPACING; // {tick_lower_2}")
+    # print(
+    #     "int24 constant TICK_UPPER_2 = TICK_UPPER "
+    #     f"- ({secondary_upper_offset_steps} * TICK_SPACING); // {tick_upper_2}"
+    # )
 
     # Optional sanity values for constructor-derived immutable prices
     print("\n// Constructor-derived values")
