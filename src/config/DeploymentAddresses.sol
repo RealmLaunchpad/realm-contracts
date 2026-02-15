@@ -42,7 +42,7 @@ library DeploymentAddressesMainnet {
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     /// @notice LivoSwapHook address for Uniswap V4
-    address public constant LIVO_SWAP_HOOK = 0xa0eAe89b139F9B0b76E40Ed23D5f867Ffe1580C4;
+    address public constant LIVO_SWAP_HOOK = 0x145092816e7515F00304B383435787cA08E700C4;
 }
 
 /// @title Deployment Address Constants for Sepolia Testnet
@@ -77,5 +77,5 @@ library DeploymentAddressesSepolia {
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     /// @notice LivoSwapHook address for Uniswap V4
-    address public constant LIVO_SWAP_HOOK = 0x10EE2b93Dd3b583D34d321d20A6c5Ccc1Eba40C4;
+    address public constant LIVO_SWAP_HOOK = 0xdD353a0ECb1A028b6292D8037fAfC4B5F8BB40c4;
 }
