@@ -26,24 +26,24 @@ error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
 
 ##################### Deployed addresses (sepolia) #######################
-launchpad := "0x8DBdc48B8d9066983ad84be79B0382edCe390a04"
+launchpad := "0x418d7C7C7C0FECA10bF0ff3020D1035cBF8Be61e"
 
-tokenImpl := "0x8f50e17AE8dBa4f439076d7653b4Ebb01Db66A3e"
-taxTokenImpl := "0xaB56c5f8E111f6420277063E2E406Fd25159db97"
-bondingCurve := "0xb2F1c2f61a0b4436B18f724E9b57DCcb87EFdFff"
-graduatorV2 := "0xcF816bA12a24cD9CC3297A6Ff7528cb66ea7e388"
-graduatorV4 := "0xFfb90D2d55515314210Fb0cB4BE82A6645572103"
+tokenImpl := "0xBaF2bdF2b54cd40a0B581C76220eBd1f689AeBDC"
+taxTokenImpl := "0xD0fFba48f3a791310Cf11553f3B69C15674723b7"
+bondingCurve := "0xAE4e71529c80fDBc04a19407515CD46fa2e205fF"
+graduatorV2 := "0xCb7EFCec309D40c74C4fCFABdf9fb2dB1F3c51c9"
+graduatorV4 := "0x7f2a870981a6790f7c24978afec657C2c09Bdbf2"
 
 # ##################### Create tokens #######################
 
 create-token-v2 tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{tokenImpl}} {{bondingCurve}} {{graduatorV2}} 0x1230000000000000000000000000000000000000000000000000000000000000 "0x"
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{tokenImpl}} {{bondingCurve}} {{graduatorV2}} 0x1230000000000000000000000000000000000000000000000000000000000000 "0x"
 
 create-token-v4 tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{tokenImpl}} {{bondingCurve}} {{graduatorV4}} 0x1230000000000000000000000000000000000000000000000000000000000001 "0x"
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{tokenImpl}} {{bondingCurve}} {{graduatorV4}} 0x1230000000000000000000000000000000000000000000000000000000000001 "0x"
 
 create-tax-token tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{taxTokenImpl}} {{bondingCurve}} {{graduatorV4}} 0x1230000000000000000000000000000000000000000000000000000040000001 0x00000000000000000000000000000000000000000000000000000000000001f40000000000000000000000000000000000000000000000000000000000127500
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{taxTokenImpl}} {{bondingCurve}} {{graduatorV4}} 0x1230000000000000000000000000000000000000000000000000000040000001 0x00000000000000000000000000000000000000000000000000000000000001f40000000000000000000000000000000000000000000000000000000000127500
 
 ####################### Buys / sells #################################
 
