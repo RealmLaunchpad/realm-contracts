@@ -37,13 +37,13 @@ graduatorV4 := "0xFfb90D2d55515314210Fb0cB4BE82A6645572103"
 # ##################### Create tokens #######################
 
 create-token-v2 tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{tokenImpl}} {{bondingCurve}} {{graduatorV2}} $LIVODEVADDRESS 0x1230000000000000000000000000000000000000000000000000000000000000 "0x"
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{tokenImpl}} {{bondingCurve}} {{graduatorV2}} 0x1230000000000000000000000000000000000000000000000000000000000000 "0x"
 
 create-token-v4 tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{tokenImpl}} {{bondingCurve}} {{graduatorV4}} $LIVODEVADDRESS 0x1230000000000000000000000000000000000000000000000000000000000001 "0x"
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{tokenImpl}} {{bondingCurve}} {{graduatorV4}} 0x1230000000000000000000000000000000000000000000000000000000000001 "0x"
 
 create-tax-token tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{taxTokenImpl}} {{bondingCurve}} {{graduatorV4}} $LIVODEVADDRESS 0x1230000000000000000000000000000000000000000000000000000040000001 0x00000000000000000000000000000000000000000000000000000000000001f40000000000000000000000000000000000000000000000000000000000127500
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "createToken(string,string,address,address,address,address,bytes32,bytes)" {{tokenName}} {{uppercase(tokenName)}} {{taxTokenImpl}} {{bondingCurve}} {{graduatorV4}} 0x1230000000000000000000000000000000000000000000000000000040000001 0x00000000000000000000000000000000000000000000000000000000000001f40000000000000000000000000000000000000000000000000000000000127500
 
 ####################### Buys / sells #################################
 
