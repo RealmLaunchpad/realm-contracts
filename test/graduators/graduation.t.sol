@@ -96,7 +96,11 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         uint256 treasuryBalanceAfter = launchpad.treasuryEthFeesCollected();
         uint256 feeCollected = treasuryBalanceAfter - treasuryBalanceBefore;
 
-        assertGe(feeCollected, GRADUATION_FEE, "Graduation fee should be collected");
+        assertGe(
+            feeCollected,
+            GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION,
+            "Treasury graduation fee share should be collected"
+        );
     }
 
     /// @notice Test that a buy exceeding the graduation + excess limit reverts
@@ -137,7 +141,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         assertTrue(state.graduated, "Token should be graduated");
     }
 
-    /// @notice Test that graduation transfers creator tokens to creator address
+    /// @notice Test that graduation does not transfer creator tokens to creator address
     function test_graduationTransfersCreatorTokensToCreatorAddress() public createTestToken {
         uint256 creatorBalanceBefore = IERC20(testToken).balanceOf(creator);
         assertEq(creatorBalanceBefore, 0, "Creator should have no tokens initially");
@@ -145,7 +149,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         _graduateToken();
 
         uint256 creatorBalanceAfter = IERC20(testToken).balanceOf(creator);
-        assertEq(creatorBalanceAfter, OWNER_RESERVED_SUPPLY, "Creator should receive reserved supply");
+        assertEq(creatorBalanceAfter, 0, "Creator should not receive reserved supply");
     }
 
     /// @notice Test that circulating token supply updated after graduation to be all except the tokens sent to liquidity
@@ -209,8 +213,8 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         assertEq(
             treasuryFeesAfterGraduation - treasuryFeesBeforeGraduation,
-            GRADUATION_FEE + tradingFee,
-            "Treasury should collect graduation fee (plus trading fee)"
+            GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION + tradingFee,
+            "Treasury should collect its graduation fee share (plus trading fee)"
         );
     }
 
@@ -271,7 +275,12 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         // expenses: -liquidity
         uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
         uint256 liquidity = etherReservesPreGraduation - tradingFee - GRADUATION_FEE;
-        assertEq(launchpadEthBefore - launchpadEthAfter, liquidity, "eth balance change should equal liquidity added");
+        // the CREATOR_GRADUATION_COMPENSATION comes out of the GRADUATION_FEE
+        assertEq(
+            launchpadEthBefore - launchpadEthAfter,
+            liquidity + CREATOR_GRADUATION_COMPENSATION,
+            "eth balance change should equal liquidity added plus the creator compensation"
+        );
     }
 }
 

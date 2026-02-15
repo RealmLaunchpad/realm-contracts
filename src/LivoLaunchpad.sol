@@ -25,8 +25,11 @@ contract LivoLaunchpad is Ownable2Step {
     /// @dev 1 billion tokens with 18 decimals
     uint256 private constant TOTAL_SUPPLY = 1_000_000_000e18; // 1B tokens
 
-    /// @notice Supply reserved to the token owner, but only transferred at token graduation
-    uint256 public constant OWNER_RESERVED_SUPPLY = 10_000_000e18;
+    /// @notice ETH compensation paid to the token owner at graduation
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
+
+    /// @notice token supply burned at graduation
+    uint256 public constant BURNABLE_SUPPLY_AT_GRADUATION = 10_000_000e18;
 
     /// @notice Total fees collected by the treasury (in wei)
     uint256 public treasuryEthFeesCollected;
@@ -126,7 +129,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param implementation Token implementation contract
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
-    /// @param tokenOwner Address of the token owner (receives reserved supply and fees)
+    /// @param tokenOwner Address of the token owner (receives graduation compensation and fees)
     /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
     /// @param tokenCalldata Extra initialization parameters for the token
     /// @return token The address of the newly created token
@@ -166,7 +169,12 @@ contract LivoLaunchpad is Ownable2Step {
     ) external onlyOwner returns (address token) {
         // Validate graduation settings
         require(
-            graduationSettings.ethGraduationThreshold > 0, InvalidParameter(graduationSettings.ethGraduationThreshold)
+            graduationSettings.ethGraduationThreshold > 2 * graduationSettings.graduationEthFee,
+            InvalidParameter(graduationSettings.ethGraduationThreshold)
+        );
+        require(
+            graduationSettings.graduationEthFee >= CREATOR_GRADUATION_COMPENSATION,
+            InvalidParameter(graduationSettings.graduationEthFee)
         );
 
         token = _createToken(
@@ -260,7 +268,7 @@ contract LivoLaunchpad is Ownable2Step {
 
         // funds transfers
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
-        _transferEth(msg.sender, ethForSeller);
+        _transferEth(msg.sender, ethForSeller, true);
 
         emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
 
@@ -386,7 +394,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param graduator Address of the graduator contract
     /// @param ethGraduationThreshold ETH threshold required for graduation
     /// @param maxExcessOverThreshold Maximum ETH excess allowed over the graduation threshold
-    /// @param graduationEthFee ETH fee collected by the treasury at graduation
+    /// @param graduationEthFee ETH fee collected at graduation, split between creator and treasury
     function whitelistComponents(
         address implementation,
         address bondingCurve,
@@ -397,6 +405,7 @@ contract LivoLaunchpad is Ownable2Step {
     ) external onlyOwner {
         // ethGraduationThreshold == 0 is used as proxy to know if the set has been whitelisted
         require(ethGraduationThreshold > 0, InvalidParameter(ethGraduationThreshold));
+        require(graduationEthFee >= CREATOR_GRADUATION_COMPENSATION, InvalidParameter(graduationEthFee));
         // A set of (implementation, curve, graduator) can only have one configuration
         // If more are required, new copies of those components can be deployed, and a new configuration can be made with those
         require(!_isSetWhitelisted(whitelistedComponents[implementation][bondingCurve][graduator]), AlreadyConfigured());
@@ -440,7 +449,7 @@ contract LivoLaunchpad is Ownable2Step {
 
         treasuryEthFeesCollected = 0;
 
-        _transferEth(treasury, amount);
+        _transferEth(treasury, amount, true);
 
         emit TreasuryFeesCollected(treasury, amount);
     }
@@ -466,16 +475,25 @@ contract LivoLaunchpad is Ownable2Step {
 
         tokenState.graduated = true;
 
+        uint256 graduationEthFee = tokenConfig.graduationEthFee;
         uint256 ethCollected = tokenState.ethCollected;
-        uint256 ethForGraduation = ethCollected - tokenConfig.graduationEthFee;
-        treasuryEthFeesCollected += tokenConfig.graduationEthFee;
+        uint256 ethForGraduation = ethCollected - graduationEthFee;
 
-        uint256 tokensForOwner = tokenConfig.ownerReservedSupply;
-        uint256 tokensForGraduation = token.balanceOf(address(this)) - tokensForOwner;
+        // Attempt to transfer compensation to creator. If the eth transfer fails, the treasury gets the fees.
+        // we don't want owners to maliciously (and stupidly) block the graduation
+        uint256 treasuryShare = graduationEthFee;
+        bool success = _transferEth(tokenConfig.tokenOwner, CREATOR_GRADUATION_COMPENSATION, false);
+        if (success) {
+            treasuryShare -= CREATOR_GRADUATION_COMPENSATION;
+        }
+        treasuryEthFeesCollected += treasuryShare;
 
-        // update token state
+        uint256 tokenBalance = token.balanceOf(address(this));
+        uint256 tokenForLiquidity = tokenBalance - BURNABLE_SUPPLY_AT_GRADUATION;
+
+        // update token state. All eth collected is moved to liquidity, and all remaining supply is released
         tokenState.ethCollected = 0;
-        tokenState.releasedSupply += tokensForOwner + tokensForGraduation;
+        tokenState.releasedSupply += tokenBalance;
 
         // If the last purchase is a large one, the resulting price in the pool will be higher
         // I don't see a security risk in this.
@@ -483,20 +501,22 @@ contract LivoLaunchpad is Ownable2Step {
         // The larger the last purchase, the larger the price difference from the bonding curve to the univ2 pool
         // But I think that simply encourages graduation, so I don't see a big problem
         // The larger the buy, the larger the instant profit of the last purchase
-        token.safeTransfer(tokenConfig.tokenOwner, tokensForOwner);
-        token.safeTransfer(address(tokenConfig.graduator), tokensForGraduation);
+        token.safeTransfer(address(0xDead), BURNABLE_SUPPLY_AT_GRADUATION);
+        token.safeTransfer(address(tokenConfig.graduator), tokenForLiquidity);
 
         // pass here the tokensForGraduation to avoid deflation attack in the graduator
-        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress, tokensForGraduation);
+        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress, tokenForLiquidity);
 
-        emit TokenGraduated(tokenAddress, ethForGraduation, tokensForGraduation);
+        emit TokenGraduated(tokenAddress, ethForGraduation, tokenForLiquidity);
     }
 
-    function _transferEth(address recipient, uint256 amount) internal {
-        if (amount == 0) return;
+    function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
+        if (amount == 0) return true;
         // note: this call happens always after all state changes in all callers of this function to protect against re-entrancy
         (bool success,) = recipient.call{value: amount}("");
-        require(success, EthTransferFailed());
+        require(!requireSuccess || success, EthTransferFailed());
+
+        return success;
     }
 
     function _transferTokenOwnership(address token, address newTokenOwner) internal {
@@ -513,7 +533,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param implementation Token implementation contract
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
-    /// @param tokenOwner Address of the token owner (receives reserved supply and fees)
+    /// @param tokenOwner Address of the token owner (receives graduation compensation and fees)
     /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
     /// @param tokenCalldata Extra initialization parameters for the token
     /// @param graduationSettings Graduation settings for this token
@@ -550,7 +570,6 @@ contract LivoLaunchpad is Ownable2Step {
             ethGraduationThreshold: graduationSettings.ethGraduationThreshold,
             maxExcessOverThreshold: graduationSettings.maxExcessOverThreshold,
             graduationEthFee: graduationSettings.graduationEthFee,
-            ownerReservedSupply: OWNER_RESERVED_SUPPLY,
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps
         });
@@ -615,12 +634,10 @@ contract LivoLaunchpad is Ownable2Step {
     }
 
     /// @dev The supply of a token that can be purchased
-    /// @dev The reserved token owner supply is only effective at graduation,
-    /// and it is taken from the remaining tokens in this contract at graduation
     function _availableTokensForPurchase(address token) internal view returns (uint256) {
-        // This is equivalent to:  return IERC20(token).balanceOf(address(this)) - OWNER_RESERVED_SUPPLY;
+        // This is equivalent to: return IERC20(token).balanceOf(address(this));
         // But the below formulation is more gas efficient as it avoids an external call
-        return TOTAL_SUPPLY - tokenStates[token].releasedSupply - OWNER_RESERVED_SUPPLY;
+        return TOTAL_SUPPLY - tokenStates[token].releasedSupply;
     }
 
     function _availableEthFromReserves(address token) internal view returns (uint256) {

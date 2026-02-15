@@ -250,16 +250,20 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         assertEq(address(graduator).balance, 0, "there should be no ETH in the graduator after graduation");
     }
 
-    /// @notice Test that after graduation the creator has received exactly 1% of the supply
+    /// @notice Test that after graduation the creator has received exactly 0% of the supply, and 1% has been burned to the dead address
     function test_creatorTokenBalanceAfterExactGraduation() public createTestToken {
         assertEq(LivoToken(testToken).balanceOf(creator), 0, "creator should start with 0 tokens");
+        assertEq(LivoToken(testToken).balanceOf(address(0xdead)), 0, "dead address should start with 0 tokens");
+
         _launchpadBuy(testToken, 0.1 ether);
         _graduateToken();
 
+        assertEq(LivoToken(testToken).balanceOf(creator), 0, "creator should have less than 1% of the supply");
+
         assertEq(
-            LivoToken(testToken).balanceOf(creator),
+            LivoToken(testToken).balanceOf(address(0xdead)),
             TOTAL_SUPPLY / 100,
-            "creator should have less than 1% of the supply"
+            "we should have burned 1% of the supply"
         );
     }
 
@@ -272,15 +276,16 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 buyerBalance = LivoToken(testToken).balanceOf(buyer);
         uint256 poolManagerBalance = LivoToken(testToken).balanceOf(poolManagerAddress);
         uint256 creatorBalance = LivoToken(testToken).balanceOf(creator);
-        uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
+        uint256 graduatorBalance = LivoToken(testToken).balanceOf(address(graduator));
+        uint256 burnedBalance = LivoToken(testToken).balanceOf(address(0xdead));
 
         assertEq(
-            buyerBalance + poolManagerBalance + creatorBalance + burntSupply,
+            buyerBalance + poolManagerBalance + creatorBalance + graduatorBalance + burnedBalance,
             TOTAL_SUPPLY,
             "some tokens have disappeared"
         );
-        assertLt(burntSupply, 5e18, "burned tokens exceeds 5 tokens");
-        assertLt(burntSupply, TOTAL_SUPPLY / 100_000_000, "more than 0.000001% of the supply is burned");
+        assertLt(graduatorBalance, 5e18, "burned tokens exceeds 5 tokens");
+        assertLt(graduatorBalance, TOTAL_SUPPLY / 100_000_000, "more than 0.000001% of the supply is burned");
     }
 
     /// @notice Test that after graduation (exact eth) the eth worth of tokens dead is negligible
@@ -309,15 +314,16 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 buyerBalance = LivoToken(testToken).balanceOf(buyer);
         uint256 poolManagerBalance = LivoToken(testToken).balanceOf(poolManagerAddress);
         uint256 creatorBalance = LivoToken(testToken).balanceOf(creator);
-        uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
+        uint256 graduatorSupply = LivoToken(testToken).balanceOf(address(graduator));
+        uint256 burnedSupply = LivoToken(testToken).balanceOf(address(0xdead));
 
         assertEq(
-            buyerBalance + poolManagerBalance + creatorBalance + burntSupply,
+            buyerBalance + poolManagerBalance + creatorBalance + graduatorSupply + burnedSupply,
             TOTAL_SUPPLY,
             "some tokens have disappeared"
         );
-        assertLt(burntSupply, 5e18, "burned tokens exceeds 5 tokens");
-        assertLt(burntSupply, TOTAL_SUPPLY / 100_000_000, "more than 0.000001% of the supply is burned");
+        assertLt(graduatorSupply, 5e18, "burned tokens exceeds 5 tokens");
+        assertLt(graduatorSupply, TOTAL_SUPPLY / 100_000_000, "more than 0.000001% of the supply is burned");
     }
 
     /// @notice Test that after graduation (exact eth) the eth worth of tokens dead is negligible
@@ -651,19 +657,21 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         _graduateToken();
 
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
-        uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
-        assertGt(creatorBalanceBefore, 0, "creator got no tokens");
 
         _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
-        _swapSell(creator, creatorBalanceBefore, 1, true);
 
         assertEq(LivoToken(testToken).balanceOf(buyer), 0, "Buyer should have sold all tokens");
         assertEq(LivoToken(testToken).balanceOf(creator), 0, "Creator should have sold all tokens");
 
         uint256 poolManagerBalance = LivoToken(testToken).balanceOf(address(poolManager));
-        uint256 deadAddressBalance = LivoToken(testToken).balanceOf(address(graduator));
+        uint256 graduatorBalance = LivoToken(testToken).balanceOf(address(graduator));
+        uint256 deadAddressBalance = LivoToken(testToken).balanceOf(address(0xdead));
 
-        assertEq(poolManagerBalance + deadAddressBalance, TOTAL_SUPPLY, "All tokens should be sold to the pool manager");
+        assertEq(
+            poolManagerBalance + graduatorBalance + deadAddressBalance,
+            TOTAL_SUPPLY,
+            "All tokens should be sold to the pool manager"
+        );
     }
 
     function test_sellingFromUniv4AfterGraduation_priceCanDipBelowGraduation() public createTestToken {
@@ -721,8 +729,10 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
         uint256 poolTokenBalanceBefore = LivoToken(testToken).balanceOf(address(poolManager));
+        uint256 deadBalanceBefore = LivoToken(testToken).balanceOf(address(0xdead));
+
         assertApproxEqAbs(
-            buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore,
+            buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore + deadBalanceBefore,
             0.0001 ether,
             TOTAL_SUPPLY,
             "some supply is missing"
@@ -731,6 +741,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 poolBalanceAfterGraduation = address(poolManager).balance;
         uint256 buyerEtherBefore = buyer.balance;
         uint256 creatorEtherBefore = creator.balance;
+        uint256 deadEthBefore = address(0xdead).balance;
 
         // ~190M tokens are in liquidity, 10M owned by the creator, and ~800M owned by `buyer`
         // when selling everything back, almost all eth deposited as liquidity should be recovered
@@ -738,16 +749,17 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         // sell the full balance of the buyer, who has most of the supply
         _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
         // sell the creator, who has the remaining circulating supply
-        _swapSell(creator, creatorBalanceBefore, 1, true);
+        _swapSell(address(0xdead), deadBalanceBefore, 1, true);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
+        uint256 ethRecoveredByDead = address(0xdead).balance - deadEthBefore;
         // check that the eth collected by buyer and seller matches the eth left the pool
         assertEq(
-            ethRecoveredByBuyer + ethRecoveredByCreator,
+            ethRecoveredByBuyer + ethRecoveredByCreator + ethRecoveredByDead,
             ethLeavingFromThePoolManager,
-            "eth recovered by buyer and creator should match eth in pool"
+            "eth recovered by buyer, creator and dead should match eth in pool"
         );
 
         // because of the liquidity boundaries set when adding liquidity, there is a tiny amount of eth that won't be recoverable
@@ -755,24 +767,6 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         // We have tuned the ticks so that this amount is lower than 0.005 ether
         uint256 nonRecoverableEth = address(poolManager).balance - poolBalanceBefore;
         assertLtDecimal(nonRecoverableEth, 0.105 ether, 18, "Non recoverable ether from pool manager is too large");
-    }
-
-    function test_creatorSellsHisAllocationRightAfterGraduation() public createTestToken {
-        _graduateToken();
-
-        uint256 creatorEtherBefore = creator.balance;
-        uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
-        assertEq(creatorBalanceBefore, TOTAL_SUPPLY / 100, "creator should have 1% of the supply");
-
-        _swapSell(creator, creatorBalanceBefore, 1, true);
-
-        uint256 tokenPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
-
-        uint256 tokenMcapInEth = tokenPrice * TOTAL_SUPPLY / 1e18;
-        assertGt(tokenMcapInEth, 35 ether, "token mcap should be 35 eth at graduation");
-
-        uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
-        assertGt(ethRecoveredByCreator, 0.35 ether, "creator should recover at least 0.35 eth");
     }
 
     function test_unintentionalFeesGoingToTreasury() public createTestToken {
@@ -791,15 +785,11 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     }
 
     /// @notice If the last buyer immediately sells after graduation, they shouldn't be at profit
-    function test_arbitrageOpportunityAtGraduation(uint256 initialEthBuy, uint256 secondBuy) public createTestToken {
+    function test_arbitrageOpportunityAtGraduation(uint256 initialEthBuy) public createTestToken {
         initialEthBuy = bound(initialEthBuy, 0.01 ether, GRADUATION_THRESHOLD - 0.01 ether);
 
         _launchpadBuy(testToken, initialEthBuy);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
-
-        // the second buy triggers graduation, and can exceed until permitted
-        uint256 remainingEthUntilGraduation = GRADUATION_THRESHOLD - launchpad.getTokenState(testToken).ethCollected;
-        uint256 maxEthPurchase = launchpad.getMaxEthToSpend(testToken);
 
         uint256 sellerBalanceBefore = seller.balance;
 
@@ -890,6 +880,7 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
     }
 
     /// @notice test that after graduating, all the eth in the liquidity pool can be extracted again by selling all token supply
+    /// @dev in this test we treat the dead address as if it was a normal address that can sell tokens, just for the math exercise
     function test_sellingFromUniv4AfterGraduation_sellFullSupply_whereIsTheEth() public override createTestToken {
         uint256 poolBalanceBefore = address(poolManager).balance;
         _graduateToken();
@@ -897,33 +888,41 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
         uint256 poolTokenBalanceBefore = LivoToken(testToken).balanceOf(address(poolManager));
+        uint256 deadBalanceBefore = LivoToken(testToken).balanceOf(address(0xdead));
+
         assertApproxEqAbs(
-            buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore,
+            buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore + deadBalanceBefore,
             0.0001 ether,
             TOTAL_SUPPLY,
             "some supply is missing"
         );
 
+        // transfer the dead balance to alice because the dead address cannot sell
+        vm.prank(address(0xdead));
+        LivoToken(testToken).transfer(alice, deadBalanceBefore);
+
         uint256 poolBalanceAfterGraduation = address(poolManager).balance;
         uint256 buyerEtherBefore = buyer.balance;
         uint256 creatorEtherBefore = creator.balance;
+        uint256 aliceEtherBefore = alice.balance;
 
-        // ~190M tokens are in liquidity, 10M owned by the creator, and ~800M owned by `buyer`
+        // ~190M tokens are in liquidity, 10M owned by the dead address, and ~800M owned by `buyer`
         // when selling everything back, almost all eth deposited as liquidity should be recovered
 
         // sell the full balance of the buyer, who has most of the supply
         _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
-        // sell the creator, who has the remaining circulating supply
-        _swapSell(creator, creatorBalanceBefore, 1, true);
+        // sell the dead address, who has the remaining circulating supply (this is ficticious of course)
+        _swapSell(alice, deadBalanceBefore, 1, true);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
+        uint256 ethEarnedByAliceAddress = alice.balance - aliceEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
         uint256 wethFeesEarnedByCreator = WETH.balanceOf(creator);
 
         // check that the eth collected by buyer and seller matches the eth left the pool
         assertEq(
-            ethRecoveredByBuyer + ethRecoveredByCreator + wethFeesEarnedByCreator,
+            ethRecoveredByBuyer + ethRecoveredByCreator + wethFeesEarnedByCreator + ethEarnedByAliceAddress,
             ethLeavingFromThePoolManager,
             "eth recovered by buyer and creator should match eth in pool"
         );
