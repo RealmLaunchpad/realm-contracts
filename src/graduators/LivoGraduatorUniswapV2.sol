@@ -34,9 +34,6 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
 
-    /// @notice Token supply burned at graduation
-    uint256 public constant BURNABLE_SUPPLY_AT_GRADUATION = 10_000_000e18;
-
     //////////////////////// EVENTS ////////////////////////
 
     event SweepedRemainingEth(address graduatedToken, uint256 amount);
@@ -82,18 +79,15 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         require(tokenAmount > 0, NoTokensToGraduate());
         require(msg.value > 0, NoETHToGraduate());
 
-        // 1. Burn tokens
-        token.safeTransfer(DEAD_ADDRESS, BURNABLE_SUPPLY_AT_GRADUATION);
-
-        // 2. Handle fee split and payments
+        // 1. Handle fee split and payments
         uint256 ethForLiquidity = _handleGraduationFees(tokenAddress);
 
-        // 3. Mark graduated and add liquidity
+        // 2. Mark graduated and add liquidity
         address pair = UNISWAP_FACTORY.getPair(tokenAddress, WETH);
         // this opens the gate of transferring tokens to the uniswap pair
         token.markGraduated();
 
-        uint256 tokensForLiquidity = tokenAmount - BURNABLE_SUPPLY_AT_GRADUATION;
+        uint256 tokensForLiquidity = tokenAmount;
         token.safeIncreaseAllowance(address(UNISWAP_ROUTER), tokensForLiquidity);
 
         uint256 ethReserve = _syncedEthReserves(pair, tokenAddress);

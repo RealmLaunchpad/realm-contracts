@@ -78,7 +78,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     /// @notice Starting price when graduation occurs, which must be inside the liquidity range
     /// @dev Graduation price: 39011306440 wei per token -> 0.000000000025633594 tokens per eth -> sqrtX96price: 401129254579132618442796085280768 -> tick: 170600
-    uint160 constant SQRT_PRICEX96_GRADUATION = 401129254579132618442796085280768;
+    uint160 constant SQRT_PRICEX96_GRADUATION = 395392928243069119481342754553856;
 
     /// @notice The sqrtX96 price at the high tick, i.e., the minimum token price denominated in ETH
     /// @dev Derived from the high-tick in constructor
@@ -91,7 +91,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     //////////////////////// SECOND LIQUIDITY POSITION (ONLY ETH) ////////////////////////////
 
     // Second position (single-sided ETH only) to use remaining eth (~1.43 ETH)
-    int24 constant TICK_GRADUATION = 170600;
+    int24 constant TICK_GRADUATION = 170400;
     // this position is concentrated right below the graduation price
     int24 constant TICK_LOWER_2 = TICK_GRADUATION + TICK_SPACING;
     int24 constant TICK_UPPER_2 = TICK_UPPER - (110 * TICK_SPACING);
@@ -105,9 +105,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice ETH compensation paid to token creator at graduation
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
-
-    /// @notice Token supply burned at graduation
-    uint256 public constant BURNABLE_SUPPLY_AT_GRADUATION = 10_000_000e18;
 
     /////////////////////// Errors ///////////////////////
 
@@ -211,13 +208,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         require(tokenAmount > 0, NoTokensToGraduate());
         require(msg.value > 0, NoETHToGraduate());
 
-        // 1. Burn tokens
-        token.safeTransfer(address(0xDead), BURNABLE_SUPPLY_AT_GRADUATION);
-
-        // 2. Handle fee split
+        // 1. Handle fee split
         (uint256 ethForLiquidity, address treasury) = _handleGraduationFeesV4(tokenAddress);
 
-        // 3. Continue with V4 liquidity logic
+        // 2. Continue with V4 liquidity logic
         uint256 tokenBalanceBeforeDeposit = token.balanceOf(address(this));
 
         // this opens the gate of transferring tokens to the uniswap pair
@@ -240,7 +234,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         PoolKey memory pool = _getPoolKey(tokenAddress);
         uint256 ethBalanceBefore = address(this).balance;
 
-        uint256 tokensForLiquidity = tokenAmount - BURNABLE_SUPPLY_AT_GRADUATION;
+        // renaming just for readability
+        uint256 tokensForLiquidity = tokenAmount;
         // uniswap v4 liquidity position creation
         uint128 liquidity1 = LiquidityAmounts.getLiquidityForAmounts(
             SQRT_PRICEX96_GRADUATION, // current pool price --> presumably the starting price which cannot be modified until graduation

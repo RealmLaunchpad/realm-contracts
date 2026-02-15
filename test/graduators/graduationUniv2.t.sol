@@ -199,8 +199,9 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         // Get remaining WETH in the pool
         uint256 wethRemaining = WETH.balanceOf(uniswapPair);
 
-        // unfortunately, as the supply deployed is roughly 20% of the total supply, when all the supply is sold, roughly 20% of the liquidity added as WETH (~7.5 WETH) will get stuck (1.5 ETH)
-        assertLe(wethRemaining, 1.5e18, "WETH remaining in pool should not exceed 1.5 WETH after all tokens sold");
+        // unfortunately, as the supply deployed is roughly 20% of the total supply, when all the supply is sold, roughly 20% of the liquidity added as WETH will get stuck
+        // ETH added as liquidity ~8 ETH. Stuck in the pool ~1.6 ETH
+        assertLe(wethRemaining, 1.61e18, "WETH remaining in pool should not exceed 1.75 WETH after all tokens sold");
     }
 }
 
@@ -335,7 +336,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         _graduateToken();
 
         assertApproxEqRel(
-            IERC20(testToken).balanceOf(uniswapPair), 191_123_250e18, 0.0001e18, "not enough tokens went to univ2 pool"
+            IERC20(testToken).balanceOf(uniswapPair), 200_000_000e18, 0.0001e18, "not enough tokens went to univ2 pool"
         );
     }
 
@@ -345,7 +346,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
         _graduateToken();
 
-        assertApproxEqRel(WETH.balanceOf(address(pair)), 7.456e18, 0.000001e18, "not enough eth went to univ2 pool");
+        assertApproxEqRel(WETH.balanceOf(address(pair)), 8 ether, 0.000001e18, "not enough eth went to univ2 pool");
     }
 
     /// @notice Test that if a large amount of WETH is donated (and synced) to the univ2pair pre-graduation, graduation doesn't fail
@@ -416,9 +417,11 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted by the Launchpad
     /// @dev After refactoring, launchpad emits full amounts (before fees/burning handled by graduator)
     function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ2() public createTestToken {
+        uint256 expectedTokenBalance = TOTAL_SUPPLY - bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+
         vm.expectEmit(true, false, false, true);
         // Full ethCollected and tokenBalance (graduator handles fees/burning)
-        emit LivoLaunchpad.TokenGraduated(testToken, 7956000000000052224, 201123250949901652977523068);
+        emit LivoLaunchpad.TokenGraduated(testToken, GRADUATION_THRESHOLD, expectedTokenBalance);
 
         _graduateToken();
     }

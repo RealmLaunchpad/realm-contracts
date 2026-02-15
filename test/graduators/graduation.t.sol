@@ -103,6 +103,29 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         assertEq(balanceAfter, 0, "Launchpad should have zero tokens after graduation");
     }
 
+    /// @notice test exact graduation price
+    function test_exactGraduationPrice() public createTestToken {
+        uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
+        uint256 missingForGraduation = _increaseWithFees(GRADUATION_THRESHOLD - ethReserves);
+        // This buy should get right below graduation by one wei
+        _launchpadBuy(testToken, missingForGraduation - 1);
+        assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated after this buy");
+
+        uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
+
+        // now a small buy makes the purchase, and we assert against the expected graduation price
+        uint256 ethValue = 0.0001 ether;
+        _launchpadBuy(testToken, ethValue);
+
+        uint256 tokensReceived = IERC20(testToken).balanceOf(buyer) - tokenBalanceBefore;
+
+        // but the buyer spent the full ethValue
+        uint256 expectedPriceAtGraduation = (1e18 * ethValue) / tokensReceived;
+        console.log("expectedPriceAtGraduation (1e18 ETH / token)", expectedPriceAtGraduation);
+
+        assertEq(expectedPriceAtGraduation, GRADUATION_PRICE, "missmatch with expected graduation price");
+    }
+
     /// @notice Test that at graduation the team collects the graduation fee in eth
     function test_teamCollectsGraduationFeeInEthAtGraduation() public createTestToken {
         // After refactoring: graduator pays treasury directly, not through launchpad's treasuryEthFeesCollected

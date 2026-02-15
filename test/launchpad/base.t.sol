@@ -50,7 +50,7 @@ contract LaunchpadBaseTests is Test {
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
     // used for both combinations of curves,graduators for univ2 and univ4
-    uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~8 ether
+    uint256 constant GRADUATION_THRESHOLD = 8.5 ether;
     uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
 
     // we don't test deadlines mostly
@@ -72,7 +72,7 @@ contract LaunchpadBaseTests is Test {
     IWETH constant WETH = IWETH(DeploymentAddressesMainnet.WETH);
 
     // This is the price setpoint, but does not include trading fees
-    uint256 constant GRADUATION_PRICE = 39011306440; // ETH/token (eth per token, expressed in wei)
+    uint256 constant GRADUATION_PRICE = 40151462828; // ETH/token (eth per token, expressed in wei)
 
     LiquidityLockUniv4WithFees public liquidityLock;
     LivoGraduatorUniswapV2 public graduatorV2;
