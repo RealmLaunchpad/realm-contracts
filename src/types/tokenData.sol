@@ -15,9 +15,7 @@ struct TokenConfig {
     uint256 ethGraduationThreshold;
     /// @notice Max excess eth over graduation threshold
     uint256 maxExcessOverThreshold;
-    /// @notice Reserved supply of tokens for token owner at graduation
-    uint256 ownerReservedSupply;
-    /// @notice Owner of the token (receives reserved supply and fees). Cannot be altered once is set
+    /// @notice Owner of the token (receives graduation compensation and fees).
     address tokenOwner;
     /// @notice Trading (buy) fee in basis points (100 bps = 1%). Only applies before graduation
     uint16 buyFeeBps;

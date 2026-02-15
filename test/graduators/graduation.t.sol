@@ -145,7 +145,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         _graduateToken();
 
         uint256 creatorBalanceAfter = IERC20(testToken).balanceOf(creator);
-        assertEq(creatorBalanceAfter, OWNER_RESERVED_SUPPLY, "Creator should receive reserved supply");
+        assertEq(creatorBalanceAfter, 0, "Creator should receive reserved supply");
     }
 
     /// @notice Test that circulating token supply updated after graduation to be all except the tokens sent to liquidity
