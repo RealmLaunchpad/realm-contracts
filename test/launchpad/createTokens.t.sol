@@ -31,7 +31,6 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertEq(address(config.bondingCurve), address(bondingCurve));
         assertEq(address(config.graduator), address(graduator));
         assertEq(config.tokenOwner, creator);
-        assertEq(config.graduationEthFee, GRADUATION_FEE);
         assertApproxEqRel(config.ethGraduationThreshold, GRADUATION_THRESHOLD, 1e10);
 
         // Verify token state was initialized correctly

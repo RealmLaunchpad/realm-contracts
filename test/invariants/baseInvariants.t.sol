@@ -49,7 +49,6 @@ contract LaunchpadInvariants is Test {
     // used for both combinations of curves,graduators for univ2 and univ4
     uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~8 ether
     uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
-    uint256 constant GRADUATION_FEE = 0.5 ether;
 
     function setUp() public virtual {
         string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
@@ -70,16 +69,14 @@ contract LaunchpadInvariants is Test {
             address(bondingCurve),
             address(graduatorV2),
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
         launchpad.whitelistComponents(
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV4),
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
         vm.stopPrank();
 

@@ -72,8 +72,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             address(bondingCurve),
             address(graduator),
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
     }
 
@@ -81,7 +80,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSignature("InvalidParameter(uint256)", 0));
         launchpad.whitelistComponents(
-            address(implementation), address(bondingCurve), address(graduator), 0, MAX_THRESHOLD_EXCESS, GRADUATION_FEE
+            address(implementation), address(bondingCurve), address(graduator), 0, MAX_THRESHOLD_EXCESS
         );
     }
 
@@ -95,8 +94,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             address(bondingCurve),
             address(graduator),
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
     }
 
@@ -123,8 +121,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             newBondingCurve,
             newGraduator,
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
         vm.prank(admin);
         launchpad.whitelistComponents(
@@ -132,8 +129,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             newBondingCurve,
             newGraduator,
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
 
         assertTrue(launchpad.isSetWhitelisted(address(implementation), newBondingCurve, newGraduator));
@@ -146,8 +142,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             newBondingCurve,
             newGraduator,
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
 
         // Test blacklisting
@@ -167,8 +162,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             newBondingCurve,
             newGraduator,
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
 
         assertFalse(launchpad.isSetWhitelisted(address(implementation), address(bondingCurve), newGraduator));
@@ -181,8 +175,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             newBondingCurve,
             newGraduator,
             GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS,
-            GRADUATION_FEE
+            MAX_THRESHOLD_EXCESS
         );
 
         assertFalse(launchpad.isSetWhitelisted(address(implementation), newBondingCurve, address(graduator)));
@@ -288,8 +281,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         address bondingCurve,
         address graduator,
         uint256 ethGraduationThreshold,
-        uint256 maxExcessOverThreshold,
-        uint256 graduationEthFee
+        uint256 maxExcessOverThreshold
     );
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
     event TreasuryAddressUpdated(address newTreasury);
@@ -354,10 +346,9 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             alice,
             0,
             "",
-            LivoLaunchpad.GraduationSettings({
+            LivoLaunchpad.ThresholdSettings({
                 ethGraduationThreshold: GRADUATION_THRESHOLD,
-                maxExcessOverThreshold: MAX_THRESHOLD_EXCESS,
-                graduationEthFee: GRADUATION_FEE
+                maxExcessOverThreshold: MAX_THRESHOLD_EXCESS
             })
         );
 
@@ -372,10 +363,9 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
             alice,
             0,
             "",
-            LivoLaunchpad.GraduationSettings({
+            LivoLaunchpad.ThresholdSettings({
                 ethGraduationThreshold: GRADUATION_THRESHOLD,
-                maxExcessOverThreshold: MAX_THRESHOLD_EXCESS,
-                graduationEthFee: GRADUATION_FEE
+                maxExcessOverThreshold: MAX_THRESHOLD_EXCESS
             })
         );
     }
