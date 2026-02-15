@@ -23,7 +23,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             tokenCalldata
         );
@@ -34,14 +33,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, uint16(550)));
         launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduator),
-            creator,
-            "0x12",
-            tokenCalldata
+            "TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), "0x12", tokenCalldata
         );
     }
 
@@ -52,14 +44,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxDuration.selector, 15 days));
         launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduator),
-            creator,
-            "0x12",
-            tokenCalldata
+            "TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), "0x12", tokenCalldata
         );
     }
 

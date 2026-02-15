@@ -267,34 +267,9 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     event TreasuryAddressUpdated(address newTreasury);
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
 
-    function test_tokenOwnershipTransfer_onlyTokenOwner() public createTestToken {
-        vm.expectRevert(LivoLaunchpad.OnlyTokenOwner.selector);
-        vm.prank(alice);
-        launchpad.transferTokenOwnership(testToken, alice);
-
-        assertEq(launchpad.getTokenOwner(testToken), creator);
-    }
-
     function test_readTokenOwnerInvalidToken() public {
         vm.expectRevert(LivoLaunchpad.InvalidToken.selector);
         launchpad.getTokenOwner(address(0));
-    }
-
-    function test_tokenOwnershipTransfer_newOwnerReflected() public createTestToken {
-        vm.prank(creator);
-        launchpad.transferTokenOwnership(testToken, alice);
-
-        assertEq(launchpad.getTokenOwner(testToken), alice);
-    }
-
-    function test_tokenOwnershipTransfer_twoTransfers() public createTestToken {
-        vm.prank(creator);
-        launchpad.transferTokenOwnership(testToken, alice);
-
-        vm.prank(alice);
-        launchpad.transferTokenOwnership(testToken, bob);
-
-        assertEq(launchpad.getTokenOwner(testToken), bob);
     }
 
     error OwnableUnauthorizedAccount(address caller);
