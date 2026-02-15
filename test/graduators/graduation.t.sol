@@ -18,6 +18,9 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 
 /// @dev These tests should should pass regardless of the of graduator, so we test it with both
 abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
+    // Graduation fee constant (matches both V2 and V4 graduators)
+    uint256 constant GRADUATION_FEE = 0.5 ether;
+
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
 
     /// @notice Test that graduated boolean turns true in launchpad
@@ -31,12 +34,11 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         assertTrue(stateAfter.graduated, "Token should be graduated in launchpad");
     }
 
-    function test_readGraduationSettings() public createTestToken {
-        LivoLaunchpad.GraduationSettings memory settings =
-            launchpad.getGraduationSettings(address(implementation), address(bondingCurve), address(graduator));
-        assertEq(settings.ethGraduationThreshold, GRADUATION_THRESHOLD, "ETH graduation threshold should be 0");
-        assertEq(settings.maxExcessOverThreshold, MAX_THRESHOLD_EXCESS, "Max excess over threshold should be 0");
-        assertEq(settings.graduationEthFee, GRADUATION_FEE, "Graduation ETH fee should be 0");
+    function test_readThresholdSettings() public createTestToken {
+        LivoLaunchpad.ThresholdSettings memory settings =
+            launchpad.getThresholdSettings(address(implementation), address(bondingCurve), address(graduator));
+        assertEq(settings.ethGraduationThreshold, GRADUATION_THRESHOLD, "ETH graduation threshold should match");
+        assertEq(settings.maxExcessOverThreshold, MAX_THRESHOLD_EXCESS, "Max excess over threshold should match");
     }
 
     /// @notice Test that graduated boolean turns true in LivoToken
@@ -99,11 +101,13 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
     /// @notice Test that at graduation the team collects the graduation fee in eth
     function test_teamCollectsGraduationFeeInEthAtGraduation() public createTestToken {
-        uint256 treasuryBalanceBefore = launchpad.treasuryEthFeesCollected();
+        // After refactoring: graduator pays treasury directly, not through launchpad's treasuryEthFeesCollected
+        uint256 treasuryBalanceBefore = treasury.balance;
 
+        // graduation fees are sent directly to the treasury
         _graduateToken();
 
-        uint256 treasuryBalanceAfter = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryBalanceAfter = treasury.balance;
         uint256 feeCollected = treasuryBalanceAfter - treasuryBalanceBefore;
 
         assertGe(
@@ -211,7 +215,9 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         );
 
         uint256 treasuryFeesBeforeGraduation = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryEthBefore = treasury.balance;
 
+        // this graduates the token
         uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
@@ -219,11 +225,17 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
 
+        // After refactoring: trading fees still in treasuryEthFeesCollected, graduation fees paid directly
         uint256 treasuryFeesAfterGraduation = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryEthAfter = treasury.balance;
+
+        // Trading fee accumulated in launchpad, graduation fee paid directly to treasury
+        uint256 tradingFeeAccumulated = treasuryFeesAfterGraduation - treasuryFeesBeforeGraduation;
+        uint256 graduationFeePaid = treasuryEthAfter - treasuryEthBefore;
 
         assertEq(
-            treasuryFeesAfterGraduation - treasuryFeesBeforeGraduation,
-            GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION + tradingFee,
+            tradingFeeAccumulated + graduationFeePaid,
+            tradingFee + (GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION),
             "Treasury should collect its graduation fee share (plus trading fee)"
         );
     }
@@ -280,16 +292,17 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         uint256 launchpadEthAfter = address(launchpad).balance;
 
-        // eth balance change in the contract:
-        // income: +purchaseValue
-        // expenses: -liquidity
+        // After refactoring: launchpad sends ALL collected ETH to graduator
+        // Graduator then splits it: liquidity + creatorCompensation + treasuryShare
         uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
         uint256 liquidity = etherReservesPreGraduation - tradingFee - GRADUATION_FEE;
         // the CREATOR_GRADUATION_COMPENSATION comes out of the GRADUATION_FEE
+        uint256 treasuryGraduationShare = GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION;
+
         assertEq(
             launchpadEthBefore - launchpadEthAfter,
-            liquidity + CREATOR_GRADUATION_COMPENSATION,
-            "eth balance change should equal liquidity added plus the creator compensation"
+            liquidity + CREATOR_GRADUATION_COMPENSATION + treasuryGraduationShare,
+            "eth balance change should equal liquidity added plus the creator compensation plus treasury graduation fee"
         );
     }
 }
