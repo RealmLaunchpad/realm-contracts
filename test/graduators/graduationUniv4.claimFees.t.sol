@@ -63,7 +63,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
         testToken = launchpad.createToken(
-            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12", ""
+            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), "0x12", ""
         );
 
         _graduateToken();
@@ -73,24 +73,10 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     modifier twoGraduatedTokensWithBuys(uint256 buyAmount) virtual {
         vm.startPrank(creator);
         testToken1 = launchpad.createToken(
-            "TestToken1",
-            "TEST1",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            creator,
-            "0x1a3a",
-            ""
+            "TestToken1", "TEST1", address(implementation), address(bondingCurve), address(graduator), "0x1a3a", ""
         );
         testToken2 = launchpad.createToken(
-            "TestToken2",
-            "TEST2",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            creator,
-            "0x1a3a",
-            ""
+            "TestToken2", "TEST2", address(implementation), address(bondingCurve), address(graduator), "0x1a3a", ""
         );
         vm.stopPrank();
 
@@ -675,9 +661,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
-        // some fees should have been accumulated by now. Let's transfer ownership
-        vm.prank(creator);
-        launchpad.transferTokenOwnership(testToken, alice);
+        // some fees should have been accumulated by now. Let's transfer ownership via admin
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 aliceEthBalanceBefore = alice.balance;
@@ -697,9 +683,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
-        // Transfer ownership to Alice
-        vm.prank(creator);
-        launchpad.transferTokenOwnership(testToken, alice);
+        // Transfer ownership to Alice via admin
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
@@ -772,7 +758,6 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             tokenCalldata
         );
@@ -792,7 +777,6 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x1a3a",
             tokenCalldata
         );
@@ -802,7 +786,6 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x1a3a",
             tokenCalldata
         );
@@ -858,7 +841,6 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             tokenCalldata
         );
@@ -878,7 +860,6 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x1a3a",
             tokenCalldata
         );
@@ -888,7 +869,6 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x1a3a",
             tokenCalldata
         );

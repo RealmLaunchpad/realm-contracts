@@ -147,8 +147,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         /////////// now update token owner by transferring ownership
 
-        vm.prank(creator);
-        launchpad.transferTokenOwnership(testToken, alice);
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
         assertEq(launchpad.getTokenOwner(testToken), alice, "New token owner should be Alice");
 
         // Verify that sell taxes are now redirected to the new owner
@@ -459,7 +459,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             address(taxTokenImpl),
             address(bondingCurve),
             address(graduatorV4),
-            creator,
             "0x003",
             tokenCalldata
         );
@@ -718,8 +717,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _swapBuy(buyer, buyAmount, 0, true);
 
         // Transfer ownership to alice
-        vm.prank(creator);
-        launchpad.transferTokenOwnership(testToken, alice);
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
         assertEq(launchpad.getTokenOwner(testToken), alice, "Alice should be the new token owner");
 
         // Record balances before claiming
@@ -807,7 +806,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             tokenCalldata
         );
@@ -818,14 +816,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, uint16(550)));
         launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduator),
-            creator,
-            "0x12",
-            tokenCalldata
+            "TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), "0x12", tokenCalldata
         );
     }
 
