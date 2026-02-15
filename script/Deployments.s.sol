@@ -90,37 +90,40 @@ contract Deployments is Script {
 
         vm.startBroadcast();
 
+        console.log("| Contract Name | Address |");
+        console.log("| ---- | --- | ");
+
         // 1. Deploy LivoToken (implementation for clones)
         LivoToken livoToken = new LivoToken();
-        console.log("LivoToken deployed at:", address(livoToken));
+        console.log("| LivoToken | ", address(livoToken));
 
         // 2. Deploy ConstantProductBondingCurve
         ConstantProductBondingCurve bondingCurve = new ConstantProductBondingCurve();
-        console.log("ConstantProductBondingCurve deployed at:", address(bondingCurve));
+        console.log("| ConstantProductBondingCurve | ", address(bondingCurve));
 
         // 3. Deploy LivoLaunchpad
         LivoLaunchpad launchpad = new LivoLaunchpad(TREASURY);
-        console.log("LivoLaunchpad deployed at:", address(launchpad));
+        console.log("| LivoLaunchpad | ", address(launchpad));
 
         // 4. Deploy LivoGraduatorUniswapV2
         LivoGraduatorUniswapV2 graduatorV2 = new LivoGraduatorUniswapV2(univ2Router, address(launchpad));
-        console.log("LivoGraduatorUniswapV2 deployed at:", address(graduatorV2));
+        console.log("| LivoGraduatorUniswapV2 | ", address(graduatorV2));
 
         // 5. Deploy LiquidityLockUniv4WithFees
         LiquidityLockUniv4WithFees liquidityLock = new LiquidityLockUniv4WithFees(univ4PositionManager);
-        console.log("LiquidityLockUniv4WithFees deployed at:", address(liquidityLock));
+        console.log("| LiquidityLockUniv4WithFees | ", address(liquidityLock));
 
         // 6. Deploy LivoGraduatorUniswapV4
         // NOTE: Hook address must be mined first and updated in DeploymentAddresses.sol
         LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, permit2, hookAddress
         );
-        console.log("LivoGraduatorUniswapV4 deployed at:", address(graduatorV4));
+        console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
 
         // 7. Deploy LivoTaxableTokenUniV4 (implementation for clones)
         // note: the right chainid config is checked when reading configs
         LivoTaxableTokenUniV4 livoTaxableToken = new LivoTaxableTokenUniV4();
-        console.log("LivoTaxableTokenUniV4 deployed at:", address(livoTaxableToken));
+        console.log("| LivoTaxableTokenUniV4 | ", address(livoTaxableToken));
 
         console.log("");
         console.log("Whitelisting components...");
