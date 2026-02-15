@@ -167,7 +167,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         // Now sell the remaining tokens (same amount)
         uint256 remainingTokens = IERC20(testToken).balanceOf(alice);
-        assertEq(remainingTokens, tokensToSell); // Should be the same amount
+        assertApproxEqAbs(remainingTokens, tokensToSell, 1, "remaining tokens should be the same"); // Should be the same amount
 
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, remainingTokens, 0, DEADLINE);

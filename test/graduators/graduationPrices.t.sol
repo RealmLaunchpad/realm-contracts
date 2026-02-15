@@ -19,6 +19,7 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {BaseUniswapV2GraduationTests} from "test/graduators/graduationUniv2.t.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 
 /// @dev Test that the graduation price matches between launchpad and graduators
 abstract contract GraduationPricesTests is LaunchpadBaseTests {
@@ -83,21 +84,31 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
     /////////////////////// liquidity, mcap, etc //////////////////////////////////
 
     function test_metricsAtExactGraduation() public createTestToken {
+        ConstantProductBondingCurve curve = new ConstantProductBondingCurve();
+
+        uint256 ethValue = 0.01 ether;
+        uint256 ethValueMinusFees = ((10_000 - BASE_BUY_FEE_BPS) * ethValue) / 10_000;
+        uint256 ethReserves = GRADUATION_THRESHOLD;
+        // only eth minus fees arrives to the bonding curve
+        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, ethValueMinusFees);
+        // but the buyer spent the full ethValue
+        uint256 expectedPriceAtGraduation = (1e18 * ethValue) / tokensReceived;
+        console.log("tokensReceived", tokensReceived);
+        console.log("expectedPriceAtGraduation", expectedPriceAtGraduation);
+
         // these values are computed from the current bonding curve parameters, and may change if those change
-        uint256 expectedTokensInLiquidity = 190_000_000e18;
-        uint256 expectedEthInLiquidity = 7.5 ether;
-        uint256 expectedPriceAtGraduation = 0.0000000392 ether;
-        uint256 expectedMcapAtGraduation = 39.2 ether;
+        uint256 expectedTokensInLiquidity = 200_000_000e18;
+        uint256 expectedEthInLiquidity = 8 ether;
+        uint256 expectedMcapAtGraduation = 40 ether;
 
         _graduateExact();
 
         // buy on uniswap, and derive the price from how many tokens were bought
-        uint256 ethAmount = 0.01 ether;
         uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
-        _uniswapBuy(buyer, ethAmount);
+        _uniswapBuy(buyer, ethValue);
 
         uint256 tokensBoughtSwap = IERC20(testToken).balanceOf(buyer) - tokenBalanceBefore;
-        uint256 effectiveSwapPrice = (ethAmount * 1e18) / tokensBoughtSwap;
+        uint256 effectiveSwapPrice = (ethValue * 1e18) / tokensBoughtSwap;
         uint256 tokensInPair = IERC20(testToken).balanceOf(LivoToken(testToken).pair());
 
         // regardless of both univ2 and univ4.

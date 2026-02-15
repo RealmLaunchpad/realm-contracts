@@ -107,7 +107,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
 
     /// @notice Token supply burned at graduation
-    uint256 public constant BURNABLE_SUPPLY_AT_GRADUATION = 10_000_000e18;
+    uint256 public constant BURNABLE_SUPPLY_AT_GRADUATION = 0;
 
     /////////////////////// Errors ///////////////////////
 

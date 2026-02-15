@@ -253,18 +253,11 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     /// @notice Test that after graduation the creator has received exactly 0% of the supply, and 1% has been burned to the dead address
     function test_creatorTokenBalanceAfterExactGraduation() public createTestToken {
         assertEq(LivoToken(testToken).balanceOf(creator), 0, "creator should start with 0 tokens");
-        assertEq(LivoToken(testToken).balanceOf(address(0xdead)), 0, "dead address should start with 0 tokens");
 
         _launchpadBuy(testToken, 0.1 ether);
         _graduateToken();
 
-        assertEq(LivoToken(testToken).balanceOf(creator), 0, "creator should have less than 1% of the supply");
-
-        assertEq(
-            LivoToken(testToken).balanceOf(address(0xdead)),
-            TOTAL_SUPPLY / 100,
-            "we should have burned 1% of the supply"
-        );
+        assertEq(LivoToken(testToken).balanceOf(creator), 0, "creator should have 0% supply");
     }
 
     /// @notice Test that after graduation (exact eth) all the token supply is in the buyer's balance and the pool manager
@@ -730,10 +723,9 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
         uint256 poolTokenBalanceBefore = LivoToken(testToken).balanceOf(address(poolManager));
-        uint256 deadBalanceBefore = LivoToken(testToken).balanceOf(address(0xdead));
 
         assertApproxEqAbs(
-            buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore + deadBalanceBefore,
+            buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore,
             0.0001 ether,
             TOTAL_SUPPLY,
             "some supply is missing"
@@ -742,25 +734,21 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 poolBalanceAfterGraduation = address(poolManager).balance;
         uint256 buyerEtherBefore = buyer.balance;
         uint256 creatorEtherBefore = creator.balance;
-        uint256 deadEthBefore = address(0xdead).balance;
 
         // ~190M tokens are in liquidity, 10M owned by the creator, and ~800M owned by `buyer`
         // when selling everything back, almost all eth deposited as liquidity should be recovered
 
         // sell the full balance of the buyer, who has most of the supply
         _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
-        // sell the creator, who has the remaining circulating supply
-        _swapSell(address(0xdead), deadBalanceBefore, 1, true);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
-        uint256 ethRecoveredByDead = address(0xdead).balance - deadEthBefore;
         // check that the eth collected by buyer and seller matches the eth left the pool
         assertEq(
-            ethRecoveredByBuyer + ethRecoveredByCreator + ethRecoveredByDead,
+            ethRecoveredByBuyer + ethRecoveredByCreator,
             ethLeavingFromThePoolManager,
-            "eth recovered by buyer, creator and dead should match eth in pool"
+            "eth recovered by buyer and creator should match eth in pool"
         );
 
         // because of the liquidity boundaries set when adding liquidity, there is a tiny amount of eth that won't be recoverable
@@ -888,41 +876,32 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
         uint256 poolTokenBalanceBefore = LivoToken(testToken).balanceOf(address(poolManager));
-        uint256 deadBalanceBefore = LivoToken(testToken).balanceOf(address(0xdead));
 
         assertApproxEqAbs(
-            buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore + deadBalanceBefore,
+            buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore,
             0.0001 ether,
             TOTAL_SUPPLY,
             "some supply is missing"
         );
 
-        // transfer the dead balance to alice because the dead address cannot sell
-        vm.prank(address(0xdead));
-        LivoToken(testToken).transfer(alice, deadBalanceBefore);
-
         uint256 poolBalanceAfterGraduation = address(poolManager).balance;
         uint256 buyerEtherBefore = buyer.balance;
         uint256 creatorEtherBefore = creator.balance;
-        uint256 aliceEtherBefore = alice.balance;
 
         // ~190M tokens are in liquidity, 10M owned by the dead address, and ~800M owned by `buyer`
         // when selling everything back, almost all eth deposited as liquidity should be recovered
 
         // sell the full balance of the buyer, who has most of the supply
         _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
-        // sell the dead address, who has the remaining circulating supply (this is ficticious of course)
-        _swapSell(alice, deadBalanceBefore, 1, true);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
-        uint256 ethEarnedByAliceAddress = alice.balance - aliceEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
         uint256 wethFeesEarnedByCreator = WETH.balanceOf(creator);
 
         // check that the eth collected by buyer and seller matches the eth left the pool
         assertEq(
-            ethRecoveredByBuyer + ethRecoveredByCreator + wethFeesEarnedByCreator + ethEarnedByAliceAddress,
+            ethRecoveredByBuyer + ethRecoveredByCreator + wethFeesEarnedByCreator,
             ethLeavingFromThePoolManager,
             "eth recovered by buyer and creator should match eth in pool"
         );

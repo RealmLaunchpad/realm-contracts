@@ -21,11 +21,11 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
 
     /// @notice Constant K for the bonding curve formula
     /// @dev Solving numerically for the above constraints. Only the first constraint above is strictly enforced
-    uint256 public constant K = 3349207668990494117647058882667708000000000000;
+    uint256 public constant K = 3385715840941176470588235277153900000000000000;
     /// @notice Constant T0 for the bonding curve formula
-    uint256 public constant T0 = 89361694117647058823529431;
+    uint256 public constant T0 = 91849411764705882352941171;
     /// @notice Constant E0 for the bonding curve formula
-    uint256 public constant E0 = 3074468000000000000;
+    uint256 public constant E0 = 3100900000000000000;
 
     /// - t(8.5 ETH) = 199999999999999999999999985 (off from 200M target by 15 token-wei)
     /// - fee needed for exact price match: 0.499999837370237712 ETH (off from 0.5 ETH target by 0.000000162629762288 ETH)

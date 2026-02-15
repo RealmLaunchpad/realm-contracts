@@ -335,7 +335,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         _graduateToken();
 
         assertApproxEqRel(
-            IERC20(testToken).balanceOf(uniswapPair), 191_123_250e18, 0.0001e18, "not enough tokens went to univ2 pool"
+            IERC20(testToken).balanceOf(uniswapPair), 200_000_000e18, 0.0001e18, "not enough tokens went to univ2 pool"
         );
     }
 
@@ -345,7 +345,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
         _graduateToken();
 
-        assertApproxEqRel(WETH.balanceOf(address(pair)), 7.456e18, 0.000001e18, "not enough eth went to univ2 pool");
+        assertApproxEqRel(WETH.balanceOf(address(pair)), 8 ether, 0.000001e18, "not enough eth went to univ2 pool");
     }
 
     /// @notice Test that if a large amount of WETH is donated (and synced) to the univ2pair pre-graduation, graduation doesn't fail

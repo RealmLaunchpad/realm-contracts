@@ -94,7 +94,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function test_quoteInitialPrice() public createTestToken {
         // how many tokens do you get with the first wei?
         (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(testToken, 1);
-        assertApproxEqAbs(expectedTokens, 393333333, 1);
+        assertApproxEqAbs(expectedTokens, 352107262, 1);
     }
 
     function testBuyTokensWithExactEth_withMinTokenAmount() public createTestToken {
