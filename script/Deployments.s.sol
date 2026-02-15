@@ -25,7 +25,6 @@ contract Deployments is Script {
     // Graduation parameters for whitelisting sets
     uint256 constant GRADUATION_THRESHOLD = 7956000000000052224; // ~7.956 ETH
     uint256 constant MAX_EXCESS_OVER_THRESHOLD = 100000000000000000; // 0.1 ETH
-    uint256 constant GRADUATION_ETH_FEE = 500000000000000000; // 0.5 ETH
 
     // ========================= Network Config =========================
 
@@ -133,8 +132,7 @@ contract Deployments is Script {
             address(bondingCurve),
             address(graduatorV2),
             GRADUATION_THRESHOLD,
-            MAX_EXCESS_OVER_THRESHOLD,
-            GRADUATION_ETH_FEE
+            MAX_EXCESS_OVER_THRESHOLD
         );
         console.log("Whitelisted V2 component set");
 
@@ -144,8 +142,7 @@ contract Deployments is Script {
             address(bondingCurve),
             address(graduatorV4),
             GRADUATION_THRESHOLD,
-            MAX_EXCESS_OVER_THRESHOLD,
-            GRADUATION_ETH_FEE
+            MAX_EXCESS_OVER_THRESHOLD
         );
         console.log("Whitelisted V4 component set (LivoToken)");
 
@@ -155,8 +152,7 @@ contract Deployments is Script {
             address(bondingCurve),
             address(graduatorV4),
             GRADUATION_THRESHOLD,
-            MAX_EXCESS_OVER_THRESHOLD,
-            GRADUATION_ETH_FEE
+            MAX_EXCESS_OVER_THRESHOLD
         );
         console.log("Whitelisted V4 component set (LivoTaxableTokenUniV4)");
 

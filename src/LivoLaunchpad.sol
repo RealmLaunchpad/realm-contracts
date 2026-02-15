@@ -25,12 +25,6 @@ contract LivoLaunchpad is Ownable2Step {
     /// @dev 1 billion tokens with 18 decimals
     uint256 private constant TOTAL_SUPPLY = 1_000_000_000e18; // 1B tokens
 
-    /// @notice ETH compensation paid to the token owner at graduation
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
-
-    /// @notice token supply burned at graduation
-    uint256 public constant BURNABLE_SUPPLY_AT_GRADUATION = 10_000_000e18;
-
     /// @notice Total fees collected by the treasury (in wei)
     uint256 public treasuryEthFeesCollected;
 
@@ -44,7 +38,7 @@ contract LivoLaunchpad is Ownable2Step {
     uint16 public baseSellFeeBps;
 
     /// @notice Whitelisted sets of (implementation, bonding curve, graduator)
-    mapping(address implementation => mapping(address curve => mapping(address graduator => GraduationSettings))) public
+    mapping(address implementation => mapping(address curve => mapping(address graduator => ThresholdSettings))) public
         whitelistedComponents;
 
     /// @notice Mapping of token address to its configuration
@@ -53,10 +47,9 @@ contract LivoLaunchpad is Ownable2Step {
     /// @notice Mapping of token address to its state variables
     mapping(address => TokenState) public tokenStates;
 
-    struct GraduationSettings {
+    struct ThresholdSettings {
         uint256 ethGraduationThreshold;
         uint256 maxExcessOverThreshold;
-        uint256 graduationEthFee;
     }
 
     ///////////////////// Errors /////////////////////
@@ -106,8 +99,7 @@ contract LivoLaunchpad is Ownable2Step {
         address bondingCurve,
         address graduator,
         uint256 ethGraduationThreshold,
-        uint256 maxExcessOverThreshold,
-        uint256 graduationEthFee
+        uint256 maxExcessOverThreshold
     );
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
     event TokenOwnerUpdated(address indexed token, address indexed newOwner);
@@ -143,19 +135,19 @@ contract LivoLaunchpad is Ownable2Step {
         bytes32 salt,
         bytes memory tokenCalldata
     ) external returns (address token) {
-        GraduationSettings memory graduationSettings = whitelistedComponents[implementation][bondingCurve][graduator];
+        ThresholdSettings memory thresholdSettings = whitelistedComponents[implementation][bondingCurve][graduator];
         // manual check here to reduce number of SLOADs of this storage mapping
-        require(graduationSettings.ethGraduationThreshold > 0, NotWhitelistedComponents());
+        require(thresholdSettings.ethGraduationThreshold > 0, NotWhitelistedComponents());
 
         token = _createToken(
-            name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata, graduationSettings
+            name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata, thresholdSettings
         );
     }
 
     /// @notice Same as createToken, but allows admin to create a token bypassing the whitelisting sets of graduator, bonding curve and token implementation
     /// @dev Projects can contact the team for custom implementations that can only be deployed by admins
     /// @dev example: if a project wants to deploy with longer tax period, admins deploy a taxable-token without the 14day restriction, and use this function without whitelisting such token implementation.
-    /// @param graduationSettings Custom graduation settings for this token
+    /// @param thresholdSettings Custom graduation threshold settings for this token
     function createCustomToken(
         string calldata name,
         string calldata symbol,
@@ -165,20 +157,18 @@ contract LivoLaunchpad is Ownable2Step {
         address tokenOwner,
         bytes32 salt,
         bytes memory tokenCalldata,
-        GraduationSettings memory graduationSettings
+        ThresholdSettings memory thresholdSettings
     ) external onlyOwner returns (address token) {
-        // Validate graduation settings
+        // Validate threshold settings
         require(
-            graduationSettings.ethGraduationThreshold > 2 * graduationSettings.graduationEthFee,
-            InvalidParameter(graduationSettings.ethGraduationThreshold)
-        );
-        require(
-            graduationSettings.graduationEthFee >= CREATOR_GRADUATION_COMPENSATION,
-            InvalidParameter(graduationSettings.graduationEthFee)
+            thresholdSettings.ethGraduationThreshold > 0,
+            InvalidParameter(thresholdSettings.ethGraduationThreshold)
         );
 
+        // note: the graduation threshold must be higher than the graduatoin fee in the graduators, but that is the graduators' responsibility
+
         token = _createToken(
-            name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata, graduationSettings
+            name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata, thresholdSettings
         );
     }
 
@@ -354,15 +344,15 @@ contract LivoLaunchpad is Ownable2Step {
         return config.tokenOwner;
     }
 
-    /// @notice Retrieves the graduation settings for a given launchpad implementation.
+    /// @notice Retrieves the threshold settings for a given launchpad implementation.
     /// @param implementation The address of the token implementation contract.
     /// @param bondingCurve The address of the bonding curve contract.
     /// @param graduator The address of the graduator contract
-    /// @return Returns the graduation settings relevant to the provided implementation, bonding curve, and graduator.
-    function getGraduationSettings(address implementation, address bondingCurve, address graduator)
+    /// @return Returns the threshold settings relevant to the provided implementation, bonding curve, and graduator.
+    function getThresholdSettings(address implementation, address bondingCurve, address graduator)
         external
         view
-        returns (GraduationSettings memory)
+        returns (ThresholdSettings memory)
     {
         return whitelistedComponents[implementation][bondingCurve][graduator];
     }
@@ -388,36 +378,32 @@ contract LivoLaunchpad is Ownable2Step {
         emit TradingFeesUpdated(buyFeeBps, sellFeeBps);
     }
 
-    /// @notice Whitelists a set of components (token implementation, bonding curve, graduator) with graduation settings.
+    /// @notice Whitelists a set of components (token implementation, bonding curve, graduator) with threshold settings.
     /// @param implementation Token implementation address
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
     /// @param ethGraduationThreshold ETH threshold required for graduation
     /// @param maxExcessOverThreshold Maximum ETH excess allowed over the graduation threshold
-    /// @param graduationEthFee ETH fee collected at graduation, split between creator and treasury
     function whitelistComponents(
         address implementation,
         address bondingCurve,
         address graduator,
         uint256 ethGraduationThreshold,
-        uint256 maxExcessOverThreshold,
-        uint256 graduationEthFee
+        uint256 maxExcessOverThreshold
     ) external onlyOwner {
         // ethGraduationThreshold == 0 is used as proxy to know if the set has been whitelisted
         require(ethGraduationThreshold > 0, InvalidParameter(ethGraduationThreshold));
-        require(graduationEthFee >= CREATOR_GRADUATION_COMPENSATION, InvalidParameter(graduationEthFee));
         // A set of (implementation, curve, graduator) can only have one configuration
         // If more are required, new copies of those components can be deployed, and a new configuration can be made with those
         require(!_isSetWhitelisted(whitelistedComponents[implementation][bondingCurve][graduator]), AlreadyConfigured());
 
-        whitelistedComponents[implementation][bondingCurve][graduator] = GraduationSettings({
+        whitelistedComponents[implementation][bondingCurve][graduator] = ThresholdSettings({
             ethGraduationThreshold: ethGraduationThreshold,
-            maxExcessOverThreshold: maxExcessOverThreshold,
-            graduationEthFee: graduationEthFee
+            maxExcessOverThreshold: maxExcessOverThreshold
         });
 
         emit ComponentsSetWhitelisted(
-            implementation, bondingCurve, graduator, ethGraduationThreshold, maxExcessOverThreshold, graduationEthFee
+            implementation, bondingCurve, graduator, ethGraduationThreshold, maxExcessOverThreshold
         );
     }
 
@@ -472,42 +458,22 @@ contract LivoLaunchpad is Ownable2Step {
         internal
     {
         IERC20 token = IERC20(tokenAddress);
-
         tokenState.graduated = true;
 
-        uint256 graduationEthFee = tokenConfig.graduationEthFee;
         uint256 ethCollected = tokenState.ethCollected;
-        uint256 ethForGraduation = ethCollected - graduationEthFee;
-
-        // Attempt to transfer compensation to creator. If the eth transfer fails, the treasury gets the fees.
-        // we don't want owners to maliciously (and stupidly) block the graduation
-        uint256 treasuryShare = graduationEthFee;
-        bool success = _transferEth(tokenConfig.tokenOwner, CREATOR_GRADUATION_COMPENSATION, false);
-        if (success) {
-            treasuryShare -= CREATOR_GRADUATION_COMPENSATION;
-        }
-        treasuryEthFeesCollected += treasuryShare;
-
         uint256 tokenBalance = token.balanceOf(address(this));
-        uint256 tokenForLiquidity = tokenBalance - BURNABLE_SUPPLY_AT_GRADUATION;
 
-        // update token state. All eth collected is moved to liquidity, and all remaining supply is released
+        // Update state - all resources transferred to graduator
         tokenState.ethCollected = 0;
         tokenState.releasedSupply += tokenBalance;
 
-        // If the last purchase is a large one, the resulting price in the pool will be higher
-        // I don't see a security risk in this.
-        // The effect is that the last buyer will be at an immediate small win.
-        // The larger the last purchase, the larger the price difference from the bonding curve to the univ2 pool
-        // But I think that simply encourages graduation, so I don't see a big problem
-        // The larger the buy, the larger the instant profit of the last purchase
-        token.safeTransfer(address(0xDead), BURNABLE_SUPPLY_AT_GRADUATION);
-        token.safeTransfer(address(tokenConfig.graduator), tokenForLiquidity);
+        // Transfer ALL tokens to graduator
+        token.safeTransfer(address(tokenConfig.graduator), tokenBalance);
 
-        // pass here the tokensForGraduation to avoid deflation attack in the graduator
-        tokenConfig.graduator.graduateToken{value: ethForGraduation}(tokenAddress, tokenForLiquidity);
+        // Graduator handles: burning, fees, compensation, liquidity
+        tokenConfig.graduator.graduateToken{value: ethCollected}(tokenAddress, tokenBalance);
 
-        emit TokenGraduated(tokenAddress, ethForGraduation, tokenForLiquidity);
+        emit TokenGraduated(tokenAddress, ethCollected, tokenBalance);
     }
 
     function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
@@ -536,7 +502,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param tokenOwner Address of the token owner (receives graduation compensation and fees)
     /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
     /// @param tokenCalldata Extra initialization parameters for the token
-    /// @param graduationSettings Graduation settings for this token
+    /// @param thresholdSettings Threshold settings for this token
     /// @return token The address of the newly created token
     function _createToken(
         string calldata name,
@@ -547,7 +513,7 @@ contract LivoLaunchpad is Ownable2Step {
         address tokenOwner,
         bytes32 salt,
         bytes memory tokenCalldata,
-        GraduationSettings memory graduationSettings
+        ThresholdSettings memory thresholdSettings
     ) internal returns (address token) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
@@ -567,9 +533,8 @@ contract LivoLaunchpad is Ownable2Step {
             bondingCurve: ILivoBondingCurve(bondingCurve),
             graduator: ILivoGraduator(graduator),
             tokenOwner: tokenOwner,
-            ethGraduationThreshold: graduationSettings.ethGraduationThreshold,
-            maxExcessOverThreshold: graduationSettings.maxExcessOverThreshold,
-            graduationEthFee: graduationSettings.graduationEthFee,
+            ethGraduationThreshold: thresholdSettings.ethGraduationThreshold,
+            maxExcessOverThreshold: thresholdSettings.maxExcessOverThreshold,
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps
         });
@@ -644,7 +609,7 @@ contract LivoLaunchpad is Ownable2Step {
         return tokenStates[token].ethCollected;
     }
 
-    function _isSetWhitelisted(GraduationSettings storage graduationSettings) internal view returns (bool) {
-        return (graduationSettings.ethGraduationThreshold > 0);
+    function _isSetWhitelisted(ThresholdSettings storage thresholdSettings) internal view returns (bool) {
+        return (thresholdSettings.ethGraduationThreshold > 0);
     }
 }
