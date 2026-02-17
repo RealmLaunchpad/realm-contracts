@@ -19,7 +19,7 @@ import {IUniswapV2Router02} from "../../src/interfaces/IUniswapV2Router02.sol";
 /// @title Uniswap V2 Swap Simulations for Sepolia
 /// @notice Script to perform Uniswap V2 swaps (buy/sell) on Sepolia testnet
 /// @dev Uses environment variables for configuration
-contract UniswapV2SwapSimulations is Script {
+contract UniswapV2Swaps is Script {
     IWETH constant WETH = IWETH(DeploymentAddressesSepolia.WETH);
     IUniswapV2Router02 constant ROUTER = IUniswapV2Router02(DeploymentAddressesSepolia.UNIV2_ROUTER);
 

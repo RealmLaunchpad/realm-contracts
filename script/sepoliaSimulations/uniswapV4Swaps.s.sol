@@ -27,7 +27,7 @@ import {IUniversalRouter} from "../../src/interfaces/IUniswapV4UniversalRouter.s
 /// @title Uniswap V4 Swap Simulations for Sepolia
 /// @notice Script to perform direct Uniswap V4 swaps (buy/sell) on Sepolia testnet
 /// @dev Uses environment variables for configuration. Assumes token is already graduated.
-contract UniswapV4SwapSimulations is Script {
+contract UniswapV4Swaps is Script {
     // Pool configuration constants
     uint24 constant LP_FEE = 10000; // 1% fee
     int24 constant TICK_SPACING = 200;

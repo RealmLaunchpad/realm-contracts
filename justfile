@@ -56,13 +56,13 @@ sell tokenAddress amount:
 ##########################################################
 
 uniapprove tokenAddress:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=0 forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=0 forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
 swapbuy tokenAddress value:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=1 AMOUNT_IN={{value}} forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=1 AMOUNT_IN={{value}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
 swapsell tokenAddress amount:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=2 AMOUNT_IN={{amount}} forge script UniswapV4SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=2 AMOUNT_IN={{amount}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
 ##########################################################
 
