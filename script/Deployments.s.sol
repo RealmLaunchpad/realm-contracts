@@ -19,7 +19,7 @@ import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/L
 contract Deployments is Script {
     // ========================= Configuration =========================
 
-    // TODO: Set treasury address before deployment
+    // TODO: Set treasury address before deployment (this is livo.dev for now)
     address constant TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181; // TODO: Set before deployment
 
     // Graduation parameters for whitelisting sets
@@ -137,7 +137,7 @@ contract Deployments is Script {
             GRADUATION_THRESHOLD,
             MAX_EXCESS_OVER_THRESHOLD
         );
-        console.log("Whitelisted V2 component set");
+        console.log("Whitelisted V2 component set (LivoToken)");
 
         // V4 graduator set (LivoToken)
         launchpad.whitelistComponents(
