@@ -43,6 +43,9 @@ library DeploymentAddressesMainnet {
 
     /// @notice LivoSwapHook address for Uniswap V4
     address public constant LIVO_SWAP_HOOK = 0x145092816e7515F00304B383435787cA08E700C4;
+
+    /// @notice Livo Treasury
+    address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
 
 /// @title Deployment Address Constants for Sepolia Testnet
@@ -78,4 +81,7 @@ library DeploymentAddressesSepolia {
 
     /// @notice LivoSwapHook address for Uniswap V4
     address public constant LIVO_SWAP_HOOK = 0xdD353a0ECb1A028b6292D8037fAfC4B5F8BB40c4;
+
+    /// @notice Livo Treasury
+    address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
