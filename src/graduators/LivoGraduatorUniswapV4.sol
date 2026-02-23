@@ -137,7 +137,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     event CreatorFeesClaimed(address indexed token, address indexed tokenOwner, uint256 amount);
     event CreatorTaxesClaimed(address indexed token, address indexed tokenOwner, uint256 amount);
     event TreasuryFeesClaimed(address indexed caller, address indexed treasury, uint256 amount);
-    event TreasuryClaimed(address indexed caller, address indexed treasury, uint256 ethAmount);
 
     //////////////////////////////////////////////////////
 
@@ -293,20 +292,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
             address currentTokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
 
             // only the current token owner can collect fresh fees from LP positions
+            // but the token could have a previous owner that has pending fees and taxes to claim,
+            // so we allow anyone to call this function and claim pending amounts, but only collect new fees if the caller is the current owner
             if (msg.sender == currentTokenOwner) {
-                (uint256 creatorAccrued, uint256 treasuryAccrued) = _collectLpFees(token, positionIndexes);
-
-                if (creatorAccrued > 0) {
-                    pendingCreatorFees[token][msg.sender] += creatorAccrued;
-                    emit CreatorFeesAccrued(token, msg.sender, creatorAccrued);
-                }
-
-                if (treasuryAccrued > 0) {
-                    treasuryPendingFees += treasuryAccrued;
-                    emit TreasuryFeesAccrued(token, treasuryAccrued);
-                }
+                // this updates the state of pendingCreatorFees
+                _collectLpFees(token, currentTokenOwner, positionIndexes);
             }
 
+            // these two mappings may or may not have been increased in the scope above
             uint256 tokenTaxes = pendingCreatorTaxes[token][msg.sender];
             uint256 tokenFees = pendingCreatorFees[token][msg.sender];
 
@@ -328,31 +321,23 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     /// @notice Collects LP fees for tokens and accrues creator/treasury shares in storage
     /// @dev Creator shares are never force-transferred by admin
+    /// @dev This function only accrues the fees in storage, it does not transfer any fees to the creator or treasury. 
+    /// @dev The accrued fees need to be claimed by calling `creatorClaim()` or `treasuryClaim()`
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to collect fees from (only 0 or 1 are valid values)
-    function adminTokenFeesClaim(address[] calldata tokens, uint256[] calldata positionIndexes) external onlyOwner {
+    function adminTokenFeesAccrual(address[] calldata tokens, uint256[] calldata positionIndexes) external onlyOwner {
         uint256 nTokens = _validateClaimInputs(tokens, positionIndexes);
 
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
             address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
-            (uint256 creatorAccrued, uint256 treasuryAccrued) = _collectLpFees(token, positionIndexes);
-
-            if (creatorAccrued > 0) {
-                pendingCreatorFees[token][tokenOwner] += creatorAccrued;
-                emit CreatorFeesAccrued(token, tokenOwner, creatorAccrued);
-            }
-
-            if (treasuryAccrued > 0) {
-                treasuryPendingFees += treasuryAccrued;
-                emit TreasuryFeesAccrued(token, treasuryAccrued);
-            }
+            _collectLpFees(token, tokenOwner, positionIndexes);
         }
     }
 
     /// @notice Claims the pending treasury LP fees to the treasury address
     /// @dev Callable by anyone since funds always go to treasury
-    function treasuryClaimPendingFees() public {
+    function treasuryClaim() public {
         uint256 pending = treasuryPendingFees;
         address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
 
@@ -362,32 +347,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         }
 
         emit TreasuryFeesClaimed(msg.sender, treasury, pending);
-        emit TreasuryClaimed(msg.sender, treasury, pending);
-    }
-
-    /// @notice Backward-compatible alias of `creatorClaim()`.
-    function collectEthFees(address[] calldata tokens, uint256[] calldata positionIndexes) external {
-        creatorClaim(tokens, positionIndexes);
-    }
-
-    /// @notice Backward-compatible alias of `treasuryClaimPendingFees()`.
-    function treasuryClaim() external {
-        treasuryClaimPendingFees();
     }
 
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
-
-    /// @notice Returns claimable creator amounts (pending taxes + pending fees + current LP fees when owner is current)
-    /// @param tokens Array of token addresses
-    /// @param positionIndexes Array of position indexes to estimate LP fees from. PositionIndex 0 collects most fees
-    /// @return creatorClaimable Array of claimable ETH amounts per token for `msg.sender`
-    function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes)
-        external
-        view
-        returns (uint256[] memory creatorClaimable)
-    {
-        return getClaimableFees(tokens, positionIndexes, msg.sender);
-    }
 
     /// @notice Returns claimable creator amounts (pending taxes + pending fees + current LP fees when owner is current)
     /// @dev LP-fee estimates are included only when `tokenOwner` is the current token owner in launchpad
@@ -395,6 +357,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @param positionIndexes Array of position indexes to estimate LP fees from. PositionIndex 0 collects most fees
     /// @param tokenOwner Address for which pending and claimable amounts are computed
     /// @return creatorClaimable Array of claimable ETH amounts per token for `tokenOwner`
+    // todo rename to getClaimableEth
     function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
         public
         view
@@ -440,15 +403,25 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         }
     }
 
-    function _collectLpFees(address token, uint256[] calldata positionIndexes)
-        internal
-        returns (uint256 creatorAccrued, uint256 treasuryAccrued)
-    {
+    function _collectLpFees(address token, address tokenOwner, uint256[] calldata positionIndexes) internal {
+        uint256 creatorAccrued;
+        uint256 treasuryAccrued;
+
         for (uint256 p = 0; p < positionIndexes.length; p++) {
             uint256 positionId = positionIds[token][positionIndexes[p]];
             (uint256 creatorFees, uint256 treasuryFees) = _claimFromUniswapLock(token, positionId);
             creatorAccrued += creatorFees;
             treasuryAccrued += treasuryFees;
+        }
+
+        if (creatorAccrued > 0) {
+            pendingCreatorFees[token][tokenOwner] += creatorAccrued;
+            emit CreatorFeesAccrued(token, tokenOwner, creatorAccrued);
+        }
+
+        if (treasuryAccrued > 0) {
+            treasuryPendingFees += treasuryAccrued;
+            emit TreasuryFeesAccrued(token, treasuryAccrued);
         }
     }
 

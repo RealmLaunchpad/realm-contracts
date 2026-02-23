@@ -12,12 +12,8 @@ import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 
 interface ILivoGraduatorWithFees is ILivoGraduator {
-    function collectEthFees(address[] calldata tokens, uint256[] calldata positionIndexes) external;
+    function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) external;
     function positionIds(address token, uint256 positionIndex) external view returns (uint256);
-    function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes)
-        external
-        view
-        returns (uint256[] memory creatorFees);
     function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
         external
         view
@@ -48,7 +44,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256[] memory positionIndexes = new uint256[](1);
         positionIndexes[0] = 0;
         vm.prank(creator);
-        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+        graduatorWithFees.creatorClaim(tokens, positionIndexes);
     }
 
     function _pendingTaxes(address token, address tokenOwner) internal view returns (uint256) {
@@ -737,7 +733,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         positionIndexes[0] = 0;
 
         vm.prank(alice);
-        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+        graduatorWithFees.creatorClaim(tokens, positionIndexes);
 
         graduatorWithFees.treasuryClaim();
 
@@ -785,7 +781,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         positionIndexes[0] = 0;
         positionIndexes[1] = 1;
         vm.prank(creator);
-        graduatorWithFees.collectEthFees(tokens, positionIndexes);
+        graduatorWithFees.creatorClaim(tokens, positionIndexes);
         graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;

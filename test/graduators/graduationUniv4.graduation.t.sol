@@ -894,6 +894,14 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         // sell the full balance of the buyer, who has most of the supply
         _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
 
+        // this should transfer taxes to the creator, completing the fund flow
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](1);
+        positionIndexes[0] = 0;
+        vm.prank(creator);
+        LivoGraduatorUniswapV4(payable(address(graduator))).creatorClaim(tokens, positionIndexes);
+
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
