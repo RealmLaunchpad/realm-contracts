@@ -117,7 +117,7 @@ contract LaunchpadBaseTests is Test {
         // that the deployed address has correct permission flags (0x44)
         deployCodeTo(
             "LivoSwapHook.sol:LivoSwapHook",
-            abi.encode(poolManagerAddress, address(WETH)),
+            abi.encode(poolManagerAddress),
             DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
         taxHook = LivoSwapHook(payable(DeploymentAddressesMainnet.LIVO_SWAP_HOOK));

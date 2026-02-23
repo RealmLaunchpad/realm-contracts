@@ -37,6 +37,10 @@ interface ILivoGraduatorWithFees is ILivoGraduator {
         external
         view
         returns (uint256[] memory creatorFees);
+    function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
+        external
+        view
+        returns (uint256[] memory creatorFees);
     function treasuryClaim() external;
 }
 
@@ -245,11 +249,13 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         assertGt(creator.balance, creatorEthBalanceBefore, "creator eth balance should increase");
     }
 
-    /// @notice test that on sells, only token fees are collected
+    /// @notice test that on sells, creator only receives accrued sell taxes
     function test_claimFees_onSells_noTokenFees() public createAndGraduateToken {
         _swapSell(buyer, 100000000e18, 0.1 ether, true);
 
         uint256 creatorEthBalanceBefore = creator.balance;
+        uint256 pendingTaxesBeforeClaim =
+            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorTaxes(testToken, creator);
         uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(address(graduatorWithFees));
         uint256 poolManagerBalance = IERC20(testToken).balanceOf(address(poolManager));
 
@@ -263,7 +269,11 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         );
         assertLt(poolManagerBalanceAfter, poolManagerBalance, "token fees should leave the token manager");
         assertGt(tokenBalanceAfter, tokenBalanceBefore, "Tokens should arrive to the graduator");
-        assertEq(creator.balance, creatorEthBalanceBefore, "No fees should be collected now");
+        assertEq(
+            creator.balance - creatorEthBalanceBefore,
+            pendingTaxesBeforeClaim,
+            "creator should receive only accrued sell taxes"
+        );
     }
 
     /// @notice test that any eth balance is not collected by the first call to claimFees
@@ -288,7 +298,11 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         graduatorWithFees.treasuryClaim();
 
-        assertEq(address(graduatorWithFees).balance, 0, "graduator eth balance should be 0 after treasury claim");
+        assertEq(
+            address(graduatorWithFees).balance,
+            graduatorEthBalanceBefore,
+            "externally sent ETH should remain and not be claimable by treasury"
+        );
     }
 
     /// @notice test that a token creator can claim fees from mutliple tokens in one transaction
@@ -438,6 +452,8 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         positionIndexes[0] = 0;
         positionIndexes[1] = 1;
 
+        uint256 pendingTaxes =
+            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorTaxes(testToken, creator);
         uint256 creatorBalanceBefore = creator.balance;
 
         vm.prank(creator);
@@ -446,9 +462,11 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         uint256 totalCreatorFees = creator.balance - creatorBalanceBefore;
 
         // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
-        // So creator gets 0.5% = buyAmount / 200
-        uint256 expectedFees = buyAmount / 200;
-        assertApproxEqAbsDecimal(totalCreatorFees, expectedFees, 1, 18, "creator fees should be 0.5% of buy amount");
+        // plus any pending creator taxes accrued from the prior sell
+        uint256 expectedFees = buyAmount / 200 + pendingTaxes;
+        assertApproxEqAbsDecimal(
+            totalCreatorFees, expectedFees, 1, 18, "creator claim should include buy fees and pending taxes"
+        );
     }
 
     function test_claimFeesInvalidPositionIndexesEmptyArray() public {
@@ -500,7 +518,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertEq(fees[0], 0, "fees should be 0 right after graduation");
@@ -515,7 +533,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
@@ -524,17 +542,19 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertApproxEqAbs(fees[0], expectedFees, 1, "creator fees should be 0.5% of buy amount");
     }
 
-    /// @notice test that after one swapSell, getClaimableFees gives 0
+    /// @notice test that after one swapSell, getClaimableFees includes accrued creator tax
     function test_viewFunction_getClaimableFees_afterOneSwapSell() public createAndGraduateToken {
         _swapSell(buyer, 100000000e18, 0.1 ether, true);
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256 pendingTaxes =
+            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorTaxes(testToken, creator);
 
         assertEq(fees.length, 1, "should return one fee value");
-        assertEq(fees[0], 0, "no eth fees should be claimable after sell");
+        assertEq(fees[0], pendingTaxes, "claimable fees should match accrued creator taxes after sell");
     }
 
     /// @notice test that after two swapBuy, getClaimableFees gives expected fees
@@ -548,7 +568,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         uint256 expectedCreatorFees = (buyAmount1 + buyAmount2) / 200;
@@ -563,12 +583,12 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
         assertApproxEqAbs(fees[0], 1 ether / 200, 1, "creator fees should be 0.5% of buy amount");
 
         _collectFees(testToken);
 
-        fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
+        fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
 
         assertEq(fees[0], 0, "fees should be 0 after claim");
     }
@@ -586,7 +606,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertApproxEqAbs(fees[0], buyAmount2 / 200, 1, "creator fees should be 0.5% of second buy amount");
@@ -598,7 +618,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         tokens[0] = testToken1;
         tokens[1] = testToken2;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 2, "should return two fee values");
         // Expected fees: 0.5% of 1 ether = 1 ether / 200
@@ -613,7 +633,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         tokens[1] = testToken2;
         tokens[2] = testToken1; // repeated
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 3, "should return three fee values");
         // Expected fees: 0.5% of 1 ether = 1 ether / 200
@@ -636,17 +656,19 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        // claim from both positions to claim all ETH possible
-        uint256[] memory fees0;
-        fees0 = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0));
-        uint256[] memory fees1;
-        fees1 = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(1));
-        uint256 totalFees = fees0[0] + fees1[0];
+        // estimate from both positions in one call to avoid double-counting pending balances
+        uint256[] memory positionIndexes = new uint256[](2);
+        positionIndexes[0] = 0;
+        positionIndexes[1] = 1;
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, positionIndexes, creator);
+        uint256 totalFees = fees[0];
+        uint256 pendingTaxes =
+            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorTaxes(testToken, creator);
 
         // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
-        // So creator gets 0.5% = buyAmount / 200
-        uint256 expectedFees = buyAmount / 200;
-        assertApproxEqAbsDecimal(totalFees, expectedFees, 1, 18, "creator fees should be 0.5% of buy amount");
+        // plus any pending creator taxes accrued from the prior sell
+        uint256 expectedFees = buyAmount / 200 + pendingTaxes;
+        assertApproxEqAbsDecimal(totalFees, expectedFees, 1, 18, "claimable fees should include buy fees and pending taxes");
     }
 
     function test_claimFeesOfBothPsitionsDontRevertIfNoFeesToClaim() public createAndGraduateToken {
@@ -684,10 +706,11 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory positionIndexes = new uint256[](1);
         positionIndexes[0] = 0;
 
-        // the old owner should not be able to claim fees
-        vm.expectRevert(LivoGraduatorUniswapV4.UnauthorizedFeeCollection.selector);
+        // non-owner call should be a no-op (cannot collect fresh LP fees)
+        uint256 aliceBalanceBefore = alice.balance;
         vm.prank(alice);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
+        assertEq(alice.balance, aliceBalanceBefore, "non-owner should not receive fees");
 
         // Alice should be able to claim fees
         vm.prank(creator);
@@ -729,10 +752,11 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory positionIndexes = new uint256[](1);
         positionIndexes[0] = 0;
 
-        // the old owner should not be able to claim fees
-        vm.expectRevert(LivoGraduatorUniswapV4.UnauthorizedFeeCollection.selector);
+        // old owner call should be a no-op for fresh LP fee collection
+        uint256 creatorBalanceBefore = creator.balance;
         vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
+        assertEq(creator.balance, creatorBalanceBefore, "old owner should not receive fresh fees");
 
         // Alice should be able to claim fees
         vm.prank(alice);
