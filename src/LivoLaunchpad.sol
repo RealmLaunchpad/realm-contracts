@@ -77,6 +77,7 @@ contract LivoLaunchpad is Ownable2Step {
     event TokenCreated(
         address indexed token,
         address indexed tokenOwner,
+        address creator,
         string name,
         string symbol,
         address implementation,
@@ -115,12 +116,13 @@ contract LivoLaunchpad is Ownable2Step {
 
     /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
     /// @dev Selected bonding curve and graduator must be a whitelisted pair
-    /// @dev The caller (msg.sender) automatically becomes the token owner and receives graduation compensation and fees
+    /// @dev The caller can choose a token owner that receives graduation compensation and fees
     /// @param name The name of the token
     /// @param symbol The symbol of the token (max 32 characters)
     /// @param implementation Token implementation contract
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
+    /// @param tokenOwner Address of the token owner (receives graduation compensation and fees)
     /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
     /// @param tokenCalldata Extra initialization parameters for the token
     /// @return token The address of the newly created token
@@ -130,6 +132,7 @@ contract LivoLaunchpad is Ownable2Step {
         address implementation,
         address bondingCurve,
         address graduator,
+        address tokenOwner,
         bytes32 salt,
         bytes memory tokenCalldata
     ) external returns (address token) {
@@ -138,7 +141,7 @@ contract LivoLaunchpad is Ownable2Step {
         require(thresholdSettings.ethGraduationThreshold > 0, NotWhitelistedComponents());
 
         token = _createToken(
-            name, symbol, implementation, bondingCurve, graduator, msg.sender, salt, tokenCalldata, thresholdSettings
+            name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata, thresholdSettings
         );
     }
 
@@ -477,6 +480,18 @@ contract LivoLaunchpad is Ownable2Step {
         emit TokenOwnerUpdated(token, newTokenOwner);
     }
 
+    function _emitTokenCreated(
+        address token,
+        address tokenOwner,
+        string calldata name,
+        string calldata symbol,
+        address implementation,
+        address bondingCurve,
+        address graduator
+    ) internal {
+        emit TokenCreated(token, tokenOwner, msg.sender, name, symbol, implementation, bondingCurve, graduator);
+    }
+
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
 
     /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
@@ -510,9 +525,10 @@ contract LivoLaunchpad is Ownable2Step {
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
         token = Clones.cloneDeterministic(implementation, salt_);
-
+    
         // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        emit TokenCreated(token, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
+        // function to avoid stack to deep errors
+        _emitTokenCreated(token, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
 
         // at creation all tokens are held by this contract
         tokenConfigs[token] = TokenConfig({

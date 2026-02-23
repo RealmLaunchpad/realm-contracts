@@ -453,15 +453,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, 600));
         vm.prank(creator);
-        launchpad.createToken(
-            "InvalidToken",
-            "INV",
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduatorV4),
-            "0x003",
-            tokenCalldata
-        );
+        launchpad.createToken("InvalidToken", "INV", address(taxTokenImpl), address(bondingCurve), address(graduatorV4), creator, "0x003", tokenCalldata);
     }
 
     /// @notice Test that swap before graduation has no liquidity to swap with
@@ -800,24 +792,14 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
 
         vm.expectRevert("Token calldata must be empty");
-        launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x12",
-            tokenCalldata
-        );
+        launchpad.createToken("TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12", tokenCalldata);
     }
 
     function test_deployTaxTokenWithTooHighSellTaxes() public {
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
 
         vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, uint16(550)));
-        launchpad.createToken(
-            "TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), "0x12", tokenCalldata
-        );
+        launchpad.createToken("TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), creator, "0x12", tokenCalldata);
     }
 
     // This test is removed because buy taxes no longer exist, so there's no tax swap to trigger
