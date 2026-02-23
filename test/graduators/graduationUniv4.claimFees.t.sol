@@ -37,7 +37,7 @@ interface ILivoGraduatorWithFees is ILivoGraduator {
         external
         view
         returns (uint256[] memory creatorFees);
-    function sweep() external;
+    function treasuryClaim() external;
 }
 
 contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
@@ -140,7 +140,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
         _collectFees(testToken);
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -201,7 +201,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
         _collectFees(testToken);
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
         uint256 treasuryEthBalanceAfter = treasury.balance;
         uint256 treasuryFees = treasuryEthBalanceAfter - treasuryEthBalanceBefore;
@@ -266,9 +266,9 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
             "graduator should have more than 0.5 (the treasury fees)"
         );
 
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
-        assertEq(address(graduatorWithFees).balance, 0, "graduator eth balance should be 0 after sweep");
+        assertEq(address(graduatorWithFees).balance, 0, "graduator eth balance should be 0 after treasury claim");
     }
 
     /// @notice test that a token creator can claim fees from mutliple tokens in one transaction
@@ -283,7 +283,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         _collectFees(tokens[0]);
         _collectFees(tokens[1]);
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -316,7 +316,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -357,7 +357,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEarned = creator.balance - creatorEthBalanceBefore;
         uint256 treasuryEarned = treasury.balance - treasuryEthBalanceBefore;
@@ -376,6 +376,29 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
             10, // 10 wei error allowed
             "total fees should be 1% of total buys"
         );
+    }
+
+    function test_treasuryClaim_emitsEvent_whenEthBalanceIsZero() public createAndGraduateToken {
+        vm.expectEmit(true, true, false, true, address(graduatorWithFees));
+        emit LivoGraduatorUniswapV4.TreasuryClaimed(address(this), treasury, 0);
+
+        graduatorWithFees.treasuryClaim();
+    }
+
+    function test_treasuryClaim_emitsEvent_withClaimedAmount() public createAndGraduateToken {
+        deal(buyer, 10 ether);
+        _swapBuy(buyer, 1 ether, 10e18, true);
+        _collectFees(testToken);
+
+        uint256 claimAmount = address(graduatorWithFees).balance;
+        assertGt(claimAmount, 0, "graduator should hold treasury fees before claim");
+
+        vm.expectEmit(true, true, false, true, address(graduatorWithFees));
+        emit LivoGraduatorUniswapV4.TreasuryClaimed(address(this), treasury, claimAmount);
+
+        graduatorWithFees.treasuryClaim();
+
+        assertEq(address(graduatorWithFees).balance, 0, "graduator should be empty after treasury claim");
     }
 
     /// @notice test that if price dips well below the graduation price and then there are buys, the fees are still correctly collected

@@ -61,7 +61,7 @@ cast send {{LAUNCHPAD}} "collectTreasuryFees()" --rpc-url $SEPOLIA_RPC_URL --acc
 Any address can collect, but they go automatically to the treasury:
 
 ```bash
-cast send {{GRADUATORV4}} "sweep()" --rpc-url $SEPOLIA_RPC_URL --account livo.dev
+cast send {{GRADUATORV4}} "treasuryClaim()" --rpc-url $SEPOLIA_RPC_URL --account livo.dev
 ```
 
 ## Whitelisting new components etc

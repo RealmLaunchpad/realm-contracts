@@ -18,7 +18,7 @@ interface ILivoGraduatorWithFees is ILivoGraduator {
         external
         view
         returns (uint256[] memory creatorFees);
-    function sweep() external;
+    function treasuryClaim() external;
 }
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
@@ -574,7 +574,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Claim LP fees
         _collectFees(testToken);
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -631,7 +631,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Claim LP fees (paid in native ETH to creator)
         _collectFees(testToken);
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfterLPClaim = creator.balance;
         uint256 lpFeesReceivedEth = creatorEthBalanceAfterLPClaim - creatorEthBalanceBefore;
@@ -681,7 +681,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Claim LP fees from both swaps
         _collectFees(testToken);
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -726,7 +726,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         vm.prank(alice);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
 
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 aliceEthBalanceAfter = alice.balance;
@@ -774,7 +774,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         positionIndexes[1] = 1;
         vm.prank(creator);
         graduatorWithFees.collectEthFees(tokens, positionIndexes);
-        graduatorWithFees.sweep();
+        graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 totalCreatorFees = creatorEthBalanceAfter - creatorEthBalanceBefore;
