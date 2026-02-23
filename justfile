@@ -86,10 +86,9 @@ swapsell tokenAddress amount:
 
 collectFees: 
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "collectTreasuryFees()"
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{graduatorV4}} "sweep()"
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{graduatorV4}} "treasuryClaim()"
 
 
 ##########################################################
 
 # forge verify-contract {{address}} {{contractName}} --compiler-version 0.8.28+commit.7893614a --chain-id 11155111 --watch --constructor-args $(cast abi-encode "constructor(address,address,address,address,address,address)" 0xd8861EBe9Ee353c4Dcaed86C7B90d354f064cc8D 0x812Cc2479174d1BA07Bb8788A09C6fe6dCD20e33 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4 0x000000000022D473030F116dDEE9F6B43aC78BA3 0x5bc9F6260a93f6FE2c16cF536B6479fc188e00C4)
-

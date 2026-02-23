@@ -68,6 +68,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             address(taxTokenImpl),
             address(bondingCurve),
             address(graduatorV4),
+            creator,
             "0x003", // imageUrl
             tokenCalldata // tax configuration
         );

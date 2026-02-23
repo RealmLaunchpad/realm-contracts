@@ -136,6 +136,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         uint256 creatorFees
     );
 
+    event TreasuryClaimed(address indexed caller, address indexed treasury, uint256 ethAmount);
+
     //////////////////////////////////////////////////////
 
     /// @notice Initializes the Uniswap V4 graduator
@@ -324,19 +326,20 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
                 }
             }
         }
-        // the remaining eth balance is considered part of the treasury, and can be collected with sweep()
+        // the remaining eth balance is considered part of the treasury, and can be collected with treasuryClaim()
     }
 
-    /// @notice Sweeps the ETH fees collected in this contract to the treasury
+    /// @notice Claims the ETH fees collected in this contract to the treasury
     /// @dev Any ETH in this contract balance is considered part of the treasury
     /// @dev When claiming LPfees, the treasury ETH is left here to save gas and to avoid that the treasury can cause reverts on fee claims
-    function sweep() external {
+    function treasuryClaim() external {
         uint256 ethBalance = address(this).balance;
+        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
         if (ethBalance > 0) {
-            address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
             (bool success,) = address(treasury).call{value: ethBalance}("");
             require(success, EthTransferFailed());
         }
+        emit TreasuryClaimed(msg.sender, treasury, ethBalance);
     }
 
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
