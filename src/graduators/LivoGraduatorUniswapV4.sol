@@ -321,7 +321,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     /// @notice Collects LP fees for tokens and accrues creator/treasury shares in storage
     /// @dev Creator shares are never force-transferred by admin
-    /// @dev This function only accrues the fees in storage, it does not transfer any fees to the creator or treasury. 
+    /// @dev This function only accrues the fees in storage, it does not transfer any fees to the creator or treasury.
     /// @dev The accrued fees need to be claimed by calling `creatorClaim()` or `treasuryClaim()`
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to collect fees from (only 0 or 1 are valid values)

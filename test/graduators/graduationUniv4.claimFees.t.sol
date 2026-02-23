@@ -664,7 +664,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
         // plus any pending creator taxes accrued from the prior sell
         uint256 expectedFees = buyAmount / 200 + pendingTaxes;
-        assertApproxEqAbsDecimal(totalFees, expectedFees, 1, 18, "claimable fees should include buy fees and pending taxes");
+        assertApproxEqAbsDecimal(
+            totalFees, expectedFees, 1, 18, "claimable fees should include buy fees and pending taxes"
+        );
     }
 
     function test_claimFeesOfBothPsitionsDontRevertIfNoFeesToClaim() public createAndGraduateToken {

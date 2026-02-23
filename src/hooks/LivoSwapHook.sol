@@ -143,10 +143,13 @@ contract LivoSwapHook is BaseHook {
     }
 
     /// @notice Collect sell tax in ETH and attribute it in the graduator
-    function _collectSellTax(Currency currency, address tokenAddress, address tokenOwner, int128 ethDelta, uint16 taxBps)
-        internal
-        returns (bytes4 selector, int128 taxCollected)
-    {
+    function _collectSellTax(
+        Currency currency,
+        address tokenAddress,
+        address tokenOwner,
+        int128 ethDelta,
+        uint16 taxBps
+    ) internal returns (bytes4 selector, int128 taxCollected) {
         uint256 absEthAmount = uint256(uint128(ethDelta));
         uint256 taxAmount = (absEthAmount * taxBps) / BASIS_POINTS;
 

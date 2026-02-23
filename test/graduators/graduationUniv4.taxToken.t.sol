@@ -159,11 +159,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Buyer swaps tokens for ETH via UniV4
         _swapSell(buyer, sellAmount, 0, true);
         assertGt(_pendingTaxes(testToken, alice), aliceTaxesBefore, "Alice should accrue sell tax");
-        assertEq(
-            _pendingTaxes(testToken, creator),
-            creatorTaxesBefore,
-            "Creator should not accrue new sell tax"
-        );
+        assertEq(_pendingTaxes(testToken, creator), creatorTaxesBefore, "Creator should not accrue new sell tax");
     }
 
     /// @notice Test that sell tax rates are applied correctly
@@ -233,11 +229,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         uint256 creatorTaxesBefore = _pendingTaxes(testToken, creator);
         _swapSell(buyer, buyerTokenBalance / 2, 0, true);
-        assertEq(
-            _pendingTaxes(testToken, creator),
-            creatorTaxesBefore,
-            "Creator should NOT accrue sell tax (0% rate)"
-        );
+        assertEq(_pendingTaxes(testToken, creator), creatorTaxesBefore, "Creator should NOT accrue sell tax (0% rate)");
     }
 
     /// @notice Test that sell taxes are collected correctly during multiple swaps
@@ -328,11 +320,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertEq(
             IERC20(testToken).balanceOf(testToken), tokenContractBalanceBeforeBuy, "No buy tax should ever be collected"
         );
-        assertEq(
-            _pendingTaxes(testToken, creator),
-            creatorTaxesBeforeBuy,
-            "No buy tax should ever be accrued"
-        );
+        assertEq(_pendingTaxes(testToken, creator), creatorTaxesBeforeBuy, "No buy tax should ever be accrued");
 
         // Perform sell swap - should accrue no tax after period expires
         uint256 creatorTaxesBeforeSell = _pendingTaxes(testToken, creator);
@@ -367,9 +355,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         _swapSell(buyer, buyerTokenBalance / 10, 0, true);
         assertGt(
-            _pendingTaxes(testToken, creator),
-            creatorTaxBalance,
-            "Sell tax should be collected at graduation (t=0)"
+            _pendingTaxes(testToken, creator), creatorTaxBalance, "Sell tax should be collected at graduation (t=0)"
         );
 
         // Test at t = duration - 1 second (last second of period) - tax should still be collected
@@ -400,9 +386,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         creatorTaxBalance = _pendingTaxes(testToken, creator);
         buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         _swapSell(buyer, buyerTokenBalance / 10, 0, true);
-        assertEq(
-            _pendingTaxes(testToken, creator), creatorTaxBalance, "No sell tax should be collected after expiry"
-        );
+        assertEq(_pendingTaxes(testToken, creator), creatorTaxBalance, "No sell tax should be collected after expiry");
     }
 
     /////////////////////////////////// CATEGORY 5: EDGE CASES & SECURITY ///////////////////////////////////
@@ -847,11 +831,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             tokenContractBalanceBefore,
             "Token contract balance should not change (no buy tax)"
         );
-        assertEq(
-            _pendingTaxes(testToken, creator),
-            tokenOwnerTaxesBefore,
-            "Token owner taxes should not change on buy"
-        );
+        assertEq(_pendingTaxes(testToken, creator), tokenOwnerTaxesBefore, "Token owner taxes should not change on buy");
         assertEq(
             IERC20(testToken).balanceOf(creator),
             tokenOwnerTokenBefore,
