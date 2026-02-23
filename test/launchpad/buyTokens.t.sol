@@ -295,7 +295,16 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         // Reset state by creating a new token for the second scenario
         vm.prank(creator);
-        address testToken2 = launchpad.createToken("Test Token 2", "TT2", address(implementation), address(bondingCurve), address(graduator), creator, "0x12", "");
+        address testToken2 = launchpad.createToken(
+            "Test Token 2",
+            "TT2",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            ""
+        );
 
         // Scenario 2: One big buy
         address buyer2 = makeAddr("buyer2");

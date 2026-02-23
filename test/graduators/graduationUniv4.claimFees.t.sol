@@ -62,7 +62,9 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     modifier createAndGraduateToken() virtual {
         vm.prank(creator);
         // this graduator is not defined here in the base, so it will be address(0) unless inherited by LaunchpadBaseTestsWithUniv2Graduator or V4
-        testToken = launchpad.createToken("TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12", "");
+        testToken = launchpad.createToken(
+            "TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12", ""
+        );
 
         _graduateToken();
         _;
@@ -70,8 +72,26 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
     modifier twoGraduatedTokensWithBuys(uint256 buyAmount) virtual {
         vm.startPrank(creator);
-        testToken1 = launchpad.createToken("TestToken1", "TEST1", address(implementation), address(bondingCurve), address(graduator), creator, "0x1a3a", "");
-        testToken2 = launchpad.createToken("TestToken2", "TEST2", address(implementation), address(bondingCurve), address(graduator), creator, "0x1a3a", "");
+        testToken1 = launchpad.createToken(
+            "TestToken1",
+            "TEST1",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            ""
+        );
+        testToken2 = launchpad.createToken(
+            "TestToken2",
+            "TEST2",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            ""
+        );
         vm.stopPrank();
 
         // graduate token1 and token2
@@ -769,7 +789,16 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
 
         vm.prank(creator);
-        testToken = launchpad.createToken("TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12", tokenCalldata);
+        testToken = launchpad.createToken(
+            "TestToken",
+            "TEST",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            tokenCalldata
+        );
 
         _graduateToken();
         _;
@@ -780,8 +809,26 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
 
         vm.startPrank(creator);
-        testToken1 = launchpad.createToken("TestToken1", "TEST1", address(implementation), address(bondingCurve), address(graduator), creator, "0x1a3a", tokenCalldata);
-        testToken2 = launchpad.createToken("TestToken2", "TEST2", address(implementation), address(bondingCurve), address(graduator), creator, "0x1a3a", tokenCalldata);
+        testToken1 = launchpad.createToken(
+            "TestToken1",
+            "TEST1",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            tokenCalldata
+        );
+        testToken2 = launchpad.createToken(
+            "TestToken2",
+            "TEST2",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            tokenCalldata
+        );
         vm.stopPrank();
 
         // graduate token1 and token2
@@ -828,7 +875,16 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
 
         vm.prank(creator);
-        testToken = launchpad.createToken("TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12", tokenCalldata);
+        testToken = launchpad.createToken(
+            "TestToken",
+            "TEST",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            tokenCalldata
+        );
 
         _graduateToken();
         _;
@@ -839,8 +895,26 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
 
         vm.startPrank(creator);
-        testToken1 = launchpad.createToken("TestToken1", "TEST1", address(implementation), address(bondingCurve), address(graduator), creator, "0x1a3a", tokenCalldata);
-        testToken2 = launchpad.createToken("TestToken2", "TEST2", address(implementation), address(bondingCurve), address(graduator), creator, "0x1a3a", tokenCalldata);
+        testToken1 = launchpad.createToken(
+            "TestToken1",
+            "TEST1",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            tokenCalldata
+        );
+        testToken2 = launchpad.createToken(
+            "TestToken2",
+            "TEST2",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x1a3a",
+            tokenCalldata
+        );
         vm.stopPrank();
 
         // graduate token1 and token2

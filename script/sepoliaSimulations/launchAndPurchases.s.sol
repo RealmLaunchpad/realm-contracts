@@ -29,9 +29,8 @@ contract BuySellSimulations is Script {
 
         address TOKEN1 =
             launchpad.createToken("MEMEV2", "MAMIV2", LIVOTOKEN, BONDINGCURVE, GRADUATORV2, LIVODEV, salt, "");
-        address TOKEN2 = launchpad.createToken(
-            "projecTV4", "PROJECTV4", LIVOTOKEN, BONDINGCURVE, GRADUATORV4, LIVODEV, salt, ""
-        );
+        address TOKEN2 =
+            launchpad.createToken("projecTV4", "PROJECTV4", LIVOTOKEN, BONDINGCURVE, GRADUATORV4, LIVODEV, salt, "");
 
         bytes memory tokenCalldata = ILivoTaxableTokenUniV4(LIVOTAXTOKEN).encodeTokenCalldata(500, 14 days);
 

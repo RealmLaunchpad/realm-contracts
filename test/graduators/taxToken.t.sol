@@ -17,14 +17,32 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
 
         vm.expectRevert("Token calldata must be empty");
-        launchpad.createToken("TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x12", tokenCalldata);
+        launchpad.createToken(
+            "TestToken",
+            "TEST",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            tokenCalldata
+        );
     }
 
     function test_deployTaxTokenWithTooHighSellTaxes() public {
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
 
         vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, uint16(550)));
-        launchpad.createToken("TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), creator, "0x12", tokenCalldata);
+        launchpad.createToken(
+            "TestToken",
+            "TEST",
+            address(taxTokenImpl),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            tokenCalldata
+        );
     }
 
     // This test is removed because buy taxes no longer exist in the implementation
@@ -33,7 +51,16 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(500, 15 days);
 
         vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxDuration.selector, 15 days));
-        launchpad.createToken("TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), creator, "0x12", tokenCalldata);
+        launchpad.createToken(
+            "TestToken",
+            "TEST",
+            address(taxTokenImpl),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x12",
+            tokenCalldata
+        );
     }
 
     function test_markGraduateOnlyGraduatorAllowed() public createDefaultTaxToken {

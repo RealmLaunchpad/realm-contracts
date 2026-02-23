@@ -854,7 +854,16 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
 
         vm.prank(creator);
-        testToken = launchpad.createToken("TestToken", "TEST", address(implementation), address(bondingCurve), address(graduator), creator, "0x003", tokenCalldata);
+        testToken = launchpad.createToken(
+            "TestToken",
+            "TEST",
+            address(implementation),
+            address(bondingCurve),
+            address(graduator),
+            creator,
+            "0x003",
+            tokenCalldata
+        );
         _;
     }
 
