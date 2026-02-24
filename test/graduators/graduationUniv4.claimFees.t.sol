@@ -929,11 +929,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     /// @dev when state is swap-buy before accrue, then `getClaimable()` returns current owner claimable amount
-    function test_viewFunction_getClaimable_matrix_buy_beforeAccrue()
-        public
-        createAndGraduateToken
-        afterOneSwapBuy
-    {
+    function test_viewFunction_getClaimable_matrix_buy_beforeAccrue() public createAndGraduateToken afterOneSwapBuy {
         uint256 fees = _creatorClaimable();
         assertApproxEqAbs(fees, MATRIX_BUY_AMOUNT_1 / 200, 1, "creator claimable should be 0.5% of buy amount");
     }
@@ -1070,11 +1066,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     /// @dev when state is swap-sell before accrue, then `getClaimable()` includes at least pending creator taxes and no transfer happens during swap
-    function test_viewFunction_getClaimable_matrix_sell_beforeAccrue()
-        public
-        createAndGraduateToken
-        afterOneSwapSell
-    {
+    function test_viewFunction_getClaimable_matrix_sell_beforeAccrue() public createAndGraduateToken afterOneSwapSell {
         LivoGraduatorUniswapV4 graduatorv4 = LivoGraduatorUniswapV4(payable(address(graduatorWithFees)));
         uint256 fees = _creatorClaimable();
         uint256 pendingTaxes = graduatorv4.pendingCreatorTaxes(testToken, creator);
