@@ -77,7 +77,6 @@ contract LivoLaunchpad is Ownable2Step {
     event TokenCreated(
         address indexed token,
         address indexed tokenOwner,
-        address creator,
         string name,
         string symbol,
         address implementation,
@@ -508,7 +507,7 @@ contract LivoLaunchpad is Ownable2Step {
         address bondingCurve,
         address graduator
     ) internal {
-        emit TokenCreated(token, tokenOwner, msg.sender, name, symbol, implementation, bondingCurve, graduator);
+        emit TokenCreated(token, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
     }
 
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////

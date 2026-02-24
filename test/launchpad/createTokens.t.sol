@@ -12,7 +12,6 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     event TokenCreated(
         address indexed token,
         address indexed tokenOwner,
-        address creator,
         string name,
         string symbol,
         address implementation,
@@ -232,7 +231,7 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
 
         // Calculate event signatures
         bytes32 tokenCreatedSig =
-            keccak256("TokenCreated(address,address,address,string,string,address,address,address)");
+            keccak256("TokenCreated(address,address,string,string,address,address,address)");
         bytes32 taxInitSig = keccak256("LivoTaxableTokenInitialized(uint16,uint16,uint40)");
 
         // Find positions of both events in logs array
