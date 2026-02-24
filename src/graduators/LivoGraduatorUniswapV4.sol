@@ -352,7 +352,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @param positionIndexes Array of position indexes to estimate LP fees from. PositionIndex 0 collects most fees
     /// @param tokenOwner Address for which pending and claimable amounts are computed
     /// @return creatorClaimable Array of claimable ETH amounts per token for `tokenOwner`
-    // todo rename to getClaimableEth
     function getClaimable(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
         public
         view

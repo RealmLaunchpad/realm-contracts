@@ -435,7 +435,8 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param token The address of the token
     /// @param newTokenOwner The address of the new tokenOwner
     function communityTakeOver(address token, address newTokenOwner) external onlyOwner {
-        // note token ownership is transferred with any non-accured LP fees. Accrue fees first to the original owner before transfering ownership to the new owner
+        // note token ownership is transferred with any non-accured LP fees. Accrue fees first to the original owner before transferring ownership to the new owner
+        // Not enforcing fee accrual in this function is a conscious decission to not over-complicate this function with all possible edge cases
         require(newTokenOwner != address(0), InvalidTokenOwner());
 
         tokenConfigs[token].tokenOwner = newTokenOwner;
