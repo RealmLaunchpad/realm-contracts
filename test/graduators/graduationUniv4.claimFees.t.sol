@@ -32,6 +32,7 @@ import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
 interface ILivoGraduatorWithFees is ILivoGraduator {
     function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) external;
+    function accrueTokenFees(address[] calldata tokens, uint256[] calldata positionIndexes) external;
     function positionIds(address token, uint256 positionIndex) external view returns (uint256);
     function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
         external
@@ -503,6 +504,50 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
 /// @notice Abstract base class for Uniswap V4 claim fees view function tests
 abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests {
+    uint256 internal constant MATRIX_BUY_AMOUNT_1 = 1 ether;
+    uint256 internal constant MATRIX_BUY_AMOUNT_2 = 0.8 ether;
+    uint256 internal constant MATRIX_SELL_AMOUNT = 100000000e18;
+    uint256 internal constant MATRIX_SELL_MIN_OUT = 0.1 ether;
+
+    function _singleTokenClaimInputs()
+        internal
+        view
+        returns (address[] memory tokens, uint256[] memory positionIndexes)
+    {
+        tokens = new address[](1);
+        tokens[0] = testToken;
+        positionIndexes = _singleElementArray(0);
+    }
+
+    function _creatorClaimable() internal view returns (uint256) {
+        (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, positionIndexes, creator);
+        return fees[0];
+    }
+
+    function _accrueTokenFeesAs(address caller) internal {
+        (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
+        vm.prank(caller);
+        graduatorWithFees.accrueTokenFees(tokens, positionIndexes);
+    }
+
+    function _creatorClaimAs(address caller) internal {
+        (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
+        vm.prank(caller);
+        graduatorWithFees.creatorClaim(tokens, positionIndexes);
+    }
+
+    modifier afterOneSwapBuy() {
+        deal(buyer, 10 ether);
+        _swapBuy(buyer, MATRIX_BUY_AMOUNT_1, 10e18, true);
+        _;
+    }
+
+    modifier afterOneSwapSell() {
+        _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
+        _;
+    }
+
     function test_viewFunction_positionId() public createAndGraduateToken {
         uint256 positionId = graduatorWithFees.positionIds(testToken, 0);
 
@@ -764,6 +809,351 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         // Alice should be able to claim fees
         vm.prank(alice);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+    }
+
+    /// @dev when swap fees exist for current token owner and another user calls `creatorClaim()`, then the caller gets nothing and owner claimable remains available
+    function test_creatorClaim_cannotClaimFeesForSomeoneElse() public createAndGraduateToken afterOneSwapBuy {
+        uint256 creatorClaimableBefore = _creatorClaimable();
+        assertGt(creatorClaimableBefore, 0, "creator should have claimable fees");
+
+        // the token owner is not alice, so here we check if alice receives any funds when claiming for a token she doesn't own
+        uint256 aliceEthBefore = alice.balance;
+        _creatorClaimAs(alice);
+        assertEq(alice.balance, aliceEthBefore, "non-owner should not receive creator fees");
+
+        uint256 creatorClaimableAfter = _creatorClaimable();
+        assertEq(
+            creatorClaimableAfter, creatorClaimableBefore, "non-owner call should not consume owner claimable fees"
+        );
+    }
+
+    /// @dev when anyone calls `accrueTokenFees()`, then fees are accrued in storage and no destination balance is transferred
+    function test_accrueTokenFees_calledByAnyone_onlyAccruesNoTransfers()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        LivoGraduatorUniswapV4 graduatorv4 = LivoGraduatorUniswapV4(payable(address(graduatorWithFees)));
+
+        uint256 creatorEthBefore = creator.balance;
+        uint256 treasuryEthBefore = treasury.balance;
+        uint256 aliceEthBefore = alice.balance;
+        uint256 creatorPendingBefore = graduatorv4.pendingCreatorFees(testToken, creator);
+        uint256 treasuryPendingBefore = graduatorv4.treasuryPendingFees();
+
+        _accrueTokenFeesAs(alice);
+
+        assertEq(creator.balance, creatorEthBefore, "creator balance should not change on accrue");
+        assertEq(treasury.balance, treasuryEthBefore, "treasury balance should not change on accrue");
+        assertEq(alice.balance, aliceEthBefore, "caller balance should not change on accrue");
+        assertGt(
+            graduatorv4.pendingCreatorFees(testToken, creator), creatorPendingBefore, "creator pending should increase"
+        );
+        assertGt(graduatorv4.treasuryPendingFees(), treasuryPendingBefore, "treasury pending should increase");
+    }
+
+    /// @dev when fees are accrued and no claim runs, then no destination receives funds; when claims run, then each destination receives only its own share
+    function test_claimFlow_fundsMoveOnlyOnIntentionalClaims() public createAndGraduateToken afterOneSwapBuy {
+        uint256 creatorEthBefore = creator.balance;
+        uint256 treasuryEthBefore = treasury.balance;
+
+        _accrueTokenFeesAs(alice);
+
+        assertEq(creator.balance, creatorEthBefore, "creator should not be paid before creatorClaim");
+        assertEq(treasury.balance, treasuryEthBefore, "treasury should not be paid before treasuryClaim");
+
+        _creatorClaimAs(creator);
+
+        uint256 creatorEthAfterCreatorClaim = creator.balance;
+        assertGt(creatorEthAfterCreatorClaim, creatorEthBefore, "creator should be paid after creatorClaim");
+        assertEq(treasury.balance, treasuryEthBefore, "treasury should still wait for treasuryClaim");
+
+        graduatorWithFees.treasuryClaim();
+        assertGt(treasury.balance, treasuryEthBefore, "treasury should be paid after treasuryClaim");
+        assertEq(creator.balance, creatorEthAfterCreatorClaim, "creator should not receive more after treasuryClaim");
+    }
+
+    /// @dev when creator does not claim and any account calls `accrueTokenFees()`, then treasury can still claim its accrued share
+    function test_treasury_canAccrueViaAnyoneAndClaimLater() public createAndGraduateToken afterOneSwapBuy {
+        uint256 treasuryEthBefore = treasury.balance;
+        uint256 creatorEthBefore = creator.balance;
+
+        _accrueTokenFeesAs(alice);
+
+        vm.prank(alice);
+        graduatorWithFees.treasuryClaim();
+
+        assertEq(creator.balance, creatorEthBefore, "creator should not receive more after treasuryClaim");
+        assertGt(treasury.balance, treasuryEthBefore, "treasury should receive accrued share after treasuryClaim");
+    }
+
+    /// @dev when state is swap-buy before accrue, then `getClaimableFees()` returns current owner claimable amount
+    function test_viewFunction_getClaimableFees_matrix_buy_beforeAccrue()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        uint256 fees = _creatorClaimable();
+        assertApproxEqAbs(fees, MATRIX_BUY_AMOUNT_1 / 200, 1, "creator claimable should be 0.5% of buy amount");
+    }
+
+    /// @dev when state is swap-buy then `accrueTokenFees()` by creator, then `getClaimableFees()` returns accrued creator amount
+    function test_viewFunction_getClaimableFees_matrix_buy_afterAccrueByCreator()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        _accrueTokenFeesAs(creator);
+        uint256 fees = _creatorClaimable();
+        assertApproxEqAbs(
+            fees, MATRIX_BUY_AMOUNT_1 / 200, 1, "accrued creator claimable should match buy creator share"
+        );
+    }
+
+    /// @dev when state is swap-buy then `accrueTokenFees()` by non-owner, then `getClaimableFees()` returns owner claimable amount
+    function test_viewFunction_getClaimableFees_matrix_buy_afterAccrueByOther()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        _accrueTokenFeesAs(alice);
+        uint256 fees = _creatorClaimable();
+        assertApproxEqAbs(fees, MATRIX_BUY_AMOUNT_1 / 200, 1, "owner claimable should not depend on caller");
+    }
+
+    /// @dev when state is swap-buy then creator claims, then `getClaimableFees()` returns zero
+    function test_viewFunction_getClaimableFees_matrix_buy_afterCreatorClaim()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        _creatorClaimAs(creator);
+        assertEq(_creatorClaimable(), 0, "claimable should be zero right after creator claim");
+    }
+
+    /// @dev when state is swap-buy then creator claims, then creator balance increases while treasury remains unchanged
+    function test_balance_matrix_buy_afterCreatorClaim()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        uint256 creatorEthBefore = creator.balance;
+        uint256 treasuryEthBefore = treasury.balance;
+
+        _creatorClaimAs(creator);
+
+        assertGt(creator.balance, creatorEthBefore, "creator should receive fees on creator claim");
+        assertEq(treasury.balance, treasuryEthBefore, "treasury should not receive funds on creator claim");
+    }
+
+    /// @dev when state is swap-buy, accrue, claim, swap-buy, then `getClaimableFees()` reflects only post-claim swap
+    function test_viewFunction_getClaimableFees_matrix_buy_afterClaimThenSecondSwap()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        _accrueTokenFeesAs(creator);
+        _creatorClaimAs(creator);
+        _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
+
+        uint256 fees = _creatorClaimable();
+        assertApproxEqAbs(fees, MATRIX_BUY_AMOUNT_2 / 200, 1, "claimable should reflect only second buy");
+    }
+
+    /// @dev when state is swap-buy, accrue, claim, swap-buy, accrue, then `getClaimableFees()` matches second-swap creator share
+    function test_viewFunction_getClaimableFees_matrix_buy_afterClaimSecondSwapAndAccrue()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        _accrueTokenFeesAs(creator);
+        _creatorClaimAs(creator);
+        _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
+        _accrueTokenFeesAs(alice);
+
+        uint256 fees = _creatorClaimable();
+        assertApproxEqAbs(
+            fees, MATRIX_BUY_AMOUNT_2 / 200, 1, "claimable should remain second buy creator share after accrue"
+        );
+    }
+
+    /// @dev when state is swap-buy, accrue, claim, swap-buy, creator-claim, then `getClaimableFees()` returns zero
+    function test_viewFunction_getClaimableFees_matrix_buy_afterClaimSecondSwapAndCreatorClaim()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        _accrueTokenFeesAs(creator);
+        _creatorClaimAs(creator);
+        _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
+        _creatorClaimAs(creator);
+
+        assertEq(_creatorClaimable(), 0, "claimable should be zero after second creator claim");
+    }
+
+    /// @dev when state is swap-buy, accrue, claim, swap-buy, creator-claim, then each creator claim pays creator only
+    function test_balance_matrix_buy_afterClaimSecondSwapAndCreatorClaim()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        uint256 treasuryEthBefore = treasury.balance;
+
+        _accrueTokenFeesAs(creator);
+
+        uint256 creatorEthBeforeFirstClaim = creator.balance;
+        _creatorClaimAs(creator);
+        uint256 creatorEthAfterFirstClaim = creator.balance;
+
+        assertGt(creatorEthAfterFirstClaim, creatorEthBeforeFirstClaim, "first creator claim should pay creator");
+        assertEq(treasury.balance, treasuryEthBefore, "treasury should not be paid by creator claim");
+
+        _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
+
+        uint256 creatorEthBeforeSecondClaim = creator.balance;
+        _creatorClaimAs(creator);
+
+        assertGt(creator.balance, creatorEthBeforeSecondClaim, "second creator claim should pay creator");
+        assertEq(treasury.balance, treasuryEthBefore, "treasury should remain unchanged across creator claims");
+        assertEq(_creatorClaimable(), 0, "claimable should be zero after second creator claim");
+    }
+
+    /// @dev After a swap-sell, the crator must have pending claimable reflected in getClaimableFees() and pendingCreatorTaxes() 
+    function test_viewFunction_getClaimableFees_matrix_sell_beforeAccrue_positiveClaimable()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        uint256 fees = _creatorClaimable();
+        assertGt(fees, 0, "creator should have some claimable fees from sell");
+    }
+
+
+    /// @dev when state is swap-sell before accrue, then `getClaimableFees()` includes at least pending creator taxes and no transfer happens during swap
+    function test_viewFunction_getClaimableFees_matrix_sell_beforeAccrue()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        LivoGraduatorUniswapV4 graduatorv4 = LivoGraduatorUniswapV4(payable(address(graduatorWithFees)));
+        uint256 fees = _creatorClaimable();
+        uint256 pendingTaxes = graduatorv4.pendingCreatorTaxes(testToken, creator);
+        // todo verify that the pending taxes is the right percentage of the amount swapped
+        
+        assertGe(fees, pendingTaxes, "claimable should include pending creator taxes");
+
+    }
+
+    /// @dev when state is swap-sell then `accrueTokenFees()` by creator, then `getClaimableFees()` remains the same claimable amount
+    function test_viewFunction_getClaimableFees_matrix_sell_afterAccrueByCreator()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        uint256 feesBefore = _creatorClaimable();
+        _accrueTokenFeesAs(creator);
+        uint256 feesAfter = _creatorClaimable();
+
+        assertApproxEqAbs(feesAfter, feesBefore, 2, "accrue should not change total creator claimable");
+    }
+
+    /// @dev when state is swap-sell then creator claims, then `getClaimableFees()` returns zero
+    function test_viewFunction_getClaimableFees_matrix_sell_afterCreatorClaim()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        _creatorClaimAs(creator);
+        assertEq(_creatorClaimable(), 0, "claimable should be zero right after creator claim");
+    }
+
+    /// @dev when state is swap-sell then creator claims, then creator balance increases while treasury remains unchanged
+    function test_balance_matrix_sell_afterCreatorClaim()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        uint256 creatorEthBefore = creator.balance;
+        uint256 treasuryEthBefore = treasury.balance;
+
+        _creatorClaimAs(creator);
+
+        assertGt(creator.balance, creatorEthBefore, "creator should receive accrued sell taxes on creator claim");
+        assertEq(treasury.balance, treasuryEthBefore, "treasury should not receive funds on creator claim");
+    }
+
+    /// @dev when state is swap-sell, accrue, claim, swap-sell, then `getClaimableFees()` reflects only post-claim sell state
+    function test_viewFunction_getClaimableFees_matrix_sell_afterClaimThenSecondSwap()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        _accrueTokenFeesAs(creator);
+        _creatorClaimAs(creator);
+        _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
+
+        LivoGraduatorUniswapV4 graduatorv4 = LivoGraduatorUniswapV4(payable(address(graduatorWithFees)));
+        uint256 fees = _creatorClaimable();
+        uint256 pendingTaxes = graduatorv4.pendingCreatorTaxes(testToken, creator);
+        assertGe(fees, pendingTaxes, "claimable should include pending taxes from second sell");
+    }
+
+    /// @dev when state is swap-sell, accrue, claim, swap-sell, accrue, then `getClaimableFees()` remains stable after accrual
+    function test_viewFunction_getClaimableFees_matrix_sell_afterClaimSecondSwapAndAccrue()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        _accrueTokenFeesAs(creator);
+        _creatorClaimAs(creator);
+        _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
+
+        uint256 feesBefore = _creatorClaimable();
+        _accrueTokenFeesAs(alice);
+        uint256 feesAfter = _creatorClaimable();
+
+        assertApproxEqAbs(feesAfter, feesBefore, 2, "no more taxes as there hasnt been any new sells");
+    }
+
+    /// @dev when state is swap-sell, accrue, claim, swap-sell, creator-claim, then `getClaimableFees()` returns zero
+    function test_viewFunction_getClaimableFees_matrix_sell_afterClaimSecondSwapAndCreatorClaim()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        _accrueTokenFeesAs(creator);
+        _creatorClaimAs(creator);
+        _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
+        _creatorClaimAs(creator);
+
+        assertEq(_creatorClaimable(), 0, "claimable should be zero after second creator claim");
+    }
+
+    /// @dev when state is swap-sell, accrue, claim, swap-sell, creator-claim, then each creator claim pays creator only
+    function test_balance_matrix_sell_afterClaimSecondSwapAndCreatorClaim()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        uint256 treasuryEthBefore = treasury.balance;
+
+        _accrueTokenFeesAs(creator);
+
+        uint256 creatorEthBeforeFirstClaim = creator.balance;
+        _creatorClaimAs(creator);
+        uint256 creatorEthAfterFirstClaim = creator.balance;
+
+        assertGt(creatorEthAfterFirstClaim, creatorEthBeforeFirstClaim, "first creator claim should pay creator");
+        assertEq(treasury.balance, treasuryEthBefore, "treasury should not be paid by creator claim");
+
+        _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
+
+        uint256 creatorEthBeforeSecondClaim = creator.balance;
+        _creatorClaimAs(creator);
+
+        assertGt(creator.balance, creatorEthBeforeSecondClaim, "second creator claim should pay creator");
+        assertEq(treasury.balance, treasuryEthBefore, "treasury should remain unchanged across creator claims");
+        assertEq(_creatorClaimable(), 0, "claimable should be zero after second creator claim");
     }
 }
 
