@@ -12,7 +12,11 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     /// @dev when creator proposes alice and alice accepts, then `getTokenOwner()` returns alice
-    function test_proposeAccept_assertGetTokenOwnerMatchesProposed() public createTestToken proposedOwner(creator, alice) {
+    function test_proposeAccept_assertGetTokenOwnerMatchesProposed()
+        public
+        createTestToken
+        proposedOwner(creator, alice)
+    {
         vm.prank(alice);
         launchpad.acceptTokenOwnership(testToken);
 
@@ -65,7 +69,7 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
         launchpad.proposeTokenOwner(testToken, bob);
 
         vm.prank(bob);
-            launchpad.acceptTokenOwnership(testToken);
+        launchpad.acceptTokenOwnership(testToken);
 
         assertEq(launchpad.getTokenOwner(testToken), bob);
     }

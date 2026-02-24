@@ -111,9 +111,7 @@ contract InvariantsHelperLaunchpad is Test {
         address graduator = (seed % 2 == 0) ? graduatorV2 : graduatorV4;
 
         vm.prank(currentActor);
-        address token = launchpad.createToken(
-            "TestToken", "TEST", implementation, bondingCurve, graduator, "0x12", ""
-        );
+        address token = launchpad.createToken("TestToken", "TEST", implementation, bondingCurve, graduator, "0x12", "");
         _tokens.add(token);
     }
 

@@ -74,22 +74,10 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     modifier twoGraduatedTokensWithBuys(uint256 buyAmount) virtual {
         vm.startPrank(creator);
         testToken1 = launchpad.createToken(
-            "TestToken1",
-            "TEST1",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x1a3a",
-            ""
+            "TestToken1", "TEST1", address(implementation), address(bondingCurve), address(graduator), "0x1a3a", ""
         );
         testToken2 = launchpad.createToken(
-            "TestToken2",
-            "TEST2",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x1a3a",
-            ""
+            "TestToken2", "TEST2", address(implementation), address(bondingCurve), address(graduator), "0x1a3a", ""
         );
         vm.stopPrank();
 
