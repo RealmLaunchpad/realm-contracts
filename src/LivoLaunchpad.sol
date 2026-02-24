@@ -103,6 +103,7 @@ contract LivoLaunchpad is Ownable2Step {
     );
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
     event TokenOwnerUpdated(address indexed token, address indexed newOwner);
+    event TokenOwnerProposed(address indexed token, address indexed currentOwner, address indexed proposedOwner);
 
     /////////////////////////////////////////////////
 
@@ -116,13 +117,12 @@ contract LivoLaunchpad is Ownable2Step {
 
     /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
     /// @dev Selected bonding curve and graduator must be a whitelisted pair
-    /// @dev The caller can choose a token owner that receives graduation compensation and fees
+    /// @dev The caller (msg.sender) becomes the token owner
     /// @param name The name of the token
     /// @param symbol The symbol of the token (max 32 characters)
     /// @param implementation Token implementation contract
     /// @param bondingCurve Address of the bonding curve contract
     /// @param graduator Address of the graduator contract
-    /// @param tokenOwner Address of the token owner (receives graduation compensation and fees)
     /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
     /// @param tokenCalldata Extra initialization parameters for the token
     /// @return token The address of the newly created token
@@ -132,7 +132,6 @@ contract LivoLaunchpad is Ownable2Step {
         address implementation,
         address bondingCurve,
         address graduator,
-        address tokenOwner,
         bytes32 salt,
         bytes memory tokenCalldata
     ) external returns (address token) {
@@ -141,7 +140,7 @@ contract LivoLaunchpad is Ownable2Step {
         require(thresholdSettings.ethGraduationThreshold > 0, NotWhitelistedComponents());
 
         token = _createToken(
-            name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata, thresholdSettings
+            name, symbol, implementation, bondingCurve, graduator, msg.sender, salt, tokenCalldata, thresholdSettings
         );
     }
 
@@ -430,21 +429,42 @@ contract LivoLaunchpad is Ownable2Step {
     }
 
     /// @notice If a token is abandoned by original creators and the community wants to step in,
-    ///         the contract admins can overtake ownership and give it to a new more committed owner
+    ///         the contract admins can propose a new owner without needing to be the current owner.
+    ///         The proposed address must still call acceptTokenOwnership() to complete the transfer.
     /// @dev A malicious team can potentially take over any token, but that would undermine the community trust so the incentives are little.
     /// @param token The address of the token
-    /// @param newTokenOwner The address of the new tokenOwner
+    /// @param newTokenOwner The address of the proposed new tokenOwner (must not be address(0))
     function communityTakeOver(address token, address newTokenOwner) external onlyOwner {
-        // note any non-accrued fees are assigned to the new token owner alongside the token ownership
-        // To accrue fees to the original owner before transferring ownership, consider calling accrueTokenFees() in the graduator if relevant
-        // Not enforcing fee accrual in this function is a conscious decision to not over-complicate this function with all possible edge cases
-        require(newTokenOwner != address(0), InvalidTokenOwner());
+        // address(0) is accepted as the newTokenOwner, to cancel an existing proposal
+        require(tokenConfigs[token].exists(), InvalidToken());
+        _proposeNewOwner(token, newTokenOwner);
+    }
 
-        tokenConfigs[token].tokenOwner = newTokenOwner;
-        emit TokenOwnerUpdated(token, newTokenOwner);
+    /// @notice Proposes a new owner for a token. Only callable by the current tokenOwner.
+    ///         Pass address(0) as newOwner to cancel a pending proposal.
+    function proposeTokenOwner(address token, address newOwner) external {
+        require(tokenConfigs[token].tokenOwner == msg.sender, InvalidTokenOwner());
+        _proposeNewOwner(token, newOwner);
+    }
+
+    /// @notice Accepts token ownership. Only callable by the address proposed as new owner.
+    function acceptTokenOwnership(address token) external {
+        TokenConfig storage config = tokenConfigs[token];
+        require(config.proposedOwner == msg.sender, InvalidTokenOwner());
+
+        config.tokenOwner = msg.sender;
+        config.proposedOwner = address(0);
+
+        emit TokenOwnerUpdated(token, msg.sender);
     }
 
     //////////////////////////// Internal functions //////////////////////////
+
+    /// @dev pass newOwner=address(0) to cancel an existing proposal
+    function _proposeNewOwner(address token, address newOwner) internal {
+        tokenConfigs[token].proposedOwner = newOwner;
+        emit TokenOwnerProposed(token, tokenConfigs[token].tokenOwner, newOwner);
+    }
 
     /// @dev This function assumes that the graduation criteria is met
     /// @dev It also assumes that the token hasn't been graduated yet
@@ -537,7 +557,8 @@ contract LivoLaunchpad is Ownable2Step {
             ethGraduationThreshold: thresholdSettings.ethGraduationThreshold,
             maxExcessOverThreshold: thresholdSettings.maxExcessOverThreshold,
             buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps
+            sellFeeBps: baseSellFeeBps,
+            proposedOwner: address(0)
         });
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
