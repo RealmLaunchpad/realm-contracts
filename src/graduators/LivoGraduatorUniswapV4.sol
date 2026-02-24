@@ -106,13 +106,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
 
-    /// @notice Treasury LP fees already collected into contract accounting
+    /// @notice Treasury LP fees already accrued into contract accounting
     uint256 public treasuryPendingFees;
 
-    /// @notice Creator LP fees already collected into contract accounting
+    /// @notice Creator LP fees already accrued into contract accounting
     mapping(address token => mapping(address tokenOwner => uint256 amount)) public pendingCreatorFees;
 
-    /// @notice Creator taxes already collected into contract accounting
+    /// @notice Creator taxes already accrued into contract accounting
     mapping(address token => mapping(address tokenOwner => uint256 amount)) public pendingCreatorTaxes;
 
     /////////////////////// Errors ///////////////////////
@@ -182,7 +182,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
-    /// @notice To receive ETH back from Uniswap V4 when collecting fees and sweeping excess ETH after liquidity provision
+    /// @notice To receive ETH back from Uniswap V4 when accruing fees and sweeping excess ETH after liquidity provision
     receive() external payable {}
 
     /// @notice Initializes a Uniswap V4 pool for the token
@@ -287,7 +287,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice Claims creator fees and taxes for caller, and first accrues fresh LP fees for each token
     /// @dev LP-fee accrual always credits the current token owner in launchpad, and treasury for treasury share
     /// @param tokens Array of token addresses
-    /// @param positionIndexes Array of position indexes to collect fees from (only 0 or 1 are valid values)
+    /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
     function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) public {
         uint256 nTokens = _validateClaimInputs(tokens, positionIndexes);
         uint256 totalClaimAmount;
@@ -317,11 +317,11 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         _transferEth(msg.sender, totalClaimAmount, true);
     }
 
-    /// @notice Collects LP fees for tokens and accrues creator/treasury shares in storage
+    /// @notice Accrues LP fees for tokens and accrues creator/treasury shares in storage
     /// @dev Creator shares are never force-transferred. This function only accrues
     /// @dev The accrued fees need to be claimed by calling `creatorClaim()` or `treasuryClaim()`
     /// @param tokens Array of token addresses
-    /// @param positionIndexes Array of position indexes to collect fees from (only 0 or 1 are valid values)
+    /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
     function accrueTokenFees(address[] calldata tokens, uint256[] calldata positionIndexes) external {
         uint256 nTokens = _validateClaimInputs(tokens, positionIndexes);
 
@@ -349,7 +349,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice Returns claimable creator amounts (pending taxes + pending fees + current LP fees when owner is current)
     /// @dev LP-fee estimates are included only when `tokenOwner` is the current token owner in launchpad
     /// @param tokens Array of token addresses
-    /// @param positionIndexes Array of position indexes to estimate LP fees from. PositionIndex 0 collects most fees
+    /// @param positionIndexes Array of position indexes to estimate LP fees from. PositionIndex 0 accrues most fees
     /// @param tokenOwner Address for which pending and claimable amounts are computed
     /// @return creatorClaimable Array of claimable ETH amounts per token for `tokenOwner`
     function getClaimable(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
@@ -404,7 +404,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
         for (uint256 p = 0; p < positionIndexes.length; p++) {
             uint256 positionId = positionIds[token][positionIndexes[p]];
-            (uint256 creatorFees, uint256 treasuryFees) = _claimFromUniswapLock(token, positionId);
+            (uint256 creatorFees, uint256 treasuryFees) = _accrueFromUniswapLock(token, positionId);
             creatorAccrued += creatorFees;
             treasuryAccrued += treasuryFees;
         }
@@ -498,22 +498,22 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         LIQUIDITY_LOCK.lockUniV4Position(positionId, address(this));
     }
 
-    function _claimFromUniswapLock(address token, uint256 positionId)
+    function _accrueFromUniswapLock(address token, uint256 positionId)
         internal
         returns (uint256 creatorFees, uint256 treasuryFees)
     {
-        // collect fees will result in an eth transfer to this contract
+        // accruing fees results in an ETH transfer to this contract
         uint256 balanceBefore = address(this).balance;
 
-        // claim fees to this contract and distribute between livo treasury and token owner
+        // accrue fees to this contract and distribute between livo treasury and token owner
         LIQUIDITY_LOCK.claimUniV4PositionFees(positionId, address(0), token, address(this));
 
-        // eth fees collected in this call
-        uint256 collectedEthFees = address(this).balance - balanceBefore;
+        // ETH fees accrued in this call
+        uint256 accruedEthFees = address(this).balance - balanceBefore;
 
         // 50/50 split of the eth fees between livo treasury and token owner
-        treasuryFees = collectedEthFees / 2;
-        creatorFees = collectedEthFees - treasuryFees;
+        treasuryFees = accruedEthFees / 2;
+        creatorFees = accruedEthFees - treasuryFees;
     }
 
     function _viewClaimableEthFees(address token, uint256 positionIndex)
