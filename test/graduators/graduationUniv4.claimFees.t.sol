@@ -934,11 +934,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     /// @dev when state is swap-buy then creator claims, then creator balance increases while treasury remains unchanged
-    function test_balance_matrix_buy_afterCreatorClaim()
-        public
-        createAndGraduateToken
-        afterOneSwapBuy
-    {
+    function test_balance_matrix_buy_afterCreatorClaim() public createAndGraduateToken afterOneSwapBuy {
         uint256 creatorEthBefore = creator.balance;
         uint256 treasuryEthBefore = treasury.balance;
 
@@ -1020,7 +1016,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertEq(_creatorClaimable(), 0, "claimable should be zero after second creator claim");
     }
 
-    /// @dev After a swap-sell, the crator must have pending claimable reflected in getClaimableFees() and pendingCreatorTaxes() 
+    /// @dev After a swap-sell, the crator must have pending claimable reflected in getClaimableFees() and pendingCreatorTaxes()
     function test_viewFunction_getClaimableFees_matrix_sell_beforeAccrue_positiveClaimable()
         public
         createAndGraduateToken
@@ -1033,7 +1029,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
             assertEq(fees, 0, "creator should have no claimable fees from sell");
         }
     }
-
 
     /// @dev when state is swap-sell before accrue, then `getClaimableFees()` includes at least pending creator taxes and no transfer happens during swap
     function test_viewFunction_getClaimableFees_matrix_sell_beforeAccrue()
@@ -1051,7 +1046,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
             assertEq(pendingTaxes, 0, "pending creator taxes should be zero for normal tokens");
             assertEq(fees, 0, "claimable should be zero for normal tokens after sell");
         }
-
     }
 
     /// @dev when state is swap-sell then `accrueTokenFees()` by creator, then `getClaimableFees()` remains the same claimable amount
@@ -1078,11 +1072,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     /// @dev when state is swap-sell then creator claims, then creator balance increases while treasury remains unchanged
-    function test_balance_matrix_sell_afterCreatorClaim()
-        public
-        createAndGraduateToken
-        afterOneSwapSell
-    {
+    function test_balance_matrix_sell_afterCreatorClaim() public createAndGraduateToken afterOneSwapSell {
         uint256 creatorEthBefore = creator.balance;
         uint256 treasuryEthBefore = treasury.balance;
 
