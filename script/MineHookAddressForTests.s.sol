@@ -22,15 +22,14 @@ contract MineHookAddressForTests is Script {
         console.log("");
 
         // Get addresses based on chain ID
-        (address poolManager, address weth) = _getAddresses();
+        address poolManager = _getPoolManager();
         console.log("Pool Manager: %s", poolManager);
-        console.log("WETH: %s", weth);
         console.log("");
 
         // Hook permission flags: AFTER_SWAP_FLAG | AFTER_SWAP_RETURNS_DELTA_FLAG | BEFORE_SWAP_FLAG
         uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_SWAP_FLAG);
 
-        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), weth);
+        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager));
         bytes memory creationCode = type(LivoSwapHook).creationCode;
 
         console.log("Mining... (this may take 30-60 seconds)");
@@ -54,14 +53,11 @@ contract MineHookAddressForTests is Script {
 
     /// @notice Get deployment addresses based on chain ID
     /// @return poolManager The Uniswap V4 Pool Manager address
-    /// @return weth The WETH address
-    function _getAddresses() internal view returns (address poolManager, address weth) {
+    function _getPoolManager() internal view returns (address poolManager) {
         if (block.chainid == DeploymentAddressesMainnet.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
-            weth = DeploymentAddressesMainnet.WETH;
         } else if (block.chainid == DeploymentAddressesSepolia.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesSepolia.UNIV4_POOL_MANAGER;
-            weth = DeploymentAddressesSepolia.WETH;
         } else {
             revert("Unsupported chain ID");
         }

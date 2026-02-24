@@ -819,6 +819,24 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         // Further checks can be added to verify pool state if needed
     }
+
+    function test_graduateToken_reverts_whenCallerIsNotLaunchpad() public createTestToken {
+        vm.expectRevert(ILivoGraduator.OnlyLaunchpadAllowed.selector);
+        LivoGraduatorUniswapV4(payable(address(graduator))).graduateToken(testToken, 1);
+    }
+
+    function test_graduateToken_reverts_whenTokenAmountIsZero() public createTestToken {
+        vm.deal(address(launchpad), 1);
+        vm.prank(address(launchpad));
+        vm.expectRevert(ILivoGraduator.NoTokensToGraduate.selector);
+        LivoGraduatorUniswapV4(payable(address(graduator))).graduateToken{value: 1}(testToken, 0);
+    }
+
+    function test_graduateToken_reverts_whenMsgValueIsZero() public createTestToken {
+        vm.prank(address(launchpad));
+        vm.expectRevert(ILivoGraduator.NoETHToGraduate.selector);
+        LivoGraduatorUniswapV4(payable(address(graduator))).graduateToken(testToken, 1);
+    }
 }
 
 /// @notice Concrete test contract for normal (non-tax) tokens
@@ -893,6 +911,14 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
 
         // sell the full balance of the buyer, who has most of the supply
         _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
+
+        // this should transfer taxes to the creator, completing the fund flow
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](1);
+        positionIndexes[0] = 0;
+        vm.prank(creator);
+        LivoGraduatorUniswapV4(payable(address(graduator))).creatorClaim(tokens, positionIndexes);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;

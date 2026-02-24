@@ -6,11 +6,6 @@
         "name": "_poolManager",
         "type": "address",
         "internalType": "contract IPoolManager"
-      },
-      {
-        "name": "_weth",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"

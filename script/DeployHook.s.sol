@@ -17,16 +17,15 @@ contract DeployHook is Script {
 
     function run() public {
         // Get deployment addresses based on chain ID
-        (address poolManager, address weth) = _getDeploymentAddresses();
+        address poolManager = _getPoolManager();
 
         console.log("Deploying on chain ID:", block.chainid);
         console.log("Pool Manager:", poolManager);
-        console.log("WETH:", weth);
 
         // Hook permission flags: AFTER_SWAP_FLAG | AFTER_SWAP_RETURNS_DELTA_FLAG | BEFORE_SWAP_FLAG
         uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_SWAP_FLAG);
 
-        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), weth);
+        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager));
         bytes memory creationCode = type(LivoSwapHook).creationCode;
 
         console.log("Mining hook address...");
@@ -41,7 +40,7 @@ contract DeployHook is Script {
 
         // Deploy the hook using CREATE2
         vm.broadcast();
-        LivoSwapHook livoSwapHook = new LivoSwapHook{salt: salt}(IPoolManager(poolManager), weth);
+        LivoSwapHook livoSwapHook = new LivoSwapHook{salt: salt}(IPoolManager(poolManager));
 
         console.log("Deployed hook at:", address(livoSwapHook));
         require(address(livoSwapHook) == hookAddress, "DeployHook: hook address mismatch");
@@ -53,13 +52,11 @@ contract DeployHook is Script {
         console.log("LivoSwapHook successfully deployed at:", address(livoSwapHook));
     }
 
-    function _getDeploymentAddresses() internal view returns (address poolManager, address weth) {
+    function _getPoolManager() internal view returns (address poolManager) {
         if (block.chainid == DeploymentAddressesMainnet.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
-            weth = DeploymentAddressesMainnet.WETH;
         } else if (block.chainid == DeploymentAddressesSepolia.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesSepolia.UNIV4_POOL_MANAGER;
-            weth = DeploymentAddressesSepolia.WETH;
         } else {
             revert("DeployHook: unsupported chain");
         }
