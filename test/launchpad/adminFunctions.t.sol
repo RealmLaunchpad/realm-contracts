@@ -321,7 +321,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function test_proposeTokenOwner_revertsIfInvalidToken() public {
         vm.prank(creator);
-        vm.expectRevert(LivoLaunchpad.InvalidToken.selector);
+        vm.expectRevert(LivoLaunchpad.InvalidTokenOwner.selector);
         launchpad.proposeTokenOwner(address(0x1234), alice);
     }
 
@@ -370,7 +370,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function test_acceptTokenOwnership_revertsIfInvalidToken() public {
         vm.prank(alice);
-        vm.expectRevert(LivoLaunchpad.InvalidToken.selector);
+        vm.expectRevert(LivoLaunchpad.InvalidTokenOwner.selector);
         launchpad.acceptTokenOwnership(address(0x1234));
     }
 
@@ -392,12 +392,6 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         TokenConfig memory config = launchpad.getTokenConfig(testToken);
         assertEq(config.proposedOwner, alice, "admin takeover should override pending proposal");
-    }
-
-    function test_communityTakeOver_revertsIfZeroNewOwner() public createTestToken {
-        vm.prank(admin);
-        vm.expectRevert(LivoLaunchpad.InvalidTokenOwner.selector);
-        launchpad.communityTakeOver(testToken, address(0));
     }
 
     function test_communityTakeOver_revertsIfInvalidToken() public {

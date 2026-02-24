@@ -103,7 +103,7 @@ contract LivoLaunchpad is Ownable2Step {
     );
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
     event TokenOwnerUpdated(address indexed token, address indexed newOwner);
-    event TokenOwnerProposed(address indexed token, address indexed proposedOwner);
+    event TokenOwnerProposed(address indexed token, address indexed currentOwner, address indexed proposedOwner);
 
     /////////////////////////////////////////////////
 
@@ -463,7 +463,7 @@ contract LivoLaunchpad is Ownable2Step {
     /// @dev pass newOwner=address(0) to cancel an existing proposal
     function _proposeNewOwner(address token, address newOwner) internal {
         tokenConfigs[token].proposedOwner = newOwner;
-        emit TokenOwnerProposed(token, newOwner);
+        emit TokenOwnerProposed(token, tokenConfigs[token].tokenOwner, newOwner);
     }
 
     /// @dev This function assumes that the graduation criteria is met
