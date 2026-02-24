@@ -695,7 +695,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
     }
 
-    function test_claimFeesOnlyByAdminOrTokenOwner() public createAndGraduateToken {
+    function test_creatorClaim_byNonOwnerAccruesToCurrentOwnerOnly() public createAndGraduateToken {
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
@@ -704,13 +704,18 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory positionIndexes = new uint256[](1);
         positionIndexes[0] = 0;
 
-        // non-owner call should be a no-op (cannot collect fresh LP fees)
+        // non-owner call accrues LP fees to current token owner, not caller
         uint256 aliceBalanceBefore = alice.balance;
+        uint256 creatorPendingBefore =
+            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorFees(testToken, creator);
         vm.prank(alice);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
         assertEq(alice.balance, aliceBalanceBefore, "non-owner should not receive fees");
+        uint256 creatorPendingAfter =
+            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorFees(testToken, creator);
+        assertGt(creatorPendingAfter, creatorPendingBefore, "non-owner call should accrue fees to current owner");
 
-        // Alice should be able to claim fees
+        // creator should claim the fees that were accrued by alice's call
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
     }
