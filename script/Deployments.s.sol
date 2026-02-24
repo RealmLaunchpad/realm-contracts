@@ -120,6 +120,8 @@ contract Deployments is Script {
         );
         console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
 
+        console.log("| LivoSwapHook | ", hookAddress);
+
         // 7. Deploy LivoTaxableTokenUniV4 (implementation for clones)
         // note: the right chainid config is checked when reading configs
         LivoTaxableTokenUniV4 livoTaxableToken = new LivoTaxableTokenUniV4();
