@@ -159,7 +159,6 @@ contract LaunchpadBaseTests is Test {
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x003",
             ""
         );

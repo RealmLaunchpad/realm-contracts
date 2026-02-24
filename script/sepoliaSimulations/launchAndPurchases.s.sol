@@ -28,14 +28,14 @@ contract BuySellSimulations is Script {
         bytes32 salt = bytes32(uint256(0x123));
 
         address TOKEN1 =
-            launchpad.createToken("MEMEV2", "MAMIV2", LIVOTOKEN, BONDINGCURVE, GRADUATORV2, LIVODEV, salt, "");
+            launchpad.createToken("MEMEV2", "MAMIV2", LIVOTOKEN, BONDINGCURVE, GRADUATORV2, salt, "");
         address TOKEN2 =
-            launchpad.createToken("projecTV4", "PROJECTV4", LIVOTOKEN, BONDINGCURVE, GRADUATORV4, LIVODEV, salt, "");
+            launchpad.createToken("projecTV4", "PROJECTV4", LIVOTOKEN, BONDINGCURVE, GRADUATORV4, salt, "");
 
         bytes memory tokenCalldata = ILivoTaxableTokenUniV4(LIVOTAXTOKEN).encodeTokenCalldata(500, 14 days);
 
         address TOKEN3 = launchpad.createToken(
-            "projecTaxTV4", "PROJECTAXV4", LIVOTAXTOKEN, BONDINGCURVE, GRADUATORV4, LIVODEV, salt, tokenCalldata
+            "projecTaxTV4", "PROJECTAXV4", LIVOTAXTOKEN, BONDINGCURVE, GRADUATORV4, salt, tokenCalldata
         );
 
         uint256 deadline = block.timestamp + 300 days;

@@ -30,7 +30,6 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x003",
             ""
         );
@@ -125,7 +124,6 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x003",
             ""
         );

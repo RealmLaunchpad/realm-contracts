@@ -301,7 +301,6 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             ""
         );

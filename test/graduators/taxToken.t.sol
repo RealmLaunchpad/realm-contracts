@@ -23,7 +23,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             tokenCalldata
         );
@@ -39,7 +38,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             address(taxTokenImpl),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             tokenCalldata
         );
@@ -57,7 +55,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             address(taxTokenImpl),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             tokenCalldata
         );

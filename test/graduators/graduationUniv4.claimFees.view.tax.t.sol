@@ -40,7 +40,6 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             tokenCalldata
         );
@@ -59,7 +58,6 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x1a3a",
             tokenCalldata
         );
@@ -69,7 +67,6 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x1a3a",
             tokenCalldata
         );

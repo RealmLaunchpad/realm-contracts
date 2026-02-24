@@ -112,7 +112,7 @@ contract InvariantsHelperLaunchpad is Test {
 
         vm.prank(currentActor);
         address token = launchpad.createToken(
-            "TestToken", "TEST", implementation, bondingCurve, graduator, currentActor, "0x12", ""
+            "TestToken", "TEST", implementation, bondingCurve, graduator, "0x12", ""
         );
         _tokens.add(token);
     }

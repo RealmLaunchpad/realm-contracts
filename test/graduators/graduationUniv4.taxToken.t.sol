@@ -149,6 +149,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         vm.prank(admin);
         launchpad.communityTakeOver(testToken, alice);
+        vm.prank(alice);
+        launchpad.acceptTokenOwnership(testToken);
         assertEq(launchpad.getTokenOwner(testToken), alice, "New token owner should be Alice");
 
         // Verify that sell taxes are now redirected to the new owner
@@ -443,7 +445,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             address(taxTokenImpl),
             address(bondingCurve),
             address(graduatorV4),
-            creator,
             "0x003",
             tokenCalldata
         );
@@ -704,6 +705,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Transfer ownership to alice
         vm.prank(admin);
         launchpad.communityTakeOver(testToken, alice);
+        vm.prank(alice);
+        launchpad.acceptTokenOwnership(testToken);
         assertEq(launchpad.getTokenOwner(testToken), alice, "Alice should be the new token owner");
 
         // Record balances before claiming
@@ -785,7 +788,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             tokenCalldata
         );
@@ -801,7 +803,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             address(taxTokenImpl),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             tokenCalldata
         );

@@ -359,7 +359,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
             address(implementation),
             address(bondingCurve),
             address(graduator),
-            creator,
             "0x12",
             ""
         );

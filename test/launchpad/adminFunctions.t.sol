@@ -9,6 +9,7 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+import {TokenConfig} from "src/types/tokenData.sol";
 
 contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     address public nonOwner = makeAddr("nonOwner");
@@ -282,7 +283,151 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(admin);
         launchpad.communityTakeOver(testToken, alice);
 
+        // ownership not yet transferred — alice must accept
+        assertEq(launchpad.getTokenOwner(testToken), creator);
+
+        vm.prank(alice);
+        launchpad.acceptTokenOwnership(testToken);
+
         assertEq(launchpad.getTokenOwner(testToken), alice);
+    }
+
+    event TokenOwnerProposed(address indexed token, address indexed currentOwner, address indexed proposedOwner);
+    event TokenOwnerUpdated(address indexed token, address indexed newOwner);
+
+    // ─── proposeTokenOwner ───────────────────────────────────────────────
+
+    function test_proposeTokenOwner_byCurrentOwner_setsProposedOwner() public createTestToken {
+        vm.prank(creator);
+        launchpad.proposeTokenOwner(testToken, alice);
+
+        TokenConfig memory config = launchpad.getTokenConfig(testToken);
+        assertEq(config.proposedOwner, alice);
+    }
+
+    function test_proposeTokenOwner_emitsTokenOwnerProposed() public createTestToken {
+        vm.expectEmit(true, true, true, true);
+        emit TokenOwnerProposed(testToken, creator, alice);
+
+        vm.prank(creator);
+        launchpad.proposeTokenOwner(testToken, alice);
+    }
+
+    function test_proposeTokenOwner_revertsIfNotCurrentOwner() public createTestToken {
+        vm.prank(alice);
+        vm.expectRevert(LivoLaunchpad.InvalidTokenOwner.selector);
+        launchpad.proposeTokenOwner(testToken, alice);
+    }
+
+    function test_proposeTokenOwner_revertsIfInvalidToken() public {
+        vm.prank(creator);
+        vm.expectRevert(LivoLaunchpad.InvalidToken.selector);
+        launchpad.proposeTokenOwner(address(0x1234), alice);
+    }
+
+    function test_proposeTokenOwner_withZeroAddress_cancelsProposal() public createTestToken {
+        vm.prank(creator);
+        launchpad.proposeTokenOwner(testToken, alice);
+
+        vm.prank(creator);
+        launchpad.proposeTokenOwner(testToken, address(0));
+
+        TokenConfig memory config = launchpad.getTokenConfig(testToken);
+        assertEq(config.proposedOwner, address(0));
+    }
+
+    // ─── acceptTokenOwnership ────────────────────────────────────────────
+
+    function test_acceptTokenOwnership_happyPath_setsOwnerAndClearsProposed() public createTestToken {
+        vm.prank(creator);
+        launchpad.proposeTokenOwner(testToken, alice);
+
+        vm.expectEmit(true, true, true, true);
+        emit TokenOwnerUpdated(testToken, alice);
+
+        vm.prank(alice);
+        launchpad.acceptTokenOwnership(testToken);
+
+        assertEq(launchpad.getTokenOwner(testToken), alice);
+        TokenConfig memory config = launchpad.getTokenConfig(testToken);
+        assertEq(config.proposedOwner, address(0));
+    }
+
+    function test_acceptTokenOwnership_revertsIfNotProposedOwner() public createTestToken {
+        vm.prank(creator);
+        launchpad.proposeTokenOwner(testToken, alice);
+
+        vm.prank(nonOwner);
+        vm.expectRevert(LivoLaunchpad.InvalidTokenOwner.selector);
+        launchpad.acceptTokenOwnership(testToken);
+    }
+
+    function test_acceptTokenOwnership_revertsIfNoProposalPending() public createTestToken {
+        vm.prank(alice);
+        vm.expectRevert(LivoLaunchpad.InvalidTokenOwner.selector);
+        launchpad.acceptTokenOwnership(testToken);
+    }
+
+    function test_acceptTokenOwnership_revertsIfInvalidToken() public {
+        vm.prank(alice);
+        vm.expectRevert(LivoLaunchpad.InvalidToken.selector);
+        launchpad.acceptTokenOwnership(address(0x1234));
+    }
+
+    // ─── communityTakeOver (new two-step behaviour) ───────────────────────
+
+    function test_communityTakeOver_nowProposes_doesNotDirectlyTransfer() public createTestToken {
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        assertEq(launchpad.getTokenOwner(testToken), creator, "ownership should not change before accept");
+    }
+
+    function test_communityTakeOver_overridesPendingOwnerProposal() public createTestToken {
+        vm.prank(creator);
+        launchpad.proposeTokenOwner(testToken, nonOwner);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        TokenConfig memory config = launchpad.getTokenConfig(testToken);
+        assertEq(config.proposedOwner, alice, "admin takeover should override pending proposal");
+    }
+
+    function test_communityTakeOver_revertsIfZeroNewOwner() public createTestToken {
+        vm.prank(admin);
+        vm.expectRevert(LivoLaunchpad.InvalidTokenOwner.selector);
+        launchpad.communityTakeOver(testToken, address(0));
+    }
+
+    function test_communityTakeOver_revertsIfInvalidToken() public {
+        vm.prank(admin);
+        vm.expectRevert(LivoLaunchpad.InvalidToken.selector);
+        launchpad.communityTakeOver(address(0x1234), alice);
+    }
+
+    // ─── edge cases ───────────────────────────────────────────────────────
+
+    function test_ownerCanRepropose_whenProposalPending() public createTestToken {
+        vm.prank(creator);
+        launchpad.proposeTokenOwner(testToken, alice);
+
+        vm.prank(creator);
+        launchpad.proposeTokenOwner(testToken, nonOwner);
+
+        TokenConfig memory config = launchpad.getTokenConfig(testToken);
+        assertEq(config.proposedOwner, nonOwner, "second proposal should override first");
+    }
+
+    function test_adminCanOverrideOwnerProposal() public createTestToken {
+        vm.prank(creator);
+        launchpad.proposeTokenOwner(testToken, alice);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, nonOwner);
+
+        TokenConfig memory config = launchpad.getTokenConfig(testToken);
+        assertEq(config.proposedOwner, nonOwner, "admin takeover should override owner proposal");
     }
 
     function test_createCustomToken_onlyOwnerAllowed() public {
