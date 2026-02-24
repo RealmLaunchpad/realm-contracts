@@ -742,6 +742,33 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
     }
 
+    function test_depositAccruedTaxes_reverts_whenCallerIsNotHook() public createAndGraduateToken {
+        vm.prank(alice);
+        vm.expectRevert(LivoGraduatorUniswapV4.OnlyHookAllowed.selector);
+        LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).depositAccruedTaxes{value: 1}(testToken, creator);
+    }
+
+    function test_viewFunction_getClaimableFees_reverts_onEmptyPositionIndexes() public createAndGraduateToken {
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](0);
+
+        vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
+        graduatorWithFees.getClaimableFees(tokens, positionIndexes, creator);
+    }
+
+    function test_viewFunction_getClaimableFees_reverts_onTooManyPositionIndexes() public createAndGraduateToken {
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+        uint256[] memory positionIndexes = new uint256[](3);
+        positionIndexes[0] = 0;
+        positionIndexes[1] = 1;
+        positionIndexes[2] = 0;
+
+        vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
+        graduatorWithFees.getClaimableFees(tokens, positionIndexes, creator);
+    }
+
     function test_creatorClaim_byNonOwnerAccruesToCurrentOwnerOnly() public createAndGraduateToken {
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);

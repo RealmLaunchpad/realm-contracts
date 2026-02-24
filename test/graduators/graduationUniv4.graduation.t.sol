@@ -819,6 +819,24 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         // Further checks can be added to verify pool state if needed
     }
+
+    function test_graduateToken_reverts_whenCallerIsNotLaunchpad() public createTestToken {
+        vm.expectRevert(ILivoGraduator.OnlyLaunchpadAllowed.selector);
+        LivoGraduatorUniswapV4(payable(address(graduator))).graduateToken(testToken, 1);
+    }
+
+    function test_graduateToken_reverts_whenTokenAmountIsZero() public createTestToken {
+        vm.deal(address(launchpad), 1);
+        vm.prank(address(launchpad));
+        vm.expectRevert(ILivoGraduator.NoTokensToGraduate.selector);
+        LivoGraduatorUniswapV4(payable(address(graduator))).graduateToken{value: 1}(testToken, 0);
+    }
+
+    function test_graduateToken_reverts_whenMsgValueIsZero() public createTestToken {
+        vm.prank(address(launchpad));
+        vm.expectRevert(ILivoGraduator.NoETHToGraduate.selector);
+        LivoGraduatorUniswapV4(payable(address(graduator))).graduateToken(testToken, 1);
+    }
 }
 
 /// @notice Concrete test contract for normal (non-tax) tokens
