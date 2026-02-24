@@ -527,6 +527,12 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         return fees[0];
     }
 
+    function _claimableFor(address tokenOwner) internal view returns (uint256) {
+        (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
+        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, positionIndexes, tokenOwner);
+        return fees[0];
+    }
+
     function _accrueTokenFeesAs(address caller) internal {
         (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
         vm.prank(caller);
@@ -537,6 +543,12 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
         vm.prank(caller);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+    }
+
+    function _creatorClaimAndReturnEthDelta(address caller) internal returns (uint256) {
+        uint256 balanceBefore = caller.balance;
+        _creatorClaimAs(caller);
+        return caller.balance - balanceBefore;
     }
 
     modifier afterOneSwapBuy() {
@@ -1199,6 +1211,181 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         }
         assertEq(treasury.balance, treasuryEthBefore, "treasury should remain unchanged across creator claims");
         assertEq(_creatorClaimable(), 0, "claimable should be zero after second creator claim");
+    }
+
+    /// @dev when state is swap-buy, accrue, community-takeover, then original owner keeps non-zero claimable fees
+    function test_viewFunction_getClaimableFees_matrix_buy_afterAccrueAndTakeOver_oldOwnerHasClaimable()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        _accrueTokenFeesAs(alice);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        uint256 oldOwnerClaimable = _claimableFor(creator);
+        assertGt(oldOwnerClaimable, 0, "old owner should keep accrued claimable after takeover");
+    }
+
+    /// @dev when state is swap-buy, accrue, community-takeover, then original owner can claim and receive pre-claim claimable amount
+    function test_balance_matrix_buy_afterAccrueAndTakeOver_oldOwnerCanClaimPreClaimable()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        _accrueTokenFeesAs(alice);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        uint256 oldOwnerClaimable = _claimableFor(creator);
+        assertGt(oldOwnerClaimable, 0, "old owner should have claimable after takeover");
+
+        uint256 oldOwnerClaimDelta = _creatorClaimAndReturnEthDelta(creator);
+        assertApproxEqAbs(oldOwnerClaimDelta, oldOwnerClaimable, 2, "old owner claim delta should match pre-claim");
+    }
+
+    /// @dev when state is swap-buy, creator-claim, swap-buy, accrue, community-takeover, then original owner still has claimable and can claim it
+    function test_balance_matrix_buy_afterClaimThenSecondBuyAccrueAndTakeOver_oldOwnerCanClaim()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        _creatorClaimAs(creator);
+        _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
+        _accrueTokenFeesAs(alice);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        uint256 oldOwnerClaimable = _claimableFor(creator);
+        assertGt(oldOwnerClaimable, 0, "old owner should have claimable from second buy after takeover");
+
+        uint256 oldOwnerClaimDelta = _creatorClaimAndReturnEthDelta(creator);
+        assertApproxEqAbs(oldOwnerClaimDelta, oldOwnerClaimable, 2, "old owner delta should match claimable");
+    }
+
+    /// @dev when state is swap-buy, accrue, community-takeover, swap-buy, then old and new owner claimables sum to expected creator fees and both can claim
+    function test_balance_matrix_buy_afterTakeOverThenSecondBuy_splitAcrossOwnersAndBothClaim()
+        public
+        createAndGraduateToken
+        afterOneSwapBuy
+    {
+        _accrueTokenFeesAs(alice);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
+
+        uint256 oldOwnerClaimable = _claimableFor(creator);
+        uint256 newOwnerClaimable = _claimableFor(alice);
+        uint256 expectedCreatorFees = (MATRIX_BUY_AMOUNT_1 + MATRIX_BUY_AMOUNT_2) / 200;
+
+        assertApproxEqAbs(
+            oldOwnerClaimable + newOwnerClaimable,
+            expectedCreatorFees,
+            3,
+            "old+new owner claimables should match expected charged creator fees"
+        );
+
+        uint256 newOwnerClaimDelta = _creatorClaimAndReturnEthDelta(alice);
+        uint256 oldOwnerClaimDelta = _creatorClaimAndReturnEthDelta(creator);
+
+        assertApproxEqAbs(newOwnerClaimDelta, newOwnerClaimable, 2, "new owner delta should match pre-claim claimable");
+        assertApproxEqAbs(oldOwnerClaimDelta, oldOwnerClaimable, 2, "old owner delta should match pre-claim claimable");
+    }
+
+    /// @dev when state is swap-sell, accrue, community-takeover, then original owner keeps non-zero claimable fees for taxable tokens
+    function test_viewFunction_getClaimableFees_matrix_sell_afterAccrueAndTakeOver_oldOwnerHasClaimable_taxOnly()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        if (!_expectsSellTaxes()) return;
+
+        _accrueTokenFeesAs(alice);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        uint256 oldOwnerClaimable = _claimableFor(creator);
+        assertGt(oldOwnerClaimable, 0, "old owner should keep accrued sell claimable after takeover");
+    }
+
+    /// @dev when state is swap-sell, accrue, community-takeover, then original owner can claim and receive pre-claim claimable for taxable tokens
+    function test_balance_matrix_sell_afterAccrueAndTakeOver_oldOwnerCanClaimPreClaimable_taxOnly()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        if (!_expectsSellTaxes()) return;
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        uint256 oldOwnerClaimable = _claimableFor(creator);
+        assertGt(oldOwnerClaimable, 0, "old owner should have claimable after takeover");
+
+        uint256 oldOwnerClaimDelta = _creatorClaimAndReturnEthDelta(creator);
+        assertApproxEqAbs(oldOwnerClaimDelta, oldOwnerClaimable, 2, "old owner claim delta should match pre-claim");
+    }
+
+    /// @dev when state is swap-sell, creator-claim, swap-sell, accrue, community-takeover, then original owner has non-zero claimable and can claim it for taxable tokens
+    function test_balance_matrix_sell_afterClaimThenSecondSellAccrueAndTakeOver_oldOwnerCanClaim_taxOnly()
+        public
+        createAndGraduateToken
+        afterOneSwapSell
+    {
+        if (!_expectsSellTaxes()) return;
+
+        _creatorClaimAs(creator);
+        _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        uint256 oldOwnerClaimable = _claimableFor(creator);
+        assertGt(oldOwnerClaimable, 0, "old owner should have claimable from second sell after takeover");
+
+        uint256 oldOwnerClaimDelta = _creatorClaimAndReturnEthDelta(creator);
+        assertApproxEqAbs(oldOwnerClaimDelta, oldOwnerClaimable, 2, "old owner delta should match claimable");
+    }
+
+    /// @dev when state is swap-sell, accrue, community-takeover, swap-sell, then old and new owner claimables match expected split and both can claim for taxable tokens
+    function test_balance_matrix_sell_afterTakeOverThenSecondSell_splitAcrossOwnersAndBothClaim_taxOnly()
+        public
+        createAndGraduateToken
+    {
+        if (!_expectsSellTaxes()) return;
+
+        _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
+
+        uint256 oldOwnerExpected = _claimableFor(creator);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, alice);
+
+        uint256 newOwnerBeforeSecondSell = _claimableFor(alice);
+        _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
+
+        uint256 oldOwnerClaimable = _claimableFor(creator);
+        uint256 newOwnerClaimable = _claimableFor(alice);
+        uint256 expectedTotalCreatorFees = oldOwnerExpected + (newOwnerClaimable - newOwnerBeforeSecondSell);
+
+        assertApproxEqAbs(
+            oldOwnerClaimable + newOwnerClaimable,
+            expectedTotalCreatorFees,
+            2,
+            "old+new owner claimables should match expected total creator fees"
+        );
+
+        uint256 newOwnerClaimDelta = _creatorClaimAndReturnEthDelta(alice);
+        uint256 oldOwnerClaimDelta = _creatorClaimAndReturnEthDelta(creator);
+
+        assertApproxEqAbs(newOwnerClaimDelta, newOwnerClaimable, 2, "new owner delta should match pre-claim claimable");
+        assertApproxEqAbs(oldOwnerClaimDelta, oldOwnerClaimable, 2, "old owner delta should match pre-claim claimable");
     }
 }
 

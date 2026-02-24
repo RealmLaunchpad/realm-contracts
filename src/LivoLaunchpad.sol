@@ -435,8 +435,11 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param token The address of the token
     /// @param newTokenOwner The address of the new tokenOwner
     function communityTakeOver(address token, address newTokenOwner) external onlyOwner {
-        // no other requirements besides being an permissioned onlyOwner function
-        _transferTokenOwnership(token, newTokenOwner);
+        // note token ownership is transferred with any non-accured LP fees. Accrue fees first to the original owner before transfering ownership to the new owner
+        require(newTokenOwner != address(0), InvalidTokenOwner());
+
+        tokenConfigs[token].tokenOwner = newTokenOwner;
+        emit TokenOwnerUpdated(token, newTokenOwner);
     }
 
     //////////////////////////// Internal functions //////////////////////////
@@ -472,12 +475,6 @@ contract LivoLaunchpad is Ownable2Step {
         require(!requireSuccess || success, EthTransferFailed());
 
         return success;
-    }
-
-    function _transferTokenOwnership(address token, address newTokenOwner) internal {
-        require(newTokenOwner != address(0), InvalidTokenOwner());
-        tokenConfigs[token].tokenOwner = newTokenOwner;
-        emit TokenOwnerUpdated(token, newTokenOwner);
     }
 
     function _emitTokenCreated(
