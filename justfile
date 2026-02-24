@@ -44,6 +44,9 @@ lean-invariants:
 error-inspection errorhex:
     forge inspect LivoLaunchpad errors | grep {{errorhex}}
 
+taxtokenaddresses:
+    sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV4.sol
+
 ##################### Deployed addresses (sepolia) #######################
 launchpad := "0x418d7C7C7C0FECA10bF0ff3020D1035cBF8Be61e"
 
