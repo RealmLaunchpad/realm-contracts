@@ -99,7 +99,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     uint160 immutable SQRT_LOWER_2;
     uint160 immutable SQRT_UPPER_2;
 
-    /// @notice Graduation ETH fee split between creator and treasury
+    /// @notice Graduation ETH fee (creator compensation + treasury fee)
     uint256 public constant GRADUATION_ETH_FEE = 0.5 ether;
 
     /// @notice ETH compensation paid to token creator at graduation
@@ -123,7 +123,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     error InvalidPositionIndexes();
     error OnlyHookAllowed();
     error EthTransferFailed();
-    error UnauthorizedFeeCollection();
 
     /////////////////////// Events ///////////////////////
 
@@ -181,7 +180,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
-    /// @notice To receive ETH from Uniswap fee claims and tax deposits
+    /// @notice To receive ETH back from Uniswap when depositing liquidity at graduation
     receive() external payable {}
 
     /// @notice Initializes a Uniswap V4 pool for the token
@@ -268,6 +267,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         emit TokenGraduated(tokenAddress, poolId, tokensDeposited, ethForLiquidity, liquidity1 + liquidity2);
     }
 
+    /////////////////// TAX ACCRUAL /////////////////////////
+
     /// @notice Deposits ETH taxes accrued by the hook for a token owner
     /// @param token Token address that generated the taxes
     /// @param tokenOwner Owner address that accrues the taxes
@@ -279,8 +280,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         emit CreatorTaxesAccrued(token, tokenOwner, msg.value);
     }
 
-    /// @notice Claims creator fees and taxes per token and optionally collects fresh LP fees for current owner tokens
-    /// @dev If caller is current token owner, this also collects LP fees from `positionIndexes` and accrues new splits first
+    /////////////////// FEE ACCRUAL AND CLAIM /////////////////////////
+
+    /// @notice Claims creator fees and taxes for caller, and first accrues fresh LP fees for each token
+    /// @dev LP-fee accrual always credits the current token owner in launchpad, and treasury for treasury share
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to collect fees from (only 0 or 1 are valid values)
     function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) public {
@@ -289,15 +292,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
-            address currentTokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
-
-            // only the current token owner can collect fresh fees from LP positions
-            // but the token could have a previous owner that has pending fees and taxes to claim,
-            // so we allow anyone to call this function and claim pending amounts, but only collect new fees if the caller is the current owner
-            if (msg.sender == currentTokenOwner) {
-                // this updates the state of pendingCreatorFees
-                _collectLpFees(token, currentTokenOwner, positionIndexes);
-            }
+            // this updates pendingCreatorFees for current token owner and treasuryPendingFees for treasury
+            _accrueLpFees(token, positionIndexes);
 
             // these two mappings may or may not have been increased in the scope above
             uint256 tokenTaxes = pendingCreatorTaxes[token][msg.sender];
@@ -320,18 +316,15 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     }
 
     /// @notice Collects LP fees for tokens and accrues creator/treasury shares in storage
-    /// @dev Creator shares are never force-transferred by admin
-    /// @dev This function only accrues the fees in storage, it does not transfer any fees to the creator or treasury.
+    /// @dev Creator shares are never force-transferred. This function only accrues
     /// @dev The accrued fees need to be claimed by calling `creatorClaim()` or `treasuryClaim()`
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to collect fees from (only 0 or 1 are valid values)
-    function adminTokenFeesAccrual(address[] calldata tokens, uint256[] calldata positionIndexes) external onlyOwner {
+    function accrueTokenFees(address[] calldata tokens, uint256[] calldata positionIndexes) external {
         uint256 nTokens = _validateClaimInputs(tokens, positionIndexes);
 
         for (uint256 i = 0; i < nTokens; i++) {
-            address token = tokens[i];
-            address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
-            _collectLpFees(token, tokenOwner, positionIndexes);
+            _accrueLpFees(tokens[i], positionIndexes);
         }
     }
 
@@ -403,7 +396,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         }
     }
 
-    function _collectLpFees(address token, address tokenOwner, uint256[] calldata positionIndexes) internal {
+    function _accrueLpFees(address token, uint256[] calldata positionIndexes) internal {
+        address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
         uint256 creatorAccrued;
         uint256 treasuryAccrued;
 
