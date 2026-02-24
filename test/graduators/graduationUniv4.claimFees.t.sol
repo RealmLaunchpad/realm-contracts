@@ -509,6 +509,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     uint256 internal constant MATRIX_SELL_AMOUNT = 100000000e18;
     uint256 internal constant MATRIX_SELL_MIN_OUT = 0.1 ether;
 
+    function _expectsSellTaxes() internal pure virtual returns (bool);
+
     function _singleTokenClaimInputs()
         internal
         view
@@ -1025,7 +1027,11 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         afterOneSwapSell
     {
         uint256 fees = _creatorClaimable();
-        assertGt(fees, 0, "creator should have some claimable fees from sell");
+        if (_expectsSellTaxes()) {
+            assertGt(fees, 0, "creator should have some claimable fees from sell");
+        } else {
+            assertEq(fees, 0, "creator should have no claimable fees from sell");
+        }
     }
 
 
@@ -1038,9 +1044,13 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         LivoGraduatorUniswapV4 graduatorv4 = LivoGraduatorUniswapV4(payable(address(graduatorWithFees)));
         uint256 fees = _creatorClaimable();
         uint256 pendingTaxes = graduatorv4.pendingCreatorTaxes(testToken, creator);
-        // todo verify that the pending taxes is the right percentage of the amount swapped
-        
-        assertGe(fees, pendingTaxes, "claimable should include pending creator taxes");
+        if (_expectsSellTaxes()) {
+            assertGt(pendingTaxes, 0, "pending creator taxes should be positive for tax tokens");
+            assertGe(fees, pendingTaxes, "claimable should include pending creator taxes");
+        } else {
+            assertEq(pendingTaxes, 0, "pending creator taxes should be zero for normal tokens");
+            assertEq(fees, 0, "claimable should be zero for normal tokens after sell");
+        }
 
     }
 
@@ -1078,7 +1088,11 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         _creatorClaimAs(creator);
 
-        assertGt(creator.balance, creatorEthBefore, "creator should receive accrued sell taxes on creator claim");
+        if (_expectsSellTaxes()) {
+            assertGt(creator.balance, creatorEthBefore, "creator should receive accrued sell taxes on creator claim");
+        } else {
+            assertEq(creator.balance, creatorEthBefore, "creator should receive no sell taxes on creator claim");
+        }
         assertEq(treasury.balance, treasuryEthBefore, "treasury should not receive funds on creator claim");
     }
 
@@ -1095,7 +1109,13 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         LivoGraduatorUniswapV4 graduatorv4 = LivoGraduatorUniswapV4(payable(address(graduatorWithFees)));
         uint256 fees = _creatorClaimable();
         uint256 pendingTaxes = graduatorv4.pendingCreatorTaxes(testToken, creator);
-        assertGe(fees, pendingTaxes, "claimable should include pending taxes from second sell");
+        if (_expectsSellTaxes()) {
+            assertGt(pendingTaxes, 0, "pending taxes should be positive after second sell");
+            assertGe(fees, pendingTaxes, "claimable should include pending taxes from second sell");
+        } else {
+            assertEq(pendingTaxes, 0, "pending taxes should stay zero for normal tokens");
+            assertEq(fees, 0, "claimable should stay zero for normal tokens");
+        }
     }
 
     /// @dev when state is swap-sell, accrue, claim, swap-sell, accrue, then `getClaimableFees()` remains stable after accrual
@@ -1143,7 +1163,11 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         _creatorClaimAs(creator);
         uint256 creatorEthAfterFirstClaim = creator.balance;
 
-        assertGt(creatorEthAfterFirstClaim, creatorEthBeforeFirstClaim, "first creator claim should pay creator");
+        if (_expectsSellTaxes()) {
+            assertGt(creatorEthAfterFirstClaim, creatorEthBeforeFirstClaim, "first creator claim should pay creator");
+        } else {
+            assertEq(creatorEthAfterFirstClaim, creatorEthBeforeFirstClaim, "first creator claim should not pay");
+        }
         assertEq(treasury.balance, treasuryEthBefore, "treasury should not be paid by creator claim");
 
         _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
@@ -1151,7 +1175,11 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256 creatorEthBeforeSecondClaim = creator.balance;
         _creatorClaimAs(creator);
 
-        assertGt(creator.balance, creatorEthBeforeSecondClaim, "second creator claim should pay creator");
+        if (_expectsSellTaxes()) {
+            assertGt(creator.balance, creatorEthBeforeSecondClaim, "second creator claim should pay creator");
+        } else {
+            assertEq(creator.balance, creatorEthBeforeSecondClaim, "second creator claim should not pay");
+        }
         assertEq(treasury.balance, treasuryEthBefore, "treasury should remain unchanged across creator claims");
         assertEq(_creatorClaimable(), 0, "claimable should be zero after second creator claim");
     }
@@ -1170,105 +1198,7 @@ contract BaseUniswapV4ClaimFees_NormalToken is BaseUniswapV4ClaimFeesBase {
 }
 
 /// @notice Concrete test contract for claim fees view functions with normal (non-tax) tokens
-contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFunctionsBase {
-    function setUp() public override {
-        super.setUp();
-        // Uses default implementation (livoToken) from base
-    }
-}
-
-// ============================================
-// Concrete Implementations for Tax Tokens
-// ============================================
-
-/// @notice Concrete test contract for claim fees with tax tokens
 contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV4ClaimFeesBase {
-    function setUp() public override(TaxTokenUniV4BaseTests, BaseUniswapV4FeesTests) {
-        super.setUp();
-        // Override implementation for this test suite to use tax tokens
-        implementation = ILivoToken(address(taxTokenImpl));
-    }
-
-    // Use TaxTokenUniV4BaseTests implementation of _swap
-    function _swap(
-        address caller,
-        address token,
-        uint256 amountIn,
-        uint256 minAmountOut,
-        bool isBuy,
-        bool expectSuccess
-    ) internal override(BaseUniswapV4GraduationTests, TaxTokenUniV4BaseTests) {
-        TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
-    }
-
-    /// @notice Override createAndGraduateToken modifier to provide tokenCalldata for tax configuration
-    modifier createAndGraduateToken() override {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
-
-        vm.prank(creator);
-        testToken = launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            creator,
-            "0x12",
-            tokenCalldata
-        );
-
-        _graduateToken();
-        _;
-    }
-
-    /// @notice Override twoGraduatedTokensWithBuys modifier for tax tokens
-    modifier twoGraduatedTokensWithBuys(uint256 buyAmount) override {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
-
-        vm.startPrank(creator);
-        testToken1 = launchpad.createToken(
-            "TestToken1",
-            "TEST1",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            creator,
-            "0x1a3a",
-            tokenCalldata
-        );
-        testToken2 = launchpad.createToken(
-            "TestToken2",
-            "TEST2",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            creator,
-            "0x1a3a",
-            tokenCalldata
-        );
-        vm.stopPrank();
-
-        // graduate token1 and token2
-        uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
-        uint256 buyAmount2 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
-        vm.deal(buyer, 100 ether);
-        vm.startPrank(buyer);
-        launchpad.buyTokensWithExactEth{value: buyAmount1}(testToken1, 0, DEADLINE);
-        launchpad.buyTokensWithExactEth{value: buyAmount2}(testToken2, 0, DEADLINE);
-
-        assertTrue(launchpad.getTokenState(testToken1).graduated, "Token1 should be graduated");
-        assertTrue(launchpad.getTokenState(testToken2).graduated, "Token2 should be graduated");
-
-        // buy from token1 and token2 from uniswap
-        _swap(buyer, testToken1, buyAmount, 1, true, true);
-        _swap(buyer, testToken2, buyAmount, 1, true, true);
-        vm.stopPrank();
-        _;
-    }
-}
-
-/// @notice Concrete test contract for claim fees view functions with tax tokens
-contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, UniswapV4ClaimFeesViewFunctionsBase {
     function setUp() public override(TaxTokenUniV4BaseTests, BaseUniswapV4FeesTests) {
         super.setUp();
         // Override implementation for this test suite to use tax tokens
