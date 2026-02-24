@@ -34,7 +34,7 @@ interface ILivoGraduatorWithFees is ILivoGraduator {
     function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) external;
     function accrueTokenFees(address[] calldata tokens, uint256[] calldata positionIndexes) external;
     function positionIds(address token, uint256 positionIndex) external view returns (uint256);
-    function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
+    function getClaimable(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
         external
         view
         returns (uint256[] memory creatorFees);
@@ -523,13 +523,13 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
     function _creatorClaimable() internal view returns (uint256) {
         (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, positionIndexes, creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, positionIndexes, creator);
         return fees[0];
     }
 
     function _claimableFor(address tokenOwner) internal view returns (uint256) {
         (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, positionIndexes, tokenOwner);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, positionIndexes, tokenOwner);
         return fees[0];
     }
 
@@ -568,19 +568,19 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertEq(positionId, 62898, "wrong position id registered at graduation");
     }
 
-    /// @notice test that right after graduation getClaimableFees gives 0
-    function test_viewFunction_getClaimableFees_rightAfterGraduation() public createAndGraduateToken {
+    /// @notice test that right after graduation getClaimable gives 0
+    function test_viewFunction_getClaimable_rightAfterGraduation() public createAndGraduateToken {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertEq(fees[0], 0, "fees should be 0 right after graduation");
     }
 
-    /// @notice test that after one swapBuy, getClaimableFees gives expected fees
-    function test_viewFunction_getClaimableFees_afterOneSwapBuy() public createAndGraduateToken {
+    /// @notice test that after one swapBuy, getClaimable gives expected fees
+    function test_viewFunction_getClaimable_afterOneSwapBuy() public createAndGraduateToken {
         deal(buyer, 10 ether);
         uint256 buyAmount = 1 ether;
         _swapBuy(buyer, buyAmount, 10e18, true);
@@ -588,7 +588,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
@@ -597,14 +597,14 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertApproxEqAbs(fees[0], expectedFees, 1, "creator fees should be 0.5% of buy amount");
     }
 
-    /// @notice test that after one swapSell, getClaimableFees includes accrued creator tax
-    function test_viewFunction_getClaimableFees_afterOneSwapSell() public createAndGraduateToken {
+    /// @notice test that after one swapSell, getClaimable includes accrued creator tax
+    function test_viewFunction_getClaimable_afterOneSwapSell() public createAndGraduateToken {
         _swapSell(buyer, 100000000e18, 0.1 ether, true);
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
         uint256 pendingTaxes =
             LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorTaxes(testToken, creator);
 
@@ -612,8 +612,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertEq(fees[0], pendingTaxes, "claimable fees should match accrued creator taxes after sell");
     }
 
-    /// @notice test that after two swapBuy, getClaimableFees gives expected fees
-    function test_viewFunction_getClaimableFees_afterTwoSwapBuys() public createAndGraduateToken {
+    /// @notice test that after two swapBuy, getClaimable gives expected fees
+    function test_viewFunction_getClaimable_afterTwoSwapBuys() public createAndGraduateToken {
         deal(buyer, 10 ether);
         uint256 buyAmount1 = 1 ether;
         uint256 buyAmount2 = 0.5 ether;
@@ -623,33 +623,33 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         uint256 expectedCreatorFees = (buyAmount1 + buyAmount2) / 200;
         assertApproxEqAbs(fees[0], expectedCreatorFees, 2, "creator fees should be 0.5% of total buy amounts");
     }
 
-    /// @notice test that after swapBuy, claim, getClaimableFees gives 0
-    function test_viewFunction_getClaimableFees_afterClaimGivesZero() public createAndGraduateToken {
+    /// @notice test that after swapBuy, claim, getClaimable gives 0
+    function test_viewFunction_getClaimable_afterClaimGivesZero() public createAndGraduateToken {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
         assertApproxEqAbs(fees[0], 1 ether / 200, 1, "creator fees should be 0.5% of buy amount");
 
         _collectFees(testToken);
 
-        fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
 
         assertEq(fees[0], 0, "fees should be 0 after claim");
     }
 
-    /// @notice test that after swapBuy, claim, swapBuy getClaimableFees gives expected fees
-    function test_viewFunction_getClaimableFees_afterClaimAndSwapBuy() public createAndGraduateToken {
+    /// @notice test that after swapBuy, claim, swapBuy getClaimable gives expected fees
+    function test_viewFunction_getClaimable_afterClaimAndSwapBuy() public createAndGraduateToken {
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
@@ -661,19 +661,19 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertApproxEqAbs(fees[0], buyAmount2 / 200, 1, "creator fees should be 0.5% of second buy amount");
     }
 
-    /// @notice test that getClaimableFees works for multiple tokens
-    function test_viewFunction_getClaimableFees_multipleTokens() public twoGraduatedTokensWithBuys(1 ether) {
+    /// @notice test that getClaimable works for multiple tokens
+    function test_viewFunction_getClaimable_multipleTokens() public twoGraduatedTokensWithBuys(1 ether) {
         address[] memory tokens = new address[](2);
         tokens[0] = testToken1;
         tokens[1] = testToken2;
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 2, "should return two fee values");
         // Expected fees: 0.5% of 1 ether = 1 ether / 200
@@ -681,14 +681,14 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertApproxEqAbs(fees[1], 1 ether / 200, 1, "fees[1] should be 0.5% of buy amount");
     }
 
-    /// @notice test that getClaimableFees gives the same results when called with the repeated token in the array
-    function test_viewFunction_getClaimableFees_repeatedToken() public twoGraduatedTokensWithBuys(1 ether) {
+    /// @notice test that getClaimable gives the same results when called with the repeated token in the array
+    function test_viewFunction_getClaimable_repeatedToken() public twoGraduatedTokensWithBuys(1 ether) {
         address[] memory tokens = new address[](3);
         tokens[0] = testToken1;
         tokens[1] = testToken2;
         tokens[2] = testToken1; // repeated
 
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
 
         assertEq(fees.length, 3, "should return three fee values");
         // Expected fees: 0.5% of 1 ether = 1 ether / 200
@@ -700,7 +700,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
     /// @notice test that if price dips well below the graduation price and then there are buys, the fees are still correctly calculated
     /// @dev This is mainly covering the extra single-sided eth position below the graduation price
-    function test_viewFunction_getClaimableFees_priceDipBelowGraduationAndThenBuys() public createAndGraduateToken {
+    function test_viewFunction_getClaimable_priceDipBelowGraduationAndThenBuys() public createAndGraduateToken {
         deal(buyer, 10 ether);
         // first, make the price dip below graduation price by selling a lot of tokens
         _swapSell(buyer, 10_000_000e18, 0.1 ether, true);
@@ -715,7 +715,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory positionIndexes = new uint256[](2);
         positionIndexes[0] = 0;
         positionIndexes[1] = 1;
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, positionIndexes, creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, positionIndexes, creator);
         uint256 totalFees = fees[0];
         uint256 pendingTaxes =
             LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorTaxes(testToken, creator);
@@ -750,7 +750,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256[] memory positionIndexes = new uint256[](0);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSignature("NoTokensToCollectFees()"));
+        vm.expectRevert(abi.encodeWithSignature("NoTokensGiven()"));
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
     }
 
@@ -760,16 +760,16 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).depositAccruedTaxes{value: 1}(testToken, creator);
     }
 
-    function test_viewFunction_getClaimableFees_reverts_onEmptyPositionIndexes() public createAndGraduateToken {
+    function test_viewFunction_getClaimable_reverts_onEmptyPositionIndexes() public createAndGraduateToken {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
         uint256[] memory positionIndexes = new uint256[](0);
 
         vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
-        graduatorWithFees.getClaimableFees(tokens, positionIndexes, creator);
+        graduatorWithFees.getClaimable(tokens, positionIndexes, creator);
     }
 
-    function test_viewFunction_getClaimableFees_reverts_onTooManyPositionIndexes() public createAndGraduateToken {
+    function test_viewFunction_getClaimable_reverts_onTooManyPositionIndexes() public createAndGraduateToken {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
         uint256[] memory positionIndexes = new uint256[](3);
@@ -778,7 +778,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         positionIndexes[2] = 0;
 
         vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
-        graduatorWithFees.getClaimableFees(tokens, positionIndexes, creator);
+        graduatorWithFees.getClaimable(tokens, positionIndexes, creator);
     }
 
     function test_creatorClaim_byNonOwnerAccruesToCurrentOwnerOnly() public createAndGraduateToken {
@@ -928,8 +928,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertGt(treasury.balance, treasuryEthBefore, "treasury should receive accrued share after treasuryClaim");
     }
 
-    /// @dev when state is swap-buy before accrue, then `getClaimableFees()` returns current owner claimable amount
-    function test_viewFunction_getClaimableFees_matrix_buy_beforeAccrue()
+    /// @dev when state is swap-buy before accrue, then `getClaimable()` returns current owner claimable amount
+    function test_viewFunction_getClaimable_matrix_buy_beforeAccrue()
         public
         createAndGraduateToken
         afterOneSwapBuy
@@ -938,8 +938,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertApproxEqAbs(fees, MATRIX_BUY_AMOUNT_1 / 200, 1, "creator claimable should be 0.5% of buy amount");
     }
 
-    /// @dev when state is swap-buy then `accrueTokenFees()` by creator, then `getClaimableFees()` returns accrued creator amount
-    function test_viewFunction_getClaimableFees_matrix_buy_afterAccrueByCreator()
+    /// @dev when state is swap-buy then `accrueTokenFees()` by creator, then `getClaimable()` returns accrued creator amount
+    function test_viewFunction_getClaimable_matrix_buy_afterAccrueByCreator()
         public
         createAndGraduateToken
         afterOneSwapBuy
@@ -951,8 +951,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         );
     }
 
-    /// @dev when state is swap-buy then `accrueTokenFees()` by non-owner, then `getClaimableFees()` returns owner claimable amount
-    function test_viewFunction_getClaimableFees_matrix_buy_afterAccrueByOther()
+    /// @dev when state is swap-buy then `accrueTokenFees()` by non-owner, then `getClaimable()` returns owner claimable amount
+    function test_viewFunction_getClaimable_matrix_buy_afterAccrueByOther()
         public
         createAndGraduateToken
         afterOneSwapBuy
@@ -962,8 +962,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertApproxEqAbs(fees, MATRIX_BUY_AMOUNT_1 / 200, 1, "owner claimable should not depend on caller");
     }
 
-    /// @dev when state is swap-buy then creator claims, then `getClaimableFees()` returns zero
-    function test_viewFunction_getClaimableFees_matrix_buy_afterCreatorClaim()
+    /// @dev when state is swap-buy then creator claims, then `getClaimable()` returns zero
+    function test_viewFunction_getClaimable_matrix_buy_afterCreatorClaim()
         public
         createAndGraduateToken
         afterOneSwapBuy
@@ -983,8 +983,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertEq(treasury.balance, treasuryEthBefore, "treasury should not receive funds on creator claim");
     }
 
-    /// @dev when state is swap-buy, accrue, claim, swap-buy, then `getClaimableFees()` reflects only post-claim swap
-    function test_viewFunction_getClaimableFees_matrix_buy_afterClaimThenSecondSwap()
+    /// @dev when state is swap-buy, accrue, claim, swap-buy, then `getClaimable()` reflects only post-claim swap
+    function test_viewFunction_getClaimable_matrix_buy_afterClaimThenSecondSwap()
         public
         createAndGraduateToken
         afterOneSwapBuy
@@ -997,8 +997,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertApproxEqAbs(fees, MATRIX_BUY_AMOUNT_2 / 200, 1, "claimable should reflect only second buy");
     }
 
-    /// @dev when state is swap-buy, accrue, claim, swap-buy, accrue, then `getClaimableFees()` matches second-swap creator share
-    function test_viewFunction_getClaimableFees_matrix_buy_afterClaimSecondSwapAndAccrue()
+    /// @dev when state is swap-buy, accrue, claim, swap-buy, accrue, then `getClaimable()` matches second-swap creator share
+    function test_viewFunction_getClaimable_matrix_buy_afterClaimSecondSwapAndAccrue()
         public
         createAndGraduateToken
         afterOneSwapBuy
@@ -1014,8 +1014,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         );
     }
 
-    /// @dev when state is swap-buy, accrue, claim, swap-buy, creator-claim, then `getClaimableFees()` returns zero
-    function test_viewFunction_getClaimableFees_matrix_buy_afterClaimSecondSwapAndCreatorClaim()
+    /// @dev when state is swap-buy, accrue, claim, swap-buy, creator-claim, then `getClaimable()` returns zero
+    function test_viewFunction_getClaimable_matrix_buy_afterClaimSecondSwapAndCreatorClaim()
         public
         createAndGraduateToken
         afterOneSwapBuy
@@ -1055,8 +1055,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertEq(_creatorClaimable(), 0, "claimable should be zero after second creator claim");
     }
 
-    /// @dev After a swap-sell, the crator must have pending claimable reflected in getClaimableFees() and pendingCreatorTaxes()
-    function test_viewFunction_getClaimableFees_matrix_sell_beforeAccrue_positiveClaimable()
+    /// @dev After a swap-sell, the crator must have pending claimable reflected in getClaimable() and pendingCreatorTaxes()
+    function test_viewFunction_getClaimable_matrix_sell_beforeAccrue_positiveClaimable()
         public
         createAndGraduateToken
         afterOneSwapSell
@@ -1069,8 +1069,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         }
     }
 
-    /// @dev when state is swap-sell before accrue, then `getClaimableFees()` includes at least pending creator taxes and no transfer happens during swap
-    function test_viewFunction_getClaimableFees_matrix_sell_beforeAccrue()
+    /// @dev when state is swap-sell before accrue, then `getClaimable()` includes at least pending creator taxes and no transfer happens during swap
+    function test_viewFunction_getClaimable_matrix_sell_beforeAccrue()
         public
         createAndGraduateToken
         afterOneSwapSell
@@ -1087,8 +1087,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         }
     }
 
-    /// @dev when state is swap-sell then `accrueTokenFees()` by creator, then `getClaimableFees()` remains the same claimable amount
-    function test_viewFunction_getClaimableFees_matrix_sell_afterAccrueByCreator()
+    /// @dev when state is swap-sell then `accrueTokenFees()` by creator, then `getClaimable()` remains the same claimable amount
+    function test_viewFunction_getClaimable_matrix_sell_afterAccrueByCreator()
         public
         createAndGraduateToken
         afterOneSwapSell
@@ -1100,8 +1100,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertApproxEqAbs(feesAfter, feesBefore, 2, "accrue should not change total creator claimable");
     }
 
-    /// @dev when state is swap-sell then creator claims, then `getClaimableFees()` returns zero
-    function test_viewFunction_getClaimableFees_matrix_sell_afterCreatorClaim()
+    /// @dev when state is swap-sell then creator claims, then `getClaimable()` returns zero
+    function test_viewFunction_getClaimable_matrix_sell_afterCreatorClaim()
         public
         createAndGraduateToken
         afterOneSwapSell
@@ -1125,8 +1125,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertEq(treasury.balance, treasuryEthBefore, "treasury should not receive funds on creator claim");
     }
 
-    /// @dev when state is swap-sell, accrue, claim, swap-sell, then `getClaimableFees()` reflects only post-claim sell state
-    function test_viewFunction_getClaimableFees_matrix_sell_afterClaimThenSecondSwap()
+    /// @dev when state is swap-sell, accrue, claim, swap-sell, then `getClaimable()` reflects only post-claim sell state
+    function test_viewFunction_getClaimable_matrix_sell_afterClaimThenSecondSwap()
         public
         createAndGraduateToken
         afterOneSwapSell
@@ -1147,8 +1147,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         }
     }
 
-    /// @dev when state is swap-sell, accrue, claim, swap-sell, accrue, then `getClaimableFees()` remains stable after accrual
-    function test_viewFunction_getClaimableFees_matrix_sell_afterClaimSecondSwapAndAccrue()
+    /// @dev when state is swap-sell, accrue, claim, swap-sell, accrue, then `getClaimable()` remains stable after accrual
+    function test_viewFunction_getClaimable_matrix_sell_afterClaimSecondSwapAndAccrue()
         public
         createAndGraduateToken
         afterOneSwapSell
@@ -1164,8 +1164,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertApproxEqAbs(feesAfter, feesBefore, 2, "no more taxes as there hasnt been any new sells");
     }
 
-    /// @dev when state is swap-sell, accrue, claim, swap-sell, creator-claim, then `getClaimableFees()` returns zero
-    function test_viewFunction_getClaimableFees_matrix_sell_afterClaimSecondSwapAndCreatorClaim()
+    /// @dev when state is swap-sell, accrue, claim, swap-sell, creator-claim, then `getClaimable()` returns zero
+    function test_viewFunction_getClaimable_matrix_sell_afterClaimSecondSwapAndCreatorClaim()
         public
         createAndGraduateToken
         afterOneSwapSell
@@ -1214,7 +1214,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     /// @dev when state is swap-buy, accrue, community-takeover, then original owner keeps non-zero claimable fees
-    function test_viewFunction_getClaimableFees_matrix_buy_afterAccrueAndTakeOver_oldOwnerHasClaimable()
+    function test_viewFunction_getClaimable_matrix_buy_afterAccrueAndTakeOver_oldOwnerHasClaimable()
         public
         createAndGraduateToken
         afterOneSwapBuy
@@ -1298,7 +1298,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     /// @dev when state is swap-sell, accrue, community-takeover, then original owner keeps non-zero claimable fees for taxable tokens
-    function test_viewFunction_getClaimableFees_matrix_sell_afterAccrueAndTakeOver_oldOwnerHasClaimable_taxOnly()
+    function test_viewFunction_getClaimable_matrix_sell_afterAccrueAndTakeOver_oldOwnerHasClaimable_taxOnly()
         public
         createAndGraduateToken
         afterOneSwapSell

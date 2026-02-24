@@ -14,7 +14,7 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 interface ILivoGraduatorWithFees is ILivoGraduator {
     function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) external;
     function positionIds(address token, uint256 positionIndex) external view returns (uint256);
-    function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
+    function getClaimable(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
         external
         view
         returns (uint256[] memory creatorFees);
@@ -561,7 +561,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Verify fees accumulated
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory fees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
         assertGt(fees[0], 0, "Fees should have accumulated");
         assertApproxEqAbs(fees[0], buyAmount / 200, 1, "Expected ~0.5% of buy amount");
 
@@ -610,7 +610,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Verify LP fees accumulated from buy (in ETH, not WETH)
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory claimableFees = graduatorWithFees.getClaimableFees(tokens, _singleElementArray(0), creator);
+        uint256[] memory claimableFees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
         assertApproxEqAbs(claimableFees[0], buyAmount / 200, 5, "LP fees should be ~0.5% of buy amount in ETH");
 
         // Perform sell swap during active tax period
@@ -754,7 +754,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256[] memory positionIndexesAll = new uint256[](2);
         positionIndexesAll[0] = 0;
         positionIndexesAll[1] = 1;
-        uint256[] memory totalClaimable = graduatorWithFees.getClaimableFees(tokens, positionIndexesAll, creator);
+        uint256[] memory totalClaimable = graduatorWithFees.getClaimable(tokens, positionIndexesAll, creator);
         assertGt(totalClaimable[0], 0, "claimable amount should be positive");
 
         // Record balances

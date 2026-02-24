@@ -117,8 +117,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     /////////////////////// Errors ///////////////////////
 
-    error NoTokensToCollectFees();
-    error TooManyTokensToCollectFees();
+    error NoTokensGiven();
+    error TooManyTokensGiven();
     error InvalidPositionIndex();
     error InvalidPositionIndexes();
     error OnlyHookAllowed();
@@ -131,10 +131,12 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     );
 
     event CreatorFeesAccrued(address indexed token, address indexed tokenOwner, uint256 amount);
-    event CreatorTaxesAccrued(address indexed token, address indexed tokenOwner, uint256 amount);
-    event TreasuryFeesAccrued(address indexed token, uint256 amount);
     event CreatorFeesClaimed(address indexed token, address indexed tokenOwner, uint256 amount);
+
+    event CreatorTaxesAccrued(address indexed token, address indexed tokenOwner, uint256 amount);
     event CreatorTaxesClaimed(address indexed token, address indexed tokenOwner, uint256 amount);
+
+    event TreasuryFeesAccrued(address indexed token, uint256 amount);
     event TreasuryFeesClaimed(address indexed caller, address indexed treasury, uint256 amount);
 
     //////////////////////////////////////////////////////
@@ -295,7 +297,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
             // this updates pendingCreatorFees for current token owner and treasuryPendingFees for treasury
             _accrueLpFees(token, positionIndexes);
 
-            // these two mappings may or may not have been increased in the scope above
+            // these two mappings may or may not have been increased in _accrueLpFees depending on the msg.sender
             uint256 tokenTaxes = pendingCreatorTaxes[token][msg.sender];
             uint256 tokenFees = pendingCreatorFees[token][msg.sender];
 
@@ -351,7 +353,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @param tokenOwner Address for which pending and claimable amounts are computed
     /// @return creatorClaimable Array of claimable ETH amounts per token for `tokenOwner`
     // todo rename to getClaimableEth
-    function getClaimableFees(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
+    function getClaimable(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
         public
         view
         returns (uint256[] memory creatorClaimable)
@@ -387,8 +389,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         returns (uint256 nTokens)
     {
         nTokens = tokens.length;
-        require(nTokens > 0, NoTokensToCollectFees());
-        require(nTokens < 100, TooManyTokensToCollectFees());
+        require(nTokens > 0, NoTokensGiven());
+        require(nTokens < 100, TooManyTokensGiven());
         require(1 <= positionIndexes.length && positionIndexes.length <= 2, InvalidPositionIndexes());
 
         for (uint256 p = 0; p < positionIndexes.length; p++) {

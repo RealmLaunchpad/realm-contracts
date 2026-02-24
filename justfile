@@ -18,6 +18,7 @@ abis:
     @jq '.abi' out/LivoSwapHook.sol/LivoSwapHook.json > abis/LivoSwapHook.json
     @jq '.abi' out/LivoTaxableTokenUniV4.sol/LivoTaxableTokenUniV4.json > abis/LivoTaxableTokenUniV4.json
     @jq '.abi' out/LivoToken.sol/LivoToken.json > abis/LivoToken.json
+    @echo "✔ ABIs copied to abis/ directory"
     
 
 ##################### TESTING ################################
