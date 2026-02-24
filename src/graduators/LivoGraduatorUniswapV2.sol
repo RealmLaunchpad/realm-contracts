@@ -163,7 +163,6 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     function _handleGraduationFees(address tokenAddress) internal returns (uint256 ethForLiquidity) {
         require(msg.value > GRADUATION_ETH_FEE, NotEnoughEthForGraduation());
 
-        // todo make sure this doesn't revert with underflow
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE;
 

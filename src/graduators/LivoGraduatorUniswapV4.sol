@@ -182,7 +182,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
-    /// @notice To receive ETH back from Uniswap when depositing liquidity at graduation
+    /// @notice To receive ETH back from Uniswap V4 when collecting fees and sweeping excess ETH after liquidity provision
     receive() external payable {}
 
     /// @notice Initializes a Uniswap V4 pool for the token
