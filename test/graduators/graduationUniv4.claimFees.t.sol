@@ -888,7 +888,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertEq(treasury.balance, treasuryEthBefore, "treasury balance should not change on accrue");
         assertEq(alice.balance, aliceEthBefore, "caller balance should not change on accrue");
         assertGt(
-            graduatorv4.pendingCreatorClaims(testToken, creator), creatorPendingBefore, "creator pending should increase"
+            graduatorv4.pendingCreatorClaims(testToken, creator),
+            creatorPendingBefore,
+            "creator pending should increase"
         );
         assertGt(graduatorv4.treasuryPendingFees(), treasuryPendingBefore, "treasury pending should increase");
     }
