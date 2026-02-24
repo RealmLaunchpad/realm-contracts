@@ -19,7 +19,7 @@ interface ILivoGraduatorWithFees is ILivoGraduator {
         view
         returns (uint256[] memory creatorFees);
     function treasuryClaim() external;
-    function pendingCreatorTaxes(address token, address tokenOwner) external view returns (uint256);
+    function pendingCreatorClaims(address token, address tokenOwner) external view returns (uint256);
 }
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
@@ -48,7 +48,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function _pendingTaxes(address token, address tokenOwner) internal view returns (uint256) {
-        return graduatorWithFees.pendingCreatorTaxes(token, tokenOwner);
+        return graduatorWithFees.pendingCreatorClaims(token, tokenOwner);
     }
 
     /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////

@@ -109,11 +109,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice Treasury LP fees already accrued into contract accounting
     uint256 public treasuryPendingFees;
 
-    /// @notice Creator LP fees already accrued into contract accounting
-    mapping(address token => mapping(address tokenOwner => uint256 amount)) public pendingCreatorFees;
-
-    /// @notice Creator taxes already accrued into contract accounting
-    mapping(address token => mapping(address tokenOwner => uint256 amount)) public pendingCreatorTaxes;
+    /// @notice Creator ETH claims already accrued into contract accounting (fees + taxes)
+    mapping(address token => mapping(address tokenOwner => uint256 amount)) public pendingCreatorClaims;
 
     /////////////////////// Errors ///////////////////////
 
@@ -130,12 +127,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         address indexed token, bytes32 poolId, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
     );
 
-    event CreatorFeesAccrued(address indexed token, address indexed tokenOwner, uint256 amount);
-    event CreatorFeesClaimed(address indexed token, address indexed tokenOwner, uint256 amount);
-
     event CreatorTaxesAccrued(address indexed token, address indexed tokenOwner, uint256 amount);
-    event CreatorTaxesClaimed(address indexed token, address indexed tokenOwner, uint256 amount);
-
+    event CreatorFeesAccrued(address indexed token, address indexed tokenOwner, uint256 amount);
+    event CreatorClaimed(address indexed token, address indexed tokenOwner, uint256 amount);
     event TreasuryFeesAccrued(address indexed token, uint256 amount);
     event TreasuryFeesClaimed(address indexed caller, address indexed treasury, uint256 amount);
 
@@ -278,13 +272,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         require(msg.sender == HOOK_ADDRESS, OnlyHookAllowed());
         if (msg.value == 0) return;
 
-        pendingCreatorTaxes[token][tokenOwner] += msg.value;
+        pendingCreatorClaims[token][tokenOwner] += msg.value;
         emit CreatorTaxesAccrued(token, tokenOwner, msg.value);
     }
 
     /////////////////// FEE ACCRUAL AND CLAIM /////////////////////////
 
-    /// @notice Claims creator fees and taxes for caller, and first accrues fresh LP fees for each token
+    /// @notice Claims creator amounts (fees + taxes) for caller, and first accrues fresh LP fees for each token
     /// @dev LP-fee accrual always credits the current token owner in launchpad, and treasury for treasury share
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
@@ -294,23 +288,15 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
-            // this updates pendingCreatorFees for current token owner and treasuryPendingFees for treasury
+            // this updates pendingCreatorClaims for current token owner and treasuryPendingFees for treasury
             _accrueLpFees(token, positionIndexes);
 
-            // these two mappings may or may not have been increased in _accrueLpFees depending on the msg.sender
-            uint256 tokenTaxes = pendingCreatorTaxes[token][msg.sender];
-            uint256 tokenFees = pendingCreatorFees[token][msg.sender];
+            uint256 claimAmount = pendingCreatorClaims[token][msg.sender];
 
-            if (tokenTaxes > 0) {
-                pendingCreatorTaxes[token][msg.sender] = 0;
-                totalClaimAmount += tokenTaxes;
-                emit CreatorTaxesClaimed(token, msg.sender, tokenTaxes);
-            }
-
-            if (tokenFees > 0) {
-                pendingCreatorFees[token][msg.sender] = 0;
-                totalClaimAmount += tokenFees;
-                emit CreatorFeesClaimed(token, msg.sender, tokenFees);
+            if (claimAmount > 0) {
+                pendingCreatorClaims[token][msg.sender] = 0;
+                totalClaimAmount += claimAmount;
+                emit CreatorClaimed(token, msg.sender, claimAmount);
             }
         }
 
@@ -367,7 +353,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
 
-            creatorClaimable[i] = pendingCreatorFees[token][tokenOwner] + pendingCreatorTaxes[token][tokenOwner];
+            creatorClaimable[i] = pendingCreatorClaims[token][tokenOwner];
 
             if (ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token) != tokenOwner) {
                 continue;
@@ -410,7 +396,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         }
 
         if (creatorAccrued > 0) {
-            pendingCreatorFees[token][tokenOwner] += creatorAccrued;
+            pendingCreatorClaims[token][tokenOwner] += creatorAccrued;
             emit CreatorFeesAccrued(token, tokenOwner, creatorAccrued);
         }
 
