@@ -13,7 +13,7 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 interface IGraduatorTaxCollector {
-    function depositAccruedTaxes(address token, address tokenOwner) external payable;
+    function depositAccruedTaxes(address token, address taxRecipient) external payable;
 }
 
 /// @title LivoSwapHook
@@ -71,7 +71,7 @@ contract LivoSwapHook is BaseHook {
     {
         // Get token address and tax config
         address tokenAddress = Currency.unwrap(key.currency1);
-        (bool shouldTax, uint16 taxBps, address tokenOwner) = _getTaxParams(tokenAddress, params.zeroForOne);
+        (bool shouldTax, uint16 taxBps, address taxRecipient) = _getTaxParams(tokenAddress, params.zeroForOne);
 
         // if tax=0 or, out of tax period, or no tax config, then we exit here without taxation
         if (!shouldTax) {
@@ -84,7 +84,7 @@ contract LivoSwapHook is BaseHook {
         }
 
         // SELL: Tax is taken from ETH output (seller receives less ETH)
-        return _collectSellTax(key.currency0, tokenAddress, tokenOwner, delta.amount0(), taxBps);
+        return _collectSellTax(key.currency0, tokenAddress, taxRecipient, delta.amount0(), taxBps);
     }
 
     /// @notice Prevents swaps if the token has not been graduated
@@ -115,11 +115,11 @@ contract LivoSwapHook is BaseHook {
     /// @notice Get tax parameters for a token
     /// @return shouldTax Whether tax should be collected
     /// @return taxBps The tax rate in basis points
-    /// @return tokenOwner The token owner to whom taxes are attributed
+    /// @return taxRecipient The token owner to whom taxes are attributed
     function _getTaxParams(address tokenAddress, bool isBuy)
         internal
         view
-        returns (bool shouldTax, uint16 taxBps, address tokenOwner)
+        returns (bool shouldTax, uint16 taxBps, address taxRecipient)
     {
         ILivoToken.TaxConfig memory config = ILivoToken(tokenAddress).getTaxConfig();
 
@@ -138,7 +138,7 @@ contract LivoSwapHook is BaseHook {
         if (taxBps == 0) {
             return (false, 0, address(0));
         }
-        // here we know taxBps is not zero and we have a tax recipient from config.
+        // In this system, `taxRecipient` is always the token owner.
         return (true, taxBps, config.taxRecipient);
     }
 
@@ -146,7 +146,7 @@ contract LivoSwapHook is BaseHook {
     function _collectSellTax(
         Currency currency,
         address tokenAddress,
-        address tokenOwner,
+        address taxRecipient,
         int128 ethDelta,
         uint16 taxBps
     ) internal returns (bytes4 selector, int128 taxCollected) {
@@ -157,7 +157,7 @@ contract LivoSwapHook is BaseHook {
         poolManager.take(currency, address(this), taxAmount);
 
         address graduator = ILivoToken(tokenAddress).graduator();
-        IGraduatorTaxCollector(graduator).depositAccruedTaxes{value: taxAmount}(tokenAddress, tokenOwner);
+        IGraduatorTaxCollector(graduator).depositAccruedTaxes{value: taxAmount}(tokenAddress, taxRecipient);
 
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }
