@@ -48,13 +48,13 @@ taxtokenaddresses:
     sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV4.sol
 
 ##################### Deployed addresses (sepolia) #######################
-launchpad := "0x418d7C7C7C0FECA10bF0ff3020D1035cBF8Be61e"
+launchpad := "0xF51212C9Fa9f69e05964d5E9DD31D7dacE6a5B17"
 
-tokenImpl := "0xBaF2bdF2b54cd40a0B581C76220eBd1f689AeBDC"
-taxTokenImpl := "0xD0fFba48f3a791310Cf11553f3B69C15674723b7"
-bondingCurve := "0xAE4e71529c80fDBc04a19407515CD46fa2e205fF"
-graduatorV2 := "0xCb7EFCec309D40c74C4fCFABdf9fb2dB1F3c51c9"
-graduatorV4 := "0x7f2a870981a6790f7c24978afec657C2c09Bdbf2"
+tokenImpl := "0x5e4887319f62c09884964985909a6E1E14875763"
+taxTokenImpl := "0xe4333981Fe3b821037565AF7547A461f683Da2E7"
+bondingCurve := "0x67bdc54550658BD5607c66724019Cb25E5c23A4C"
+graduatorV2 := "0x9Ae43b768aB1a97Db6986c09aD6f1B7031e5BAF7"
+graduatorV4 := "0x7026A21E398376af77c4f074c6401326f7947Cff"
 
 # ##################### Create tokens #######################
 
