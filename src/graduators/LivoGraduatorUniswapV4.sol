@@ -22,8 +22,9 @@ import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 
-contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
+contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTransient {
     using SafeERC20 for ILivoToken;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
@@ -282,7 +283,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @dev LP-fee accrual always credits the current token owner in launchpad, and treasury for treasury share
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
-    function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) public {
+    function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) public nonReentrant {
         uint256 nTokens = _validateClaimInputs(tokens, positionIndexes);
         uint256 totalClaimAmount;
 
@@ -308,7 +309,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @dev The accrued fees need to be claimed by calling `creatorClaim()` or `treasuryClaim()`
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
-    function accrueTokenFees(address[] calldata tokens, uint256[] calldata positionIndexes) external {
+    function accrueTokenFees(address[] calldata tokens, uint256[] calldata positionIndexes) external nonReentrant {
         uint256 nTokens = _validateClaimInputs(tokens, positionIndexes);
 
         for (uint256 i = 0; i < nTokens; i++) {
