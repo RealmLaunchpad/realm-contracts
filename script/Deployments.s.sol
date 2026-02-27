@@ -9,6 +9,9 @@ import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol"
 import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
+import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
+import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
@@ -21,10 +24,6 @@ contract Deployments is Script {
 
     // TODO: Set treasury address before deployment (this is livo.dev for now)
     address constant TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181; // TODO: Set before deployment
-
-    // Graduation parameters for whitelisting sets
-    uint256 constant GRADUATION_THRESHOLD = 8.5 ether;
-    uint256 constant MAX_EXCESS_OVER_THRESHOLD = 100000000000000000; // 0.1 ETH
 
     // ========================= Network Config =========================
 
@@ -97,6 +96,11 @@ contract Deployments is Script {
         LivoToken livoToken = new LivoToken();
         console.log("| LivoToken | ", address(livoToken));
 
+        // 7. Deploy LivoTaxableTokenUniV4 (implementation for clones)
+        // note: the right chainid config is checked when reading configs
+        LivoTaxableTokenUniV4 livoTaxableToken = new LivoTaxableTokenUniV4();
+        console.log("| LivoTaxableTokenUniV4 | ", address(livoTaxableToken));
+
         // 2. Deploy ConstantProductBondingCurve
         ConstantProductBondingCurve bondingCurve = new ConstantProductBondingCurve();
         console.log("| ConstantProductBondingCurve | ", address(bondingCurve));
@@ -120,47 +124,53 @@ contract Deployments is Script {
         );
         console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
 
-        // 7. Deploy LivoTaxableTokenUniV4 (implementation for clones)
-        // note: the right chainid config is checked when reading configs
-        LivoTaxableTokenUniV4 livoTaxableToken = new LivoTaxableTokenUniV4();
-        console.log("| LivoTaxableTokenUniV4 | ", address(livoTaxableToken));
+        // 8. Deploy fee handler used by factories
+        LivoFeeBaseHandler feeHandler = new LivoFeeBaseHandler();
+        console.log("| LivoFeeBaseHandler | ", address(feeHandler));
 
-        // log the hook, just for completeness
-        console.log("| LivoSwapHook | ", hookAddress);
-
-        console.log("");
-        console.log("Whitelisting components...");
-
-        // 8. Whitelist component sets on launchpad
-        // V2 graduator set
-        launchpad.whitelistComponents(
-            address(livoToken),
-            address(bondingCurve),
-            address(graduatorV2),
-            GRADUATION_THRESHOLD,
-            MAX_EXCESS_OVER_THRESHOLD
+        // 9. Deploy factories
+        LivoFactoryBase factoryV2 = new LivoFactoryBase(
+            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2), address(feeHandler)
         );
-        console.log("Whitelisted V2 component set (LivoToken)");
+        console.log("| LivoFactoryBase (V2) | ", address(factoryV2));
 
-        // V4 graduator set (LivoToken)
-        launchpad.whitelistComponents(
-            address(livoToken),
-            address(bondingCurve),
-            address(graduatorV4),
-            GRADUATION_THRESHOLD,
-            MAX_EXCESS_OVER_THRESHOLD
+        LivoFactoryBase factoryV4 = new LivoFactoryBase(
+            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV4), address(feeHandler)
         );
-        console.log("Whitelisted V4 component set (LivoToken)");
+        console.log("| LivoFactoryBase (V4) | ", address(factoryV4));
 
-        // V4 graduator set (LivoTaxableTokenUniV4)
-        launchpad.whitelistComponents(
+        LivoFactoryTaxToken factoryTax = new LivoFactoryTaxToken(
+            address(launchpad),
             address(livoTaxableToken),
             address(bondingCurve),
             address(graduatorV4),
-            GRADUATION_THRESHOLD,
-            MAX_EXCESS_OVER_THRESHOLD
+            address(feeHandler)
         );
-        console.log("Whitelisted V4 component set (LivoTaxableTokenUniV4)");
+        console.log("| LivoFactoryTaxToken | ", address(factoryTax));
+
+        // log the hook, for completeness
+        console.log("| LivoSwapHook | ", hookAddress);
+
+        console.log("");
+        console.log("Whitelisting factories...");
+
+        launchpad.whitelistFactory(address(factoryV2));
+        console.log("whitelisting LivoFactoryBase (V2) in LivoLaunchpad");
+
+        launchpad.whitelistFactory(address(factoryV4));
+        console.log("whitelisting factoryV4 (V4) in launchpad");
+
+        launchpad.whitelistFactory(address(factoryTax));
+        console.log("whitelisting factoryTax in launchpad");
+
+        graduatorV2.whitelistFactory(address(factoryV2));
+        console.log("whitelisting factoryV2 (V2) in graduatorV2");
+
+        graduatorV4.whitelistFactory(address(factoryV4));
+        console.log("whitelisting factoryV4 (V4) in graduatorV4");
+
+        graduatorV4.whitelistFactory(address(factoryTax));
+        console.log("whitelisting factoryTax in graduatorV4");
 
         vm.stopBroadcast();
 

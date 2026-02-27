@@ -20,6 +20,7 @@ import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
+import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
 
 contract TestLivoFactory is LivoFactoryBase {
     constructor(
@@ -46,6 +47,7 @@ contract LaunchpadBaseTests is Test {
     TestLivoFactory public factoryV2;
     TestLivoFactory public factoryV4;
     LivoFactoryTaxToken public factoryTax;
+    LivoFeeBaseHandler public feeHandler;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -130,16 +132,18 @@ contract LaunchpadBaseTests is Test {
             DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
 
+        feeHandler = new LivoFeeBaseHandler();
+
         factoryV2 = new TestLivoFactory(
-            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2), treasury
+            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2), address(feeHandler)
         );
 
         factoryV4 = new TestLivoFactory(
-            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV4), treasury
+            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV4), address(feeHandler)
         );
 
         factoryTax = new LivoFactoryTaxToken(
-            address(launchpad), address(livoTaxToken), address(bondingCurve), address(graduatorV4), treasury
+            address(launchpad), address(livoTaxToken), address(bondingCurve), address(graduatorV4), address(feeHandler)
         );
 
         launchpad.whitelistFactory(address(factoryV2));

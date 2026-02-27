@@ -289,8 +289,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         emit TreasuryAddressUpdated(recipient);
     }
 
-    function _checkFactoryWhitelistAdmin() internal view override onlyOwner {}
-
     /// @notice Collects accumulated treasury fees and transfers them to the treasury
     /// @dev No access control, as the receiver of the fees is the treasury itself
     function collectTreasuryFees() external {

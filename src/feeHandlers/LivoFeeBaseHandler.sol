@@ -1,42 +1,28 @@
-// // SPDX-License-Identifier: MIT
-// pragma solidity 0.8.28;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
 
-// import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 
-// contract LivoFeeBaseHandler is ILivoFeeHandler {
-//     error EthTransferFailed();
+contract LivoFeeBaseHandler is ILivoFeeHandler {
+    mapping(address account => uint256 amount) pendingClaims;
 
-//     event FeesDeposited(address indexed account, uint256 amount);
-//     event FeesClaimed(address indexed account, uint256 amount);
+    function depositFees(address account) external payable {
+        pendingClaims[account] += msg.value;
+        emit FeesDeposited(account, msg.value);
+    }
 
-//     /// @notice pending balance to claim
-//     mapping(address account => uint256 amount) pendingClaims;
+    function claim() external {
+        uint256 claimable = pendingClaims[msg.sender];
+        if (claimable == 0) return;
 
-//     /// @notice Deposits msg.value into `account` balance
-//     function depositFees(address account) external payable {
-//         pendingClaims[account] += msg.value;
+        delete pendingClaims[msg.sender];
+        emit FeesClaimed(msg.sender, claimable);
 
-//         emit FeesDeposited(account, msg.value);
-//     }
+        (bool success,) = msg.sender.call{value: claimable}("");
+        require(success, EthTransferFailed());
+    }
 
-//     /// @notice Claims accumulated ETH fees for msg.sender
-//     function claim() external {
-//         uint256 claimable = pendingClaims[msg.sender];
-
-//         if (claimable == 0) return;
-
-//         delete pendingClaims[msg.sender];
-
-//         emit FeesClaimed(msg.sender, claimable);
-
-//         (bool success,) = msg.sender.call{value: claimable}("");
-//         require(success, EthTransferFailed());
-//     }
-
-//     /////////////////// view ////////////////////////
-
-//     /// @notice Returns the pending ETH fees for `account`
-//     function getClaimable(address account) public view returns (uint256) {
-//         return pendingClaims[account];
-//     }
-// }
+    function getClaimable(address account) external view returns (uint256) {
+        return pendingClaims[account];
+    }
+}
