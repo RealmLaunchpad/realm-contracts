@@ -2,12 +2,13 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 
 contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
     modifier proposedOwner(address currentOwner, address nextOwner) {
         vm.prank(currentOwner);
-        launchpad.proposeTokenOwner(testToken, nextOwner);
+        ILivoToken(testToken).proposeNewOwner(nextOwner);
         _;
     }
 
@@ -18,7 +19,7 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
         proposedOwner(creator, alice)
     {
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         assertEq(launchpad.getTokenOwner(testToken), alice);
     }
@@ -26,17 +27,17 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev when creator proposes alice then reproposes bob, then alice cannot accept and bob can become owner
     function test_reproposeFromAliceToBob_assertOnlyBobCanAccept() public createTestToken {
         vm.prank(creator);
-        launchpad.proposeTokenOwner(testToken, alice);
+        ILivoToken(testToken).proposeNewOwner(alice);
 
         vm.prank(creator);
-        launchpad.proposeTokenOwner(testToken, bob);
+        ILivoToken(testToken).proposeNewOwner(bob);
 
         vm.prank(alice);
-        vm.expectRevert(LivoLaunchpad.InvalidTokenOwner.selector);
-        launchpad.acceptTokenOwnership(testToken);
+        vm.expectRevert(LivoToken.Unauthorized.selector);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         vm.prank(bob);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         assertEq(launchpad.getTokenOwner(testToken), bob);
     }
@@ -44,14 +45,14 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev when creator proposes alice then cancels with `address(0)`, then alice cannot accept ownership
     function test_proposeThenCancel_assertAliceCannotAccept() public createTestToken {
         vm.prank(creator);
-        launchpad.proposeTokenOwner(testToken, alice);
+        ILivoToken(testToken).proposeNewOwner(alice);
 
         vm.prank(creator);
-        launchpad.proposeTokenOwner(testToken, address(0));
+        ILivoToken(testToken).proposeNewOwner(address(0));
 
         vm.prank(alice);
-        vm.expectRevert(LivoLaunchpad.InvalidTokenOwner.selector);
-        launchpad.acceptTokenOwnership(testToken);
+        vm.expectRevert(LivoToken.Unauthorized.selector);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         assertEq(launchpad.getTokenOwner(testToken), creator);
     }
@@ -59,17 +60,17 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev when creator transfers to alice and alice later transfers to bob, then final `getTokenOwner()` returns bob
     function test_transferToAliceThenBob_assertGetTokenOwnerMatchesFinalAcceptedOwner() public createTestToken {
         vm.prank(creator);
-        launchpad.proposeTokenOwner(testToken, alice);
+        ILivoToken(testToken).proposeNewOwner(alice);
 
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
         assertEq(launchpad.getTokenOwner(testToken), alice);
 
         vm.prank(alice);
-        launchpad.proposeTokenOwner(testToken, bob);
+        ILivoToken(testToken).proposeNewOwner(bob);
 
         vm.prank(bob);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         assertEq(launchpad.getTokenOwner(testToken), bob);
     }
@@ -77,10 +78,10 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev test only the current tokenOwner can propose a new wner
     function test_onlyCurrentOwnerCanPropose() public createTestToken {
         vm.prank(alice);
-        vm.expectRevert(LivoLaunchpad.InvalidTokenOwner.selector);
-        launchpad.proposeTokenOwner(testToken, alice);
+        vm.expectRevert(LivoToken.Unauthorized.selector);
+        ILivoToken(testToken).proposeNewOwner(alice);
 
         vm.prank(creator);
-        launchpad.proposeTokenOwner(testToken, alice);
+        ILivoToken(testToken).proposeNewOwner(alice);
     }
 }

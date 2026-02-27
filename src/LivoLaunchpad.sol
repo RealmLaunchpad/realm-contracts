@@ -108,8 +108,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         uint256 maxExcessOverThreshold
     );
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
-    event TokenOwnerUpdated(address indexed token, address indexed newOwner);
-    event TokenOwnerProposed(address indexed token, address indexed currentOwner, address indexed proposedOwner);
     event FactoryWhitelisted(address indexed factory);
     event FactoryBlacklisted(address indexed factory);
 
@@ -126,14 +124,14 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     function launchToken(address token, ILivoBondingCurve bondingCurve) external {
         require(whitelistedFactories[msg.sender], UnauthorizedFactory());
         require(IERC20(token).totalSupply() == TOTAL_SUPPLY, InvalidTokenSupply());
+        // this check is important because bondingCurve!=address(0) is used as proxy for valid existing tokens within the Launchpad
+        require(address(bondingCurve) != address(0), InvalidAddress());
 
         tokenConfigs[token] = TokenConfig({
             bondingCurve: bondingCurve,
             graduator: ILivoGraduator(ILivoToken(token).graduator()), // todo remove graduator from this struct. not needed
-            tokenOwner: ILivoToken(token).owner(), // todo remove read from LivoToken
             buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps,
-            proposedOwner: address(0) // todo remove read from token
+            sellFeeBps: baseSellFeeBps
         });
 
         // todo finish implement
@@ -164,9 +162,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         // manual check here to reduce number of SLOADs of this storage mapping
         require(thresholdSettings.ethGraduationThreshold > 0, NotWhitelistedComponents());
 
-        token = _createToken(
-            name, symbol, implementation, bondingCurve, graduator, msg.sender, salt, tokenCalldata
-        );
+        token = _createToken(name, symbol, implementation, bondingCurve, graduator, msg.sender, salt, tokenCalldata);
     }
 
     /// @notice Same as createToken, but allows admin to create a token bypassing the whitelisting sets of graduator, bonding curve and token implementation
@@ -191,9 +187,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
 
         // note: the graduation threshold must be higher than the graduatoin fee in the graduators, but that is the graduators' responsibility
 
-        token = _createToken(
-            name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata
-        );
+        token = _createToken(name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata);
     }
 
     /// @notice Buys tokens with exact ETH amount
@@ -352,10 +346,9 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     /// @param token The address of the token
     /// @return The address of the token owner
     function getTokenOwner(address token) external view returns (address) {
-        TokenConfig storage config = tokenConfigs[token];
         // reverts on purpose because other parts of the system rely on the veracity of this output
-        if (!config.exists()) revert InvalidToken();
-        return config.tokenOwner;
+        if (!tokenConfigs[token].exists()) revert InvalidToken();
+        return ILivoToken(token).owner();
     }
 
     /// @notice Retrieves the threshold settings for a given launchpad implementation.
@@ -481,36 +474,11 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     /// @param token The address of the token
     /// @param newTokenOwner The address of the proposed new tokenOwner (must not be address(0))
     function communityTakeOver(address token, address newTokenOwner) external onlyOwner {
-        // address(0) is accepted as the newTokenOwner, to cancel an existing proposal
-        require(tokenConfigs[token].exists(), InvalidToken());
-        _proposeNewOwner(token, newTokenOwner);
-    }
-
-    /// @notice Proposes a new owner for a token. Only callable by the current tokenOwner.
-    ///         Pass address(0) as newOwner to cancel a pending proposal.
-    function proposeTokenOwner(address token, address newOwner) external {
-        require(tokenConfigs[token].tokenOwner == msg.sender, InvalidTokenOwner());
-        _proposeNewOwner(token, newOwner);
-    }
-
-    /// @notice Accepts token ownership. Only callable by the address proposed as new owner.
-    function acceptTokenOwnership(address token) external {
-        TokenConfig storage config = tokenConfigs[token];
-        require(config.proposedOwner == msg.sender, InvalidTokenOwner());
-
-        config.tokenOwner = msg.sender;
-        config.proposedOwner = address(0);
-
-        emit TokenOwnerUpdated(token, msg.sender);
+        // todo redirect this to updating owneship in the token
+        // todo implement tests
     }
 
     //////////////////////////// Internal functions //////////////////////////
-
-    /// @dev pass newOwner=address(0) to cancel an existing proposal
-    function _proposeNewOwner(address token, address newOwner) internal {
-        tokenConfigs[token].proposedOwner = newOwner;
-        emit TokenOwnerProposed(token, tokenConfigs[token].tokenOwner, newOwner);
-    }
 
     /// @dev This function assumes that the graduation criteria is met
     /// @dev It also assumes that the token hasn't been graduated yet
@@ -527,11 +495,13 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         tokenState.ethCollected = 0;
         tokenState.releasedSupply += tokenBalance;
 
+        address graduator = ILivoToken(tokenAddress).graduator();
+
         // Transfer ALL tokens to graduator
-        token.safeTransfer(address(tokenConfig.graduator), tokenBalance);
+        token.safeTransfer(graduator, tokenBalance);
 
         // Graduator handles: burning, fees, compensation, liquidity
-        tokenConfig.graduator.graduateToken{value: ethCollected}(tokenAddress, tokenBalance);
+        ILivoGraduator(graduator).graduateToken{value: ethCollected}(tokenAddress, tokenBalance);
 
         emit TokenGraduated(tokenAddress, ethCollected, tokenBalance);
     }
@@ -583,8 +553,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
         require(tokenOwner != address(0), InvalidTokenOwner());
 
-        require(IERC20(token).totalSupply() == TOTAL_SUPPLY, InvalidTokenSupply());
-
         bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
@@ -599,10 +567,8 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         tokenConfigs[token] = TokenConfig({
             bondingCurve: ILivoBondingCurve(bondingCurve),
             graduator: ILivoGraduator(graduator),
-            tokenOwner: tokenOwner,
             buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps,
-            proposedOwner: address(0)
+            sellFeeBps: baseSellFeeBps
         });
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
@@ -620,6 +586,8 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
                 address(this), // supply receiver, all tokens are held by the launchpad initially
                 tokenCalldata // this may carry extra arguments, implementation specific
             );
+
+        require(IERC20(token).totalSupply() == TOTAL_SUPPLY, InvalidTokenSupply());
 
         return token;
     }

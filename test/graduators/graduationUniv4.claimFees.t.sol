@@ -796,11 +796,11 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
-        // some fees should have been accumulated by now. Let's transfer ownership via admin
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        // some fees should have been accumulated by now. Transfer ownership in token contract
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 aliceEthBalanceBefore = alice.balance;
@@ -820,11 +820,11 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
-        // Transfer ownership to Alice via admin
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        // Transfer ownership to Alice in token contract
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
@@ -1205,10 +1205,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     {
         _accrueTokenFeesAs(alice);
 
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should keep accrued claimable after takeover");
@@ -1222,10 +1222,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     {
         _accrueTokenFeesAs(alice);
 
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should have claimable after takeover");
@@ -1244,10 +1244,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
         _accrueTokenFeesAs(alice);
 
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should have claimable from second buy after takeover");
@@ -1264,10 +1264,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     {
         _accrueTokenFeesAs(alice);
 
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
 
@@ -1299,10 +1299,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         _accrueTokenFeesAs(alice);
 
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should keep accrued sell claimable after takeover");
@@ -1316,10 +1316,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     {
         if (!_expectsSellTaxes()) return;
 
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should have claimable after takeover");
@@ -1339,10 +1339,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         _creatorClaimAs(creator);
         _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
 
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should have claimable from second sell after takeover");
@@ -1362,10 +1362,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         uint256 oldOwnerExpected = _claimableFor(creator);
 
-        vm.prank(admin);
-        launchpad.communityTakeOver(testToken, alice);
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        launchpad.acceptTokenOwnership(testToken);
+        ILivoToken(testToken).acceptTokenOwnership();
 
         uint256 newOwnerBeforeSecondSell = _claimableFor(alice);
         _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);

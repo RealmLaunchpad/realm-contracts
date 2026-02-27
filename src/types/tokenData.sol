@@ -9,10 +9,6 @@ struct TokenConfig {
     ILivoBondingCurve bondingCurve;
     /// @notice Graduation manager address assigned to this token. Cannot be altered once is set
     ILivoGraduator graduator;
-    /// @notice Owner of the token (receives graduation compensation and fees).
-    address tokenOwner;
-    /// @notice Pending new owner proposed by current owner or admin (address(0) if none)
-    address proposedOwner;
     /// @notice Trading (buy) fee in basis points (100 bps = 1%). Only applies before graduation
     uint16 buyFeeBps;
     /// @notice Trading (sell) fee in basis points (100 bps = 1%). Only applies before graduation
@@ -30,8 +26,8 @@ struct TokenState {
 
 library TokenDataLib {
     function exists(TokenConfig storage config) internal view returns (bool) {
-        // NB: in createToken, tokenOwner==address(0) is not allowed
-        return config.tokenOwner != address(0);
+        // NB: in createToken, bondingCurve==address(0) is not allowed
+        return address(config.bondingCurve) != address(0);
     }
 
     function notGraduated(TokenState storage state) internal view returns (bool) {
