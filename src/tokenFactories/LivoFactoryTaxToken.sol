@@ -6,8 +6,8 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
@@ -73,11 +73,8 @@ contract LivoFactoryTaxToken {
         // to which tokens cannot be transferred until graduation
         address pair = GRADUATOR.initialize(token);
 
-        // todo get rid of this call. Just make TaxToken initialize() custom to the tax requirements
-        bytes memory tokenCalldata = TOKEN_IMPLEMENTATION.encodeTokenCalldata(sellTaxBps, taxDurationSeconds);
-
         // the token needs to be initialized with the pair, so we have to do it after graduator.initialize
-        ILivoToken(token)
+        LivoTaxableTokenUniV4(payable(token))
             .initialize(
                 name,
                 symbol,
@@ -85,7 +82,8 @@ contract LivoFactoryTaxToken {
                 address(GRADUATOR), // graduator address
                 pair, // uniswap pair
                 address(LAUNCHPAD), // supply receiver, all tokens are held by the launchpad initially
-                tokenCalldata // todo get rid of tokenCallData since initialize happens in factories, not in launchpad
+                sellTaxBps,
+                uint40(taxDurationSeconds)
             );
 
         // registers token in launchpad together with its components and configs

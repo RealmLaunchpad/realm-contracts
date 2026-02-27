@@ -6,6 +6,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
@@ -57,15 +58,14 @@ contract LivoFactoryBase {
         address pair = GRADUATOR.initialize(token);
 
         // the token needs to be initialized with the pair, so we have to do it after graduator.initialize
-        ILivoToken(token)
+        LivoToken(token)
             .initialize(
                 name,
                 symbol,
                 tokenOwner,
                 address(GRADUATOR), // graduator address
                 pair, // uniswap pair
-                address(LAUNCHPAD), // supply receiver, all tokens are held by the launchpad initially
-                "" // todo get rid of tokenCallData since initialize happens in factories, not in launchpad
+                address(LAUNCHPAD) // supply receiver, all tokens are held by the launchpad initially
             );
 
         // registers token in launchpad together with its components and configs

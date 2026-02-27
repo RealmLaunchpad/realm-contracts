@@ -77,7 +77,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
     error InvalidTaxRate(uint16 rate);
     error InvalidTaxDuration();
-    error InvalidTaxCalldata();
     error NotTokenOwner();
 
     //////////////////////////////////////////////////////
@@ -100,7 +99,8 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @param graduator_ Address of the graduator contract
     /// @param pair_ Address of the pool manager for V4
     /// @param launchpad_ Address receiving the total supply of tokens (launchpad)
-    /// @param tokenCalldata Extended tax config: (sellTaxBps, taxDurationSeconds)
+    /// @param sellTaxBps_ Sell tax rate in basis points
+    /// @param taxDurationSeconds_ Duration in seconds after graduation during which taxes apply
     function initialize(
         string memory name_,
         string memory symbol_,
@@ -108,11 +108,11 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         address graduator_,
         address pair_,
         address launchpad_,
-        bytes memory tokenCalldata
-    ) external override(ILivoToken, LivoToken) initializer {
+        uint16 sellTaxBps_,
+        uint40 taxDurationSeconds_
+    ) external initializer {
         require(graduator_ != address(0), InvalidGraduator());
         require(pair_ == address(UNIV4_POOL_MANAGER), "Invalid pair address");
-        if (tokenCalldata.length == 0) revert InvalidTaxCalldata();
 
         // storage variables inherited from LivoToken
         _tokenName = name_;
@@ -121,8 +121,8 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         pair = pair_;
         owner = owner_;
 
-        // Decode and validate tax configuration (scoped to limit stack)
-        _initializeTaxConfig(tokenCalldata);
+        // Validate and store tax configuration
+        _initializeTaxConfig(sellTaxBps_, taxDurationSeconds_);
 
         // all is minted back to the launchpad
         _mint(launchpad_, TOTAL_SUPPLY);
@@ -143,15 +143,12 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         });
     }
 
-    /// @notice Internal helper to decode and validate tax configuration
+    /// @notice Internal helper to validate tax configuration
     /// @dev Separated to reduce stack depth in initialize()
-    function _initializeTaxConfig(bytes memory tokenCalldata) internal {
-        (uint16 _sellTaxBps, uint40 _taxDurationSeconds) = _decodeTokenCalldata(tokenCalldata);
-
+    function _initializeTaxConfig(uint16 _sellTaxBps, uint40 _taxDurationSeconds) internal {
         // Validate tax rates
         if (_sellTaxBps > MAX_TAX_BPS) revert InvalidTaxRate(_sellTaxBps);
         if (_taxDurationSeconds > MAX_TAX_DURATION_SECONDS) revert InvalidTaxDuration();
-        if ((_sellTaxBps == 0) && (_taxDurationSeconds == 0)) revert InvalidTaxCalldata();
 
         emit LivoTaxableTokenInitialized(
             0, // Buy tax is always 0 in this token implementation
@@ -173,23 +170,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         graduated = true;
         graduationTimestamp = uint40(block.timestamp);
         emit Graduated();
-    }
-
-    /// @notice Encodes the tax configuration parameters for token initialization
-    /// @dev Frontend should call this on the deployed implementation contract to construct tokenCalldata
-    /// @param _sellTaxBps Sell tax rate in basis points (max 500 = 5%)
-    /// @param _taxDurationSeconds Duration in seconds after graduation during which taxes apply
-    /// @return Encoded bytes to pass as tokenCalldata to initialize()
-    function encodeTokenCalldata(uint16 _sellTaxBps, uint40 _taxDurationSeconds) external pure returns (bytes memory) {
-        return abi.encode(_sellTaxBps, _taxDurationSeconds);
-    }
-
-    function _decodeTokenCalldata(bytes memory tokenCalldata)
-        internal
-        pure
-        returns (uint16 _sellTaxBps, uint40 _taxDurationSeconds)
-    {
-        (_sellTaxBps, _taxDurationSeconds) = abi.decode(tokenCalldata, (uint16, uint40));
     }
 
     /// @notice allows the token owner to rescue any potential tokens/WETH/native-ETH that may be stuck in this contract

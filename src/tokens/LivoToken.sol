@@ -77,11 +77,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         address owner_,
         address graduator_,
         address pair_,
-        address launchpad_,
-        bytes memory tokenCalldata
+        address launchpad_
     ) external virtual initializer {
         require(graduator_ != address(0), InvalidGraduator());
-        require(tokenCalldata.length == 0, "Token calldata must be empty");
 
         _tokenName = name_;
         _tokenSymbol = symbol_;
@@ -94,8 +92,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         _mint(launchpad_, TOTAL_SUPPLY);
 
         launchpad = LivoLaunchpad(launchpad_);
-
-        // tokenCalldata is ignored in this implementation
     }
 
     //////////////////////// restricted access functions ////////////////////////

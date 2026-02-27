@@ -15,16 +15,6 @@ interface ILivoToken is IERC20 {
 
     ////////////////// STATE CHANGING FUNCTIONS ////////////////////
 
-    function initialize(
-        string memory name_,
-        string memory symbol_,
-        address owner_,
-        address graduator_,
-        address pair_,
-        address launchpad_,
-        bytes memory tokenCalldata
-    ) external;
-
     function markGraduated() external;
 
     /// @notice Allows the current owner or whitelisted address to propose a new owner
