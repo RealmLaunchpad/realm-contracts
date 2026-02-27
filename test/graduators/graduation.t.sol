@@ -34,13 +34,6 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         assertTrue(stateAfter.graduated, "Token should be graduated in launchpad");
     }
 
-    function test_readThresholdSettings() public createTestToken {
-        LivoLaunchpad.ThresholdSettings memory settings =
-            launchpad.getThresholdSettings(address(implementation), address(bondingCurve), address(graduator));
-        assertEq(settings.ethGraduationThreshold, GRADUATION_THRESHOLD, "ETH graduation threshold should match");
-        assertEq(settings.maxExcessOverThreshold, MAX_THRESHOLD_EXCESS, "Max excess over threshold should match");
-    }
-
     /// @notice Test that graduated boolean turns true in LivoToken
     function test_graduatedBooleanTurnsTrueInLivoToken() public createTestToken {
         LivoToken token = LivoToken(testToken);

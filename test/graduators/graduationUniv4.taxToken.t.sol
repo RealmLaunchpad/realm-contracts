@@ -10,6 +10,7 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
 
 interface ILivoGraduatorWithFees is ILivoGraduator {
     function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) external;
@@ -432,22 +433,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
     /// @notice Test that token creation with invalid tax rate reverts
     function test_tokenCreation_invalidTaxRate_reverts() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(
-            600, // > MAX_TAX_BPS (500)
-            14 days
-        );
-
-        vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, 600));
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidSellTaxBps.selector));
         vm.prank(creator);
-        launchpad.createToken(
-            "InvalidToken",
-            "INV",
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduatorV4),
-            "0x003",
-            tokenCalldata
-        );
+        factoryTax.createToken("InvalidToken", "INV", creator, "0x003", 600, uint32(14 days));
     }
 
     /// @notice Test that swap before graduation has no liquidity to swap with
@@ -778,28 +766,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertApproxEqAbs(totalCreatorFees, totalClaimable[0], 1, "Claimed fees should match claimable total");
     }
 
-    function test_deployLivoToken_withEncodedCalldataFromWrongImplementation() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
-
-        vm.expectRevert("Token calldata must be empty");
-        launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x12",
-            tokenCalldata
-        );
-    }
-
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
-
-        vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, uint16(550)));
-        launchpad.createToken(
-            "TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), "0x12", tokenCalldata
-        );
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidSellTaxBps.selector));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 550, uint32(4 days));
     }
 
     // This test is removed because buy taxes no longer exist, so there's no tax swap to trigger

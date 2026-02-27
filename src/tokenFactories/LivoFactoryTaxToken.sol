@@ -54,7 +54,7 @@ contract LivoFactoryTaxToken {
         bytes32 salt,
         uint16 sellTaxBps,
         uint32 taxDurationSeconds
-    ) external {
+    ) external returns (address token) {
         require(sellTaxBps <= MAX_SELL_TAX_BPS, InvalidSellTaxBps());
         require(taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidSellTaxBps());
 
@@ -66,7 +66,7 @@ contract LivoFactoryTaxToken {
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
-        address token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
+        token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
         // in the case of univ4, the pair will be the address of the pool manager,
@@ -92,5 +92,6 @@ contract LivoFactoryTaxToken {
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
 
         // TODO decide what event is emitted from here and what from the launchpad
+        return token;
     }
 }

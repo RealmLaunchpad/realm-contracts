@@ -9,6 +9,10 @@ import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 
+interface ILaunchpadFactoryAuthV2 {
+    function whitelistedFactories(address factory) external view returns (bool);
+}
+
 contract LivoGraduatorUniswapV2 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
@@ -64,10 +68,18 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         _;
     }
 
+    modifier onlyLaunchpadOrFactory() {
+        require(
+            msg.sender == LIVO_LAUNCHPAD || ILaunchpadFactoryAuthV2(LIVO_LAUNCHPAD).whitelistedFactories(msg.sender),
+            OnlyLaunchpadAllowed()
+        );
+        _;
+    }
+
     /// @notice Creates a Uniswap V2 pair for the token to reserve the pair and know the pair address
     /// @param tokenAddress Address of the token
     /// @return pair Address of the created Uniswap V2 pair
-    function initialize(address tokenAddress) external override onlyLaunchpad returns (address pair) {
+    function initialize(address tokenAddress) external override onlyLaunchpadOrFactory returns (address pair) {
         pair = UNISWAP_FACTORY.createPair(tokenAddress, WETH);
         emit PairInitialized(tokenAddress, pair);
     }

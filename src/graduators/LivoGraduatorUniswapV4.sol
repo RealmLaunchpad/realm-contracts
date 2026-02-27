@@ -24,6 +24,10 @@ import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 
+interface ILaunchpadFactoryAuthV4 {
+    function whitelistedFactories(address factory) external view returns (bool);
+}
+
 contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTransient {
     using SafeERC20 for ILivoToken;
     using PoolIdLibrary for PoolKey;
@@ -175,6 +179,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
         _;
     }
 
+    modifier onlyLaunchpadOrFactory() {
+        require(
+            msg.sender == LIVO_LAUNCHPAD || ILaunchpadFactoryAuthV4(LIVO_LAUNCHPAD).whitelistedFactories(msg.sender),
+            OnlyLaunchpadAllowed()
+        );
+        _;
+    }
+
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
     /// @notice To receive ETH back from Uniswap V4 when accruing fees and sweeping excess ETH after liquidity provision
@@ -183,7 +195,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
     /// @notice Initializes a Uniswap V4 pool for the token
     /// @param tokenAddress Address of the token
     /// @return Address of the pool manager (same for all tokens, but to comply with the ILivoGraduator interface)
-    function initialize(address tokenAddress) external override onlyLaunchpad returns (address) {
+    function initialize(address tokenAddress) external override onlyLaunchpadOrFactory returns (address) {
         PoolKey memory pool = _getPoolKey(tokenAddress);
 
         // this sets the price even if there is no liquidity yet

@@ -7,6 +7,9 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
+import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
+import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
@@ -18,10 +21,15 @@ contract LaunchpadInvariants is Test {
     ConstantProductBondingCurve public bondingCurve;
     LivoGraduatorUniswapV2 public graduatorV2;
     LivoGraduatorUniswapV4 public graduatorV4;
+    LivoFactoryBase public factoryV2;
+    LivoFactoryBase public factoryV4;
+    LiquidityLockUniv4WithFees public liquidityLock;
 
     InvariantsHelperLaunchpad public helper;
 
     address constant poolManagerAddress = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
+    address constant positionManagerAddress = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
+    address constant permit2Address = DeploymentAddressesMainnet.PERMIT2;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -63,26 +71,41 @@ contract LaunchpadInvariants is Test {
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
+        liquidityLock = new LiquidityLockUniv4WithFees(positionManagerAddress);
 
-        launchpad.whitelistComponents(
+        deployCodeTo(
+            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress), DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+        );
+        graduatorV4 = new LivoGraduatorUniswapV4(
+            address(launchpad),
+            address(liquidityLock),
+            poolManagerAddress,
+            positionManagerAddress,
+            permit2Address,
+            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+        );
+
+        factoryV2 = new LivoFactoryBase(
+            address(launchpad),
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV2),
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS
+            treasury
         );
-        launchpad.whitelistComponents(
+
+        factoryV4 = new LivoFactoryBase(
+            address(launchpad),
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV4),
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS
+            treasury
         );
+
+        launchpad.whitelistFactory(address(factoryV2));
+        launchpad.whitelistFactory(address(factoryV4));
         vm.stopPrank();
 
-        helper = new InvariantsHelperLaunchpad(
-            launchpad, address(tokenImplementation), address(bondingCurve), address(graduatorV2), address(graduatorV4)
-        );
+        helper = new InvariantsHelperLaunchpad(launchpad, factoryV2, factoryV4);
 
         targetContract(address(helper));
     }

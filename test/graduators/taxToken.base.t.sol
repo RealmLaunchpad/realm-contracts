@@ -32,22 +32,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
 
     function setUp() public virtual override {
         super.setUp();
-
-        vm.startPrank(admin);
-
-        // Deploy tax token implementation
         taxTokenImpl = new LivoTaxableTokenUniV4();
-
-        // Whitelist tax-token implementation with graduatorV4 (which already has the right hook)
-        launchpad.whitelistComponents(
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduatorV4), // includes LivoSwapHook by default
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS
-        );
-
-        vm.stopPrank();
 
         // Set graduator to tax-enabled version for tests
         graduator = graduatorV4;
@@ -58,19 +43,8 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     /// @param taxDurationSeconds Duration in seconds after graduation during which taxes apply
     /// @return tokenAddress The address of the created tax token
     function _createTaxToken(uint16 sellTaxBps, uint40 taxDurationSeconds) internal returns (address tokenAddress) {
-        // Encode tax configuration with V4 integration parameters
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(sellTaxBps, taxDurationSeconds);
-
         vm.prank(creator);
-        tokenAddress = launchpad.createToken(
-            "TaxToken",
-            "TAX",
-            address(taxTokenImpl),
-            address(bondingCurve),
-            address(graduatorV4),
-            "0x003", // imageUrl
-            tokenCalldata // tax configuration
-        );
+        tokenAddress = factoryTax.createToken("TaxToken", "TAX", creator, "0x003", sellTaxBps, uint32(taxDurationSeconds));
     }
 
     /// @notice Helper to get pool key with tax hook

@@ -38,7 +38,10 @@ contract LivoFactoryBase {
     }
 
     /// @dev tokenOwner wont receive any fees, he needs to claim them manually. This avoids unwanted ETH fees from project tokenOwner doesn't specifically endorse
-    function _createToken(string calldata name, string calldata symbol, address tokenOwner, bytes32 salt) internal {
+    function createToken(string calldata name, string calldata symbol, address tokenOwner, bytes32 salt)
+        external
+        returns (address token)
+    {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
         require(tokenOwner != address(0), InvalidTokenOwner());
@@ -47,7 +50,7 @@ contract LivoFactoryBase {
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
         // trading will be a bit more expensive, as variables cannot be immutable
-        address token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
+        token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
         // in the case of univ4, the pair will be the address of the pool manager,
@@ -70,5 +73,6 @@ contract LivoFactoryBase {
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
 
         // TODO decide what event is emitted from here and what from the launchpad
+        return token;
     }
 }

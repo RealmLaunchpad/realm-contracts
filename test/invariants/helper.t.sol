@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {EnumerableSet} from "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {TokenState} from "src/types/tokenData.sol";
 
@@ -31,10 +32,8 @@ contract InvariantsHelperLaunchpad is Test {
 
     LivoLaunchpad public launchpad;
 
-    address public implementation;
-    address public bondingCurve;
-    address public graduatorV2;
-    address public graduatorV4;
+    LivoFactoryBase public factoryV2;
+    LivoFactoryBase public factoryV4;
 
     mapping(address => uint256) public aggregatedEthForBuys;
     mapping(address => uint256) public aggregatedTokensBought;
@@ -52,16 +51,12 @@ contract InvariantsHelperLaunchpad is Test {
     /////////////////////////////////////////////////////
     constructor(
         LivoLaunchpad _launchpad,
-        address _implementation,
-        address _bondingCurve,
-        address _graduatorV2,
-        address _graduatorV4
+        LivoFactoryBase _factoryV2,
+        LivoFactoryBase _factoryV4
     ) {
-        implementation = _implementation;
         launchpad = _launchpad;
-        bondingCurve = _bondingCurve;
-        graduatorV2 = _graduatorV2;
-        graduatorV4 = _graduatorV4;
+        factoryV2 = _factoryV2;
+        factoryV4 = _factoryV4;
 
         _actors.add(address(makeAddr("actor1")));
         _actors.add(address(makeAddr("actor2")));
@@ -108,10 +103,10 @@ contract InvariantsHelperLaunchpad is Test {
     //////////////////////////////////////////////////////////
 
     function createToken(uint256 seed) public passTime(seed) choseActor(seed) {
-        address graduator = (seed % 2 == 0) ? graduatorV2 : graduatorV4;
-
         vm.prank(currentActor);
-        address token = launchpad.createToken("TestToken", "TEST", implementation, bondingCurve, graduator, "0x12", "");
+        address token = seed % 2 == 0
+            ? factoryV2.createToken("TestToken", "TEST", currentActor, "0x12")
+            : factoryV4.createToken("TestToken", "TEST", currentActor, "0x12");
         _tokens.add(token);
     }
 
