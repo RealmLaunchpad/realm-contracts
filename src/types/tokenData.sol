@@ -9,10 +9,6 @@ struct TokenConfig {
     ILivoBondingCurve bondingCurve;
     /// @notice Graduation manager address assigned to this token. Cannot be altered once is set
     ILivoGraduator graduator;
-    /// @notice Threshold in ETH that must be collected for graduation to happen
-    uint256 ethGraduationThreshold;
-    /// @notice Max excess eth over graduation threshold
-    uint256 maxExcessOverThreshold;
     /// @notice Owner of the token (receives graduation compensation and fees).
     address tokenOwner;
     /// @notice Pending new owner proposed by current owner or admin (address(0) if none)
@@ -44,6 +40,6 @@ library TokenDataLib {
 
     /// @dev above this value, the buy transaction should revert
     function maxEthReserves(TokenConfig storage config) internal view returns (uint256) {
-        return config.ethGraduationThreshold + config.maxExcessOverThreshold;
+        return config.bondingCurve.maxEthReserves();
     }
 }
