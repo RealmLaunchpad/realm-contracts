@@ -98,7 +98,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
         tokenConfigs[token] = TokenConfig({
             bondingCurve: bondingCurve,
-            graduator: ILivoGraduator(ILivoToken(token).graduator()), // todo remove graduator from this struct. not needed
             buyFeeBps: baseBuyFeeBps,
             sellFeeBps: baseSellFeeBps
         });
@@ -149,7 +148,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
         // if the graduation criteria is met, graduation happens automatically
         if (tokenState.ethCollected >= tokenConfig.bondingCurve.ethGraduationThreshold()) {
-            _graduateToken(token, tokenState, tokenConfig);
+            _graduateToken(token, tokenState);
         }
 
         return tokensToReceive;
@@ -317,9 +316,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     /// @dev This function assumes that the graduation criteria is met
     /// @dev It also assumes that the token hasn't been graduated yet
-    function _graduateToken(address tokenAddress, TokenState storage tokenState, TokenConfig storage tokenConfig)
-        internal
-    {
+    function _graduateToken(address tokenAddress, TokenState storage tokenState) internal {
         IERC20 token = IERC20(tokenAddress);
         tokenState.graduated = true;
 

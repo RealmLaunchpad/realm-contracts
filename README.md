@@ -121,7 +121,7 @@ Custody contract for Uniswap V4 liquidity positions:
 
 #### `TokenConfig` (set at creation, immutable)
 
-- Stores immutable attributes of a token when it is created (bondig curve, graduator, creator, etc)
+- Stores per-token launchpad config set at creation (bonding curve and trading fees)
 - For more info see docstrings in the structs defined in `src/types/tokenData.sol::TokenConfig`.
 
 #### `TokenState` (dynamic, changes with trading)
