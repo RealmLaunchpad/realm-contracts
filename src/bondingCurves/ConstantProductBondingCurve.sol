@@ -56,16 +56,23 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     /// @param ethReserves Current ETH reserves in the bonding curve
     /// @param ethAmount Amount of ETH to spend
     /// @return tokensReceived Amount of tokens that would be received
+    /// @return canGraduate Whether this buy reaches the graduation threshold
     function buyTokensWithExactEth(uint256 ethReserves, uint256 ethAmount)
         external
         pure
-        returns (uint256 tokensReceived)
+        returns (uint256 tokensReceived, bool canGraduate)
     {
+        uint256 newEthReserves = ethReserves + ethAmount;
+        if (newEthReserves > _GRADUATION_THRESHOLD + _MAX_EXCESS_OVER_THRESHOLD) {
+            revert MaxEthReservesExceeded();
+        }
+
         // The final expression is derived from these two:
         //      tokenReserves = K / (ethReserves + E0) - T0;
         //      tokensReceived = T0 + tokenReserves - K / (ethReserves + ethAmount + E0);
         // The denominator can never be 0, as E0 is a non-zero constant
         tokensReceived = K * ethAmount / ((ethReserves + E0) * (ethReserves + ethAmount + E0));
+        canGraduate = newEthReserves >= _GRADUATION_THRESHOLD;
     }
 
     /// @notice Calculates how much ETH will be received when selling an exact amount of tokens

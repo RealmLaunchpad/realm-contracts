@@ -96,11 +96,8 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         // this check is important because bondingCurve!=address(0) is used as proxy for valid existing tokens within the Launchpad
         require(address(bondingCurve) != address(0), InvalidAddress());
 
-        tokenConfigs[token] = TokenConfig({
-            bondingCurve: bondingCurve,
-            buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps
-        });
+        tokenConfigs[token] =
+            TokenConfig({bondingCurve: bondingCurve, buyFeeBps: baseBuyFeeBps, sellFeeBps: baseSellFeeBps});
 
         // todo finish implement
         // todo consider emitting event
@@ -129,15 +126,11 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         require(tokenState.notGraduated(), AlreadyGraduated());
         require(block.timestamp <= deadline, DeadlineExceeded());
 
-        (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = _quoteBuyWithExactEth(token, msg.value);
+        (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive, bool canGraduate) =
+            _quoteBuyWithExactEth(token, msg.value);
 
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
         require(tokensToReceive <= _availableTokensForPurchase(token), NotEnoughSupply());
-        require(
-            tokenState.ethCollected + ethForReserves <= tokenConfig.maxEthReserves(),
-            PurchaseExceedsLimitPostGraduation()
-        );
-
         treasuryEthFeesCollected += ethFee;
         tokenState.ethCollected += ethForReserves;
         tokenState.releasedSupply += tokensToReceive;
@@ -147,7 +140,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
         // if the graduation criteria is met, graduation happens automatically
-        if (tokenState.ethCollected >= tokenConfig.bondingCurve.ethGraduationThreshold()) {
+        if (canGraduate) {
             _graduateToken(token, tokenState);
         }
 
@@ -215,7 +208,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
         if (ethValue > _maxEthToSpend(token)) revert PurchaseExceedsLimitPostGraduation();
 
-        (ethForPurchase, ethFee, tokensToReceive) = _quoteBuyWithExactEth(token, ethValue);
+        (ethForPurchase, ethFee, tokensToReceive,) = _quoteBuyWithExactEth(token, ethValue);
 
         if (tokensToReceive > _availableTokensForPurchase(token)) revert NotEnoughSupply();
     }
@@ -359,7 +352,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     function _quoteBuyWithExactEth(address token, uint256 ethValue)
         internal
         view
-        returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
+        returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive, bool canGraduate)
     {
         TokenConfig storage tokenConfig = tokenConfigs[token];
 
@@ -367,10 +360,10 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         ethFee = (ethValue * tokenConfig.buyFeeBps) / BASIS_POINTS;
         ethForPurchase = ethValue - ethFee;
 
-        tokensToReceive =
+        (tokensToReceive, canGraduate) =
             tokenConfig.bondingCurve.buyTokensWithExactEth(tokenStates[token].ethCollected, ethForPurchase);
 
-        return (ethForPurchase, ethFee, tokensToReceive);
+        return (ethForPurchase, ethFee, tokensToReceive, canGraduate);
     }
 
     function _quoteSellExactTokens(address token, uint256 tokenAmount)

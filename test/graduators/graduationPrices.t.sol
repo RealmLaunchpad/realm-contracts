@@ -9,6 +9,7 @@ import {
     LaunchpadBaseTestsWithUniv4Graduator
 } from "test/launchpad/base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
@@ -72,7 +73,7 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
     }
 
     function test_exactExcessTriggersRevert() public createTestToken {
-        vm.expectRevert(abi.encodeWithSignature("PurchaseExceedsLimitPostGraduation()"));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         _launchpadBuy(testToken, MAX_ETH_PURCHASE_TO_GRADUATE + 1);
     }
 
@@ -90,7 +91,7 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         uint256 ethValueMinusFees = ((10_000 - BASE_BUY_FEE_BPS) * ethValue) / 10_000;
         uint256 ethReserves = GRADUATION_THRESHOLD;
         // only eth minus fees arrives to the bonding curve
-        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, ethValueMinusFees);
+        (uint256 tokensReceived,) = curve.buyTokensWithExactEth(ethReserves, ethValueMinusFees);
         // but the buyer spent the full ethValue
         uint256 expectedPriceAtGraduation = (1e18 * ethValue) / tokensReceived;
 

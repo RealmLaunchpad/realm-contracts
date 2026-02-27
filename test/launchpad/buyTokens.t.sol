@@ -7,6 +7,7 @@ import {
     LaunchpadBaseTestsWithUniv4Graduator
 } from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
@@ -173,7 +174,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         vm.deal(buyer, excessiveAmount);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: excessiveAmount}(testToken, 0, DEADLINE);
     }
 
@@ -201,7 +202,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         vm.deal(buyer, excessiveAmount);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: excessiveAmount}(testToken, 0, DEADLINE);
     }
 

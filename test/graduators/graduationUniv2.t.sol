@@ -11,6 +11,7 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 
 contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
@@ -413,7 +414,8 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted by the Launchpad
     /// @dev After refactoring, launchpad emits full amounts (before fees/burning handled by graduator)
     function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ2() public createTestToken {
-        uint256 expectedTokenBalance = TOTAL_SUPPLY - bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+        (uint256 purchasedTokens,) = bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+        uint256 expectedTokenBalance = TOTAL_SUPPLY - purchasedTokens;
 
         vm.expectEmit(true, false, false, true);
         // Full ethCollected and tokenBalance (graduator handles fees/burning)
@@ -441,7 +443,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         vm.deal(buyer, maxEth + 1 ether);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: maxEth + 1}(testToken, 0, DEADLINE);
     }
 
