@@ -43,9 +43,8 @@ interface ILivoToken is IERC20 {
     /// @dev Must implement ILivoFeeHandler interface
     function feeHandler() external view returns (address);
 
-    /// @notice The address-key to assign the fees within the feeHandler contract
-    /// @dev we use bytes32 to have future flexibility. Addresses could be converted to bytes32 as well for basic address keys
-    function feeReceiverKey() external view returns (bytes32);
+    /// @notice The address that receives fees within the feeHandler contract
+    function feeReceiver() external view returns (address);
 
     /// @notice Owner of the token. The creator unless communityTakeOver takes place
     function owner() external view returns (address);

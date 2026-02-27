@@ -39,8 +39,8 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Contract handling fees for this token
     address public feeHandler;
 
-    /// @notice key to identify account within the fee handler
-    bytes32 public feeReceiverKey;
+    /// @notice Address that receives fees within the fee handler
+    address public feeReceiver;
 
     //////////////////////// Events //////////////////////
 
