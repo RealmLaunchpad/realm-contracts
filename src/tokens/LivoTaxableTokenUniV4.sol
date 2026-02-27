@@ -131,7 +131,8 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     }
 
     function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
-        address taxRecipient = launchpad.getTokenOwner(address(this));
+        // todo fix this so that fees are deposited in the fee handler but with the associated key
+        address taxRecipient = feeHandler;
 
         config = TaxConfig({
             buyTaxBps: 0, // Buy tax is always 0 in this token implementation
@@ -195,7 +196,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @dev pass token=address(0) to rescue native ETH
     /// @dev This contract is not supposed to hold any balance, so any balance can be rescued
     function rescueTokens(address token) external {
-        require(msg.sender == launchpad.getTokenOwner(address(this)), NotTokenOwner());
+        require(msg.sender == owner, NotTokenOwner());
 
         if (token == address(0)) {
             payable(msg.sender).transfer(address(this).balance);

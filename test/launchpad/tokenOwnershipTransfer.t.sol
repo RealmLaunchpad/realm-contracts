@@ -12,7 +12,7 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
         _;
     }
 
-    /// @dev when creator proposes alice and alice accepts, then `getTokenOwner()` returns alice
+    /// @dev when creator proposes alice and alice accepts, then `owner()` returns alice
     function test_proposeAccept_assertGetTokenOwnerMatchesProposed()
         public
         createTestToken
@@ -21,7 +21,7 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(alice);
         ILivoToken(testToken).acceptTokenOwnership();
 
-        assertEq(launchpad.getTokenOwner(testToken), alice);
+        assertEq(ILivoToken(testToken).owner(), alice);
     }
 
     /// @dev when creator proposes alice then reproposes bob, then alice cannot accept and bob can become owner
@@ -39,7 +39,7 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(bob);
         ILivoToken(testToken).acceptTokenOwnership();
 
-        assertEq(launchpad.getTokenOwner(testToken), bob);
+        assertEq(ILivoToken(testToken).owner(), bob);
     }
 
     /// @dev when creator proposes alice then cancels with `address(0)`, then alice cannot accept ownership
@@ -54,17 +54,17 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
         vm.expectRevert(LivoToken.Unauthorized.selector);
         ILivoToken(testToken).acceptTokenOwnership();
 
-        assertEq(launchpad.getTokenOwner(testToken), creator);
+        assertEq(ILivoToken(testToken).owner(), creator);
     }
 
-    /// @dev when creator transfers to alice and alice later transfers to bob, then final `getTokenOwner()` returns bob
+    /// @dev when creator transfers to alice and alice later transfers to bob, then final `owner()` returns bob
     function test_transferToAliceThenBob_assertGetTokenOwnerMatchesFinalAcceptedOwner() public createTestToken {
         vm.prank(creator);
         ILivoToken(testToken).proposeNewOwner(alice);
 
         vm.prank(alice);
         ILivoToken(testToken).acceptTokenOwnership();
-        assertEq(launchpad.getTokenOwner(testToken), alice);
+        assertEq(ILivoToken(testToken).owner(), alice);
 
         vm.prank(alice);
         ILivoToken(testToken).proposeNewOwner(bob);
@@ -72,7 +72,7 @@ contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(bob);
         ILivoToken(testToken).acceptTokenOwnership();
 
-        assertEq(launchpad.getTokenOwner(testToken), bob);
+        assertEq(ILivoToken(testToken).owner(), bob);
     }
 
     /// @dev test only the current tokenOwner can propose a new wner

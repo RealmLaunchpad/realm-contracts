@@ -5,6 +5,7 @@ import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 
 contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
@@ -202,11 +203,6 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     event TreasuryAddressUpdated(address newTreasury);
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
 
-    function test_readTokenOwnerInvalidToken() public {
-        vm.expectRevert(LivoLaunchpad.InvalidToken.selector);
-        launchpad.getTokenOwner(address(0));
-    }
-
     error OwnableUnauthorizedAccount(address caller);
 
     event NewOwnerProposed(address owner, address proposedOwner);
@@ -219,7 +215,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(alice);
         LivoToken(testToken).acceptTokenOwnership();
 
-        assertEq(launchpad.getTokenOwner(testToken), alice);
+        assertEq(ILivoToken(testToken).owner(), alice);
     }
 
     function test_tokenOwnershipTransfer_setsAndClearsProposedOwner() public createTestToken {

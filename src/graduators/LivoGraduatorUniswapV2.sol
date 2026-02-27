@@ -164,7 +164,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE;
 
-        address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(tokenAddress);
+        address tokenOwner = ILivoToken(tokenAddress).owner();
         address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
 
         // Pay creator (non-reverting, fallback to treasury if fails)

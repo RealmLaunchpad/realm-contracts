@@ -353,7 +353,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
 
             creatorClaimable[i] = pendingCreatorClaims[token][tokenOwner];
 
-            if (ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token) != tokenOwner) {
+            if (ILivoToken(token).owner() != tokenOwner) {
                 continue;
             }
 
@@ -382,7 +382,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
     }
 
     function _accrueLpFees(address token, uint256[] calldata positionIndexes) internal {
-        address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(token);
+        address tokenOwner = ILivoToken(token).owner();
         uint256 creatorAccrued;
         uint256 treasuryAccrued;
 
@@ -408,7 +408,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
         internal
         returns (uint256 ethForLiquidity, address treasury)
     {
-        address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(tokenAddress);
+        address tokenOwner = ILivoToken(tokenAddress).owner();
         treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;

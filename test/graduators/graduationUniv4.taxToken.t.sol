@@ -152,7 +152,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
         ILivoToken(testToken).acceptTokenOwnership();
-        assertEq(launchpad.getTokenOwner(testToken), alice, "New token owner should be Alice");
+        assertEq(ILivoToken(testToken).owner(), alice, "New token owner should be Alice");
 
         // Verify that sell taxes are now redirected to the new owner
         uint256 aliceTaxesBefore = _pendingTaxes(testToken, alice);
@@ -695,7 +695,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         ILivoToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
         ILivoToken(testToken).acceptTokenOwnership();
-        assertEq(launchpad.getTokenOwner(testToken), alice, "Alice should be the new token owner");
+        assertEq(ILivoToken(testToken).owner(), alice, "Alice should be the new token owner");
 
         // Record balances before claiming
         uint256 creatorEthBalanceBefore = creator.balance;
