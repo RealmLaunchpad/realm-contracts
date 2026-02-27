@@ -86,23 +86,17 @@ contract LaunchpadInvariants is Test {
         );
 
         factoryV2 = new LivoFactoryBase(
-            address(launchpad),
-            address(tokenImplementation),
-            address(bondingCurve),
-            address(graduatorV2),
-            treasury
+            address(launchpad), address(tokenImplementation), address(bondingCurve), address(graduatorV2), treasury
         );
 
         factoryV4 = new LivoFactoryBase(
-            address(launchpad),
-            address(tokenImplementation),
-            address(bondingCurve),
-            address(graduatorV4),
-            treasury
+            address(launchpad), address(tokenImplementation), address(bondingCurve), address(graduatorV4), treasury
         );
 
         launchpad.whitelistFactory(address(factoryV2));
         launchpad.whitelistFactory(address(factoryV4));
+        graduatorV2.whitelistFactory(address(factoryV2));
+        graduatorV4.whitelistFactory(address(factoryV4));
         vm.stopPrank();
 
         helper = new InvariantsHelperLaunchpad(launchpad, factoryV2, factoryV4);

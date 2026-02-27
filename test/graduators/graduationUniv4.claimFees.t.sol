@@ -1417,8 +1417,9 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
     /// @notice Override createAndGraduateToken modifier to provide tokenCalldata for tax configuration
     modifier createAndGraduateToken() override {
         vm.prank(creator);
-        testToken =
-            factoryTax.createToken("TestToken", "TEST", creator, "0x12", DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION));
+        testToken = factoryTax.createToken(
+            "TestToken", "TEST", creator, "0x12", DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
+        );
 
         _graduateToken();
         _;

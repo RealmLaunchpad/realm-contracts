@@ -29,7 +29,6 @@ contract TestLivoFactory is LivoFactoryBase {
         address graduator,
         address feeHandler
     ) LivoFactoryBase(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler) {}
-
 }
 
 contract LaunchpadBaseTests is Test {
@@ -132,32 +131,24 @@ contract LaunchpadBaseTests is Test {
         );
 
         factoryV2 = new TestLivoFactory(
-            address(launchpad),
-            address(livoToken),
-            address(bondingCurve),
-            address(graduatorV2),
-            treasury
+            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2), treasury
         );
 
         factoryV4 = new TestLivoFactory(
-            address(launchpad),
-            address(livoToken),
-            address(bondingCurve),
-            address(graduatorV4),
-            treasury
+            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV4), treasury
         );
 
         factoryTax = new LivoFactoryTaxToken(
-            address(launchpad),
-            address(livoTaxToken),
-            address(bondingCurve),
-            address(graduatorV4),
-            treasury
+            address(launchpad), address(livoTaxToken), address(bondingCurve), address(graduatorV4), treasury
         );
 
         launchpad.whitelistFactory(address(factoryV2));
         launchpad.whitelistFactory(address(factoryV4));
         launchpad.whitelistFactory(address(factoryTax));
+
+        graduatorV2.whitelistFactory(address(factoryV2));
+        graduatorV4.whitelistFactory(address(factoryV4));
+        graduatorV4.whitelistFactory(address(factoryTax));
 
         vm.stopPrank();
     }

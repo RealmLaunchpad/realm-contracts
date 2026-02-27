@@ -44,7 +44,8 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     /// @return tokenAddress The address of the created tax token
     function _createTaxToken(uint16 sellTaxBps, uint40 taxDurationSeconds) internal returns (address tokenAddress) {
         vm.prank(creator);
-        tokenAddress = factoryTax.createToken("TaxToken", "TAX", creator, "0x003", sellTaxBps, uint32(taxDurationSeconds));
+        tokenAddress =
+            factoryTax.createToken("TaxToken", "TAX", creator, "0x003", sellTaxBps, uint32(taxDurationSeconds));
     }
 
     /// @notice Helper to get pool key with tax hook

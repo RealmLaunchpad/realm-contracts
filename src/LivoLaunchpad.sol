@@ -8,9 +8,10 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
+import {FactoryWhitelisting} from "src/FactoryWhitelisting.sol";
 import {TokenConfig, TokenState, TokenDataLib} from "src/types/tokenData.sol";
 
-contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
+contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     using SafeERC20 for IERC20;
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
@@ -37,12 +38,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     /// @notice Trading fees (sells) in basis points (100 bps = 1%). Updates to these only affect future tokens
     uint16 public baseSellFeeBps;
 
-    /// @notice Authorized factories
-    /// @dev Token creation is gated by whitelisted factories. Each factory embeds its own
-    ///      token implementation, bonding curve, and graduator. The launchpad trusts that
-    ///      factories correctly validate compatibility between curve/graduator/token implementation.
-    mapping(address factory => bool authorized) public whitelistedFactories;
-
     /// @notice Mapping of token address to its configuration
     mapping(address => TokenConfig) public tokenConfigs;
 
@@ -62,11 +57,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     error DeadlineExceeded();
     error SlippageExceeded();
     error PurchaseExceedsLimitPostGraduation();
-    error AlreadyConfigured();
-    error InvalidAddress();
-
     error InvalidTokenSupply();
-    error UnauthorizedFactory();
 
     ///////////////////// Events /////////////////////
 
@@ -89,8 +80,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
-    event FactoryWhitelisted(address indexed factory);
-    event FactoryBlacklisted(address indexed factory);
 
     /////////////////////////////////////////////////
 
@@ -102,8 +91,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         setTradingFees(100, 100);
     }
 
-    function launchToken(address token, ILivoBondingCurve bondingCurve) external {
-        require(whitelistedFactories[msg.sender], UnauthorizedFactory());
+    function launchToken(address token, ILivoBondingCurve bondingCurve) external onlyWhitelistedFactory {
         require(IERC20(token).totalSupply() == TOTAL_SUPPLY, InvalidTokenSupply());
         // this check is important because bondingCurve!=address(0) is used as proxy for valid existing tokens within the Launchpad
         require(address(bondingCurve) != address(0), InvalidAddress());
@@ -293,27 +281,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         emit TradingFeesUpdated(buyFeeBps, sellFeeBps);
     }
 
-    /// @notice Whitelists a factory address
-    /// @param factory The factory address to whitelist
-    function whitelistFactory(address factory) external onlyOwner {
-        require(factory != address(0), InvalidAddress());
-        require(!whitelistedFactories[factory], AlreadyConfigured());
-
-        whitelistedFactories[factory] = true;
-
-        emit FactoryWhitelisted(factory);
-    }
-
-    /// @notice Blacklists a factory address
-    /// @param factory The factory address to blacklist
-    function blacklistFactory(address factory) external onlyOwner {
-        require(whitelistedFactories[factory], UnauthorizedFactory());
-
-        whitelistedFactories[factory] = false;
-
-        emit FactoryBlacklisted(factory);
-    }
-
     /// @notice Updates the treasury address
     /// @param recipient The new treasury address
     function setTreasuryAddress(address recipient) public onlyOwner {
@@ -321,6 +288,8 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         treasury = recipient;
         emit TreasuryAddressUpdated(recipient);
     }
+
+    function _checkFactoryWhitelistAdmin() internal view override onlyOwner {}
 
     /// @notice Collects accumulated treasury fees and transfers them to the treasury
     /// @dev No access control, as the receiver of the fees is the treasury itself

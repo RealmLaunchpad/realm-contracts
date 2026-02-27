@@ -23,12 +23,9 @@ import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4Wit
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
+import {FactoryWhitelisting} from "src/FactoryWhitelisting.sol";
 
-interface ILaunchpadFactoryAuthV4 {
-    function whitelistedFactories(address factory) external view returns (bool);
-}
-
-contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTransient {
+contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTransient, FactoryWhitelisting {
     using SafeERC20 for ILivoToken;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
@@ -174,19 +171,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
         IERC721(_positionManager).setApprovalForAll(_liquidityLock, true);
     }
 
-    modifier onlyLaunchpad() {
-        require(msg.sender == LIVO_LAUNCHPAD, OnlyLaunchpadAllowed());
-        _;
-    }
-
-    modifier onlyLaunchpadOrFactory() {
-        require(
-            msg.sender == LIVO_LAUNCHPAD || ILaunchpadFactoryAuthV4(LIVO_LAUNCHPAD).whitelistedFactories(msg.sender),
-            OnlyLaunchpadAllowed()
-        );
-        _;
-    }
-
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
     /// @notice To receive ETH back from Uniswap V4 when accruing fees and sweeping excess ETH after liquidity provision
@@ -195,7 +179,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
     /// @notice Initializes a Uniswap V4 pool for the token
     /// @param tokenAddress Address of the token
     /// @return Address of the pool manager (same for all tokens, but to comply with the ILivoGraduator interface)
-    function initialize(address tokenAddress) external override onlyLaunchpadOrFactory returns (address) {
+    function initialize(address tokenAddress) external override onlyWhitelistedFactory returns (address) {
         PoolKey memory pool = _getPoolKey(tokenAddress);
 
         // this sets the price even if there is no liquidity yet
@@ -211,7 +195,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
 
     /// @notice Graduates a token by adding liquidity to Uniswap V4
     /// @param tokenAddress Address of the token to graduate
-    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override onlyLaunchpad {
+    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override {
+        require(msg.sender == LIVO_LAUNCHPAD, OnlyLaunchpadAllowed());
         ILivoToken token = ILivoToken(tokenAddress);
         require(tokenAmount > 0, NoTokensToGraduate());
         require(msg.value > 0, NoETHToGraduate());

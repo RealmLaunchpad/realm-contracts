@@ -6,14 +6,12 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
+import {FactoryWhitelisting} from "src/FactoryWhitelisting.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
+import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
-interface ILaunchpadFactoryAuthV2 {
-    function whitelistedFactories(address factory) external view returns (bool);
-}
-
-contract LivoGraduatorUniswapV2 is ILivoGraduator {
+contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting {
     using SafeERC20 for ILivoToken;
 
     /// @notice Where LP tokens are sent at graduation, effectively locking the liquidity
@@ -55,7 +53,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
     /// @notice Initializes the Uniswap V2 graduator
     /// @param _uniswapRouter Address of the Uniswap V2 router
     /// @param _launchpad Address of the LivoLaunchpad contract
-    constructor(address _uniswapRouter, address _launchpad) {
+    constructor(address _uniswapRouter, address _launchpad) Ownable(msg.sender) {
         LIVO_LAUNCHPAD = _launchpad;
         UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
 
@@ -63,30 +61,18 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         UNISWAP_FACTORY = IUniswapV2Factory(UNISWAP_ROUTER.factory());
     }
 
-    modifier onlyLaunchpad() {
-        require(msg.sender == LIVO_LAUNCHPAD, OnlyLaunchpadAllowed());
-        _;
-    }
-
-    modifier onlyLaunchpadOrFactory() {
-        require(
-            msg.sender == LIVO_LAUNCHPAD || ILaunchpadFactoryAuthV2(LIVO_LAUNCHPAD).whitelistedFactories(msg.sender),
-            OnlyLaunchpadAllowed()
-        );
-        _;
-    }
-
     /// @notice Creates a Uniswap V2 pair for the token to reserve the pair and know the pair address
     /// @param tokenAddress Address of the token
     /// @return pair Address of the created Uniswap V2 pair
-    function initialize(address tokenAddress) external override onlyLaunchpadOrFactory returns (address pair) {
+    function initialize(address tokenAddress) external override onlyWhitelistedFactory returns (address pair) {
         pair = UNISWAP_FACTORY.createPair(tokenAddress, WETH);
         emit PairInitialized(tokenAddress, pair);
     }
 
     /// @notice Graduates a token by adding liquidity to Uniswap V2
     /// @param tokenAddress Address of the token to graduate
-    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override onlyLaunchpad {
+    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override {
+        require(msg.sender == LIVO_LAUNCHPAD, OnlyLaunchpadAllowed());
         ILivoToken token = ILivoToken(tokenAddress);
         require(tokenAmount > 0, NoTokensToGraduate());
         require(msg.value > 0, NoETHToGraduate());
