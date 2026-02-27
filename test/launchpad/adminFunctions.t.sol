@@ -197,6 +197,29 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertEq(treasury.balance, initialTreasuryBalance);
     }
 
+    function test_communityTakeOver_revertsForNonOwner() public createTestToken {
+        vm.prank(nonOwner);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
+        launchpad.communityTakeOver(testToken, alice);
+
+        assertEq(ILivoToken(testToken).proposedOwner(), address(0));
+    }
+
+    function test_communityTakeOver_routesToTokenProposeNewOwner() public createTestToken {
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(alice);
+        assertEq(ILivoToken(testToken).proposedOwner(), alice);
+
+        vm.prank(admin);
+        launchpad.communityTakeOver(testToken, bob);
+
+        assertEq(ILivoToken(testToken).proposedOwner(), bob);
+
+        vm.prank(bob);
+        ILivoToken(testToken).acceptTokenOwnership();
+        assertEq(ILivoToken(testToken).owner(), bob);
+    }
+
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event FactoryWhitelisted(address indexed factory);
     event FactoryBlacklisted(address indexed factory);

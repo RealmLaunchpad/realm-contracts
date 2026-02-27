@@ -302,7 +302,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     /// @param token The address of the token
     /// @param newTokenOwner The address of the proposed new tokenOwner (must not be address(0))
     function communityTakeOver(address token, address newTokenOwner) external onlyOwner {
-        // todo redirect this to updating owneship in the token
+        ILivoToken(token).proposeNewOwner(newTokenOwner);
         // todo implement tests
     }
 

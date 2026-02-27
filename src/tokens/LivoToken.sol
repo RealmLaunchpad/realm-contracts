@@ -45,7 +45,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     //////////////////////// Events //////////////////////
 
     event Graduated();
-    event NewOwnerProposed(address owner, address proposedOwner);
+    event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
 
     //////////////////////// Errors //////////////////////
@@ -111,13 +111,14 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     /// @notice Proposes a new owner for a token. Only callable by the current tokenOwner.
     ///         Pass address(0) as newOwner to cancel a pending proposal.
+    /// @dev Also callable by the launchpad for communityTakeOvers. Effectively called by admins.
     function proposeNewOwner(address newOwner) external {
         address _owner = owner;
-        require(msg.sender == _owner, Unauthorized());
+        require(msg.sender == _owner || msg.sender == address(launchpad), Unauthorized());
 
         proposedOwner = newOwner;
 
-        emit NewOwnerProposed(_owner, newOwner);
+        emit NewOwnerProposed(_owner, newOwner, msg.sender);
     }
 
     /// @notice Accepts token ownership. Only callable by the address proposed as new owner.
