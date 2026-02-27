@@ -48,6 +48,10 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         return _MAX_EXCESS_OVER_THRESHOLD;
     }
 
+    function maxEthReserves() external pure returns (uint256) {
+        return _GRADUATION_THRESHOLD + _MAX_EXCESS_OVER_THRESHOLD;
+    }
+
     /// @notice Calculates how many tokens can be purchased with a given amount of ETH
     /// @param ethReserves Current ETH reserves in the bonding curve
     /// @param ethAmount Amount of ETH to spend

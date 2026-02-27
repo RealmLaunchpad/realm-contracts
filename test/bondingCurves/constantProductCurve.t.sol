@@ -151,4 +151,9 @@ contract ConstantProductBondingCurveTest is Test {
 
         assertTrue(tokenReserves > 0, "Token reserves should be non-zero");
     }
+
+    function test_maxEthReserves() public view {
+        uint256 maxReserves = curve.maxEthReserves();
+        assertEq(maxReserves, GRADUATION_THRESHOLD + 0.1 ether, "Max reserves should be threshold + max excess");
+    }
 }

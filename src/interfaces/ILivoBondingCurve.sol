@@ -16,4 +16,7 @@ interface ILivoBondingCurve {
 
     /// @notice The maximum excess over the graduation threshold, above which the token cannot graduate
     function maxExcessOverThreshold() external view returns (uint256);
+
+    /// @notice Maximum ETH reserves allowed (threshold + max excess)
+    function maxEthReserves() external view returns (uint256);
 }
