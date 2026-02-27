@@ -8,6 +8,16 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract LivoToken is ERC20, ILivoToken, Initializable {
+    /// @notice all Livo tokens have same supply
+    uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
+
+    /// @notice Owner of the token. The creator unless communityTakeOver takes place
+    address public owner;
+
+    /// @notice Address who can accept ownership of the token
+    /// @dev It can be address(0) if no owner is proposed
+    address public proposedOwner;
+
     /// @notice The only graduator allowed to graduate this token
     address public graduator;
 
@@ -26,9 +36,17 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
 
+    /// @notice Contract handling fees for this token
+    address public feeHandler;
+
+    /// @notice key to identify account within the fee handler
+    bytes32 public feeReceiverKey;
+
     //////////////////////// Events //////////////////////
 
     event Graduated();
+    event NewOwnerProposed(address owner, address proposedOwner);
+    event OwnershipTransferred(address newOwner);
 
     //////////////////////// Errors //////////////////////
 
@@ -36,6 +54,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     error TransferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
     error InvalidGraduator();
+    error Unauthorized();
 
     //////////////////////////////////////////////////////
 
@@ -48,17 +67,17 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Initializes the token clone with its parameters
     /// @param name_ The token name
     /// @param symbol_ The token symbol
+    /// @param owner_ Token owner
     /// @param graduator_ Address of the graduator contract
     /// @param pair_ Address of the Uniswap pair
     /// @param launchpad_ Address receiving the total supply of tokens
-    /// @param totalSupply_ Total supply to mint
     function initialize(
         string memory name_,
         string memory symbol_,
+        address owner_,
         address graduator_,
         address pair_,
         address launchpad_,
-        uint256 totalSupply_,
         bytes memory tokenCalldata
     ) external virtual initializer {
         require(graduator_ != address(0), InvalidGraduator());
@@ -67,10 +86,12 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         _tokenName = name_;
         _tokenSymbol = symbol_;
         graduator = graduator_;
+        owner = owner_;
         pair = pair_;
 
         // all is minted back to the launchpad
-        _mint(launchpad_, totalSupply_);
+        // question should the launchpad check it owns the full supply? or should we leave that open?
+        _mint(launchpad_, TOTAL_SUPPLY);
 
         launchpad = LivoLaunchpad(launchpad_);
 
@@ -86,6 +107,27 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
         graduated = true;
         emit Graduated();
+    }
+
+    /// @notice Proposes a new owner for a token. Only callable by the current tokenOwner.
+    ///         Pass address(0) as newOwner to cancel a pending proposal.
+    function proposeNewOwner(address newOwner) external {
+        address _owner = owner;
+        require(msg.sender == _owner, Unauthorized());
+
+        proposedOwner = newOwner;
+
+        emit NewOwnerProposed(_owner, newOwner);
+    }
+
+    /// @notice Accepts token ownership. Only callable by the address proposed as new owner.
+    function acceptTokenOwnership() external {
+        require(msg.sender == proposedOwner, Unauthorized());
+
+        owner = msg.sender;
+        delete proposedOwner;
+
+        emit OwnershipTransferred(msg.sender);
     }
 
     //////////////////////// view functions ////////////////////////
@@ -104,9 +146,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     }
 
     /// @dev Launchpad is pre-approved
-    function allowance(address owner, address spender) public view override(ERC20, IERC20) returns (uint256) {
+    function allowance(address owner_, address spender) public view override(ERC20, IERC20) returns (uint256) {
         if (spender == address(launchpad)) return type(uint256).max;
-        return super.allowance(owner, spender);
+        return super.allowance(owner_, spender);
     }
 
     //////////////////////// internal functions ////////////////////////
@@ -123,10 +165,10 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         super._update(from, to, amount);
     }
 
-    function _spendAllowance(address owner, address spender, uint256 value) internal override {
+    function _spendAllowance(address owner_, address spender, uint256 value) internal override {
         // skips allowance logic if the spender is the launchpad to pre-approve launchpad forever
         if (spender == address(launchpad)) return;
 
-        super._spendAllowance(owner, spender, value);
+        super._spendAllowance(owner_, spender, value);
     }
 }

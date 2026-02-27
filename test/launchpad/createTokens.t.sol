@@ -56,7 +56,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         LivoToken imp = new LivoToken();
 
         vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
-        imp.initialize("ImplToken", "IMPL", address(graduator), address(0), address(this), 1234, "");
+        imp.initialize("ImplToken", "IMPL", msg.sender, address(graduator), address(0), address(this), "");
     }
 
     function testTokenCreatedHasDifferentAddressThanImplementation() public {

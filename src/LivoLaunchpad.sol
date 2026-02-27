@@ -71,6 +71,7 @@ contract LivoLaunchpad is Ownable2Step {
     error AlreadyConfigured();
     error AlreadyBlacklisted();
     error InvalidAddress();
+    error InvalidTokenSupply();
 
     ///////////////////// Events /////////////////////
 
@@ -538,6 +539,8 @@ contract LivoLaunchpad is Ownable2Step {
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
         require(tokenOwner != address(0), InvalidTokenOwner());
 
+        require(IERC20(token).totalSupply() == TOTAL_SUPPLY, InvalidTokenSupply());
+
         bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning
@@ -569,10 +572,10 @@ contract LivoLaunchpad is Ownable2Step {
             .initialize(
                 name,
                 symbol,
+                msg.sender, // owner
                 graduator, // graduator address
                 pair, // uniswap pair
                 address(this), // supply receiver, all tokens are held by the launchpad initially
-                TOTAL_SUPPLY,
                 tokenCalldata // this may carry extra arguments, implementation specific
             );
 

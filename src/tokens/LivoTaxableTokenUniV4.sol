@@ -51,9 +51,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @notice V4 Router for executing tax swaps
     address public constant UNIV4_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
 
-    /// @notice WETH address on Ethereum mainnet
-    IWETH private constant WETH = IWETH(DeploymentAddresses.WETH);
-
     /// @notice Permit2 address
     address private constant PERMIT2 = DeploymentAddresses.PERMIT2;
 
@@ -100,18 +97,18 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @notice Initializes the token clone with its parameters including tax configuration
     /// @param name_ The token name
     /// @param symbol_ The token symbol
+    /// @param owner_ Token owner
     /// @param graduator_ Address of the graduator contract
     /// @param pair_ Address of the pool manager for V4
     /// @param launchpad_ Address receiving the total supply of tokens (launchpad)
-    /// @param totalSupply_ Total supply to mint
     /// @param tokenCalldata Extended tax config: (sellTaxBps, taxDurationSeconds)
     function initialize(
         string memory name_,
         string memory symbol_,
+        address owner_,
         address graduator_,
         address pair_,
         address launchpad_,
-        uint256 totalSupply_,
         bytes memory tokenCalldata
     ) external override(ILivoToken, LivoToken) initializer {
         require(graduator_ != address(0), InvalidGraduator());
@@ -123,12 +120,13 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         _tokenSymbol = symbol_;
         graduator = graduator_;
         pair = pair_;
+        owner = owner_;
 
         // Decode and validate tax configuration (scoped to limit stack)
         _initializeTaxConfig(tokenCalldata);
 
         // all is minted back to the launchpad
-        _mint(launchpad_, totalSupply_);
+        _mint(launchpad_, TOTAL_SUPPLY);
 
         launchpad = LivoLaunchpad(launchpad_);
     }
