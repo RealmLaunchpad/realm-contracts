@@ -16,7 +16,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
 import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";

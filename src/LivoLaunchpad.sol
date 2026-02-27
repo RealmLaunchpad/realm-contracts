@@ -92,6 +92,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     }
 
     function launchToken(address token, ILivoBondingCurve bondingCurve) external onlyWhitelistedFactory {
+        // totalSupply() is assumed to match TOTAL_SUPPLY in _availableTokensForPurchase()
         require(IERC20(token).totalSupply() == TOTAL_SUPPLY, InvalidTokenSupply());
         // this check is important because bondingCurve!=address(0) is used as proxy for valid existing tokens within the Launchpad
         require(address(bondingCurve) != address(0), InvalidAddress());
