@@ -7,17 +7,26 @@ import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/In
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 
 /// @notice This can be used for univ2 or univ4 tokens. Just with different graduators
-contract LivoFactoryBase {
+contract LivoFactoryTaxToken {
     error InvalidNameOrSymbol();
     error InvalidTokenOwner();
+    error InvalidSellTaxBps();
 
-    ILivoToken public immutable TOKEN_IMPLEMENTATION;
+    /// @notice max configurable sell tax
+    uint256 public constant MAX_SELL_TAX_BPS = 500;
+
+    /// @notice max configurable sell tax duration
+    uint256 public constant MAX_SELL_TAX_DURATION_SECONDS = 14 days;
+
+    ILivoTaxableTokenUniV4 public immutable TOKEN_IMPLEMENTATION;
     ILivoLaunchpad public immutable LAUNCHPAD;
     ILivoGraduator public immutable GRADUATOR;
     ILivoBondingCurve public immutable BONDING_CURVE;
@@ -31,14 +40,24 @@ contract LivoFactoryBase {
         address feeHandler
     ) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
-        TOKEN_IMPLEMENTATION = ILivoToken(tokenImplementation);
+        TOKEN_IMPLEMENTATION = ILivoTaxableTokenUniV4(tokenImplementation);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
         GRADUATOR = ILivoGraduator(graduator);
         FEE_HANDLER = ILivoFeeHandler(feeHandler);
     }
 
     /// @dev tokenOwner wont receive any fees, he needs to claim them manually. This avoids unwanted ETH fees from project tokenOwner doesn't specifically endorse
-    function _createToken(string calldata name, string calldata symbol, address tokenOwner, bytes32 salt) internal {
+    function createToken(
+        string calldata name,
+        string calldata symbol,
+        address tokenOwner,
+        bytes32 salt,
+        uint16 sellTaxBps,
+        uint32 taxDurationSeconds
+    ) external {
+        require(sellTaxBps <= MAX_SELL_TAX_BPS, InvalidSellTaxBps());
+        require(taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidSellTaxBps());
+
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
         require(tokenOwner != address(0), InvalidTokenOwner());
@@ -54,6 +73,9 @@ contract LivoFactoryBase {
         // to which tokens cannot be transferred until graduation
         address pair = GRADUATOR.initialize(token);
 
+        // todo get rid of this call. Just make TaxToken initialize() custom to the tax requirements
+        bytes memory tokenCalldata = TOKEN_IMPLEMENTATION.encodeTokenCalldata(sellTaxBps, taxDurationSeconds);
+
         // the token needs to be initialized with the pair, so we have to do it after graduator.initialize
         ILivoToken(token)
             .initialize(
@@ -63,7 +85,7 @@ contract LivoFactoryBase {
                 address(GRADUATOR), // graduator address
                 pair, // uniswap pair
                 address(LAUNCHPAD), // supply receiver, all tokens are held by the launchpad initially
-                "" // todo get rid of tokenCallData since initialize happens in factories, not in launchpad
+                tokenCalldata // todo get rid of tokenCallData since initialize happens in factories, not in launchpad
             );
 
         // registers token in launchpad together with its components and configs
