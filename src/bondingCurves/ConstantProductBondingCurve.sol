@@ -34,6 +34,20 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     // IMPORTANT: These constants define a curve that doesn't behave well for ethReserves > 30 eth.
     // This is not a problem in practice as long as the graduation threshold + limit excess is well below that.
 
+    /// @notice The graduation threshold in terms of ETH reserves
+    uint256 internal constant _GRADUATION_THRESHOLD = 8.5 ether;
+
+    /// @notice Max amount of eth above the graduation that the curve accepts
+    uint256 internal constant _MAX_EXCESS_OVER_THRESHOLD = 0.1 ether;
+
+    function ethGraduationThreshold() external pure returns (uint256) {
+        return _GRADUATION_THRESHOLD;
+    }
+
+    function maxExcessOverThreshold() external pure returns (uint256) {
+        return _MAX_EXCESS_OVER_THRESHOLD;
+    }
+
     /// @notice Calculates how many tokens can be purchased with a given amount of ETH
     /// @param ethReserves Current ETH reserves in the bonding curve
     /// @param ethAmount Amount of ETH to spend

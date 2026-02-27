@@ -10,4 +10,10 @@ interface ILivoBondingCurve {
 
     /// @notice how much ETH will be received when selling an exact amount of tokens
     function sellExactTokens(uint256 ethReserves, uint256 tokenAmount) external view returns (uint256 ethReceived);
+
+    /// @notice When this eth reserves are matched, the token can graduate
+    function ethGraduationThreshold() external view returns (uint256);
+
+    /// @notice The maximum excess over the graduation threshold, above which the token cannot graduate
+    function maxExcessOverThreshold() external view returns (uint256);
 }
