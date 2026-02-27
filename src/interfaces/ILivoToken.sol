@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 interface ILivoToken is IERC20 {
-
     /// @notice Tax configuration for a token
     struct TaxConfig {
         uint16 buyTaxBps; // Buy tax in basis points (max 500 = 5%)

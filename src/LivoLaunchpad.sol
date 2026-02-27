@@ -5,12 +5,13 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {TokenConfig, TokenState, TokenDataLib} from "src/types/tokenData.sol";
 
-contract LivoLaunchpad is Ownable2Step {
+contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     using SafeERC20 for IERC20;
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
@@ -36,6 +37,9 @@ contract LivoLaunchpad is Ownable2Step {
 
     /// @notice Trading fees (sells) in basis points (100 bps = 1%). Updates to these only affect future tokens
     uint16 public baseSellFeeBps;
+
+    /// @notice Authorized factories
+    mapping(address factory => bool authorized) public whitelistedFactories;
 
     /// @notice Whitelisted sets of (implementation, bonding curve, graduator)
     mapping(address implementation => mapping(address curve => mapping(address graduator => ThresholdSettings))) public
@@ -71,7 +75,9 @@ contract LivoLaunchpad is Ownable2Step {
     error AlreadyConfigured();
     error AlreadyBlacklisted();
     error InvalidAddress();
+
     error InvalidTokenSupply();
+    error UnauthorizedFactory();
 
     ///////////////////// Events /////////////////////
 
@@ -104,6 +110,8 @@ contract LivoLaunchpad is Ownable2Step {
     event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
     event TokenOwnerUpdated(address indexed token, address indexed newOwner);
     event TokenOwnerProposed(address indexed token, address indexed currentOwner, address indexed proposedOwner);
+    event FactoryWhitelisted(address indexed factory);
+    event FactoryBlacklisted(address indexed factory);
 
     /////////////////////////////////////////////////
 
@@ -113,6 +121,25 @@ contract LivoLaunchpad is Ownable2Step {
         setTreasuryAddress(_treasury);
         // buy/sell fees at 1%
         setTradingFees(100, 100);
+    }
+
+    function launchToken(address token, ILivoBondingCurve bondingCurve) external {
+        require(whitelistedFactories[msg.sender], UnauthorizedFactory());
+        require(IERC20(token).totalSupply() == TOTAL_SUPPLY, InvalidTokenSupply());
+
+        tokenConfigs[token] = TokenConfig({
+            bondingCurve: bondingCurve,
+            graduator: ILivoGraduator(ILivoToken(token).graduator()), // todo remove graduator from this struct. not needed
+            tokenOwner: ILivoToken(token).owner(), // todo remove read from LivoToken
+            ethGraduationThreshold: bondingCurve.ethGraduationThreshold(), // todo remove. read from bonding curve where needed
+            maxExcessOverThreshold: bondingCurve.maxExcessOverThreshold(), // todo remove. read from bonding curve where needed
+            buyFeeBps: baseBuyFeeBps,
+            sellFeeBps: baseSellFeeBps,
+            proposedOwner: address(0) // todo remove read from token
+        });
+
+        // todo finish implement
+        // todo consider emitting event
     }
 
     /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
@@ -407,6 +434,27 @@ contract LivoLaunchpad is Ownable2Step {
         emit ComponentsSetBlacklisted(implementation, bondingCurve, graduator);
     }
 
+    /// @notice Whitelists a factory address
+    /// @param factory The factory address to whitelist
+    function whitelistFactory(address factory) external onlyOwner {
+        require(factory != address(0), InvalidAddress());
+        require(!whitelistedFactories[factory], AlreadyConfigured());
+
+        whitelistedFactories[factory] = true;
+
+        emit FactoryWhitelisted(factory);
+    }
+
+    /// @notice Blacklists a factory address
+    /// @param factory The factory address to blacklist
+    function blacklistFactory(address factory) external onlyOwner {
+        require(whitelistedFactories[factory], UnauthorizedFactory());
+
+        whitelistedFactories[factory] = false;
+
+        emit FactoryBlacklisted(factory);
+    }
+
     /// @notice Updates the treasury address
     /// @param recipient The new treasury address
     function setTreasuryAddress(address recipient) public onlyOwner {
@@ -568,7 +616,7 @@ contract LivoLaunchpad is Ownable2Step {
         // to which tokens cannot be transferred until graduation
         address pair = ILivoGraduator(graduator).initialize(token);
 
-        LivoToken(token)
+        ILivoToken(token)
             .initialize(
                 name,
                 symbol,
