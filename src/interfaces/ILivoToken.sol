@@ -25,6 +25,12 @@ interface ILivoToken is IERC20 {
         address taxRecipient; // Address receiving tax payments (token owner)
     }
 
+    /// @notice Fee configuration addresses
+    struct FeeConfig {
+        address feeHandler;
+        address feeReceiver;
+    }
+
     ////////////////// STATE CHANGING FUNCTIONS ////////////////////
 
     function markGraduated() external;
@@ -57,6 +63,10 @@ interface ILivoToken is IERC20 {
 
     /// @notice The address that receives fees within the feeHandler contract
     function feeReceiver() external view returns (address);
+
+    /// @notice Returns both fee handler and receiver in a single call
+    /// @return config The fee configuration with handler and receiver addresses
+    function getFeeConfigs() external view returns (FeeConfig memory config);
 
     /// @notice Owner of the token. The creator unless communityTakeOver takes place
     function owner() external view returns (address);

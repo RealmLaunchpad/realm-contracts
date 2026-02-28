@@ -396,9 +396,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
     function _depositToFeeHandler(address tokenAddress, uint256 amount, bool requireSuccess) internal returns (bool) {
         if (amount == 0) return true;
 
-        ILivoToken token = ILivoToken(tokenAddress);
+        ILivoToken.FeeConfig memory feeConfig = ILivoToken(tokenAddress).getFeeConfigs();
 
-        try ILivoFeeHandler(token.feeHandler()).depositFees{value: amount}(tokenAddress, token.feeReceiver()) {
+        try ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: amount}(tokenAddress, feeConfig.feeReceiver) {
             return true;
         } catch {
             require(!requireSuccess, EthTransferFailed());

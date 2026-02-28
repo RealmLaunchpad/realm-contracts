@@ -186,10 +186,9 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
     function _depositToFeeHandler(address tokenAddress, uint256 amount, bool requireSuccess) internal returns (bool) {
         if (amount == 0) return true;
 
-        address handler = ILivoToken(tokenAddress).feeHandler();
-        address receiver = ILivoToken(tokenAddress).feeReceiver();
+        ILivoToken.FeeConfig memory feeConfig = ILivoToken(tokenAddress).getFeeConfigs();
 
-        try ILivoFeeHandler(handler).depositFees{value: amount}(tokenAddress, receiver) {
+        try ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: amount}(tokenAddress, feeConfig.feeReceiver) {
             return true;
         } catch {
             require(!requireSuccess, EtherTransferFailed());
