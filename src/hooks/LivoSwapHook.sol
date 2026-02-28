@@ -21,6 +21,9 @@ contract LivoSwapHook is BaseHook {
     /// @notice Custom error for preventing swaps before graduation
     error NoSwapsBeforeGraduation();
 
+    /// @notice Emitted when creator taxes are accrued from a taxed swap
+    event CreatorTaxesAccrued(address indexed token, address indexed tokenOwner, uint256 amount);
+
     /// @notice Basis points denominator (10000 = 100%)
     uint256 private constant BASIS_POINTS = 10000;
 
@@ -154,6 +157,8 @@ contract LivoSwapHook is BaseHook {
         poolManager.take(currency, address(this), taxAmount);
 
         ILivoFeeHandler(ILivoToken(tokenAddress).feeHandler()).depositFees{value: taxAmount}(tokenAddress, taxRecipient);
+
+        emit CreatorTaxesAccrued(tokenAddress, taxRecipient, taxAmount);
 
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }
