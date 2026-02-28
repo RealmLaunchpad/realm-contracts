@@ -12,7 +12,7 @@ contract LivoFeeBaseHandler is ILivoFeeHandler {
     }
 
     /// @notice Claims accumulated ETH fees for msg.sender from the provided `tokens`
-    /// @dev claiming per token is less gas efficient than bulk claiming all tokens together in one balance. 
+    /// @dev claiming per token is less gas efficient than bulk claiming all tokens together in one balance.
     ///         However, if we'd do that, we would be forcing users to claim from all tokens at once, even from the ones they don't endorse
     function claim(address[] calldata tokens) external {
         uint256 claimable;

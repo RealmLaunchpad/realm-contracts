@@ -96,11 +96,10 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @param params Shared token initialization parameters
     /// @param sellTaxBps_ Sell tax rate in basis points
     /// @param taxDurationSeconds_ Duration in seconds after graduation during which taxes apply
-    function initialize(
-        ILivoToken.InitializeParams memory params,
-        uint16 sellTaxBps_,
-        uint40 taxDurationSeconds_
-    ) external initializer {
+    function initialize(ILivoToken.InitializeParams memory params, uint16 sellTaxBps_, uint40 taxDurationSeconds_)
+        external
+        initializer
+    {
         require(params.graduator != address(0), InvalidGraduator());
         require(params.pair == address(UNIV4_POOL_MANAGER), "Invalid pair address");
 

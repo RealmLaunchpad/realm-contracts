@@ -25,6 +25,7 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
@@ -882,6 +883,9 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
     function test_sellingFromUniv4AfterGraduation_sellFullSupply_whereIsTheEth() public override createTestToken {
         uint256 poolBalanceBefore = address(poolManager).balance;
         _graduateToken();
+        // Graduation deposits creator compensation into the fee handler (not the pool),
+        // so we capture it here to exclude from pool-balance accounting.
+        uint256 graduationDeposit = ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(testToken, creator);
 
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
@@ -910,16 +914,20 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         uint256[] memory positionIndexes = new uint256[](1);
         positionIndexes[0] = 0;
         vm.prank(creator);
-        LivoGraduatorUniswapV4(payable(address(graduator))).creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.creatorClaim(tokens, positionIndexes);
         vm.prank(creator);
-        feeHandler.claim(tokens);
+        feeHandlerV4.claim(tokens);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
 
-        // check that the eth collected by buyer and seller matches the eth left the pool
-        assertEq(ethRecoveredByBuyer + ethRecoveredByCreator, ethLeavingFromThePoolManager, "eth recovered by buyer and creator should match eth in pool");
+        // Subtract graduation deposit: it came from the fee handler, not the pool manager
+        assertEq(
+            ethRecoveredByBuyer + ethRecoveredByCreator - graduationDeposit,
+            ethLeavingFromThePoolManager,
+            "eth recovered by buyer and creator should match eth in pool"
+        );
 
         // because of the liquidity boundaries set when adding liquidity, there is a tiny amount of eth that won't be recoverable
         // even when all token supply is sold.

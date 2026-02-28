@@ -21,6 +21,7 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
 import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
+import {LivoFeeV4Handler} from "src/feeHandlers/LivoFeeV4Handler.sol";
 
 contract TestLivoFactory is LivoFactoryBase {
     constructor(
@@ -48,6 +49,7 @@ contract LaunchpadBaseTests is Test {
     TestLivoFactory public factoryV4;
     LivoFactoryTaxToken public factoryTax;
     LivoFeeBaseHandler public feeHandler;
+    LivoFeeV4Handler public feeHandlerV4;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -134,16 +136,29 @@ contract LaunchpadBaseTests is Test {
 
         feeHandler = new LivoFeeBaseHandler();
 
+        feeHandlerV4 = new LivoFeeV4Handler(
+            address(launchpad),
+            address(liquidityLock),
+            poolManagerAddress,
+            positionManagerAddress,
+            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+        );
+        feeHandlerV4.setAuthorizedCaller(address(graduatorV4), true);
+
         factoryV2 = new TestLivoFactory(
             address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2), address(feeHandler)
         );
 
         factoryV4 = new TestLivoFactory(
-            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV4), address(feeHandler)
+            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV4), address(feeHandlerV4)
         );
 
         factoryTax = new LivoFactoryTaxToken(
-            address(launchpad), address(livoTaxToken), address(bondingCurve), address(graduatorV4), address(feeHandler)
+            address(launchpad),
+            address(livoTaxToken),
+            address(bondingCurve),
+            address(graduatorV4),
+            address(feeHandlerV4)
         );
 
         launchpad.whitelistFactory(address(factoryV2));
