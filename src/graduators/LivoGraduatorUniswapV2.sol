@@ -163,19 +163,17 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         require(msg.value > GRADUATION_ETH_FEE, NotEnoughEthForGraduation());
 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
-        uint256 treasuryShare = GRADUATION_ETH_FEE;
+        uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
 
         ILivoToken.FeeConfig memory feeConfig = ILivoToken(tokenAddress).getFeeConfigs();
 
-        // Deposit creator compensation (non-reverting, fallback to treasury if fails)
-        if (_depositToFeeHandler(
-                feeConfig.feeHandler, tokenAddress, feeConfig.feeReceiver, CREATOR_GRADUATION_COMPENSATION, false
-            )) {
-            treasuryShare -= CREATOR_GRADUATION_COMPENSATION;
-        }
+        // Deposit creator compensation
+        ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: CREATOR_GRADUATION_COMPENSATION}(
+            tokenAddress, feeConfig.feeReceiver
+        );
 
         // Deposit treasury graduation fees for later `treasuryClaim()`
-        _depositTreasuryToFeeHandler(feeConfig.feeHandler, treasuryShare, true);
+        ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}();
     }
 
     function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
@@ -183,37 +181,6 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         (bool success,) = recipient.call{value: amount}("");
         require(!requireSuccess || success, EtherTransferFailed());
         return success;
-    }
-
-    function _depositToFeeHandler(
-        address feeHandler,
-        address tokenAddress,
-        address feeReceiver,
-        uint256 amount,
-        bool requireSuccess
-    ) internal returns (bool) {
-        if (amount == 0) return true;
-
-        try ILivoFeeHandler(feeHandler).depositFees{value: amount}(tokenAddress, feeReceiver) {
-            return true;
-        } catch {
-            require(!requireSuccess, EtherTransferFailed());
-            return false;
-        }
-    }
-
-    function _depositTreasuryToFeeHandler(address feeHandler, uint256 amount, bool requireSuccess)
-        internal
-        returns (bool)
-    {
-        if (amount == 0) return true;
-
-        try ILivoFeeHandler(feeHandler).depositTreasuryFees{value: amount}() {
-            return true;
-        } catch {
-            require(!requireSuccess, EtherTransferFailed());
-            return false;
-        }
     }
 
     function _cleanup(address tokenAddress) internal {
