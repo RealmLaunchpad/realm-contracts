@@ -30,8 +30,8 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @dev Each token has two liquidity positions added (one of them is one-sided, only ETH)
     mapping(address token => uint256[] tokenId) public positionIds;
 
-    /// @notice Authorized callers that can register positions (graduators)
-    mapping(address caller => bool authorized) public authorizedCallers;
+    /// @notice Authorized registrars that can register positions (graduators)
+    mapping(address registrar => bool authorized) public authorizedRegistrars;
 
     /// @notice Treasury LP fees already accrued into contract accounting
     uint256 public treasuryPendingFees;
@@ -57,14 +57,14 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     error TooManyTokensGiven();
     error InvalidPositionIndex();
     error InvalidPositionIndexes();
-    error UnauthorizedCaller();
+    error UnauthorizedRegistrar();
 
     /////////////////////// Events ///////////////////////
 
     event TreasuryFeesAccrued(address indexed token, uint256 amount);
     event TreasuryFeesClaimed(address indexed caller, address indexed treasury, uint256 amount);
     event PositionRegistered(address indexed token, uint256 indexed positionId);
-    event AuthorizedCallerSet(address indexed caller, bool authorized);
+    event AuthorizedRegistrarSet(address indexed registrar, bool authorized);
 
     //////////////////////////////////////////////////////
 
@@ -93,20 +93,20 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @notice To receive ETH from the liquidity lock when accruing fees
     receive() external payable {}
 
-    /// @notice Sets or revokes an authorized caller (e.g., a graduator)
-    /// @param caller Address to authorize or deauthorize
-    /// @param authorized Whether the caller is authorized
-    function setAuthorizedCaller(address caller, bool authorized) external onlyOwner {
-        authorizedCallers[caller] = authorized;
-        emit AuthorizedCallerSet(caller, authorized);
+    /// @notice Sets or revokes an authorized registrar (e.g., a graduator)
+    /// @param registrar Address to authorize or deauthorize
+    /// @param authorized Whether the registrar is authorized
+    function setAuthorizedRegistrar(address registrar, bool authorized) external onlyOwner {
+        authorizedRegistrars[registrar] = authorized;
+        emit AuthorizedRegistrarSet(registrar, authorized);
     }
 
     /// @notice Registers a liquidity position ID for a token
-    /// @dev Only callable by authorized callers (graduators) during graduation
+    /// @dev Only callable by authorized registrars (graduators) during graduation
     /// @param token Address of the graduated token
     /// @param positionId The Uniswap V4 position NFT ID
     function registerPosition(address token, uint256 positionId) external {
-        require(authorizedCallers[msg.sender], UnauthorizedCaller());
+        require(authorizedRegistrars[msg.sender], UnauthorizedRegistrar());
         positionIds[token].push(positionId);
         emit PositionRegistered(token, positionId);
     }
@@ -116,6 +116,7 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
     function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) public nonReentrant {
+        // todo this function is basically the same as accrueTokenFees so we can remove it
         uint256 nTokens = _validateClaimInputs(tokens, positionIndexes);
 
         for (uint256 i = 0; i < nTokens; i++) {
