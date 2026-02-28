@@ -199,10 +199,10 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     }
 
     function _depositCreatorFees(address token, uint256 amount) internal {
-        ILivoToken.FeeConfig memory feeConfig = ILivoToken(token).getFeeConfigs();
+        address feeReceiver = ILivoToken(token).feeReceiver();
         // Deposit into this handler's own accounting (inherited from LivoFeeBaseHandler)
-        pendingClaims[token][feeConfig.feeReceiver] += amount;
-        emit FeesDeposited(token, feeConfig.feeReceiver, amount);
+        pendingClaims[token][feeReceiver] += amount;
+        emit FeesDeposited(token, feeReceiver, amount);
     }
 
     function _accrueFromUniswapLock(address token, uint256 positionId)
@@ -227,20 +227,18 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @param token Address of the token
     /// @return creatorEthFees Total estimated creator ETH fees across all positions
     function _viewClaimableEthFees(address token) internal view returns (uint256 creatorEthFees) {
+        PoolId poolId = _getPoolKey(token).toId();
         uint256 nPositions = positionIds[token].length;
         for (uint256 p = 0; p < nPositions; p++) {
-            creatorEthFees += _viewClaimableEthFeesForPosition(token, p);
+            creatorEthFees += _viewClaimableEthFeesForPosition(token, poolId, p);
         }
     }
 
-    function _viewClaimableEthFeesForPosition(address token, uint256 positionIndex)
+    function _viewClaimableEthFeesForPosition(address token, PoolId poolId, uint256 positionIndex)
         internal
         view
         returns (uint256 creatorEthFees)
     {
-        PoolKey memory poolKey = _getPoolKey(token);
-
-        PoolId poolId = poolKey.toId();
         uint256 positionId = positionIds[token][positionIndex];
 
         uint128 liquidity;
