@@ -16,6 +16,6 @@ interface ILivoFeeHandler {
     /// @notice Claims accumulated ETH fees for msg.sender from the provided `tokens`
     function claim(address[] calldata tokens) external;
 
-    /// @notice Returns the pending ETH fees for `account` and `token`
-    function getClaimable(address token, address account) external view returns (uint256);
+    /// @notice Returns the pending ETH fees for `account` across the given `tokens`
+    function getClaimable(address[] calldata tokens, address account) external view returns (uint256[] memory);
 }

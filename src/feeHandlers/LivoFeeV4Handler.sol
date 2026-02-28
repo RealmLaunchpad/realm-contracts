@@ -30,8 +30,8 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @dev Each token has two liquidity positions added (one of them is one-sided, only ETH)
     mapping(address token => uint256[] tokenId) public positionIds;
 
-    /// @notice Authorized registrars that can register positions (graduators)
-    mapping(address registrar => bool authorized) public authorizedRegistrars;
+    /// @notice Authorized graduators that can register positions
+    mapping(address graduator => bool authorized) public authorizedGraduators;
 
     /// @notice Treasury LP fees already accrued into contract accounting
     uint256 public treasuryPendingFees;
@@ -55,16 +55,14 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
 
     error NoTokensGiven();
     error TooManyTokensGiven();
-    error InvalidPositionIndex();
-    error InvalidPositionIndexes();
-    error UnauthorizedRegistrar();
+    error UnauthorizedGraduator();
 
     /////////////////////// Events ///////////////////////
 
     event TreasuryFeesAccrued(address indexed token, uint256 amount);
     event TreasuryFeesClaimed(address indexed caller, address indexed treasury, uint256 amount);
     event PositionRegistered(address indexed token, uint256 indexed positionId);
-    event AuthorizedRegistrarSet(address indexed registrar, bool authorized);
+    event AuthorizedGraduatorSet(address indexed graduator, bool authorized);
 
     //////////////////////////////////////////////////////
 
@@ -93,46 +91,41 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @notice To receive ETH from the liquidity lock when accruing fees
     receive() external payable {}
 
-    /// @notice Sets or revokes an authorized registrar (e.g., a graduator)
-    /// @param registrar Address to authorize or deauthorize
-    /// @param authorized Whether the registrar is authorized
-    function setAuthorizedRegistrar(address registrar, bool authorized) external onlyOwner {
-        authorizedRegistrars[registrar] = authorized;
-        emit AuthorizedRegistrarSet(registrar, authorized);
+    /// @notice Sets or revokes an authorized graduator
+    /// @param graduator Address to authorize or deauthorize
+    /// @param authorized Whether the graduator is authorized
+    function setAuthorizedGraduator(address graduator, bool authorized) external onlyOwner {
+        authorizedGraduators[graduator] = authorized;
+        emit AuthorizedGraduatorSet(graduator, authorized);
     }
 
-    /// @notice Registers a liquidity position ID for a token
-    /// @dev Only callable by authorized registrars (graduators) during graduation
+    /// @notice Registers liquidity position IDs for a token
+    /// @dev Only callable by authorized graduators during graduation
     /// @param token Address of the graduated token
-    /// @param positionId The Uniswap V4 position NFT ID
-    function registerPosition(address token, uint256 positionId) external {
-        require(authorizedRegistrars[msg.sender], UnauthorizedRegistrar());
-        positionIds[token].push(positionId);
-        emit PositionRegistered(token, positionId);
-    }
+    /// @param positionIds_ The Uniswap V4 position NFT IDs
+    function registerPosition(address token, uint256[] calldata positionIds_) external {
+        require(authorizedGraduators[msg.sender], UnauthorizedGraduator());
 
-    /// @notice Accrues fresh LP fees for each token and deposits creator share into each token's fee handler accounting
-    /// @dev Creator claims are handled by `claim(address[] calldata tokens)` inherited from LivoFeeBaseHandler
-    /// @param tokens Array of token addresses
-    /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
-    function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) public nonReentrant {
-        // todo this function is basically the same as accrueTokenFees so we can remove it
-        uint256 nTokens = _validateClaimInputs(tokens, positionIndexes);
-
-        for (uint256 i = 0; i < nTokens; i++) {
-            _accrueLpFees(tokens[i], positionIndexes);
+        uint256 nPositions = positionIds_.length;
+        for (uint256 i = 0; i < nPositions; i++) {
+            uint256 positionId = positionIds_[i];
+            positionIds[token].push(positionId);
+            emit PositionRegistered(token, positionId);
         }
     }
 
     /// @notice Accrues LP fees for tokens and deposits creator/treasury shares
     /// @dev Creator shares are deposited in fee handler accounting. Treasury shares are accrued in storage.
+    ///      Iterates all registered positions for each token automatically.
+    ///      Creator claims are handled by `claim(address[] calldata tokens)` inherited from LivoFeeBaseHandler.
     /// @param tokens Array of token addresses
-    /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
-    function accrueTokenFees(address[] calldata tokens, uint256[] calldata positionIndexes) external nonReentrant {
-        uint256 nTokens = _validateClaimInputs(tokens, positionIndexes);
+    function accrueTokenFees(address[] calldata tokens) external nonReentrant {
+        uint256 nTokens = tokens.length;
+        require(nTokens > 0, NoTokensGiven());
+        require(nTokens < 100, TooManyTokensGiven());
 
         for (uint256 i = 0; i < nTokens; i++) {
-            _accrueLpFees(tokens[i], positionIndexes);
+            _accrueLpFees(tokens[i]);
         }
     }
 
@@ -153,20 +146,18 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
 
     /// @notice Returns claimable creator amounts (fee handler claimable + current unaccrued LP-fee estimate)
-    /// @dev LP-fee estimates are included only when `tokenOwner` is the current token owner
+    /// @dev LP-fee estimates are included only when `tokenOwner` is the current token owner.
+    ///      Iterates all registered positions for each token automatically.
     /// @param tokens Array of token addresses
-    /// @param positionIndexes Array of position indexes to estimate LP fees from. PositionIndex 0 accrues most fees
     /// @param tokenOwner Address for which pending and claimable amounts are computed
     /// @return creatorClaimable Array of claimable ETH amounts per token for `tokenOwner`
-    function getClaimable(address[] calldata tokens, uint256[] calldata positionIndexes, address tokenOwner)
-        public
+    function getClaimable(address[] calldata tokens, address tokenOwner)
+        external
         view
+        override
         returns (uint256[] memory creatorClaimable)
     {
         uint256 nTokens = tokens.length;
-        uint256 nPositions = positionIndexes.length;
-
-        require(1 <= nPositions && nPositions <= 2, InvalidPositionIndexes());
 
         creatorClaimable = new uint256[](nTokens);
 
@@ -179,36 +170,19 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
                 continue;
             }
 
-            for (uint256 posIndex = 0; posIndex < nPositions; posIndex++) {
-                require(positionIndexes[posIndex] < 2, InvalidPositionIndex());
-                creatorClaimable[i] += _viewClaimableEthFees(token, positionIndexes[posIndex]);
-            }
+            creatorClaimable[i] += _viewClaimableEthFees(token);
         }
     }
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
-    function _validateClaimInputs(address[] calldata tokens, uint256[] calldata positionIndexes)
-        internal
-        pure
-        returns (uint256 nTokens)
-    {
-        nTokens = tokens.length;
-        require(nTokens > 0, NoTokensGiven());
-        require(nTokens < 100, TooManyTokensGiven());
-        require(1 <= positionIndexes.length && positionIndexes.length <= 2, InvalidPositionIndexes());
-
-        for (uint256 p = 0; p < positionIndexes.length; p++) {
-            require(positionIndexes[p] <= 1, InvalidPositionIndex());
-        }
-    }
-
-    function _accrueLpFees(address token, uint256[] calldata positionIndexes) internal {
+    function _accrueLpFees(address token) internal {
         uint256 creatorAccrued;
         uint256 treasuryAccrued;
 
-        for (uint256 p = 0; p < positionIndexes.length; p++) {
-            uint256 positionId = positionIds[token][positionIndexes[p]];
+        uint256 nPositions = positionIds[token].length;
+        for (uint256 p = 0; p < nPositions; p++) {
+            uint256 positionId = positionIds[token][p];
             (uint256 creatorFees, uint256 treasuryFees) = _accrueFromUniswapLock(token, positionId);
             creatorAccrued += creatorFees;
             treasuryAccrued += treasuryFees;
@@ -249,13 +223,21 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         creatorFees = accruedEthFees - treasuryFees;
     }
 
-    function _viewClaimableEthFees(address token, uint256 positionIndex)
+    /// @notice Estimates claimable ETH fees across all positions for a given token
+    /// @param token Address of the token
+    /// @return creatorEthFees Total estimated creator ETH fees across all positions
+    function _viewClaimableEthFees(address token) internal view returns (uint256 creatorEthFees) {
+        uint256 nPositions = positionIds[token].length;
+        for (uint256 p = 0; p < nPositions; p++) {
+            creatorEthFees += _viewClaimableEthFeesForPosition(token, p);
+        }
+    }
+
+    function _viewClaimableEthFeesForPosition(address token, uint256 positionIndex)
         internal
         view
         returns (uint256 creatorEthFees)
     {
-        if (positionIndex > 1) return 0;
-
         PoolKey memory poolKey = _getPoolKey(token);
 
         PoolId poolId = poolKey.toId();

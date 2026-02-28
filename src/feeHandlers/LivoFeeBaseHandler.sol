@@ -36,7 +36,16 @@ contract LivoFeeBaseHandler is ILivoFeeHandler {
     }
 
     /// @dev This doesn't include non-accrued LP fees that are sitting in the LP position
-    function getClaimable(address token, address account) external view returns (uint256) {
-        return pendingClaims[token][account];
+    function getClaimable(address[] calldata tokens, address account)
+        external
+        view
+        virtual
+        returns (uint256[] memory claimable)
+    {
+        uint256 nTokens = tokens.length;
+        claimable = new uint256[](nTokens);
+        for (uint256 i = 0; i < nTokens; i++) {
+            claimable[i] = pendingClaims[tokens[i]][account];
+        }
     }
 }

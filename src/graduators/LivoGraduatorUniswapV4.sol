@@ -171,47 +171,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
             );
 
         PoolKey memory pool = _getPoolKey(tokenAddress);
-        uint256 ethBalanceBefore = address(this).balance;
-
-        // renaming just for readability
-        uint256 tokensForLiquidity = tokenAmount;
-        // uniswap v4 liquidity position creation
-        uint128 liquidity1 = LiquidityAmounts.getLiquidityForAmounts(
-            SQRT_PRICEX96_GRADUATION, // current pool price --> presumably the starting price which cannot be modified until graduation
-            SQRT_PRICEX96_LOWER_TICK, // lower tick price -> max token price denominated in eth
-            SQRT_PRICEX96_UPPER_TICK, // upper tick price -> min token price denominated in eth
-            ethForLiquidity, // desired amount0
-            tokensForLiquidity // desired amount1
-        );
-        // receive the excess eth here, to add the next position
-        _addLiquidity(
-            pool,
-            tokenAddress,
-            UniswapV4PoolConstants.TICK_LOWER,
-            UniswapV4PoolConstants.TICK_UPPER,
-            liquidity1,
-            ethForLiquidity,
-            tokensForLiquidity,
-            address(this)
-        );
-
-        // remaining eth = eth value - (deposited ETH liquidity 1)
-        uint256 remainingEth = ethForLiquidity - (ethBalanceBefore - address(this).balance);
-        uint128 liquidity2 = LiquidityAmounts.getLiquidityForAmount0(SQRT_LOWER_2, SQRT_UPPER_2, remainingEth);
-
-        if (liquidity2 > 0) {
-            // single sided ETH liquidity position to utilize remaining eth
-            _addLiquidity(
-                pool,
-                tokenAddress,
-                UniswapV4PoolConstants.TICK_LOWER_2,
-                UniswapV4PoolConstants.TICK_UPPER_2,
-                liquidity2,
-                remainingEth,
-                0,
-                treasury
-            );
-        }
+        (uint128 liquidity1, uint128 liquidity2) =
+            _addAndRegisterLiquidityPositions(pool, tokenAddress, ethForLiquidity, tokenAmount, treasury);
 
         // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
@@ -273,18 +234,66 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         });
     }
 
+    function _addAndRegisterLiquidityPositions(
+        PoolKey memory pool,
+        address tokenAddress,
+        uint256 ethForLiquidity,
+        uint256 tokenAmount,
+        address treasury
+    ) internal returns (uint128 liquidity1, uint128 liquidity2) {
+        uint256 ethBalanceBefore = address(this).balance;
+        address feeHandlerAddress = ILivoToken(tokenAddress).feeHandler();
+
+        liquidity1 = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICEX96_GRADUATION, SQRT_PRICEX96_LOWER_TICK, SQRT_PRICEX96_UPPER_TICK, ethForLiquidity, tokenAmount
+        );
+
+        uint256 primaryPositionId = _addLiquidity(
+            pool,
+            UniswapV4PoolConstants.TICK_LOWER,
+            UniswapV4PoolConstants.TICK_UPPER,
+            liquidity1,
+            ethForLiquidity,
+            tokenAmount,
+            feeHandlerAddress,
+            address(this)
+        );
+
+        uint256 remainingEth = ethForLiquidity - (ethBalanceBefore - address(this).balance);
+        liquidity2 = LiquidityAmounts.getLiquidityForAmount0(SQRT_LOWER_2, SQRT_UPPER_2, remainingEth);
+
+        if (liquidity2 > 0) {
+            uint256[] memory positionIds = new uint256[](2);
+            positionIds[0] = primaryPositionId;
+            positionIds[1] = _addLiquidity(
+                pool,
+                UniswapV4PoolConstants.TICK_LOWER_2,
+                UniswapV4PoolConstants.TICK_UPPER_2,
+                liquidity2,
+                remainingEth,
+                0,
+                feeHandlerAddress,
+                treasury
+            );
+            LivoFeeV4Handler(payable(feeHandlerAddress)).registerPosition(tokenAddress, positionIds);
+            return (liquidity1, liquidity2);
+        }
+
+        uint256[] memory onePositionId = new uint256[](1);
+        onePositionId[0] = primaryPositionId;
+        LivoFeeV4Handler(payable(feeHandlerAddress)).registerPosition(tokenAddress, onePositionId);
+    }
+
     function _addLiquidity(
         PoolKey memory pool,
-        address token,
         int24 tickLower,
         int24 tickUpper,
         uint128 liquidity,
         uint256 ethValue,
         uint256 tokenAmount,
+        address feeHandlerAddress,
         address excessEthReceiver
-    ) internal {
-        // Resolve the fee handler for this token to register positions and set as lock owner
-        address feeHandlerAddress = ILivoToken(token).feeHandler();
+    ) internal returns (uint256 positionId) {
         // Actions for ETH liquidity positions
         // 1. Mint position
         // 2. Settle pair (send ETH and tokens)
@@ -304,7 +313,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         params[2] = abi.encode(pool.currency0, excessEthReceiver); // sweep all remaining native ETH to recipient
 
         // read the next positionId before minting the position
-        uint256 positionId = IPositionManager(UNIV4_POSITION_MANAGER).nextTokenId();
+        positionId = IPositionManager(UNIV4_POSITION_MANAGER).nextTokenId();
 
         // the actual call to the position manager to mint the liquidity position
         // deadline = block.timestamp (no effective deadline)
@@ -315,9 +324,5 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         // locks the liquidity position NFT in the liquidity lock contract
         // the fee handler becomes the lock owner so it can claim LP fees
         LIQUIDITY_LOCK.lockUniV4Position(positionId, feeHandlerAddress);
-
-        // register the position in the fee handler for tracking
-        // todo make sure only the owner can claim from this position after the refactor
-        LivoFeeV4Handler(payable(feeHandlerAddress)).registerPosition(token, positionId);
     }
 }

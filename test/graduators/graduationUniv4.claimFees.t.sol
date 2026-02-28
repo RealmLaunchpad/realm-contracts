@@ -48,12 +48,6 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         deal(buyer, 10 ether);
     }
 
-    function _singleElementArray(uint256 value) internal pure returns (uint256[] memory) {
-        uint256[] memory arr = new uint256[](1);
-        arr[0] = value;
-        return arr;
-    }
-
     modifier createAndGraduateToken() virtual {
         vm.prank(creator);
         testToken = factoryV4.createToken("TestToken", "TEST", creator, "0x12");
@@ -93,17 +87,17 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     function _collectFees(address token) internal {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        uint256[] memory positionIndexes = new uint256[](1);
-        positionIndexes[0] = 0;
         vm.prank(creator);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
 
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
     }
 
     function _feeClaimable(address token, address account) internal view returns (uint256) {
-        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(token, account);
+        address[] memory tokens = new address[](1);
+        tokens[0] = token;
+        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(tokens, account)[0];
     }
 }
 
@@ -337,11 +331,8 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
-        uint256[] memory positionIndexes = new uint256[](1);
-        positionIndexes[0] = 0;
-
         vm.prank(creator);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
         feeHandlerV4.treasuryClaim();
@@ -369,10 +360,6 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         tokens[0] = testToken1;
         tokens[1] = testToken2;
 
-        uint256[] memory positionIndexes = new uint256[](2);
-        positionIndexes[0] = 0;
-        positionIndexes[1] = 1;
-
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
@@ -380,7 +367,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         _swap(buyer, testToken2, 1 ether, 12342, true, true);
 
         vm.prank(creator);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
 
@@ -388,7 +375,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         _swap(buyer, testToken2, 2 ether, 12342, true, true);
 
         vm.prank(creator);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
         feeHandlerV4.treasuryClaim();
@@ -450,61 +437,28 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](2);
-        positionIndexes[0] = 0;
-        positionIndexes[1] = 1;
 
-        uint256 pendingTaxes = _feeClaimable(testToken, creator);
+        uint256 expectedClaimable = feeHandlerV4.getClaimable(tokens, creator)[0];
         uint256 creatorBalanceBefore = creator.balance;
 
         vm.prank(creator);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
 
         uint256 totalCreatorFees = creator.balance - creatorBalanceBefore;
 
-        // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
-        // plus any pending creator taxes accrued from the prior sell
-        uint256 expectedFees = buyAmount / 200 + pendingTaxes;
         assertApproxEqAbsDecimal(
-            totalCreatorFees, expectedFees, 1, 18, "creator claim should include buy fees and pending taxes"
+            totalCreatorFees, expectedClaimable, 1, 18, "creator claim should match pre-claim claimable amount"
         );
     }
 
-    function test_claimFeesInvalidPositionIndexesEmptyArray() public {
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](0);
+    function test_accrueTokenFees_revertsOnEmptyArray() public {
+        address[] memory tokens = new address[](0);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
-    }
-
-    function test_claimFeesInvalidPositionIndexesTooMany() public {
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](3);
-        positionIndexes[0] = 0;
-        positionIndexes[1] = 0;
-        positionIndexes[2] = 0;
-
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
-    }
-
-    function test_claimFeesInvalidPositionIndex_TooHigh() public createAndGraduateToken {
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](2);
-        positionIndexes[0] = 1;
-        positionIndexes[0] = 2;
-
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndex()"));
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        vm.expectRevert(abi.encodeWithSignature("NoTokensGiven()"));
+        feeHandlerV4.accrueTokenFees(tokens);
     }
 }
 
@@ -517,38 +471,30 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
     function _expectsSellTaxes() internal pure virtual returns (bool);
 
-    function _singleTokenClaimInputs()
-        internal
-        view
-        returns (address[] memory tokens, uint256[] memory positionIndexes)
-    {
+    function _singleTokenArray() internal view returns (address[] memory tokens) {
         tokens = new address[](1);
         tokens[0] = testToken;
-        positionIndexes = _singleElementArray(0);
     }
 
     function _creatorClaimable() internal view returns (uint256) {
-        (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, positionIndexes, creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(_singleTokenArray(), creator);
         return fees[0];
     }
 
     function _claimableFor(address tokenOwner) internal view returns (uint256) {
-        (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, positionIndexes, tokenOwner);
+        uint256[] memory fees = feeHandlerV4.getClaimable(_singleTokenArray(), tokenOwner);
         return fees[0];
     }
 
     function _accrueTokenFeesAs(address caller) internal {
-        (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
         vm.prank(caller);
-        feeHandlerV4.accrueTokenFees(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(_singleTokenArray());
     }
 
     function _creatorClaimAs(address caller) internal {
-        (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
+        address[] memory tokens = _singleTokenArray();
         vm.prank(caller);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
 
         vm.prank(caller);
         feeHandlerV4.claim(tokens);
@@ -582,7 +528,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertEq(fees[0], graduationCreatorClaimable, "fees should be graduation deposit right after graduation");
@@ -597,7 +543,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         // Expected fees: graduation deposit + 0.5% LP fees from buy
@@ -612,7 +558,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
         uint256 pendingTaxes = _feeClaimable(testToken, creator);
 
         assertEq(fees.length, 1, "should return one fee value");
@@ -630,7 +576,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         uint256 expectedCreatorFees = graduationCreatorClaimable + (buyAmount1 + buyAmount2) / 200;
@@ -647,7 +593,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
         assertApproxEqAbs(
             fees[0],
             graduationCreatorClaimable + 1 ether / 200,
@@ -657,7 +603,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         _collectFees(testToken);
 
-        fees = feeHandlerV4.getClaimable(tokens, _singleElementArray(0), creator);
+        fees = feeHandlerV4.getClaimable(tokens, creator);
 
         assertEq(fees[0], 0, "fees should be 0 after claim");
     }
@@ -675,7 +621,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertApproxEqAbs(fees[0], buyAmount2 / 200, 1, "creator fees should be 0.5% of second buy amount");
@@ -687,7 +633,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         tokens[0] = testToken1;
         tokens[1] = testToken2;
 
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
 
         assertEq(fees.length, 2, "should return two fee values");
         // Expected fees: graduation deposit + 0.5% of 1 ether
@@ -712,7 +658,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         tokens[1] = testToken2;
         tokens[2] = testToken1; // repeated
 
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, _singleElementArray(0), creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
 
         assertEq(fees.length, 3, "should return three fee values");
         // Expected fees: graduation deposit + 0.5% of 1 ether
@@ -747,11 +693,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        // estimate from both positions in one call to avoid double-counting pending balances
-        uint256[] memory positionIndexes = new uint256[](2);
-        positionIndexes[0] = 0;
-        positionIndexes[1] = 1;
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, positionIndexes, creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
         uint256 totalFees = fees[0];
         uint256 pendingTaxes = _feeClaimable(testToken, creator);
 
@@ -767,15 +709,12 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         // no LP fees to claim yet, but graduation deposit is claimable
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](2);
-        positionIndexes[0] = 0;
-        positionIndexes[1] = 1;
 
         uint256 creatorEthBalanceBefore = creator.balance;
 
         // should not revert even if there are no LP fees to claim
         vm.prank(creator);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
 
@@ -789,11 +728,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
     function test_claimFees_arrayOfZeroTokens() public createAndGraduateToken {
         address[] memory tokens = new address[](0);
-        uint256[] memory positionIndexes = new uint256[](0);
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSignature("NoTokensGiven()"));
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
     }
 
     function test_depositAccruedTaxes_reverts_whenCallerIsNotHook() public createAndGraduateToken {
@@ -806,41 +744,18 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         );
     }
 
-    function test_viewFunction_getClaimable_reverts_onEmptyPositionIndexes() public createAndGraduateToken {
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](0);
-
-        vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
-        feeHandlerV4.getClaimable(tokens, positionIndexes, creator);
-    }
-
-    function test_viewFunction_getClaimable_reverts_onTooManyPositionIndexes() public createAndGraduateToken {
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](3);
-        positionIndexes[0] = 0;
-        positionIndexes[1] = 1;
-        positionIndexes[2] = 0;
-
-        vm.expectRevert(abi.encodeWithSignature("InvalidPositionIndexes()"));
-        feeHandlerV4.getClaimable(tokens, positionIndexes, creator);
-    }
-
     function test_creatorClaim_byNonOwnerAccruesToCurrentOwnerOnly() public createAndGraduateToken {
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](1);
-        positionIndexes[0] = 0;
 
         // non-owner call accrues LP fees to current token owner, not caller
         uint256 aliceBalanceBefore = alice.balance;
         uint256 creatorPendingBefore = _feeClaimable(testToken, creator);
         vm.prank(alice);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(alice);
         feeHandlerV4.claim(tokens);
         assertEq(alice.balance, aliceBalanceBefore, "non-owner should not receive fees");
@@ -849,7 +764,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         // creator should claim the fees that were accrued by alice's call
         vm.prank(creator);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
     }
 
     function test_tokenOwnershipTransferred_givesFeesToNewOwner() public createAndGraduateToken {
@@ -867,10 +782,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](1);
-        positionIndexes[0] = 0;
         vm.prank(alice);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(alice);
         feeHandlerV4.claim(tokens);
 
@@ -890,18 +803,16 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](1);
-        positionIndexes[0] = 0;
 
         // old owner call should be a no-op for fresh LP fee collection
         uint256 creatorBalanceBefore = creator.balance;
         vm.prank(creator);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
         assertEq(creator.balance, creatorBalanceBefore, "old owner should not receive fresh fees");
 
         // Alice should be able to claim fees
         vm.prank(alice);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
     }
 
     /// @dev when swap fees exist for current token owner and another user calls `creatorClaim()`, then the caller gets nothing and owner claimable remains available

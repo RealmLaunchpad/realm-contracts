@@ -143,7 +143,7 @@ contract LaunchpadBaseTests is Test {
             positionManagerAddress,
             DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
-        feeHandlerV4.setAuthorizedRegistrar(address(graduatorV4), true);
+        feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 
         factoryV2 = new TestLivoFactory(
             address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2), address(feeHandler)

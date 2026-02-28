@@ -885,7 +885,10 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         _graduateToken();
         // Graduation deposits creator compensation into the fee handler (not the pool),
         // so we capture it here to exclude from pool-balance accounting.
-        uint256 graduationDeposit = ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(testToken, creator);
+        address[] memory _tokens = new address[](1);
+        _tokens[0] = testToken;
+        uint256 graduationDeposit =
+            ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(_tokens, creator)[0];
 
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
@@ -911,10 +914,8 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         // this should transfer taxes to the creator, completing the fund flow
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](1);
-        positionIndexes[0] = 0;
         vm.prank(creator);
-        feeHandlerV4.creatorClaim(tokens, positionIndexes);
+        feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
 
