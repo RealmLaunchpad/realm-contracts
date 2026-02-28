@@ -12,6 +12,7 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
 import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
+import {LivoFeeV4Handler} from "src/feeHandlers/LivoFeeV4Handler.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
@@ -124,9 +125,17 @@ contract Deployments is Script {
         );
         console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
 
-        // 8. Deploy fee handler used by factories
+        // 8. Deploy fee handlers used by factories
         LivoFeeBaseHandler feeHandler = new LivoFeeBaseHandler();
         console.log("| LivoFeeBaseHandler | ", address(feeHandler));
+
+        LivoFeeV4Handler feeHandlerV4 = new LivoFeeV4Handler(
+            address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, hookAddress
+        );
+        console.log("| LivoFeeV4Handler | ", address(feeHandlerV4));
+
+        feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
+        console.log("authorizing graduatorV4 in LivoFeeV4Handler");
 
         // 9. Deploy factories
         LivoFactoryBase factoryV2 = new LivoFactoryBase(
@@ -135,7 +144,7 @@ contract Deployments is Script {
         console.log("| LivoFactoryBase (V2) | ", address(factoryV2));
 
         LivoFactoryBase factoryV4 = new LivoFactoryBase(
-            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV4), address(feeHandler)
+            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV4), address(feeHandlerV4)
         );
         console.log("| LivoFactoryBase (V4) | ", address(factoryV4));
 
@@ -144,7 +153,7 @@ contract Deployments is Script {
             address(livoTaxableToken),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandler)
+            address(feeHandlerV4)
         );
         console.log("| LivoFactoryTaxToken | ", address(factoryTax));
 
