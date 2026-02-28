@@ -232,7 +232,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         }
     }
 
-    function _depositTreasuryToFeeHandler(address feeHandler, uint256 amount, bool requireSuccess) internal returns (bool) {
+    function _depositTreasuryToFeeHandler(address feeHandler, uint256 amount, bool requireSuccess)
+        internal
+        returns (bool)
+    {
         if (amount == 0) return true;
 
         try ILivoFeeHandler(feeHandler).depositTreasuryFees{value: amount}() {
