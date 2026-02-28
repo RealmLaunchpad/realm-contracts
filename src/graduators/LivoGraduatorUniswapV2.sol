@@ -6,6 +6,7 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {FactoryWhitelisting} from "src/FactoryWhitelisting.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
@@ -164,11 +165,10 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE;
 
-        address tokenOwner = ILivoToken(tokenAddress).owner();
         address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
 
-        // Pay creator (non-reverting, fallback to treasury if fails)
-        if (_transferEth(tokenOwner, CREATOR_GRADUATION_COMPENSATION, false)) {
+        // Deposit creator compensation (non-reverting, fallback to treasury if fails)
+        if (_depositToFeeHandler(tokenAddress, CREATOR_GRADUATION_COMPENSATION, false)) {
             treasuryShare -= CREATOR_GRADUATION_COMPENSATION;
         }
 
@@ -181,6 +181,20 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         (bool success,) = recipient.call{value: amount}("");
         require(!requireSuccess || success, EtherTransferFailed());
         return success;
+    }
+
+    function _depositToFeeHandler(address tokenAddress, uint256 amount, bool requireSuccess) internal returns (bool) {
+        if (amount == 0) return true;
+
+        address handler = ILivoToken(tokenAddress).feeHandler();
+        address receiver = ILivoToken(tokenAddress).feeReceiver();
+
+        try ILivoFeeHandler(handler).depositFees{value: amount}(receiver) {
+            return true;
+        } catch {
+            require(!requireSuccess, EtherTransferFailed());
+            return false;
+        }
     }
 
     function _cleanup(address tokenAddress) internal {

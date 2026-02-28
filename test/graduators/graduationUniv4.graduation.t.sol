@@ -911,18 +911,15 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         positionIndexes[0] = 0;
         vm.prank(creator);
         LivoGraduatorUniswapV4(payable(address(graduator))).creatorClaim(tokens, positionIndexes);
+        vm.prank(creator);
+        feeHandler.claim();
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
-        uint256 wethFeesEarnedByCreator = WETH.balanceOf(creator);
 
         // check that the eth collected by buyer and seller matches the eth left the pool
-        assertEq(
-            ethRecoveredByBuyer + ethRecoveredByCreator + wethFeesEarnedByCreator,
-            ethLeavingFromThePoolManager,
-            "eth recovered by buyer and creator should match eth in pool"
-        );
+        assertEq(ethRecoveredByBuyer + ethRecoveredByCreator, ethLeavingFromThePoolManager, "eth recovered by buyer and creator should match eth in pool");
 
         // because of the liquidity boundaries set when adding liquidity, there is a tiny amount of eth that won't be recoverable
         // even when all token supply is sold.

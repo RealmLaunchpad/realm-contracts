@@ -58,15 +58,17 @@ contract LivoFactoryBase {
         address pair = GRADUATOR.initialize(token);
 
         // the token needs to be initialized with the pair, so we have to do it after graduator.initialize
-        LivoToken(token)
-            .initialize(
-                name,
-                symbol,
-                tokenOwner,
-                address(GRADUATOR), // graduator address
-                pair, // uniswap pair
-                address(LAUNCHPAD) // supply receiver, all tokens are held by the launchpad initially
-            );
+        ILivoToken.InitializeParams memory initParams = ILivoToken.InitializeParams({
+            name: name,
+            symbol: symbol,
+            tokenOwner: tokenOwner,
+            graduator: address(GRADUATOR),
+            pair: pair,
+            launchpad: address(LAUNCHPAD),
+            feeHandler: address(FEE_HANDLER),
+            feeReceiver: tokenOwner
+        });
+        LivoToken(token).initialize(initParams);
 
         // registers token in launchpad together with its components and configs
         LAUNCHPAD.launchToken(token, BONDING_CURVE);

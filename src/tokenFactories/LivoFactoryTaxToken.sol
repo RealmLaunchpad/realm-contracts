@@ -6,6 +6,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
@@ -73,23 +74,33 @@ contract LivoFactoryTaxToken {
         // to which tokens cannot be transferred until graduation
         address pair = GRADUATOR.initialize(token);
 
+        ILivoToken.InitializeParams memory initParams = ILivoToken.InitializeParams({
+            name: name,
+            symbol: symbol,
+            tokenOwner: tokenOwner,
+            graduator: address(GRADUATOR),
+            pair: pair,
+            launchpad: address(LAUNCHPAD),
+            feeHandler: address(FEE_HANDLER),
+            feeReceiver: tokenOwner
+        });
+
         // the token needs to be initialized with the pair, so we have to do it after graduator.initialize
-        LivoTaxableTokenUniV4(payable(token))
-            .initialize(
-                name,
-                symbol,
-                tokenOwner,
-                address(GRADUATOR), // graduator address
-                pair, // uniswap pair
-                address(LAUNCHPAD), // supply receiver, all tokens are held by the launchpad initially
-                sellTaxBps,
-                uint40(taxDurationSeconds)
-            );
+        _initializeToken(token, initParams, sellTaxBps, taxDurationSeconds);
 
         // registers token in launchpad together with its components and configs
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
 
         // TODO decide what event is emitted from here and what from the launchpad
         return token;
+    }
+
+    function _initializeToken(
+        address token,
+        ILivoToken.InitializeParams memory initParams,
+        uint16 sellTaxBps,
+        uint32 taxDurationSeconds
+    ) internal {
+        LivoTaxableTokenUniV4(payable(token)).initialize(initParams, sellTaxBps, uint40(taxDurationSeconds));
     }
 }

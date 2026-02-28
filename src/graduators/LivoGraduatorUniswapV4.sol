@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -111,16 +112,12 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
     /// @notice Treasury LP fees already accrued into contract accounting
     uint256 public treasuryPendingFees;
 
-    /// @notice Creator ETH claims already accrued into contract accounting (fees + taxes)
-    mapping(address token => mapping(address tokenOwner => uint256 amount)) public pendingCreatorClaims;
-
     /////////////////////// Errors ///////////////////////
 
     error NoTokensGiven();
     error TooManyTokensGiven();
     error InvalidPositionIndex();
     error InvalidPositionIndexes();
-    error OnlyHookAllowed();
     error EthTransferFailed();
 
     /////////////////////// Events ///////////////////////
@@ -129,9 +126,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
         address indexed token, bytes32 poolId, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
     );
 
-    event CreatorTaxesAccrued(address indexed token, address indexed tokenOwner, uint256 amount);
-    event CreatorFeesAccrued(address indexed token, address indexed tokenOwner, uint256 amount);
-    event CreatorClaimed(address indexed token, address indexed tokenOwner, uint256 amount);
     event TreasuryFeesAccrued(address indexed token, uint256 amount);
     event TreasuryFeesClaimed(address indexed caller, address indexed treasury, uint256 amount);
 
@@ -261,49 +255,22 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
         emit TokenGraduated(tokenAddress, poolId, tokensDeposited, ethForLiquidity, liquidity1 + liquidity2);
     }
 
-    /////////////////// TAX ACCRUAL /////////////////////////
-
-    /// @notice Deposits ETH taxes accrued by the hook for a token owner
-    /// @param token Token address that generated the taxes
-    /// @param tokenOwner Owner address that accrues the taxes
-    function depositAccruedTaxes(address token, address tokenOwner) external payable {
-        require(msg.sender == HOOK_ADDRESS, OnlyHookAllowed());
-        if (msg.value == 0) return;
-
-        pendingCreatorClaims[token][tokenOwner] += msg.value;
-        emit CreatorTaxesAccrued(token, tokenOwner, msg.value);
-    }
-
     /////////////////// FEE ACCRUAL AND CLAIM /////////////////////////
 
-    /// @notice Claims creator amounts (fees + taxes) for caller, and first accrues fresh LP fees for each token
-    /// @dev LP-fee accrual always credits the current token owner in launchpad, and treasury for treasury share
+    /// @notice Accrues fresh LP fees for each token and deposits creator share into each token fee handler
+    /// @dev Creator claims are handled by `ILivoFeeHandler.claim()`
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
     function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) public nonReentrant {
         uint256 nTokens = _validateClaimInputs(tokens, positionIndexes);
-        uint256 totalClaimAmount;
 
         for (uint256 i = 0; i < nTokens; i++) {
-            address token = tokens[i];
-            // this updates pendingCreatorClaims for current token owner and treasuryPendingFees for treasury
-            _accrueLpFees(token, positionIndexes);
-
-            uint256 claimAmount = pendingCreatorClaims[token][msg.sender];
-
-            if (claimAmount > 0) {
-                pendingCreatorClaims[token][msg.sender] = 0;
-                totalClaimAmount += claimAmount;
-                emit CreatorClaimed(token, msg.sender, claimAmount);
-            }
+            _accrueLpFees(tokens[i], positionIndexes);
         }
-
-        _transferEth(msg.sender, totalClaimAmount, true);
     }
 
-    /// @notice Accrues LP fees for tokens and accrues creator/treasury shares in storage
-    /// @dev Creator shares are never force-transferred. This function only accrues
-    /// @dev The accrued fees need to be claimed by calling `creatorClaim()` or `treasuryClaim()`
+    /// @notice Accrues LP fees for tokens and deposits creator/treasury shares
+    /// @dev Creator shares are deposited in token fee handlers. Treasury shares are accrued in storage.
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
     function accrueTokenFees(address[] calldata tokens, uint256[] calldata positionIndexes) external nonReentrant {
@@ -330,7 +297,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
 
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
 
-    /// @notice Returns claimable creator amounts (pending taxes + pending fees + current LP fees when owner is current)
+    /// @notice Returns claimable creator amounts (fee handler claimable + current unaccrued LP-fee estimate)
     /// @dev LP-fee estimates are included only when `tokenOwner` is the current token owner in launchpad
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to estimate LP fees from. PositionIndex 0 accrues most fees
@@ -350,8 +317,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
 
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
-
-            creatorClaimable[i] = pendingCreatorClaims[token][tokenOwner];
+            creatorClaimable[i] = ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(tokenOwner);
 
             if (ILivoToken(token).owner() != tokenOwner) {
                 continue;
@@ -382,7 +348,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
     }
 
     function _accrueLpFees(address token, uint256[] calldata positionIndexes) internal {
-        address tokenOwner = ILivoToken(token).owner();
         uint256 creatorAccrued;
         uint256 treasuryAccrued;
 
@@ -394,8 +359,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
         }
 
         if (creatorAccrued > 0) {
-            pendingCreatorClaims[token][tokenOwner] += creatorAccrued;
-            emit CreatorFeesAccrued(token, tokenOwner, creatorAccrued);
+            _depositToFeeHandler(token, creatorAccrued, true);
         }
 
         if (treasuryAccrued > 0) {
@@ -408,14 +372,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
         internal
         returns (uint256 ethForLiquidity, address treasury)
     {
-        address tokenOwner = ILivoToken(tokenAddress).owner();
         treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE;
 
-        // Pay creator (non-reverting)
-        if (_transferEth(tokenOwner, CREATOR_GRADUATION_COMPENSATION, false)) {
+        // Deposit creator compensation (non-reverting)
+        if (_depositToFeeHandler(tokenAddress, CREATOR_GRADUATION_COMPENSATION, false)) {
             treasuryShare -= CREATOR_GRADUATION_COMPENSATION;
         }
 
@@ -428,6 +391,19 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
         (bool success,) = recipient.call{value: amount}("");
         require(!requireSuccess || success, EthTransferFailed());
         return success;
+    }
+
+    function _depositToFeeHandler(address tokenAddress, uint256 amount, bool requireSuccess) internal returns (bool) {
+        if (amount == 0) return true;
+
+        ILivoToken token = ILivoToken(tokenAddress);
+
+        try ILivoFeeHandler(token.feeHandler()).depositFees{value: amount}(token.feeReceiver()) {
+            return true;
+        } catch {
+            require(!requireSuccess, EthTransferFailed());
+            return false;
+        }
     }
 
     function _getPoolKey(address tokenAddress) internal view virtual returns (PoolKey memory) {

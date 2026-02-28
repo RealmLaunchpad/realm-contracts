@@ -93,41 +93,33 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     receive() external payable {}
 
     /// @notice Initializes the token clone with its parameters including tax configuration
-    /// @param name_ The token name
-    /// @param symbol_ The token symbol
-    /// @param owner_ Token owner
-    /// @param graduator_ Address of the graduator contract
-    /// @param pair_ Address of the pool manager for V4
-    /// @param launchpad_ Address receiving the total supply of tokens (launchpad)
+    /// @param params Shared token initialization parameters
     /// @param sellTaxBps_ Sell tax rate in basis points
     /// @param taxDurationSeconds_ Duration in seconds after graduation during which taxes apply
     function initialize(
-        string memory name_,
-        string memory symbol_,
-        address owner_,
-        address graduator_,
-        address pair_,
-        address launchpad_,
+        ILivoToken.InitializeParams memory params,
         uint16 sellTaxBps_,
         uint40 taxDurationSeconds_
     ) external initializer {
-        require(graduator_ != address(0), InvalidGraduator());
-        require(pair_ == address(UNIV4_POOL_MANAGER), "Invalid pair address");
+        require(params.graduator != address(0), InvalidGraduator());
+        require(params.pair == address(UNIV4_POOL_MANAGER), "Invalid pair address");
 
         // storage variables inherited from LivoToken
-        _tokenName = name_;
-        _tokenSymbol = symbol_;
-        graduator = graduator_;
-        pair = pair_;
-        owner = owner_;
+        _tokenName = params.name;
+        _tokenSymbol = params.symbol;
+        graduator = params.graduator;
+        pair = params.pair;
+        owner = params.tokenOwner;
+        feeHandler = params.feeHandler;
+        feeReceiver = params.feeReceiver;
 
         // Validate and store tax configuration
         _initializeTaxConfig(sellTaxBps_, taxDurationSeconds_);
 
         // all is minted back to the launchpad
-        _mint(launchpad_, TOTAL_SUPPLY);
+        _mint(params.launchpad, TOTAL_SUPPLY);
 
-        launchpad = LivoLaunchpad(launchpad_);
+        launchpad = LivoLaunchpad(params.launchpad);
     }
 
     function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {

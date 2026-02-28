@@ -27,6 +27,7 @@ import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
@@ -99,6 +100,13 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         positionIndexes[0] = 0;
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+
+        vm.prank(creator);
+        ILivoFeeHandler(ILivoToken(token).feeHandler()).claim();
+    }
+
+    function _feeClaimable(address token, address account) internal view returns (uint256) {
+        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(account);
     }
 }
 
@@ -230,8 +238,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         _swapSell(buyer, 100000000e18, 0.1 ether, true);
 
         uint256 creatorEthBalanceBefore = creator.balance;
-        uint256 pendingTaxesBeforeClaim =
-            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorClaims(testToken, creator);
+        uint256 pendingTaxesBeforeClaim = _feeClaimable(testToken, creator);
         uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(address(graduatorWithFees));
         uint256 poolManagerBalance = IERC20(testToken).balanceOf(address(poolManager));
 
@@ -326,6 +333,8 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        vm.prank(creator);
+        feeHandler.claim();
         graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
@@ -361,12 +370,16 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        vm.prank(creator);
+        feeHandler.claim();
 
         _swap(buyer, testToken1, 2 ether, 12342, true, true);
         _swap(buyer, testToken2, 2 ether, 12342, true, true);
 
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        vm.prank(creator);
+        feeHandler.claim();
         graduatorWithFees.treasuryClaim();
 
         uint256 creatorEarned = creator.balance - creatorEthBalanceBefore;
@@ -428,12 +441,13 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         positionIndexes[0] = 0;
         positionIndexes[1] = 1;
 
-        uint256 pendingTaxes =
-            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorClaims(testToken, creator);
+        uint256 pendingTaxes = _feeClaimable(testToken, creator);
         uint256 creatorBalanceBefore = creator.balance;
 
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        vm.prank(creator);
+        feeHandler.claim();
 
         uint256 totalCreatorFees = creator.balance - creatorBalanceBefore;
 
@@ -522,6 +536,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         (address[] memory tokens, uint256[] memory positionIndexes) = _singleTokenClaimInputs();
         vm.prank(caller);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+
+        vm.prank(caller);
+        ILivoFeeHandler(ILivoToken(testToken).feeHandler()).claim();
     }
 
     function _creatorClaimAndReturnEthDelta(address caller) internal returns (uint256) {
@@ -584,8 +601,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         tokens[0] = testToken;
 
         uint256[] memory fees = graduatorWithFees.getClaimable(tokens, _singleElementArray(0), creator);
-        uint256 pendingTaxes =
-            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorClaims(testToken, creator);
+        uint256 pendingTaxes = _feeClaimable(testToken, creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertEq(fees[0], pendingTaxes, "claimable fees should match accrued creator taxes after sell");
@@ -696,8 +712,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         positionIndexes[1] = 1;
         uint256[] memory fees = graduatorWithFees.getClaimable(tokens, positionIndexes, creator);
         uint256 totalFees = fees[0];
-        uint256 pendingTaxes =
-            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorClaims(testToken, creator);
+        uint256 pendingTaxes = _feeClaimable(testToken, creator);
 
         // Expected fees: 1% of buyAmount split 50/50 between creator and treasury
         // plus any pending creator taxes accrued from the prior sell
@@ -720,6 +735,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         // should not revert even if there are no fees to claim
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        vm.prank(creator);
+        feeHandler.claim();
 
         assertEq(creator.balance, creatorEthBalanceBefore, "creator eth balance should not change");
     }
@@ -734,9 +751,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     function test_depositAccruedTaxes_reverts_whenCallerIsNotHook() public createAndGraduateToken {
-        vm.prank(alice);
-        vm.expectRevert(LivoGraduatorUniswapV4.OnlyHookAllowed.selector);
-        LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).depositAccruedTaxes{value: 1}(testToken, creator);
+        // legacy test kept as no-op: taxes are deposited directly by hook into fee handler
+        assertEq(_feeClaimable(testToken, creator), 0, "no taxes should exist before swaps");
     }
 
     function test_viewFunction_getClaimable_reverts_onEmptyPositionIndexes() public createAndGraduateToken {
@@ -771,13 +787,13 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         // non-owner call accrues LP fees to current token owner, not caller
         uint256 aliceBalanceBefore = alice.balance;
-        uint256 creatorPendingBefore =
-            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorClaims(testToken, creator);
+        uint256 creatorPendingBefore = _feeClaimable(testToken, creator);
         vm.prank(alice);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        vm.prank(alice);
+        feeHandler.claim();
         assertEq(alice.balance, aliceBalanceBefore, "non-owner should not receive fees");
-        uint256 creatorPendingAfter =
-            LivoGraduatorUniswapV4(payable(address(graduatorWithFees))).pendingCreatorClaims(testToken, creator);
+        uint256 creatorPendingAfter = _feeClaimable(testToken, creator);
         assertGt(creatorPendingAfter, creatorPendingBefore, "non-owner call should accrue fees to current owner");
 
         // creator should claim the fees that were accrued by alice's call
@@ -804,6 +820,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         positionIndexes[0] = 0;
         vm.prank(alice);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        vm.prank(alice);
+        feeHandler.claim();
 
         assertEq(creator.balance, creatorEthBalanceBefore, "creator should not have gotten fees");
         assertGt(alice.balance, aliceEthBalanceBefore, "fees should have gone to alice");
@@ -862,7 +880,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256 creatorEthBefore = creator.balance;
         uint256 treasuryEthBefore = treasury.balance;
         uint256 aliceEthBefore = alice.balance;
-        uint256 creatorPendingBefore = graduatorv4.pendingCreatorClaims(testToken, creator);
+        uint256 creatorPendingBefore = _feeClaimable(testToken, creator);
         uint256 treasuryPendingBefore = graduatorv4.treasuryPendingFees();
 
         _accrueTokenFeesAs(alice);
@@ -871,7 +889,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         assertEq(treasury.balance, treasuryEthBefore, "treasury balance should not change on accrue");
         assertEq(alice.balance, aliceEthBefore, "caller balance should not change on accrue");
         assertGt(
-            graduatorv4.pendingCreatorClaims(testToken, creator),
+            _feeClaimable(testToken, creator),
             creatorPendingBefore,
             "creator pending should increase"
         );
@@ -1054,7 +1072,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     function test_viewFunction_getClaimable_matrix_sell_beforeAccrue() public createAndGraduateToken afterOneSwapSell {
         LivoGraduatorUniswapV4 graduatorv4 = LivoGraduatorUniswapV4(payable(address(graduatorWithFees)));
         uint256 fees = _creatorClaimable();
-        uint256 pendingTaxes = graduatorv4.pendingCreatorClaims(testToken, creator);
+        uint256 pendingTaxes = _feeClaimable(testToken, creator);
         if (_expectsSellTaxes()) {
             assertGt(pendingTaxes, 0, "pending creator taxes should be positive for tax tokens");
             assertGe(fees, pendingTaxes, "claimable should include pending creator taxes");
@@ -1114,7 +1132,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         LivoGraduatorUniswapV4 graduatorv4 = LivoGraduatorUniswapV4(payable(address(graduatorWithFees)));
         uint256 fees = _creatorClaimable();
-        uint256 pendingTaxes = graduatorv4.pendingCreatorClaims(testToken, creator);
+        uint256 pendingTaxes = _feeClaimable(testToken, creator);
         if (_expectsSellTaxes()) {
             assertGt(pendingTaxes, 0, "pending taxes should be positive after second sell");
             assertGe(fees, pendingTaxes, "claimable should include pending taxes from second sell");

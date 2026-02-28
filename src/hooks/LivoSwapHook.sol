@@ -9,12 +9,9 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-
-interface IGraduatorTaxCollector {
-    function depositAccruedTaxes(address token, address taxRecipient) external payable;
-}
 
 /// @title LivoSwapHook
 /// @notice Uniswap V4 hook that collects time-limited sell taxes on token swaps
@@ -142,7 +139,7 @@ contract LivoSwapHook is BaseHook {
         return (true, taxBps, config.taxRecipient);
     }
 
-    /// @notice Collect sell tax in ETH and attribute it in the graduator
+    /// @notice Collect sell tax in ETH and deposit it in the token fee handler
     function _collectSellTax(
         Currency currency,
         address tokenAddress,
@@ -153,11 +150,10 @@ contract LivoSwapHook is BaseHook {
         uint256 absEthAmount = uint256(uint128(ethDelta));
         uint256 taxAmount = (absEthAmount * taxBps) / BASIS_POINTS;
 
-        // Take ETH to this contract first so we can forward it to the graduator
+        // Take ETH to this contract first so we can forward it to the token fee handler
         poolManager.take(currency, address(this), taxAmount);
 
-        address graduator = ILivoToken(tokenAddress).graduator();
-        IGraduatorTaxCollector(graduator).depositAccruedTaxes{value: taxAmount}(tokenAddress, taxRecipient);
+        ILivoFeeHandler(ILivoToken(tokenAddress).feeHandler()).depositFees{value: taxAmount}(taxRecipient);
 
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }

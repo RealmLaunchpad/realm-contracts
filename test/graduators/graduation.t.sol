@@ -10,12 +10,14 @@ import {
 } from "test/launchpad/base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 
 /// @dev These tests should should pass regardless of the of graduator, so we test it with both
 abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
@@ -57,15 +59,17 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
     /// @notice creator gets the CREATOR_GRADUATION_COMPENSATION at graduation
     function test_creatorGetsGraduationCompensation() public createTestToken {
-        uint256 balanceBefore = creator.balance;
+        ILivoToken token = ILivoToken(testToken);
+        ILivoFeeHandler tokenFeeHandler = ILivoFeeHandler(token.feeHandler());
+        uint256 claimableBefore = tokenFeeHandler.getClaimable(creator);
 
         _graduateToken();
 
-        uint256 creatorBalanceAfter = creator.balance;
+        uint256 claimableAfter = tokenFeeHandler.getClaimable(creator);
         assertEq(
-            creatorBalanceAfter,
-            balanceBefore + CREATOR_GRADUATION_COMPENSATION,
-            "Creator should receive graduation compensation"
+            claimableAfter,
+            claimableBefore + CREATOR_GRADUATION_COMPENSATION,
+            "Creator claimable should include graduation compensation"
         );
     }
 

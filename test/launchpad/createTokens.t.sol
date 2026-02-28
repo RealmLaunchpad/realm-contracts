@@ -9,6 +9,7 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
 contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testDeployLivoToken_happyPath() public {
@@ -40,7 +41,18 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         LivoToken imp = new LivoToken();
 
         vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
-        imp.initialize("ImplToken", "IMPL", msg.sender, address(graduatorV2), address(0), address(this));
+        imp.initialize(
+            ILivoToken.InitializeParams({
+                name: "ImplToken",
+                symbol: "IMPL",
+                tokenOwner: msg.sender,
+                graduator: address(graduatorV2),
+                pair: address(0),
+                launchpad: address(this),
+                feeHandler: address(feeHandler),
+                feeReceiver: msg.sender
+            })
+        );
     }
 
     function testTokenCreatedHasDifferentAddressThanImplementation() public {

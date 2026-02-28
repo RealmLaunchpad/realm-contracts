@@ -65,33 +65,23 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     }
 
     /// @notice Initializes the token clone with its parameters
-    /// @param name_ The token name
-    /// @param symbol_ The token symbol
-    /// @param owner_ Token owner
-    /// @param graduator_ Address of the graduator contract
-    /// @param pair_ Address of the Uniswap pair
-    /// @param launchpad_ Address receiving the total supply of tokens
-    function initialize(
-        string memory name_,
-        string memory symbol_,
-        address owner_,
-        address graduator_,
-        address pair_,
-        address launchpad_
-    ) external virtual initializer {
-        require(graduator_ != address(0), InvalidGraduator());
+    /// @param params Shared token initialization parameters
+    function initialize(ILivoToken.InitializeParams memory params) external virtual initializer {
+        require(params.graduator != address(0), InvalidGraduator());
 
-        _tokenName = name_;
-        _tokenSymbol = symbol_;
-        graduator = graduator_;
-        owner = owner_;
-        pair = pair_;
+        _tokenName = params.name;
+        _tokenSymbol = params.symbol;
+        graduator = params.graduator;
+        owner = params.tokenOwner;
+        pair = params.pair;
+        feeHandler = params.feeHandler;
+        feeReceiver = params.feeReceiver;
 
         // all is minted back to the launchpad
         // question should the launchpad check it owns the full supply? or should we leave that open?
-        _mint(launchpad_, TOTAL_SUPPLY);
+        _mint(params.launchpad, TOTAL_SUPPLY);
 
-        launchpad = LivoLaunchpad(launchpad_);
+        launchpad = LivoLaunchpad(params.launchpad);
     }
 
     //////////////////////// restricted access functions ////////////////////////

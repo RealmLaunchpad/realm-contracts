@@ -11,6 +11,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 
 interface ILivoGraduatorWithFees is ILivoGraduator {
     function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) external;
@@ -20,7 +21,6 @@ interface ILivoGraduatorWithFees is ILivoGraduator {
         view
         returns (uint256[] memory creatorFees);
     function treasuryClaim() external;
-    function pendingCreatorClaims(address token, address tokenOwner) external view returns (uint256);
 }
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
@@ -46,10 +46,13 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         positionIndexes[0] = 0;
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+
+        vm.prank(creator);
+        feeHandler.claim();
     }
 
-    function _pendingTaxes(address token, address tokenOwner) internal view returns (uint256) {
-        return graduatorWithFees.pendingCreatorClaims(token, tokenOwner);
+    function _pendingTaxes(address, address tokenOwner) internal view returns (uint256) {
+        return ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(tokenOwner);
     }
 
     /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////
@@ -709,6 +712,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         vm.prank(alice);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        vm.prank(alice);
+        feeHandler.claim();
 
         graduatorWithFees.treasuryClaim();
 
@@ -757,6 +762,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         positionIndexes[1] = 1;
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
+        vm.prank(creator);
+        feeHandler.claim();
         graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
