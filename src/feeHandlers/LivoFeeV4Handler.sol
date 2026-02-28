@@ -33,12 +33,6 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @notice Authorized graduators that can register positions
     mapping(address graduator => bool authorized) public authorizedGraduators;
 
-    /// @notice Treasury LP fees already accrued into contract accounting
-    uint256 public treasuryPendingFees;
-
-    /// @notice Address of the LivoLaunchpad contract
-    address public immutable LIVO_LAUNCHPAD;
-
     /// @notice Contract where the liquidity NFTs are locked
     ILiquidityLockUniv4WithFees public immutable LIQUIDITY_LOCK;
 
@@ -60,7 +54,6 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /////////////////////// Events ///////////////////////
 
     event TreasuryFeesAccrued(address indexed token, uint256 amount);
-    event TreasuryFeesClaimed(address indexed caller, address indexed treasury, uint256 amount);
     event PositionRegistered(address indexed token, uint256 indexed positionId);
     event AuthorizedGraduatorSet(address indexed graduator, bool authorized);
 
@@ -78,8 +71,7 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         address _poolManager,
         address _positionManager,
         address _hook
-    ) Ownable(msg.sender) {
-        LIVO_LAUNCHPAD = _launchpad;
+    ) LivoFeeBaseHandler(_launchpad) Ownable(msg.sender) {
         LIQUIDITY_LOCK = ILiquidityLockUniv4WithFees(_liquidityLock);
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
         UNIV4_POSITION_MANAGER = _positionManager;
@@ -127,20 +119,6 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         for (uint256 i = 0; i < nTokens; i++) {
             _accrueLpFees(tokens[i]);
         }
-    }
-
-    /// @notice Claims the pending treasury LP fees to the treasury address
-    /// @dev Callable by anyone since funds always go to treasury
-    function treasuryClaim() public {
-        uint256 pending = treasuryPendingFees;
-        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-
-        if (pending > 0) {
-            treasuryPendingFees = 0;
-            _transferEth(treasury, pending);
-        }
-
-        emit TreasuryFeesClaimed(msg.sender, treasury, pending);
     }
 
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
@@ -285,11 +263,5 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
             tickSpacing: UniswapV4PoolConstants.TICK_SPACING,
             hooks: IHooks(HOOK_ADDRESS)
         });
-    }
-
-    function _transferEth(address recipient, uint256 amount) internal {
-        if (amount == 0) return;
-        (bool success,) = recipient.call{value: amount}("");
-        require(success, EthTransferFailed());
     }
 }

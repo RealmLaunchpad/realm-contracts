@@ -9,13 +9,27 @@ interface ILivoFeeHandler {
     /// EVENTS
     event FeesDeposited(address indexed token, address indexed account, uint256 amount);
     event CreatorClaimed(address indexed token, address indexed account, uint256 amount);
+    event TreasuryFeesClaimed(uint256 amount);
+
+    ///////////// EXTERNAL FUNCTIONS //////////////
 
     /// @notice Deposits msg.value into `feeReceiver` balance for `token`
     function depositFees(address token, address feeReceiver) external payable;
 
+    /// @notice Deposits msg.value into treasury pending fees
+    function depositTreasuryFees() external payable;
+
     /// @notice Claims accumulated ETH fees for msg.sender from the provided `tokens`
     function claim(address[] calldata tokens) external;
 
+    /// @notice Claims pending treasury ETH fees to `LivoLaunchpad.treasury()`
+    function treasuryClaim() external;
+
+    ////////////// VIEW FUNCTIONS /////////////
+
     /// @notice Returns the pending ETH fees for `account` across the given `tokens`
     function getClaimable(address[] calldata tokens, address account) external view returns (uint256[] memory);
+
+    /// @notice Returns pending ETH fees claimable by treasury
+    function treasuryPendingFees() external view returns (uint256);
 }

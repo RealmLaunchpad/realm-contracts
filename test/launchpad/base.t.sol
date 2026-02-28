@@ -134,7 +134,7 @@ contract LaunchpadBaseTests is Test {
             DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
 
-        feeHandler = new LivoFeeBaseHandler();
+        feeHandler = new LivoFeeBaseHandler(address(launchpad));
 
         feeHandlerV4 = new LivoFeeV4Handler(
             address(launchpad),

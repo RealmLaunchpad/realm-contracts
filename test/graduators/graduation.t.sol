@@ -128,20 +128,24 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
     /// @notice Test that at graduation the team collects the graduation fee in eth
     function test_teamCollectsGraduationFeeInEthAtGraduation() public createTestToken {
-        // After refactoring: graduator pays treasury directly, not through launchpad's treasuryEthFeesCollected
-        uint256 treasuryBalanceBefore = treasury.balance;
+        ILivoFeeHandler tokenFeeHandler = ILivoFeeHandler(ILivoToken(testToken).feeHandler());
+        uint256 pendingBefore = tokenFeeHandler.treasuryPendingFees();
 
-        // graduation fees are sent directly to the treasury
         _graduateToken();
 
-        uint256 treasuryBalanceAfter = treasury.balance;
-        uint256 feeCollected = treasuryBalanceAfter - treasuryBalanceBefore;
+        uint256 pendingAfter = tokenFeeHandler.treasuryPendingFees();
+        uint256 feeCollected = pendingAfter - pendingBefore;
 
         assertGe(
             feeCollected,
             GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION,
             "Treasury graduation fee share should be collected"
         );
+
+        uint256 treasuryBalanceBefore = treasury.balance;
+        tokenFeeHandler.treasuryClaim();
+        assertEq(tokenFeeHandler.treasuryPendingFees(), 0, "Treasury pending fees should be zero after claim");
+        assertEq(treasury.balance - treasuryBalanceBefore, feeCollected, "Treasury should receive claimed pending fees");
     }
 
     /// @notice Test that a buy exceeding the graduation + excess limit reverts
@@ -242,7 +246,8 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         );
 
         uint256 treasuryFeesBeforeGraduation = launchpad.treasuryEthFeesCollected();
-        uint256 treasuryEthBefore = treasury.balance;
+        ILivoFeeHandler tokenFeeHandler = ILivoFeeHandler(ILivoToken(testToken).feeHandler());
+        uint256 treasuryPendingBeforeGraduation = tokenFeeHandler.treasuryPendingFees();
 
         // this graduates the token
         uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
@@ -252,16 +257,13 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
 
-        // After refactoring: trading fees still in treasuryEthFeesCollected, graduation fees paid directly
         uint256 treasuryFeesAfterGraduation = launchpad.treasuryEthFeesCollected();
-        uint256 treasuryEthAfter = treasury.balance;
 
-        // Trading fee accumulated in launchpad, graduation fee paid directly to treasury
         uint256 tradingFeeAccumulated = treasuryFeesAfterGraduation - treasuryFeesBeforeGraduation;
-        uint256 graduationFeePaid = treasuryEthAfter - treasuryEthBefore;
+        uint256 graduationFeePending = tokenFeeHandler.treasuryPendingFees() - treasuryPendingBeforeGraduation;
 
         assertEq(
-            tradingFeeAccumulated + graduationFeePaid,
+            tradingFeeAccumulated + graduationFeePending,
             tradingFee + (GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION),
             "Treasury should collect its graduation fee share (plus trading fee)"
         );

@@ -165,15 +165,17 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE;
 
-        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+        ILivoToken.FeeConfig memory feeConfig = ILivoToken(tokenAddress).getFeeConfigs();
 
         // Deposit creator compensation (non-reverting, fallback to treasury if fails)
-        if (_depositToFeeHandler(tokenAddress, CREATOR_GRADUATION_COMPENSATION, false)) {
+        if (_depositToFeeHandler(
+                feeConfig.feeHandler, tokenAddress, feeConfig.feeReceiver, CREATOR_GRADUATION_COMPENSATION, false
+            )) {
             treasuryShare -= CREATOR_GRADUATION_COMPENSATION;
         }
 
-        // Pay treasury
-        _transferEth(treasury, treasuryShare, true);
+        // Deposit treasury graduation fees for later `treasuryClaim()`
+        _depositTreasuryToFeeHandler(feeConfig.feeHandler, treasuryShare, true);
     }
 
     function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
@@ -183,12 +185,27 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         return success;
     }
 
-    function _depositToFeeHandler(address tokenAddress, uint256 amount, bool requireSuccess) internal returns (bool) {
+    function _depositToFeeHandler(
+        address feeHandler,
+        address tokenAddress,
+        address feeReceiver,
+        uint256 amount,
+        bool requireSuccess
+    ) internal returns (bool) {
         if (amount == 0) return true;
 
-        ILivoToken.FeeConfig memory feeConfig = ILivoToken(tokenAddress).getFeeConfigs();
+        try ILivoFeeHandler(feeHandler).depositFees{value: amount}(tokenAddress, feeReceiver) {
+            return true;
+        } catch {
+            require(!requireSuccess, EtherTransferFailed());
+            return false;
+        }
+    }
 
-        try ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: amount}(tokenAddress, feeConfig.feeReceiver) {
+    function _depositTreasuryToFeeHandler(address feeHandler, uint256 amount, bool requireSuccess) internal returns (bool) {
+        if (amount == 0) return true;
+
+        try ILivoFeeHandler(feeHandler).depositTreasuryFees{value: amount}() {
             return true;
         } catch {
             require(!requireSuccess, EtherTransferFailed());

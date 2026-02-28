@@ -126,7 +126,7 @@ contract Deployments is Script {
         console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
 
         // 8. Deploy fee handlers used by factories
-        LivoFeeBaseHandler feeHandler = new LivoFeeBaseHandler();
+        LivoFeeBaseHandler feeHandler = new LivoFeeBaseHandler(address(launchpad));
         console.log("| LivoFeeBaseHandler | ", address(feeHandler));
 
         LivoFeeV4Handler feeHandlerV4 = new LivoFeeV4Handler(
