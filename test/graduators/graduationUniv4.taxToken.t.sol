@@ -48,11 +48,11 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
 
         vm.prank(creator);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
     }
 
     function _pendingTaxes(address, address tokenOwner) internal view returns (uint256) {
-        return ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(tokenOwner);
+        return ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(testToken, tokenOwner);
     }
 
     /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////
@@ -713,7 +713,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         vm.prank(alice);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
         vm.prank(alice);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
 
         graduatorWithFees.treasuryClaim();
 
@@ -763,7 +763,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
         vm.prank(creator);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
         graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;

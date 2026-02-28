@@ -258,7 +258,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
     /////////////////// FEE ACCRUAL AND CLAIM /////////////////////////
 
     /// @notice Accrues fresh LP fees for each token and deposits creator share into each token fee handler
-    /// @dev Creator claims are handled by `ILivoFeeHandler.claim()`
+    /// @dev Creator claims are handled by `ILivoFeeHandler.claim(address[] calldata tokens)`
     /// @param tokens Array of token addresses
     /// @param positionIndexes Array of position indexes to accrue fees from (only 0 or 1 are valid values)
     function creatorClaim(address[] calldata tokens, uint256[] calldata positionIndexes) public nonReentrant {
@@ -317,7 +317,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
 
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
-            creatorClaimable[i] = ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(tokenOwner);
+            creatorClaimable[i] = ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(token, tokenOwner);
 
             if (ILivoToken(token).owner() != tokenOwner) {
                 continue;
@@ -398,7 +398,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, ReentrancyGuardTrans
 
         ILivoToken token = ILivoToken(tokenAddress);
 
-        try ILivoFeeHandler(token.feeHandler()).depositFees{value: amount}(token.feeReceiver()) {
+        try ILivoFeeHandler(token.feeHandler()).depositFees{value: amount}(tokenAddress, token.feeReceiver()) {
             return true;
         } catch {
             require(!requireSuccess, EthTransferFailed());

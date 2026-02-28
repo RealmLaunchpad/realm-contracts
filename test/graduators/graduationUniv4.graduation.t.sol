@@ -912,7 +912,7 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         vm.prank(creator);
         LivoGraduatorUniswapV4(payable(address(graduator))).creatorClaim(tokens, positionIndexes);
         vm.prank(creator);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;

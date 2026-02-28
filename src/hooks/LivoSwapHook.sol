@@ -153,7 +153,7 @@ contract LivoSwapHook is BaseHook {
         // Take ETH to this contract first so we can forward it to the token fee handler
         poolManager.take(currency, address(this), taxAmount);
 
-        ILivoFeeHandler(ILivoToken(tokenAddress).feeHandler()).depositFees{value: taxAmount}(taxRecipient);
+        ILivoFeeHandler(ILivoToken(tokenAddress).feeHandler()).depositFees{value: taxAmount}(tokenAddress, taxRecipient);
 
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }

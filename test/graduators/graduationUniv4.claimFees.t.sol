@@ -102,11 +102,11 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
 
         vm.prank(creator);
-        ILivoFeeHandler(ILivoToken(token).feeHandler()).claim();
+        ILivoFeeHandler(ILivoToken(token).feeHandler()).claim(tokens);
     }
 
     function _feeClaimable(address token, address account) internal view returns (uint256) {
-        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(account);
+        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(token, account);
     }
 }
 
@@ -334,7 +334,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
         vm.prank(creator);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
         graduatorWithFees.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
@@ -371,7 +371,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
         vm.prank(creator);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
 
         _swap(buyer, testToken1, 2 ether, 12342, true, true);
         _swap(buyer, testToken2, 2 ether, 12342, true, true);
@@ -379,7 +379,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
         vm.prank(creator);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
         graduatorWithFees.treasuryClaim();
 
         uint256 creatorEarned = creator.balance - creatorEthBalanceBefore;
@@ -447,7 +447,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
         vm.prank(creator);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
 
         uint256 totalCreatorFees = creator.balance - creatorBalanceBefore;
 
@@ -538,7 +538,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
 
         vm.prank(caller);
-        ILivoFeeHandler(ILivoToken(testToken).feeHandler()).claim();
+        ILivoFeeHandler(ILivoToken(testToken).feeHandler()).claim(tokens);
     }
 
     function _creatorClaimAndReturnEthDelta(address caller) internal returns (uint256) {
@@ -736,7 +736,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         vm.prank(creator);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
         vm.prank(creator);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
 
         assertEq(creator.balance, creatorEthBalanceBefore, "creator eth balance should not change");
     }
@@ -791,7 +791,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         vm.prank(alice);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
         vm.prank(alice);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
         assertEq(alice.balance, aliceBalanceBefore, "non-owner should not receive fees");
         uint256 creatorPendingAfter = _feeClaimable(testToken, creator);
         assertGt(creatorPendingAfter, creatorPendingBefore, "non-owner call should accrue fees to current owner");
@@ -821,7 +821,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         vm.prank(alice);
         graduatorWithFees.creatorClaim(tokens, positionIndexes);
         vm.prank(alice);
-        feeHandler.claim();
+        feeHandler.claim(tokens);
 
         assertEq(creator.balance, creatorEthBalanceBefore, "creator should not have gotten fees");
         assertGt(alice.balance, aliceEthBalanceBefore, "fees should have gone to alice");
