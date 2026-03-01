@@ -37,7 +37,7 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         );
 
         _graduateToken();
-        graduationCreatorClaimable = _feeClaimable(testToken, creator);
+        graduationCreatorClaimable = _claimable(testToken, creator);
         _;
     }
 
@@ -61,8 +61,8 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         assertTrue(launchpad.getTokenState(testToken1).graduated, "Token1 should be graduated");
         assertTrue(launchpad.getTokenState(testToken2).graduated, "Token2 should be graduated");
 
-        graduationCreatorClaimable1 = _feeClaimable(testToken1, creator);
-        graduationCreatorClaimable2 = _feeClaimable(testToken2, creator);
+        graduationCreatorClaimable1 = _claimable(testToken1, creator);
+        graduationCreatorClaimable2 = _claimable(testToken2, creator);
 
         _swap(buyer, testToken1, buyAmount, 1, true, true);
         _swap(buyer, testToken2, buyAmount, 1, true, true);

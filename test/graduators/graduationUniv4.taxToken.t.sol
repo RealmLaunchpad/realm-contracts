@@ -138,15 +138,34 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         ILivoToken(testToken).acceptTokenOwnership();
         assertEq(ILivoToken(testToken).owner(), alice, "New token owner should be Alice");
 
-        // Verify that sell taxes are now redirected to the new owner
+        // By default, fee receiver is unchanged after ownership transfer
         uint256 aliceTaxesBefore = _pendingTaxes(testToken, alice);
         creatorTaxesBefore = _pendingTaxes(testToken, creator);
 
         sellAmount = buyerTokenBalance / 2;
         // Buyer swaps tokens for ETH via UniV4
         _swapSell(buyer, sellAmount, 0, true);
-        assertGt(_pendingTaxes(testToken, alice), aliceTaxesBefore, "Alice should accrue sell tax");
-        assertEq(_pendingTaxes(testToken, creator), creatorTaxesBefore, "Creator should not accrue new sell tax");
+        assertEq(_pendingTaxes(testToken, alice), aliceTaxesBefore, "Alice should not accrue without receiver update");
+        assertGt(_pendingTaxes(testToken, creator), creatorTaxesBefore, "Creator should keep accruing sell tax");
+
+        // New owner can manually update the fee receiver
+        vm.prank(alice);
+        ILivoToken(testToken).setFeeReceiver(alice);
+
+        // Ensure buyer has fresh tokens for a post-update sell path
+        deal(buyer, 0.2 ether);
+        _swapBuy(buyer, 0.1 ether, 0, true);
+
+        aliceTaxesBefore = _pendingTaxes(testToken, alice);
+        creatorTaxesBefore = _pendingTaxes(testToken, creator);
+
+        buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
+        assertGt(buyerTokenBalance, 0, "buyer should have tokens for post-update sell");
+        sellAmount = buyerTokenBalance / 2;
+        _swapSell(buyer, sellAmount, 0, true);
+
+        assertGt(_pendingTaxes(testToken, alice), aliceTaxesBefore, "Alice should accrue after receiver update");
+        assertEq(_pendingTaxes(testToken, creator), creatorTaxesBefore, "Creator should stop accruing after receiver update");
     }
 
     /// @notice Test that sell tax rates are applied correctly
@@ -524,6 +543,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
+        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
         // Perform buy swap to generate LP fees (1% total: 0.5% creator, 0.5% treasury)
         uint256 buyAmount = 1 ether;
@@ -555,9 +575,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Verify treasury received ~0.5% of buy amount
         assertApproxEqAbs(
             treasuryEthBalanceAfter - treasuryEthBalanceBefore,
-            buyAmount / 200,
+            treasuryPendingBefore + buyAmount / 200,  // pending before + pending delta
             1,
-            "Treasury should receive ~0.5% LP fees"
+            "Treasury should receive previous pending + ~0.5% LP fees"
         );
     }
 
@@ -630,6 +650,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
+        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
         // Perform buy swap (no taxes should be charged)
         uint256 buyAmount = 2 ether;
@@ -671,7 +692,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Total LP fees (excluding graduation deposit) should be ~1% of buy amount
         assertApproxEqAbs(
-            creatorFeesReceived + treasuryFeesReceived - graduationDeposit,
+            creatorFeesReceived + treasuryFeesReceived - graduationDeposit - treasuryPendingBefore,
             buyAmount / 100,
             2,
             "Total LP fees should be ~1% of buy volume"

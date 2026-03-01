@@ -109,7 +109,7 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @notice Accrues LP fees for tokens and deposits creator/treasury shares
     /// @dev Creator shares are deposited in fee handler accounting. Treasury shares are accrued in storage.
     ///      Iterates all registered positions for each token automatically.
-    ///      Creator claims are handled by `claim(address[] calldata tokens)` inherited from LivoFeeBaseHandler.
+    ///      Creator claims are handled by `claim(address[] calldata tokens)` in this contract.
     /// @param tokens Array of token addresses
     function accrueTokenFees(address[] calldata tokens) external nonReentrant {
         uint256 nTokens = tokens.length;
@@ -121,15 +121,40 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         }
     }
 
+    /// @notice Claims accumulated ETH fees for msg.sender from the provided `tokens`
+    /// @dev Accrues LP fees before claiming and clears claimed storage balances.
+    function claim(address[] calldata tokens) external override nonReentrant {
+        uint256 claimable;
+        uint256 nTokens = tokens.length;
+
+        for (uint256 i = 0; i < nTokens; i++) {
+            address token = tokens[i];
+
+            _accrueLpFees(token);
+
+            uint256 tokenClaimable = pendingClaims[token][msg.sender];
+            if (tokenClaimable == 0) continue;
+
+            claimable += tokenClaimable;
+            delete pendingClaims[token][msg.sender];
+
+            emit CreatorClaimed(token, msg.sender, tokenClaimable);
+        }
+
+        if (claimable == 0) return;
+
+        _transferEth(msg.sender, claimable);
+    }
+
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
 
     /// @notice Returns claimable creator amounts (fee handler claimable + current unaccrued LP-fee estimate)
-    /// @dev LP-fee estimates are included only when `tokenOwner` is the current token owner.
+    /// @dev LP-fee estimates are included only when `receiver` is the current fee receiver.
     ///      Iterates all registered positions for each token automatically.
     /// @param tokens Array of token addresses
-    /// @param tokenOwner Address for which pending and claimable amounts are computed
-    /// @return creatorClaimable Array of claimable ETH amounts per token for `tokenOwner`
-    function getClaimable(address[] calldata tokens, address tokenOwner)
+    /// @param receiver Address for which pending and claimable amounts are computed
+    /// @return creatorClaimable Array of claimable ETH amounts per token for `receiver`
+    function getClaimable(address[] calldata tokens, address receiver)
         external
         view
         override
@@ -142,9 +167,9 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
             // Include already-accrued pending claims from this fee handler
-            creatorClaimable[i] = pendingClaims[token][tokenOwner];
+            creatorClaimable[i] = pendingClaims[token][receiver];
 
-            if (ILivoToken(token).owner() != tokenOwner) {
+            if (ILivoToken(token).feeReceiver() != receiver) {
                 continue;
             }
 
