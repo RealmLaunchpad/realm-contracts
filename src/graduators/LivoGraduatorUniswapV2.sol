@@ -62,6 +62,14 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         UNISWAP_FACTORY = IUniswapV2Factory(UNISWAP_ROUTER.factory());
     }
 
+    function whitelistFactory(address factory) external onlyOwner {
+        _whitelistFactory(factory);
+    }
+
+    function blacklistFactory(address factory) external onlyOwner {
+        _blacklistFactory(factory);
+    }
+
     /// @notice Creates a Uniswap V2 pair for the token to reserve the pair and know the pair address
     /// @param tokenAddress Address of the token
     /// @return pair Address of the created Uniswap V2 pair

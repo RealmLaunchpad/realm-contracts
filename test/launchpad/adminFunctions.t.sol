@@ -100,6 +100,12 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         launchpad.blacklistFactory(newFactory);
     }
 
+    function test_blacklistFactory_FailsForNonOwner() public {
+        vm.prank(nonOwner);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
+        launchpad.blacklistFactory(address(factoryV2));
+    }
+
     function test_blacklistFactory_Succeeds() public {
         assertTrue(launchpad.whitelistedFactories(address(factoryV2)));
 
@@ -253,7 +259,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function test_tokenOwnershipTransfer_emitsTokenEvents() public createTestToken {
         vm.expectEmit(true, true, true, true);
-        emit NewOwnerProposed(creator, alice);
+        emit LivoToken.NewOwnerProposed(creator, alice, creator);
 
         vm.prank(creator);
         LivoToken(testToken).proposeNewOwner(alice);

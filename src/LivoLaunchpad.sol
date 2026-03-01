@@ -263,6 +263,14 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     //////////////////////////// Admin functions //////////////////////////
 
+    function whitelistFactory(address factory) external onlyOwner {
+        _whitelistFactory(factory);
+    }
+
+    function blacklistFactory(address factory) external onlyOwner {
+        _blacklistFactory(factory);
+    }
+
     /// @notice Updates the buy/sell fees, which only affects new token deployments
     /// @param buyFeeBps The buy fee in basis points (100 = 1%)
     /// @param sellFeeBps The sell fee in basis points (100 = 1%)

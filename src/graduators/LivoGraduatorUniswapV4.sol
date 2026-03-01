@@ -117,6 +117,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         IERC721(_positionManager).setApprovalForAll(_liquidityLock, true);
     }
 
+    function whitelistFactory(address factory) external onlyOwner {
+        _whitelistFactory(factory);
+    }
+
+    function blacklistFactory(address factory) external onlyOwner {
+        _blacklistFactory(factory);
+    }
+
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
     /// @notice To receive ETH back from Uniswap V4 when sweeping excess ETH after liquidity provision

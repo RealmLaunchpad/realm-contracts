@@ -17,7 +17,7 @@ abstract contract FactoryWhitelisting {
         _;
     }
 
-    function whitelistFactory(address factory) external {
+    function _whitelistFactory(address factory) internal {
         require(factory != address(0), InvalidAddress());
         require(!whitelistedFactories[factory], AlreadyConfigured());
 
@@ -25,7 +25,8 @@ abstract contract FactoryWhitelisting {
         emit FactoryWhitelisted(factory);
     }
 
-    function blacklistFactory(address factory) external {
+    function _blacklistFactory(address factory) internal {
+        require(factory != address(0), InvalidAddress());
         require(whitelistedFactories[factory], UnauthorizedFactory());
 
         whitelistedFactories[factory] = false;
