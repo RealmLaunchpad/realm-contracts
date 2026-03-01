@@ -48,40 +48,55 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         deal(buyer, 10 ether);
     }
 
-    modifier createAndGraduateToken() virtual {
+    function _createTokenForCreator(string memory name, string memory symbol, bytes32 metadata)
+        internal
+        virtual
+        returns (address)
+    {
         vm.prank(creator);
-        testToken = factoryV4.createToken("TestToken", "TEST", creator, "0x12");
+        return factoryV4.createToken(name, symbol, creator, metadata);
+    }
+
+    modifier createAndGraduateToken() virtual {
+        testToken = _createTokenForCreator("TestToken", "TEST", "0x12");
 
         _graduateToken();
+        // used as a baseline in several tests
         graduationCreatorClaimable = _claimable(testToken, creator);
         _;
     }
 
-    modifier generateFeesWithBuySwap() virtual {
+    modifier generateFeesWithBuySwap(uint256 amountIn) virtual {
         deal(buyer, 10 ether);
-        _swapBuy(buyer, 1 ether, 10e18, true);
+        _swapBuy(buyer, amountIn, 10e18, true);
         _;
     }
 
     modifier setAliceAsReceiver() virtual {
-        vm.prank(creator);
-        ILivoToken(testToken).setFeeReceiver(alice);
+        _setFeeReceiver(alice);
         _;
     }
 
     modifier transferOwnershipToAlice() virtual {
-        vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
+        _transferOwnership(alice);
         _;
     }
 
+    function _setFeeReceiver(address receiver) internal {
+        vm.prank(creator);
+        ILivoToken(testToken).setFeeReceiver(receiver);
+    }
+
+    function _transferOwnership(address newOwner) internal {
+        vm.prank(creator);
+        ILivoToken(testToken).proposeNewOwner(newOwner);
+        vm.prank(newOwner);
+        ILivoToken(testToken).acceptTokenOwnership();
+    }
+
     modifier twoGraduatedTokensWithBuys(uint256 buyAmount) virtual {
-        vm.startPrank(creator);
-        testToken1 = factoryV4.createToken("TestToken1", "TEST1", creator, "0x1a3a");
-        testToken2 = factoryV4.createToken("TestToken2", "TEST2", creator, "0x1a3a");
-        vm.stopPrank();
+        testToken1 = _createTokenForCreator("TestToken1", "TEST1", "0x1a3a");
+        testToken2 = _createTokenForCreator("TestToken2", "TEST2", "0x1a3a");
 
         // graduate token1 and token2
         uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
@@ -104,20 +119,23 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         _;
     }
 
-    function _collectFees(address token) internal {
-        address[] memory tokens = new address[](1);
+    function _singleToken(address token) internal pure returns (address[] memory tokens) {
+        tokens = new address[](1);
         tokens[0] = token;
-        vm.prank(creator);
-        feeHandlerV4.accrueTokenFees(tokens);
+    }
 
+    function _collectFees(address token) internal {
+        _collectFees(_singleToken(token));
+    }
+
+    function _collectFees(address[] memory tokens) internal {
+        // claiming already accrues fees first
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
     }
 
     function _claimable(address token, address account) internal view returns (uint256) {
-        address[] memory tokens = new address[](1);
-        tokens[0] = token;
-        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(tokens, account)[0];
+        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(_singleToken(token), account)[0];
     }
 }
 
@@ -151,10 +169,11 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         );
     }
 
-    function test_claimFees_happyPath_ethBalanceIncrease() public createAndGraduateToken {
-        deal(buyer, 10 ether);
-        _swapBuy(buyer, 1 ether, 10e18, true);
-
+    function test_claimFees_happyPath_ethBalanceIncrease()
+        public
+        createAndGraduateToken
+        generateFeesWithBuySwap(1 ether)
+    {
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
         uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
@@ -192,10 +211,12 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         assertGt(tokenBalanceAfter, tokenBalanceBefore, "fee handler token balance should increase");
     }
 
-    function test_claimFees_expectedCreatorFeesIncrease() public createAndGraduateToken {
-        deal(buyer, 10 ether);
+    function test_claimFees_expectedCreatorFeesIncrease()
+        public
+        createAndGraduateToken
+        generateFeesWithBuySwap(1 ether)
+    {
         uint256 buyAmount = 1 ether;
-        _swapBuy(buyer, buyAmount, 10e18, true);
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
@@ -216,10 +237,12 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         assertApproxEqAbs(creatorLpFees + treasuryFees, buyAmount / 100, 1, "total fees should be 1%");
     }
 
-    function test_claimFees_expectedTreasuryFeesIncrease() public createAndGraduateToken {
-        deal(buyer, 10 ether);
+    function test_claimFees_expectedTreasuryFeesIncrease()
+        public
+        createAndGraduateToken
+        generateFeesWithBuySwap(1 ether)
+    {
         uint256 buyAmount = 1 ether;
-        _swapBuy(buyer, buyAmount, 10e18, true);
 
         uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
         uint256 treasuryEthBalanceBefore = treasury.balance;
@@ -281,10 +304,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
     }
 
     /// @notice test that any eth balance is not collected by the first call to claimFees
-    function test_claimFees_noInitialEthBalance() public createAndGraduateToken {
-        deal(buyer, 10 ether);
-        _swapBuy(buyer, 1 ether, 10e18, true);
-
+    function test_claimFees_noInitialEthBalance() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
         // The fee handler already holds the graduation deposit (creator compensation).
         // Record its balance, then send extra ETH on top.
         uint256 feeHandlerBalanceBeforeTransfer = address(feeHandlerV4).balance;
@@ -361,10 +381,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         uint256 treasuryEthBalanceBefore = treasury.balance;
         uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
-        vm.prank(creator);
-        feeHandlerV4.accrueTokenFees(tokens);
-        vm.prank(creator);
-        feeHandlerV4.claim(tokens);
+        _collectFees(tokens);
         feeHandlerV4.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
@@ -397,18 +414,12 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         _swap(buyer, testToken1, 1 ether, 12342, true, true);
         _swap(buyer, testToken2, 1 ether, 12342, true, true);
 
-        vm.prank(creator);
-        feeHandlerV4.accrueTokenFees(tokens);
-        vm.prank(creator);
-        feeHandlerV4.claim(tokens);
+        _collectFees(tokens);
 
         _swap(buyer, testToken1, 2 ether, 12342, true, true);
         _swap(buyer, testToken2, 2 ether, 12342, true, true);
 
-        vm.prank(creator);
-        feeHandlerV4.accrueTokenFees(tokens);
-        vm.prank(creator);
-        feeHandlerV4.claim(tokens);
+        _collectFees(tokens);
         feeHandlerV4.treasuryClaim();
 
         uint256 totalGraduationDeposits = graduationCreatorClaimable1 + graduationCreatorClaimable2;
@@ -440,9 +451,11 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         feeHandlerV4.treasuryClaim();
     }
 
-    function test_treasuryClaim_emitsEvent_withClaimedAmount() public createAndGraduateToken {
-        deal(buyer, 10 ether);
-        _swapBuy(buyer, 1 ether, 10e18, true);
+    function test_treasuryClaim_emitsEvent_withClaimedAmount()
+        public
+        createAndGraduateToken
+        generateFeesWithBuySwap(1 ether)
+    {
         _collectFees(testToken);
 
         uint256 claimAmount = feeHandlerV4.treasuryPendingFees();
@@ -467,16 +480,12 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         uint256 buyAmount = 4 ether;
         _swapBuy(buyer, buyAmount, 10e18, true);
 
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
+        address[] memory tokens = _singleToken(testToken);
 
         uint256 expectedClaimable = feeHandlerV4.getClaimable(tokens, creator)[0];
         uint256 creatorBalanceBefore = creator.balance;
 
-        vm.prank(creator);
-        feeHandlerV4.accrueTokenFees(tokens);
-        vm.prank(creator);
-        feeHandlerV4.claim(tokens);
+        _collectFees(tokens);
 
         uint256 totalCreatorFees = creator.balance - creatorBalanceBefore;
 
@@ -563,25 +572,16 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
     /// @notice test that right after graduation getClaimable gives graduation deposit only
     function test_viewFunction_getClaimable_rightAfterGraduation() public createAndGraduateToken {
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(_singleTokenArray(), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertEq(fees[0], graduationCreatorClaimable, "fees should be graduation deposit right after graduation");
     }
 
     /// @notice test that after one swapBuy, getClaimable gives expected fees
-    function test_viewFunction_getClaimable_afterOneSwapBuy() public createAndGraduateToken {
-        deal(buyer, 10 ether);
+    function test_viewFunction_getClaimable_afterOneSwapBuy() public createAndGraduateToken afterOneSwapBuy {
         uint256 buyAmount = 1 ether;
-        _swapBuy(buyer, buyAmount, 10e18, true);
-
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(_singleTokenArray(), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         // Expected fees: graduation deposit + 0.5% LP fees from buy
@@ -590,13 +590,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     /// @notice test that after one swapSell, getClaimable includes accrued creator tax
-    function test_viewFunction_getClaimable_afterOneSwapSell() public createAndGraduateToken {
-        _swapSell(buyer, 100000000e18, 0.1 ether, true);
-
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
+    function test_viewFunction_getClaimable_afterOneSwapSell() public createAndGraduateToken afterOneSwapSell {
+        uint256[] memory fees = feeHandlerV4.getClaimable(_singleTokenArray(), creator);
         uint256 pendingTaxes = _claimable(testToken, creator);
 
         assertEq(fees.length, 1, "should return one fee value");
@@ -604,17 +599,12 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     /// @notice test that after two swapBuy, getClaimable gives expected fees
-    function test_viewFunction_getClaimable_afterTwoSwapBuys() public createAndGraduateToken {
-        deal(buyer, 10 ether);
+    function test_viewFunction_getClaimable_afterTwoSwapBuys() public createAndGraduateToken afterOneSwapBuy {
         uint256 buyAmount1 = 1 ether;
         uint256 buyAmount2 = 0.5 ether;
-        _swapBuy(buyer, buyAmount1, 10e18, true);
         _swapBuy(buyer, buyAmount2, 10e18, true);
 
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(_singleTokenArray(), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         uint256 expectedCreatorFees = graduationCreatorClaimable + (buyAmount1 + buyAmount2) / 200;
@@ -624,12 +614,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     /// @notice test that after swapBuy, claim, getClaimable gives 0
-    function test_viewFunction_getClaimable_afterClaimGivesZero() public createAndGraduateToken {
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-
-        deal(buyer, 10 ether);
-        _swapBuy(buyer, 1 ether, 10e18, true);
+    function test_viewFunction_getClaimable_afterClaimGivesZero() public createAndGraduateToken afterOneSwapBuy {
+        address[] memory tokens = _singleTokenArray();
 
         uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
         assertApproxEqAbs(
@@ -647,19 +633,13 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     }
 
     /// @notice test that after swapBuy, claim, swapBuy getClaimable gives expected fees
-    function test_viewFunction_getClaimable_afterClaimAndSwapBuy() public createAndGraduateToken {
-        deal(buyer, 10 ether);
-        _swapBuy(buyer, 1 ether, 10e18, true);
-
+    function test_viewFunction_getClaimable_afterClaimAndSwapBuy() public createAndGraduateToken afterOneSwapBuy {
         _collectFees(testToken);
 
         uint256 buyAmount2 = 0.8 ether;
         _swapBuy(buyer, buyAmount2, 10e18, true);
 
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
+        uint256[] memory fees = feeHandlerV4.getClaimable(_singleTokenArray(), creator);
 
         assertEq(fees.length, 1, "should return one fee value");
         assertApproxEqAbs(fees[0], buyAmount2 / 200, 1, "creator fees should be 0.5% of second buy amount");
@@ -733,7 +713,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         uint256 feeDelta = _claimable(testToken, creator) - claimableBefore;
 
-
         uint256 expectedFeeDelta = buyAmount / 200;
 
         assertApproxEqAbsDecimal(
@@ -743,8 +722,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
     function test_claimFeesOfBothPsitionsDontRevertIfNoFeesToClaim() public createAndGraduateToken {
         // no LP fees to claim yet, but graduation deposit is claimable
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
+        address[] memory tokens = _singleTokenArray();
 
         uint256 creatorEthBalanceBefore = creator.balance;
 
@@ -780,44 +758,31 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         );
     }
 
-    function test_creatorClaim_byNonOwnerAccruesToCurrentOwnerOnly() public createAndGraduateToken {
-        deal(buyer, 10 ether);
-        _swapBuy(buyer, 1 ether, 10e18, true);
-
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
+    function test_creatorClaim_byNonOwnerAccruesToCurrentOwnerOnly() public createAndGraduateToken afterOneSwapBuy {
+        address[] memory tokens = _singleTokenArray();
 
         // non-owner call accrues LP fees to current token owner, not caller
         uint256 aliceBalanceBefore = alice.balance;
         uint256 creatorPendingBefore = _claimable(testToken, creator);
-        
+
         vm.prank(alice);
         feeHandlerV4.accrueTokenFees(tokens);
         assertEq(_claimable(testToken, creator), creatorPendingBefore, "claimable doesn't increase on accruals");
-        
+
         vm.prank(alice);
         feeHandlerV4.claim(tokens);
         assertEq(alice.balance, aliceBalanceBefore, "non-owner should not receive fees");
-        
+
         uint256 creatorPendingAfter = _claimable(testToken, creator);
         assertEq(creatorPendingAfter, creatorPendingBefore, "non-owner call should not reduce owner claimable");
-
     }
 
     function test_tokenOwnershipTransferred_doesntChangeFeeReceiver() public createAndGraduateToken {
         address initialReceiver = ILivoToken(testToken).feeReceiver();
 
-        // some fees should have been accumulated by now. Transfer ownership in token contract
-        vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
+        _transferOwnership(alice);
 
-        assertEq(
-            ILivoToken(testToken).owner(),
-            alice,
-            "owner should be updated after ownership transfer"
-        );
+        assertEq(ILivoToken(testToken).owner(), alice, "owner should be updated after ownership transfer");
         assertEq(
             ILivoToken(testToken).feeReceiver(),
             initialReceiver,
@@ -825,24 +790,32 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         );
     }
 
-    function test_feeReceiverUpdated_givesFeesToNewReceiver_claimable() public createAndGraduateToken {
+    function test_feeReceiverUpdated_givesFeesToNewReceiver_claimable()
+        public
+        createAndGraduateToken
+        setAliceAsReceiver
+    {
         uint256 aliceClaimableBefore = _claimable(testToken, alice);
         uint256 creatorClaimableBefore = _claimable(testToken, creator);
-
-        // some fees should have been accumulated by now. Transfer ownership in token contract
-        vm.prank(creator);
-        ILivoToken(testToken).setFeeReceiver(alice);
         assertEq(ILivoToken(testToken).feeReceiver(), alice, "fee receiver should be updated to alice");
 
-        deal(buyer, 10 ether);
         _swapBuy(buyer, 2 ether, 10e18, true);
 
-        assertEq(_claimable(testToken, creator), creatorClaimableBefore, "creator should not have gotten fees after receiver update");
+        assertEq(
+            _claimable(testToken, creator),
+            creatorClaimableBefore,
+            "creator should not have gotten fees after receiver update"
+        );
         assertGt(_claimable(testToken, alice), aliceClaimableBefore, "fees should have gone to alice");
     }
 
-    function test_feeReceiverUpdated_givesFeesToNewReceiver_claim() public createAndGraduateToken setAliceAsReceiver generateFeesWithBuySwap {
-        uint256 aliceClaimableBefore =_claimable(testToken, alice);
+    function test_feeReceiverUpdated_givesFeesToNewReceiver_claim()
+        public
+        createAndGraduateToken
+        setAliceAsReceiver
+        generateFeesWithBuySwap(1 ether)
+    {
+        uint256 aliceClaimableBefore = _claimable(testToken, alice);
         uint256 aliceBalanceBefore = alice.balance;
 
         vm.prank(alice);
@@ -850,7 +823,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         assertLt(_claimable(testToken, alice), aliceClaimableBefore, "alice claimable should decrease after claim");
         assertEq(_claimable(testToken, alice), 0, "alice should have claimed all her fees");
-        assertEq(alice.balance, aliceBalanceBefore + aliceClaimableBefore, "alice balance should have increased after claim");
+        assertEq(
+            alice.balance, aliceBalanceBefore + aliceClaimableBefore, "alice balance should have increased after claim"
+        );
     }
 
     /// @dev when swap fees exist for current token owner and another user calls `creatorClaim()`, then the caller gets nothing and owner claimable remains available
@@ -1241,18 +1216,11 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         public
         createAndGraduateToken
         afterOneSwapBuy
+        accrueAs(alice)
+        transferOwnershipToAlice
+        setAliceAsReceiver
     {
-        _accrueTokenFeesAs(alice);
-
-        vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
-        vm.prank(alice);
-        ILivoToken(testToken).setFeeReceiver(alice);
-
-        uint256 oldOwnerClaimable = _claimableFor(creator);
-        assertGt(oldOwnerClaimable, 0, "old owner should keep accrued claimable after takeover");
+        assertGt(_claimableFor(creator), 0, "old owner should keep accrued claimable after takeover");
     }
 
     /// @dev when state is swap-buy, accrue, community-takeover, then original owner can claim and receive pre-claim claimable amount
@@ -1260,16 +1228,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         public
         createAndGraduateToken
         afterOneSwapBuy
+        accrueAs(alice)
+        transferOwnershipToAlice
+        setAliceAsReceiver
     {
-        _accrueTokenFeesAs(alice);
-
-        vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
-        vm.prank(alice);
-        ILivoToken(testToken).setFeeReceiver(alice);
-
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should have claimable after takeover");
 
@@ -1286,11 +1248,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         _creatorClaimAs(creator);
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
         _accrueTokenFeesAs(alice);
-
-        vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
+        _transferOwnership(alice);
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should have claimable from second buy after takeover");
@@ -1304,16 +1262,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         public
         createAndGraduateToken
         afterOneSwapBuy
+        accrueAs(alice)
+        transferOwnershipToAlice
+        setAliceAsReceiver
     {
-        _accrueTokenFeesAs(alice);
-
-        vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
-        vm.prank(alice);
-        ILivoToken(testToken).setFeeReceiver(alice);
-
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
@@ -1340,15 +1292,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         public
         createAndGraduateToken
         afterOneSwapSell
+        accrueAs(alice)
+        transferOwnershipToAlice
     {
         if (!_expectsSellTaxes()) return;
-
-        _accrueTokenFeesAs(alice);
-
-        vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should keep accrued sell claimable after takeover");
@@ -1359,13 +1306,9 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         public
         createAndGraduateToken
         afterOneSwapSell
+        transferOwnershipToAlice
     {
         if (!_expectsSellTaxes()) return;
-
-        vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should have claimable after takeover");
@@ -1384,11 +1327,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         _creatorClaimAs(creator);
         _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
-
-        vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
+        _transferOwnership(alice);
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
         assertGt(oldOwnerClaimable, 0, "old owner should have claimable from second sell after takeover");
@@ -1408,12 +1347,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         uint256 oldOwnerExpected = _claimableFor(creator);
 
-        vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
-        vm.prank(alice);
-        ILivoToken(testToken).setFeeReceiver(alice);
+        _transferOwnership(alice);
+        _setFeeReceiver(alice);
 
         uint256 newOwnerBeforeSecondSell = _claimableFor(alice);
         _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
@@ -1469,47 +1404,13 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
     }
 
-    /// @notice Override createAndGraduateToken modifier to provide tax configuration
-    modifier createAndGraduateToken() override {
+    function _createTokenForCreator(string memory name, string memory symbol, bytes32 metadata)
+        internal
+        override
+        returns (address)
+    {
         vm.prank(creator);
-        testToken = factoryTax.createToken(
-            "TestToken", "TEST", creator, "0x12", DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
-        );
-
-        _graduateToken();
-        graduationCreatorClaimable = _claimable(testToken, creator);
-        _;
-    }
-
-    /// @notice Override twoGraduatedTokensWithBuys modifier for tax tokens
-    modifier twoGraduatedTokensWithBuys(uint256 buyAmount) override {
-        vm.startPrank(creator);
-        testToken1 = factoryTax.createToken(
-            "TestToken1", "TEST1", creator, "0x1a3a", DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
-        );
-        testToken2 = factoryTax.createToken(
-            "TestToken2", "TEST2", creator, "0x1a3a", DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
-        );
-        vm.stopPrank();
-
-        // graduate token1 and token2
-        uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
-        uint256 buyAmount2 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
-        vm.deal(buyer, 100 ether);
-        vm.startPrank(buyer);
-        launchpad.buyTokensWithExactEth{value: buyAmount1}(testToken1, 0, DEADLINE);
-        launchpad.buyTokensWithExactEth{value: buyAmount2}(testToken2, 0, DEADLINE);
-
-        assertTrue(launchpad.getTokenState(testToken1).graduated, "Token1 should be graduated");
-        assertTrue(launchpad.getTokenState(testToken2).graduated, "Token2 should be graduated");
-
-        graduationCreatorClaimable1 = _claimable(testToken1, creator);
-        graduationCreatorClaimable2 = _claimable(testToken2, creator);
-
-        // buy from token1 and token2 from uniswap
-        _swap(buyer, testToken1, buyAmount, 1, true, true);
-        _swap(buyer, testToken2, buyAmount, 1, true, true);
-        vm.stopPrank();
-        _;
+        return
+            factoryTax.createToken(name, symbol, creator, metadata, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION));
     }
 }

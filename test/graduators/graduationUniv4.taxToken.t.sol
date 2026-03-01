@@ -165,7 +165,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _swapSell(buyer, sellAmount, 0, true);
 
         assertGt(_pendingTaxes(testToken, alice), aliceTaxesBefore, "Alice should accrue after receiver update");
-        assertEq(_pendingTaxes(testToken, creator), creatorTaxesBefore, "Creator should stop accruing after receiver update");
+        assertEq(
+            _pendingTaxes(testToken, creator), creatorTaxesBefore, "Creator should stop accruing after receiver update"
+        );
     }
 
     /// @notice Test that sell tax rates are applied correctly
@@ -575,7 +577,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Verify treasury received ~0.5% of buy amount
         assertApproxEqAbs(
             treasuryEthBalanceAfter - treasuryEthBalanceBefore,
-            treasuryPendingBefore + buyAmount / 200,  // pending before + pending delta
+            treasuryPendingBefore + buyAmount / 200, // pending before + pending delta
             1,
             "Treasury should receive previous pending + ~0.5% LP fees"
         );

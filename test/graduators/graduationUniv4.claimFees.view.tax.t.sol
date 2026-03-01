@@ -30,43 +30,12 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
     }
 
-    modifier createAndGraduateToken() override {
+    function _createTokenForCreator(string memory name, string memory symbol, bytes32 metadata)
+        internal
+        override
+        returns (address)
+    {
         vm.prank(creator);
-        testToken = factoryTax.createToken(
-            "TestToken", "TEST", creator, "0x12", DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
-        );
-
-        _graduateToken();
-        graduationCreatorClaimable = _claimable(testToken, creator);
-        _;
-    }
-
-    modifier twoGraduatedTokensWithBuys(uint256 buyAmount) override {
-        vm.startPrank(creator);
-        testToken1 = factoryTax.createToken(
-            "TestToken1", "TEST1", creator, "0x1a3a", DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
-        );
-        testToken2 = factoryTax.createToken(
-            "TestToken2", "TEST2", creator, "0x1a3a", DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
-        );
-        vm.stopPrank();
-
-        uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
-        uint256 buyAmount2 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
-        vm.deal(buyer, 100 ether);
-        vm.startPrank(buyer);
-        launchpad.buyTokensWithExactEth{value: buyAmount1}(testToken1, 0, DEADLINE);
-        launchpad.buyTokensWithExactEth{value: buyAmount2}(testToken2, 0, DEADLINE);
-
-        assertTrue(launchpad.getTokenState(testToken1).graduated, "Token1 should be graduated");
-        assertTrue(launchpad.getTokenState(testToken2).graduated, "Token2 should be graduated");
-
-        graduationCreatorClaimable1 = _claimable(testToken1, creator);
-        graduationCreatorClaimable2 = _claimable(testToken2, creator);
-
-        _swap(buyer, testToken1, buyAmount, 1, true, true);
-        _swap(buyer, testToken2, buyAmount, 1, true, true);
-        vm.stopPrank();
-        _;
+        return factoryTax.createToken(name, symbol, creator, metadata, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION));
     }
 }
