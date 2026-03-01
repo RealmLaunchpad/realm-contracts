@@ -41,6 +41,9 @@ interface ILivoToken is IERC20 {
     /// @notice Allows the proposed owner to accept the ownership
     function acceptTokenOwnership() external;
 
+    /// @notice Updates the address receiving fees inside the token `feeHandler`
+    function setFeeReceiver(address newFeeReceiver) external;
+
     ////////////////// VIEW FUNCTIONS ////////////////////
 
     /// @notice Returns the tax configuration for this token

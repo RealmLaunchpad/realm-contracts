@@ -47,6 +47,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     event Graduated();
     event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
+    event FeeReceiverUpdated(address oldFeeReceiver, address newFeeReceiver);
 
     //////////////////////// Errors //////////////////////
 
@@ -55,6 +56,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     error CannotSelfTransfer();
     error InvalidGraduator();
     error Unauthorized();
+    error InvalidFeeReceiver();
 
     //////////////////////////////////////////////////////
 
@@ -115,6 +117,16 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         delete proposedOwner;
 
         emit OwnershipTransferred(msg.sender);
+    }
+
+    function setFeeReceiver(address newFeeReceiver) external {
+        require(msg.sender == owner, Unauthorized());
+        require(newFeeReceiver != address(0), InvalidFeeReceiver());
+
+        address oldFeeReceiver = feeReceiver;
+        feeReceiver = newFeeReceiver;
+
+        emit FeeReceiverUpdated(oldFeeReceiver, newFeeReceiver);
     }
 
     //////////////////////// view functions ////////////////////////
