@@ -49,7 +49,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     }
 
     function maxEthReserves() external pure returns (uint256) {
-        return _GRADUATION_THRESHOLD + _MAX_EXCESS_OVER_THRESHOLD;
+        return _maxEthReserves();
     }
 
     /// @notice Calculates how many tokens can be purchased with a given amount of ETH
@@ -63,7 +63,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         returns (uint256 tokensReceived, bool canGraduate)
     {
         uint256 newEthReserves = ethReserves + ethAmount;
-        if (newEthReserves > _GRADUATION_THRESHOLD + _MAX_EXCESS_OVER_THRESHOLD) {
+        if (newEthReserves > _maxEthReserves()) {
             revert MaxEthReservesExceeded();
         }
 
@@ -102,5 +102,9 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         // So this curve should not be used in that range
         // For the current graduation setup it should be safe, as the graduation happens at around 8.5 ether
         return K / (ethReserves + E0) - T0;
+    }
+
+    function _maxEthReserves() internal pure returns (uint256) {
+        return _GRADUATION_THRESHOLD + _MAX_EXCESS_OVER_THRESHOLD;
     }
 }

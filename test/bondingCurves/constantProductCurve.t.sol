@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
+import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 
 // This is a test file to test the bonding curve ConstantProductBondingCurve
 contract ConstantProductBondingCurveTest is Test {
@@ -85,8 +86,20 @@ contract ConstantProductBondingCurveTest is Test {
 
     function test_fuzz_buyTokensWithExactEth(uint256 ethReserves, uint256 ethAmount) public {
         uint256 maxEthReserves = curve.maxEthReserves();
-        ethReserves = bound(ethReserves, 0, 2 * maxEthReserves);
-        ethAmount = bound(ethAmount, 0, maxEthReserves - ethReserves);
+        ethReserves = bound(ethReserves, 0, 30 ether);
+
+        uint256 ethAmountLimit = maxEthReserves > ethReserves ? maxEthReserves - ethReserves : 0;
+        if (ethAmountLimit == 0) return;
+
+        ethAmount = bound(ethAmount, 0, ethAmountLimit);
+        console.log("ethReserves", ethReserves);
+        console.log("ethAmount", ethAmount);
+
+        if (ethReserves + ethAmount > curve.maxEthReserves()) {
+            vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+            curve.buyTokensWithExactEth(ethReserves, ethAmount);
+            return;
+        }
 
         // token reserves are calculated internally from the ethReserves so it doesn't matter what we pass here
         (uint256 tokensReceived,) = curve.buyTokensWithExactEth(ethReserves, ethAmount);
