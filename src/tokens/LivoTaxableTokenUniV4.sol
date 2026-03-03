@@ -125,8 +125,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
             buyTaxBps: 0, // Buy tax is always 0 in this token implementation
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: taxDurationSeconds,
-            graduationTimestamp: graduationTimestamp,
-            taxRecipient: taxRecipient
+            graduationTimestamp: graduationTimestamp
         });
     }
 

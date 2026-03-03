@@ -22,7 +22,6 @@ interface ILivoToken is IERC20 {
         uint16 sellTaxBps; // Sell tax in basis points (max 500 = 5%)
         uint40 taxDurationSeconds; // Duration after graduation during which taxes apply
         uint40 graduationTimestamp; // Timestamp when token graduated (0 if not graduated)
-        address taxRecipient; // Address receiving tax payments (token owner)
     }
 
     /// @notice Fee configuration addresses
