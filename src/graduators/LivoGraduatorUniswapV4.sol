@@ -155,8 +155,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         require(tokenAmount > 0, NoTokensToGraduate());
         require(msg.value > 0, NoETHToGraduate());
 
+        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+
         // 1. Handle fee split
-        (uint256 ethForLiquidity, address treasury) = _handleGraduationFeesV4(tokenAddress);
+        uint256 ethForLiquidity = _handleGraduationFeesV4(tokenAddress, treasury);
 
         // 2. Continue with V4 liquidity logic
         uint256 tokenBalanceBeforeDeposit = token.balanceOf(address(this));
@@ -194,12 +196,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
-    function _handleGraduationFeesV4(address tokenAddress)
+    function _handleGraduationFeesV4(address tokenAddress, address treasury)
         internal
-        returns (uint256 ethForLiquidity, address treasury)
+        returns (uint256 ethForLiquidity)
     {
-        treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
 
@@ -209,16 +209,11 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: CREATOR_GRADUATION_COMPENSATION}(
             tokenAddress, feeConfig.feeReceiver
         );
+        emit CreatorGraduationFeeDeposited(tokenAddress, feeConfig.feeReceiver, CREATOR_GRADUATION_COMPENSATION);
 
         // Deposit treasury graduation fees for later `treasuryClaim()`
         ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}(tokenAddress);
-    }
-
-    function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
-        if (amount == 0) return true;
-        (bool success,) = recipient.call{value: amount}("");
-        require(!requireSuccess || success, EthTransferFailed());
-        return success;
+        emit TreasuryGraduationFeeDeposited(tokenAddress, treasuryShare);
     }
 
     function _getPoolKey(address tokenAddress) internal view virtual returns (PoolKey memory) {

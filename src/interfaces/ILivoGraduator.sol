@@ -5,6 +5,8 @@ interface ILivoGraduator {
     ////////////////// Events //////////////////////
 
     event PairInitialized(address indexed token, address indexed pair);
+    event TreasuryGraduationFeeDeposited(address token, uint256 amount);
+    event CreatorGraduationFeeDeposited(address token, address feeReceiver, uint256 amount);
 
     ////////////////// Custom errors //////////////////////
 
@@ -16,4 +18,7 @@ interface ILivoGraduator {
 
     function initialize(address tokenAddress) external returns (address pair);
     function graduateToken(address tokenAddress, uint256 tokenAmount) external payable;
+
+    function whitelistFactory(address factory) external;
+    function blacklistFactory(address factory) external;
 }

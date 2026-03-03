@@ -62,10 +62,13 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         UNISWAP_FACTORY = IUniswapV2Factory(UNISWAP_ROUTER.factory());
     }
 
+    /// @notice whitelist factories allowed to graduate tokens in this contract
     function whitelistFactory(address factory) external onlyOwner {
         _whitelistFactory(factory);
     }
 
+    /// @notice blacklist factories not allowed to graduate tokens in this contract
+    /// @dev admins could blacklist a factory and prevent graduations from all tokens with that graduator configured
     function blacklistFactory(address factory) external onlyOwner {
         _blacklistFactory(factory);
     }
@@ -179,18 +182,11 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: CREATOR_GRADUATION_COMPENSATION}(
             tokenAddress, feeConfig.feeReceiver
         );
+        emit CreatorGraduationFeeDeposited(tokenAddress, feeConfig.feeReceiver, CREATOR_GRADUATION_COMPENSATION);
 
-        // todo emit events to account for graduation fees
-
-        // Deposit treasury graduation fees for later `treasuryClaim()`
+        // Deposit treasury graduation fees
         ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}(tokenAddress);
-    }
-
-    function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
-        if (amount == 0) return true;
-        (bool success,) = recipient.call{value: amount}("");
-        require(!requireSuccess || success, EtherTransferFailed());
-        return success;
+        emit TreasuryGraduationFeeDeposited(tokenAddress, treasuryShare);
     }
 
     function _cleanup(address tokenAddress) internal {
