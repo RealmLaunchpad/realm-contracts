@@ -385,7 +385,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function test_quoteBuyTokens_rightBelowHittingExcessLimit() public createTestToken {
         uint256 maxValue = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS + 1);
 
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.quoteBuyWithExactEth(testToken, maxValue);
 
         // however, one wei less should be fine

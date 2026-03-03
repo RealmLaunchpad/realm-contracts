@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 interface ILivoBondingCurve {
+    // thrown if trying to buy above graduation threshold + margin
     error MaxEthReservesExceeded();
 
     /// @notice how many tokens can be purchased with a given amount of ETH

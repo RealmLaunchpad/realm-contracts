@@ -5,18 +5,27 @@ abstract contract FactoryWhitelisting {
     /// @notice Authorized factories
     mapping(address factory => bool authorized) public whitelistedFactories;
 
+    //////////////////////// ERRORS ///////////////////////
+
     error InvalidAddress();
     error AlreadyConfigured();
     error UnauthorizedFactory();
 
+    //////////////////// EVENTS ///////////////////////
+
     event FactoryWhitelisted(address indexed factory);
     event FactoryBlacklisted(address indexed factory);
+
+    ////////////////// MODIFIERS ///////////////////////
 
     modifier onlyWhitelistedFactory() {
         _onlyWhitelistedFactory();
         _;
     }
 
+    ////////////// INTERNAL FUNCTIONS //////////////////
+
+    /// @dev Internal function without access control.
     function _whitelistFactory(address factory) internal {
         require(factory != address(0), InvalidAddress());
         require(!whitelistedFactories[factory], AlreadyConfigured());
@@ -25,6 +34,7 @@ abstract contract FactoryWhitelisting {
         emit FactoryWhitelisted(factory);
     }
 
+    /// @dev Internal function without access control.
     function _blacklistFactory(address factory) internal {
         require(factory != address(0), InvalidAddress());
         require(whitelistedFactories[factory], UnauthorizedFactory());

@@ -139,9 +139,6 @@ contract InvariantsHelperLaunchpad is Test {
         deal(currentActor, ethToSpend);
 
         vm.prank(currentActor);
-        // if (maxEthToBuy - ethToSpend <= 0.1 ether) {
-        //     vm.expectRevert(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector);
-        // }
         uint256 tokensReceived = launchpad.buyTokensWithExactEth{value: ethToSpend}(selectedToken, 0, FAR_IN_FUTURE);
 
         aggregatedEthForBuys[selectedToken] += ethToSpend;

@@ -48,15 +48,14 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     error InvalidToken();
     error NotEnoughSupply();
     error AlreadyGraduated();
-    error InsufficientETHReserves();
+    error InsufficientEthReserves();
     error EthTransferFailed();
     error DeadlineExceeded();
     error SlippageExceeded();
-    error PurchaseExceedsLimitPostGraduation();
-    error InvalidTokenSupply();
 
     ///////////////////// Events /////////////////////
 
+    // todo this event is unused. evaluate full from from factories.createToken
     event TokenCreated(
         address indexed token,
         address indexed tokenOwner,
@@ -66,6 +65,8 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         address bondingCurve,
         address graduator
     );
+
+    event TokenLaunched(address indexed token);
     event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
     event LivoTokenBuy(
         address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 ethFee
@@ -89,13 +90,15 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     function launchToken(address token, ILivoBondingCurve bondingCurve) external onlyWhitelistedFactory {
         // this check is important because bondingCurve!=address(0) is used as proxy for valid existing tokens within the Launchpad
+        // the msg.sender is a trusted factory, which should have a valid bonding curve compliant with IBondingCurve
         require(address(bondingCurve) != address(0), InvalidAddress());
 
+        // these token configs become immutable once set here
         tokenConfigs[token] =
             TokenConfig({bondingCurve: bondingCurve, buyFeeBps: baseBuyFeeBps, sellFeeBps: baseSellFeeBps});
 
         // todo finish implement
-        // todo consider emitting event
+        emit TokenLaunched(token);
     }
 
     /// @notice Buys tokens with exact ETH amount
@@ -113,19 +116,20 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         payable
         returns (uint256 receivedTokens)
     {
-        TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
         require(msg.value > 0, InvalidAmount());
-        require(tokenConfig.exists(), InvalidToken());
-        require(tokenState.notGraduated(), AlreadyGraduated());
         require(block.timestamp <= deadline, DeadlineExceeded());
+        require(tokenConfigs[token].exists(), InvalidToken());
+        require(tokenState.notGraduated(), AlreadyGraduated());
 
+        // this call to bonding curve reverts if exceeds graduation margins
+        // The internal function also reverts with NotEnoughSupply if exceeding this contract token balance
         (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive, bool canGraduate) =
             _quoteBuyWithExactEth(token, msg.value);
 
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
-        require(tokensToReceive <= _availableTokensForPurchase(token), NotEnoughSupply());
+
         treasuryEthFeesCollected += ethFee;
         tokenState.ethCollected += ethForReserves;
         tokenState.releasedSupply += tokensToReceive;
@@ -159,11 +163,13 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
-        require(tokenConfig.exists(), InvalidToken());
-        require(tokenState.notGraduated(), AlreadyGraduated());
         require(tokenAmount > 0, InvalidAmount());
         require(block.timestamp <= deadline, DeadlineExceeded());
+        require(tokenConfig.exists(), InvalidToken());
+        require(tokenState.notGraduated(), AlreadyGraduated());
 
+        // reverts with InsufficientEthReserves if seller would receive more than eth reserves allocated to the token
+        // that scenario should never happen, it is an extra cautious measure
         (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller) =
             _quoteSellExactTokens(token, tokenAmount);
 
@@ -171,18 +177,17 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         // When minEthAmount==0, we assume that the seller accepts any kind of "reasonable" slippage
         // However, receiving eth in exchange for a non-zero amount of tokens would be unfair
         require(ethForSeller > 0, ReceivingZeroAmount());
-        // Hopefully this scenario never happens
-        require(_availableEthFromReserves(token) >= ethPulledFromReserves, InsufficientETHReserves());
 
         tokenState.ethCollected -= ethPulledFromReserves;
         tokenState.releasedSupply -= tokenAmount;
         treasuryEthFeesCollected += ethFee;
 
+        emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
+
         // funds transfers
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
-        _transferEth(msg.sender, ethForSeller, true);
 
-        emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
+        _transferEth(msg.sender, ethForSeller, true);
 
         return ethForSeller;
     }
@@ -201,11 +206,9 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
-        if (ethValue > _maxEthToSpend(token)) revert PurchaseExceedsLimitPostGraduation();
 
+        // this reverts with NotEnoughSupply if attempting to purchase more than this contract's balance
         (ethForPurchase, ethFee, tokensToReceive,) = _quoteBuyWithExactEth(token, ethValue);
-
-        if (tokensToReceive > _availableTokensForPurchase(token)) revert NotEnoughSupply();
     }
 
     /// @notice Quotes the result of selling exact amount of tokens
@@ -221,9 +224,9 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
 
+        // reverts with InsufficientEthReserves if seller would receive more than eth reserves allocated to the token
+        // that scenario should never happen, it is an extra cautious measure
         (ethPulledFromReserves, ethFee, ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
-
-        if (ethPulledFromReserves > _availableEthFromReserves(token)) revert InsufficientETHReserves();
     }
 
     /// @notice Returns the maximum amount of ETH that can be spent on a given token
@@ -317,7 +320,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         tokenState.graduated = true;
 
         uint256 ethCollected = tokenState.ethCollected;
-        uint256 tokenBalance = token.balanceOf(address(this));
+        uint256 tokenBalance = _availableTokens(tokenAddress);
 
         // Update state - all resources transferred to graduator
         tokenState.ethCollected = 0;
@@ -366,27 +369,31 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         (tokensToReceive, canGraduate) =
             tokenConfig.bondingCurve.buyTokensWithExactEth(tokenStates[token].ethCollected, ethForPurchase);
 
+        if (tokensToReceive > _availableTokens(token)) revert NotEnoughSupply();
+
         return (ethForPurchase, ethFee, tokensToReceive, canGraduate);
     }
 
     function _quoteSellExactTokens(address token, uint256 tokenAmount)
         internal
         view
-        returns (uint256 ethFromSale, uint256 ethFee, uint256 ethForSeller)
+        returns (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller)
     {
         TokenConfig storage tokenConfig = tokenConfigs[token];
 
-        ethFromSale = tokenConfig.bondingCurve.sellExactTokens(tokenStates[token].ethCollected, tokenAmount);
+        ethPulledFromReserves = tokenConfig.bondingCurve.sellExactTokens(tokenStates[token].ethCollected, tokenAmount);
 
         // it is ok that these fees round in favor of the user (1 wei less fee on every sale)
-        ethFee = (ethFromSale * tokenConfig.sellFeeBps) / BASIS_POINTS;
-        ethForSeller = ethFromSale - ethFee;
+        ethFee = (ethPulledFromReserves * tokenConfig.sellFeeBps) / BASIS_POINTS;
+        ethForSeller = ethPulledFromReserves - ethFee;
 
-        return (ethFromSale, ethFee, ethForSeller);
+        if (ethPulledFromReserves > _availableEthFromReserves(token)) revert InsufficientEthReserves();
+
+        return (ethPulledFromReserves, ethFee, ethForSeller);
     }
 
     /// @dev The supply of a token that can be purchased
-    function _availableTokensForPurchase(address token) internal view returns (uint256) {
+    function _availableTokens(address token) internal view returns (uint256) {
         return ILivoToken(token).balanceOf(address(this));
     }
 
