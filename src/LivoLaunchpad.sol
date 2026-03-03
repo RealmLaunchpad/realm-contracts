@@ -77,6 +77,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     event TreasuryFeesCollected(address indexed treasury, uint256 amount);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
+    event CommunityTakeOver(address indexed token, address newOwner);
 
     /////////////////////////////////////////////////
 
@@ -260,10 +261,12 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     //////////////////////////// Admin functions //////////////////////////
 
+    /// @notice Whitelist a Factory allowed to launch tokens here
     function whitelistFactory(address factory) external onlyOwner {
         _whitelistFactory(factory);
     }
 
+    /// @notice blacklist a Factory not allowed to launch tokens here anymore
     function blacklistFactory(address factory) external onlyOwner {
         _blacklistFactory(factory);
     }
@@ -307,8 +310,9 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     /// @param token The address of the token
     /// @param newTokenOwner The address of the proposed new tokenOwner (must not be address(0))
     function communityTakeOver(address token, address newTokenOwner) external onlyOwner {
+        // address(0) is allowed, to cancel an existing proposed owner
         ILivoToken(token).proposeNewOwner(newTokenOwner);
-        // todo implement tests
+        emit CommunityTakeOver(token, newTokenOwner);
     }
 
     //////////////////////////// Internal functions //////////////////////////
