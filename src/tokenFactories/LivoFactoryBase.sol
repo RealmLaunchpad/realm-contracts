@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
@@ -46,6 +44,7 @@ contract LivoFactoryBase {
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
         require(tokenOwner != address(0), InvalidTokenOwner());
 
+        // forge-lint: disable-next-line
         bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
         // minimal proxy pattern to deploy a new LivoToken instance
         // Deploying the contracts with new() costs 3-4 times more gas than cloning

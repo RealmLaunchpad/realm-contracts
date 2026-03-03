@@ -13,7 +13,7 @@ abstract contract FactoryWhitelisting {
     event FactoryBlacklisted(address indexed factory);
 
     modifier onlyWhitelistedFactory() {
-        require(whitelistedFactories[msg.sender], UnauthorizedFactory());
+        _onlyWhitelistedFactory();
         _;
     }
 
@@ -31,5 +31,9 @@ abstract contract FactoryWhitelisting {
 
         whitelistedFactories[factory] = false;
         emit FactoryBlacklisted(factory);
+    }
+
+    function _onlyWhitelistedFactory() internal view {
+        require(whitelistedFactories[msg.sender], UnauthorizedFactory());
     }
 }

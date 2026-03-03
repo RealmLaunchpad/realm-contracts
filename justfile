@@ -2,6 +2,9 @@
 build:
     forge build
 
+lint:
+    forge lint src/
+
 # copies abis from out/ to abis/ for easier access in frontend
 abis:
     @mkdir -p abis

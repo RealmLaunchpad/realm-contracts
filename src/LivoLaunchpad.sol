@@ -22,10 +22,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     /// @notice 100% in basis points
     uint256 public constant BASIS_POINTS = 10_000;
 
-    /// @notice The total supply of all deployed tokens
-    /// @dev 1 billion tokens with 18 decimals
-    uint256 private constant TOTAL_SUPPLY = 1_000_000_000e18; // 1B tokens
-
     /// @notice Total fees collected by the treasury (in wei)
     uint256 public treasuryEthFeesCollected;
 
@@ -92,8 +88,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     }
 
     function launchToken(address token, ILivoBondingCurve bondingCurve) external onlyWhitelistedFactory {
-        // totalSupply() is assumed to match TOTAL_SUPPLY in _availableTokensForPurchase()
-        require(IERC20(token).totalSupply() == TOTAL_SUPPLY, InvalidTokenSupply());
         // this check is important because bondingCurve!=address(0) is used as proxy for valid existing tokens within the Launchpad
         require(address(bondingCurve) != address(0), InvalidAddress());
 
@@ -393,9 +387,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     /// @dev The supply of a token that can be purchased
     function _availableTokensForPurchase(address token) internal view returns (uint256) {
-        // This is equivalent to: return IERC20(token).balanceOf(address(this));
-        // But the below formulation is more gas efficient as it avoids an external call
-        return TOTAL_SUPPLY - tokenStates[token].releasedSupply;
+        return ILivoToken(token).balanceOf(address(this));
     }
 
     function _availableEthFromReserves(address token) internal view returns (uint256) {

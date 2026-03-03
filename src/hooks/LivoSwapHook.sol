@@ -150,6 +150,8 @@ contract LivoSwapHook is BaseHook {
         int128 ethDelta,
         uint16 taxBps
     ) internal returns (bytes4 selector, int128 taxCollected) {
+        // casting to 'uint256' is safe because max of uint128 is way above any realistic value for eth
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 absEthAmount = uint256(uint128(ethDelta));
         uint256 taxAmount = (absEthAmount * taxBps) / BASIS_POINTS;
 
@@ -160,6 +162,8 @@ contract LivoSwapHook is BaseHook {
 
         emit CreatorTaxesAccrued(tokenAddress, taxRecipient, taxAmount);
 
+        // casting to 'uint128' is safe because it is known to be a positive eth value well below eth max supply
+        // forge-lint: disable-next-line(unsafe-typecast)
         return (IHooks.afterSwap.selector, int128(uint128(taxAmount)));
     }
 }

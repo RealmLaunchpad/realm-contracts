@@ -4,17 +4,11 @@ pragma solidity 0.8.28;
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
-import {IWETH} from "src/interfaces/IWETH.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 // UniswapV4 imports for tax swap functionality
-import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
-import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 /// this line below can be adjusted to import the Sepolia addresses when deploying in sepolia
@@ -24,6 +18,8 @@ import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/Depl
 /// @notice ERC20 token implementation with time-limited sell taxes enforced via Uniswap V4 hooks
 /// @dev Extends LivoToken to add tax configuration that is queried by LivoSwapHook
 contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
+    using SafeERC20 for IERC20;
+
     /// @notice Maximum allowed tax rate (500 basis points = 5%)
     uint16 public constant MAX_TAX_BPS = 500;
 
@@ -173,7 +169,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
             payable(msg.sender).transfer(address(this).balance);
         } else {
             uint256 balance = IERC20(token).balanceOf(address(this));
-            IERC20(token).transfer(msg.sender, balance);
+            IERC20(token).safeTransfer(msg.sender, balance);
         }
     }
 }
