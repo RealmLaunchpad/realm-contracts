@@ -58,7 +58,7 @@ contract LivoFeeBaseHandlerTests is Test {
 
     /// @dev Deposits `amount` of ETH into treasury pending fees
     modifier depositTreasuryFees(uint256 amount) {
-        handler.depositTreasuryFees{value: amount}();
+        handler.depositTreasuryFees{value: amount}(tokenA);
         _;
     }
 
@@ -133,10 +133,10 @@ contract LivoFeeBaseHandlerTests is Test {
         assertEq(_claimable(tokenA, creator), 0, "claimable should remain 0");
     }
 
-    /// @dev when fees are deposited, then a FeesDeposited event is emitted with correct params
+    /// @dev when fees are deposited, then a CreatorFeesDeposited event is emitted with correct params
     function test_depositFees_assertEventEmitted() public {
         vm.expectEmit(true, true, false, true, address(handler));
-        emit ILivoFeeHandler.FeesDeposited(tokenA, creator, 1 ether);
+        emit ILivoFeeHandler.CreatorFeesDeposited(tokenA, creator, 1 ether);
         handler.depositFees{value: 1 ether}(tokenA, creator);
     }
 

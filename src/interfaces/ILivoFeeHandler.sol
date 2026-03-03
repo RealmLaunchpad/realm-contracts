@@ -7,8 +7,10 @@ interface ILivoFeeHandler {
     error EthTransferFailed();
 
     /// EVENTS
-    event FeesDeposited(address indexed token, address indexed account, uint256 amount);
+    event CreatorFeesDeposited(address indexed token, address indexed account, uint256 amount);
     event CreatorClaimed(address indexed token, address indexed account, uint256 amount);
+
+    event TreasuryFeesDeposited(address token, uint256 amount);
     event TreasuryFeesClaimed(uint256 amount);
 
     ///////////// EXTERNAL FUNCTIONS //////////////
@@ -17,7 +19,7 @@ interface ILivoFeeHandler {
     function depositFees(address token, address feeReceiver) external payable;
 
     /// @notice Deposits msg.value into treasury pending fees
-    function depositTreasuryFees() external payable;
+    function depositTreasuryFees(address token) external payable;
 
     /// @notice Claims accumulated ETH fees for msg.sender from the provided `tokens`
     function claim(address[] calldata tokens) external;

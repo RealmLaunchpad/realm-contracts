@@ -502,7 +502,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         address[] memory tokens = new address[](0);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSignature("NoTokensGiven()"));
+        vm.expectRevert(abi.encodeWithSignature("NoTokens()"));
         feeHandlerV4.accrueTokenFees(tokens);
     }
 }
@@ -752,7 +752,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         address[] memory tokens = new address[](0);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSignature("NoTokensGiven()"));
+        vm.expectRevert(abi.encodeWithSignature("NoTokens()"));
         feeHandlerV4.accrueTokenFees(tokens);
     }
 

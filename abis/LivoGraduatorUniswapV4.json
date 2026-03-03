@@ -629,7 +629,7 @@
   },
   {
     "type": "error",
-    "name": "NoTokensGiven",
+    "name": "NoTokens",
     "inputs": []
   },
   {
@@ -682,7 +682,7 @@
   },
   {
     "type": "error",
-    "name": "TooManyTokensGiven",
+    "name": "TooManyTokens",
     "inputs": []
   }
 ]

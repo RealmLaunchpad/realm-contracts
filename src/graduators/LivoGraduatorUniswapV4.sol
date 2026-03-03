@@ -211,7 +211,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         );
 
         // Deposit treasury graduation fees for later `treasuryClaim()`
-        ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}();
+        ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}(tokenAddress);
     }
 
     function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
@@ -272,13 +272,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
                 feeHandlerAddress,
                 treasury
             );
-            LivoFeeV4Handler(payable(feeHandlerAddress)).registerPosition(tokenAddress, positionIds);
+            LivoFeeV4Handler(payable(feeHandlerAddress)).registerPositionIds(tokenAddress, positionIds);
             return (liquidity1, liquidity2);
         }
 
         uint256[] memory onePositionId = new uint256[](1);
         onePositionId[0] = primaryPositionId;
-        LivoFeeV4Handler(payable(feeHandlerAddress)).registerPosition(tokenAddress, onePositionId);
+        LivoFeeV4Handler(payable(feeHandlerAddress)).registerPositionIds(tokenAddress, onePositionId);
     }
 
     function _addLiquidity(

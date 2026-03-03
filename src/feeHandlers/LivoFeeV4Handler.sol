@@ -35,25 +35,26 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @notice Contract where the liquidity NFTs are locked
     ILiquidityLockUniv4WithFees public immutable LIQUIDITY_LOCK;
 
-    /// @notice Uniswap V4 pool manager contract
-    IPoolManager public immutable UNIV4_POOL_MANAGER;
-
-    /// @notice Uniswap V4 position manager contract
-    address public immutable UNIV4_POSITION_MANAGER;
-
     /// @notice Hook contract address for pool interactions
     address public immutable HOOK_ADDRESS;
 
+    /////////////////// Uniswap v4 related ///////////////
+
+    /// @notice Uniswap V4 pool manager contract
+    IPoolManager internal immutable _UNIV4_POOL_MANAGER;
+
+    /// @notice Uniswap V4 position manager contract
+    address internal immutable _UNIV4_POSITION_MANAGER;
+
     /////////////////////// Errors ///////////////////////
 
-    error NoTokensGiven();
-    error TooManyTokensGiven();
+    error NoTokens();
+    error TooManyTokens();
     error UnauthorizedGraduator();
 
     /////////////////////// Events ///////////////////////
 
-    event TreasuryFeesAccrued(address indexed token, uint256 amount);
-    event PositionRegistered(address indexed token, uint256 indexed positionId);
+    event PositionIdRegistered(address indexed token, uint256 indexed positionId);
     event AuthorizedGraduatorSet(address indexed graduator, bool authorized);
 
     //////////////////////////////////////////////////////
@@ -71,10 +72,11 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         address _positionManager,
         address _hook
     ) LivoFeeBaseHandler(_launchpad) Ownable(msg.sender) {
-        LIQUIDITY_LOCK = ILiquidityLockUniv4WithFees(_liquidityLock);
-        UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
-        UNIV4_POSITION_MANAGER = _positionManager;
         HOOK_ADDRESS = _hook;
+        LIQUIDITY_LOCK = ILiquidityLockUniv4WithFees(_liquidityLock);
+
+        _UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
+        _UNIV4_POSITION_MANAGER = _positionManager;
     }
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
@@ -86,6 +88,7 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @param graduator Address to authorize or deauthorize
     /// @param authorized Whether the graduator is authorized
     function setAuthorizedGraduator(address graduator, bool authorized) external onlyOwner {
+        // owner is trusted. No need for address(0) checks
         authorizedGraduators[graduator] = authorized;
         emit AuthorizedGraduatorSet(graduator, authorized);
     }
@@ -94,26 +97,27 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @dev Only callable by authorized graduators during graduation
     /// @param token Address of the graduated token
     /// @param positionIds_ The Uniswap V4 position NFT IDs
-    function registerPosition(address token, uint256[] calldata positionIds_) external {
+    function registerPositionIds(address token, uint256[] calldata positionIds_) external {
         require(authorizedGraduators[msg.sender], UnauthorizedGraduator());
 
         uint256 nPositions = positionIds_.length;
         for (uint256 i = 0; i < nPositions; i++) {
             uint256 positionId = positionIds_[i];
             positionIds[token].push(positionId);
-            emit PositionRegistered(token, positionId);
+            emit PositionIdRegistered(token, positionId);
         }
     }
 
     /// @notice Accrues LP fees for tokens and deposits creator/treasury shares
+    /// @dev intentionally not protected, as it only accrues but doesn't send fees to final destination
     /// @dev Creator shares are deposited in fee handler accounting. Treasury shares are accrued in storage.
     ///      Iterates all registered positions for each token automatically.
     ///      Creator claims are handled by `claim(address[] calldata tokens)` in this contract.
     /// @param tokens Array of token addresses
     function accrueTokenFees(address[] calldata tokens) external nonReentrant {
         uint256 nTokens = tokens.length;
-        require(nTokens > 0, NoTokensGiven());
-        require(nTokens < 100, TooManyTokensGiven());
+        require(nTokens > 0, NoTokens());
+        require(nTokens < 100, TooManyTokens());
 
         for (uint256 i = 0; i < nTokens; i++) {
             _accrueLpFees(tokens[i]);
@@ -129,6 +133,7 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
 
+            // increases storage pending fees for the token fee receiver & treasury
             _accrueLpFees(token);
 
             uint256 tokenClaimable = pendingClaims[token][msg.sender];
@@ -172,39 +177,38 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
                 continue;
             }
 
-            creatorClaimable[i] += _viewClaimableEthFees(token);
+            // LP fees are split 50/50 between creator and treasury
+            uint256 _pendingLpFees = _viewLpUniClaimableFees(token);
+            (uint256 creatorFee,) = _creatorTreasurySplit(_pendingLpFees);
+
+            creatorClaimable[i] += creatorFee;
         }
     }
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
     function _accrueLpFees(address token) internal {
-        uint256 creatorAccrued;
-        uint256 treasuryAccrued;
+        uint256 totalCreatorFees;
+        uint256 totalTreasuryAccrued;
+        address feeReceiver = ILivoToken(token).feeReceiver();
 
         uint256 nPositions = positionIds[token].length;
         for (uint256 p = 0; p < nPositions; p++) {
             uint256 positionId = positionIds[token][p];
             (uint256 creatorFees, uint256 treasuryFees) = _accrueFromUniswapLock(token, positionId);
-            creatorAccrued += creatorFees;
-            treasuryAccrued += treasuryFees;
+            totalCreatorFees += creatorFees;
+            totalTreasuryAccrued += treasuryFees;
         }
 
-        if (creatorAccrued > 0) {
-            _depositCreatorFees(token, creatorAccrued);
+        if (totalCreatorFees > 0) {
+            pendingClaims[token][feeReceiver] += totalCreatorFees;
+            emit CreatorFeesDeposited(token, feeReceiver, totalCreatorFees);
         }
 
-        if (treasuryAccrued > 0) {
-            treasuryPendingFees += treasuryAccrued;
-            emit TreasuryFeesAccrued(token, treasuryAccrued);
+        if (totalTreasuryAccrued > 0) {
+            treasuryPendingFees += totalTreasuryAccrued;
+            emit TreasuryFeesDeposited(token, totalTreasuryAccrued);
         }
-    }
-
-    function _depositCreatorFees(address token, uint256 amount) internal {
-        address feeReceiver = ILivoToken(token).feeReceiver();
-        // Deposit into this handler's own accounting (inherited from LivoFeeBaseHandler)
-        pendingClaims[token][feeReceiver] += amount;
-        emit FeesDeposited(token, feeReceiver, amount);
     }
 
     function _accrueFromUniswapLock(address token, uint256 positionId)
@@ -221,62 +225,55 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         uint256 accruedEthFees = address(this).balance - balanceBefore;
 
         // 50/50 split of the eth fees between livo treasury and token owner
-        treasuryFees = accruedEthFees / 2;
-        creatorFees = accruedEthFees - treasuryFees;
+        (creatorFees, treasuryFees) = _creatorTreasurySplit(accruedEthFees);
     }
 
     /// @notice Estimates claimable ETH fees across all positions for a given token
     /// @param token Address of the token
-    /// @return creatorEthFees Total estimated creator ETH fees across all positions
-    function _viewClaimableEthFees(address token) internal view returns (uint256 creatorEthFees) {
+    /// @return pendingLpFees Total estimated LP ETH fees across all positions (creator + treasury)
+    function _viewLpUniClaimableFees(address token) internal view returns (uint256 pendingLpFees) {
         PoolId poolId = _getPoolKey(token).toId();
+
         uint256 nPositions = positionIds[token].length;
-        for (uint256 p = 0; p < nPositions; p++) {
-            creatorEthFees += _viewClaimableEthFeesForPosition(token, poolId, p);
+        // this would never happen for valid tokens, but just in case invalid tokens are passed
+        if (nPositions == 0) return 0;
+
+        // position 1 (always present)
+        pendingLpFees += _claimableLpEthFeesInPosition(
+            poolId, // poolId (bytes32)
+            UniswapV4PoolConstants.TICK_LOWER,
+            UniswapV4PoolConstants.TICK_UPPER,
+            positionIds[token][0] // first positionId
+        );
+
+        // add fees from position 2 if existing
+        if (nPositions > 1) {
+            pendingLpFees += _claimableLpEthFeesInPosition(
+                poolId, // poolId (bytes32)
+                UniswapV4PoolConstants.TICK_LOWER_2,
+                UniswapV4PoolConstants.TICK_UPPER_2,
+                positionIds[token][1] // second positionId
+            );
         }
     }
 
-    function _viewClaimableEthFeesForPosition(address token, PoolId poolId, uint256 positionIndex)
+    /// @notice returns the pending LP fees in a liquidity position (creator + treasury)
+    function _claimableLpEthFeesInPosition(PoolId poolId_, int24 tickLower_, int24 tickUpper_, uint256 positionId_)
         internal
         view
-        returns (uint256 creatorEthFees)
+        returns (uint128)
     {
-        uint256 positionId = positionIds[token][positionIndex];
+        (uint128 liquidity, uint256 feeGrowthInside0LastX128,) = _UNIV4_POOL_MANAGER.getPositionInfo(
+            poolId_, _UNIV4_POSITION_MANAGER, tickLower_, tickUpper_, bytes32(positionId_)
+        );
 
-        uint128 liquidity;
-        uint256 feeGrowthInside0LastX128;
-        uint256 feeGrowthInside0X128;
+        (uint256 feeGrowthInside0X128,) = _UNIV4_POOL_MANAGER.getFeeGrowthInside(
+            poolId_, tickLower_, tickUpper_
+        );
 
-        if (positionIndex == 0) {
-            (liquidity, feeGrowthInside0LastX128,) = UNIV4_POOL_MANAGER.getPositionInfo(
-                poolId,
-                UNIV4_POSITION_MANAGER,
-                UniswapV4PoolConstants.TICK_LOWER,
-                UniswapV4PoolConstants.TICK_UPPER,
-                bytes32(positionId)
-            );
-            (feeGrowthInside0X128,) = UNIV4_POOL_MANAGER.getFeeGrowthInside(
-                poolId, UniswapV4PoolConstants.TICK_LOWER, UniswapV4PoolConstants.TICK_UPPER
-            );
-        } else {
-            (liquidity, feeGrowthInside0LastX128,) = UNIV4_POOL_MANAGER.getPositionInfo(
-                poolId,
-                UNIV4_POSITION_MANAGER,
-                UniswapV4PoolConstants.TICK_LOWER_2,
-                UniswapV4PoolConstants.TICK_UPPER_2,
-                bytes32(positionId)
-            );
-            (feeGrowthInside0X128,) = UNIV4_POOL_MANAGER.getFeeGrowthInside(
-                poolId, UniswapV4PoolConstants.TICK_LOWER_2, UniswapV4PoolConstants.TICK_UPPER_2
-            );
-        }
-
-        uint128 tokenAmount = (FullMath.mulDiv(
-                feeGrowthInside0X128 - feeGrowthInside0LastX128, liquidity, FixedPoint128.Q128
-            ))
-        .toUint128();
-
-        creatorEthFees = tokenAmount - tokenAmount / 2;
+        return
+            (FullMath.mulDiv(feeGrowthInside0X128 - feeGrowthInside0LastX128, liquidity, FixedPoint128.Q128))
+            .toUint128();
     }
 
     function _getPoolKey(address tokenAddress) internal view returns (PoolKey memory) {
@@ -287,5 +284,11 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
             tickSpacing: UniswapV4PoolConstants.TICK_SPACING,
             hooks: IHooks(HOOK_ADDRESS)
         });
+    }
+
+    /// @dev 50/50 split of the eth fees between livo treasury and token owner
+    function _creatorTreasurySplit(uint256 amount) internal pure returns (uint256 creatorFees, uint256 treasuryFees) {
+        treasuryFees = amount / 2;
+        creatorFees = amount - treasuryFees;
     }
 }

@@ -180,8 +180,10 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
             tokenAddress, feeConfig.feeReceiver
         );
 
+        // todo emit events to account for graduation fees
+
         // Deposit treasury graduation fees for later `treasuryClaim()`
-        ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}();
+        ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}(tokenAddress);
     }
 
     function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
