@@ -158,7 +158,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
 
         // 1. Handle fee split
-        uint256 ethForLiquidity = _handleGraduationFeesV4(tokenAddress, treasury);
+        uint256 ethForLiquidity = _handleGraduationFeesV4(tokenAddress);
 
         // 2. Continue with V4 liquidity logic
         uint256 tokenBalanceBeforeDeposit = token.balanceOf(address(this));
@@ -196,7 +196,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
-    function _handleGraduationFeesV4(address tokenAddress, address treasury)
+    function _handleGraduationFeesV4(address tokenAddress)
         internal
         returns (uint256 ethForLiquidity)
     {
