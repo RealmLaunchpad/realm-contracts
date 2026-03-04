@@ -29,25 +29,8 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     ///////////////////////////////// uniswap v4 related /////////////////////////////////////////
     // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
 
-    /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
-    /// @dev 10000 pips = 1%
-    /// @dev IMPORTANT: this needs to match the graduator settings. Clearly a weak point.
-    /// @dev this weak structure is done to save gas by having these as constants in the token and make deployment cheaper
-    uint24 constant LP_FEE = 10000;
-
-    /// @notice Tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
-    /// @dev IMPORTANT: this needs to match the graduator settings. Clearly a weak point.
-    /// @dev this weak structure is done to save gas by having these as constants in the token and make deployment cheaper
-    int24 public constant TICK_SPACING = 200;
-
     /// @notice Pool manager for lock state checking
     IPoolManager public constant UNIV4_POOL_MANAGER = IPoolManager(DeploymentAddresses.UNIV4_POOL_MANAGER);
-
-    /// @notice V4 Router for executing tax swaps
-    address public constant UNIV4_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
-
-    /// @notice Permit2 address
-    address private constant PERMIT2 = DeploymentAddresses.PERMIT2;
 
     /// @notice the hook address which will charge the sell taxes
     address public constant TAX_HOOK = DeploymentAddresses.LIVO_SWAP_HOOK;
@@ -117,6 +100,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         launchpad = LivoLaunchpad(params.launchpad);
     }
 
+    /// @notice Returns the tax configuration for this taxable token
     function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
         config = TaxConfig({
             buyTaxBps: 0, // Buy tax is always 0 in this token implementation

@@ -43,6 +43,7 @@ abstract contract FactoryWhitelisting {
         emit FactoryBlacklisted(factory);
     }
 
+    /// @notice Reverts if the caller is not a whitelisted factory
     function _onlyWhitelistedFactory() internal view {
         require(whitelistedFactories[msg.sender], UnauthorizedFactory());
     }

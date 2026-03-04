@@ -119,6 +119,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         emit OwnershipTransferred(msg.sender);
     }
 
+    /// @notice Updates the fee receiver address, only callable by the token owner
     function setFeeReceiver(address newFeeReceiver) external {
         require(msg.sender == owner, Unauthorized());
         require(newFeeReceiver != address(0), InvalidFeeReceiver());

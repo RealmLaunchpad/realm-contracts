@@ -55,17 +55,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     ///////////////////// Events /////////////////////
 
-    // todo this event is unused. evaluate full from from factories.createToken
-    event TokenCreated(
-        address indexed token,
-        address indexed tokenOwner,
-        string name,
-        string symbol,
-        address implementation,
-        address bondingCurve,
-        address graduator
-    );
-
     event TokenLaunched(address indexed token);
     event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
     event LivoTokenBuy(
@@ -89,6 +78,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         setTradingFees(100, 100);
     }
 
+    /// @notice Registers a new token in the launchpad with its bonding curve, callable only by whitelisted factories
     function launchToken(address token, ILivoBondingCurve bondingCurve) external onlyWhitelistedFactory {
         // this check is important because bondingCurve!=address(0) is used as proxy for valid existing tokens within the Launchpad
         // the msg.sender is a trusted factory, which should have a valid bonding curve compliant with IBondingCurve
@@ -250,15 +240,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         return tokenConfigs[token];
     }
 
-    /// @notice Returns the owner of a token
-    /// @param token The address of the token
-    /// @return The address of the token owner
-    function getTokenOwner(address token) external view returns (address) {
-        // reverts on purpose because other parts of the system rely on the veracity of this output
-        if (!tokenConfigs[token].exists()) revert InvalidToken();
-        return ILivoToken(token).owner();
-    }
-
     //////////////////////////// Admin functions //////////////////////////
 
     /// @notice Whitelist a Factory allowed to launch tokens here
@@ -341,6 +322,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         emit TokenGraduated(tokenAddress, ethCollected, tokenBalance);
     }
 
+    /// @notice Transfers ETH to a recipient, optionally reverting on failure
     function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
         if (amount == 0) return true;
         // note: this call happens always after all state changes in all callers of this function to protect against re-entrancy
@@ -352,6 +334,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
 
+    /// @notice Returns the maximum ETH a user can spend on a token without exceeding graduation limits
     function _maxEthToSpend(address token) internal view returns (uint256 ethBuy) {
         uint256 remainingReserves = tokenConfigs[token].maxEthReserves() - tokenStates[token].ethCollected;
 
@@ -359,6 +342,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         ethBuy = (remainingReserves * BASIS_POINTS) / (BASIS_POINTS - tokenConfigs[token].buyFeeBps);
     }
 
+    /// @notice Computes the buy quote: ETH split, fee, tokens received, and graduation eligibility
     function _quoteBuyWithExactEth(address token, uint256 ethValue)
         internal
         view
@@ -378,6 +362,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         return (ethForPurchase, ethFee, tokensToReceive, canGraduate);
     }
 
+    /// @notice Computes the sell quote: ETH pulled from reserves, fee, and ETH for the seller
     function _quoteSellExactTokens(address token, uint256 tokenAmount)
         internal
         view
@@ -401,6 +386,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         return ILivoToken(token).balanceOf(address(this));
     }
 
+    /// @notice Returns the ETH reserves currently allocated to a token
     function _availableEthFromReserves(address token) internal view returns (uint256) {
         return tokenStates[token].ethCollected;
     }

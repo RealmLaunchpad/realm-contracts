@@ -24,12 +24,18 @@ contract LivoFactoryTaxToken is ILivoFactory {
     /// @notice max configurable sell tax duration
     uint256 public constant MAX_SELL_TAX_DURATION_SECONDS = 14 days;
 
+    /// @notice Taxable token implementation contract used as the clone source
     ILivoTaxableTokenUniV4 public immutable TOKEN_IMPLEMENTATION;
+    /// @notice Launchpad where tokens are registered after creation
     ILivoLaunchpad public immutable LAUNCHPAD;
+    /// @notice Graduator contract that handles token graduation to Uniswap V4
     ILivoGraduator public immutable GRADUATOR;
+    /// @notice Bonding curve used for token pricing before graduation
     ILivoBondingCurve public immutable BONDING_CURVE;
+    /// @notice Fee handler contract for managing creator and treasury fees
     ILivoFeeHandler public immutable FEE_HANDLER;
 
+    /// @notice Initializes the factory with its immutable dependencies
     constructor(
         address launchpad,
         address tokenImplementation,
@@ -44,6 +50,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
         FEE_HANDLER = ILivoFeeHandler(feeHandler);
     }
 
+    /// @notice Deploys a new taxable token clone with sell tax configuration, initializes it, and registers it in the launchpad
     /// @dev tokenOwner wont receive any fees, he needs to claim them manually. This avoids unwanted ETH fees from project tokenOwner doesn't specifically endorse
     function createToken(
         string calldata name,
@@ -108,6 +115,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
         return token;
     }
 
+    /// @notice Initializes the taxable token clone with its params and tax configuration
     function _initializeToken(
         address token,
         ILivoToken.InitializeParams memory initParams,

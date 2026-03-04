@@ -187,6 +187,7 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
+    /// @notice Accrues LP fees from all Uniswap V4 positions for a token and splits them between creator and treasury
     function _accrueLpFees(address token) internal {
         uint256 totalCreatorFees;
         uint256 totalTreasuryAccrued;
@@ -211,6 +212,7 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         }
     }
 
+    /// @notice Claims LP fees from a single locked Uniswap V4 position and splits them
     function _accrueFromUniswapLock(address token, uint256 positionId)
         internal
         returns (uint256 creatorFees, uint256 treasuryFees)
@@ -274,6 +276,7 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
             .toUint128();
     }
 
+    /// @notice Constructs the Uniswap V4 PoolKey for a given token paired with native ETH
     function _getPoolKey(address tokenAddress) internal view returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH

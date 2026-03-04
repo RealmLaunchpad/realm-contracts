@@ -13,12 +13,18 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 /// @notice This can be used for univ2 or univ4 tokens. Just with different graduators
 contract LivoFactoryBase is ILivoFactory {
+    /// @notice Token implementation contract used as the clone source
     ILivoToken public immutable TOKEN_IMPLEMENTATION;
+    /// @notice Launchpad where tokens are registered after creation
     ILivoLaunchpad public immutable LAUNCHPAD;
+    /// @notice Graduator contract that handles token graduation to Uniswap
     ILivoGraduator public immutable GRADUATOR;
+    /// @notice Bonding curve used for token pricing before graduation
     ILivoBondingCurve public immutable BONDING_CURVE;
+    /// @notice Fee handler contract for managing creator and treasury fees
     ILivoFeeHandler public immutable FEE_HANDLER;
 
+    /// @notice Initializes the factory with its immutable dependencies
     constructor(
         address launchpad,
         address tokenImplementation,
@@ -33,6 +39,7 @@ contract LivoFactoryBase is ILivoFactory {
         FEE_HANDLER = ILivoFeeHandler(feeHandler);
     }
 
+    /// @notice Deploys a new token clone, initializes it, and registers it in the launchpad
     /// @dev tokenOwner wont receive any fees, he needs to claim them manually. This avoids unwanted ETH fees from project tokenOwner doesn't specifically endorse
     function createToken(string calldata name, string calldata symbol, address tokenOwner, bytes32 salt)
         external

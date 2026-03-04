@@ -61,7 +61,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
 
     //////////////////////// SECOND LIQUIDITY POSITION (ONLY ETH) ////////////////////////////
 
+    /// @notice The sqrtX96 price at the lower tick of the secondary ETH-only liquidity position
     uint160 immutable SQRT_LOWER_2;
+    /// @notice The sqrtX96 price at the upper tick of the secondary ETH-only liquidity position
     uint160 immutable SQRT_UPPER_2;
 
     /// @notice Graduation ETH fee (creator compensation + treasury fee)
@@ -70,10 +72,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
     /// @notice ETH compensation paid to token creator at graduation
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
-
-    /////////////////////// Errors ///////////////////////
-
-    error EthTransferFailed();
 
     /////////////////////// Events ///////////////////////
 
@@ -117,10 +115,12 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         IERC721(_positionManager).setApprovalForAll(_liquidityLock, true);
     }
 
+    /// @notice Whitelist a factory allowed to graduate tokens through this contract
     function whitelistFactory(address factory) external onlyOwner {
         _whitelistFactory(factory);
     }
 
+    /// @notice Blacklist a factory, preventing it from graduating tokens through this contract
     function blacklistFactory(address factory) external onlyOwner {
         _blacklistFactory(factory);
     }
@@ -196,6 +196,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
+    /// @notice Splits graduation ETH between creator compensation, treasury, and liquidity
     function _handleGraduationFeesV4(address tokenAddress) internal returns (uint256 ethForLiquidity) {
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
@@ -213,6 +214,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         emit TreasuryGraduationFeeDeposited(tokenAddress, treasuryShare);
     }
 
+    /// @notice Constructs the Uniswap V4 PoolKey for a given token paired with native ETH
     function _getPoolKey(address tokenAddress) internal view virtual returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
@@ -223,6 +225,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         });
     }
 
+    /// @notice Adds primary and secondary liquidity positions and registers them in the fee handler
     function _addAndRegisterLiquidityPositions(
         PoolKey memory pool,
         address tokenAddress,
@@ -273,6 +276,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         LivoFeeV4Handler(payable(feeHandlerAddress)).registerPositionIds(tokenAddress, onePositionId);
     }
 
+    /// @notice Mints a Uniswap V4 liquidity position and locks it in the liquidity lock contract
     function _addLiquidity(
         PoolKey memory pool,
         int24 tickLower,

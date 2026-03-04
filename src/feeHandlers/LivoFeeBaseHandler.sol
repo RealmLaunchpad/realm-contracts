@@ -15,15 +15,18 @@ contract LivoFeeBaseHandler is ILivoFeeHandler {
     /// @notice launchpad address, to have treasury synced
     address public immutable LIVO_LAUNCHPAD;
 
+    /// @notice Initializes the fee handler with the launchpad address
     constructor(address _launchpad) {
         LIVO_LAUNCHPAD = _launchpad;
     }
 
+    /// @notice Deposits ETH fees for a token's fee receiver
     function depositFees(address token, address feeReceiver) external payable {
         pendingClaims[token][feeReceiver] += msg.value;
         emit CreatorFeesDeposited(token, feeReceiver, msg.value);
     }
 
+    /// @notice Deposits ETH fees allocated to the treasury
     function depositTreasuryFees(address token) external payable {
         treasuryPendingFees += msg.value;
         emit TreasuryFeesDeposited(token, msg.value);
@@ -66,6 +69,7 @@ contract LivoFeeBaseHandler is ILivoFeeHandler {
         emit TreasuryFeesClaimed(pending);
     }
 
+    /// @notice Returns the pending claimable ETH fees for an account across the given tokens
     /// @dev This doesn't include non-accrued LP fees that are sitting in the LP position
     function getClaimable(address[] calldata tokens, address account)
         external
@@ -80,6 +84,7 @@ contract LivoFeeBaseHandler is ILivoFeeHandler {
         }
     }
 
+    /// @notice Transfers ETH to a recipient, reverting on failure
     function _transferEth(address recipient, uint256 amount) internal {
         if (amount == 0) return;
         (bool success,) = recipient.call{value: amount}("");
