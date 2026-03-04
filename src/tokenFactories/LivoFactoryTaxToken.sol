@@ -17,6 +17,7 @@ import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 /// @notice This can be used for univ2 or univ4 tokens. Just with different graduators
 contract LivoFactoryTaxToken is ILivoFactory {
     error InvalidSellTaxBps();
+    error InvalidTaxDuration();
 
     /// @notice max configurable sell tax
     uint256 public constant MAX_SELL_TAX_BPS = 500;
@@ -61,7 +62,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
         uint32 taxDurationSeconds
     ) external returns (address token) {
         require(sellTaxBps <= MAX_SELL_TAX_BPS, InvalidSellTaxBps());
-        require(taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidSellTaxBps());
+        require(taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
 
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());

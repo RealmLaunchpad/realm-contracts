@@ -20,12 +20,6 @@ import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/Depl
 contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     using SafeERC20 for IERC20;
 
-    /// @notice Maximum allowed tax rate (500 basis points = 5%)
-    uint16 public constant MAX_TAX_BPS = 500;
-
-    /// @notice Maximum duration for the tax period after graduation timestamp
-    uint40 public constant MAX_TAX_DURATION_SECONDS = 14 days;
-
     ///////////////////////////////// uniswap v4 related /////////////////////////////////////////
     // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
 
@@ -54,8 +48,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
     //////////////////////// Errors //////////////////////
 
-    error InvalidTaxRate(uint16 rate);
-    error InvalidTaxDuration();
     error NotTokenOwner();
 
     //////////////////////////////////////////////////////
@@ -110,13 +102,10 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         });
     }
 
-    /// @notice Internal helper to validate tax configuration
+    /// @notice Internal helper to store tax configuration
     /// @dev Separated to reduce stack depth in initialize()
     function _initializeTaxConfig(uint16 _sellTaxBps, uint40 _taxDurationSeconds) internal {
-        // Validate tax rates
-        if (_sellTaxBps > MAX_TAX_BPS) revert InvalidTaxRate(_sellTaxBps);
-        if (_taxDurationSeconds > MAX_TAX_DURATION_SECONDS) revert InvalidTaxDuration();
-
+        // there is no restrictions here anymore regarding sell tax an tax duration. Restrictions are enforced in the factory
         emit LivoTaxableTokenInitialized(
             0, // Buy tax is always 0 in this token implementation
             _sellTaxBps,
