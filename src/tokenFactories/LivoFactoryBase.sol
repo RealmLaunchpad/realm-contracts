@@ -9,12 +9,10 @@ import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 /// @notice This can be used for univ2 or univ4 tokens. Just with different graduators
-contract LivoFactoryBase {
-    error InvalidNameOrSymbol();
-    error InvalidTokenOwner();
-
+contract LivoFactoryBase is ILivoFactory {
     ILivoToken public immutable TOKEN_IMPLEMENTATION;
     ILivoLaunchpad public immutable LAUNCHPAD;
     ILivoGraduator public immutable GRADUATOR;
@@ -51,28 +49,42 @@ contract LivoFactoryBase {
         // trading will be a bit more expensive, as variables cannot be immutable
         token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
 
+        // emit the event here for off-chain indexers
+        emit TokenCreated(
+            token,
+            name,
+            symbol,
+            tokenOwner, // token owner
+            address(LAUNCHPAD),
+            address(GRADUATOR),
+            address(FEE_HANDLER),
+            tokenOwner // fee receiver
+        );
+
         // Creates the Uniswap Pair or whatever other initialization is necessary
         // in the case of univ4, the pair will be the address of the pool manager,
         // to which tokens cannot be transferred until graduation
         address pair = GRADUATOR.initialize(token);
 
         // the token needs to be initialized with the pair, so we have to do it after graduator.initialize
-        ILivoToken.InitializeParams memory initParams = ILivoToken.InitializeParams({
-            name: name,
-            symbol: symbol,
-            tokenOwner: tokenOwner,
-            graduator: address(GRADUATOR),
-            pair: pair,
-            launchpad: address(LAUNCHPAD),
-            feeHandler: address(FEE_HANDLER),
-            feeReceiver: tokenOwner
-        });
-        LivoToken(token).initialize(initParams);
+        LivoToken(token)
+            .initialize(
+                ILivoToken.InitializeParams({
+                    name: name,
+                    symbol: symbol,
+                    tokenOwner: tokenOwner,
+                    graduator: address(GRADUATOR),
+                    pair: pair,
+                    launchpad: address(LAUNCHPAD),
+                    feeHandler: address(FEE_HANDLER),
+                    feeReceiver: tokenOwner
+                })
+            );
 
         // registers token in launchpad together with its components and configs
+        // this will also emit an event from the launchpad
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
 
-        // TODO decide what event is emitted from here and what from the launchpad
         return token;
     }
 }

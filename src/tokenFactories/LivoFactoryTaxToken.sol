@@ -3,19 +3,19 @@ pragma solidity 0.8.28;
 
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 
 /// @notice This can be used for univ2 or univ4 tokens. Just with different graduators
-contract LivoFactoryTaxToken {
-    error InvalidNameOrSymbol();
-    error InvalidTokenOwner();
+contract LivoFactoryTaxToken is ILivoFactory {
     error InvalidSellTaxBps();
 
     /// @notice max configurable sell tax
@@ -67,29 +67,44 @@ contract LivoFactoryTaxToken {
         // trading will be a bit more expensive, as variables cannot be immutable
         token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
 
+        // emit the event here for off-chain indexers
+        emit TokenCreated(
+            token,
+            name,
+            symbol,
+            tokenOwner, // token owner
+            address(LAUNCHPAD),
+            address(GRADUATOR),
+            address(FEE_HANDLER),
+            tokenOwner // fee receiver
+        );
+
         // Creates the Uniswap Pair or whatever other initialization is necessary
         // in the case of univ4, the pair will be the address of the pool manager,
         // to which tokens cannot be transferred until graduation
         address pair = GRADUATOR.initialize(token);
 
-        ILivoToken.InitializeParams memory initParams = ILivoToken.InitializeParams({
-            name: name,
-            symbol: symbol,
-            tokenOwner: tokenOwner,
-            graduator: address(GRADUATOR),
-            pair: pair,
-            launchpad: address(LAUNCHPAD),
-            feeHandler: address(FEE_HANDLER),
-            feeReceiver: tokenOwner
-        });
-
         // the token needs to be initialized with the pair, so we have to do it after graduator.initialize
-        _initializeToken(token, initParams, sellTaxBps, taxDurationSeconds);
+        _initializeToken(
+            token,
+            ILivoToken.InitializeParams({
+                name: name,
+                symbol: symbol,
+                tokenOwner: tokenOwner,
+                graduator: address(GRADUATOR),
+                pair: pair,
+                launchpad: address(LAUNCHPAD),
+                feeHandler: address(FEE_HANDLER),
+                feeReceiver: tokenOwner
+            }),
+            sellTaxBps,
+            taxDurationSeconds
+        );
 
+        // this will emit another event (from the launchpad)
         // registers token in launchpad together with its components and configs
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
 
-        // TODO decide what event is emitted from here and what from the launchpad
         return token;
     }
 
