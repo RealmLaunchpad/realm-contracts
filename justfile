@@ -5,6 +5,11 @@ build:
 lint:
     forge lint src/
 
+compile:
+    forge fmt
+    forge lint src/
+    forge build
+
 # copies abis from out/ to abis/ for easier access in frontend
 abis:
     @mkdir -p abis
