@@ -267,9 +267,7 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
             poolId_, _UNIV4_POSITION_MANAGER, tickLower_, tickUpper_, bytes32(positionId_)
         );
 
-        (uint256 feeGrowthInside0X128,) = _UNIV4_POOL_MANAGER.getFeeGrowthInside(
-            poolId_, tickLower_, tickUpper_
-        );
+        (uint256 feeGrowthInside0X128,) = _UNIV4_POOL_MANAGER.getFeeGrowthInside(poolId_, tickLower_, tickUpper_);
 
         return
             (FullMath.mulDiv(feeGrowthInside0X128 - feeGrowthInside0LastX128, liquidity, FixedPoint128.Q128))

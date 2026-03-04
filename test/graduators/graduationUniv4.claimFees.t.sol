@@ -145,8 +145,6 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
 /// @notice Abstract base class for Uniswap V4 claim fees tests
 abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
-
-
     function test_rightPositionIdAfterGraduation() public createAndGraduateToken {
         uint256 positionId = feeHandlerV4.positionIds(testToken, 0);
 
@@ -481,19 +479,26 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         address[] memory tokens = _singleToken(testToken);
 
         uint256 claimableAfterGraduation = feeHandlerV4.getClaimable(tokens, creator)[0];
-        assertEq(claimableAfterGraduation, CREATOR_GRADUATION_COMPENSATION, "claimable should be graduation deposit right after graduation");
+        assertEq(
+            claimableAfterGraduation,
+            CREATOR_GRADUATION_COMPENSATION,
+            "claimable should be graduation deposit right after graduation"
+        );
 
         // first, make the price dip below graduation price by selling a lot of tokens
         uint256 sellAmount = 10_000_000e18;
-        uint256 ethReceived =_swapSell(buyer, sellAmount, 0.1 ether, true);
-        
-        
+        uint256 ethReceived = _swapSell(buyer, sellAmount, 0.1 ether, true);
+
         // apply inverse tax on ethRecived
         // if eth out was 100, tax applied is 5%, and ethReceived is 95%
         uint256 inverseTax = ethReceived * SELL_TAX_BPS / (10000 - SELL_TAX_BPS);
         // tax token tests will increase the claimable here
         uint256 expectedClaimableAfterSell = CREATOR_GRADUATION_COMPENSATION + inverseTax;
-        assertEq(feeHandlerV4.getClaimable(tokens, creator)[0], expectedClaimableAfterSell, "sells should not generate more fees in a non-taxable token");
+        assertEq(
+            feeHandlerV4.getClaimable(tokens, creator)[0],
+            expectedClaimableAfterSell,
+            "sells should not generate more fees in a non-taxable token"
+        );
 
         // then do a buy crossing again that liquidity position
         uint256 buyAmount = 4 ether;
@@ -508,7 +513,11 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         );
         uint256 claimableAfterBuy = feeHandlerV4.getClaimable(tokens, creator)[0];
         uint256 expectedClaimable = expectedClaimableAfterSell + expectedExtraFees;
-        assertEq(claimableAfterBuy, expectedClaimable, "claimable fees should include graduation fees + sell taxes + 0.5% of buy amount");
+        assertEq(
+            claimableAfterBuy,
+            expectedClaimable,
+            "claimable fees should include graduation fees + sell taxes + 0.5% of buy amount"
+        );
 
         // uint256 creatorBalanceBefore = creator.balance;
 

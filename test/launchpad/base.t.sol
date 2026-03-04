@@ -201,8 +201,6 @@ contract LaunchpadBaseTests is Test {
     function _increaseWithFees(uint256 ethIntoReserves) internal pure returns (uint256 ethBuy) {
         ethBuy = (ethIntoReserves * 10000) / (10000 - BASE_BUY_FEE_BPS);
     }
-
-
 }
 
 contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
@@ -217,7 +215,7 @@ contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
 
 contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
     uint256 public SELL_TAX_BPS = 0; // 0% sell tax
-    
+
     function setUp() public virtual override {
         super.setUp();
 
@@ -235,5 +233,4 @@ contract LaunchpadBaseTestsWithUniv4GraduatorTaxableToken is LaunchpadBaseTests 
         /// todo question do we need this?
         implementation = livoTaxToken;
     }
-
 }

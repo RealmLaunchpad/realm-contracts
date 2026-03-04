@@ -196,10 +196,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
-    function _handleGraduationFeesV4(address tokenAddress)
-        internal
-        returns (uint256 ethForLiquidity)
-    {
+    function _handleGraduationFeesV4(address tokenAddress) internal returns (uint256 ethForLiquidity) {
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
 
