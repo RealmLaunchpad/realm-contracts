@@ -75,9 +75,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
 
     /////////////////////// Events ///////////////////////
 
-    event TokenGraduated(
-        address indexed token, bytes32 poolId, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
-    );
+    event PoolIdRegistered(address indexed token, bytes32 poolId);
 
     //////////////////////////////////////////////////////
 
@@ -143,6 +141,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         // We return the address of the pool manager, which forbids token transfers to the pool until graduation
         // to prevent liquidity deposits & trades before being graduated
         emit PairInitialized(tokenAddress, address(UNIV4_POOL_MANAGER));
+        emit PoolIdRegistered(tokenAddress, PoolId.unwrap(pool.toId()));
 
         return address(UNIV4_POOL_MANAGER);
     }
@@ -190,8 +189,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         // any token not deposited is stuck here in this contract
         uint256 tokensDeposited = tokenBalanceBeforeDeposit - tokenBalanceAfterDeposit;
 
-        bytes32 poolId = PoolId.unwrap(pool.toId());
-        emit TokenGraduated(tokenAddress, poolId, tokensDeposited, ethForLiquidity, liquidity1 + liquidity2);
+        emit TokenGraduated(tokenAddress, tokensDeposited, ethForLiquidity, liquidity1 + liquidity2);
     }
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////

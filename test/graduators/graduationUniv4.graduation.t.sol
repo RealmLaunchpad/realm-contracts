@@ -692,10 +692,9 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted at graduation
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ4() public createTestToken {
         vm.skip(true);
-        vm.expectEmit(true, true, false, true);
-        emit LivoGraduatorUniswapV4.TokenGraduated(
+        vm.expectEmit(true, false, false, true);
+        emit ILivoGraduator.TokenGraduated(
             testToken,
-            bytes32(0xb8316c7a029f0486576cea8a548043cc6942604f7a8ffb742a5bcc103a03b821),
             191123250949901652977521310,
             7456000000000052224,
             55296381402046003400649

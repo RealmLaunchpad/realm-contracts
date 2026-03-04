@@ -40,9 +40,6 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
     //////////////////////// EVENTS ////////////////////////
 
     event SweepedRemainingEth(address graduatedToken, uint256 amount);
-    event TokenGraduated(
-        address indexed token, address indexed pair, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
-    );
 
     //////////////////////// ERRORS ////////////////////////
 
@@ -114,7 +111,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         }
 
         _cleanup(tokenAddress);
-        emit TokenGraduated(tokenAddress, pair, amountToken, amountEth, liquidity);
+        emit TokenGraduated(tokenAddress, amountToken, amountEth, liquidity);
     }
 
     /// @dev Reads the actual eth reserves after syncing

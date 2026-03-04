@@ -9,7 +9,7 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
@@ -400,12 +400,10 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
     /// @notice Test that the TokenGraduated event is emitted by the graduator
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ2() public createTestToken {
-        // skip because the tokenPair address changes with minor changes even in the tests
-        vm.skip(true);
-        address tokenPair = 0x68E1D1946219e1B537dd778Da4Ce022F76243008;
-        vm.expectEmit(true, true, false, true);
-        emit LivoGraduatorUniswapV2.TokenGraduated(
-            testToken, tokenPair, 191123250949901652977523068, 7456000000000052224, 37749370313721482071414
+        vm.skip(false);
+        vm.expectEmit(true, false, false, true);
+        emit ILivoGraduator.TokenGraduated(
+            testToken, 200000000000000000000000005, 8000000000000000000, 39999999999999999999000
         );
 
         _graduateToken();
