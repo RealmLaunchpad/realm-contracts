@@ -53,7 +53,7 @@ Sent directly to the treasury in graduation transactions
 Any address can collect, but they go automatically to the treasury:
 
 ```bash
-cast send {{LAUNCHPAD}} "collectTreasuryFees()" --rpc-url $SEPOLIA_RPC_URL --account livo.dev
+cast send {{LAUNCHPAD}} "claimTreasuryFees()" --rpc-url $SEPOLIA_RPC_URL --account livo.dev
 ```
 
 ## 3. Collect LP fees from uniswap v4

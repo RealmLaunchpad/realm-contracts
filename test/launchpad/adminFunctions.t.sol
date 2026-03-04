@@ -140,12 +140,12 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         launchpad.setTreasuryAddress(address(0));
     }
 
-    function test_collectTreasuryFees_nonOwnerCanClaim() public {
+    function test_claimTreasuryFees_nonOwnerCanClaim() public {
         vm.prank(nonOwner);
-        launchpad.collectTreasuryFees();
+        launchpad.claimTreasuryFees();
     }
 
-    function test_collectTreasuryFees_SucceedsForOwner() public createTestToken {
+    function test_claimTreasuryFees_SucceedsForOwner() public createTestToken {
         vm.deal(buyer, 10 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, block.timestamp + 1);
@@ -155,10 +155,10 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         if (feesCollected > 0) {
             vm.expectEmit(true, true, true, true);
-            emit TreasuryFeesCollected(treasury, feesCollected);
+            emit TreasuryFeesClaimed(treasury, feesCollected);
 
             vm.prank(admin);
-            launchpad.collectTreasuryFees();
+            launchpad.claimTreasuryFees();
 
             assertEq(launchpad.treasuryEthFeesCollected(), 0);
             assertEq(treasury.balance, initialTreasuryBalance + feesCollected);
@@ -193,11 +193,11 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         launchpad.setTreasuryAddress(address(0x1223432345));
     }
 
-    function test_collectTreasuryFees_NoFeesToCollect() public {
+    function test_claimTreasuryFees_NoFeesToCollect() public {
         uint256 initialTreasuryBalance = treasury.balance;
 
         vm.prank(admin);
-        launchpad.collectTreasuryFees();
+        launchpad.claimTreasuryFees();
 
         assertEq(launchpad.treasuryEthFeesCollected(), 0);
         assertEq(treasury.balance, initialTreasuryBalance);
@@ -230,7 +230,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     event FactoryWhitelisted(address indexed factory);
     event FactoryBlacklisted(address indexed factory);
     event TreasuryAddressUpdated(address newTreasury);
-    event TreasuryFeesCollected(address indexed treasury, uint256 amount);
+    event TreasuryFeesClaimed(address indexed treasury, uint256 amount);
 
     error OwnableUnauthorizedAccount(address caller);
 

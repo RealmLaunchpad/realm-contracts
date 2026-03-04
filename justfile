@@ -98,7 +98,7 @@ swapsell tokenAddress amount:
 ##########################################################
 
 collectFees: 
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "collectTreasuryFees()"
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "claimTreasuryFees()"
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{graduatorV4}} "treasuryClaim()"
 
 

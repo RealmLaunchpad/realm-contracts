@@ -63,7 +63,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     event LivoTokenSell(
         address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 ethFee
     );
-    event TreasuryFeesCollected(address indexed treasury, uint256 amount);
+    event TreasuryFeesClaimed(address indexed treasury, uint256 amount);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event CommunityTakeOver(address indexed token, address newOwner);
@@ -273,7 +273,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     /// @notice Collects accumulated treasury fees and transfers them to the treasury
     /// @dev No access control, as the receiver of the fees is the treasury itself
-    function collectTreasuryFees() external {
+    function claimTreasuryFees() external {
         uint256 amount = treasuryEthFeesCollected;
         if (amount == 0) return;
 
@@ -281,7 +281,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
         _transferEth(treasury, amount, true);
 
-        emit TreasuryFeesCollected(treasury, amount);
+        emit TreasuryFeesClaimed(treasury, amount);
     }
 
     /// @notice If a token is abandoned by original creators and the community wants to step in,

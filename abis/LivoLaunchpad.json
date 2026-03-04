@@ -100,7 +100,7 @@
   },
   {
     "type": "function",
-    "name": "collectTreasuryFees",
+    "name": "claimTreasuryFees",
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
@@ -756,7 +756,7 @@
   },
   {
     "type": "event",
-    "name": "TreasuryFeesCollected",
+    "name": "TreasuryFeesClaimed",
     "inputs": [
       {
         "name": "treasury",
