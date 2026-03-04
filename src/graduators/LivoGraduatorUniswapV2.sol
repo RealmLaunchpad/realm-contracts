@@ -179,11 +179,11 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: CREATOR_GRADUATION_COMPENSATION}(
             tokenAddress, feeConfig.feeReceiver
         );
-        emit CreatorGraduationFeeDeposited(tokenAddress, feeConfig.feeReceiver, CREATOR_GRADUATION_COMPENSATION);
+        emit CreatorGraduationFeeCollected(tokenAddress, feeConfig.feeReceiver, CREATOR_GRADUATION_COMPENSATION);
 
         // Deposit treasury graduation fees
         ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}(tokenAddress);
-        emit TreasuryGraduationFeeDeposited(tokenAddress, treasuryShare);
+        emit TreasuryGraduationFeeCollected(tokenAddress, treasuryShare);
     }
 
     function _cleanup(address tokenAddress) internal {

@@ -205,11 +205,11 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: CREATOR_GRADUATION_COMPENSATION}(
             tokenAddress, feeConfig.feeReceiver
         );
-        emit CreatorGraduationFeeDeposited(tokenAddress, feeConfig.feeReceiver, CREATOR_GRADUATION_COMPENSATION);
+        emit CreatorGraduationFeeCollected(tokenAddress, feeConfig.feeReceiver, CREATOR_GRADUATION_COMPENSATION);
 
         // Deposit treasury graduation fees for later `treasuryClaim()`
         ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}(tokenAddress);
-        emit TreasuryGraduationFeeDeposited(tokenAddress, treasuryShare);
+        emit TreasuryGraduationFeeCollected(tokenAddress, treasuryShare);
     }
 
     /// @notice Constructs the Uniswap V4 PoolKey for a given token paired with native ETH

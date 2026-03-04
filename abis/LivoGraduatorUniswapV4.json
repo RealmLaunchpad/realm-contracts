@@ -260,7 +260,7 @@
   },
   {
     "type": "event",
-    "name": "CreatorGraduationFeeDeposited",
+    "name": "CreatorGraduationFeeCollected",
     "inputs": [
       {
         "name": "token",
@@ -399,7 +399,7 @@
   },
   {
     "type": "event",
-    "name": "TreasuryGraduationFeeDeposited",
+    "name": "TreasuryGraduationFeeCollected",
     "inputs": [
       {
         "name": "token",
