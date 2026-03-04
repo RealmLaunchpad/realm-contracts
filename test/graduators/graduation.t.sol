@@ -61,6 +61,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     function test_creatorGetsGraduationCompensation() public createTestToken {
         ILivoToken token = ILivoToken(testToken);
         ILivoFeeHandler tokenFeeHandler = ILivoFeeHandler(token.feeHandler());
+        
         address[] memory _tokens = new address[](1);
         _tokens[0] = testToken;
         uint256 claimableBefore = tokenFeeHandler.getClaimable(_tokens, creator)[0];
