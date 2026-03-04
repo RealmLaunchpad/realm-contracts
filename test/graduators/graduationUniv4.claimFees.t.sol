@@ -145,9 +145,8 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
 /// @notice Abstract base class for Uniswap V4 claim fees tests
 abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
-    function _isTaxToken() internal pure virtual returns (bool) {
-        return false;
-    }
+
+
     function test_rightPositionIdAfterGraduation() public createAndGraduateToken {
         uint256 positionId = feeHandlerV4.positionIds(testToken, 0);
 
@@ -485,22 +484,31 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         assertEq(claimableAfterGraduation, CREATOR_GRADUATION_COMPENSATION, "claimable should be graduation deposit right after graduation");
 
         // first, make the price dip below graduation price by selling a lot of tokens
-        deal(buyer, 10 ether);
-        _swapSell(buyer, 10_000_000e18, 0.1 ether, true);
-        if (_isTaxToken()) {
-            assertGt(feeHandlerV4.getClaimable(tokens, creator)[0], CREATOR_GRADUATION_COMPENSATION, "sells should generate fees in a taxable token");
-        } else {
-            assertEq(feeHandlerV4.getClaimable(tokens, creator)[0], CREATOR_GRADUATION_COMPENSATION, "sells should not generate more fees in a non-taxable token");
-        }
+        uint256 sellAmount = 10_000_000e18;
+        uint256 ethReceived =_swapSell(buyer, sellAmount, 0.1 ether, true);
+        
+        
+        // apply inverse tax on ethRecived
+        // if eth out was 100, tax applied is 5%, and ethReceived is 95%
+        uint256 inverseTax = ethReceived * SELL_TAX_BPS / (10000 - SELL_TAX_BPS);
+        // tax token tests will increase the claimable here
+        uint256 expectedClaimableAfterSell = CREATOR_GRADUATION_COMPENSATION + inverseTax;
+        assertEq(feeHandlerV4.getClaimable(tokens, creator)[0], expectedClaimableAfterSell, "sells should not generate more fees in a non-taxable token");
 
         // then do a buy crossing again that liquidity position
         uint256 buyAmount = 4 ether;
+        deal(buyer, 10 ether);
         _swapBuy(buyer, buyAmount, 10e18, true);
         uint256 expectedExtraFees = buyAmount / 200;
-
+        uint256 expectedClaimableAfterBuy = expectedClaimableAfterSell + expectedExtraFees;
+        assertEq(
+            feeHandlerV4.getClaimable(tokens, creator)[0],
+            expectedClaimableAfterBuy,
+            "claimable fees should include graduation fees + sell taxes + 0.5% of buy amount"
+        );
         uint256 claimableAfterBuy = feeHandlerV4.getClaimable(tokens, creator)[0];
-        uint256 expectedClaimable = CREATOR_GRADUATION_COMPENSATION + expectedExtraFees; // 0.5% of the buy amount
-        assertEq(claimableAfterBuy, expectedClaimable, "claimable fees should include graduation fees + 0.5% of buy amount");
+        uint256 expectedClaimable = expectedClaimableAfterSell + expectedExtraFees;
+        assertEq(claimableAfterBuy, expectedClaimable, "claimable fees should include graduation fees + sell taxes + 0.5% of buy amount");
 
         // uint256 creatorBalanceBefore = creator.balance;
 
@@ -1427,10 +1435,7 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         super.setUp();
         // Override implementation for this test suite to use tax tokens
         implementation = ILivoToken(address(taxTokenImpl));
-    }
-
-    function _isTaxToken() internal pure override returns (bool) {
-        return true;
+        SELL_TAX_BPS = DEFAULT_SELL_TAX_BPS;
     }
 
     // Use TaxTokenUniV4BaseTests implementation of _swap
@@ -1453,5 +1458,11 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         vm.prank(creator);
         return
             factoryTax.createToken(name, symbol, creator, metadata, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION));
+    }
+
+    function test_taxeAmountAsExpected() public {
+        deal(buyer, 10 ether);
+        uint256 amountIn = 1 ether;
+        uint256 expectedTax = (amountIn * DEFAULT_SELL_TAX_BPS) / 10000;
     }
 }

@@ -10,6 +10,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 
 contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testDeployLivoToken_happyPath() public {
@@ -65,13 +66,13 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function testCannotCreateTokenWithEmptyName() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryBase.InvalidNameOrSymbol.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
         factoryV2.createToken("", "TEST", creator, "0x12");
     }
 
     function testCannotCreateTokenWithEmptySymbol() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryBase.InvalidNameOrSymbol.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
         factoryV2.createToken("TestToken", "", creator, "0x0");
     }
 
@@ -110,13 +111,13 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function test_cantCreateTokenWithTooLongSymbol() public {
         string memory longSymbol = "TESTTESTTESTTESTTESTTESTTESTESESD";
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryBase.InvalidNameOrSymbol.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
         factoryV2.createToken("TestToken", longSymbol, creator, "0x12");
     }
 
     function test_cannotCreateTokenWithZeroOwner() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryBase.InvalidTokenOwner.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTokenOwner.selector));
         factoryV2.createToken("TestToken", "TEST", address(0), "0x12");
     }
 }

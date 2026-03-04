@@ -80,9 +80,12 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         _swap(caller, testToken, amountIn, minAmountOut, true, expectSuccess);
     }
 
-    function _swapSell(address caller, uint256 amountIn, uint256 minAmountOut, bool expectSuccess) internal {
+    function _swapSell(address caller, uint256 amountIn, uint256 minAmountOut, bool expectSuccess) internal returns (uint256 ethReceived) {
         assertGt(amountIn, 0, "oiiiiii amountIn must be greater than 0");
+        uint256 ethBefore = caller.balance;
         _swap(caller, testToken, amountIn, minAmountOut, false, expectSuccess);
+        uint256 ethAfter = caller.balance;
+        return ethAfter - ethBefore;
     }
 
     function _swap(

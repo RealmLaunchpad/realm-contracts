@@ -118,9 +118,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     }
 
     function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
-        // Fees accrued by the hook are attributed to this token fee receiver in the fee handler.
-        address taxRecipient = feeReceiver;
-
         config = TaxConfig({
             buyTaxBps: 0, // Buy tax is always 0 in this token implementation
             sellTaxBps: sellTaxBps,
