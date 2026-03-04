@@ -259,7 +259,7 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function test_tokenOwnershipTransfer_emitsTokenEvents() public createTestToken {
         vm.expectEmit(true, true, true, true);
-        emit LivoToken.NewOwnerProposed(creator, alice, creator);
+        emit ILivoToken.NewOwnerProposed(creator, alice, creator);
 
         vm.prank(creator);
         LivoToken(testToken).proposeNewOwner(alice);

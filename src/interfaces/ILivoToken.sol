@@ -4,6 +4,14 @@ pragma solidity 0.8.28;
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 interface ILivoToken is IERC20 {
+
+    //////////////////////// Events //////////////////////
+
+    event Graduated();
+    event NewOwnerProposed(address owner, address proposedOwner, address caller);
+    event OwnershipTransferred(address newOwner);
+    event FeeReceiverUpdated(address oldFeeReceiver, address newFeeReceiver);
+
     /// @notice Shared initialization parameters for Livo token clones
     struct InitializeParams {
         string name;
