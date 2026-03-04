@@ -1,6 +1,13 @@
 [
   {
     "type": "function",
+    "name": "acceptTokenOwnership",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "allowance",
     "inputs": [
       {
@@ -68,27 +75,54 @@
   },
   {
     "type": "function",
-    "name": "encodeTokenCalldata",
-    "inputs": [
-      {
-        "name": "_sellTaxBps",
-        "type": "uint16",
-        "internalType": "uint16"
-      },
-      {
-        "name": "_taxDurationSeconds",
-        "type": "uint40",
-        "internalType": "uint40"
-      }
-    ],
+    "name": "feeHandler",
+    "inputs": [],
     "outputs": [
       {
         "name": "",
-        "type": "bytes",
-        "internalType": "bytes"
+        "type": "address",
+        "internalType": "address"
       }
     ],
-    "stateMutability": "pure"
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "feeReceiver",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getFeeConfigs",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "config",
+        "type": "tuple",
+        "internalType": "struct ILivoToken.FeeConfig",
+        "components": [
+          {
+            "name": "feeHandler",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "feeReceiver",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -119,11 +153,6 @@
             "name": "graduationTimestamp",
             "type": "uint40",
             "internalType": "uint40"
-          },
-          {
-            "name": "taxRecipient",
-            "type": "address",
-            "internalType": "address"
           }
         ]
       }
@@ -171,53 +200,23 @@
   },
   {
     "type": "function",
-    "name": "initialize",
-    "inputs": [
-      {
-        "name": "name_",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "symbol_",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "graduator_",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "pair_",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "launchpad_",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "totalSupply_",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "tokenCalldata",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
+    "name": "markGraduated",
+    "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
     "type": "function",
-    "name": "markGraduated",
+    "name": "owner",
     "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -231,6 +230,45 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "proposeNewOwner",
+    "inputs": [
+      {
+        "name": "newOwner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "proposedOwner",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setFeeReceiver",
+    "inputs": [
+      {
+        "name": "newFeeReceiver",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",

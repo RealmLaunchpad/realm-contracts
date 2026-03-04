@@ -145,86 +145,16 @@
   },
   {
     "type": "function",
-    "name": "accrueTokenFees",
+    "name": "blacklistFactory",
     "inputs": [
       {
-        "name": "tokens",
-        "type": "address[]",
-        "internalType": "address[]"
-      },
-      {
-        "name": "positionIndexes",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
+        "name": "factory",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "creatorClaim",
-    "inputs": [
-      {
-        "name": "tokens",
-        "type": "address[]",
-        "internalType": "address[]"
-      },
-      {
-        "name": "positionIndexes",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "depositAccruedTaxes",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "payable"
-  },
-  {
-    "type": "function",
-    "name": "getClaimable",
-    "inputs": [
-      {
-        "name": "tokens",
-        "type": "address[]",
-        "internalType": "address[]"
-      },
-      {
-        "name": "positionIndexes",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "creatorClaimable",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      }
-    ],
-    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -278,78 +208,6 @@
   },
   {
     "type": "function",
-    "name": "pendingCreatorFees",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "pendingCreatorTaxes",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "positionIds",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "renounceOwnership",
     "inputs": [],
     "outputs": [],
@@ -370,38 +228,50 @@
   },
   {
     "type": "function",
-    "name": "treasuryClaim",
-    "inputs": [],
+    "name": "whitelistFactory",
+    "inputs": [
+      {
+        "name": "factory",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
     "type": "function",
-    "name": "treasuryPendingFees",
-    "inputs": [],
+    "name": "whitelistedFactories",
+    "inputs": [
+      {
+        "name": "factory",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
     "outputs": [
       {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "authorized",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
   },
   {
     "type": "event",
-    "name": "CreatorFeesAccrued",
+    "name": "CreatorGraduationFeeDeposited",
     "inputs": [
       {
         "name": "token",
         "type": "address",
-        "indexed": true,
+        "indexed": false,
         "internalType": "address"
       },
       {
-        "name": "tokenOwner",
+        "name": "feeReceiver",
         "type": "address",
-        "indexed": true,
+        "indexed": false,
         "internalType": "address"
       },
       {
@@ -415,75 +285,26 @@
   },
   {
     "type": "event",
-    "name": "CreatorFeesClaimed",
+    "name": "FactoryBlacklisted",
     "inputs": [
       {
-        "name": "token",
+        "name": "factory",
         "type": "address",
         "indexed": true,
         "internalType": "address"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
       }
     ],
     "anonymous": false
   },
   {
     "type": "event",
-    "name": "CreatorTaxesAccrued",
+    "name": "FactoryWhitelisted",
     "inputs": [
       {
-        "name": "token",
+        "name": "factory",
         "type": "address",
         "indexed": true,
         "internalType": "address"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "CreatorTaxesClaimed",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -528,7 +349,7 @@
   },
   {
     "type": "event",
-    "name": "TokenGraduated",
+    "name": "PoolIdRegistered",
     "inputs": [
       {
         "name": "token",
@@ -541,6 +362,19 @@
         "type": "bytes32",
         "indexed": false,
         "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TokenGraduated",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       },
       {
         "name": "tokenAmount",
@@ -565,37 +399,12 @@
   },
   {
     "type": "event",
-    "name": "TreasuryFeesAccrued",
+    "name": "TreasuryGraduationFeeDeposited",
     "inputs": [
       {
         "name": "token",
         "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
         "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "TreasuryFeesClaimed",
-    "inputs": [
-      {
-        "name": "caller",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "treasury",
-        "type": "address",
-        "indexed": true,
         "internalType": "address"
       },
       {
@@ -609,17 +418,12 @@
   },
   {
     "type": "error",
-    "name": "EthTransferFailed",
+    "name": "AlreadyConfigured",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "InvalidPositionIndex",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "InvalidPositionIndexes",
+    "name": "InvalidAddress",
     "inputs": []
   },
   {
@@ -629,17 +433,7 @@
   },
   {
     "type": "error",
-    "name": "NoTokens",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "NoTokensToGraduate",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "OnlyHookAllowed",
     "inputs": []
   },
   {
@@ -682,7 +476,7 @@
   },
   {
     "type": "error",
-    "name": "TooManyTokens",
+    "name": "UnauthorizedFactory",
     "inputs": []
   }
 ]

@@ -1,22 +1,21 @@
 [
   {
     "type": "function",
-    "name": "getTokenOwner",
+    "name": "launchToken",
     "inputs": [
       {
         "name": "token",
         "type": "address",
         "internalType": "address"
-      }
-    ],
-    "outputs": [
+      },
       {
-        "name": "",
+        "name": "curve",
         "type": "address",
-        "internalType": "address"
+        "internalType": "contract ILivoBondingCurve"
       }
     ],
-    "stateMutability": "view"
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
