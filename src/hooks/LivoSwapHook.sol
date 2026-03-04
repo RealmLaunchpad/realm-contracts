@@ -22,7 +22,7 @@ contract LivoSwapHook is BaseHook {
     error NoSwapsBeforeGraduation();
 
     /// @notice Emitted when creator taxes are accrued from a taxed swap
-    event CreatorTaxesAccrued(address indexed token, address indexed tokenOwner, uint256 amount);
+    event CreatorTaxesAccrued(address indexed token, address indexed feeReceiver, uint256 amount);
 
     /// @notice Basis points denominator (10000 = 100%)
     uint256 private constant BASIS_POINTS = 10000;
