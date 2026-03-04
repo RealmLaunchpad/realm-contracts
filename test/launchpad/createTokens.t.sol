@@ -122,6 +122,20 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 }
 
+contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
+    function test_cannotCreateToken_sellTaxAboveMax() public {
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidSellTaxBps.selector));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 501, uint32(14 days));
+    }
+
+    function test_cannotCreateToken_taxDurationAboveMax() public {
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxDuration.selector));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 500, uint32(14 days + 1));
+    }
+}
+
 contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
     function test_LivoTaxableTokenInitialized_emittedOnCreation() public {
         vm.expectEmit(true, true, true, true);

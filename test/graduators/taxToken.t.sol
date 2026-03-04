@@ -19,10 +19,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         factoryTax.createToken("TestToken", "TEST", creator, "0x12", 550, uint32(4 days));
     }
 
-    // This test is removed because buy taxes no longer exist in the implementation
-
     function test_deployTaxTokenWithTooLongTaxPeriod() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidSellTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxDuration.selector));
         factoryTax.createToken("TestToken", "TEST", creator, "0x12", 500, uint32(15 days));
     }
 
