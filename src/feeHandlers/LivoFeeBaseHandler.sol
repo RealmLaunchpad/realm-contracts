@@ -66,7 +66,7 @@ contract LivoFeeBaseHandler is ILivoFeeHandler {
             _transferEth(treasury, pending);
         }
 
-        emit TreasuryFeesClaimed(pending);
+        emit TreasuryClaimed(pending);
     }
 
     /// @notice Returns the pending claimable ETH fees for an account across the given tokens

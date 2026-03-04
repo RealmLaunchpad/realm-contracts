@@ -694,10 +694,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         vm.skip(true);
         vm.expectEmit(true, false, false, true);
         emit ILivoGraduator.TokenGraduated(
-            testToken,
-            191123250949901652977521310,
-            7456000000000052224,
-            55296381402046003400649
+            testToken, 191123250949901652977521310, 7456000000000052224, 55296381402046003400649
         );
 
         _graduateToken();

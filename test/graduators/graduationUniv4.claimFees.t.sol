@@ -450,7 +450,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
     function test_treasuryClaim_emitsEvent_whenEthBalanceIsZero() public createAndGraduateToken {
         uint256 claimAmount = feeHandlerV4.treasuryPendingFees();
         vm.expectEmit(true, true, false, true, address(feeHandlerV4));
-        emit ILivoFeeHandler.TreasuryFeesClaimed(claimAmount);
+        emit ILivoFeeHandler.TreasuryClaimed(claimAmount);
 
         feeHandlerV4.treasuryClaim();
     }
@@ -466,7 +466,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         assertGt(claimAmount, 0, "fee handler should hold treasury fees before claim");
 
         vm.expectEmit(true, true, false, true, address(feeHandlerV4));
-        emit ILivoFeeHandler.TreasuryFeesClaimed(claimAmount);
+        emit ILivoFeeHandler.TreasuryClaimed(claimAmount);
 
         feeHandlerV4.treasuryClaim();
 

@@ -258,18 +258,18 @@ contract LivoFeeBaseHandlerTests is Test {
         assertEq(handler.treasuryPendingFees(), 0, "pending should be 0 after claim");
     }
 
-    /// @dev when there are no pending treasury fees, then TreasuryFeesClaimed(0) is still emitted
+    /// @dev when there are no pending treasury fees, then TreasuryClaimed(0) is still emitted
     function test_treasuryClaimZeroPending_assertEventEmitted() public {
         vm.expectEmit(false, false, false, true, address(handler));
-        emit ILivoFeeHandler.TreasuryFeesClaimed(0);
+        emit ILivoFeeHandler.TreasuryClaimed(0);
 
         handler.treasuryClaim();
     }
 
-    /// @dev when treasury fees are pending and claimed, then TreasuryFeesClaimed event has the correct amount
+    /// @dev when treasury fees are pending and claimed, then TreasuryClaimed event has the correct amount
     function test_treasuryClaim_assertEventAmount() public depositTreasuryFees(3 ether) {
         vm.expectEmit(false, false, false, true, address(handler));
-        emit ILivoFeeHandler.TreasuryFeesClaimed(3 ether);
+        emit ILivoFeeHandler.TreasuryClaimed(3 ether);
 
         handler.treasuryClaim();
     }

@@ -165,10 +165,9 @@ contract LivoFactoryBaseWhitelistTest is LaunchpadBaseTestsWithUniv2Graduator {
         address token = factoryV2.createToken("TestToken", "TEST", creator, "0x12");
         assertTrue(token != address(0));
     }
-    
+
     /// @dev when non-owner calls whitelistFactory, then it reverts with OwnableUnauthorizedAccount
     function test_nonOwner_cannotWhitelistFactory() public {
-
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, creator));
         launchpad.whitelistFactory(address(factoryV2));

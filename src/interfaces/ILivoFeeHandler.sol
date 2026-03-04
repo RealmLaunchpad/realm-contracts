@@ -11,7 +11,7 @@ interface ILivoFeeHandler {
     event CreatorClaimed(address indexed token, address indexed account, uint256 amount);
 
     event TreasuryFeesDeposited(address token, uint256 amount);
-    event TreasuryFeesClaimed(uint256 amount);
+    event TreasuryClaimed(uint256 amount);
 
     ///////////// EXTERNAL FUNCTIONS //////////////
 

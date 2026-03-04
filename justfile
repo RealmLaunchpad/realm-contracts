@@ -9,6 +9,7 @@ compile:
     forge fmt
     forge lint src/
     forge build
+    just abis
 
 # copies abis from out/ to abis/ for easier access in frontend
 abis:

@@ -37,26 +37,17 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
     }
 
     /// @dev when sellTaxBps equals MAX_SELL_TAX_BPS, then createToken succeeds
-    function test_createToken_assertMaxSellTaxAccepted()
-        public
-        withTaxTokenCreated(500, uint32(14 days))
-    {
+    function test_createToken_assertMaxSellTaxAccepted() public withTaxTokenCreated(500, uint32(14 days)) {
         assertTrue(deployedToken != address(0));
     }
 
     /// @dev when taxDurationSeconds equals MAX_SELL_TAX_DURATION_SECONDS, then createToken succeeds
-    function test_createToken_assertMaxTaxDurationAccepted()
-        public
-        withTaxTokenCreated(100, uint32(14 days))
-    {
+    function test_createToken_assertMaxTaxDurationAccepted() public withTaxTokenCreated(100, uint32(14 days)) {
         assertTrue(deployedToken != address(0));
     }
 
     /// @dev when sellTaxBps and taxDuration are zero, then createToken succeeds with no tax
-    function test_createToken_assertZeroTaxAccepted()
-        public
-        withTaxTokenCreated(0, 0)
-    {
+    function test_createToken_assertZeroTaxAccepted() public withTaxTokenCreated(0, 0) {
         assertTrue(deployedToken != address(0));
     }
 
