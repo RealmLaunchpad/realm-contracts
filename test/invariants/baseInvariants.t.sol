@@ -11,6 +11,8 @@ import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
+import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
+import {LivoFeeV4Handler} from "src/feeHandlers/LivoFeeV4Handler.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
@@ -24,6 +26,8 @@ contract LaunchpadInvariants is Test {
     LivoFactoryBase public factoryV2;
     LivoFactoryBase public factoryV4;
     LiquidityLockUniv4WithFees public liquidityLock;
+    LivoFeeBaseHandler public feeHandler;
+    LivoFeeV4Handler public feeHandlerV4;
 
     InvariantsHelperLaunchpad public helper;
 
@@ -85,12 +89,22 @@ contract LaunchpadInvariants is Test {
             DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
 
+        feeHandler = new LivoFeeBaseHandler(address(launchpad));
+        feeHandlerV4 = new LivoFeeV4Handler(
+            address(launchpad),
+            address(liquidityLock),
+            poolManagerAddress,
+            positionManagerAddress,
+            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+        );
+        feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
+
         factoryV2 = new LivoFactoryBase(
-            address(launchpad), address(tokenImplementation), address(bondingCurve), address(graduatorV2), treasury
+            address(launchpad), address(tokenImplementation), address(bondingCurve), address(graduatorV2), address(feeHandler)
         );
 
         factoryV4 = new LivoFactoryBase(
-            address(launchpad), address(tokenImplementation), address(bondingCurve), address(graduatorV4), treasury
+            address(launchpad), address(tokenImplementation), address(bondingCurve), address(graduatorV4), address(feeHandlerV4)
         );
 
         launchpad.whitelistFactory(address(factoryV2));
