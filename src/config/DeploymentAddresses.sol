@@ -80,7 +80,7 @@ library DeploymentAddressesSepolia {
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     /// @notice LivoSwapHook address for Uniswap V4
-    address public constant LIVO_SWAP_HOOK = 0x5a9ae42f0F59dDB200E6acFAC2f85a6990C600c4;
+    address public constant LIVO_SWAP_HOOK = 0x26eF7b344f4627a0d0b4Fb89358AB85f75a900c4;
 
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;

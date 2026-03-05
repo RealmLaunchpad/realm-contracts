@@ -128,21 +128,18 @@ contract Deployments is Script {
         // 8. Deploy fee handlers used by factories
         LivoFeeBaseHandler feeHandler = new LivoFeeBaseHandler(address(launchpad));
         console.log("| LivoFeeBaseHandler | ", address(feeHandler));
-
         LivoFeeV4Handler feeHandlerV4 = new LivoFeeV4Handler(
             address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, hookAddress
         );
         console.log("| LivoFeeV4Handler | ", address(feeHandlerV4));
-
+        // authorize the V4 graduator in the v4 fee handler, which is the only one allowed to register univ4 positionIds
         feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
-        console.log("authorizing graduatorV4 in LivoFeeV4Handler");
 
         // 9. Deploy factories
         LivoFactoryBase factoryV2 = new LivoFactoryBase(
             address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2), address(feeHandler)
         );
         console.log("| LivoFactoryBase (V2) | ", address(factoryV2));
-
         LivoFactoryBase factoryV4 = new LivoFactoryBase(
             address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV4), address(feeHandlerV4)
         );
@@ -165,19 +162,15 @@ contract Deployments is Script {
 
         launchpad.whitelistFactory(address(factoryV2));
         console.log("whitelisting LivoFactoryBase (V2) in LivoLaunchpad");
-
         launchpad.whitelistFactory(address(factoryV4));
         console.log("whitelisting factoryV4 (V4) in launchpad");
-
         launchpad.whitelistFactory(address(factoryTax));
         console.log("whitelisting factoryTax in launchpad");
 
         graduatorV2.whitelistFactory(address(factoryV2));
         console.log("whitelisting factoryV2 (V2) in graduatorV2");
-
         graduatorV4.whitelistFactory(address(factoryV4));
         console.log("whitelisting factoryV4 (V4) in graduatorV4");
-
         graduatorV4.whitelistFactory(address(factoryTax));
         console.log("whitelisting factoryTax in graduatorV4");
 
