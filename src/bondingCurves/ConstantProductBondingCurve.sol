@@ -50,6 +50,11 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         return _MAX_EXCESS_OVER_THRESHOLD;
     }
 
+    /// @notice Returns the graduation configuration
+    function getGraduationConfig() external pure returns (GraduationConfig memory) {
+        return GraduationConfig(_GRADUATION_THRESHOLD, _MAX_EXCESS_OVER_THRESHOLD);
+    }
+
     /// @notice Returns the absolute maximum ETH reserves (graduation threshold + max excess)
     function maxEthReserves() external pure returns (uint256) {
         return _maxEthReserves();

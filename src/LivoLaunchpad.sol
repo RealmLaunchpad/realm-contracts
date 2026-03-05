@@ -55,7 +55,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     ///////////////////// Events /////////////////////
 
-    event TokenLaunched(address indexed token);
+    event TokenLaunched(address indexed token, uint256 graduationThreshold, uint256 maxExcessOverThreshold);
     event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
     event LivoTokenBuy(
         address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 ethFee
@@ -88,8 +88,8 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
         tokenConfigs[token] =
             TokenConfig({bondingCurve: bondingCurve, buyFeeBps: baseBuyFeeBps, sellFeeBps: baseSellFeeBps});
 
-        // todo finish implement
-        emit TokenLaunched(token);
+        ILivoBondingCurve.GraduationConfig memory gradConfig = bondingCurve.getGraduationConfig();
+        emit TokenLaunched(token, gradConfig.ethGraduationThreshold, gradConfig.maxExcessOverThreshold);
     }
 
     /// @notice Buys tokens with exact ETH amount

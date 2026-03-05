@@ -5,6 +5,14 @@ interface ILivoBondingCurve {
     // thrown if trying to buy above graduation threshold + margin
     error MaxEthReservesExceeded();
 
+    struct GraduationConfig {
+        uint256 ethGraduationThreshold;
+        uint256 maxExcessOverThreshold;
+    }
+
+    /// @notice Returns the graduation configuration
+    function getGraduationConfig() external view returns (GraduationConfig memory);
+
     /// @notice how many tokens can be purchased with a given amount of ETH
     function buyTokensWithExactEth(uint256 ethReserves, uint256 ethAmount)
         external
