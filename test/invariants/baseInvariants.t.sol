@@ -100,11 +100,19 @@ contract LaunchpadInvariants is Test {
         feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 
         factoryV2 = new LivoFactoryBase(
-            address(launchpad), address(tokenImplementation), address(bondingCurve), address(graduatorV2), address(feeHandler)
+            address(launchpad),
+            address(tokenImplementation),
+            address(bondingCurve),
+            address(graduatorV2),
+            address(feeHandler)
         );
 
         factoryV4 = new LivoFactoryBase(
-            address(launchpad), address(tokenImplementation), address(bondingCurve), address(graduatorV4), address(feeHandlerV4)
+            address(launchpad),
+            address(tokenImplementation),
+            address(bondingCurve),
+            address(graduatorV4),
+            address(feeHandlerV4)
         );
 
         launchpad.whitelistFactory(address(factoryV2));
