@@ -179,11 +179,10 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         generateFeesWithBuySwap(1 ether)
     {
         uint256 creatorEthBalanceBefore = creator.balance;
+        // Treasury already received graduation fees directly; record balance before LP fee accrual
         uint256 treasuryEthBalanceBefore = treasury.balance;
-        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
         _collectFees(testToken);
-        feeHandlerV4.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -191,13 +190,13 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         assertGt(creatorEthBalanceAfter, creatorEthBalanceBefore);
         assertGt(treasuryEthBalanceAfter, treasuryEthBalanceBefore);
 
-        // Creator claim includes graduation deposit + LP fees; treasury claim includes previous
-        // graduation pending + LP fees. Compare only LP-fee deltas.
+        // Creator claim includes graduation deposit + LP fees; treasury received graduation fees
+        // at graduation time (already in treasuryEthBalanceBefore). LP fees sent directly on accrual.
         assertApproxEqAbs(
             creatorEthBalanceAfter - creatorEthBalanceBefore - graduationCreatorClaimable,
-            (treasuryEthBalanceAfter - treasuryEthBalanceBefore) - treasuryPendingBefore,
+            treasuryEthBalanceAfter - treasuryEthBalanceBefore,
             1,
-            "creators and treasury should get approx equal fees"
+            "creators and treasury should get approx equal LP fees"
         );
     }
 
@@ -224,19 +223,16 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
-        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
         _collectFees(testToken);
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
 
-        assertEq(treasuryEthBalanceAfter, treasuryEthBalanceBefore, "treasury eth balance should not change");
-
         // Creator claim includes graduation deposit; subtract it to isolate LP fees only
         uint256 creatorLpFees = creatorEthBalanceAfter - creatorEthBalanceBefore - graduationCreatorClaimable;
-        // Treasury fees sit in the handler as treasuryPendingFees (not yet claimed to treasury address)
-        uint256 treasuryFees = feeHandlerV4.treasuryPendingFees() - treasuryPendingBefore;
+        // Treasury LP fees are sent directly during accrual
+        uint256 treasuryFees = treasuryEthBalanceAfter - treasuryEthBalanceBefore;
 
         assertApproxEqAbs(creatorLpFees + treasuryFees, buyAmount / 100, 1, "total fees should be 1%");
     }
@@ -248,20 +244,15 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
     {
         uint256 buyAmount = 1 ether;
 
-        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
         uint256 treasuryEthBalanceBefore = treasury.balance;
 
         _collectFees(testToken);
-        feeHandlerV4.treasuryClaim();
 
         uint256 treasuryEthBalanceAfter = treasury.balance;
         uint256 treasuryFees = treasuryEthBalanceAfter - treasuryEthBalanceBefore;
 
         assertApproxEqAbs(
-            treasuryFees,
-            treasuryPendingBefore + (buyAmount / 200),
-            1,
-            "treasury claim should include pending graduation fees and half of LP fees"
+            treasuryFees, buyAmount / 200, 1, "treasury should receive half of LP fees directly on accrual"
         );
     }
 
@@ -307,10 +298,9 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         );
     }
 
-    /// @notice test that any eth balance is not collected by the first call to claimFees
+    /// @notice test that externally sent ETH is not swept by fee collection
     function test_claimFees_noInitialEthBalance() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
-        // The fee handler already holds the graduation deposit (creator compensation).
-        // Record its balance, then send extra ETH on top.
+        // The fee handler holds the graduation deposit (creator compensation).
         uint256 feeHandlerBalanceBeforeTransfer = address(feeHandlerV4).balance;
 
         // send some eth to the fee handler
@@ -326,34 +316,19 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         );
 
         _collectFees(testToken);
-        // if there is no sweep, the treasury fees stay in the contract
-        assertGt(
-            address(feeHandlerV4).balance, externalEth, "fee handler should have more than 0.5 (the treasury fees)"
-        );
 
-        feeHandlerV4.treasuryClaim();
-
-        assertEq(
-            address(feeHandlerV4).balance,
-            externalEth,
-            "externally sent ETH should remain and not be claimable by treasury"
-        );
+        // Treasury fees are sent directly, so the handler should only hold the external ETH
+        assertEq(address(feeHandlerV4).balance, externalEth, "externally sent ETH should remain and not be claimed");
     }
 
     /// @notice test that a token creator can claim fees from mutliple tokens in one transaction
     function test_claimFees_multipleTokens() public twoGraduatedTokensWithBuys(1 ether) {
         // both should have accumulated fees
-        address[] memory tokens = new address[](2);
-        tokens[0] = testToken1;
-        tokens[1] = testToken2;
-
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
-        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
-        _collectFees(tokens[0]);
-        _collectFees(tokens[1]);
-        feeHandlerV4.treasuryClaim();
+        _collectFees(testToken1);
+        _collectFees(testToken2);
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -367,7 +342,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         assertApproxEqAbs(
             (creatorEthBalanceAfter - creatorEthBalanceBefore - totalGraduationDeposits)
-                + (treasuryEthBalanceAfter - treasuryEthBalanceBefore - treasuryPendingBefore),
+                + (treasuryEthBalanceAfter - treasuryEthBalanceBefore),
             expectedTotalLpFees,
             2,
             "total fees should be 1% of total buys"
@@ -383,10 +358,8 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         tokens[2] = testToken1; // duplicate
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
-        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
         _collectFees(tokens);
-        feeHandlerV4.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -397,7 +370,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         assertApproxEqAbs(
             (creatorEthBalanceAfter - creatorEthBalanceBefore - totalGraduationDeposits)
-                + (treasuryEthBalanceAfter - treasuryEthBalanceBefore - treasuryPendingBefore),
+                + (treasuryEthBalanceAfter - treasuryEthBalanceBefore),
             expectedTotalLpFees,
             2,
             "total fees should be 1% of total buys"
@@ -413,7 +386,6 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
-        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
         _swap(buyer, testToken1, 1 ether, 12342, true, true);
         _swap(buyer, testToken2, 1 ether, 12342, true, true);
@@ -424,12 +396,11 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         _swap(buyer, testToken2, 2 ether, 12342, true, true);
 
         _collectFees(tokens);
-        feeHandlerV4.treasuryClaim();
 
         uint256 totalGraduationDeposits = graduationCreatorClaimable1 + graduationCreatorClaimable2;
         uint256 creatorEarned = creator.balance - creatorEthBalanceBefore;
         uint256 creatorLpEarned = creatorEarned - totalGraduationDeposits;
-        uint256 treasuryEarned = treasury.balance - treasuryEthBalanceBefore - treasuryPendingBefore;
+        uint256 treasuryEarned = treasury.balance - treasuryEthBalanceBefore;
 
         assertGt(creatorEarned, 0, "creator eth balance should increase");
         assertGt(treasuryEarned, 0, "treasury eth balance should increase");
@@ -445,32 +416,6 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
             10, // 10 wei error allowed
             "total fees should be 1% of total buys"
         );
-    }
-
-    function test_treasuryClaim_emitsEvent_whenEthBalanceIsZero() public createAndGraduateToken {
-        uint256 claimAmount = feeHandlerV4.treasuryPendingFees();
-        vm.expectEmit(true, true, false, true, address(feeHandlerV4));
-        emit ILivoFeeHandler.TreasuryClaimed(claimAmount);
-
-        feeHandlerV4.treasuryClaim();
-    }
-
-    function test_treasuryClaim_emitsEvent_withClaimedAmount()
-        public
-        createAndGraduateToken
-        generateFeesWithBuySwap(1 ether)
-    {
-        _collectFees(testToken);
-
-        uint256 claimAmount = feeHandlerV4.treasuryPendingFees();
-        assertGt(claimAmount, 0, "fee handler should hold treasury fees before claim");
-
-        vm.expectEmit(true, true, false, true, address(feeHandlerV4));
-        emit ILivoFeeHandler.TreasuryClaimed(claimAmount);
-
-        feeHandlerV4.treasuryClaim();
-
-        assertEq(feeHandlerV4.treasuryPendingFees(), 0, "treasury pending fees should be zero after claim");
     }
 
     /// @notice test that if price dips well below the graduation price and then there are buys, the fees are still correctly collected
@@ -889,8 +834,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         );
     }
 
-    /// @dev when anyone calls `accrueTokenFees()`, then fees are accrued in storage and no destination balance is transferred
-    function test_accrueTokenFees_calledByAnyone_onlyAccruesNoTransfers()
+    /// @dev when anyone calls `accrueTokenFees()`, then creator pending increases and treasury receives funds directly
+    function test_accrueTokenFees_calledByAnyone_accruesToCreatorAndTreasury()
         public
         createAndGraduateToken
         afterOneSwapBuy(buyer)
@@ -899,50 +844,41 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256 treasuryEthBefore = treasury.balance;
         uint256 aliceEthBefore = alice.balance;
         uint256 creatorPendingBefore = _claimable(testToken, creator);
-        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
         _accrueTokenFeesAs(alice);
 
         assertEq(creator.balance, creatorEthBefore, "creator balance should not change on accrue");
-        assertEq(treasury.balance, treasuryEthBefore, "treasury balance should not change on accrue");
+        assertGt(treasury.balance, treasuryEthBefore, "treasury should receive fees directly on accrue");
         assertEq(alice.balance, aliceEthBefore, "caller balance should not change on accrue");
         assertEq(_claimable(testToken, creator), creatorPendingBefore, "creator pending should not change");
-        assertGt(feeHandlerV4.treasuryPendingFees(), treasuryPendingBefore, "treasury pending should increase");
     }
 
-    /// @dev when fees are accrued and no claim runs, then no destination receives funds; when claims run, then each destination receives only its own share
+    /// @dev when fees are accrued, treasury receives immediately; creator receives only on explicit claim
     function test_claimFlow_fundsMoveOnlyOnIntentionalClaims() public createAndGraduateToken afterOneSwapBuy(buyer) {
         uint256 creatorEthBefore = creator.balance;
         uint256 treasuryEthBefore = treasury.balance;
 
+        // Accrual sends treasury fees directly, but creator fees remain pending
         _accrueTokenFeesAs(alice);
 
         assertEq(creator.balance, creatorEthBefore, "creator should not be paid before creatorClaim");
-        assertEq(treasury.balance, treasuryEthBefore, "treasury should not be paid before treasuryClaim");
+        assertGt(treasury.balance, treasuryEthBefore, "treasury should receive fees directly on accrue");
 
         _creatorClaimAs(creator);
 
         uint256 creatorEthAfterCreatorClaim = creator.balance;
         assertGt(creatorEthAfterCreatorClaim, creatorEthBefore, "creator should be paid after creatorClaim");
-        assertEq(treasury.balance, treasuryEthBefore, "treasury should still wait for treasuryClaim");
-
-        feeHandlerV4.treasuryClaim();
-        assertGt(treasury.balance, treasuryEthBefore, "treasury should be paid after treasuryClaim");
-        assertEq(creator.balance, creatorEthAfterCreatorClaim, "creator should not receive more after treasuryClaim");
     }
 
-    /// @dev when creator does not claim and any account calls `accrueTokenFees()`, then treasury can still claim its accrued share
-    function test_treasury_canAccrueViaAnyoneAndClaimLater() public createAndGraduateToken afterOneSwapBuy(buyer) {
+    /// @dev when anyone calls `accrueTokenFees()`, then treasury receives its share directly
+    function test_treasury_receivesDirectlyOnAccrue() public createAndGraduateToken afterOneSwapBuy(buyer) {
         uint256 treasuryEthBefore = treasury.balance;
         uint256 creatorEthBefore = creator.balance;
 
         _accrueTokenFeesAs(alice);
 
-        vm.prank(alice);
-        feeHandlerV4.treasuryClaim();
-
-        assertEq(creator.balance, creatorEthBefore, "creator should not receive more after treasuryClaim");
-        assertGt(treasury.balance, treasuryEthBefore, "treasury should receive accrued share after treasuryClaim");
+        assertEq(creator.balance, creatorEthBefore, "creator should not receive fees on accrue");
+        assertGt(treasury.balance, treasuryEthBefore, "treasury should receive accrued share directly");
     }
 
     /// @dev when state is swap-buy before accrue, then `getClaimable()` returns current owner claimable amount
@@ -1010,7 +946,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         _creatorClaimAs(creator);
 
         assertGt(creator.balance, creatorEthBefore, "creator should receive fees on creator claim");
-        assertEq(treasury.balance, treasuryEthBefore, "treasury should not receive funds on creator claim");
+        // Treasury receives fees directly during LP fee accrual (triggered by claim)
+        assertGt(treasury.balance, treasuryEthBefore, "treasury should receive fees on LP accrual during claim");
     }
 
     /// @dev when state is swap-buy, accrue, claim, swap-buy, then `getClaimable()` reflects only post-claim swap
@@ -1064,24 +1001,26 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapBuy(buyer)
     {
-        uint256 treasuryEthBefore = treasury.balance;
-
         _accrueTokenFeesAs(creator);
 
         uint256 creatorEthBeforeFirstClaim = creator.balance;
+        uint256 treasuryEthBeforeFirstClaim = treasury.balance;
         _creatorClaimAs(creator);
         uint256 creatorEthAfterFirstClaim = creator.balance;
 
         assertGt(creatorEthAfterFirstClaim, creatorEthBeforeFirstClaim, "first creator claim should pay creator");
-        assertEq(treasury.balance, treasuryEthBefore, "treasury should not be paid by creator claim");
+        // Treasury already received fees from the accrual above; claim just re-accrues (no new LP fees)
+        assertEq(treasury.balance, treasuryEthBeforeFirstClaim, "treasury should not receive extra on re-accrue");
 
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
 
         uint256 creatorEthBeforeSecondClaim = creator.balance;
+        uint256 treasuryEthBeforeSecondClaim = treasury.balance;
         _creatorClaimAs(creator);
 
         assertGt(creator.balance, creatorEthBeforeSecondClaim, "second creator claim should pay creator");
-        assertEq(treasury.balance, treasuryEthBefore, "treasury should remain unchanged across creator claims");
+        // Treasury receives LP fees from second swap during accrue in claim
+        assertGt(treasury.balance, treasuryEthBeforeSecondClaim, "treasury should receive LP fees from second swap");
         assertEq(_creatorClaimable(), 0, "claimable should be zero after second creator claim");
     }
 

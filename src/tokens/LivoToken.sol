@@ -5,6 +5,7 @@ import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol"
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract LivoToken is ERC20, ILivoToken, Initializable {
@@ -123,15 +124,17 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         emit FeeReceiverUpdated(oldFeeReceiver, newFeeReceiver);
     }
 
+    //////////////////////// fee accrual ////////////////////////
+
+    /// @notice Routes ETH fees to the fee handler for the token's fee receiver
+    function accrueFees() external payable {
+        ILivoFeeHandler(feeHandler).depositFees{value: msg.value}(address(this), feeReceiver);
+    }
+
     //////////////////////// view functions ////////////////////////
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
     function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
-
-    /// @notice Returns both fee handler and receiver in a single call
-    function getFeeConfigs() external view returns (ILivoToken.FeeConfig memory config) {
-        return ILivoToken.FeeConfig({feeHandler: feeHandler, feeReceiver: feeReceiver});
-    }
 
     /// @dev ERC20 interface compliance
     function name() public view override returns (string memory) {

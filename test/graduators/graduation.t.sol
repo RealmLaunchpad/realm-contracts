@@ -24,6 +24,9 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     // Graduation fee constant (matches both V2 and V4 graduators)
     uint256 constant GRADUATION_FEE = 0.5 ether;
 
+    /// @dev Returns the fee handler for the current test token
+    function _tokenFeeHandler() internal view virtual returns (ILivoFeeHandler);
+
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
 
     /// @notice Test that graduated boolean turns true in launchpad
@@ -59,8 +62,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
     /// @notice creator gets the CREATOR_GRADUATION_COMPENSATION at graduation
     function test_creatorGetsGraduationCompensation() public createTestToken {
-        ILivoToken token = ILivoToken(testToken);
-        ILivoFeeHandler tokenFeeHandler = ILivoFeeHandler(token.feeHandler());
+        ILivoFeeHandler tokenFeeHandler = _tokenFeeHandler();
 
         address[] memory _tokens = new address[](1);
         _tokens[0] = testToken;
@@ -127,26 +129,20 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         assertEq(expectedPriceAtGraduation, GRADUATION_PRICE, "missmatch with expected graduation price");
     }
 
-    /// @notice Test that at graduation the team collects the graduation fee in eth
+    /// @notice Test that at graduation the team collects the graduation fee in eth (sent directly to treasury)
     function test_teamCollectsGraduationFeeInEthAtGraduation() public createTestToken {
-        ILivoFeeHandler tokenFeeHandler = ILivoFeeHandler(ILivoToken(testToken).feeHandler());
-        uint256 pendingBefore = tokenFeeHandler.treasuryPendingFees();
+        uint256 treasuryBalanceBefore = treasury.balance;
 
         _graduateToken();
 
-        uint256 pendingAfter = tokenFeeHandler.treasuryPendingFees();
-        uint256 feeCollected = pendingAfter - pendingBefore;
+        uint256 treasuryBalanceAfter = treasury.balance;
+        uint256 feeCollected = treasuryBalanceAfter - treasuryBalanceBefore;
 
-        assertGe(
+        assertEq(
             feeCollected,
             GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION,
-            "Treasury graduation fee share should be collected"
+            "Treasury should receive graduation fee share directly"
         );
-
-        uint256 treasuryBalanceBefore = treasury.balance;
-        tokenFeeHandler.treasuryClaim();
-        assertEq(tokenFeeHandler.treasuryPendingFees(), 0, "Treasury pending fees should be zero after claim");
-        assertEq(treasury.balance - treasuryBalanceBefore, feeCollected, "Treasury should receive claimed pending fees");
     }
 
     /// @notice Test that a buy exceeding the graduation + excess limit reverts
@@ -247,8 +243,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         );
 
         uint256 treasuryFeesBeforeGraduation = launchpad.treasuryEthFeesCollected();
-        ILivoFeeHandler tokenFeeHandler = ILivoFeeHandler(ILivoToken(testToken).feeHandler());
-        uint256 treasuryPendingBeforeGraduation = tokenFeeHandler.treasuryPendingFees();
+        uint256 treasuryEthBefore = treasury.balance;
 
         // this graduates the token
         uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
@@ -261,10 +256,10 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         uint256 treasuryFeesAfterGraduation = launchpad.treasuryEthFeesCollected();
 
         uint256 tradingFeeAccumulated = treasuryFeesAfterGraduation - treasuryFeesBeforeGraduation;
-        uint256 graduationFeePending = tokenFeeHandler.treasuryPendingFees() - treasuryPendingBeforeGraduation;
+        uint256 graduationFeeReceived = treasury.balance - treasuryEthBefore;
 
         assertEq(
-            tradingFeeAccumulated + graduationFeePending,
+            tradingFeeAccumulated + graduationFeeReceived,
             tradingFee + (GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION),
             "Treasury should collect its graduation fee share (plus trading fee)"
         );
@@ -342,11 +337,19 @@ contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
         super.setUp();
     }
+
+    function _tokenFeeHandler() internal view override returns (ILivoFeeHandler) {
+        return ILivoFeeHandler(ILivoToken(testToken).feeHandler());
+    }
 }
 
 /// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V4 graduator
 contract UniswapV4AgnosticGraduationTests is ProtocolAgnosticGraduationTests, LaunchpadBaseTestsWithUniv4Graduator {
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator) {
         super.setUp();
+    }
+
+    function _tokenFeeHandler() internal view override returns (ILivoFeeHandler) {
+        return ILivoFeeHandler(ILivoToken(testToken).feeHandler());
     }
 }

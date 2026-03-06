@@ -89,7 +89,7 @@ contract LaunchpadInvariants is Test {
             DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
 
-        feeHandler = new LivoFeeBaseHandler(address(launchpad));
+        feeHandler = new LivoFeeBaseHandler();
         feeHandlerV4 = new LivoFeeV4Handler(
             address(launchpad),
             address(liquidityLock),

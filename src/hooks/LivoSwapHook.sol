@@ -9,7 +9,6 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
@@ -151,9 +150,8 @@ contract LivoSwapHook is BaseHook {
         // Take ETH to this contract first so we can forward it to the token fee handler
         poolManager.take(currency, address(this), taxAmount);
 
-        ILivoToken.FeeConfig memory feeConfig = ILivoToken(tokenAddress).getFeeConfigs();
-        ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: taxAmount}(tokenAddress, feeConfig.feeReceiver);
-        emit CreatorTaxesAccrued(tokenAddress, feeConfig.feeReceiver, taxAmount);
+        emit CreatorTaxesAccrued(tokenAddress, ILivoToken(tokenAddress).feeReceiver(), taxAmount);
+        ILivoToken(tokenAddress).accrueFees{value: taxAmount}();
 
         // casting to 'uint128' is safe because it is known to be a positive eth value well below eth max supply
         // forge-lint: disable-next-line(unsafe-typecast)

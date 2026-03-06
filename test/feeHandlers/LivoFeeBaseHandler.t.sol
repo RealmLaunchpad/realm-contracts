@@ -44,7 +44,7 @@ contract LivoFeeBaseHandlerTests is Test {
 
     function setUp() public virtual {
         mockLaunchpad = new MockLaunchpad(treasuryAddr);
-        handler = new LivoFeeBaseHandler(address(mockLaunchpad));
+        handler = new LivoFeeBaseHandler();
         vm.deal(address(this), 1000 ether);
     }
 
@@ -56,22 +56,10 @@ contract LivoFeeBaseHandlerTests is Test {
         _;
     }
 
-    /// @dev Deposits `amount` of ETH into treasury pending fees
-    modifier depositTreasuryFees(uint256 amount) {
-        handler.depositTreasuryFees{value: amount}(tokenA);
-        _;
-    }
-
     /// @dev Claims fees for `claimer` across the given `tokens`
     modifier claimAs(address claimer, address[] memory tokens) {
         vm.prank(claimer);
         handler.claim(tokens);
-        _;
-    }
-
-    /// @dev Sets the mock launchpad treasury to `_treasury`
-    modifier setTreasury(address _treasury) {
-        mockLaunchpad.setTreasury(_treasury);
         _;
     }
 
@@ -138,24 +126,6 @@ contract LivoFeeBaseHandlerTests is Test {
         vm.expectEmit(true, true, false, true, address(handler));
         emit ILivoFeeHandler.CreatorFeesDeposited(tokenA, creator, 1 ether);
         handler.depositFees{value: 1 ether}(tokenA, creator);
-    }
-
-    // ====================================================================
-    //                     depositTreasuryFees() tests
-    // ====================================================================
-
-    /// @dev when treasury fees are deposited, then treasuryPendingFees increases by that amount
-    function test_depositTreasuryFees_assertPendingIncreases() public depositTreasuryFees(1 ether) {
-        assertEq(handler.treasuryPendingFees(), 1 ether, "treasury pending should equal deposited");
-    }
-
-    /// @dev when treasury fees are deposited multiple times, then treasuryPendingFees is the cumulative total
-    function test_depositTreasuryFeesTwice_assertCumulative()
-        public
-        depositTreasuryFees(1 ether)
-        depositTreasuryFees(2 ether)
-    {
-        assertEq(handler.treasuryPendingFees(), 3 ether, "treasury pending should be cumulative");
     }
 
     // ====================================================================
@@ -236,51 +206,6 @@ contract LivoFeeBaseHandlerTests is Test {
         vm.prank(rejecterAddr);
         vm.expectRevert(ILivoFeeHandler.EthTransferFailed.selector);
         handler.claim(_toArray(tokenA));
-    }
-
-    // ====================================================================
-    //                       treasuryClaim() tests
-    // ====================================================================
-
-    /// @dev when treasury fees are pending, then they are transferred to the treasury address from the launchpad
-    function test_treasuryClaim_assertTransferToTreasury() public depositTreasuryFees(5 ether) {
-        uint256 balanceBefore = treasuryAddr.balance;
-
-        handler.treasuryClaim();
-
-        assertEq(treasuryAddr.balance - balanceBefore, 5 ether, "treasury should receive pending fees");
-    }
-
-    /// @dev when treasury fees are pending, then treasuryPendingFees is reset to 0 after claim
-    function test_treasuryClaim_assertPendingResetToZero() public depositTreasuryFees(5 ether) {
-        handler.treasuryClaim();
-
-        assertEq(handler.treasuryPendingFees(), 0, "pending should be 0 after claim");
-    }
-
-    /// @dev when there are no pending treasury fees, then TreasuryClaimed(0) is still emitted
-    function test_treasuryClaimZeroPending_assertEventEmitted() public {
-        vm.expectEmit(false, false, false, true, address(handler));
-        emit ILivoFeeHandler.TreasuryClaimed(0);
-
-        handler.treasuryClaim();
-    }
-
-    /// @dev when treasury fees are pending and claimed, then TreasuryClaimed event has the correct amount
-    function test_treasuryClaim_assertEventAmount() public depositTreasuryFees(3 ether) {
-        vm.expectEmit(false, false, false, true, address(handler));
-        emit ILivoFeeHandler.TreasuryClaimed(3 ether);
-
-        handler.treasuryClaim();
-    }
-
-    /// @dev when treasury address rejects ETH, then treasuryClaim reverts with EthTransferFailed
-    function test_treasuryClaimEthTransferFails_assertReverts() public depositTreasuryFees(1 ether) {
-        EthRejecter rejecter = new EthRejecter();
-        mockLaunchpad.setTreasury(address(rejecter));
-
-        vm.expectRevert(ILivoFeeHandler.EthTransferFailed.selector);
-        handler.treasuryClaim();
     }
 
     // ====================================================================

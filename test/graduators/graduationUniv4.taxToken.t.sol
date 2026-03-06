@@ -30,10 +30,10 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         feeHandlerV4.claim(tokens);
     }
 
-    function _pendingTaxes(address, address tokenOwner) internal view returns (uint256) {
+    function _pendingTaxes(address token, address tokenOwner) internal view returns (uint256) {
         address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-        return ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(tokens, tokenOwner)[0];
+        tokens[0] = token;
+        return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(tokens, tokenOwner)[0];
     }
 
     /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////
@@ -541,11 +541,10 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _graduateToken();
         address[] memory _t = new address[](1);
         _t[0] = testToken;
-        uint256 graduationDeposit = ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(_t, creator)[0];
+        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t, creator)[0];
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
-        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
         // Perform buy swap to generate LP fees (1% total: 0.5% creator, 0.5% treasury)
         uint256 buyAmount = 1 ether;
@@ -561,7 +560,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Claim LP fees
         _collectFees(testToken);
-        feeHandlerV4.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -574,12 +572,12 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             "Creator should receive ~0.5% LP fees"
         );
 
-        // Verify treasury received ~0.5% of buy amount
+        // Verify treasury received ~0.5% of buy amount (sent directly on accrual)
         assertApproxEqAbs(
             treasuryEthBalanceAfter - treasuryEthBalanceBefore,
-            treasuryPendingBefore + buyAmount / 200, // pending before + pending delta
+            buyAmount / 200,
             1,
-            "Treasury should receive previous pending + ~0.5% LP fees"
+            "Treasury should receive ~0.5% LP fees"
         );
     }
 
@@ -593,7 +591,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _graduateToken();
         address[] memory _t = new address[](1);
         _t[0] = testToken;
-        uint256 graduationDeposit = ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(_t, creator)[0];
+        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t, creator)[0];
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 creatorTaxesBefore = _pendingTaxes(testToken, creator);
@@ -626,7 +624,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Claim LP fees (paid in native ETH to creator)
         _collectFees(testToken);
-        feeHandlerV4.treasuryClaim();
 
         uint256 creatorEthBalanceAfterLPClaim = creator.balance;
         uint256 lpFeesReceivedEth = creatorEthBalanceAfterLPClaim - creatorEthBalanceBefore;
@@ -644,7 +641,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _graduateToken();
         address[] memory _t2 = new address[](1);
         _t2[0] = testToken;
-        uint256 graduationDeposit = ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(_t2, creator)[0];
+        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t2, creator)[0];
 
         // Fast-forward past tax period
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
@@ -652,7 +649,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 tokenContractBalanceBefore = IERC20(testToken).balanceOf(testToken);
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
-        uint256 treasuryPendingBefore = feeHandlerV4.treasuryPendingFees();
 
         // Perform buy swap (no taxes should be charged)
         uint256 buyAmount = 2 ether;
@@ -678,9 +674,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             "No sell tax should accumulate after period expires"
         );
 
-        // Claim LP fees from both swaps
+        // Claim LP fees from both swaps (treasury receives directly on accrual)
         _collectFees(testToken);
-        feeHandlerV4.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 treasuryEthBalanceAfter = treasury.balance;
@@ -694,7 +689,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Total LP fees (excluding graduation deposit) should be ~1% of buy amount
         assertApproxEqAbs(
-            creatorFeesReceived + treasuryFeesReceived - graduationDeposit - treasuryPendingBefore,
+            creatorFeesReceived + treasuryFeesReceived - graduationDeposit,
             buyAmount / 100,
             2,
             "Total LP fees should be ~1% of buy volume"
@@ -736,8 +731,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
 
-        feeHandlerV4.treasuryClaim();
-
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 aliceEthBalanceAfter = alice.balance;
 
@@ -777,7 +770,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
-        feeHandlerV4.treasuryClaim();
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 totalCreatorFees = creatorEthBalanceAfter - creatorEthBalanceBefore;

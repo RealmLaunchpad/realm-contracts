@@ -125,13 +125,14 @@ contract Deployments is Script {
         );
         console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
 
-        // 8. Deploy fee handlers used by factories
-        LivoFeeBaseHandler feeHandler = new LivoFeeBaseHandler(address(launchpad));
+        // 7. Deploy fee handlers used by factories
+        LivoFeeBaseHandler feeHandler = new LivoFeeBaseHandler();
         console.log("| LivoFeeBaseHandler | ", address(feeHandler));
         LivoFeeV4Handler feeHandlerV4 = new LivoFeeV4Handler(
             address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, hookAddress
         );
         console.log("| LivoFeeV4Handler | ", address(feeHandlerV4));
+
         // authorize the V4 graduator in the v4 fee handler, which is the only one allowed to register univ4 positionIds
         feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 

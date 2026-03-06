@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
@@ -59,6 +60,9 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
 
     //////////////////////////////////////////////////////
 
+    /// @notice launchpad address, to resolve treasury
+    address public immutable LIVO_LAUNCHPAD;
+
     /// @notice Initializes the Uniswap V4 fee handler
     /// @param _launchpad Address of the LivoLaunchpad contract
     /// @param _liquidityLock Address of the liquidity lock contract
@@ -71,7 +75,8 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         address _poolManager,
         address _positionManager,
         address _hook
-    ) LivoFeeBaseHandler(_launchpad) Ownable(msg.sender) {
+    ) Ownable(msg.sender) {
+        LIVO_LAUNCHPAD = _launchpad;
         HOOK_ADDRESS = _hook;
         LIQUIDITY_LOCK = ILiquidityLockUniv4WithFees(_liquidityLock);
 
@@ -207,7 +212,8 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         }
 
         if (totalTreasuryAccrued > 0) {
-            treasuryPendingFees += totalTreasuryAccrued;
+            address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+            _transferEth(treasury, totalTreasuryAccrued);
             emit TreasuryFeesDeposited(token, totalTreasuryAccrued);
         }
     }

@@ -6,7 +6,6 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {FactoryWhitelisting} from "src/FactoryWhitelisting.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
@@ -173,16 +172,16 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
 
-        ILivoToken.FeeConfig memory feeConfig = ILivoToken(tokenAddress).getFeeConfigs();
-
-        // Deposit creator compensation
-        ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: CREATOR_GRADUATION_COMPENSATION}(
-            tokenAddress, feeConfig.feeReceiver
+        // Deposit creator compensation through the token
+        emit CreatorGraduationFeeCollected(
+            tokenAddress, ILivoToken(tokenAddress).feeReceiver(), CREATOR_GRADUATION_COMPENSATION
         );
-        emit CreatorGraduationFeeCollected(tokenAddress, feeConfig.feeReceiver, CREATOR_GRADUATION_COMPENSATION);
+        ILivoToken(tokenAddress).accrueFees{value: CREATOR_GRADUATION_COMPENSATION}();
 
-        // Deposit treasury graduation fees
-        ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}(tokenAddress);
+        // Send treasury share directly to treasury
+        address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+        (bool success,) = treasury.call{value: treasuryShare}("");
+        require(success, EtherTransferFailed());
         emit TreasuryGraduationFeeCollected(tokenAddress, treasuryShare);
     }
 
@@ -196,8 +195,8 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         // send any remaining ETH to the owner (launchpad)
         uint256 remainingEth = address(this).balance;
         if (remainingEth > 0) {
-            address livoTreasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-            (bool success,) = livoTreasury.call{value: remainingEth}("");
+            address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+            (bool success,) = treasury.call{value: remainingEth}("");
             require(success, EtherTransferFailed());
 
             // for transparency, to be able to detect if some graduation went completely wrong

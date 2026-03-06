@@ -31,15 +31,12 @@ interface ILivoToken is IERC20 {
         uint40 graduationTimestamp; // Timestamp when token graduated (0 if not graduated)
     }
 
-    /// @notice Fee configuration addresses
-    struct FeeConfig {
-        address feeHandler;
-        address feeReceiver;
-    }
-
     ////////////////// STATE CHANGING FUNCTIONS ////////////////////
 
     function markGraduated() external;
+
+    /// @notice Routes ETH fees to the token's fee handler for the token's fee receiver
+    function accrueFees() external payable;
 
     /// @notice Allows the current owner or whitelisted address to propose a new owner
     function proposeNewOwner(address newOwner) external;
@@ -66,16 +63,12 @@ interface ILivoToken is IERC20 {
     /// @notice Address where liquidity is deployed after graduation
     function pair() external view returns (address);
 
-    /// @notice The contract where fees will deposited
+    /// @notice The contract address where fees are claimed from
     /// @dev Must implement ILivoFeeHandler interface
     function feeHandler() external view returns (address);
 
     /// @notice The address that receives fees within the feeHandler contract
     function feeReceiver() external view returns (address);
-
-    /// @notice Returns both fee handler and receiver in a single call
-    /// @return config The fee configuration with handler and receiver addresses
-    function getFeeConfigs() external view returns (FeeConfig memory config);
 
     /// @notice Owner of the token. The creator unless communityTakeOver takes place
     function owner() external view returns (address);

@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -72,6 +71,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
     /// @notice ETH compensation paid to token creator at graduation
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
+
+    /////////////////////// Errors ///////////////////////
+
+    error EtherTransferFailed();
 
     /////////////////////// Events ///////////////////////
 
@@ -199,16 +202,16 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
         uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
 
-        ILivoToken.FeeConfig memory feeConfig = ILivoToken(tokenAddress).getFeeConfigs();
-
-        // Deposit creator compensation
-        ILivoFeeHandler(feeConfig.feeHandler).depositFees{value: CREATOR_GRADUATION_COMPENSATION}(
-            tokenAddress, feeConfig.feeReceiver
+        // Deposit creator compensation through the token
+        emit CreatorGraduationFeeCollected(
+            tokenAddress, ILivoToken(tokenAddress).feeReceiver(), CREATOR_GRADUATION_COMPENSATION
         );
-        emit CreatorGraduationFeeCollected(tokenAddress, feeConfig.feeReceiver, CREATOR_GRADUATION_COMPENSATION);
+        ILivoToken(tokenAddress).accrueFees{value: CREATOR_GRADUATION_COMPENSATION}();
 
-        // Deposit treasury graduation fees for later `treasuryClaim()`
-        ILivoFeeHandler(feeConfig.feeHandler).depositTreasuryFees{value: treasuryShare}(tokenAddress);
+        // Send treasury share directly to treasury
+        address treasuryAddr = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+        (bool success,) = treasuryAddr.call{value: treasuryShare}("");
+        require(success, EtherTransferFailed());
         emit TreasuryGraduationFeeCollected(tokenAddress, treasuryShare);
     }
 
