@@ -118,10 +118,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         require(msg.sender == owner, Unauthorized());
         require(newFeeReceiver != address(0), InvalidFeeReceiver());
 
-        address oldFeeReceiver = feeReceiver;
         feeReceiver = newFeeReceiver;
 
-        emit FeeReceiverUpdated(oldFeeReceiver, newFeeReceiver);
+        emit FeeReceiverUpdated(newFeeReceiver);
     }
 
     //////////////////////// fee accrual ////////////////////////
