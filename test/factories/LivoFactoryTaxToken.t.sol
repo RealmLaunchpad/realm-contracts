@@ -67,10 +67,10 @@ contract LivoFactoryTaxTokenDeploymentTest is LaunchpadBaseTestsWithUniv4Graduat
         factoryTax.createToken("TestToken", "", creator, "0x0", 500, uint32(14 days));
     }
 
-    /// @dev when tokenOwner is zero address, then createToken reverts with InvalidTokenOwner
-    function test_createToken_revertsOnZeroOwner() public {
+    /// @dev when feeReceiver is zero address, then createToken reverts with InvalidFeeReceiver
+    function test_createToken_revertsOnZeroFeeReceiver() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTokenOwner.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidFeeReceiver.selector));
         factoryTax.createToken("TestToken", "TEST", address(0), "0x12", 500, uint32(14 days));
     }
 

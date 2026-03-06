@@ -115,9 +115,9 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         factoryV2.createToken("TestToken", longSymbol, creator, "0x12");
     }
 
-    function test_cannotCreateTokenWithZeroOwner() public {
+    function test_cannotCreateTokenWithZeroFeeReceiver() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTokenOwner.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidFeeReceiver.selector));
         factoryV2.createToken("TestToken", "TEST", address(0), "0x12");
     }
 }

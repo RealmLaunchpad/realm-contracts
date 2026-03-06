@@ -41,13 +41,13 @@ contract LivoFactoryBase is ILivoFactory {
 
     /// @notice Deploys a new token clone, initializes it, and registers it in the launchpad
     /// @dev tokenOwner wont receive any fees, he needs to claim them manually. This avoids unwanted ETH fees from project tokenOwner doesn't specifically endorse
-    function createToken(string calldata name, string calldata symbol, address tokenOwner, bytes32 salt)
+    function createToken(string calldata name, string calldata symbol, address feeReceiver, bytes32 salt)
         external
         returns (address token)
     {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
-        require(tokenOwner != address(0), InvalidTokenOwner());
+        require(feeReceiver != address(0), InvalidFeeReceiver());
 
         // forge-lint: disable-next-line
         bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
@@ -61,11 +61,11 @@ contract LivoFactoryBase is ILivoFactory {
             token,
             name,
             symbol,
-            tokenOwner, // token owner
+            msg.sender, // token owner
             address(LAUNCHPAD),
             address(GRADUATOR),
             address(FEE_HANDLER),
-            tokenOwner // fee receiver
+            feeReceiver // fee receiver
         );
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
@@ -79,12 +79,12 @@ contract LivoFactoryBase is ILivoFactory {
                 ILivoToken.InitializeParams({
                     name: name,
                     symbol: symbol,
-                    tokenOwner: tokenOwner,
+                    tokenOwner: msg.sender,
                     graduator: address(GRADUATOR),
                     pair: pair,
                     launchpad: address(LAUNCHPAD),
                     feeHandler: address(FEE_HANDLER),
-                    feeReceiver: tokenOwner
+                    feeReceiver: feeReceiver
                 })
             );
 

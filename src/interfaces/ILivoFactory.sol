@@ -19,4 +19,5 @@ interface ILivoFactory {
 
     error InvalidNameOrSymbol();
     error InvalidTokenOwner();
+    error InvalidFeeReceiver();
 }

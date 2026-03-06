@@ -56,7 +56,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
     function createToken(
         string calldata name,
         string calldata symbol,
-        address tokenOwner,
+        address feeReceiver,
         bytes32 salt,
         uint16 sellTaxBps,
         uint32 taxDurationSeconds
@@ -66,7 +66,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
 
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
-        require(tokenOwner != address(0), InvalidTokenOwner());
+        require(feeReceiver != address(0), InvalidFeeReceiver());
 
         // forge-lint: disable-next-line
         bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
@@ -80,11 +80,11 @@ contract LivoFactoryTaxToken is ILivoFactory {
             token,
             name,
             symbol,
-            tokenOwner, // token owner
+            msg.sender, // token owner
             address(LAUNCHPAD),
             address(GRADUATOR),
             address(FEE_HANDLER),
-            tokenOwner // fee receiver
+            feeReceiver // fee receiver
         );
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
@@ -98,12 +98,12 @@ contract LivoFactoryTaxToken is ILivoFactory {
             ILivoToken.InitializeParams({
                 name: name,
                 symbol: symbol,
-                tokenOwner: tokenOwner,
+                tokenOwner: msg.sender,
                 graduator: address(GRADUATOR),
                 pair: pair,
                 launchpad: address(LAUNCHPAD),
                 feeHandler: address(FEE_HANDLER),
-                feeReceiver: tokenOwner
+                feeReceiver: feeReceiver
             }),
             sellTaxBps,
             taxDurationSeconds
