@@ -7,18 +7,41 @@ import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
+/// @notice Splits ETH fees received from a `LivoFeeHandler` among multiple recipients according to configurable BPS shares.
+/// @dev Uses a cumulative `ethPerBps` accumulator pattern to track each recipient's claimable amount without iterating over all recipients on every deposit.
 contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
     uint256 internal constant BPS_TOTAL = 10_000;
+    uint256 internal constant PRECISION = 1e18;
 
     address public feeHandler;
     address public token;
     address[] public recipients;
     uint256[] public sharesBps;
 
+    /// @notice Cumulative ETH earned per basis point of share, scaled by `PRECISION`.
+    uint256 public ethPerBps;
+
+    /// @notice BPS share assigned to each recipient.
+    mapping(address => uint256) public sharesBpsOf;
+
+    /// @notice Snapshot of `ethPerBps` at the time of the recipient's last claim or share update.
+    mapping(address => uint256) public claimedPerBps;
+
+    /// @notice Residual claimable ETH carried over after a share update for a recipient.
+    mapping(address => uint256) public pendingClaims;
+
+    /// @dev Tracks ETH already accounted for in `ethPerBps` so new deposits can be detected via `address(this).balance - totalAccounted`.
+    uint256 internal totalAccounted;
+
     constructor() {
         _disableInitializers();
     }
 
+    /// @notice Initializes the splitter with a fee handler, token, and initial share configuration.
+    /// @param feeHandler_ Address of the `LivoFeeHandler` this splitter claims from.
+    /// @param token_ Address of the `LivoToken` whose fees are being split.
+    /// @param recipients_ Initial fee recipients.
+    /// @param sharesBps_ BPS shares for each recipient (must sum to 10 000).
     function initialize(
         address feeHandler_,
         address token_,
@@ -30,42 +53,86 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
         _setShares(recipients_, sharesBps_);
     }
 
+    /// @notice Updates the recipient list and their shares. Only callable by the token owner.
+    /// @dev Snapshots each current recipient's claimable balance into `pendingClaims` before overwriting shares.
+    /// @param recipients_ New fee recipients.
+    /// @param sharesBps_ New BPS shares (must sum to 10 000).
     function setShares(address[] calldata recipients_, uint256[] calldata sharesBps_) external {
         require(msg.sender == ILivoToken(token).owner(), Unauthorized());
+
+        // claims from the underlying and accrues balance
+        _claimFromSource();
+
+        uint256 len = recipients.length;
+        for (uint256 i = 0; i < len; i++) {
+            address r = recipients[i];
+            pendingClaims[r] = _getClaimableFromAccrued(r);
+            claimedPerBps[r] = ethPerBps;
+        }
+
         _setShares(recipients_, sharesBps_);
     }
 
-    function distribute(address[] calldata tokens) external nonReentrant {
-        ILivoFeeHandler(feeHandler).claim(tokens);
+    /// @notice Claims all accrued ETH fees for `msg.sender` and transfers them.
+    function claim() external nonReentrant {
+        // claim from the source first to have an updated balance state
+        _claimFromSource();
 
-        uint256 balance = address(this).balance;
-        if (balance == 0) return;
+        // claimable is now updated with the latest accrued balance
+        uint256 claimable = _getClaimableFromAccrued(msg.sender);
+        if (claimable == 0) return;
 
-        uint256 nRecipients = recipients.length;
-        uint256 distributed;
+        claimedPerBps[msg.sender] = ethPerBps;
+        // this slot is already warm, so not worth optimizing to only clear if non zero
+        pendingClaims[msg.sender] = 0;
 
-        for (uint256 i = 0; i < nRecipients - 1; i++) {
-            uint256 amount = (balance * sharesBps[i]) / BPS_TOTAL;
-            distributed += amount;
-            _transferEth(recipients[i], amount);
-            emit FeesDistributed(recipients[i], amount);
-        }
+        totalAccounted -= claimable;
 
-        // last recipient gets remainder (rounding dust)
-        uint256 remainder = balance - distributed;
-        _transferEth(recipients[nRecipients - 1], remainder);
-        emit FeesDistributed(recipients[nRecipients - 1], remainder);
+        (bool success,) = msg.sender.call{value: claimable}("");
+        require(success);
+
+        emit FeesClaimed(msg.sender, claimable);
     }
 
+    /// @notice Accepts ETH deposits (e.g. from the fee handler).
     receive() external payable {}
 
+    /// @notice Returns the total claimable ETH for `account`, including pending fees in the fee handler.
+    /// @param account The address to query.
+    /// @return Total claimable ETH.
+    function getClaimable(address account) external view returns (uint256) {
+        uint256 fromAccrued = _getClaimableFromAccrued(account);
+
+        uint256[] memory pending = ILivoFeeHandler(feeHandler).getClaimable(_tokens(), address(this));
+
+        // Include both feeHandler pending and any unaccrued ETH already in the contract
+        uint256 unaccounted = pending[0] + address(this).balance - totalAccounted;
+        return fromAccrued + (unaccounted * sharesBpsOf[account]) / BPS_TOTAL;
+    }
+
+    /// @notice Returns all current recipients and their BPS shares.
     function getRecipients() external view returns (address[] memory, uint256[] memory) {
         return (recipients, sharesBps);
     }
 
+    /// @dev Returns the claimable ETH for `account` based on already-accrued balances only (excludes pending in fee handler).
+    function _getClaimableFromAccrued(address account) internal view returns (uint256) {
+        return ((ethPerBps - claimedPerBps[account]) * sharesBpsOf[account]) / PRECISION + pendingClaims[account];
+    }
+
+    /// @dev Overwrites the recipient list and shares. Clears old mappings, validates inputs, and sets new state.
     function _setShares(address[] calldata recipients_, uint256[] calldata sharesBps_) internal {
+        uint256 oldLen = recipients.length;
+        for (uint256 i = 0; i < oldLen; i++) {
+            delete sharesBpsOf[recipients[i]];
+        }
+
         uint256 len = recipients_.length;
         require(len > 0 && len == sharesBps_.length, InvalidRecipients());
+
+        // duplicate address would break accounting and eth would be unrecoverable from this splitter contract
+        // this check costs only 500-700 gas, which is quite an affordable one-time payment against losing funds
+        _requireNoDuplicates(recipients_);
 
         uint256 total;
         for (uint256 i = 0; i < len; i++) {
@@ -78,12 +145,45 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
         recipients = recipients_;
         sharesBps = sharesBps_;
 
+        for (uint256 i = 0; i < len; i++) {
+            sharesBpsOf[recipients_[i]] = sharesBps_[i];
+            claimedPerBps[recipients_[i]] = ethPerBps;
+        }
+
         emit SharesUpdated(recipients_, sharesBps_);
     }
 
-    function _transferEth(address recipient, uint256 amount) internal {
-        if (amount == 0) return;
-        (bool success,) = recipient.call{value: amount}("");
-        require(success);
+    /// @dev Claims fees from the fee handler for this splitter's token, then accrues the received ETH.
+    function _claimFromSource() internal {
+        ILivoFeeHandler(feeHandler).claim(_tokens());
+
+        _accrueBalance();
+    }
+
+    /// @dev Accounts for any new ETH that has arrived since the last accrual by updating `ethPerBps`.
+    function _accrueBalance() internal {
+        uint256 newEth = address(this).balance - totalAccounted;
+        if (newEth == 0) return;
+
+        totalAccounted += newEth;
+        // negligible precision loss
+        ethPerBps += (newEth * PRECISION) / BPS_TOTAL;
+
+        emit FeesAccrued(newEth);
+    }
+
+    function _requireNoDuplicates(address[] calldata addresses) internal pure {
+        uint256 len = addresses.length;
+        for (uint256 i = 0; i < len; i++) {
+            for (uint256 j = i + 1; j < len; j++) {
+                require(addresses[i] != addresses[j], InvalidRecipients());
+            }
+        }
+    }
+
+    function _tokens() internal view returns (address[] memory) {
+        address[] memory tokens = new address[](1);
+        tokens[0] = token;
+        return tokens;
     }
 }

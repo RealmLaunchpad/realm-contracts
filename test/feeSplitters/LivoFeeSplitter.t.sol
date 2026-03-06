@@ -76,6 +76,8 @@ contract LivoFeeSplitterTests is Test {
         assertEq(recipients[1], bob);
         assertEq(shares[0], 7000);
         assertEq(shares[1], 3000);
+        assertEq(splitter.sharesBpsOf(alice), 7000);
+        assertEq(splitter.sharesBpsOf(bob), 3000);
     }
 
     function test_initialize_cannotReinitialize() public {
@@ -133,6 +135,19 @@ contract LivoFeeSplitterTests is Test {
         newSplitter.initialize(address(feeHandler), address(token), recipients, shares);
     }
 
+    function test_initialize_revertsOnDuplicateRecipient() public {
+        LivoFeeSplitter newSplitter = LivoFeeSplitter(payable(Clones.clone(address(implementation))));
+        address[] memory recipients = new address[](2);
+        recipients[0] = alice;
+        recipients[1] = alice;
+        uint256[] memory shares = new uint256[](2);
+        shares[0] = 5000;
+        shares[1] = 5000;
+
+        vm.expectRevert(ILivoFeeSplitter.InvalidRecipients.selector);
+        newSplitter.initialize(address(feeHandler), address(token), recipients, shares);
+    }
+
     function test_initialize_revertsOnZeroShareBps() public {
         LivoFeeSplitter newSplitter = LivoFeeSplitter(payable(Clones.clone(address(implementation))));
         address[] memory recipients = new address[](2);
@@ -165,6 +180,7 @@ contract LivoFeeSplitterTests is Test {
         assertEq(newRecipients.length, 3);
         assertEq(newRecipients[2], charlie);
         assertEq(newShares[2], 2000);
+        assertEq(splitter.sharesBpsOf(charlie), 2000);
     }
 
     function test_setShares_revertsForNonOwner() public {
@@ -191,62 +207,295 @@ contract LivoFeeSplitterTests is Test {
         splitter.setShares(recipients, shares);
     }
 
-    // ======================== distribute ========================
+    // ======================== claim ========================
 
-    function test_distribute_splitsCorrectly() public {
-        // deposit fees for the splitter address
+    function test_claim_aliceGets70Percent() public {
         feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
 
         uint256 aliceBefore = alice.balance;
-        uint256 bobBefore = bob.balance;
-
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(token);
-        splitter.distribute(tokens);
+        vm.prank(alice);
+        splitter.claim();
 
         assertEq(alice.balance - aliceBefore, 7 ether, "alice should get 70%");
+    }
+
+    function test_claim_bobGets30Percent() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        uint256 bobBefore = bob.balance;
+        vm.prank(bob);
+        splitter.claim();
+
         assertEq(bob.balance - bobBefore, 3 ether, "bob should get 30%");
     }
 
-    function test_distribute_lastRecipientGetsRoundingDust() public {
-        // deposit an amount that doesn't divide evenly
-        feeHandler.depositFees{value: 1 ether + 1}(address(token), address(splitter));
+    function test_claim_bothClaimFullAmount() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        vm.prank(alice);
+        splitter.claim();
+
+        vm.prank(bob);
+        splitter.claim();
+
+        assertEq(alice.balance, 7 ether);
+        assertEq(bob.balance, 3 ether);
+    }
+
+    function test_claim_noopWhenNothingToClaim() public {
+        uint256 charlieBefore = charlie.balance;
+        vm.prank(charlie);
+        splitter.claim();
+        assertEq(charlie.balance, charlieBefore);
+    }
+
+    function test_claim_noopWhenAlreadyClaimed() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        vm.prank(alice);
+        splitter.claim();
 
         uint256 aliceBefore = alice.balance;
-        uint256 bobBefore = bob.balance;
-
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(token);
-        splitter.distribute(tokens);
-
-        uint256 total = 1 ether + 1;
-        uint256 aliceExpected = (total * 7000) / 10000;
-        uint256 bobExpected = total - aliceExpected;
-
-        assertEq(alice.balance - aliceBefore, aliceExpected);
-        assertEq(bob.balance - bobBefore, bobExpected);
-        // verify no dust left in splitter
-        assertEq(address(splitter).balance, 0);
+        vm.prank(alice);
+        splitter.claim();
+        assertEq(alice.balance, aliceBefore);
     }
 
-    function test_distribute_noopWhenNoFees() public {
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(token);
-        // should not revert
-        splitter.distribute(tokens);
-    }
-
-    function test_distribute_emitsEvents() public {
+    function test_claim_emitsEvents() public {
         feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
 
         vm.expectEmit(true, false, false, true, address(splitter));
-        emit ILivoFeeSplitter.FeesDistributed(alice, 7 ether);
+        emit ILivoFeeSplitter.FeesAccrued(10 ether);
         vm.expectEmit(true, false, false, true, address(splitter));
-        emit ILivoFeeSplitter.FeesDistributed(bob, 3 ether);
+        emit ILivoFeeSplitter.FeesClaimed(alice, 7 ether);
 
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(token);
-        splitter.distribute(tokens);
+        vm.prank(alice);
+        splitter.claim();
+    }
+
+    function test_claim_multipleDepositsAccumulate() public {
+        feeHandler.depositFees{value: 5 ether}(address(token), address(splitter));
+        feeHandler.depositFees{value: 5 ether}(address(token), address(splitter));
+
+        vm.prank(alice);
+        splitter.claim();
+        assertEq(alice.balance, 7 ether);
+    }
+
+    function test_claim_afterPartialClaim() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        vm.prank(alice);
+        splitter.claim();
+        assertEq(alice.balance, 7 ether);
+
+        // More fees deposited
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        vm.prank(alice);
+        splitter.claim();
+        assertEq(alice.balance, 14 ether);
+
+        // Bob claims everything at once
+        vm.prank(bob);
+        splitter.claim();
+        assertEq(bob.balance, 6 ether);
+    }
+
+    function test_claim_noopWhenNoFees() public {
+        uint256 aliceBefore = alice.balance;
+        vm.prank(alice);
+        splitter.claim();
+        assertEq(alice.balance, aliceBefore);
+    }
+
+    // ======================== claim after setShares ========================
+
+    function test_claim_removedRecipientCanClaimPending() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        // Alice claims, accruing the balance
+        vm.prank(alice);
+        splitter.claim();
+
+        // Now remove bob and add charlie
+        address[] memory recipients = new address[](2);
+        recipients[0] = alice;
+        recipients[1] = charlie;
+        uint256[] memory shares = new uint256[](2);
+        shares[0] = 6000;
+        shares[1] = 4000;
+
+        vm.prank(tokenOwner);
+        splitter.setShares(recipients, shares);
+
+        // Bob was snapshotted with 3 ether pending
+        vm.prank(bob);
+        splitter.claim();
+        assertEq(bob.balance, 3 ether);
+    }
+
+    function test_claim_removedRecipientCannotClaimTwice() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        vm.prank(alice);
+        splitter.claim();
+
+        // Remove bob
+        address[] memory recipients = new address[](1);
+        recipients[0] = alice;
+        uint256[] memory shares = new uint256[](1);
+        shares[0] = 10000;
+
+        vm.prank(tokenOwner);
+        splitter.setShares(recipients, shares);
+
+        // Bob claims his pending
+        vm.prank(bob);
+        splitter.claim();
+
+        // Bob cannot claim again (no-op)
+        uint256 bobAfter = bob.balance;
+        vm.prank(bob);
+        splitter.claim();
+        assertEq(bob.balance, bobAfter);
+    }
+
+    function test_claim_newRecipientDoesNotGetHistoricalFees() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        // Alice claims to accrue
+        vm.prank(alice);
+        splitter.claim();
+
+        // Add charlie
+        address[] memory recipients = new address[](3);
+        recipients[0] = alice;
+        recipients[1] = bob;
+        recipients[2] = charlie;
+        uint256[] memory shares = new uint256[](3);
+        shares[0] = 5000;
+        shares[1] = 3000;
+        shares[2] = 2000;
+
+        vm.prank(tokenOwner);
+        splitter.setShares(recipients, shares);
+
+        // Charlie should have nothing claimable (no-op)
+        uint256 charlieBefore = charlie.balance;
+        vm.prank(charlie);
+        splitter.claim();
+        assertEq(charlie.balance, charlieBefore);
+    }
+
+    function test_claim_afterSharesChange_existingRecipientKeepsPending() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        // Accrue by alice claiming
+        vm.prank(alice);
+        splitter.claim();
+        assertEq(alice.balance, 7 ether);
+
+        // Change shares: alice 50%, bob 50%
+        address[] memory recipients = new address[](2);
+        recipients[0] = alice;
+        recipients[1] = bob;
+        uint256[] memory shares = new uint256[](2);
+        shares[0] = 5000;
+        shares[1] = 5000;
+
+        vm.prank(tokenOwner);
+        splitter.setShares(recipients, shares);
+
+        // Bob's pending should have been snapshotted (3 ether)
+        // New fees come in
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        vm.prank(bob);
+        splitter.claim();
+        // Bob gets: 3 ether (snapshotted) + 5 ether (50% of new 10 ether)
+        assertEq(bob.balance, 8 ether);
+    }
+
+    // ======================== getClaimable after setShares ========================
+
+    function test_getClaimable_afterSetShares_removedRecipientKeepsPending() public {
+        // Setup: 10 ETH deposited, alice=70%, bob=30%
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        // setShares: remove alice, keep bob, add charlie
+        address[] memory recipients = new address[](2);
+        recipients[0] = bob;
+        recipients[1] = charlie;
+        uint256[] memory shares = new uint256[](2);
+        shares[0] = 6000;
+        shares[1] = 4000;
+
+        vm.prank(tokenOwner);
+        splitter.setShares(recipients, shares);
+
+        // Alice was snapshotted with 7 ETH pending
+        assertEq(splitter.getClaimable(alice), 7 ether);
+        // Bob was snapshotted with 3 ETH pending
+        assertEq(splitter.getClaimable(bob), 3 ether);
+        // Charlie just joined, nothing claimable
+        assertEq(splitter.getClaimable(charlie), 0);
+    }
+
+    function test_getClaimable_afterSetShares_withNewDeposit() public {
+        // Setup: 10 ETH deposited, alice=70%, bob=30%
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        // setShares: remove alice, keep bob (60%), add charlie (40%)
+        address[] memory recipients = new address[](2);
+        recipients[0] = bob;
+        recipients[1] = charlie;
+        uint256[] memory shares = new uint256[](2);
+        shares[0] = 6000;
+        shares[1] = 4000;
+
+        vm.prank(tokenOwner);
+        splitter.setShares(recipients, shares);
+
+        // New deposit after setShares
+        feeHandler.depositFees{value: 20 ether}(address(token), address(splitter));
+
+        // Alice: 7 ETH snapshotted, no new share (removed)
+        assertEq(splitter.getClaimable(alice), 7 ether);
+        // Bob: 3 ETH snapshotted + 60% of 20 ETH = 3 + 12 = 15 ETH
+        assertEq(splitter.getClaimable(bob), 15 ether);
+        // Charlie: 0 snapshotted + 40% of 20 ETH = 8 ETH
+        assertEq(splitter.getClaimable(charlie), 8 ether);
+    }
+
+    // ======================== getClaimable ========================
+
+    function test_getClaimable_beforeClaim() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        // Fees are in feeHandler, not yet accrued
+        uint256 aliceClaimable = splitter.getClaimable(alice);
+        assertEq(aliceClaimable, 7 ether);
+
+        uint256 bobClaimable = splitter.getClaimable(bob);
+        assertEq(bobClaimable, 3 ether);
+    }
+
+    function test_getClaimable_afterPartialClaim() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        vm.prank(alice);
+        splitter.claim();
+
+        // Alice has nothing left
+        assertEq(splitter.getClaimable(alice), 0);
+        // Bob still has his share
+        assertEq(splitter.getClaimable(bob), 3 ether);
+    }
+
+    function test_getClaimable_nonRecipient() public {
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+        assertEq(splitter.getClaimable(charlie), 0);
     }
 
     // ======================== receive ========================

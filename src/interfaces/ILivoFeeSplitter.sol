@@ -2,7 +2,8 @@
 pragma solidity 0.8.28;
 
 interface ILivoFeeSplitter {
-    event FeesDistributed(address indexed recipient, uint256 amount);
+    event FeesClaimed(address indexed account, uint256 amount);
+    event FeesAccrued(uint256 amount);
     event SharesUpdated(address[] recipients, uint256[] sharesBps);
 
     error InvalidRecipients();
@@ -14,7 +15,9 @@ interface ILivoFeeSplitter {
 
     function setShares(address[] calldata recipients, uint256[] calldata sharesBps) external;
 
-    function distribute(address[] calldata tokens) external;
+    function claim() external;
+
+    function getClaimable(address account) external view returns (uint256);
 
     function getRecipients() external view returns (address[] memory, uint256[] memory);
 }
