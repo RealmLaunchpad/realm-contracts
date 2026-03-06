@@ -124,8 +124,14 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         require(nTokens > 0, NoTokens());
         require(nTokens < 100, TooManyTokens());
 
+        uint256 totalTreasuryFees;
         for (uint256 i = 0; i < nTokens; i++) {
-            _accrueLpFees(tokens[i]);
+            totalTreasuryFees += _accrueLpFees(tokens[i]);
+        }
+
+        if (totalTreasuryFees > 0) {
+            address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+            _transferEth(treasury, totalTreasuryFees);
         }
     }
 
@@ -133,13 +139,14 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     /// @dev Accrues LP fees before claiming and clears claimed storage balances.
     function claim(address[] calldata tokens) external override nonReentrant {
         uint256 claimable;
+        uint256 totalTreasuryFees;
         uint256 nTokens = tokens.length;
 
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
 
             // increases storage pending fees for the token fee receiver & treasury
-            _accrueLpFees(token);
+            totalTreasuryFees += _accrueLpFees(token);
 
             uint256 tokenClaimable = pendingClaims[token][msg.sender];
             if (tokenClaimable == 0) continue;
@@ -148,6 +155,11 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
             delete pendingClaims[token][msg.sender];
 
             emit CreatorClaimed(token, msg.sender, tokenClaimable);
+        }
+
+        if (totalTreasuryFees > 0) {
+            address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+            _transferEth(treasury, totalTreasuryFees);
         }
 
         if (claimable == 0) return;
@@ -193,9 +205,9 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
 
     /// @notice Accrues LP fees from all Uniswap V4 positions for a token and splits them between creator and treasury
-    function _accrueLpFees(address token) internal {
+    /// @return totalTreasuryAccrued Treasury fees accrued (caller is responsible for transferring)
+    function _accrueLpFees(address token) internal returns (uint256 totalTreasuryAccrued) {
         uint256 totalCreatorFees;
-        uint256 totalTreasuryAccrued;
         address feeReceiver = ILivoToken(token).feeReceiver();
 
         uint256 nPositions = positionIds[token].length;
@@ -212,8 +224,6 @@ contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransie
         }
 
         if (totalTreasuryAccrued > 0) {
-            address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-            _transferEth(treasury, totalTreasuryAccrued);
             emit TreasuryFeesDeposited(token, totalTreasuryAccrued);
         }
     }
