@@ -22,6 +22,7 @@ import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
 import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
 import {LivoFeeV4Handler} from "src/feeHandlers/LivoFeeV4Handler.sol";
+import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 
 contract TestLivoFactory is LivoFactoryBase {
     constructor(
@@ -29,8 +30,9 @@ contract TestLivoFactory is LivoFactoryBase {
         address tokenImplementation,
         address bondingCurve,
         address graduator,
-        address feeHandler
-    ) LivoFactoryBase(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler) {}
+        address feeHandler,
+        address feeSplitterImplementation
+    ) LivoFactoryBase(launchpad, tokenImplementation, bondingCurve, graduator, feeHandler, feeSplitterImplementation) {}
 }
 
 contract LaunchpadBaseTests is Test {
@@ -145,12 +147,24 @@ contract LaunchpadBaseTests is Test {
         );
         feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 
+        LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
+
         factoryV2 = new TestLivoFactory(
-            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV2), address(feeHandler)
+            address(launchpad),
+            address(livoToken),
+            address(bondingCurve),
+            address(graduatorV2),
+            address(feeHandler),
+            address(feeSplitterImpl)
         );
 
         factoryV4 = new TestLivoFactory(
-            address(launchpad), address(livoToken), address(bondingCurve), address(graduatorV4), address(feeHandlerV4)
+            address(launchpad),
+            address(livoToken),
+            address(bondingCurve),
+            address(graduatorV4),
+            address(feeHandlerV4),
+            address(feeSplitterImpl)
         );
 
         factoryTax = new LivoFactoryTaxToken(
@@ -158,7 +172,8 @@ contract LaunchpadBaseTests is Test {
             address(livoTaxToken),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandlerV4)
+            address(feeHandlerV4),
+            address(feeSplitterImpl)
         );
 
         launchpad.whitelistFactory(address(factoryV2));

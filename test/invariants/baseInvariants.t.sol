@@ -13,6 +13,7 @@ import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
 import {LivoFeeV4Handler} from "src/feeHandlers/LivoFeeV4Handler.sol";
+import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
@@ -99,12 +100,15 @@ contract LaunchpadInvariants is Test {
         );
         feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 
+        LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
+
         factoryV2 = new LivoFactoryBase(
             address(launchpad),
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandler)
+            address(feeHandler),
+            address(feeSplitterImpl)
         );
 
         factoryV4 = new LivoFactoryBase(
@@ -112,7 +116,8 @@ contract LaunchpadInvariants is Test {
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandlerV4)
+            address(feeHandlerV4),
+            address(feeSplitterImpl)
         );
 
         launchpad.whitelistFactory(address(factoryV2));

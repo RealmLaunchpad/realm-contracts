@@ -13,6 +13,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 
 /// @notice This can be used for univ2 or univ4 tokens. Just with different graduators
 contract LivoFactoryTaxToken is ILivoFactory {
@@ -35,6 +36,8 @@ contract LivoFactoryTaxToken is ILivoFactory {
     ILivoBondingCurve public immutable BONDING_CURVE;
     /// @notice Fee handler contract for managing creator and treasury fees
     ILivoFeeHandler public immutable FEE_HANDLER;
+    /// @notice Fee splitter implementation contract used as the clone source
+    ILivoFeeSplitter public immutable FEE_SPLITTER_IMPLEMENTATION;
 
     /// @notice Initializes the factory with its immutable dependencies
     constructor(
@@ -42,17 +45,18 @@ contract LivoFactoryTaxToken is ILivoFactory {
         address tokenImplementation,
         address bondingCurve,
         address graduator,
-        address feeHandler
+        address feeHandler,
+        address feeSplitterImplementation
     ) {
         LAUNCHPAD = ILivoLaunchpad(launchpad);
         TOKEN_IMPLEMENTATION = ILivoTaxableTokenUniV4(tokenImplementation);
         BONDING_CURVE = ILivoBondingCurve(bondingCurve);
         GRADUATOR = ILivoGraduator(graduator);
         FEE_HANDLER = ILivoFeeHandler(feeHandler);
+        FEE_SPLITTER_IMPLEMENTATION = ILivoFeeSplitter(feeSplitterImplementation);
     }
 
-    /// @notice Deploys a new taxable token clone with sell tax configuration, initializes it, and registers it in the launchpad
-    /// @dev tokenOwner wont receive any fees, he needs to claim them manually. This avoids unwanted ETH fees from project tokenOwner doesn't specifically endorse
+    /// @notice Deploys a new taxable token clone with sell tax configuration
     function createToken(
         string calldata name,
         string calldata symbol,
@@ -61,30 +65,54 @@ contract LivoFactoryTaxToken is ILivoFactory {
         uint16 sellTaxBps,
         uint32 taxDurationSeconds
     ) external returns (address token) {
-        require(sellTaxBps <= MAX_SELL_TAX_BPS, InvalidSellTaxBps());
-        require(taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
+        require(feeReceiver != address(0), InvalidFeeReceiver());
+        token = _createAndInitializeTaxToken(name, symbol, feeReceiver, salt, sellTaxBps, taxDurationSeconds);
+    }
 
+    /// @notice Deploys a new taxable token clone with a fee splitter
+    function createTokenWithFeeSplit(
+        string calldata name,
+        string calldata symbol,
+        address[] calldata recipients,
+        uint256[] calldata sharesBps,
+        bytes32 salt,
+        uint16 sellTaxBps,
+        uint32 taxDurationSeconds
+    ) external returns (address token, address feeSplitter) {
+        feeSplitter = _deployFeeSplitter(symbol, salt);
+        token = _createAndInitializeTaxToken(name, symbol, feeSplitter, salt, sellTaxBps, taxDurationSeconds);
+        ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
+        emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
+    }
+
+    function _deployFeeSplitter(string calldata symbol, bytes32 salt) internal returns (address feeSplitter) {
+        // forge-lint: disable-next-line
+        bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
+        bytes32 splitterSalt = keccak256(abi.encodePacked(salt_, "feeSplitter"));
+        feeSplitter = Clones.cloneDeterministic(address(FEE_SPLITTER_IMPLEMENTATION), splitterSalt);
+    }
+
+    function _createAndInitializeTaxToken(
+        string calldata name,
+        string calldata symbol,
+        address feeReceiver,
+        bytes32 salt,
+        uint16 sellTaxBps,
+        uint32 taxDurationSeconds
+    ) internal returns (address token) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
-        require(feeReceiver != address(0), InvalidFeeReceiver());
+
+        require(sellTaxBps <= MAX_SELL_TAX_BPS, InvalidSellTaxBps());
+        require(taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
 
         // forge-lint: disable-next-line
         bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
         // minimal proxy pattern to deploy a new LivoToken instance
-        // Deploying the contracts with new() costs 3-4 times more gas than cloning
-        // trading will be a bit more expensive, as variables cannot be immutable
         token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
 
-        // emit the event here for off-chain indexers
         emit TokenCreated(
-            token,
-            name,
-            symbol,
-            msg.sender, // token owner
-            address(LAUNCHPAD),
-            address(GRADUATOR),
-            address(FEE_HANDLER),
-            feeReceiver // fee receiver
+            token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), address(FEE_HANDLER), feeReceiver
         );
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
@@ -92,7 +120,6 @@ contract LivoFactoryTaxToken is ILivoFactory {
         // to which tokens cannot be transferred until graduation
         address pair = GRADUATOR.initialize(token);
 
-        // the token needs to be initialized with the pair, so we have to do it after graduator.initialize
         _initializeToken(
             token,
             ILivoToken.InitializeParams({
@@ -110,13 +137,9 @@ contract LivoFactoryTaxToken is ILivoFactory {
         );
 
         // this will emit another event (from the launchpad)
-        // registers token in launchpad together with its components and configs
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
-
-        return token;
     }
 
-    /// @notice Initializes the taxable token clone with its params and tax configuration
     function _initializeToken(
         address token,
         ILivoToken.InitializeParams memory initParams,

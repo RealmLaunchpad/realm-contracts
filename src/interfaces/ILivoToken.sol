@@ -76,4 +76,7 @@ interface ILivoToken is IERC20 {
     /// @notice Address who can accept ownership of the token
     /// @dev It can be address(0) if no owner is proposed
     function proposedOwner() external view returns (address);
+
+    /// @notice Returns the underlying fee receiver addresses (resolves through fee handler)
+    function getFeeReceivers() external view returns (address[] memory);
 }

@@ -15,6 +15,10 @@ interface ILivoFactory {
         address feeReceiver
     );
 
+    event FeeSplitterCreated(
+        address indexed token, address indexed feeSplitter, address[] recipients, uint256[] sharesBps
+    );
+
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();

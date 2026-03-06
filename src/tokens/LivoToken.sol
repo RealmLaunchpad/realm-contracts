@@ -6,6 +6,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 
 contract LivoToken is ERC20, ILivoToken, Initializable {
@@ -131,6 +132,19 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     }
 
     //////////////////////// view functions ////////////////////////
+
+    /// @notice Returns the underlying fee receiver addresses (resolves splitter if applicable)
+    function getFeeReceivers() external view returns (address[] memory) {
+        address feeReceiver_ = feeReceiver;
+        if (feeReceiver_.code.length > 0) {
+            try ILivoFeeSplitter(feeReceiver_).getRecipients() returns (address[] memory recipients, uint256[] memory) {
+                return recipients;
+            } catch {}
+        }
+        address[] memory result = new address[](1);
+        result[0] = feeReceiver_;
+        return result;
+    }
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.
     function getTaxConfig() external view virtual returns (ILivoToken.TaxConfig memory config) {}
