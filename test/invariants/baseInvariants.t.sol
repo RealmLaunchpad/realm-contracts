@@ -11,8 +11,8 @@ import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
-import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
-import {LivoFeeV4Handler} from "src/feeHandlers/LivoFeeV4Handler.sol";
+import {LivoFeeHandlerBase} from "src/feeHandlers/LivoFeeHandlerBase.sol";
+import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
@@ -27,8 +27,8 @@ contract LaunchpadInvariants is Test {
     LivoFactoryBase public factoryV2;
     LivoFactoryBase public factoryV4;
     LiquidityLockUniv4WithFees public liquidityLock;
-    LivoFeeBaseHandler public feeHandler;
-    LivoFeeV4Handler public feeHandlerV4;
+    LivoFeeHandlerBase public feeHandler;
+    LivoFeeHandlerUniV4 public feeHandlerV4;
 
     InvariantsHelperLaunchpad public helper;
 
@@ -81,8 +81,8 @@ contract LaunchpadInvariants is Test {
         deployCodeTo(
             "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress), DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
-        feeHandler = new LivoFeeBaseHandler();
-        feeHandlerV4 = new LivoFeeV4Handler(
+        feeHandler = new LivoFeeHandlerBase();
+        feeHandlerV4 = new LivoFeeHandlerUniV4(
             address(launchpad),
             address(liquidityLock),
             poolManagerAddress,

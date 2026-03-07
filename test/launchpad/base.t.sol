@@ -20,8 +20,8 @@ import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
-import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
-import {LivoFeeV4Handler} from "src/feeHandlers/LivoFeeV4Handler.sol";
+import {LivoFeeHandlerBase} from "src/feeHandlers/LivoFeeHandlerBase.sol";
+import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 
 contract TestLivoFactory is LivoFactoryBase {
@@ -50,8 +50,8 @@ contract LaunchpadBaseTests is Test {
     TestLivoFactory public factoryV2;
     TestLivoFactory public factoryV4;
     LivoFactoryTaxToken public factoryTax;
-    LivoFeeBaseHandler public feeHandler;
-    LivoFeeV4Handler public feeHandlerV4;
+    LivoFeeHandlerBase public feeHandler;
+    LivoFeeHandlerUniV4 public feeHandlerV4;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -127,9 +127,9 @@ contract LaunchpadBaseTests is Test {
         );
         taxHook = LivoSwapHook(payable(DeploymentAddressesMainnet.LIVO_SWAP_HOOK));
 
-        feeHandler = new LivoFeeBaseHandler();
+        feeHandler = new LivoFeeHandlerBase();
 
-        feeHandlerV4 = new LivoFeeV4Handler(
+        feeHandlerV4 = new LivoFeeHandlerUniV4(
             address(launchpad),
             address(liquidityLock),
             poolManagerAddress,

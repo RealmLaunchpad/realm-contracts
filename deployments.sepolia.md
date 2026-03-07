@@ -11,8 +11,8 @@
 | LivoGraduatorUniswapV2      | 0x4E1B80932e29C0081Fb24210cA11aE2283c755cf |
 | LiquidityLockUniv4WithFees  | 0x13d3503D9cC7F7f4e89afc43dAE9e4460afb7B6A |
 | LivoGraduatorUniswapV4      | 0x1A71B8fF1e36b5D1eC160fBA3B6A7ee503637765 |
-| LivoFeeBaseHandler          | 0xa9B884e2BBf8b53583c4aB6f8a7a8d2d6B805994 |
-| LivoFeeV4Handler            | 0x0B5452036CB94178d2a0CFDE4d43eb9d0e39617A |
+| LivoFeeHandlerBase          | 0xa9B884e2BBf8b53583c4aB6f8a7a8d2d6B805994 |
+| LivoFeeHandlerUniV4            | 0x0B5452036CB94178d2a0CFDE4d43eb9d0e39617A |
 | LivoFactoryBase (V2)        | 0x0cFACdA4A73e7a30F52319c8aCD9aA1B466a5ada |
 | LivoFactoryBase (V4)        | 0xb5438ee6657a84f51d72B3E04c3aff5afa935F62 |
 | LivoFactoryTaxToken         | 0xeDd54a18a09E3f37846704d6146b6Dc91d1B6a7A |

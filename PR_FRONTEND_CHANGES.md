@@ -22,7 +22,7 @@ Summary of all function signature and functionality changes that affect frontend
 
 ## 3. Fee Management (New)
 
-New contracts `LivoFeeBaseHandler` and `LivoFeeV4Handler` handle fee claiming. This logic was before in the Univ4 graduator. Now it is centralized to manage all types of fees (graduation, LPfees, taxes, etc). 
+New contracts `LivoFeeHandlerBase` and `LivoFeeHandlerUniV4` handle fee claiming. This logic was before in the Univ4 graduator. Now it is centralized to manage all types of fees (graduation, LPfees, taxes, etc). 
 
 - `claim(address[] tokens)` — claim accrued fees for a token and claims pending from any source
 - `getClaimable(address[] tokens, address account)` — view claimable fees (from any source: graduation, taxes, LPfees, etc). This can be retrieved from envio as well.

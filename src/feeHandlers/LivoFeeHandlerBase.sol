@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 
-contract LivoFeeBaseHandler is ILivoFeeHandler {
+contract LivoFeeHandlerBase is ILivoFeeHandler {
     /// @notice claimable eth per account associated to a token
     /// @dev claims are per token to not force an account to claim all-or-none
     mapping(address token => mapping(address account => uint256 amount)) pendingClaims;

@@ -16,7 +16,7 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
 import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
-import {LivoFeeV4Handler} from "src/feeHandlers/LivoFeeV4Handler.sol";
+import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
@@ -269,13 +269,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
                 positionOwner_,
                 treasury
             );
-            LivoFeeV4Handler(payable(positionOwner_)).registerPositionIds(tokenAddress, positionIds);
+            LivoFeeHandlerUniV4(payable(positionOwner_)).registerPositionIds(tokenAddress, positionIds);
             return (liquidity1, liquidity2);
         }
 
         uint256[] memory onePositionId = new uint256[](1);
         onePositionId[0] = primaryPositionId;
-        LivoFeeV4Handler(payable(positionOwner_)).registerPositionIds(tokenAddress, onePositionId);
+        LivoFeeHandlerUniV4(payable(positionOwner_)).registerPositionIds(tokenAddress, onePositionId);
     }
 
     /// @notice Mints a Uniswap V4 liquidity position and locks it in the liquidity lock contract

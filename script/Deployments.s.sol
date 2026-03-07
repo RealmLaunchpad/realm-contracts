@@ -11,8 +11,8 @@ import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol"
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
-import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
-import {LivoFeeV4Handler} from "src/feeHandlers/LivoFeeV4Handler.sol";
+import {LivoFeeHandlerBase} from "src/feeHandlers/LivoFeeHandlerBase.sol";
+import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
@@ -120,22 +120,17 @@ contract Deployments is Script {
         console.log("| LiquidityLockUniv4WithFees | ", address(liquidityLock));
 
         // 6. Deploy fee handlers used by factories
-        LivoFeeBaseHandler feeHandler = new LivoFeeBaseHandler();
-        console.log("| LivoFeeBaseHandler | ", address(feeHandler));
-        LivoFeeV4Handler feeHandlerV4 = new LivoFeeV4Handler(
+        LivoFeeHandlerBase feeHandler = new LivoFeeHandlerBase();
+        console.log("| LivoFeeHandlerBase | ", address(feeHandler));
+        LivoFeeHandlerUniV4 feeHandlerV4 = new LivoFeeHandlerUniV4(
             address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, hookAddress
         );
-        console.log("| LivoFeeV4Handler | ", address(feeHandlerV4));
+        console.log("| LivoFeeHandlerUniV4 | ", address(feeHandlerV4));
 
         // 7. Deploy LivoGraduatorUniswapV4
         // NOTE: Hook address must be mined first and updated in DeploymentAddresses.sol
         LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad),
-            address(liquidityLock),
-            univ4PoolManager,
-            univ4PositionManager,
-            permit2,
-            hookAddress
+            address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, permit2, hookAddress
         );
         console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
 

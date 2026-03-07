@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
-import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
+import {LivoFeeHandlerBase} from "src/feeHandlers/LivoFeeHandlerBase.sol";
 
 contract MockToken {
     address public owner;
@@ -37,7 +37,7 @@ contract MockToken {
 contract LivoFeeSplitterTests is Test {
     LivoFeeSplitter public implementation;
     LivoFeeSplitter public splitter;
-    LivoFeeBaseHandler public feeHandler;
+    LivoFeeHandlerBase public feeHandler;
     MockToken public token;
 
     address public tokenOwner = makeAddr("tokenOwner");
@@ -46,7 +46,7 @@ contract LivoFeeSplitterTests is Test {
     address public charlie = makeAddr("charlie");
 
     function setUp() public {
-        feeHandler = new LivoFeeBaseHandler();
+        feeHandler = new LivoFeeHandlerBase();
         token = new MockToken(tokenOwner, address(feeHandler));
 
         implementation = new LivoFeeSplitter();

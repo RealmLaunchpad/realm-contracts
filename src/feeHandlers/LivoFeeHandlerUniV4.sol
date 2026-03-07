@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
+import {LivoFeeHandlerBase} from "src/feeHandlers/LivoFeeHandlerBase.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
@@ -18,10 +18,10 @@ import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
-/// @title LivoFeeV4Handler
-/// @notice Fee handler that extends LivoFeeBaseHandler with Uniswap V4 LP fee accrual,
+/// @title LivoFeeHandlerUniV4
+/// @notice Fee handler that extends LivoFeeHandlerBase with Uniswap V4 LP fee accrual,
 ///         position tracking, and treasury fee management.
-contract LivoFeeV4Handler is LivoFeeBaseHandler, Ownable, ReentrancyGuardTransient {
+contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTransient {
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
     using StateLibrary for IPoolManager;

@@ -120,9 +120,7 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
         assertGt(s2Earned, 0, "shareholder2 should earn fees");
 
         // 70/30 split
-        assertApproxEqAbs(
-            s1Earned * 3000, s2Earned * 7000, 1e12, "fee split should respect 70/30 shares"
-        );
+        assertApproxEqAbs(s1Earned * 3000, s2Earned * 7000, 1e12, "fee split should respect 70/30 shares");
     }
 
     /// @notice Total fees across shareholders + treasury match expected 1% LP fee
@@ -141,9 +139,7 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
         uint256 lpFeesOnly = totalShareholderFees - graduationCompensation;
 
         // total LP fees = creator share + treasury share ≈ 1% of buy amount
-        assertApproxEqAbs(
-            lpFeesOnly + treasuryFees, 1 ether / 100, 1, "total LP fees should be 1% of buy amount"
-        );
+        assertApproxEqAbs(lpFeesOnly + treasuryFees, 1 ether / 100, 1, "total LP fees should be 1% of buy amount");
     }
 
     /// @notice getClaimable on splitter returns correct values before claim
@@ -233,11 +229,7 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
     }
 
     /// @notice Shareholders can claim LP fees from buy swaps
-    function test_shareholdersCanClaimLpFees_taxToken()
-        public
-        createAndGraduateToken
-        generateFeesWithBuySwap(1 ether)
-    {
+    function test_shareholdersCanClaimLpFees_taxToken() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
         uint256 s1Before = shareholder1.balance;
         uint256 s2Before = shareholder2.balance;
 

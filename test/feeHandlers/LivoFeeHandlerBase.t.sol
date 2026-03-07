@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import {LivoFeeBaseHandler} from "src/feeHandlers/LivoFeeBaseHandler.sol";
+import {LivoFeeHandlerBase} from "src/feeHandlers/LivoFeeHandlerBase.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 
@@ -29,8 +29,8 @@ contract EthRejecter {
 // ---------------------------------------------------------------------------
 // Base test contract with modifiers
 // ---------------------------------------------------------------------------
-contract LivoFeeBaseHandlerTests is Test {
-    LivoFeeBaseHandler public handler;
+contract LivoFeeHandlerBaseTests is Test {
+    LivoFeeHandlerBase public handler;
     MockLaunchpad public mockLaunchpad;
 
     address public treasuryAddr = makeAddr("treasury");
@@ -44,7 +44,7 @@ contract LivoFeeBaseHandlerTests is Test {
 
     function setUp() public virtual {
         mockLaunchpad = new MockLaunchpad(treasuryAddr);
-        handler = new LivoFeeBaseHandler();
+        handler = new LivoFeeHandlerBase();
         vm.deal(address(this), 1000 ether);
     }
 

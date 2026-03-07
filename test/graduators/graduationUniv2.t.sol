@@ -547,8 +547,6 @@ contract UniswapV2Graduation_Splitter is BaseUniswapV2GraduationTests {
         assertGt(s2Earned, 0, "shareholder2 should receive graduation compensation");
 
         // 70/30 split of graduation compensation
-        assertApproxEqAbs(
-            s1Earned * 3000, s2Earned * 7000, 1e12, "fee split should respect 70/30 shares"
-        );
+        assertApproxEqAbs(s1Earned * 3000, s2Earned * 7000, 1e12, "fee split should respect 70/30 shares");
     }
 }
