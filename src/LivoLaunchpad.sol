@@ -8,13 +8,15 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
-import {FactoryWhitelisting} from "src/FactoryWhitelisting.sol";
 import {TokenConfig, TokenState, TokenDataLib} from "src/types/tokenData.sol";
 
-contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
+contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     using SafeERC20 for IERC20;
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
+
+    /// @notice Authorized factories
+    mapping(address factory => bool authorized) public whitelistedFactories;
 
     /// @notice Max allowed trading fees in basis points
     uint256 internal constant MAX_TRADING_FEE_BPS = 500; // 5%
@@ -42,6 +44,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     ///////////////////// Errors /////////////////////
 
+    error InvalidAddress();
     error InvalidAmount();
     error ReceivingZeroAmount();
     error InvalidParameter(uint256 parameter);
@@ -52,6 +55,8 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     error EthTransferFailed();
     error DeadlineExceeded();
     error SlippageExceeded();
+    error AlreadyConfigured();
+    error UnauthorizedFactory();
 
     ///////////////////// Events /////////////////////
 
@@ -67,6 +72,15 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event CommunityTakeOver(address indexed token, address newOwner);
+    event FactoryWhitelisted(address indexed factory);
+    event FactoryBlacklisted(address indexed factory);
+
+    ////////////////// MODIFIERS ///////////////////////
+
+    modifier onlyWhitelistedFactory() {
+        require(whitelistedFactories[msg.sender], UnauthorizedFactory());
+        _;
+    }
 
     /////////////////////////////////////////////////
 
@@ -244,12 +258,18 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step, FactoryWhitelisting {
 
     /// @notice Whitelist a Factory allowed to launch tokens here
     function whitelistFactory(address factory) external onlyOwner {
-        _whitelistFactory(factory);
+        require(factory != address(0), InvalidAddress());
+        require(!whitelistedFactories[factory], AlreadyConfigured());
+        whitelistedFactories[factory] = true;
+        emit FactoryWhitelisted(factory);
     }
 
     /// @notice blacklist a Factory not allowed to launch tokens here anymore
     function blacklistFactory(address factory) external onlyOwner {
-        _blacklistFactory(factory);
+        require(factory != address(0), InvalidAddress());
+        require(whitelistedFactories[factory], UnauthorizedFactory());
+        whitelistedFactories[factory] = false;
+        emit FactoryBlacklisted(factory);
     }
 
     /// @notice Updates the buy/sell fees, which only affects new token deployments

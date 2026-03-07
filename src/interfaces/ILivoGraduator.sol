@@ -19,7 +19,4 @@ interface ILivoGraduator {
 
     function initialize(address tokenAddress) external returns (address pair);
     function graduateToken(address tokenAddress, uint256 tokenAmount) external payable;
-
-    function whitelistFactory(address factory) external;
-    function blacklistFactory(address factory) external;
 }

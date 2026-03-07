@@ -122,8 +122,6 @@ contract LaunchpadInvariants is Test {
 
         launchpad.whitelistFactory(address(factoryV2));
         launchpad.whitelistFactory(address(factoryV4));
-        graduatorV2.whitelistFactory(address(factoryV2));
-        graduatorV4.whitelistFactory(address(factoryV4));
         vm.stopPrank();
 
         helper = new InvariantsHelperLaunchpad(launchpad, factoryV2, factoryV4);

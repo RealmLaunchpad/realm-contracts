@@ -48,7 +48,6 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
                 symbol: "IMPL",
                 tokenOwner: msg.sender,
                 graduator: address(graduatorV2),
-                pair: address(0),
                 launchpad: address(this),
                 feeHandler: address(feeHandler),
                 feeReceiver: msg.sender

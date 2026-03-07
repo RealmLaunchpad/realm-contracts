@@ -184,13 +184,6 @@ contract Deployments is Script {
         launchpad.whitelistFactory(address(factoryTax));
         console.log("whitelisting factoryTax in launchpad");
 
-        graduatorV2.whitelistFactory(address(factoryV2));
-        console.log("whitelisting factoryV2 (V2) in graduatorV2");
-        graduatorV4.whitelistFactory(address(factoryV4));
-        console.log("whitelisting factoryV4 (V4) in graduatorV4");
-        graduatorV4.whitelistFactory(address(factoryTax));
-        console.log("whitelisting factoryTax in graduatorV4");
-
         vm.stopBroadcast();
 
         console.log("");

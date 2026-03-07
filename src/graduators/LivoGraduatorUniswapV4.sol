@@ -20,10 +20,9 @@ import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
-import {FactoryWhitelisting} from "src/FactoryWhitelisting.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
-contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting {
+contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     using SafeERC20 for ILivoToken;
     using PoolIdLibrary for PoolKey;
 
@@ -117,16 +116,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         IERC721(_positionManager).setApprovalForAll(_liquidityLock, true);
     }
 
-    /// @notice Whitelist a factory allowed to graduate tokens through this contract
-    function whitelistFactory(address factory) external onlyOwner {
-        _whitelistFactory(factory);
-    }
-
-    /// @notice Blacklist a factory, preventing it from graduating tokens through this contract
-    function blacklistFactory(address factory) external onlyOwner {
-        _blacklistFactory(factory);
-    }
-
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
     /// @notice To receive ETH back from Uniswap V4 when sweeping excess ETH after liquidity provision
@@ -135,7 +124,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
     /// @notice Initializes a Uniswap V4 pool for the token
     /// @param tokenAddress Address of the token
     /// @return Address of the pool manager (same for all tokens, but to comply with the ILivoGraduator interface)
-    function initialize(address tokenAddress) external override onlyWhitelistedFactory returns (address) {
+    function initialize(address tokenAddress) external override returns (address) {
         PoolKey memory pool = _getPoolKey(tokenAddress);
 
         // this sets the price even if there is no liquidity yet

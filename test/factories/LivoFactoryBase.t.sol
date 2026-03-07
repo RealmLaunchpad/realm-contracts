@@ -6,7 +6,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {FactoryWhitelisting} from "src/FactoryWhitelisting.sol";
+import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
 contract LivoFactoryBaseDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
@@ -83,7 +83,6 @@ contract LivoFactoryBaseDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
                 symbol: "IMPL",
                 tokenOwner: msg.sender,
                 graduator: address(graduatorV2),
-                pair: address(0),
                 launchpad: address(this),
                 feeHandler: address(feeHandler),
                 feeReceiver: msg.sender
@@ -152,7 +151,7 @@ contract LivoFactoryBaseWhitelistTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertFalse(launchpad.whitelistedFactories(address(factoryV2)));
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(FactoryWhitelisting.UnauthorizedFactory.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.UnauthorizedFactory.selector));
         factoryV2.createToken("TestToken", "TEST", creator, "0x12");
     }
 

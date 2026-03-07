@@ -119,11 +119,6 @@ contract LivoFactoryTaxToken is ILivoFactory {
             token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
         );
 
-        // Creates the Uniswap Pair or whatever other initialization is necessary
-        // in the case of univ4, the pair will be the address of the pool manager,
-        // to which tokens cannot be transferred until graduation
-        address pair = GRADUATOR.initialize(token);
-
         _initializeToken(
             token,
             ILivoToken.InitializeParams({
@@ -131,7 +126,6 @@ contract LivoFactoryTaxToken is ILivoFactory {
                 symbol: symbol,
                 tokenOwner: msg.sender,
                 graduator: address(GRADUATOR),
-                pair: pair,
                 launchpad: address(LAUNCHPAD),
                 feeHandler: feeHandler_,
                 feeReceiver: feeReceiver

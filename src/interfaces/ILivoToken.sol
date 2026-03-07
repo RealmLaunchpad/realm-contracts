@@ -17,7 +17,6 @@ interface ILivoToken is IERC20 {
         string symbol;
         address tokenOwner;
         address graduator;
-        address pair;
         address launchpad;
         address feeHandler;
         address feeReceiver;

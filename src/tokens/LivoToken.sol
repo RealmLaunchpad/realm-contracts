@@ -5,6 +5,7 @@ import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol"
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
@@ -70,7 +71,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
         _tokenSymbol = params.symbol;
         graduator = params.graduator;
         owner = params.tokenOwner;
-        pair = params.pair;
+        pair = ILivoGraduator(params.graduator).initialize(address(this));
         feeHandler = params.feeHandler;
         feeReceiver = params.feeReceiver;
 

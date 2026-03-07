@@ -180,10 +180,6 @@ contract LaunchpadBaseTests is Test {
         launchpad.whitelistFactory(address(factoryV4));
         launchpad.whitelistFactory(address(factoryTax));
 
-        graduatorV2.whitelistFactory(address(factoryV2));
-        graduatorV4.whitelistFactory(address(factoryV4));
-        graduatorV4.whitelistFactory(address(factoryTax));
-
         vm.stopPrank();
     }
 

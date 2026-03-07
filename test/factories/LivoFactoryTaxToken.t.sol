@@ -5,7 +5,7 @@ import {LaunchpadBaseTestsWithUniv4GraduatorTaxableToken} from "test/launchpad/b
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {FactoryWhitelisting} from "src/FactoryWhitelisting.sol";
+import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {Vm} from "forge-std/Vm.sol";
 
@@ -127,7 +127,7 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
         assertFalse(launchpad.whitelistedFactories(address(factoryTax)));
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(FactoryWhitelisting.UnauthorizedFactory.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.UnauthorizedFactory.selector));
         factoryTax.createToken("TestToken", "TEST", creator, "0x12", 500, uint32(14 days));
     }
 
@@ -139,7 +139,7 @@ contract LivoFactoryTaxTokenWhitelistTest is LaunchpadBaseTestsWithUniv4Graduato
         launchpad.blacklistFactory(address(factoryTax));
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(FactoryWhitelisting.UnauthorizedFactory.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.UnauthorizedFactory.selector));
         factoryTax.createToken("TestToken", "TEST", creator, "0x12", 500, uint32(14 days));
     }
 

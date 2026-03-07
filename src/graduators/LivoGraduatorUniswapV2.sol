@@ -6,12 +6,11 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
-import {FactoryWhitelisting} from "src/FactoryWhitelisting.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting {
+contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable {
     using SafeERC20 for ILivoToken;
 
     /// @notice Where LP tokens are sent at graduation, effectively locking the liquidity
@@ -58,21 +57,10 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable, FactoryWhitelisting 
         UNISWAP_FACTORY = IUniswapV2Factory(UNISWAP_ROUTER.factory());
     }
 
-    /// @notice whitelist factories allowed to graduate tokens in this contract
-    function whitelistFactory(address factory) external onlyOwner {
-        _whitelistFactory(factory);
-    }
-
-    /// @notice blacklist factories not allowed to graduate tokens in this contract
-    /// @dev admins could blacklist a factory and prevent graduations from all tokens with that graduator configured
-    function blacklistFactory(address factory) external onlyOwner {
-        _blacklistFactory(factory);
-    }
-
     /// @notice Creates a Uniswap V2 pair for the token to reserve the pair and know the pair address
     /// @param tokenAddress Address of the token
     /// @return pair Address of the created Uniswap V2 pair
-    function initialize(address tokenAddress) external override onlyWhitelistedFactory returns (address pair) {
+    function initialize(address tokenAddress) external override returns (address pair) {
         pair = UNISWAP_FACTORY.createPair(tokenAddress, WETH);
         emit PairInitialized(tokenAddress, pair);
     }

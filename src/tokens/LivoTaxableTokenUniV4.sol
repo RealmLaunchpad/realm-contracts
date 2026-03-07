@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -72,13 +73,13 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         initializer
     {
         require(params.graduator != address(0), InvalidGraduator());
-        require(params.pair == address(UNIV4_POOL_MANAGER), "Invalid pair address");
 
         // storage variables inherited from LivoToken
         _tokenName = params.name;
         _tokenSymbol = params.symbol;
         graduator = params.graduator;
-        pair = params.pair;
+        pair = ILivoGraduator(params.graduator).initialize(address(this));
+        require(pair == address(UNIV4_POOL_MANAGER), "Invalid pair address");
         owner = params.tokenOwner;
         feeHandler = params.feeHandler;
         feeReceiver = params.feeReceiver;
