@@ -44,6 +44,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
     /// @notice Hook contract address for pool interactions
     address public immutable HOOK_ADDRESS;
 
+    /// @notice Fee handler contract for managing LP fees
+    LivoFeeV4Handler public immutable FEE_HANDLER;
+
     //////////////////////////// price set-point ///////////////////////////////
 
     /// @notice Starting price when graduation occurs, which must be inside the liquidity range
@@ -95,7 +98,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         address _poolManager,
         address _positionManager,
         address _permit2,
-        address _hook
+        address _hook,
+        address _feeHandler
     ) Ownable(msg.sender) {
         LIVO_LAUNCHPAD = _launchpad;
         UNIV4_POOL_MANAGER = IPoolManager(_poolManager);
@@ -103,6 +107,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         PERMIT2 = _permit2;
         LIQUIDITY_LOCK = ILiquidityLockUniv4WithFees(_liquidityLock);
         HOOK_ADDRESS = _hook;
+        FEE_HANDLER = LivoFeeV4Handler(payable(_feeHandler));
 
         SQRT_PRICEX96_LOWER_TICK = uint160(TickMath.getSqrtPriceAtTick(UniswapV4PoolConstants.TICK_LOWER));
         SQRT_PRICEX96_UPPER_TICK = uint160(TickMath.getSqrtPriceAtTick(UniswapV4PoolConstants.TICK_UPPER));
@@ -235,7 +240,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         address treasury
     ) internal returns (uint128 liquidity1, uint128 liquidity2) {
         uint256 ethBalanceBefore = address(this).balance;
-        address feeHandlerAddress = ILivoToken(tokenAddress).feeHandler();
+        address feeHandlerAddress = address(FEE_HANDLER);
 
         liquidity1 = LiquidityAmounts.getLiquidityForAmounts(
             SQRT_PRICEX96_GRADUATION, SQRT_PRICEX96_LOWER_TICK, SQRT_PRICEX96_UPPER_TICK, ethForLiquidity, tokenAmount
@@ -268,13 +273,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
                 feeHandlerAddress,
                 treasury
             );
-            LivoFeeV4Handler(payable(feeHandlerAddress)).registerPositionIds(tokenAddress, positionIds);
+            FEE_HANDLER.registerPositionIds(tokenAddress, positionIds);
             return (liquidity1, liquidity2);
         }
 
         uint256[] memory onePositionId = new uint256[](1);
         onePositionId[0] = primaryPositionId;
-        LivoFeeV4Handler(payable(feeHandlerAddress)).registerPositionIds(tokenAddress, onePositionId);
+        FEE_HANDLER.registerPositionIds(tokenAddress, onePositionId);
     }
 
     /// @notice Mints a Uniswap V4 liquidity position and locks it in the liquidity lock contract

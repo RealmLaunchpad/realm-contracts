@@ -81,15 +81,6 @@ contract LaunchpadInvariants is Test {
         deployCodeTo(
             "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress), DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
-        graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad),
-            address(liquidityLock),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
-        );
-
         feeHandler = new LivoFeeBaseHandler();
         feeHandlerV4 = new LivoFeeV4Handler(
             address(launchpad),
@@ -97,6 +88,16 @@ contract LaunchpadInvariants is Test {
             poolManagerAddress,
             positionManagerAddress,
             DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+        );
+
+        graduatorV4 = new LivoGraduatorUniswapV4(
+            address(launchpad),
+            address(liquidityLock),
+            poolManagerAddress,
+            positionManagerAddress,
+            permit2Address,
+            DeploymentAddressesMainnet.LIVO_SWAP_HOOK,
+            address(feeHandlerV4)
         );
         feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 

@@ -50,7 +50,7 @@ contract LivoFactoryBase is ILivoFactory {
         returns (address token)
     {
         require(feeReceiver != address(0), InvalidFeeReceiver());
-        token = _createAndInitializeToken(name, symbol, feeReceiver, salt);
+        token = _createAndInitializeToken(name, symbol, address(FEE_HANDLER), feeReceiver, salt);
     }
 
     /// @notice Deploys a new token clone with a fee splitter, initializes both, and registers in the launchpad
@@ -62,7 +62,7 @@ contract LivoFactoryBase is ILivoFactory {
         bytes32 salt
     ) external returns (address token, address feeSplitter) {
         feeSplitter = _deployFeeSplitter(symbol, salt);
-        token = _createAndInitializeToken(name, symbol, feeSplitter, salt);
+        token = _createAndInitializeToken(name, symbol, feeSplitter, feeSplitter, salt);
         ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
         emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
     }
@@ -74,10 +74,13 @@ contract LivoFactoryBase is ILivoFactory {
         feeSplitter = Clones.cloneDeterministic(address(FEE_SPLITTER_IMPLEMENTATION), splitterSalt);
     }
 
-    function _createAndInitializeToken(string calldata name, string calldata symbol, address feeReceiver, bytes32 salt)
-        internal
-        returns (address token)
-    {
+    function _createAndInitializeToken(
+        string calldata name,
+        string calldata symbol,
+        address feeHandler_,
+        address feeReceiver,
+        bytes32 salt
+    ) internal returns (address token) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
 
@@ -87,7 +90,7 @@ contract LivoFactoryBase is ILivoFactory {
         token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
 
         emit TokenCreated(
-            token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), address(FEE_HANDLER), feeReceiver
+            token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
         );
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
@@ -104,7 +107,7 @@ contract LivoFactoryBase is ILivoFactory {
                     graduator: address(GRADUATOR),
                     pair: pair,
                     launchpad: address(LAUNCHPAD),
-                    feeHandler: address(FEE_HANDLER),
+                    feeHandler: feeHandler_,
                     feeReceiver: feeReceiver
                 })
             );

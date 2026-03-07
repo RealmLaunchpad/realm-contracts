@@ -73,8 +73,14 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
         _setShares(recipients_, sharesBps_);
     }
 
+    /// @notice Accepts ETH fees and accrues them for shareholders.
+    function depositFees(address, address) external payable {
+        _accrueBalance();
+    }
+
     /// @notice Claims all accrued ETH fees for `msg.sender` and transfers them.
-    function claim() external nonReentrant {
+    /// @dev The tokens parameter is ignored; the splitter knows its single token.
+    function claim(address[] calldata) external nonReentrant {
         // claim from the source first to have an updated balance state
         _claimFromSource();
 
@@ -97,17 +103,33 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
     /// @notice Accepts ETH deposits (e.g. from the fee handler).
     receive() external payable {}
 
-    /// @notice Returns the total claimable ETH for `account`, including pending fees in the fee handler.
+    /// @notice Returns the claimable ETH for `account` across the given tokens.
+    /// @dev Only returns non-zero for entries matching this splitter's token.
+    /// @param tokens The token addresses to query.
     /// @param account The address to query.
-    /// @return Total claimable ETH.
-    function getClaimable(address account) external view returns (uint256) {
+    /// @return amounts Array of claimable amounts per token.
+    function getClaimable(address[] calldata tokens, address account) external view returns (uint256[] memory amounts) {
+        uint256 len = tokens.length;
+        amounts = new uint256[](len);
+
+        uint256 claimableForToken = _getFullClaimable(account);
+
+        for (uint256 i = 0; i < len; i++) {
+            if (tokens[i] == token) {
+                amounts[i] = claimableForToken;
+            }
+        }
+    }
+
+    /// @dev Returns the total claimable ETH for `account`, including any unaccrued ETH in the contract and upstream pending fees.
+    function _getFullClaimable(address account) internal view returns (uint256) {
         uint256 fromAccrued = _getClaimableFromAccrued(account);
 
-        uint256[] memory pending = ILivoFeeHandler(feeHandler).getClaimable(_tokens(), address(this));
+        uint256 unaccounted = address(this).balance - totalAccounted;
+        uint256[] memory upstream = ILivoFeeHandler(feeHandler).getClaimable(_tokens(), address(this));
 
-        // Include both feeHandler pending and any unaccrued ETH already in the contract
-        uint256 unaccounted = pending[0] + address(this).balance - totalAccounted;
-        return fromAccrued + (unaccounted * sharesBpsOf[account]) / BPS_TOTAL;
+        // from Accrued is already given by shareholder, but the others need to be split still
+        return fromAccrued + ((unaccounted + upstream[0]) * sharesBpsOf[account]) / BPS_TOTAL;
     }
 
     /// @notice Returns all current recipients and their BPS shares.
@@ -153,11 +175,16 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
         emit SharesUpdated(recipients_, sharesBps_);
     }
 
-    /// @dev Claims fees from the fee handler for this splitter's token, then accrues the received ETH.
+    /// @dev Claims pending fees from the underlying fee handler, then accrues the new ETH.
     function _claimFromSource() internal {
         ILivoFeeHandler(feeHandler).claim(_tokens());
-
         _accrueBalance();
+    }
+
+    /// @dev Returns a single-element array containing this splitter's token address.
+    function _tokens() internal view returns (address[] memory tokens) {
+        tokens = new address[](1);
+        tokens[0] = token;
     }
 
     /// @dev Accounts for any new ETH that has arrived since the last accrual by updating `ethPerBps`.
@@ -179,11 +206,5 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
                 require(addresses[i] != addresses[j], InvalidRecipients());
             }
         }
-    }
-
-    function _tokens() internal view returns (address[] memory) {
-        address[] memory tokens = new address[](1);
-        tokens[0] = token;
-        return tokens;
     }
 }

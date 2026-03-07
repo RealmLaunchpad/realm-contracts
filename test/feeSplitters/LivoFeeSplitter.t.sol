@@ -61,13 +61,13 @@ contract LivoFeeSplitterTests is Test {
     // ======================== Modifiers ========================
 
     modifier depositFees(uint256 amount) {
-        feeHandler.depositFees{value: amount}(address(token), address(splitter));
+        splitter.depositFees{value: amount}(address(token), address(splitter));
         _;
     }
 
     modifier claimedBy(address user) {
         vm.prank(user);
-        splitter.claim();
+        splitter.claim(_tokens());
         _;
     }
 
@@ -117,6 +117,15 @@ contract LivoFeeSplitterTests is Test {
         s[0] = a;
         s[1] = b_;
         s[2] = c;
+    }
+
+    function _tokens() internal view returns (address[] memory t) {
+        t = new address[](1);
+        t[0] = address(token);
+    }
+
+    function _getClaimable(address account) internal view returns (uint256) {
+        return splitter.getClaimable(_tokens(), account)[0];
     }
 
     // ======================== Initialization ========================
@@ -225,36 +234,27 @@ contract LivoFeeSplitterTests is Test {
     // ======================== claim ========================
 
     /// @dev when 10 ETH deposited and alice has 70% share, then alice claims 7 ETH
-    function test_claim_assertAliceGets70Percent()
-        public
-        depositFees(10 ether)
-    {
+    function test_claim_assertAliceGets70Percent() public depositFees(10 ether) {
         uint256 before = alice.balance;
         vm.prank(alice);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(alice.balance - before, 7 ether, "alice should get 70%");
     }
 
     /// @dev when 10 ETH deposited and bob has 30% share, then bob claims 3 ETH
-    function test_claim_assertBobGets30Percent()
-        public
-        depositFees(10 ether)
-    {
+    function test_claim_assertBobGets30Percent() public depositFees(10 ether) {
         uint256 before = bob.balance;
         vm.prank(bob);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(bob.balance - before, 3 ether, "bob should get 30%");
     }
 
     /// @dev when 10 ETH deposited and both claim, then alice gets 7 ETH and bob gets 3 ETH
-    function test_claim_assertBothClaimFullAmount()
-        public
-        depositFees(10 ether)
-    {
+    function test_claim_assertBothClaimFullAmount() public depositFees(10 ether) {
         vm.prank(alice);
-        splitter.claim();
+        splitter.claim(_tokens());
         vm.prank(bob);
-        splitter.claim();
+        splitter.claim(_tokens());
 
         assertEq(alice.balance, 7 ether);
         assertEq(bob.balance, 3 ether);
@@ -264,7 +264,7 @@ contract LivoFeeSplitterTests is Test {
     function test_claim_assertNoopWhenNoFees() public {
         uint256 before = alice.balance;
         vm.prank(alice);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(alice.balance, before);
     }
 
@@ -272,44 +272,31 @@ contract LivoFeeSplitterTests is Test {
     function test_claim_assertNoopForNonRecipient() public depositFees(10 ether) {
         uint256 before = charlie.balance;
         vm.prank(charlie);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(charlie.balance, before);
     }
 
     /// @dev when alice already claimed, then second claim is a no-op
-    function test_claim_assertNoopWhenAlreadyClaimed()
-        public
-        depositFees(10 ether)
-        claimedBy(alice)
-    {
+    function test_claim_assertNoopWhenAlreadyClaimed() public depositFees(10 ether) claimedBy(alice) {
         uint256 before = alice.balance;
         vm.prank(alice);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(alice.balance, before);
     }
 
-    /// @dev when 10 ETH deposited and alice claims, then FeesAccrued and FeesClaimed events are emitted
-    function test_claim_assertEmitsEvents()
-        public
-        depositFees(10 ether)
-    {
-        vm.expectEmit(true, false, false, true, address(splitter));
-        emit ILivoFeeSplitter.FeesAccrued(10 ether);
+    /// @dev when 10 ETH deposited and alice claims, then FeesClaimed event is emitted
+    function test_claim_assertEmitsEvents() public depositFees(10 ether) {
         vm.expectEmit(true, false, false, true, address(splitter));
         emit ILivoFeeSplitter.FeesClaimed(alice, 7 ether);
 
         vm.prank(alice);
-        splitter.claim();
+        splitter.claim(_tokens());
     }
 
     /// @dev when two deposits of 5 ETH each, then alice claims 7 ETH total
-    function test_claim_assertMultipleDepositsAccumulate()
-        public
-        depositFees(5 ether)
-        depositFees(5 ether)
-    {
+    function test_claim_assertMultipleDepositsAccumulate() public depositFees(5 ether) depositFees(5 ether) {
         vm.prank(alice);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(alice.balance, 7 ether);
     }
 
@@ -322,29 +309,25 @@ contract LivoFeeSplitterTests is Test {
         depositFees(10 ether)
     {
         assertEq(alice.balance, 7 ether);
-        assertEq(splitter.getClaimable(alice), 7 ether); // 70% of new 10
+        assertEq(_getClaimable(alice), 7 ether); // 70% of new 10
 
         vm.prank(alice);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(alice.balance, 14 ether);
     }
 
     /// @dev when alice claims after first deposit then claims again after second deposit, then she gets correct cumulative amount
-    function test_claim_assertAfterPartialClaim()
-        public
-        depositFees(10 ether)
-        claimedBy(alice)
-    {
+    function test_claim_assertAfterPartialClaim() public depositFees(10 ether) claimedBy(alice) {
         assertEq(alice.balance, 7 ether);
 
-        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+        splitter.depositFees{value: 10 ether}(address(token), address(splitter));
 
         vm.prank(alice);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(alice.balance, 14 ether);
 
         vm.prank(bob);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(bob.balance, 6 ether);
     }
 
@@ -358,7 +341,7 @@ contract LivoFeeSplitterTests is Test {
         withSharesUpdated(_recipients(alice, charlie), _shares(6000, 4000))
     {
         vm.prank(bob);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(bob.balance, 3 ether);
     }
 
@@ -370,11 +353,11 @@ contract LivoFeeSplitterTests is Test {
         withSharesUpdated(_recipients(alice), _shares(10000))
     {
         vm.prank(bob);
-        splitter.claim();
+        splitter.claim(_tokens());
 
         uint256 bobAfter = bob.balance;
         vm.prank(bob);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(bob.balance, bobAfter);
     }
 
@@ -387,7 +370,7 @@ contract LivoFeeSplitterTests is Test {
     {
         uint256 before = charlie.balance;
         vm.prank(charlie);
-        splitter.claim();
+        splitter.claim(_tokens());
         assertEq(charlie.balance, before);
     }
 
@@ -400,7 +383,7 @@ contract LivoFeeSplitterTests is Test {
         depositFees(10 ether)
     {
         vm.prank(bob);
-        splitter.claim();
+        splitter.claim(_tokens());
         // Bob gets: 3 ETH (snapshotted from 30% of 10) + 5 ETH (50% of new 10)
         assertEq(bob.balance, 8 ether);
     }
@@ -408,30 +391,20 @@ contract LivoFeeSplitterTests is Test {
     // ======================== getClaimable ========================
 
     /// @dev when 10 ETH deposited and no one claimed, then getClaimable returns correct shares
-    function test_getClaimable_assertBeforeClaim()
-        public
-        depositFees(10 ether)
-    {
-        assertEq(splitter.getClaimable(alice), 7 ether);
-        assertEq(splitter.getClaimable(bob), 3 ether);
+    function test_getClaimable_assertBeforeClaim() public depositFees(10 ether) {
+        assertEq(_getClaimable(alice), 7 ether);
+        assertEq(_getClaimable(bob), 3 ether);
     }
 
     /// @dev when alice claimed, then getClaimable returns 0 for alice and unchanged for bob
-    function test_getClaimable_assertAfterPartialClaim()
-        public
-        depositFees(10 ether)
-        claimedBy(alice)
-    {
-        assertEq(splitter.getClaimable(alice), 0);
-        assertEq(splitter.getClaimable(bob), 3 ether);
+    function test_getClaimable_assertAfterPartialClaim() public depositFees(10 ether) claimedBy(alice) {
+        assertEq(_getClaimable(alice), 0);
+        assertEq(_getClaimable(bob), 3 ether);
     }
 
     /// @dev when querying non-recipient, then getClaimable returns 0
-    function test_getClaimable_assertZeroForNonRecipient()
-        public
-        depositFees(10 ether)
-    {
-        assertEq(splitter.getClaimable(charlie), 0);
+    function test_getClaimable_assertZeroForNonRecipient() public depositFees(10 ether) {
+        assertEq(_getClaimable(charlie), 0);
     }
 
     /// @dev when shares updated to remove alice and add charlie, then snapshotted amounts are preserved
@@ -440,9 +413,9 @@ contract LivoFeeSplitterTests is Test {
         depositFees(10 ether)
         withSharesUpdated(_recipients(bob, charlie), _shares(6000, 4000))
     {
-        assertEq(splitter.getClaimable(alice), 7 ether);
-        assertEq(splitter.getClaimable(bob), 3 ether);
-        assertEq(splitter.getClaimable(charlie), 0);
+        assertEq(_getClaimable(alice), 7 ether);
+        assertEq(_getClaimable(bob), 3 ether);
+        assertEq(_getClaimable(charlie), 0);
     }
 
     /// @dev when shares updated and new fees deposited, then claimable reflects snapshot plus new share
@@ -452,9 +425,9 @@ contract LivoFeeSplitterTests is Test {
         withSharesUpdated(_recipients(bob, charlie), _shares(6000, 4000))
         depositFees(20 ether)
     {
-        assertEq(splitter.getClaimable(alice), 7 ether);
-        assertEq(splitter.getClaimable(bob), 15 ether); // 3 + 60% of 20
-        assertEq(splitter.getClaimable(charlie), 8 ether); // 0 + 40% of 20
+        assertEq(_getClaimable(alice), 7 ether);
+        assertEq(_getClaimable(bob), 15 ether); // 3 + 60% of 20
+        assertEq(_getClaimable(charlie), 8 ether); // 0 + 40% of 20
     }
 
     // ======================== receive ========================
@@ -482,5 +455,35 @@ contract LivoFeeSplitterTests is Test {
         address[] memory receivers = token.getFeeReceivers();
         assertEq(receivers.length, 1);
         assertEq(receivers[0], charlie);
+    }
+
+    // ======================== getClaimable with upstream fees ========================
+
+    /// @dev when fees are pending in the upstream feeHandler, then getClaimable includes them
+    function test_getClaimable_assertIncludesUpstreamPendingFees() public depositFees(10 ether) {
+        // Deposit 5 ETH directly to the feeHandler as pending for the splitter
+        feeHandler.depositFees{value: 5 ether}(address(token), address(splitter));
+
+        // getClaimable should include both: 10 ETH already in splitter + 5 ETH upstream
+        assertEq(_getClaimable(alice), 10.5 ether); // 70% of 15
+        assertEq(_getClaimable(bob), 4.5 ether); // 30% of 15
+    }
+
+    /// @dev when fees are only in the upstream feeHandler (none in splitter), then getClaimable still reports them
+    function test_getClaimable_assertReportsUpstreamOnlyFees() public {
+        // Deposit 10 ETH directly to the feeHandler as pending for the splitter
+        feeHandler.depositFees{value: 10 ether}(address(token), address(splitter));
+
+        assertEq(_getClaimable(alice), 7 ether); // 70% of 10
+        assertEq(_getClaimable(bob), 3 ether); // 30% of 10
+    }
+
+    /// @dev when upstream fees exist and user claims, then they receive the full amount including upstream
+    function test_claim_assertClaimsIncludeUpstreamFees() public depositFees(10 ether) {
+        feeHandler.depositFees{value: 5 ether}(address(token), address(splitter));
+
+        vm.prank(alice);
+        splitter.claim(_tokens());
+        assertEq(alice.balance, 10.5 ether); // 70% of 15
     }
 }

@@ -66,7 +66,9 @@ contract LivoFactoryTaxToken is ILivoFactory {
         uint32 taxDurationSeconds
     ) external returns (address token) {
         require(feeReceiver != address(0), InvalidFeeReceiver());
-        token = _createAndInitializeTaxToken(name, symbol, feeReceiver, salt, sellTaxBps, taxDurationSeconds);
+        token = _createAndInitializeTaxToken(
+            name, symbol, address(FEE_HANDLER), feeReceiver, salt, sellTaxBps, taxDurationSeconds
+        );
     }
 
     /// @notice Deploys a new taxable token clone with a fee splitter
@@ -80,7 +82,8 @@ contract LivoFactoryTaxToken is ILivoFactory {
         uint32 taxDurationSeconds
     ) external returns (address token, address feeSplitter) {
         feeSplitter = _deployFeeSplitter(symbol, salt);
-        token = _createAndInitializeTaxToken(name, symbol, feeSplitter, salt, sellTaxBps, taxDurationSeconds);
+        token =
+            _createAndInitializeTaxToken(name, symbol, feeSplitter, feeSplitter, salt, sellTaxBps, taxDurationSeconds);
         ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
         emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
     }
@@ -95,6 +98,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
     function _createAndInitializeTaxToken(
         string calldata name,
         string calldata symbol,
+        address feeHandler_,
         address feeReceiver,
         bytes32 salt,
         uint16 sellTaxBps,
@@ -112,7 +116,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
         token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
 
         emit TokenCreated(
-            token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), address(FEE_HANDLER), feeReceiver
+            token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
         );
 
         // Creates the Uniswap Pair or whatever other initialization is necessary
@@ -129,7 +133,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
                 graduator: address(GRADUATOR),
                 pair: pair,
                 launchpad: address(LAUNCHPAD),
-                feeHandler: address(FEE_HANDLER),
+                feeHandler: feeHandler_,
                 feeReceiver: feeReceiver
             }),
             sellTaxBps,

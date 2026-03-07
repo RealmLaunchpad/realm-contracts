@@ -119,20 +119,26 @@ contract Deployments is Script {
         LiquidityLockUniv4WithFees liquidityLock = new LiquidityLockUniv4WithFees(univ4PositionManager);
         console.log("| LiquidityLockUniv4WithFees | ", address(liquidityLock));
 
-        // 6. Deploy LivoGraduatorUniswapV4
-        // NOTE: Hook address must be mined first and updated in DeploymentAddresses.sol
-        LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, permit2, hookAddress
-        );
-        console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
-
-        // 7. Deploy fee handlers used by factories
+        // 6. Deploy fee handlers used by factories
         LivoFeeBaseHandler feeHandler = new LivoFeeBaseHandler();
         console.log("| LivoFeeBaseHandler | ", address(feeHandler));
         LivoFeeV4Handler feeHandlerV4 = new LivoFeeV4Handler(
             address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, hookAddress
         );
         console.log("| LivoFeeV4Handler | ", address(feeHandlerV4));
+
+        // 7. Deploy LivoGraduatorUniswapV4
+        // NOTE: Hook address must be mined first and updated in DeploymentAddresses.sol
+        LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
+            address(launchpad),
+            address(liquidityLock),
+            univ4PoolManager,
+            univ4PositionManager,
+            permit2,
+            hookAddress,
+            address(feeHandlerV4)
+        );
+        console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
 
         // authorize the V4 graduator in the v4 fee handler, which is the only one allowed to register univ4 positionIds
         feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);

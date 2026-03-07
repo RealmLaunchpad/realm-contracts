@@ -127,15 +127,6 @@ contract LaunchpadBaseTests is Test {
         );
         taxHook = LivoSwapHook(payable(DeploymentAddressesMainnet.LIVO_SWAP_HOOK));
 
-        graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad),
-            address(liquidityLock),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
-        );
-
         feeHandler = new LivoFeeBaseHandler();
 
         feeHandlerV4 = new LivoFeeV4Handler(
@@ -144,6 +135,16 @@ contract LaunchpadBaseTests is Test {
             poolManagerAddress,
             positionManagerAddress,
             DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+        );
+
+        graduatorV4 = new LivoGraduatorUniswapV4(
+            address(launchpad),
+            address(liquidityLock),
+            poolManagerAddress,
+            positionManagerAddress,
+            permit2Address,
+            DeploymentAddressesMainnet.LIVO_SWAP_HOOK,
+            address(feeHandlerV4)
         );
         feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 
