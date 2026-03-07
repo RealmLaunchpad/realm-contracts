@@ -73,6 +73,11 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
         _setShares(recipients_, sharesBps_);
     }
 
+    /// @notice Returns the address that should own LP position NFTs (delegates to upstream handler)
+    function lpFeesPositionOwner() external view returns (address) {
+        return ILivoFeeHandler(feeHandler).lpFeesPositionOwner();
+    }
+
     /// @notice Accepts ETH fees and accrues them for shareholders.
     function depositFees(address, address) external payable {
         _accrueBalance();

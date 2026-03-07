@@ -135,8 +135,7 @@ contract Deployments is Script {
             univ4PoolManager,
             univ4PositionManager,
             permit2,
-            hookAddress,
-            address(feeHandlerV4)
+            hookAddress
         );
         console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
 

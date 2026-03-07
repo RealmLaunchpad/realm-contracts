@@ -143,8 +143,7 @@ contract LaunchpadBaseTests is Test {
             poolManagerAddress,
             positionManagerAddress,
             permit2Address,
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK,
-            address(feeHandlerV4)
+            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
         feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 

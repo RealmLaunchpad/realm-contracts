@@ -8,6 +8,11 @@ contract LivoFeeBaseHandler is ILivoFeeHandler {
     /// @dev claims are per token to not force an account to claim all-or-none
     mapping(address token => mapping(address account => uint256 amount)) pendingClaims;
 
+    /// @notice Returns the address that should own LP position NFTs
+    function lpFeesPositionOwner() external view virtual returns (address) {
+        return address(this);
+    }
+
     /// @notice Deposits ETH fees for a token's fee receiver
     function depositFees(address token, address feeReceiver) external payable {
         pendingClaims[token][feeReceiver] += msg.value;
