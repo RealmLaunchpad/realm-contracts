@@ -8,10 +8,7 @@ contract LivoFeeHandlerBase is ILivoFeeHandler {
     /// @dev claims are per token to not force an account to claim all-or-none
     mapping(address token => mapping(address account => uint256 amount)) internal _pendingClaims;
 
-    /// @notice Returns the address that should own LP position NFTs
-    function liquidityPositionOwner() external view virtual returns (address) {
-        return address(this);
-    }
+    ///////////////////////// EXTERNAL //////////////////////////
 
     /// @notice Deposits ETH fees for a token's fee receiver
     function depositFees(address token, address feeReceiver) external payable {
@@ -42,6 +39,14 @@ contract LivoFeeHandlerBase is ILivoFeeHandler {
         _transferEth(msg.sender, totalClaimable);
     }
 
+    /////////////////////////// VIEW /////////////////////////////////
+
+    /// @notice Returns the address that should own LP position NFTs
+    /// @dev This fee handler is not expected to handle LP fees, so this is the default
+    function liquidityPositionOwner() external view virtual returns (address) {
+        return address(this);
+    }
+
     /// @notice Returns the pending claimable ETH fees for an account across the given tokens
     /// @dev This doesn't include non-accrued LP fees that are sitting in the LP position
     function getClaimable(address[] calldata tokens, address account)
@@ -56,6 +61,8 @@ contract LivoFeeHandlerBase is ILivoFeeHandler {
             claimable[i] = _pendingClaims[tokens[i]][account];
         }
     }
+
+    ///////////////////////// INTERNAL //////////////////////////
 
     /// @notice Transfers ETH to a recipient, reverting on failure
     function _transferEth(address recipient, uint256 amount) internal {

@@ -39,6 +39,9 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
     /// @notice Hook contract address for pool interactions
     address public immutable HOOK_ADDRESS;
 
+    /// @notice launchpad address, to resolve treasury
+    address public immutable LIVO_LAUNCHPAD;
+
     /////////////////// Uniswap v4 related ///////////////
 
     /// @notice Uniswap V4 pool manager contract
@@ -59,9 +62,6 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
     event AuthorizedGraduatorSet(address indexed graduator, bool authorized);
 
     //////////////////////////////////////////////////////
-
-    /// @notice launchpad address, to resolve treasury
-    address public immutable LIVO_LAUNCHPAD;
 
     /// @notice Initializes the Uniswap V4 fee handler
     /// @param _launchpad Address of the LivoLaunchpad contract
@@ -195,7 +195,7 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
             }
 
             // LP fees are split 50/50 between creator and treasury
-            uint256 _pendingLpFees = _viewLpUniClaimableFees(token);
+            uint256 _pendingLpFees = _getClaimableLpEthFees(token);
             (uint256 creatorFee,) = _creatorTreasurySplit(_pendingLpFees);
 
             creatorClaimable[i] += creatorFee;
@@ -249,7 +249,7 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
     /// @notice Estimates claimable ETH fees across all positions for a given token
     /// @param token Address of the token
     /// @return pendingLpFees Total estimated LP ETH fees across all positions (creator + treasury)
-    function _viewLpUniClaimableFees(address token) internal view returns (uint256 pendingLpFees) {
+    function _getClaimableLpEthFees(address token) internal view returns (uint256 pendingLpFees) {
         PoolId poolId = _getPoolKey(token).toId();
 
         uint256 nPositions = positionIds[token].length;
@@ -257,7 +257,7 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
         if (nPositions == 0) return 0;
 
         // position 1 (always present)
-        pendingLpFees += _claimableLpEthFeesInPosition(
+        pendingLpFees += _getClaimableLpEthFeesInPosition(
             poolId, // poolId (bytes32)
             UniswapV4PoolConstants.TICK_LOWER,
             UniswapV4PoolConstants.TICK_UPPER,
@@ -266,7 +266,7 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
 
         // add fees from position 2 if existing
         if (nPositions > 1) {
-            pendingLpFees += _claimableLpEthFeesInPosition(
+            pendingLpFees += _getClaimableLpEthFeesInPosition(
                 poolId, // poolId (bytes32)
                 UniswapV4PoolConstants.TICK_LOWER_2,
                 UniswapV4PoolConstants.TICK_UPPER_2,
@@ -276,7 +276,7 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
     }
 
     /// @notice returns the pending LP fees in a liquidity position (creator + treasury)
-    function _claimableLpEthFeesInPosition(PoolId poolId_, int24 tickLower_, int24 tickUpper_, uint256 positionId_)
+    function _getClaimableLpEthFeesInPosition(PoolId poolId_, int24 tickLower_, int24 tickUpper_, uint256 positionId_)
         internal
         view
         returns (uint128)
