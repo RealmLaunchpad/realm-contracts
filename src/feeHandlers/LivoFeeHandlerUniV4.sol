@@ -148,11 +148,11 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
             // increases storage pending fees for the token fee receiver & treasury
             totalTreasuryFees += _accrueLpFees(token);
 
-            uint256 tokenClaimable = pendingClaims[token][msg.sender];
+            uint256 tokenClaimable = _pendingClaims[token][msg.sender];
             if (tokenClaimable == 0) continue;
 
             claimable += tokenClaimable;
-            delete pendingClaims[token][msg.sender];
+            delete _pendingClaims[token][msg.sender];
 
             emit CreatorClaimed(token, msg.sender, tokenClaimable);
         }
@@ -188,7 +188,7 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
             // Include already-accrued pending claims from this fee handler
-            creatorClaimable[i] = pendingClaims[token][receiver];
+            creatorClaimable[i] = _pendingClaims[token][receiver];
 
             if (ILivoToken(token).feeReceiver() != receiver) {
                 continue;
@@ -219,7 +219,7 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
         }
 
         if (totalCreatorFees > 0) {
-            pendingClaims[token][feeReceiver] += totalCreatorFees;
+            _pendingClaims[token][feeReceiver] += totalCreatorFees;
             emit CreatorFeesDeposited(token, feeReceiver, totalCreatorFees);
         }
 

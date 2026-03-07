@@ -6,7 +6,7 @@ import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 contract LivoFeeHandlerBase is ILivoFeeHandler {
     /// @notice claimable eth per account associated to a token
     /// @dev claims are per token to not force an account to claim all-or-none
-    mapping(address token => mapping(address account => uint256 amount)) pendingClaims;
+    mapping(address token => mapping(address account => uint256 amount)) internal _pendingClaims;
 
     /// @notice Returns the address that should own LP position NFTs
     function liquidityPositionOwner() external view virtual returns (address) {
@@ -15,7 +15,7 @@ contract LivoFeeHandlerBase is ILivoFeeHandler {
 
     /// @notice Deposits ETH fees for a token's fee receiver
     function depositFees(address token, address feeReceiver) external payable {
-        pendingClaims[token][feeReceiver] += msg.value;
+        _pendingClaims[token][feeReceiver] += msg.value;
         emit CreatorFeesDeposited(token, feeReceiver, msg.value);
     }
 
@@ -28,11 +28,11 @@ contract LivoFeeHandlerBase is ILivoFeeHandler {
 
         for (uint256 i = 0; i < nTokens; i++) {
             address token = tokens[i];
-            uint256 tokenClaimable = pendingClaims[token][msg.sender];
+            uint256 tokenClaimable = _pendingClaims[token][msg.sender];
             if (tokenClaimable == 0) continue;
 
             totalClaimable += tokenClaimable;
-            delete pendingClaims[token][msg.sender];
+            delete _pendingClaims[token][msg.sender];
 
             emit CreatorClaimed(token, msg.sender, tokenClaimable);
         }
@@ -53,7 +53,7 @@ contract LivoFeeHandlerBase is ILivoFeeHandler {
         uint256 nTokens = tokens.length;
         claimable = new uint256[](nTokens);
         for (uint256 i = 0; i < nTokens; i++) {
-            claimable[i] = pendingClaims[tokens[i]][account];
+            claimable[i] = _pendingClaims[tokens[i]][account];
         }
     }
 
