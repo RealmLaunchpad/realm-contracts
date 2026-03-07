@@ -9,7 +9,7 @@ contract LivoFeeBaseHandler is ILivoFeeHandler {
     mapping(address token => mapping(address account => uint256 amount)) pendingClaims;
 
     /// @notice Returns the address that should own LP position NFTs
-    function lpFeesPositionOwner() external view virtual returns (address) {
+    function liquidityPositionOwner() external view virtual returns (address) {
         return address(this);
     }
 

@@ -128,17 +128,17 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         tokens[0] = token;
     }
 
-    function _collectFees(address token) internal {
+    function _collectFees(address token) internal virtual {
         _collectFees(_singleToken(token));
     }
 
-    function _collectFees(address[] memory tokens) internal {
+    function _collectFees(address[] memory tokens) internal virtual {
         // claiming already accrues fees first
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
     }
 
-    function _claimable(address token, address account) internal view returns (uint256) {
+    function _claimable(address token, address account) internal view virtual returns (uint256) {
         return ILivoFeeHandler(ILivoToken(token).feeHandler()).getClaimable(_singleToken(token), account)[0];
     }
 }
@@ -1406,11 +1406,5 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         vm.prank(creator);
         return
             factoryTax.createToken(name, symbol, creator, metadata, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION));
-    }
-
-    function test_taxeAmountAsExpected() public {
-        deal(buyer, 10 ether);
-        uint256 amountIn = 1 ether;
-        uint256 expectedTax = (amountIn * DEFAULT_SELL_TAX_BPS) / 10000;
     }
 }

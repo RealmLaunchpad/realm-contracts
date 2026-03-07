@@ -13,7 +13,7 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
     uint256 internal constant BPS_TOTAL = 10_000;
     uint256 internal constant PRECISION = 1e18;
 
-    address public feeHandler;
+    address internal univ4FeeHandler;
     address public token;
     address[] public recipients;
     uint256[] public sharesBps;
@@ -37,18 +37,18 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
         _disableInitializers();
     }
 
-    /// @notice Initializes the splitter with a fee handler, token, and initial share configuration.
-    /// @param feeHandler_ Address of the `LivoFeeHandler` this splitter claims from.
+    /// @notice Initializes the splitter with a UniV4 fee handler, token, and initial share configuration.
+    /// @param univ4FeeHandler_ Address of the UniV4 `LivoFeeHandler` this splitter claims from.
     /// @param token_ Address of the `LivoToken` whose fees are being split.
     /// @param recipients_ Initial fee recipients.
     /// @param sharesBps_ BPS shares for each recipient (must sum to 10 000).
     function initialize(
-        address feeHandler_,
+        address univ4FeeHandler_,
         address token_,
         address[] calldata recipients_,
         uint256[] calldata sharesBps_
     ) external initializer {
-        feeHandler = feeHandler_;
+        univ4FeeHandler = univ4FeeHandler_;
         token = token_;
         _setShares(recipients_, sharesBps_);
     }
@@ -74,8 +74,8 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
     }
 
     /// @notice Returns the address that should own LP position NFTs (delegates to upstream handler)
-    function lpFeesPositionOwner() external view returns (address) {
-        return ILivoFeeHandler(feeHandler).lpFeesPositionOwner();
+    function liquidityPositionOwner() external view returns (address) {
+        return ILivoFeeHandler(univ4FeeHandler).liquidityPositionOwner();
     }
 
     /// @notice Accepts ETH fees and accrues them for shareholders.
@@ -131,7 +131,7 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
         uint256 fromAccrued = _getClaimableFromAccrued(account);
 
         uint256 unaccounted = address(this).balance - totalAccounted;
-        uint256[] memory upstream = ILivoFeeHandler(feeHandler).getClaimable(_tokens(), address(this));
+        uint256[] memory upstream = ILivoFeeHandler(univ4FeeHandler).getClaimable(_tokens(), address(this));
 
         // from Accrued is already given by shareholder, but the others need to be split still
         return fromAccrued + ((unaccounted + upstream[0]) * sharesBpsOf[account]) / BPS_TOTAL;
@@ -182,7 +182,7 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
 
     /// @dev Claims pending fees from the underlying fee handler, then accrues the new ETH.
     function _claimFromSource() internal {
-        ILivoFeeHandler(feeHandler).claim(_tokens());
+        ILivoFeeHandler(univ4FeeHandler).claim(_tokens());
         _accrueBalance();
     }
 

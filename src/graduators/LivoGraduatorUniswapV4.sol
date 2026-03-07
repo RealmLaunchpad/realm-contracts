@@ -236,7 +236,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable, FactoryWhitelisting 
         address treasury
     ) internal returns (uint128 liquidity1, uint128 liquidity2) {
         uint256 ethBalanceBefore = address(this).balance;
-        address positionOwner_ = ILivoFeeHandler(ILivoToken(tokenAddress).feeHandler()).lpFeesPositionOwner();
+        address positionOwner_ = ILivoFeeHandler(ILivoToken(tokenAddress).feeHandler()).liquidityPositionOwner();
 
         liquidity1 = LiquidityAmounts.getLiquidityForAmounts(
             SQRT_PRICEX96_GRADUATION, SQRT_PRICEX96_LOWER_TICK, SQRT_PRICEX96_UPPER_TICK, ethForLiquidity, tokenAmount

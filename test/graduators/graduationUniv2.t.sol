@@ -14,6 +14,9 @@ import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+
 contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     address public uniswapPair;
 
@@ -463,5 +466,89 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         launchpad.buyTokensWithExactEth{value: maxEth}(testToken, 0, DEADLINE);
 
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
+    }
+}
+
+// ============================================
+// V2 + FeeSplitter + LivoToken
+// ============================================
+
+contract UniswapV2Graduation_Splitter is BaseUniswapV2GraduationTests {
+    address public splitterAddress;
+    address public shareholder1;
+    address public shareholder2;
+
+    function setUp() public override {
+        super.setUp();
+        shareholder1 = makeAddr("shareholder1");
+        shareholder2 = makeAddr("shareholder2");
+    }
+
+    function _recipients() internal view returns (address[] memory r) {
+        r = new address[](2);
+        r[0] = shareholder1;
+        r[1] = shareholder2;
+    }
+
+    function _sharesBps() internal pure returns (uint256[] memory s) {
+        s = new uint256[](2);
+        s[0] = 7000;
+        s[1] = 3000;
+    }
+
+    modifier createSplitterToken() {
+        vm.prank(creator);
+        (address token, address splitter) =
+            factoryV2.createTokenWithFeeSplit("TestToken", "TEST", _recipients(), _sharesBps(), "0x003");
+        testToken = token;
+        splitterAddress = splitter;
+        uniswapPair = UNISWAP_FACTORY.getPair(testToken, address(WETH));
+        _;
+    }
+
+    /// @notice Graduation succeeds with fee splitter on V2
+    function test_graduation_withFeeSplitter_v2() public createSplitterToken {
+        _graduateToken();
+        assertTrue(launchpad.getTokenState(testToken).graduated, "token should be graduated");
+    }
+
+    /// @notice token.feeHandler() returns the splitter
+    function test_feeHandler_isSplitter_v2() public createSplitterToken {
+        _graduateToken();
+        assertEq(ILivoToken(testToken).feeHandler(), splitterAddress, "feeHandler should be splitter");
+        assertEq(ILivoToken(testToken).feeReceiver(), splitterAddress, "feeReceiver should be splitter");
+    }
+
+    /// @notice Graduation compensation is routed through splitter, shareholders can claim
+    function test_graduationCompensation_claimableByShareholders() public createSplitterToken {
+        _graduateToken();
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = testToken;
+
+        address tokenFeeHandler = ILivoToken(testToken).feeHandler();
+        uint256 s1Claimable = ILivoFeeHandler(tokenFeeHandler).getClaimable(tokens, shareholder1)[0];
+        uint256 s2Claimable = ILivoFeeHandler(tokenFeeHandler).getClaimable(tokens, shareholder2)[0];
+
+        assertGt(s1Claimable + s2Claimable, 0, "shareholders should have claimable graduation compensation");
+
+        uint256 s1Before = shareholder1.balance;
+        uint256 s2Before = shareholder2.balance;
+
+        vm.prank(shareholder1);
+        ILivoFeeHandler(tokenFeeHandler).claim(tokens);
+        vm.prank(shareholder2);
+        ILivoFeeHandler(tokenFeeHandler).claim(tokens);
+
+        uint256 s1Earned = shareholder1.balance - s1Before;
+        uint256 s2Earned = shareholder2.balance - s2Before;
+
+        assertGt(s1Earned, 0, "shareholder1 should receive graduation compensation");
+        assertGt(s2Earned, 0, "shareholder2 should receive graduation compensation");
+
+        // 70/30 split of graduation compensation
+        assertApproxEqAbs(
+            s1Earned * 3000, s2Earned * 7000, 1e12, "fee split should respect 70/30 shares"
+        );
     }
 }

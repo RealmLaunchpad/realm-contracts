@@ -132,7 +132,6 @@ contract LivoFeeSplitterTests is Test {
 
     /// @dev when initialized, then state variables are set correctly
     function test_initialize_assertStateIsSet() public view {
-        assertEq(splitter.feeHandler(), address(feeHandler));
         assertEq(splitter.token(), address(token));
         (address[] memory recipients, uint256[] memory shares) = splitter.getRecipients();
         assertEq(recipients.length, 2);

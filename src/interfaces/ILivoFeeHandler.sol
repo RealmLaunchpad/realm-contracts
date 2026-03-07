@@ -23,7 +23,7 @@ interface ILivoFeeHandler {
     ////////////// VIEW FUNCTIONS /////////////
 
     /// @notice Returns the address that should own LP position NFTs (for Uniswap V4 fee collection)
-    function lpFeesPositionOwner() external view returns (address);
+    function liquidityPositionOwner() external view returns (address);
 
     /// @notice Returns the pending ETH fees for `account` across the given `tokens`
     function getClaimable(address[] calldata tokens, address account) external view returns (uint256[] memory);
