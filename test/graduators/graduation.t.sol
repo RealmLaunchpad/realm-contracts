@@ -133,15 +133,21 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     function test_teamCollectsGraduationFeeInEthAtGraduation() public createTestToken {
         uint256 treasuryBalanceBefore = treasury.balance;
 
+        // Calculate the ETH that will be spent to graduate (for trading fee calculation)
+        uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
+        uint256 missingForGraduation = _increaseWithFees(GRADUATION_THRESHOLD - ethReserves);
+        uint256 expectedTradingFee = (missingForGraduation * BASE_BUY_FEE_BPS) / 10000;
+
         _graduateToken();
 
+        // this will include both trading fees and graduation fees
         uint256 treasuryBalanceAfter = treasury.balance;
         uint256 feeCollected = treasuryBalanceAfter - treasuryBalanceBefore;
 
         assertEq(
             feeCollected,
-            GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION,
-            "Treasury should receive graduation fee share directly"
+            (GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION) + expectedTradingFee,
+            "Treasury should receive graduation fee share plus trading fees"
         );
     }
 
@@ -229,21 +235,20 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     function test_treasuryEthBalanceChangeAtGraduationAccountsForGraduationFee() public createTestToken {
         vm.deal(buyer, 100 ether);
 
-        uint256 treasuryStartingBalance = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryEthBefore = treasury.balance;
 
         // buy but not graduate
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
-        uint256 expectedFees = ((GRADUATION_THRESHOLD - 1 ether) * BASE_BUY_FEE_BPS) / 10000;
+        uint256 expectedTradingFees = ((GRADUATION_THRESHOLD - 1 ether) * BASE_BUY_FEE_BPS) / 10000;
         assertEq(
-            launchpad.treasuryEthFeesCollected(),
-            treasuryStartingBalance + expectedFees,
+            treasury.balance - treasuryEthBefore,
+            expectedTradingFees,
             "Treasury should collect expected fees"
         );
 
-        uint256 treasuryFeesBeforeGraduation = launchpad.treasuryEthFeesCollected();
-        uint256 treasuryEthBefore = treasury.balance;
+        uint256 treasuryBalanceBeforeGraduation = treasury.balance;
 
         // this graduates the token
         uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;
@@ -253,13 +258,10 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
 
-        uint256 treasuryFeesAfterGraduation = launchpad.treasuryEthFeesCollected();
-
-        uint256 tradingFeeAccumulated = treasuryFeesAfterGraduation - treasuryFeesBeforeGraduation;
-        uint256 graduationFeeReceived = treasury.balance - treasuryEthBefore;
+        uint256 totalTreasuryChange = treasury.balance - treasuryBalanceBeforeGraduation;
 
         assertEq(
-            tradingFeeAccumulated + graduationFeeReceived,
+            totalTreasuryChange,
             tradingFee + (GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION),
             "Treasury should collect its graduation fee share (plus trading fee)"
         );
@@ -275,12 +277,11 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
 
-        uint256 firstLaunchpadEthBefore = address(launchpad).balance - initialLaunchpadBalance;
-        uint256 etherReservesPreGraduation = launchpad.getTokenState(testToken).ethCollected; // 6886440000000051702
-        uint256 treasuryBefore = launchpad.treasuryEthFeesCollected(); // 69560000000000522
+        uint256 launchpadEthAfterFirstBuy = address(launchpad).balance - initialLaunchpadBalance;
+        uint256 etherReservesPreGraduation = launchpad.getTokenState(testToken).ethCollected;
         assertEq(
-            firstLaunchpadEthBefore,
-            etherReservesPreGraduation + treasuryBefore,
+            launchpadEthAfterFirstBuy,
+            etherReservesPreGraduation,
             "balance missmatch (there is only one token)"
         );
 
@@ -290,9 +291,8 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         launchpad.buyTokensWithExactEth{value: purchaseValue}(testToken, 0, DEADLINE);
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated");
 
-        uint256 secondLaunchpadEthAfter = address(launchpad).balance - initialLaunchpadBalance;
-        uint256 treasuryAfter = launchpad.treasuryEthFeesCollected();
-        assertEq(secondLaunchpadEthAfter, treasuryAfter, "balance missmatch after graduation (there is only one token)");
+        uint256 launchpadEthAfterGraduation = address(launchpad).balance - initialLaunchpadBalance;
+        assertEq(launchpadEthAfterGraduation, 0, "launchpad should hold no ETH after graduation (single token)");
     }
 
     /// @notice Test that launchpad eth balance change at graduation is the exact reserves pre graduation
@@ -317,17 +317,15 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         uint256 launchpadEthAfter = address(launchpad).balance;
 
-        // After refactoring: launchpad sends ALL collected ETH to graduator
-        // Graduator then splits it: liquidity + creatorCompensation + treasuryShare
-        uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
-        uint256 liquidity = etherReservesPreGraduation - tradingFee - GRADUATION_FEE;
-        // the CREATOR_GRADUATION_COMPENSATION comes out of the GRADUATION_FEE
-        uint256 treasuryGraduationShare = GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION;
+        // Trading fees go directly to treasury now, so launchpad only holds reserves.
+        // After graduation of a single token, launchpad should hold 0.
+        assertEq(launchpadEthAfter, 0, "launchpad should hold no ETH after single token graduation");
 
+        // The launchpad balance decrease equals the pre-graduation reserves
         assertEq(
             launchpadEthBefore - launchpadEthAfter,
-            liquidity + CREATOR_GRADUATION_COMPENSATION + treasuryGraduationShare,
-            "eth balance change should equal liquidity added plus the creator compensation plus treasury graduation fee"
+            etherReservesPreGraduation,
+            "eth balance change should equal pre-graduation reserves"
         );
     }
 }

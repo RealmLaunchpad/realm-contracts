@@ -391,12 +391,12 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         uint256 launchpadEthAfter = address(launchpad).balance;
 
-        // After refactoring: graduator pays fees directly, so we need to account for treasury's graduation fee share
-        // Treasury receives: graduationFee (0.5 ETH) - creatorCompensation (0.1 ETH) = 0.4 ETH
-        uint256 treasuryGraduationFee = 0.5 ether - CREATOR_GRADUATION_COMPENSATION;
+        // Trading fees go directly to treasury now, so launchpad only holds reserves.
+        // The incoming purchaseValue is split: tradingFee to treasury, rest to reserves then graduated.
+        uint256 tradingFee = (BASE_BUY_FEE_BPS * purchaseValue) / 10000;
         assertEq(
             launchpadEthBefore + purchaseValue,
-            launchpadEthAfter + WETH.balanceOf(uniswapPair) + CREATOR_GRADUATION_COMPENSATION + treasuryGraduationFee,
+            launchpadEthAfter + tradingFee + WETH.balanceOf(uniswapPair) + 0.5 ether,
             "failed in funds conservation check"
         );
     }

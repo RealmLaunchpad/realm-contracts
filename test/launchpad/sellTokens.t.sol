@@ -58,7 +58,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         assertEq(alice.balance, aliceEthBalanceBefore + expectedEthForSeller);
         assertEq(IERC20(testToken).balanceOf(alice), aliceTokenBalanceBefore - tokensToSell);
-        assertEq(address(launchpad).balance, launchpadEthBalanceBefore - expectedEthForSeller);
+        assertEq(address(launchpad).balance, launchpadEthBalanceBefore - expectedEthForSeller - expectedEthFee);
         assertEq(
             IERC20(testToken).balanceOf(address(launchpad)),
             TOTAL_SUPPLY,
@@ -67,7 +67,6 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         TokenState memory state = launchpad.getTokenState(testToken);
         assertEq(state.releasedSupply, 0);
-        assertEq(launchpad.treasuryEthFeesCollected(), 0.01 ether + expectedEthFee); // Buy fee + sell fee
     }
 
     function testSellExactTokens_partialSell() public createTestToken afterOneBuy {
@@ -234,13 +233,12 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         assertEq(expectedEthForSeller, expectedEthFromSale - expectedEthFee);
         assertEq(expectedEthFee, (expectedEthFromSale * BASE_SELL_FEE_BPS) / 10000);
 
-        uint256 treasuryFeesBefore = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryBefore = treasury.balance;
 
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
 
-        uint256 treasuryFeesAfter = launchpad.treasuryEthFeesCollected();
-        assertEq(treasuryFeesAfter - treasuryFeesBefore, expectedEthFee);
+        assertEq(treasury.balance - treasuryBefore, expectedEthFee);
     }
 
     function testSellExactTokens_quotingAccuracy() public createTestToken afterOneBuy {
@@ -249,19 +247,18 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         (uint256 quotedEthFromSale, uint256 quotedEthFee, uint256 quotedEthForSeller) =
             launchpad.quoteSellExactTokens(testToken, tokensToSell);
 
-        uint256 treasuryFeesBefore = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryBefore = treasury.balance;
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
         uint256 ethBalanceBefore = alice.balance;
 
         vm.prank(alice);
         launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
 
-        uint256 treasuryFeesAfter = launchpad.treasuryEthFeesCollected();
         TokenState memory stateAfter = launchpad.getTokenState(testToken);
         uint256 ethBalanceAfter = alice.balance;
 
         // Verify quote accuracy
-        assertEq(treasuryFeesAfter - treasuryFeesBefore, quotedEthFee);
+        assertEq(treasury.balance - treasuryBefore, quotedEthFee);
         assertEq(stateBefore.ethCollected - stateAfter.ethCollected, quotedEthFromSale);
         assertEq(ethBalanceAfter - ethBalanceBefore, quotedEthForSeller);
     }

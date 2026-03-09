@@ -140,31 +140,6 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
         launchpad.setTreasuryAddress(address(0));
     }
 
-    function test_claimTreasuryFees_nonOwnerCanClaim() public {
-        vm.prank(nonOwner);
-        launchpad.claimTreasuryFees();
-    }
-
-    function test_claimTreasuryFees_SucceedsForOwner() public createTestToken {
-        vm.deal(buyer, 10 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, block.timestamp + 1);
-
-        uint256 initialTreasuryBalance = treasury.balance;
-        uint256 feesCollected = launchpad.treasuryEthFeesCollected();
-
-        if (feesCollected > 0) {
-            vm.expectEmit(true, true, true, true);
-            emit TreasuryFeesClaimed(treasury, feesCollected);
-
-            vm.prank(admin);
-            launchpad.claimTreasuryFees();
-
-            assertEq(launchpad.treasuryEthFeesCollected(), 0);
-            assertEq(treasury.balance, initialTreasuryBalance + feesCollected);
-        }
-    }
-
     function test_transferOwnership2step() public {
         vm.prank(admin);
         launchpad.transferOwnership(nonOwner);
@@ -191,16 +166,6 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(admin);
         launchpad.setTreasuryAddress(address(0x1223432345));
-    }
-
-    function test_claimTreasuryFees_NoFeesToCollect() public {
-        uint256 initialTreasuryBalance = treasury.balance;
-
-        vm.prank(admin);
-        launchpad.claimTreasuryFees();
-
-        assertEq(launchpad.treasuryEthFeesCollected(), 0);
-        assertEq(treasury.balance, initialTreasuryBalance);
     }
 
     function test_communityTakeOver_revertsForNonOwner() public createTestToken {
@@ -230,7 +195,6 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv2Graduator {
     event FactoryWhitelisted(address indexed factory);
     event FactoryBlacklisted(address indexed factory);
     event TreasuryAddressUpdated(address newTreasury);
-    event TreasuryFeesClaimed(address indexed treasury, uint256 amount);
 
     error OwnableUnauthorizedAccount(address caller);
 

@@ -24,9 +24,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     /// @notice 100% in basis points
     uint256 public constant BASIS_POINTS = 10_000;
 
-    /// @notice Total fees collected by the treasury (in wei)
-    uint256 public treasuryEthFeesCollected;
-
     /// @notice Livo Treasury, receiver of all trading/graduation fees
     address public treasury;
 
@@ -68,7 +65,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     event LivoTokenSell(
         address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 ethFee
     );
-    event TreasuryFeesClaimed(address indexed treasury, uint256 amount);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
     event CommunityTakeOver(address indexed token, address newOwner);
@@ -135,11 +131,11 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
 
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
 
-        treasuryEthFeesCollected += ethFee;
         tokenState.ethCollected += ethForReserves;
         tokenState.releasedSupply += tokensToReceive;
 
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
+        _transferEth(treasury, ethFee, true);
 
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
@@ -185,13 +181,13 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
 
         tokenState.ethCollected -= ethPulledFromReserves;
         tokenState.releasedSupply -= tokenAmount;
-        treasuryEthFeesCollected += ethFee;
 
         emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
 
         // funds transfers
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
 
+        _transferEth(treasury, ethFee, true);
         _transferEth(msg.sender, ethForSeller, true);
 
         return ethForSeller;
@@ -289,19 +285,6 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         require(recipient != address(0), InvalidAddress());
         treasury = recipient;
         emit TreasuryAddressUpdated(recipient);
-    }
-
-    /// @notice Collects accumulated treasury fees and transfers them to the treasury
-    /// @dev No access control, as the receiver of the fees is the treasury itself
-    function claimTreasuryFees() external {
-        uint256 amount = treasuryEthFeesCollected;
-        if (amount == 0) return;
-
-        treasuryEthFeesCollected = 0;
-
-        _transferEth(treasury, amount, true);
-
-        emit TreasuryFeesClaimed(treasury, amount);
     }
 
     /// @notice If a token is abandoned by original creators and the community wants to step in,

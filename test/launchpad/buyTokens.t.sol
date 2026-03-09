@@ -14,6 +14,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {console} from "forge-std/console.sol";
 
 abstract contract BuyTokensTest is LaunchpadBaseTests {
+
     function testBuyTokensWithExactEth_happyPath() public createTestToken {
         uint256 ethAmount = 1 ether;
         uint256 minTokenAmount = 0;
@@ -32,13 +33,13 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         assertEq(buyer.balance, buyerEthBalanceBefore - ethAmount);
         assertEq(IERC20(testToken).balanceOf(buyer), buyerTokenBalanceBefore + expectedTokensToReceive);
-        assertEq(address(launchpad).balance, launchpadEthBalanceBefore + ethAmount);
+        assertEq(address(launchpad).balance, launchpadEthBalanceBefore + ethAmount - expectedEthFee);
         assertEq(IERC20(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY - expectedTokensToReceive);
 
         TokenState memory state = launchpad.getTokenState(testToken);
         assertEq(state.ethCollected, expectedEthForPurchase);
         assertEq(state.releasedSupply, expectedTokensToReceive);
-        assertEq(launchpad.treasuryEthFeesCollected(), expectedEthFee);
+        assertEq(treasury.balance, expectedEthFee);
     }
 
     function testBuyTokensWithExactEth_multipleBuys() public createTestToken {
@@ -51,7 +52,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         TokenState memory stateAfterFirst = launchpad.getTokenState(testToken);
         uint256 firstTokensReceived = IERC20(testToken).balanceOf(buyer);
-        uint256 firstFeesCollected = launchpad.treasuryEthFeesCollected();
+        uint256 firstTreasuryBalance = treasury.balance;
 
         // Second buy
         vm.prank(buyer);
@@ -59,32 +60,30 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         TokenState memory stateAfterSecond = launchpad.getTokenState(testToken);
         uint256 totalTokensReceived = IERC20(testToken).balanceOf(buyer);
-        uint256 totalFeesCollected = launchpad.treasuryEthFeesCollected();
 
         assertTrue(stateAfterSecond.ethCollected > stateAfterFirst.ethCollected);
         assertTrue(stateAfterSecond.releasedSupply > stateAfterFirst.releasedSupply);
         assertTrue(totalTokensReceived > firstTokensReceived);
-        assertTrue(totalFeesCollected > firstFeesCollected);
+        assertTrue(treasury.balance > firstTreasuryBalance);
         assertEq(stateAfterSecond.releasedSupply, totalTokensReceived);
     }
 
     function testBuyTwoTimesSameAmount_secondGetsLessTokens() public createTestToken {
         uint256 ethAmount = 1 ether;
+        uint256 treasuryBalanceBeforeFirstBuy = treasury.balance;
 
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
         uint256 firstTokensReceived = IERC20(testToken).balanceOf(buyer);
-        uint256 firstFeesCollected = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryBalanceAfterFirstBuy = treasury.balance;
 
         // Second buy
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
         uint256 secondTokensReceived = IERC20(testToken).balanceOf(buyer) - firstTokensReceived;
-        uint256 totalFeesCollected = launchpad.treasuryEthFeesCollected();
-
-        assertEq(totalFeesCollected, 2 * firstFeesCollected);
+        uint256 totalFeesCollected = treasury.balance - treasuryBalanceBeforeFirstBuy;
         assertLt(
             secondTokensReceived,
             firstTokensReceived,
@@ -216,13 +215,12 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         assertEq(actualFee, expectedFee);
         assertEq(actualEthForPurchase, expectedEthForPurchase);
 
-        uint256 feesBefore = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryBefore = treasury.balance;
 
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
-        uint256 feesAfter = launchpad.treasuryEthFeesCollected();
-        assertEq(feesAfter - feesBefore, expectedFee);
+        assertEq(treasury.balance - treasuryBefore, expectedFee);
 
         TokenState memory state = launchpad.getTokenState(testToken);
         assertEq(state.ethCollected, expectedEthForPurchase);
@@ -234,18 +232,17 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         (uint256 quotedEthForPurchase, uint256 quotedEthFee, uint256 quotedTokens) =
             launchpad.quoteBuyWithExactEth(testToken, ethAmount);
 
-        uint256 treasuryFeesBefore = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryBefore = treasury.balance;
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
 
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
-        uint256 treasuryFeesAfter = launchpad.treasuryEthFeesCollected();
         TokenState memory stateAfter = launchpad.getTokenState(testToken);
         uint256 tokensReceived = IERC20(testToken).balanceOf(buyer);
 
         // Verify quote accuracy
-        assertEq(treasuryFeesAfter - treasuryFeesBefore, quotedEthFee);
+        assertEq(treasury.balance - treasuryBefore, quotedEthFee);
         assertEq(stateAfter.ethCollected - stateBefore.ethCollected, quotedEthForPurchase);
         assertEq(tokensReceived, quotedTokens);
     }
@@ -329,8 +326,8 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         assertEq(
             address(launchpad).balance - initialLaunchpadBalance,
-            launchpad.getTokenState(testToken).ethCollected + launchpad.treasuryEthFeesCollected(),
-            "eth balance should match reserves + fees"
+            launchpad.getTokenState(testToken).ethCollected,
+            "eth balance should match reserves"
         );
     }
 
