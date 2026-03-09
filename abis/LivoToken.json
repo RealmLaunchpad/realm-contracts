@@ -26,6 +26,13 @@
   },
   {
     "type": "function",
+    "name": "accrueFees",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
     "name": "allowance",
     "inputs": [
       {
@@ -132,25 +139,13 @@
   },
   {
     "type": "function",
-    "name": "getFeeConfigs",
+    "name": "getFeeReceivers",
     "inputs": [],
     "outputs": [
       {
-        "name": "config",
-        "type": "tuple",
-        "internalType": "struct ILivoToken.FeeConfig",
-        "components": [
-          {
-            "name": "feeHandler",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "feeReceiver",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
+        "name": "",
+        "type": "address[]",
+        "internalType": "address[]"
       }
     ],
     "stateMutability": "view"
@@ -242,11 +237,6 @@
           },
           {
             "name": "graduator",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "pair",
             "type": "address",
             "internalType": "address"
           },
@@ -477,12 +467,6 @@
     "type": "event",
     "name": "FeeReceiverUpdated",
     "inputs": [
-      {
-        "name": "oldFeeReceiver",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
       {
         "name": "newFeeReceiver",
         "type": "address",

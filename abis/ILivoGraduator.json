@@ -1,19 +1,6 @@
 [
   {
     "type": "function",
-    "name": "blacklistFactory",
-    "inputs": [
-      {
-        "name": "factory",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "graduateToken",
     "inputs": [
       {
@@ -47,19 +34,6 @@
         "internalType": "address"
       }
     ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "whitelistFactory",
-    "inputs": [
-      {
-        "name": "factory",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
     "stateMutability": "nonpayable"
   },
   {

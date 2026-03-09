@@ -56,6 +56,13 @@
   },
   {
     "type": "function",
+    "name": "accrueFees",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
     "name": "allowance",
     "inputs": [
       {
@@ -162,25 +169,13 @@
   },
   {
     "type": "function",
-    "name": "getFeeConfigs",
+    "name": "getFeeReceivers",
     "inputs": [],
     "outputs": [
       {
-        "name": "config",
-        "type": "tuple",
-        "internalType": "struct ILivoToken.FeeConfig",
-        "components": [
-          {
-            "name": "feeHandler",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "feeReceiver",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
+        "name": "",
+        "type": "address[]",
+        "internalType": "address[]"
       }
     ],
     "stateMutability": "view"
@@ -289,11 +284,6 @@
             "internalType": "address"
           },
           {
-            "name": "pair",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
             "name": "launchpad",
             "type": "address",
             "internalType": "address"
@@ -309,16 +299,6 @@
             "internalType": "address"
           }
         ]
-      },
-      {
-        "name": "sellTaxBps_",
-        "type": "uint16",
-        "internalType": "uint16"
-      },
-      {
-        "name": "taxDurationSeconds_",
-        "type": "uint40",
-        "internalType": "uint40"
       }
     ],
     "outputs": [],
@@ -354,11 +334,6 @@
             "internalType": "address"
           },
           {
-            "name": "pair",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
             "name": "launchpad",
             "type": "address",
             "internalType": "address"
@@ -374,6 +349,16 @@
             "internalType": "address"
           }
         ]
+      },
+      {
+        "name": "sellTaxBps_",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "taxDurationSeconds_",
+        "type": "uint40",
+        "internalType": "uint40"
       }
     ],
     "outputs": [],
@@ -624,12 +609,6 @@
     "type": "event",
     "name": "FeeReceiverUpdated",
     "inputs": [
-      {
-        "name": "oldFeeReceiver",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
       {
         "name": "newFeeReceiver",
         "type": "address",
