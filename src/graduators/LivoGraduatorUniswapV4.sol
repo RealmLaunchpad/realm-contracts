@@ -193,9 +193,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
 
         // Deposit creator compensation through the token
-        emit CreatorGraduationFeeCollected(
-            tokenAddress, ILivoToken(tokenAddress).feeReceiver(), CREATOR_GRADUATION_COMPENSATION
-        );
+        emit CreatorGraduationFeeCollected(tokenAddress, CREATOR_GRADUATION_COMPENSATION);
         ILivoToken(tokenAddress).accrueFees{value: CREATOR_GRADUATION_COMPENSATION}();
 
         // Send treasury share directly to treasury
