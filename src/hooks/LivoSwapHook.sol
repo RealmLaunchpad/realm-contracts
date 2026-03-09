@@ -21,7 +21,7 @@ contract LivoSwapHook is BaseHook {
     error NoSwapsBeforeGraduation();
 
     /// @notice Emitted when creator taxes are accrued from a taxed swap
-    event CreatorTaxesAccrued(address indexed token, address indexed feeReceiver, uint256 amount);
+    event CreatorTaxesAccrued(address indexed token, uint256 amount);
 
     /// @notice Basis points denominator (10000 = 100%)
     uint256 private constant BASIS_POINTS = 10000;
@@ -150,7 +150,7 @@ contract LivoSwapHook is BaseHook {
         // Take ETH to this contract first so we can forward it to the token fee handler
         poolManager.take(currency, address(this), taxAmount);
 
-        emit CreatorTaxesAccrued(tokenAddress, ILivoToken(tokenAddress).feeReceiver(), taxAmount);
+        emit CreatorTaxesAccrued(tokenAddress, taxAmount);
         ILivoToken(tokenAddress).accrueFees{value: taxAmount}();
 
         // casting to 'uint128' is safe because it is known to be a positive eth value well below eth max supply
