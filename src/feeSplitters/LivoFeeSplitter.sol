@@ -2,14 +2,14 @@
 pragma solidity 0.8.28;
 
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
-import {ReentrancyGuard} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
 /// @notice Splits ETH fees received from a `LivoFeeHandler` among multiple recipients according to configurable BPS shares.
 /// @dev Uses a cumulative `ethPerBps` accumulator pattern to track each recipient's claimable amount without iterating over all recipients on every deposit.
-contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuard {
+contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTransient {
     uint256 internal constant BPS_TOTAL = 10_000;
     uint256 internal constant PRECISION = 1e18;
 
