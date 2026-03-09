@@ -150,7 +150,7 @@ contract Deployments is Script {
             address(feeHandlerV2),
             address(feeSplitterImpl)
         );
-        console.log("| LivoFactoryBase (V2) | ", address(factoryV2));
+        console.log("| LivoFactory (V2) | ", address(factoryV2));
         LivoFactoryBase factoryV4 = new LivoFactoryBase(
             address(launchpad),
             address(livoToken),
@@ -159,7 +159,7 @@ contract Deployments is Script {
             address(feeHandlerV4),
             address(feeSplitterImpl)
         );
-        console.log("| LivoFactoryBase (V4) | ", address(factoryV4));
+        console.log("| LivoFactory (V4) | ", address(factoryV4));
 
         LivoFactoryTaxToken factoryTax = new LivoFactoryTaxToken(
             address(launchpad),
@@ -169,7 +169,7 @@ contract Deployments is Script {
             address(feeHandlerV4),
             address(feeSplitterImpl)
         );
-        console.log("| LivoFactoryTaxToken | ", address(factoryTax));
+        console.log("| LivoFactoryTaxToken (V4) | ", address(factoryTax));
 
         // log the hook, for completeness
         console.log("| LivoSwapHook | ", hookAddress);
