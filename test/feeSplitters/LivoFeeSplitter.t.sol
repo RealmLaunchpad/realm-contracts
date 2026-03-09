@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
+import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 import {LivoFeeHandlerUniV2} from "src/feeHandlers/LivoFeeHandlerUniV2.sol";
 
 contract MockToken {
@@ -287,10 +288,10 @@ contract LivoFeeSplitterTests is Test {
         assertEq(alice.balance, before);
     }
 
-    /// @dev when 10 ETH deposited and alice claims, then FeesClaimed event is emitted
+    /// @dev when 10 ETH deposited and alice claims, then CreatorClaimed event is emitted
     function test_claim_assertEmitsEvents() public depositFees(10 ether) {
-        vm.expectEmit(true, false, false, true, address(splitter));
-        emit ILivoFeeSplitter.FeesClaimed(alice, 7 ether);
+        vm.expectEmit(true, true, false, true, address(splitter));
+        emit ILivoClaims.CreatorClaimed(address(token), alice, 7 ether);
 
         vm.prank(alice);
         splitter.claim(_tokens());

@@ -107,7 +107,7 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
         (bool success,) = msg.sender.call{value: claimable}("");
         require(success);
 
-        emit FeesClaimed(msg.sender, claimable);
+        emit CreatorClaimed(token, msg.sender, claimable);
     }
 
     //////////////////////// VIEW FUNCTIONS ////////////////////////

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 
-interface ILivoFeeSplitter is ILivoFeeHandler {
-    event FeesClaimed(address indexed account, uint256 amount);
+interface ILivoFeeSplitter is ILivoClaims {
     event FeesAccrued(uint256 amount);
+
     event SharesUpdated(address[] recipients, uint256[] sharesBps);
 
     error InvalidRecipients();

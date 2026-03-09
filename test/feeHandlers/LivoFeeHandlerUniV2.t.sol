@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import "forge-std/Test.sol";
 import {LivoFeeHandlerUniV2} from "src/feeHandlers/LivoFeeHandlerUniV2.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
+import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 
 /// @dev Minimal mock that returns a configurable treasury address
@@ -175,9 +176,9 @@ contract LivoFeeHandlerBaseTests is Test {
         depositFees(tokenB, creator, 2 ether)
     {
         vm.expectEmit(true, true, false, true, address(handler));
-        emit ILivoFeeHandler.CreatorClaimed(tokenA, creator, 1 ether);
+        emit ILivoClaims.CreatorClaimed(tokenA, creator, 1 ether);
         vm.expectEmit(true, true, false, true, address(handler));
-        emit ILivoFeeHandler.CreatorClaimed(tokenB, creator, 2 ether);
+        emit ILivoClaims.CreatorClaimed(tokenB, creator, 2 ether);
 
         vm.prank(creator);
         handler.claim(_toArray(tokenA, tokenB));
@@ -204,7 +205,7 @@ contract LivoFeeHandlerBaseTests is Test {
         handler.depositFees{value: 1 ether}(tokenA, rejecterAddr);
 
         vm.prank(rejecterAddr);
-        vm.expectRevert(ILivoFeeHandler.EthTransferFailed.selector);
+        vm.expectRevert(ILivoClaims.EthTransferFailed.selector);
         handler.claim(_toArray(tokenA));
     }
 
