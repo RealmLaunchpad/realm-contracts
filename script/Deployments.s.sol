@@ -88,6 +88,7 @@ contract Deployments is Script {
 
         console.log("");
         console.log("Deploying contracts...");
+        console.log("");
 
         vm.startBroadcast();
 
