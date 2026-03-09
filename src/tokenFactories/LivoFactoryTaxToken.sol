@@ -91,6 +91,7 @@ contract LivoFactoryTaxToken is ILivoFactory {
     function _deployFeeSplitter(string calldata symbol, bytes32 salt) internal returns (address feeSplitter) {
         // forge-lint: disable-next-line
         bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
+        // forge-lint: disable-next-line
         bytes32 splitterSalt = keccak256(abi.encodePacked(salt_, "feeSplitter"));
         feeSplitter = Clones.cloneDeterministic(address(FEE_SPLITTER_IMPLEMENTATION), splitterSalt);
     }

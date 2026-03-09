@@ -136,9 +136,7 @@ contract LaunchpadInvariants is Test {
     /// @notice the launchpad eth balance should match the sum of all token ethCollected plus the treasury balance
     function invariant_launchpadEthBalance() public view {
         assertEq(
-            address(launchpad).balance,
-            _totalEthCollected(),
-            "launchpad eth balance does not match total eth collected"
+            address(launchpad).balance, _totalEthCollected(), "launchpad eth balance does not match total eth collected"
         );
     }
 

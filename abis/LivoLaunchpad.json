@@ -100,13 +100,6 @@
   },
   {
     "type": "function",
-    "name": "claimTreasuryFees",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "communityTakeOver",
     "inputs": [
       {
@@ -484,19 +477,6 @@
   },
   {
     "type": "function",
-    "name": "treasuryEthFeesCollected",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "whitelistFactory",
     "inputs": [
       {
@@ -762,25 +742,6 @@
         "type": "address",
         "indexed": false,
         "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "TreasuryFeesClaimed",
-    "inputs": [
-      {
-        "name": "treasury",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
       }
     ],
     "anonymous": false

@@ -242,11 +242,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         launchpad.buyTokensWithExactEth{value: GRADUATION_THRESHOLD - 1 ether}(testToken, 0, DEADLINE);
         assertFalse(launchpad.getTokenState(testToken).graduated, "Token should not be graduated yet");
         uint256 expectedTradingFees = ((GRADUATION_THRESHOLD - 1 ether) * BASE_BUY_FEE_BPS) / 10000;
-        assertEq(
-            treasury.balance - treasuryEthBefore,
-            expectedTradingFees,
-            "Treasury should collect expected fees"
-        );
+        assertEq(treasury.balance - treasuryEthBefore, expectedTradingFees, "Treasury should collect expected fees");
 
         uint256 treasuryBalanceBeforeGraduation = treasury.balance;
 
@@ -279,11 +275,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         uint256 launchpadEthAfterFirstBuy = address(launchpad).balance - initialLaunchpadBalance;
         uint256 etherReservesPreGraduation = launchpad.getTokenState(testToken).ethCollected;
-        assertEq(
-            launchpadEthAfterFirstBuy,
-            etherReservesPreGraduation,
-            "balance missmatch (there is only one token)"
-        );
+        assertEq(launchpadEthAfterFirstBuy, etherReservesPreGraduation, "balance missmatch (there is only one token)");
 
         // the eth from this purchase would go straight into liquidity
         uint256 purchaseValue = 1 ether + MAX_THRESHOLD_EXCESS;

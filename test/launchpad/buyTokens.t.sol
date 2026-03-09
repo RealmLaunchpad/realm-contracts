@@ -14,7 +14,6 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {console} from "forge-std/console.sol";
 
 abstract contract BuyTokensTest is LaunchpadBaseTests {
-
     function testBuyTokensWithExactEth_happyPath() public createTestToken {
         uint256 ethAmount = 1 ether;
         uint256 minTokenAmount = 0;

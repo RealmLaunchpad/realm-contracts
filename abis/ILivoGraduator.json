@@ -47,12 +47,6 @@
         "internalType": "address"
       },
       {
-        "name": "feeReceiver",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
         "name": "amount",
         "type": "uint256",
         "indexed": false,

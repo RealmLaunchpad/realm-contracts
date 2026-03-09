@@ -74,7 +74,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     ////////////////// MODIFIERS ///////////////////////
 
     modifier onlyWhitelistedFactory() {
-        require(whitelistedFactories[msg.sender], UnauthorizedFactory());
+        _onlyWhitelistedFactory();
         _;
     }
 
@@ -392,5 +392,9 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     /// @notice Returns the ETH reserves currently allocated to a token
     function _availableEthFromReserves(address token) internal view returns (uint256) {
         return tokenStates[token].ethCollected;
+    }
+
+    function _onlyWhitelistedFactory() internal view {
+        require(whitelistedFactories[msg.sender], UnauthorizedFactory());
     }
 }
