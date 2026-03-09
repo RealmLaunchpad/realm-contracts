@@ -134,17 +134,21 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     //////////////////////// view functions ////////////////////////
 
-    /// @notice Returns the underlying fee receiver addresses (resolves splitter if applicable)
-    function getFeeReceivers() external view returns (address[] memory) {
+    /// @notice Returns the underlying fee receiver addresses and their share in basis points
+    function getFeeReceivers() external view returns (address[] memory, uint256[] memory) {
         address feeReceiver_ = feeReceiver;
         if (feeReceiver_.code.length > 0) {
-            try ILivoFeeSplitter(feeReceiver_).getRecipients() returns (address[] memory recipients, uint256[] memory) {
-                return recipients;
+            try ILivoFeeSplitter(feeReceiver_).getRecipients() returns (
+                address[] memory recipients, uint256[] memory sharesBps
+            ) {
+                return (recipients, sharesBps);
             } catch {}
         }
         address[] memory result = new address[](1);
         result[0] = feeReceiver_;
-        return result;
+        uint256[] memory shares = new uint256[](1);
+        shares[0] = 10_000;
+        return (result, shares);
     }
 
     /// @notice Default tax config returning no taxes. Overridden by taxable token implementations.

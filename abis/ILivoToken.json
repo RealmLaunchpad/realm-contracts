@@ -112,9 +112,14 @@
     "inputs": [],
     "outputs": [
       {
-        "name": "",
+        "name": "receivers",
         "type": "address[]",
         "internalType": "address[]"
+      },
+      {
+        "name": "sharesBps",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
       }
     ],
     "stateMutability": "view"

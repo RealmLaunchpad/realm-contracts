@@ -21,16 +21,20 @@ contract MockToken {
         feeReceiver = _feeReceiver;
     }
 
-    function getFeeReceivers() external view returns (address[] memory) {
+    function getFeeReceivers() external view returns (address[] memory, uint256[] memory) {
         address feeReceiver_ = feeReceiver;
         if (feeReceiver_.code.length > 0) {
-            try ILivoFeeSplitter(feeReceiver_).getRecipients() returns (address[] memory recipients, uint256[] memory) {
-                return recipients;
+            try ILivoFeeSplitter(feeReceiver_).getRecipients() returns (
+                address[] memory recipients, uint256[] memory sharesBps
+            ) {
+                return (recipients, sharesBps);
             } catch {}
         }
         address[] memory result = new address[](1);
         result[0] = feeReceiver_;
-        return result;
+        uint256[] memory shares = new uint256[](1);
+        shares[0] = 10_000;
+        return (result, shares);
     }
 }
 
@@ -440,20 +444,23 @@ contract LivoFeeSplitterTests is Test {
 
     // ======================== getFeeReceivers ========================
 
-    /// @dev when feeReceiver is a splitter, then getFeeReceivers returns all recipients
+    /// @dev when feeReceiver is a splitter, then getFeeReceivers returns all recipients and shares
     function test_getFeeReceivers_assertReturnsSplitterRecipients() public view {
-        address[] memory receivers = token.getFeeReceivers();
+        (address[] memory receivers, uint256[] memory sharesBps) = token.getFeeReceivers();
         assertEq(receivers.length, 2);
         assertEq(receivers[0], alice);
         assertEq(receivers[1], bob);
+        assertEq(sharesBps.length, 2);
     }
 
-    /// @dev when feeReceiver is an EOA, then getFeeReceivers returns single address
+    /// @dev when feeReceiver is an EOA, then getFeeReceivers returns single address with 100% share
     function test_getFeeReceivers_assertReturnsSingleEOA() public {
         token.setFeeReceiver(charlie);
-        address[] memory receivers = token.getFeeReceivers();
+        (address[] memory receivers, uint256[] memory sharesBps) = token.getFeeReceivers();
         assertEq(receivers.length, 1);
         assertEq(receivers[0], charlie);
+        assertEq(sharesBps.length, 1);
+        assertEq(sharesBps[0], 10_000);
     }
 
     // ======================== getClaimable with upstream fees ========================

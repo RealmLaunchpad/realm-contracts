@@ -76,6 +76,8 @@ interface ILivoToken is IERC20 {
     /// @dev It can be address(0) if no owner is proposed
     function proposedOwner() external view returns (address);
 
-    /// @notice Returns the underlying fee receiver addresses (resolves through fee handler)
-    function getFeeReceivers() external view returns (address[] memory);
+    /// @notice Returns the underlying fee receiver addresses and their share in basis points
+    /// @dev If the fee receiver is a splitter, returns the splitter's recipients and shares.
+    ///      Otherwise, returns the single fee receiver with 10_000 bps (100%).
+    function getFeeReceivers() external view returns (address[] memory receivers, uint256[] memory sharesBps);
 }
