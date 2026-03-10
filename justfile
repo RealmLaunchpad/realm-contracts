@@ -14,19 +14,12 @@ compile:
 # copies abis from out/ to abis/ for easier access in frontend
 abis:
     @mkdir -p abis
-    @jq '.abi' out/ILiquidityLockUniv4WithFees.sol/ILiquidityLockUniv4WithFees.json > abis/ILiquidityLockUniv4WithFees.json
-    @jq '.abi' out/ILivoBondingCurve.sol/ILivoBondingCurve.json > abis/ILivoBondingCurve.json
-    @jq '.abi' out/ILivoGraduator.sol/ILivoGraduator.json > abis/ILivoGraduator.json
-    @jq '.abi' out/ILivoLaunchpad.sol/ILivoLaunchpad.json > abis/ILivoLaunchpad.json
-    @jq '.abi' out/ILivoTaxableTokenUniV4.sol/ILivoTaxableTokenUniV4.json > abis/ILivoTaxableTokenUniV4.json
-    @jq '.abi' out/ILivoToken.sol/ILivoToken.json > abis/ILivoToken.json
-    @jq '.abi' out/LivoGraduatorUniswapV2.sol/LivoGraduatorUniswapV2.json > abis/LivoGraduatorUniswapV2.json
-    @jq '.abi' out/LivoGraduatorUniswapV4.sol/LivoGraduatorUniswapV4.json > abis/LivoGraduatorUniswapV4.json
-    @jq '.abi' out/LiquidityLockUniv4WithFees.sol/LiquidityLockUniv4WithFees.json > abis/LiquidityLockUniv4WithFees.json
     @jq '.abi' out/LivoLaunchpad.sol/LivoLaunchpad.json > abis/LivoLaunchpad.json
-    @jq '.abi' out/LivoSwapHook.sol/LivoSwapHook.json > abis/LivoSwapHook.json
-    @jq '.abi' out/LivoTaxableTokenUniV4.sol/LivoTaxableTokenUniV4.json > abis/LivoTaxableTokenUniV4.json
-    @jq '.abi' out/LivoToken.sol/LivoToken.json > abis/LivoToken.json
+    @jq '.abi' out/ILivoToken.sol/ILivoToken.json > abis/ILivoToken.json
+    @jq '.abi' out/ILivoClaims.sol/ILivoClaims.json > abis/ILivoClaims.json
+    @jq '.abi' out/LivoFactoryBase.sol/LivoFactoryBase.json > abis/LivoFactoryBase.json
+    @jq '.abi' out/LivoFactoryTaxToken.sol/LivoFactoryTaxToken.json > abis/LivoFactoryTaxToken.json
+    @jq '.abi' out/ILivoFeeSplitter.sol/ILivoFeeSplitter.json > abis/ILivoFeeSplitter.json
     @echo "✔ ABIs copied to abis/ directory"
     
 
@@ -57,15 +50,15 @@ taxtokenaddresses:
     sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV4.sol
 
 ##################### Deployed addresses (sepolia) #######################
-launchpad := "0x6e8b7888E451A75805130df783aFE000136a36E6"
+launchpad := "0xC55dECEcC447544B60cE5bCC0Da9CEFA13b20C07"
 
-bondingCurve := "0xCD6f60CE86E308feEb69E41874ad307227c5E9f6"
-graduatorV2 := "0x3C6e7296D63dC68eFf9B37DF97960a82EC532891"
-graduatorV4 := "0x9f7CA25BcbD63807f6394ed40ab0A8391117974A"
+bondingCurve := "0xf044B26637Aa71e0d51CeCdA6467F7a07c76FB7C"
+graduatorV2 := "0xc77578b67cde7ef0Ba99322fE04c8b05BBd54ff3"
+graduatorV4 := "0x75901f19C810854d8c1746bFE63E6D73a0D354E6"
 
-factoryV2 := "0xc2425467c02E856683D98Ed0A1Bfe9C6d2de31da"
-factoryV4 := "0x97697BC8A570DfE3325f2dBFF27aa100d829E97f"
-factoryTaxToken := "0xb039040Ac1b79AFC9d3D0997c65eBc41B9C39a25"
+factoryV2 := "0x473B768A7EE31904363484f1047F8ceD8E7B5491"
+factoryV4 := "0xC5297685955484089ee32Eb0cFC2f0C837A55206"
+factoryTaxToken := "0x4C4F7866aa1108bb5a29826A437eda7853c5cecA"
 
 # ##################### Create tokens #######################
 
