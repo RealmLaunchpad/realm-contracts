@@ -4,20 +4,20 @@
 
 | Contract Name               | Address                                    |
 | --------------------------- | ------------------------------------------ |
-| LivoToken                   | 0x989aF715632F5652Cf232c02A804152eAB145a56 |
-| LivoTaxableTokenUniV4       | 0x33e7482d9B69f12B2BC932eB4ee3d09023c2b7Af |
-| ConstantProductBondingCurve | 0x70942E7B03Bce8880619B5Fdb2e4dBEe319f24c9 |
-| LivoLaunchpad               | 0xA5a275e8e144326E95f868Ff73328B0fABBA7fa7 |
-| LivoGraduatorUniswapV2      | 0xcB5a55E4bD1643A30E267E26e0d21920Fe1581c7 |
-| LiquidityLockUniv4WithFees  | 0x9cAcF33658bAFe9e01FD421E9B790799680fFb16 |
-| LivoFeeHandlerUniV2         | 0x0e0e9453C86fC4Ee8DACa74B286D80797D5BA2f6 |
-| LivoFeeHandlerUniV4         | 0xe4FBc385FaBb1b083C6f530652D8C3ee6e31E38B |
-| LivoGraduatorUniswapV4      | 0x423259D77F4f27cd0536416944ECDB1c49E3dB92 |
-| LivoFeeSplitter (impl)      | 0x427872795cE3781F8e08E0Ee211A8682f00404C9 |
-| LivoFactory (V2)            | 0xb49591eB9eEf2a09F41d6b03903eA2f9D09A710a |
-| LivoFactory (V4)            | 0xBa0436Ae755f2f523b317E4176Bcf369f0D271Ca |
-| LivoFactoryTaxToken (V4)    | 0xE180B9cd18ad5CF43e05e2a3C938df0aFF4AbeE1 |
-| LivoSwapHook                | 0xd0cE92C981404DD03ba838f3780aF334Ed7BC0C4 |
+| LivoToken                   | 0x7D87aB986169530926Fdc0132B7E9ec35DbCeC27 |
+| LivoTaxableTokenUniV4       | 0x3563C432dF96944ad310F32B37842B017621c751 |
+| ConstantProductBondingCurve | 0xCD6f60CE86E308feEb69E41874ad307227c5E9f6 |
+| LivoLaunchpad               | 0x6e8b7888E451A75805130df783aFE000136a36E6 |
+| LivoGraduatorUniswapV2      | 0x3C6e7296D63dC68eFf9B37DF97960a82EC532891 |
+| LiquidityLockUniv4WithFees  | 0x5a3247629051536F308cFfDf09ECac3db5FC65a1 |
+| LivoFeeHandlerUniV2         | 0x20dA8c30872b49088E9AD61F313C3758cf4e2eD8 |
+| LivoFeeHandlerUniV4         | 0xaf06551a10eE41c8cFd7F9532C5f10068E7F90eA |
+| LivoGraduatorUniswapV4      | 0x9f7CA25BcbD63807f6394ed40ab0A8391117974A |
+| LivoFeeSplitter (impl)      | 0x721715fE290f8E96E32C6D2042CF2a4132CEbA0a |
+| LivoFactory (V2)            | 0xc2425467c02E856683D98Ed0A1Bfe9C6d2de31da |
+| LivoFactory (V4)            | 0x97697BC8A570DfE3325f2dBFF27aa100d829E97f |
+| LivoFactoryTaxToken (V4)    | 0xb039040Ac1b79AFC9d3D0997c65eBc41B9C39a25 |
+| LivoSwapHook                | 0x7Bb6c168D46F40a4b8751ba87AEf534A425B80c4 |
 
 ## Accounts
 
