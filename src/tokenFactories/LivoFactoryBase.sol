@@ -63,8 +63,11 @@ contract LivoFactoryBase is ILivoFactory {
     ) external returns (address token, address feeSplitter) {
         feeSplitter = _deployFeeSplitter(symbol, salt);
         token = _createAndInitializeToken(name, symbol, feeSplitter, feeSplitter, salt);
-        ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
+        // IMPORTANT: FeeSplitterCreated must be emitted BEFORE initialize() because the indexer
+        // creates the FeeSplitter entity from this event, and events emitted during initialize()
+        // (SharesUpdated) depend on the FeeSplitter entity existing.
         emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
+        ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
     }
 
     function _deployFeeSplitter(string calldata symbol, bytes32 salt) internal returns (address feeSplitter) {
@@ -90,6 +93,9 @@ contract LivoFactoryBase is ILivoFactory {
         // minimal proxy pattern to deploy a new LivoToken instance
         token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
 
+        // IMPORTANT: TokenCreated must be emitted BEFORE initialize() because the indexer
+        // creates the TokenData entity from this event, and events emitted during initialize()
+        // (PairInitialized, PoolIdRegistered, etc.) depend on TokenData existing.
         emit TokenCreated(
             token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
         );
