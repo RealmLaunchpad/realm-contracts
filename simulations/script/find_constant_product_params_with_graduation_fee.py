@@ -45,10 +45,6 @@ def reserves_from_eth(k: int, t0: int, e0: int, eth_reserves: int) -> int:
     return k // (eth_reserves + e0) - t0
 
 
-def t0_real_numerator(e0: int, target_tokens: int, target_eth_wei: int) -> int:
-    return (TOTAL_SUPPLY - target_tokens) * e0 - target_tokens * target_eth_wei
-
-
 def score_candidate(
     token_error_wei: int,
     fee_error_wei: int,
@@ -210,6 +206,7 @@ def print_result(
     target_fee_eth: Decimal,
     target_tokens: int,
     target_eth: Decimal,
+    graduation_mcap_eth: Decimal,
     eth_usd_price: Decimal = Decimal("2000"),
 ) -> None:
     print("Best parameters found")
@@ -258,6 +255,7 @@ def print_result(
     token_price = eth_as_liquidity / tokens_deposited
     marketcap = token_price * from_wei(TOTAL_SUPPLY)
     pct_supply = tokens_deposited / from_wei(TOTAL_SUPPLY) * 100
+    print(f"graduation threshold:          {target_eth} ETH")
     print(f"tokens deposited as liquidity: {tokens_deposited / 1_000_000:.2f}M ({pct_supply:.1f}% of total supply)")
     print(f"ETH deposited as liquidity:    {eth_as_liquidity} ETH")
     print(f"graduation fee:                {target_fee_eth} ETH")
@@ -267,6 +265,13 @@ def print_result(
     print(f"token marketcap in ETH:        {marketcap:.6f}")
     marketcap_usd = marketcap * eth_usd_price
     print(f"token marketcap in USD:        ${marketcap_usd:,.2f} (ETH = ${eth_usd_price})")
+    print()
+    actual_grad_mcap = token_price * from_wei(TOTAL_SUPPLY)
+    print("Graduation Marketcap")
+    print("--------------------")
+    print(f"target graduation mcap:  {graduation_mcap_eth} ETH")
+    print(f"actual graduation mcap:  {actual_grad_mcap:.6f} ETH")
+    print(f"actual graduation mcap:  ${actual_grad_mcap * eth_usd_price:,.2f} (ETH = ${eth_usd_price})")
 
 
 def parse_args() -> argparse.Namespace:
@@ -276,11 +281,6 @@ def parse_args() -> argparse.Namespace:
             "constraints: target tokens at graduation price with target fee, "
             "and low price gap between bonding curve and Uniswap"
         )
-    )
-    parser.add_argument(
-        "target_tokens_m",
-        type=float,
-        help="Target tokens at graduation in millions (e.g., 200 for 200M)",
     )
     parser.add_argument(
         "target_eth",
@@ -296,6 +296,11 @@ def parse_args() -> argparse.Namespace:
         "starting_mcap_eth",
         type=Decimal,
         help="Starting market cap in ETH (e.g., 2.5)",
+    )
+    parser.add_argument(
+        "graduation_mcap_eth",
+        type=Decimal,
+        help="Target graduation market cap in ETH (e.g., 12)",
     )
     parser.add_argument(
         "--min-e0-eth",
@@ -351,9 +356,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    target_tokens = int(args.target_tokens_m * 1_000_000 * WAD)
     target_eth_wei = to_wei(args.target_eth)
     starting_mcap_wei = to_wei(args.starting_mcap_eth)
+    graduation_mcap_wei = to_wei(args.graduation_mcap_eth)
+    uni_eth_wei = target_eth_wei - to_wei(args.target_fee_eth)
+    target_tokens = TOTAL_SUPPLY * uni_eth_wei // graduation_mcap_wei
 
     best = search(
         min_e0_eth=args.min_e0_eth,
@@ -373,6 +380,7 @@ def main() -> None:
         target_fee_eth=args.target_fee_eth,
         target_tokens=target_tokens,
         target_eth=args.target_eth,
+        graduation_mcap_eth=args.graduation_mcap_eth,
         eth_usd_price=args.eth_usd_price,
     )
 
