@@ -155,6 +155,7 @@ def search(
     w_price: Decimal,
     target_tokens: int,
     target_eth_wei: int,
+    starting_mcap_wei: int,
 ) -> Candidate:
     min_e0 = to_wei(min_e0_eth)
     max_e0 = to_wei(max_e0_eth)
@@ -171,12 +172,14 @@ def search(
         raise ValueError("t0_window must be >= 0")
     if target_fee_wei <= 0 or target_fee_wei >= target_eth_wei:
         raise ValueError("target_fee_eth must be in (0, target_eth)")
+    if starting_mcap_wei <= 0:
+        raise ValueError("starting_mcap_eth must be > 0")
 
     best: Candidate | None = None
 
     e0 = min_e0
     while e0 <= max_e0:
-        floor_t0 = t0_real_numerator(e0, target_tokens, target_eth_wei) // target_eth_wei
+        floor_t0 = TOTAL_SUPPLY * e0 // starting_mcap_wei - TOTAL_SUPPLY
         for t0 in range(floor_t0 - t0_window, floor_t0 + t0_window + 1):
             cand = evaluate_candidate(
                 e0=e0,
@@ -239,9 +242,18 @@ def print_result(
     )
     print(f"composite score: {best.score}")
     print()
+    initial_price = Decimal(best.e0) / Decimal(TOTAL_SUPPLY + best.t0)
+    initial_mcap = initial_price * Decimal(TOTAL_SUPPLY)
+    initial_mcap_eth = initial_mcap / WAD
+    print("Initial State (e = 0)")
+    print("---------------------")
+    print(f"initial price:      {initial_price:.30f} wei/wei")
+    print(f"initial market cap: {initial_mcap_eth:.18f} ETH")
+    print(f"initial market cap: ${initial_mcap_eth * eth_usd_price:,.2f} (ETH = ${eth_usd_price})")
+    print()
     print("Liquidity & Marketcap")
     print("---------------------")
-    tokens_deposited = from_wei(target_tokens)
+    tokens_deposited = from_wei(best.t_at_grad)
     eth_as_liquidity = target_eth - target_fee_eth
     token_price = eth_as_liquidity / tokens_deposited
     marketcap = token_price * from_wei(TOTAL_SUPPLY)
@@ -279,6 +291,11 @@ def parse_args() -> argparse.Namespace:
         "target_fee_eth",
         type=Decimal,
         help="Target graduation fee in ETH",
+    )
+    parser.add_argument(
+        "starting_mcap_eth",
+        type=Decimal,
+        help="Starting market cap in ETH (e.g., 2.5)",
     )
     parser.add_argument(
         "--min-e0-eth",
@@ -336,6 +353,7 @@ def main() -> None:
 
     target_tokens = int(args.target_tokens_m * 1_000_000 * WAD)
     target_eth_wei = to_wei(args.target_eth)
+    starting_mcap_wei = to_wei(args.starting_mcap_eth)
 
     best = search(
         min_e0_eth=args.min_e0_eth,
@@ -348,6 +366,7 @@ def main() -> None:
         w_price=args.weight_price,
         target_tokens=target_tokens,
         target_eth_wei=target_eth_wei,
+        starting_mcap_wei=starting_mcap_wei,
     )
     print_result(
         best=best,
