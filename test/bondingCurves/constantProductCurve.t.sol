@@ -50,6 +50,13 @@ contract ConstantProductBondingCurveTest is Test {
         assertTrue(tokens > 0, "Should mint non-zero amount of tokens");
     }
 
+    function test_logStartingPrice() public {
+        uint256 ethAmount = 1 wei;
+        (uint256 tokensReceived,) = curve.buyTokensWithExactEth(0, ethAmount);
+        uint256 priceWeiPerToken = (ethAmount * 1e18) / tokensReceived;
+        console.log("Starting price [wei/token]:", priceWeiPerToken);
+    }
+
     function test_initialState_buyTokensLowestPrice() public {
         uint256 ethReserves = 0;
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
