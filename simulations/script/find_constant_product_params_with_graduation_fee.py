@@ -207,6 +207,7 @@ def print_result(
     target_fee_eth: Decimal,
     target_tokens: int,
     target_eth: Decimal,
+    eth_usd_price: Decimal = Decimal("2000"),
 ) -> None:
     print("Best parameters found")
     print("---------------------")
@@ -237,6 +238,23 @@ def print_result(
         f" {best.price_deviation_ratio * Decimal(100):.8f}%"
     )
     print(f"composite score: {best.score}")
+    print()
+    print("Liquidity & Marketcap")
+    print("---------------------")
+    tokens_deposited = from_wei(target_tokens)
+    eth_as_liquidity = target_eth - target_fee_eth
+    token_price = eth_as_liquidity / tokens_deposited
+    marketcap = token_price * from_wei(TOTAL_SUPPLY)
+    pct_supply = tokens_deposited / from_wei(TOTAL_SUPPLY) * 100
+    print(f"tokens deposited as liquidity: {tokens_deposited / 1_000_000:.2f}M ({pct_supply:.1f}% of total supply)")
+    print(f"ETH deposited as liquidity:    {eth_as_liquidity} ETH")
+    print(f"graduation fee:                {target_fee_eth} ETH")
+    print(f"  - treasury fee:              {target_fee_eth * Decimal('0.8')} ETH")
+    print(f"  - creator fee:               {target_fee_eth * Decimal('0.2')} ETH")
+    print(f"token price in ETH:            {token_price:.18f}")
+    print(f"token marketcap in ETH:        {marketcap:.6f}")
+    marketcap_usd = marketcap * eth_usd_price
+    print(f"token marketcap in USD:        ${marketcap_usd:,.2f} (ETH = ${eth_usd_price})")
 
 
 def parse_args() -> argparse.Namespace:
@@ -255,7 +273,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "target_eth",
         type=Decimal,
-        help="Target ETH price at graduation",
+        help="Target ETH reserves in bonding curve at graduation",
     )
     parser.add_argument(
         "target_fee_eth",
@@ -304,6 +322,12 @@ def parse_args() -> argparse.Namespace:
         default=Decimal("1.0"),
         help="Weight for price deviation at target fee (default: 1.0)",
     )
+    parser.add_argument(
+        "--eth-usd-price",
+        type=Decimal,
+        default=Decimal("2000"),
+        help="ETH price in USD for marketcap conversion (e.g., 2000)",
+    )
     return parser.parse_args()
 
 
@@ -330,6 +354,7 @@ def main() -> None:
         target_fee_eth=args.target_fee_eth,
         target_tokens=target_tokens,
         target_eth=args.target_eth,
+        eth_usd_price=args.eth_usd_price,
     )
 
 

@@ -1,6 +1,28 @@
+import argparse
 import math
 
 Q96 = 2**96
+
+
+def positive_integer(raw: str) -> int:
+    if "." in raw:
+        raise argparse.ArgumentTypeError(f"must be an integer, got float-like: {raw}")
+    value = int(raw)
+    if value < 10_000:
+        raise argparse.ArgumentTypeError(f"must be >= 10000, got {value}")
+    return value
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Compute Uniswap V4 tick/price constants for LivoGraduator",
+    )
+    parser.add_argument(
+        "graduation_wei_per_token",
+        type=positive_integer,
+        help="Target graduation price in wei per token (integer >= 10000)",
+    )
+    return parser.parse_args()
 
 
 def tick_to_sqrt_x96(tick: int) -> int:
@@ -19,18 +41,17 @@ def sqrt_x96_to_tick(sqrt_x96: int, tick_spacing: int) -> int:
 
 
 def main() -> None:
+    args = parse_args()
     tick_spacing = 200
 
     # Primary position range
     tick_lower = -7000
     tick_upper = 203600
 
-    # Target graduation price
-    graduation_wei_per_token = 40151462828
-    
+    graduation_wei_per_token = args.graduation_wei_per_token
 
     # Secondary ETH-only position config
-    secondary_upper_offset_steps = 110  # tick steps of `tick_spacing`
+    secondary_upper_offset_steps = 100  # tick steps of `tick_spacing`
 
     sqrt_pricex96_graduation = wei_per_token_to_sqrt_x96(graduation_wei_per_token)
     tick_graduation = sqrt_x96_to_tick(sqrt_pricex96_graduation, tick_spacing)
