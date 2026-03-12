@@ -20,12 +20,6 @@
 | LivoSwapHook                | 0x7Bb6c168D46F40a4b8751ba87AEf534A425B80c4 |
 
 
-| Contract Name               | Address                                    |
-| --------------------------- | ------------------------------------------ |
-| LivoFactory (V2)            | 0x473B768A7EE31904363484f1047F8ceD8E7B5491 |
-| LivoFactory (V4)            | 0xC5297685955484089ee32Eb0cFC2f0C837A55206 |
-| LivoFactoryTaxToken (V4)    | 0x4C4F7866aa1108bb5a29826A437eda7853c5cecA |
-
 ## Accounts
 
 | **Name**      | **Address**                                  |
