@@ -23,6 +23,8 @@ import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
+import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
 /// @notice Tests for Uniswap V4 graduator functionality
 contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
@@ -32,12 +34,12 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     IPoolManager poolManager;
 
-    // these are copied from the graduator ...
-    uint24 constant lpFee = 10000;
-    int24 constant tickSpacing = 200;
+    uint24 constant lpFee = UniswapV4PoolConstants.LP_FEE;
+    int24 constant tickSpacing = UniswapV4PoolConstants.TICK_SPACING;
+    int24 constant tickGraduation = UniswapV4PoolConstants.TICK_GRADUATION;
 
     // this is the price set when creating the pool, which is the starting price ONCE GRADUATED
-    uint160 constant startingPriceX96 = 395392928243069119481342754553856;
+    uint160 constant startingPriceX96 = 715832709642994126662528799866880;
 
     function setUp() public virtual override {
         super.setUp();
@@ -153,17 +155,12 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     function _addEthLiquidity(address caller, uint256 ethValue) internal {
-        // current price pool (starting price), which is a tick of 170600
-        uint160 graduationPriceX96_tokensPerEth = 401129254579132618442796085280768;
-        // the liquidity position added with eth needs to be higher in sqrt (lower token price as it is a buy order)
-        // token price below graduation (eth position as a buy order)
-
-        // tick to sqrtX96: tick: 190000 -> sqrtX96: 1057963989655568602524443675197440 -> price: 178312834.58383808 tokens/ETH
-        int24 tickUpper = 190000;
-        uint160 highTickSqrtPriceX96 = 1057963989655568602524443675197440;
-        // tick to sqrtX96: tick: 180000 -> sqrtX96: 641703637919055130081021191520256 -> price: 65600905.68504753 tokens/ETH
-        int24 tickLower = 180000;
-        uint160 lowTickSqrtPriceX96 = 641703637919055130081021191520256;
+        uint160 graduationPriceX96_tokensPerEth = startingPriceX96;
+        // Both ticks above graduation tick -> single-sided ETH position (buy side)
+        int24 tickLower = tickGraduation + 9 * tickSpacing;
+        int24 tickUpper = tickGraduation + 59 * tickSpacing;
+        uint160 lowTickSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
+        uint160 highTickSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
         _addLiquidity(
             caller,
             ethValue,
@@ -178,15 +175,12 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     function _addMixedLiquidity(address caller, uint256 ethValue, uint256 tokenAmount, bool expectSuccess) internal {
-        // current price pool (starting price), which is a tick of 170600
-        uint160 graduationPriceX96_tokensPerEth = 401129254579132618442796085280768;
-
-        // tick to sqrtX96: tick: 160600 -> sqrtX96: 243270762183760163063399461158912 -> price: 178312834.58383808 tokens/ETH
-        int24 tickLower = 160600;
-        uint160 lowTickSqrtPriceX96 = 243270762183760163063399461158912;
-        // tick to sqrtX96: tick: 180000 -> sqrtX96: 641703637919055130081021191520256 -> price: 65600905.68504753 tokens/ETH
-        int24 tickUpper = 180000;
-        uint160 highTickSqrtPriceX96 = 641703637919055130081021191520256;
+        uint160 graduationPriceX96_tokensPerEth = startingPriceX96;
+        // Ticks straddle graduation tick -> position contains both ETH and tokens
+        int24 tickLower = tickGraduation - 50 * tickSpacing;
+        int24 tickUpper = tickGraduation + 49 * tickSpacing;
+        uint160 lowTickSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
+        uint160 highTickSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
 
         _addLiquidity(
             caller,
