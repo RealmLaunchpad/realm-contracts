@@ -15,27 +15,23 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
 
     // Here are the constraints to calculate K, T0, E0 as follows (top one is the most important)
     //  - when no eth has been collected, the token supply should equal 1B tokens (so 1,000,000,000e18)
-    //  - The graduation should happen when ~8.5 ETH are collected, and 200,000,000 tokens are still in the reserves
-    //  - 0.5 ETH will be used as graduation fees (for treasury and creator)
-    //  - The remaining 8 ETH + 200M tokens are deployed in uniswap, so the price in uniswap must not deviate too much from the price in the bonding curve
+    //  - The graduation should happen when ~3.75 ETH are collected, and ~285.71M tokens are still in the reserves
+    //  - 0.25 ETH will be used as graduation fees (0.05 ETH creator + 0.20 ETH treasury)
+    //  - The remaining 3.5 ETH + 285.71M tokens are deployed in uniswap, so the price in uniswap must not deviate too much from the price in the bonding curve
 
     /// @notice Constant K for the bonding curve formula
     /// @dev Solving numerically for the above constraints. Only the first constraint above is strictly enforced
-    uint256 public constant K = 3385715840941176470588235277153900000000000000;
+    uint256 public constant K = 3515625000000000000000000000000000000000000000;
     /// @notice Constant T0 for the bonding curve formula
-    uint256 public constant T0 = 91849411764705882352941171;
+    uint256 public constant T0 = 250000000000000000000000000;
     /// @notice Constant E0 for the bonding curve formula
-    uint256 public constant E0 = 3100900000000000000;
-
-    /// - t(8.5 ETH) = 199999999999999999999999985 (off from 200M target by 15 token-wei)
-    /// - fee needed for exact price match: 0.499999837370237712 ETH (off from 0.5 ETH target by 0.000000162629762288 ETH)
-    /// - price deviation if you take exactly 0.5 ETH fee: 0.00000203%
+    uint256 public constant E0 = 2812500000000000000;
 
     // IMPORTANT: These constants define a curve that doesn't behave well for ethReserves > 30 eth.
     // This is not a problem in practice as long as the graduation threshold + limit excess is well below that.
 
     /// @notice The graduation threshold in terms of ETH reserves
-    uint256 internal constant _GRADUATION_THRESHOLD = 8.5 ether;
+    uint256 internal constant _GRADUATION_THRESHOLD = 3.75 ether;
 
     /// @notice Max amount of eth above the graduation that the curve accepts
     uint256 internal constant _MAX_EXCESS_OVER_THRESHOLD = 0.1 ether;
@@ -108,9 +104,9 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     ///////////////////////////// INTERNALS //////////////////////////////////
 
     function _getTokenReserves(uint256 ethReserves) internal pure returns (uint256) {
-        // note: this calculation starts reverting with an overflow at some point above ethReserves > 37 ether
+        // note: this calculation starts reverting with an overflow at some point above ethReserves > 37 ether // todo update this number
         // So this curve should not be used in that range
-        // For the current graduation setup it should be safe, as the graduation happens at around 8.5 ether
+        // For the current graduation setup it should be safe, as the graduation happens at around 3.75 ether
         return K / (ethReserves + E0) - T0;
     }
 
