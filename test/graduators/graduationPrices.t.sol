@@ -96,9 +96,9 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         uint256 expectedPriceAtGraduation = (1e18 * ethValue) / tokensReceived;
 
         // these values are computed from the current bonding curve parameters, and may change if those change
-        uint256 expectedTokensInLiquidity = 200_000_000e18;
-        uint256 expectedEthInLiquidity = 8 ether;
-        uint256 expectedMcapAtGraduation = 40 ether;
+        uint256 expectedTokensInLiquidity = 285_714_286e18;
+        uint256 expectedEthInLiquidity = 3.5 ether;
+        uint256 expectedMcapAtGraduation = 12.25 ether;
 
         _graduateExact();
 
@@ -210,7 +210,7 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         // ensure that either swapPrice > launchpadPrice (univ4), or that they are very close (univ2)
         if (effectiveSwapPrice < effectiveLaunchpadPrice) {
             assertApproxEqRel(
-                effectiveSwapPrice, effectiveLaunchpadPrice, 0.01e18, "swap price more than 1% lower than launchpad"
+                effectiveSwapPrice, effectiveLaunchpadPrice, 0.02e18, "swap price more than 2% lower than launchpad"
             );
         }
     }

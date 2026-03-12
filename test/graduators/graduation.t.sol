@@ -22,7 +22,7 @@ import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 /// @dev These tests should should pass regardless of the of graduator, so we test it with both
 abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     // Graduation fee constant (matches both V2 and V4 graduators)
-    uint256 constant GRADUATION_FEE = 0.5 ether;
+    uint256 constant GRADUATION_FEE = 0.25 ether;
 
     /// @dev Returns the fee handler for the current test token
     function _tokenFeeHandler() internal view virtual returns (ILivoFeeHandler);
