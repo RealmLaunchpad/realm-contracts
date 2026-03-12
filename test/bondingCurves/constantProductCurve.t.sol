@@ -14,6 +14,7 @@ contract ConstantProductBondingCurveTest is Test {
     // Graduation parameters
     // These ones are set in the LivoLaunchpad contract, and the curves need to be compliant with them
     uint256 constant GRADUATION_THRESHOLD = 3.75 ether;
+    uint256 constant GRADUATION_MAX_EXCESS = 0.05 ether;
     uint256 constant GRADUATION_ETH_FEE = 0.25 ether;
     uint256 constant GRADUATION_TOKEN_CREATOR_REWARD = 0;
 
@@ -175,6 +176,8 @@ contract ConstantProductBondingCurveTest is Test {
 
     function test_maxEthReserves() public view {
         uint256 maxReserves = curve.maxEthReserves();
-        assertEq(maxReserves, GRADUATION_THRESHOLD + 0.1 ether, "Max reserves should be threshold + max excess");
+        assertEq(
+            maxReserves, GRADUATION_THRESHOLD + GRADUATION_MAX_EXCESS, "Max reserves should be threshold + max excess"
+        );
     }
 }
