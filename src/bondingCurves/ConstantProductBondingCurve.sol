@@ -104,9 +104,9 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     ///////////////////////////// INTERNALS //////////////////////////////////
 
     function _getTokenReserves(uint256 ethReserves) internal pure returns (uint256) {
-        // note: this calculation starts reverting with an overflow at some point above ethReserves > 37 ether // todo update this number
-        // So this curve should not be used in that range
-        // For the current graduation setup it should be safe, as the graduation happens at around 3.75 ether
+        // note: this calculation starts reverting with an overflow at some point above ethReserves > 11 ether // check fuzz tests in ConstantProductBondingCurve.t.sol
+        // So this curve should not be used in that range. 
+        // A graduation threshold of 3.75 ether is way below that, so it is safe.
         return K / (ethReserves + E0) - T0;
     }
 
