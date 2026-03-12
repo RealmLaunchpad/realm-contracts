@@ -67,11 +67,12 @@ contract LaunchpadBaseTests is Test {
 
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
+    uint256 constant GRADUATION_FEE = 0.25 ether;
     uint16 public constant BASE_BUY_FEE_BPS = 100;
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
-    uint256 constant GRADUATION_THRESHOLD = 8.5 ether;
+    uint256 constant GRADUATION_THRESHOLD = 3.75 ether;
     uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
 
     // we don't test deadlines mostly
