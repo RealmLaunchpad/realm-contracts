@@ -34,7 +34,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     uint256 internal constant _GRADUATION_THRESHOLD = 3.75 ether;
 
     /// @notice Max amount of eth above the graduation that the curve accepts
-    uint256 internal constant _MAX_EXCESS_OVER_THRESHOLD = 0.1 ether;
+    uint256 internal constant _MAX_EXCESS_OVER_THRESHOLD = 0.05 ether;
 
     /// @notice Returns the ETH reserves threshold at which graduation can be triggered
     function ethGraduationThreshold() external pure returns (uint256) {

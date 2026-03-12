@@ -169,8 +169,6 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         launchpad.buyTokensWithExactEth{value: triggerOfExcess + 0.01 ether}(testToken, 0, DEADLINE);
     }
 
-    /// @notice Test that difference between launchpad price and uniswap price is not more than 5% if last purchase reaches the excess cap
-
     /// @notice Test graduation happens with a small excess
     function test_graduationWorksWithSmallExcess() public createTestToken {
         uint256 graduationThreshold = GRADUATION_THRESHOLD;

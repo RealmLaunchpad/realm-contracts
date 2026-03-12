@@ -151,6 +151,13 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         uint256 tokensBoughtSwap = IERC20(testToken).balanceOf(buyer) - tokenBalanceBefore;
         uint256 effectiveSwapPrice = (ethAmount * 1e18) / tokensBoughtSwap;
 
+        assertApproxEqRel(
+            effectiveSwapPrice,
+            effectiveLaunchpadPrice,
+            0.03e18,
+            "more than 3% price jump between launchpad and uniswap"
+        );
+
         // uniswapv2 yields a lower swap price due to the lower fees (0.3% vs 1% in launchpad)
         // ensure that either swapPrice > launchpadPrice (univ4), or that they are very close (univ2)
         if (effectiveSwapPrice < effectiveLaunchpadPrice) {
@@ -177,6 +184,14 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         _uniswapBuy(buyer, ethAmount);
         uint256 tokensBoughtSwap = IERC20(testToken).balanceOf(buyer) - tokenBalanceBefore;
         uint256 effectiveSwapPrice = (ethAmount * 1e18) / tokensBoughtSwap;
+
+        // this price jump is perhaps too large. But the compromise is to limit the excess-over-threshold, but that could be even worse user experience
+        assertApproxEqRel(
+            effectiveSwapPrice,
+            effectiveLaunchpadPrice,
+            0.03e18,
+            "more than 3% price jump between launchpad and uniswap"
+        );
 
         // uniswapv2 yields a lower swap price due to the lower fees (0.3% vs 1% in launchpad)
         // ensure that either swapPrice > launchpadPrice (univ4), or that they are very close (univ2)
@@ -206,6 +221,14 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         uint256 tokensBoughtSwap = IERC20(testToken).balanceOf(buyer) - tokenBalanceBefore;
         uint256 effectiveSwapPrice = (secondAmount * 1e18) / tokensBoughtSwap;
 
+        // the difference between them should not be larger than 5%
+        assertApproxEqRel(
+            effectiveSwapPrice,
+            effectiveLaunchpadPrice,
+            0.03e18,
+            "more than 3% price jump between launchpad and uniswap"
+        );
+
         // uniswapv2 yields a lower swap price due to the lower fees (0.3% vs 1% in launchpad)
         // ensure that either swapPrice > launchpadPrice (univ4), or that they are very close (univ2)
         if (effectiveSwapPrice < effectiveLaunchpadPrice) {
@@ -213,6 +236,34 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
                 effectiveSwapPrice, effectiveLaunchpadPrice, 0.02e18, "swap price more than 2% lower than launchpad"
             );
         }
+    }
+
+    function test_priceContinuityAtMaxExcessGraduation() public createTestToken {
+        uint256 ethAmount = MAX_THRESHOLD_EXCESS;
+
+        // buy just below graduation
+        _launchpadBuy(testToken, ETH_PURCHASE_TO_GRADUATE - 1);
+
+        // this buy triggers graduation at max excess
+        uint256 tokenBalanceBeforeLaunchpadBuy = IERC20(testToken).balanceOf(buyer);
+        _launchpadBuy(testToken, ethAmount);
+        uint256 tokensBoughtLaunchpad = IERC20(testToken).balanceOf(buyer) - tokenBalanceBeforeLaunchpadBuy;
+        uint256 effectiveLaunchpadPrice = (ethAmount * 1e18) / tokensBoughtLaunchpad;
+
+        // buy on uniswap with a small amount to avoid the impact of escalating in the AMM curve
+        ethAmount = 0.01 ether;
+        uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
+        _uniswapBuy(buyer, ethAmount);
+        uint256 tokensBoughtSwap = IERC20(testToken).balanceOf(buyer) - tokenBalanceBefore;
+        uint256 effectiveSwapPrice = (ethAmount * 1e18) / tokensBoughtSwap;
+
+        // the difference between them should not be larger than 5%
+        assertApproxEqRel(
+            effectiveSwapPrice,
+            effectiveLaunchpadPrice,
+            0.03e18,
+            "more than 3% price jump between launchpad and uniswap"
+        );
     }
 
     function test_compareTokenPricesMidCurve_launchpadVsSwap() public createTestToken {

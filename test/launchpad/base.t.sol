@@ -73,7 +73,7 @@ contract LaunchpadBaseTests is Test {
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
     uint256 constant GRADUATION_THRESHOLD = 3.75 ether;
-    uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
+    uint256 constant MAX_THRESHOLD_EXCESS = 0.05 ether;
 
     // we don't test deadlines mostly
     uint256 constant DEADLINE = type(uint256).max;
