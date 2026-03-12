@@ -50,11 +50,11 @@ taxtokenaddresses:
     sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV4.sol
 
 ##################### Deployed addresses (sepolia) #######################
-launchpad := "0xC55dECEcC447544B60cE5bCC0Da9CEFA13b20C07"
+launchpad := "0x054c120CfC58B6df17E69fa28017B5c249504D5a"
 
-bondingCurve := "0xf044B26637Aa71e0d51CeCdA6467F7a07c76FB7C"
-graduatorV2 := "0xc77578b67cde7ef0Ba99322fE04c8b05BBd54ff3"
-graduatorV4 := "0x75901f19C810854d8c1746bFE63E6D73a0D354E6"
+bondingCurve := "0x844aC4901Ac6be7C908897F13bb9d6B87165aCd5"
+graduatorV2 := "0xA1516311730dF2fA94E343Ee912023857C1521E1"
+graduatorV4 := "0xe3fBF86DeE16155faBc2479a327afd6C3610B5b6"
 
 factoryV2 := "0x473B768A7EE31904363484f1047F8ceD8E7B5491"
 factoryV4 := "0xC5297685955484089ee32Eb0cFC2f0C837A55206"
