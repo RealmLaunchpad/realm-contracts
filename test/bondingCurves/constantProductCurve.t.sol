@@ -36,9 +36,7 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 tokenReserves = curve.getTokenReserves(GRADUATION_THRESHOLD);
         // here we accept a 0.1%  error as 200,000,000 is pretty much arbitrary
         // note that 1M are for the token creator, included in this tokenReserves
-        assertApproxEqRel(
-            tokenReserves, 285_714_286e18, 0.001e18, "Token reserves should be ~285.7M at graduation"
-        );
+        assertApproxEqRel(tokenReserves, 285_714_286e18, 0.001e18, "Token reserves should be ~285.7M at graduation");
     }
 
     function test_buyTokensWithExactEth_initialState() public {
