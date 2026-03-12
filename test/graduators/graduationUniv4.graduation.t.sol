@@ -395,7 +395,12 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         assertApproxEqRel(
             effectivePrice, poolPrice, 0.011e18, "Effective price at graduation should match pool price (small last tx)"
         );
-        assertApproxEqRel(poolPrice, effectivePrice, 0.001e18, "Pool price should be close to effective price at graduation (small last tx)");
+        assertApproxEqRel(
+            poolPrice,
+            effectivePrice,
+            0.001e18,
+            "Pool price should be close to effective price at graduation (small last tx)"
+        );
     }
 
     /// @notice Test that after exact graduation, the first purchase has a similar price than the last purchase in the bonding curve
