@@ -93,8 +93,10 @@ contract LaunchpadBaseTests is Test {
     IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(DeploymentAddressesMainnet.UNIV2_FACTORY);
     IWETH constant WETH = IWETH(DeploymentAddressesMainnet.WETH);
 
-    // This is the price setpoint, but does not include trading fees
-    uint256 constant GRADUATION_PRICE = 40151462828; // ETH/token (eth per token, expressed in wei)
+    // This is the effective price when buying at graduation (from bonding curve slope)
+    uint256 constant GRADUATION_PRICE = 12373924040; // ETH/token (eth per token, expressed in wei)
+    // This is the pool setpoint price derived from SQRT_PRICEX96_GRADUATION
+    uint256 constant POOL_SETPOINT_PRICE = 12249999999; // ETH/token (eth per token, expressed in wei)
 
     LiquidityLockUniv4WithFees public liquidityLock;
     LivoGraduatorUniswapV2 public graduatorV2;
