@@ -47,8 +47,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     //////////////////////////// price set-point ///////////////////////////////
 
     /// @notice Starting price when graduation occurs, which must be inside the liquidity range
-    /// @dev Graduation price: 39011306440 wei per token -> 0.000000000025633594 tokens per eth -> sqrtX96price: 401129254579132618442796085280768 -> tick: 170600
-    uint160 constant SQRT_PRICEX96_GRADUATION = 395392928243069119481342754553856;
+    /// @dev Graduation price: 12250000000 wei per token -> tick: 182200
+    uint160 constant SQRT_PRICEX96_GRADUATION = 715832709642994126662528799866880;
 
     /// @notice The sqrtX96 price at the high tick, i.e., the minimum token price denominated in ETH
     /// @dev Derived from the high-tick in constructor
@@ -66,11 +66,11 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     uint160 immutable SQRT_UPPER_2;
 
     /// @notice Graduation ETH fee (creator compensation + treasury fee)
-    uint256 public constant GRADUATION_ETH_FEE = 0.5 ether;
+    uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
 
     /// @notice ETH compensation paid to token creator at graduation
     /// @dev this is part of the GRADUATION_ETH_FEE
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
 
     /////////////////////// Errors ///////////////////////
 

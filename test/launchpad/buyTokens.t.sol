@@ -93,7 +93,8 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function test_quoteInitialPrice() public createTestToken {
         // how many tokens do you get with the first wei?
         (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(testToken, 1);
-        assertApproxEqAbs(expectedTokens, 352107262, 1);
+        // initial price in the curve is 0.00000000225 ETH/token, so with 1 wei you should get 444,444,444
+        assertApproxEqAbs(expectedTokens, 444444444, 1);
     }
 
     function testBuyTokensWithExactEth_withMinTokenAmount() public createTestToken {
@@ -226,7 +227,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     }
 
     function testBuyTokensWithExactEth_quotingAccuracy() public createTestToken {
-        uint256 ethAmount = 5 ether;
+        uint256 ethAmount = 2 ether;
 
         (uint256 quotedEthForPurchase, uint256 quotedEthFee, uint256 quotedTokens) =
             launchpad.quoteBuyWithExactEth(testToken, ethAmount);

@@ -29,11 +29,11 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable {
     address internal immutable WETH;
 
     /// @notice Graduation ETH fee split between creator and treasury
-    uint256 public constant GRADUATION_ETH_FEE = 0.5 ether;
+    uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
 
     /// @notice ETH compensation paid to token creator at graduation
     /// @dev this is part of the GRADUATION_ETH_FEE
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
 
     //////////////////////// EVENTS ////////////////////////
 

@@ -455,7 +455,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         // Buy more tokens to increase price significantly
         vm.prank(bob);
-        launchpad.buyTokensWithExactEth{value: 5 ether}(testToken, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
 
         // Test at much higher price point
         address charlie = makeAddr("charlie");

@@ -28,11 +28,13 @@ library UniswapV4PoolConstants {
     int24 internal constant TICK_LOWER = -7000;
 
     /// @notice Tick at graduation price
-    int24 internal constant TICK_GRADUATION = 170400;
+    int24 internal constant TICK_GRADUATION = 182200;
 
     /// @notice Second position lower tick (single-sided ETH, concentrated right below the graduation price)
     int24 internal constant TICK_LOWER_2 = TICK_GRADUATION + TICK_SPACING;
 
     /// @notice Second position upper tick (single-sided ETH)
-    int24 internal constant TICK_UPPER_2 = TICK_UPPER - (110 * TICK_SPACING);
+    /// @dev This secondary position covers roughly a -67% drop from graduation price. After that, only the main position would be active
+    /// @dev However, the second position has much less liquidity, so the impact would be barely noticeable.
+    int24 internal constant TICK_UPPER_2 = TICK_UPPER - (51 * TICK_SPACING);
 }

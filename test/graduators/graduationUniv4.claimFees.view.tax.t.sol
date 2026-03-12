@@ -53,9 +53,9 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         uint256 T = Y + tax; // total ETH that left the pool
 
         // tax / T == 5%
-        assertApproxEqRel(tax * 10_000 / T, DEFAULT_SELL_TAX_BPS, 0.000001e18, "tax/T should be ~5%");
+        assertApproxEqRel(tax * 10_000, T * DEFAULT_SELL_TAX_BPS, 0.0000001e18, "tax/T should be ~5%");
         // Y / T == 95%
-        assertApproxEqRel(Y * 10_000 / T, 10_000 - DEFAULT_SELL_TAX_BPS, 0.000001e18, "Y/T should be ~95%");
+        assertApproxEqRel(Y * 10_000, T * (10_000 - DEFAULT_SELL_TAX_BPS), 0.0000001e18, "Y/T should be ~95%");
     }
 
     /// @notice Verify that buys have no sell tax, only 1% LP fees
