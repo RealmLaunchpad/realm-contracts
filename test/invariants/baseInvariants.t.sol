@@ -60,7 +60,7 @@ contract LaunchpadInvariants is Test {
     uint256 constant BLOCKNUMBER = 23327777;
 
     // used for both combinations of curves,graduators for univ2 and univ4
-    uint256 constant GRADUATION_THRESHOLD = 8.5 ether;
+    uint256 constant GRADUATION_THRESHOLD = 3.75 ether;
     uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
 
     function setUp() public virtual {
