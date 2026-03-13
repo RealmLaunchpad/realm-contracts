@@ -129,6 +129,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive, bool canGraduate) =
             _quoteBuyWithExactEth(token, msg.value);
 
+        require(tokensToReceive > 0, ReceivingZeroAmount());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
 
         tokenState.ethCollected += ethForReserves;
