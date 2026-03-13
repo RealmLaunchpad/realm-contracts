@@ -31,9 +31,9 @@ contract LivoSwapHook is BaseHook {
     /// @dev Constructor validates that the deployed address matches the required hook permissions
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    /// @notice Allows contract to receive ETH from poolManager.take()
-    /// question for auditor: ETH could get stuck here as there is no way to rescue eth.
-    ///          But I don't want to make this contract Ownable, and I don't want to add a permisionless rescueEth() function to avoid introducing security risks.
+    /// @notice Allows contract to receive ETH from `poolManager.take()`
+    /// @dev ETH should never remain in this contract between transactions. If it does, it is accepted as stuck.
+    ///      Adding a rescue mechanism would require `Ownable`, which is avoided to keep this singleton hook minimal and ownerless.
     receive() external payable {}
 
     /// @notice Returns the hook permissions indicating which callbacks are implemented

@@ -121,6 +121,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice To receive ETH back from Uniswap V4 when sweeping excess ETH after liquidity provision
     receive() external payable {}
 
+    /// @notice Rescues any ETH accidentally stuck in this contract
+    /// @dev ETH is not expected to be held in this contract outside of the graduation transaction. This is just in case ETH is sent by mistake here
+    function rescueEthBalance() external onlyOwner {
+        (bool success,) = msg.sender.call{value: address(this).balance}("");
+        require(success, EtherTransferFailed());
+    }
+
     /// @notice Initializes a Uniswap V4 pool for the token
     /// @param tokenAddress Address of the token
     /// @return Address of the pool manager (same for all tokens, but to comply with the ILivoGraduator interface)
