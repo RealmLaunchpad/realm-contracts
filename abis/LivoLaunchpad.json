@@ -253,7 +253,7 @@
   },
   {
     "type": "function",
-    "name": "quoteBuyWithExactEth",
+    "name": "quoteBuyTokensWithExactEth",
     "inputs": [
       {
         "name": "token",

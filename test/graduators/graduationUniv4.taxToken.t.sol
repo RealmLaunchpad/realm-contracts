@@ -42,7 +42,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_noTaxesBeforeGraduation_launchpadPurchases() public createDefaultTaxToken {
         uint256 creatorPendingTaxesBefore = _pendingTaxes(testToken, creator);
 
-        (,, uint256 tokensToReceive) = launchpad.quoteBuyWithExactEth(testToken, 1 ether);
+        (,, uint256 tokensToReceive) = launchpad.quoteBuyTokensWithExactEth(testToken, 1 ether);
 
         uint256 buyerTokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
         // Multiple users buy tokens through launchpad

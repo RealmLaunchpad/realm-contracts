@@ -23,7 +23,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         uint256 launchpadEthBalanceBefore = address(launchpad).balance;
 
         (uint256 expectedEthForPurchase, uint256 expectedEthFee, uint256 expectedTokensToReceive) =
-            launchpad.quoteBuyWithExactEth(testToken, ethAmount);
+            launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         vm.prank(buyer);
         vm.expectEmit(true, true, false, true);
@@ -92,7 +92,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
     function test_quoteInitialPrice() public createTestToken {
         // how many tokens do you get with the first wei?
-        (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(testToken, 1);
+        (,, uint256 expectedTokens) = launchpad.quoteBuyTokensWithExactEth(testToken, 1);
         // initial price in the curve is 0.00000000225 ETH/token, so with 1 wei you should get 444,444,444
         assertApproxEqAbs(expectedTokens, 444444444, 1);
     }
@@ -100,7 +100,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function testBuyTokensWithExactEth_withMinTokenAmount() public createTestToken {
         uint256 ethAmount = 1 ether;
 
-        (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(testToken, ethAmount);
+        (,, uint256 expectedTokens) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         // Should succeed with exact min amount
         vm.prank(buyer);
@@ -112,7 +112,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function testBuyTokensWithExactEth_slippageProtection() public createTestToken {
         uint256 ethAmount = 1 ether;
 
-        (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(testToken, ethAmount);
+        (,, uint256 expectedTokens) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
         // Set min higher than expected to trigger slippage protection
         uint256 minTokenAmount = expectedTokens + 1;
 
@@ -210,7 +210,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         uint256 expectedFee = 0.01 ether;
         uint256 expectedEthForPurchase = ethAmount - expectedFee;
 
-        (uint256 actualEthForPurchase, uint256 actualFee,) = launchpad.quoteBuyWithExactEth(testToken, ethAmount);
+        (uint256 actualEthForPurchase, uint256 actualFee,) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         assertEq(actualFee, expectedFee);
         assertEq(actualEthForPurchase, expectedEthForPurchase);
@@ -230,7 +230,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         uint256 ethAmount = 2 ether;
 
         (uint256 quotedEthForPurchase, uint256 quotedEthFee, uint256 quotedTokens) =
-            launchpad.quoteBuyWithExactEth(testToken, ethAmount);
+            launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         uint256 treasuryBefore = treasury.balance;
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
@@ -371,7 +371,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
     function test_quoteBuyTokens_invalidToken() public {
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidToken.selector));
-        launchpad.quoteBuyWithExactEth(address(0), 1 ether);
+        launchpad.quoteBuyTokensWithExactEth(address(0), 1 ether);
     }
 
     function test_quoteSellTokens_invalidToken() public {
@@ -383,12 +383,12 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         uint256 maxValue = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS + 1);
 
         vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
-        launchpad.quoteBuyWithExactEth(testToken, maxValue);
+        launchpad.quoteBuyTokensWithExactEth(testToken, maxValue);
 
         // however, one wei less should be fine
         uint256 maxValueJustBelow = maxValue - 1;
         (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive) =
-            launchpad.quoteBuyWithExactEth(testToken, maxValueJustBelow);
+            launchpad.quoteBuyTokensWithExactEth(testToken, maxValueJustBelow);
 
         assertGt(tokensToReceive, 0, "No tokens received");
         assertEq(ethForPurchase + ethFee, maxValueJustBelow, "Amounts don't add up");

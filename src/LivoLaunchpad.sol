@@ -127,7 +127,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         // this call to bonding curve reverts if exceeds graduation margins
         // The internal function also reverts with NotEnoughSupply if exceeding this contract token balance
         (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive, bool canGraduate) =
-            _quoteBuyWithExactEth(token, msg.value);
+            _quoteBuyTokensWithExactEth(token, msg.value);
 
         require(tokensToReceive > 0, ReceivingZeroAmount());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
@@ -202,7 +202,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     /// @return ethForPurchase Amount of ETH used effectively for purchase (after fees)
     /// @return ethFee Fee amount in ETH
     /// @return tokensToReceive Amount of tokens that would be received
-    function quoteBuyWithExactEth(address token, uint256 ethValue)
+    function quoteBuyTokensWithExactEth(address token, uint256 ethValue)
         external
         view
         returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
@@ -210,7 +210,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
 
         // this reverts with NotEnoughSupply if attempting to purchase more than this contract's balance
-        (ethForPurchase, ethFee, tokensToReceive,) = _quoteBuyWithExactEth(token, ethValue);
+        (ethForPurchase, ethFee, tokensToReceive,) = _quoteBuyTokensWithExactEth(token, ethValue);
     }
 
     /// @notice Quotes the result of selling exact amount of tokens
@@ -378,7 +378,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     }
 
     /// @notice Computes the buy quote: ETH split, fee, tokens received, and graduation eligibility
-    function _quoteBuyWithExactEth(address token, uint256 ethValue)
+    function _quoteBuyTokensWithExactEth(address token, uint256 ethValue)
         internal
         view
         returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive, bool canGraduate)
