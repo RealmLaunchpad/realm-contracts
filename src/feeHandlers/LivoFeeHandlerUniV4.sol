@@ -119,7 +119,7 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
     ///      Iterates all registered positions for each token automatically.
     ///      Creator claims are handled by `claim(address[] calldata tokens)` in this contract.
     /// @param tokens Array of token addresses
-    function accrueTokenFees(address[] calldata tokens) external nonReentrant {
+    function accrueTokenFees(address[] calldata tokens) external override nonReentrant {
         uint256 nTokens = tokens.length;
         require(nTokens > 0, NoTokens());
         require(nTokens < 100, TooManyTokens());
