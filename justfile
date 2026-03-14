@@ -64,6 +64,8 @@ factoryTaxToken := "0x4C4F7866aa1108bb5a29826A437eda7853c5cecA"
 
 # sharehonlder1 = 0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495
 # sharehonlder2 = 0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f
+# tiswallet1 = 0xd6fa895fABA3FE48410e9A00504BB556C89dd2E6
+# tiswallet2 = 0xdbB91f98C5826C89CC2312AD0B5a377a77613884
 
 deploy-sepolia: taxtokenaddresses
     forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast

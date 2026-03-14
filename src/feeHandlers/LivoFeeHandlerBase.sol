@@ -14,7 +14,7 @@ contract LivoFeeHandlerBase is ILivoFeeHandler {
     function accrueTokenFees(address[] calldata) external virtual {}
 
     /// @notice Deposits ETH fees for a token's fee receiver
-    function depositFees(address token, address feeReceiver) external payable {
+    function depositFees(address token, address feeReceiver) external payable virtual {
         _pendingClaims[token][feeReceiver] += msg.value;
         emit CreatorFeesDeposited(token, feeReceiver, msg.value);
     }

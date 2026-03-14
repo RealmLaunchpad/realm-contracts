@@ -42,6 +42,9 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
     /// @notice launchpad address, to resolve treasury
     address public immutable LIVO_LAUNCHPAD;
 
+    /// @notice Sum of all pending creator claims (used to identify excess/stuck ETH)
+    uint256 public totalPendingCreatorClaims;
+
     /////////////////// Uniswap v4 related ///////////////
 
     /// @notice Uniswap V4 pool manager contract
@@ -88,6 +91,13 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
 
     /// @notice To receive ETH from the liquidity lock when accruing fees
     receive() external payable {}
+
+    /// @notice Deposits ETH fees for a token's fee receiver, tracking total pending claims
+    function depositFees(address token, address feeReceiver) external payable override {
+        _pendingClaims[token][feeReceiver] += msg.value;
+        totalPendingCreatorClaims += msg.value;
+        emit CreatorFeesDeposited(token, feeReceiver, msg.value);
+    }
 
     /// @notice Sets or revokes an authorized graduator
     /// @param graduator Address to authorize or deauthorize
@@ -164,7 +174,16 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
 
         if (claimable == 0) return;
 
+        totalPendingCreatorClaims -= claimable;
         _transferEth(msg.sender, claimable);
+    }
+
+    /// @notice Sweeps excess ETH (donations, dust) to a recipient. Only callable by owner.
+    function sweepExcessEth(address recipient) external onlyOwner {
+        uint256 excess = address(this).balance - totalPendingCreatorClaims;
+        if (excess > 0) {
+            _transferEth(recipient, excess);
+        }
     }
 
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
@@ -220,6 +239,7 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
 
         if (totalCreatorFees > 0) {
             _pendingClaims[token][feeReceiver] += totalCreatorFees;
+            totalPendingCreatorClaims += totalCreatorFees;
             emit CreatorFeesDeposited(token, feeReceiver, totalCreatorFees);
         }
 
