@@ -231,6 +231,37 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         (ethPulledFromReserves, ethFee, ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
     }
 
+    /// @notice Quotes how much total ETH is needed to buy an exact amount of tokens
+    /// @param token Address of the token to quote
+    /// @param tokenAmount Amount of tokens to buy
+    /// @return totalEthNeeded Total ETH to send (including fee)
+    /// @return ethFee Fee amount in ETH
+    /// @return ethForReserves ETH that goes into the reserves
+    /// @return canGraduate Whether this buy reaches the graduation threshold
+    function quoteBuyExactTokens(address token, uint256 tokenAmount)
+        external
+        view
+        returns (uint256 totalEthNeeded, uint256 ethFee, uint256 ethForReserves, bool canGraduate)
+    {
+        if (!tokenConfigs[token].exists()) revert InvalidToken();
+        (totalEthNeeded, ethFee, ethForReserves, canGraduate) = _quoteBuyExactTokens(token, tokenAmount);
+    }
+
+    /// @notice Quotes how many tokens must be sold to receive an exact amount of ETH
+    /// @param token Address of the token to quote
+    /// @param ethAmount Amount of ETH the seller wants to receive
+    /// @return tokensRequired Amount of tokens that must be sold
+    /// @return ethPulledFromReserves Amount of ETH pulled from reserves (before fee)
+    /// @return ethFee Fee amount in ETH
+    function quoteSellTokensForExactEth(address token, uint256 ethAmount)
+        external
+        view
+        returns (uint256 tokensRequired, uint256 ethPulledFromReserves, uint256 ethFee)
+    {
+        if (!tokenConfigs[token].exists()) revert InvalidToken();
+        (tokensRequired, ethPulledFromReserves, ethFee) = _quoteSellTokensForExactEth(token, ethAmount);
+    }
+
     /// @notice Returns the maximum amount of ETH that can be spent on a given token
     /// @dev This avoids going above the excess limit above graduation threshold
     function getMaxEthToSpend(address token) external view returns (uint256) {
@@ -383,6 +414,46 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
         if (ethPulledFromReserves > _availableEthFromReserves(token)) revert InsufficientEthReserves();
 
         return (ethPulledFromReserves, ethFee, ethForSeller);
+    }
+
+    /// @notice Computes the inverse buy quote: total ETH needed to buy exact tokens
+    function _quoteBuyExactTokens(address token, uint256 tokenAmount)
+        internal
+        view
+        returns (uint256 totalEthNeeded, uint256 ethFee, uint256 ethForReserves, bool canGraduate)
+    {
+        TokenConfig storage tokenConfig = tokenConfigs[token];
+
+        (ethForReserves, canGraduate) =
+            tokenConfig.bondingCurve.buyExactTokens(tokenStates[token].ethCollected, tokenAmount);
+
+        // Inverse fee: ethForReserves = totalEthNeeded * (BASIS_POINTS - buyFeeBps) / BASIS_POINTS
+        // So totalEthNeeded = ceil(ethForReserves * BASIS_POINTS / (BASIS_POINTS - buyFeeBps))
+        uint256 denom = BASIS_POINTS - tokenConfig.buyFeeBps;
+        totalEthNeeded = (ethForReserves * BASIS_POINTS + denom - 1) / denom;
+        ethFee = totalEthNeeded - ethForReserves;
+
+        if (tokenAmount > _availableTokens(token)) revert NotEnoughSupply();
+    }
+
+    /// @notice Computes the inverse sell quote: tokens needed to receive exact ETH
+    function _quoteSellTokensForExactEth(address token, uint256 ethAmount)
+        internal
+        view
+        returns (uint256 tokensRequired, uint256 ethPulledFromReserves, uint256 ethFee)
+    {
+        TokenConfig storage tokenConfig = tokenConfigs[token];
+
+        // ethAmount = ethPulledFromReserves * (BASIS_POINTS - sellFeeBps) / BASIS_POINTS
+        // So ethPulledFromReserves = ceil(ethAmount * BASIS_POINTS / (BASIS_POINTS - sellFeeBps))
+        uint256 denom = BASIS_POINTS - tokenConfig.sellFeeBps;
+        ethPulledFromReserves = (ethAmount * BASIS_POINTS + denom - 1) / denom;
+        ethFee = ethPulledFromReserves - ethAmount;
+
+        tokensRequired =
+            tokenConfig.bondingCurve.sellTokensForExactEth(tokenStates[token].ethCollected, ethPulledFromReserves);
+
+        if (ethPulledFromReserves > _availableEthFromReserves(token)) revert InsufficientEthReserves();
     }
 
     /// @dev The supply of a token that can be purchased

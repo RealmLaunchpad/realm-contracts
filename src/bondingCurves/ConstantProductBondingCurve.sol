@@ -93,6 +93,56 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         ethReceived = tokenAmount * (ethReserves + E0) ** 2 / (K + tokenAmount * (ethReserves + E0));
     }
 
+    /// @notice Calculates how much ETH is required to buy an exact amount of tokens
+    /// @param ethReserves Current ETH reserves in the bonding curve
+    /// @param tokenAmount Amount of tokens to buy
+    /// @return ethRequired Amount of ETH required
+    /// @return canGraduate Whether this buy reaches the graduation threshold
+    function buyExactTokens(uint256 ethReserves, uint256 tokenAmount)
+        external
+        pure
+        returns (uint256 ethRequired, bool canGraduate)
+    {
+        // Derived from the same formula as buyTokensWithExactEth, solving for ethAmount:
+        //   ethRequired = tokenAmount * A² / (K - tokenAmount * A)
+        // where A = ethReserves + E0
+        uint256 A = ethReserves + E0;
+        uint256 denom = K - tokenAmount * A;
+        if (denom == 0) revert InsufficientLiquidity();
+        // If tokenAmount * A >= K, the subtraction above would underflow (revert),
+        // but if it equals K exactly, denom=0 and we catch it above.
+
+        uint256 num = tokenAmount * A * A;
+        // Ceiling division: round up so the user pays more ETH
+        ethRequired = (num + denom - 1) / denom;
+
+        uint256 newEthReserves = ethReserves + ethRequired;
+        if (newEthReserves > _maxEthReserves()) revert MaxEthReservesExceeded();
+
+        canGraduate = newEthReserves >= _GRADUATION_THRESHOLD;
+    }
+
+    /// @notice Calculates how many tokens must be sold to receive an exact amount of ETH
+    /// @param ethReserves Current ETH reserves in the bonding curve
+    /// @param ethAmount Amount of ETH to receive
+    /// @return tokensRequired Amount of tokens that must be sold
+    function sellTokensForExactEth(uint256 ethReserves, uint256 ethAmount)
+        external
+        pure
+        returns (uint256 tokensRequired)
+    {
+        // Derived from the same formula as sellExactTokens, solving for tokenAmount:
+        //   tokensRequired = K * ethAmount / (A * (A - ethAmount))
+        // where A = ethReserves + E0
+        uint256 A = ethReserves + E0;
+        if (A <= ethAmount) revert InsufficientLiquidity();
+
+        uint256 num = K * ethAmount;
+        uint256 denom = A * (A - ethAmount);
+        // Ceiling division: round up so the user sells more tokens
+        tokensRequired = (num + denom - 1) / denom;
+    }
+
     /// @notice Returns the token reserves for a given amount of ETH reserves
     /// @dev this calculation starts reverting with an overflow at some point above ethReserves > 37 ether
     /// @param ethReserves Current ETH reserves in the bonding curve
