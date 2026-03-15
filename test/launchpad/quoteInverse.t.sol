@@ -20,21 +20,21 @@ abstract contract QuoteInverseTests is LaunchpadBaseTests {
     function testBuyRoundTrip_fixedAmount() public createTestToken {
         uint256 ethIn = 1 ether;
         (,, uint256 tokensOut) = launchpad.quoteBuyTokensWithExactEth(testToken, ethIn);
-        (uint256 ethBack,,,) = launchpad.quoteBuyExactTokens(testToken, tokensOut);
+        (,, uint256 ethBack) = launchpad.quoteBuyExactTokens(testToken, tokensOut);
         assertApproxEqAbs(ethBack, ethIn, BUY_ABS_TOLERANCE, "buy round-trip ETH mismatch");
     }
 
     function testBuyRoundTrip_smallAmount() public createTestToken {
         uint256 ethIn = 0.001 ether;
         (,, uint256 tokensOut) = launchpad.quoteBuyTokensWithExactEth(testToken, ethIn);
-        (uint256 ethBack,,,) = launchpad.quoteBuyExactTokens(testToken, tokensOut);
+        (,, uint256 ethBack) = launchpad.quoteBuyExactTokens(testToken, tokensOut);
         assertApproxEqAbs(ethBack, ethIn, BUY_ABS_TOLERANCE, "buy round-trip ETH mismatch");
     }
 
     function testBuyRoundTrip_largeAmount() public createTestToken {
         uint256 ethIn = 3 ether;
         (,, uint256 tokensOut) = launchpad.quoteBuyTokensWithExactEth(testToken, ethIn);
-        (uint256 ethBack,,,) = launchpad.quoteBuyExactTokens(testToken, tokensOut);
+        (,, uint256 ethBack) = launchpad.quoteBuyExactTokens(testToken, tokensOut);
         assertApproxEqAbs(ethBack, ethIn, BUY_ABS_TOLERANCE, "buy round-trip ETH mismatch");
     }
 
@@ -65,7 +65,7 @@ abstract contract QuoteInverseTests is LaunchpadBaseTests {
         (,, uint256 tokensOut) = launchpad.quoteBuyTokensWithExactEth(testToken, ethIn);
         if (tokensOut == 0) return;
 
-        (uint256 ethBack,,,) = launchpad.quoteBuyExactTokens(testToken, tokensOut);
+        (,, uint256 ethBack) = launchpad.quoteBuyExactTokens(testToken, tokensOut);
         assertApproxEqAbs(ethBack, ethIn, BUY_ABS_TOLERANCE, "fuzz buy round-trip ETH mismatch");
     }
 
@@ -106,14 +106,6 @@ abstract contract QuoteInverseTests is LaunchpadBaseTests {
         uint256 ethCollected = launchpad.getTokenState(testToken).ethCollected;
         vm.expectRevert();
         launchpad.quoteSellTokensForExactEth(testToken, ethCollected + 1 ether);
-    }
-
-    function testBuyExactTokens_canGraduateFlag() public createTestToken {
-        uint256 graduationEth = 3.75 ether;
-        (,, uint256 tokensAtGraduation) =
-            launchpad.quoteBuyTokensWithExactEth(testToken, _increaseWithFees(graduationEth));
-        (,,, bool canGraduate) = launchpad.quoteBuyExactTokens(testToken, tokensAtGraduation);
-        assertTrue(canGraduate, "should signal graduation");
     }
 
     function testBuyExactTokens_invalidToken() public {

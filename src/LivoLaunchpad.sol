@@ -234,17 +234,16 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     /// @notice Quotes how much total ETH is needed to buy an exact amount of tokens
     /// @param token Address of the token to quote
     /// @param tokenAmount Amount of tokens to buy
-    /// @return totalEthNeeded Total ETH to send (including fee)
     /// @return ethFee Fee amount in ETH
     /// @return ethForReserves ETH that goes into the reserves
-    /// @return canGraduate Whether this buy reaches the graduation threshold
+    /// @return totalEthNeeded Total ETH to send (including fee)
     function quoteBuyExactTokens(address token, uint256 tokenAmount)
         external
         view
-        returns (uint256 totalEthNeeded, uint256 ethFee, uint256 ethForReserves, bool canGraduate)
+        returns (uint256 ethFee, uint256 ethForReserves, uint256 totalEthNeeded)
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
-        (totalEthNeeded, ethFee, ethForReserves, canGraduate) = _quoteBuyExactTokens(token, tokenAmount);
+        (totalEthNeeded, ethFee, ethForReserves,) = _quoteBuyExactTokens(token, tokenAmount);
     }
 
     /// @notice Quotes how many tokens must be sold to receive an exact amount of ETH
