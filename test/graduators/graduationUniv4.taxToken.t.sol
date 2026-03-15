@@ -24,9 +24,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
         vm.prank(creator);
-        feeHandlerV4.accrueTokenFees(tokens);
-
-        vm.prank(creator);
         feeHandlerV4.claim(tokens);
     }
 
@@ -739,8 +736,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         tokens[0] = testToken;
 
         vm.prank(alice);
-        feeHandlerV4.accrueTokenFees(tokens);
-        vm.prank(alice);
         feeHandlerV4.claim(tokens);
 
         vm.prank(creator);
@@ -781,8 +776,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 creatorEthBalanceBefore = creator.balance;
 
         // Claim from both positions
-        vm.prank(creator);
-        feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
 

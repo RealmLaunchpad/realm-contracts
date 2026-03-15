@@ -918,8 +918,6 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
         vm.prank(creator);
-        feeHandlerV4.accrueTokenFees(tokens);
-        vm.prank(creator);
         feeHandlerV4.claim(tokens);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;

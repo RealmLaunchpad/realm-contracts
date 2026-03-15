@@ -8,8 +8,6 @@ interface ILivoFeeHandler is ILivoClaims {
     /// EVENTS
     event CreatorFeesDeposited(address indexed token, address indexed account, uint256 amount);
 
-    event TreasuryFeesDeposited(address token, uint256 amount);
-
     ///////////// EXTERNAL FUNCTIONS //////////////
 
     /// @notice Deposits msg.value into `feeReceiver` balance for `token`
@@ -17,9 +15,4 @@ interface ILivoFeeHandler is ILivoClaims {
 
     /// @notice Accrues pending LP fees for the given tokens
     function accrueTokenFees(address[] calldata tokens) external;
-
-    ////////////// VIEW FUNCTIONS /////////////
-
-    /// @notice Returns the address that should own LP position NFTs (for Uniswap V4 fee collection)
-    function liquidityPositionOwner() external view returns (address);
 }

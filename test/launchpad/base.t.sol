@@ -11,8 +11,6 @@ import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol"
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
-import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
-import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
@@ -98,7 +96,6 @@ contract LaunchpadBaseTests is Test {
     // This is the pool setpoint price derived from SQRT_PRICEX96_GRADUATION
     uint256 constant POOL_SETPOINT_PRICE = 12249999999; // ETH/token (eth per token, expressed in wei)
 
-    LiquidityLockUniv4WithFees public liquidityLock;
     LivoGraduatorUniswapV2 public graduatorV2;
     LivoGraduatorUniswapV4 public graduatorV4;
     LivoSwapHook public taxHook;
@@ -123,8 +120,6 @@ contract LaunchpadBaseTests is Test {
         bondingCurve = new ConstantProductBondingCurve();
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
-        liquidityLock = new LiquidityLockUniv4WithFees(positionManagerAddress);
-
         deployCodeTo(
             "LivoSwapHook.sol:LivoSwapHook",
             abi.encode(poolManagerAddress, address(launchpad)),
@@ -134,23 +129,15 @@ contract LaunchpadBaseTests is Test {
 
         feeHandler = new LivoFeeHandlerUniV2();
 
-        feeHandlerV4 = new LivoFeeHandlerUniV4(
-            address(launchpad),
-            address(liquidityLock),
-            poolManagerAddress,
-            positionManagerAddress,
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
-        );
+        feeHandlerV4 = new LivoFeeHandlerUniV4(address(launchpad));
 
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad),
-            address(liquidityLock),
             poolManagerAddress,
             positionManagerAddress,
             permit2Address,
             DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
-        feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
 

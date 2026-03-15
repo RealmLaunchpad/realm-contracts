@@ -117,11 +117,6 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
 
     //////////////////////// VIEW FUNCTIONS ////////////////////////
 
-    /// @notice Returns the address that should own LP position NFTs (delegates to upstream handler)
-    function liquidityPositionOwner() external view returns (address) {
-        return ILivoFeeHandler(_univ4FeeHandler).liquidityPositionOwner();
-    }
-
     /// @notice Returns the claimable ETH for `account` across the given tokens.
     /// @dev Only returns non-zero for entries matching this splitter's token.
     /// @param tokens The token addresses to query.

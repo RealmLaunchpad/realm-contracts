@@ -6,7 +6,6 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
-import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
@@ -116,27 +115,18 @@ contract Deployments is Script {
         LivoGraduatorUniswapV2 graduatorV2 = new LivoGraduatorUniswapV2(univ2Router, address(launchpad));
         console.log("| LivoGraduatorUniswapV2 | ", address(graduatorV2));
 
-        // 5. Deploy LiquidityLockUniv4WithFees
-        LiquidityLockUniv4WithFees liquidityLock = new LiquidityLockUniv4WithFees(univ4PositionManager);
-        console.log("| LiquidityLockUniv4WithFees | ", address(liquidityLock));
-
         // 6. Deploy fee handlers used by factories
         LivoFeeHandlerUniV2 feeHandlerV2 = new LivoFeeHandlerUniV2();
         console.log("| LivoFeeHandlerUniV2 | ", address(feeHandlerV2));
-        LivoFeeHandlerUniV4 feeHandlerV4 = new LivoFeeHandlerUniV4(
-            address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, hookAddress
-        );
+        LivoFeeHandlerUniV4 feeHandlerV4 = new LivoFeeHandlerUniV4(address(launchpad));
         console.log("| LivoFeeHandlerUniV4 | ", address(feeHandlerV4));
 
         // 7. Deploy LivoGraduatorUniswapV4
         // NOTE: Hook address must be mined first and updated in DeploymentAddresses.sol
         LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, permit2, hookAddress
+            address(launchpad), univ4PoolManager, univ4PositionManager, permit2, hookAddress
         );
         console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
-
-        // authorize the V4 graduator in the v4 fee handler, which is the only one allowed to register univ4 positionIds
-        feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 
         // 9. Deploy fee splitter implementation
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();

@@ -145,31 +145,15 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
 /// @notice Abstract base class for Uniswap V4 claim fees tests
 abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
-    function test_rightPositionIdAfterGraduation() public createAndGraduateToken {
-        uint256 positionId = feeHandlerV4.positionIds(testToken, 0);
-
-        assertEq(positionId, 62898, "wrong position id registered at graduation");
-    }
-
-    /// @notice test that the owner of the univ4 NFT position is the liquidity lock contract
+    /// @notice test that the owner of the univ4 NFT position is the graduator (permanently locked)
     function test_liquidityNftOwnerAfterGraduation() public createAndGraduateToken {
-        uint256 positionId = feeHandlerV4.positionIds(testToken, 0);
+        // The NFT ID is deterministic on the fork; check that graduator holds it
+        uint256 positionId = IPositionManager(positionManagerAddress).nextTokenId() - 2;
 
         assertEq(
             IERC721(positionManagerAddress).ownerOf(positionId),
-            address(liquidityLock),
-            "liquidity lock should own the position NFT"
-        );
-    }
-
-    /// @notice test that in the liquidity lock, the fee handler appears as the owner of the liquidity position
-    function test_liquidityLock_ownerOfPositionIsFeeHandler() public createAndGraduateToken {
-        uint256 positionId = feeHandlerV4.positionIds(testToken, 0);
-
-        assertEq(
-            liquidityLock.lockOwners(positionId),
-            address(feeHandlerV4),
-            "fee handler should be the owner of the locked position"
+            address(graduatorV4),
+            "graduator should own the position NFT (permanently locked)"
         );
     }
 
@@ -224,7 +208,9 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         // Treasury LP share is sent during swap by the hook, not during position fee collection
         assertEq(
-            treasuryEthBalanceAfter, treasuryEthBalanceBefore, "treasury receives LP share during swap, not during collect"
+            treasuryEthBalanceAfter,
+            treasuryEthBalanceBefore,
+            "treasury receives LP share during swap, not during collect"
         );
     }
 
@@ -258,9 +244,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         uint256 tokenBalanceAfter = IERC20(testToken).balanceOf(address(feeHandlerV4));
         uint256 poolManagerBalanceAfter = IERC20(testToken).balanceOf(address(poolManager));
 
-        assertEq(
-            IERC20(testToken).balanceOf(address(feeHandlerV4)), 0, "there should be no tokens in the fee handler"
-        );
+        assertEq(IERC20(testToken).balanceOf(address(feeHandlerV4)), 0, "there should be no tokens in the fee handler");
         assertEq(poolManagerBalanceAfter, poolManagerBalance, "No token fees should leave the token manager");
         assertEq(tokenBalanceAfter, tokenBalanceBefore, "No tokens should arrive to the fee handler");
     }
@@ -270,11 +254,10 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         // The fee handler holds the graduation deposit (creator compensation).
         uint256 feeHandlerBalanceBeforeTransfer = address(feeHandlerV4).balance;
 
-        // send some eth to the fee handler
-        vm.prank(buyer);
-        payable(address(feeHandlerV4)).transfer(0.5 ether);
-
+        // send some eth to the fee handler (via vm.deal since no receive())
         uint256 externalEth = 0.5 ether;
+        vm.deal(address(feeHandlerV4), feeHandlerBalanceBeforeTransfer + externalEth);
+
         uint256 feeHandlerEthBalanceBefore = address(feeHandlerV4).balance;
         assertEq(
             feeHandlerEthBalanceBefore,
@@ -284,7 +267,7 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
 
         _collectFees(testToken);
 
-        // Treasury fees are sent directly, so the handler should only hold the external ETH
+        // After claiming, only the external ETH should remain
         assertEq(address(feeHandlerV4).balance, externalEth, "externally sent ETH should remain and not be claimed");
     }
 
@@ -431,14 +414,6 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
         //     totalCreatorFees, claimableAfterBuy, 1, 18, "creator claim should match pre-claim claimable amount"
         // );
     }
-
-    function test_accrueTokenFees_revertsOnEmptyArray() public {
-        address[] memory tokens = new address[](0);
-
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSignature("NoTokens()"));
-        feeHandlerV4.accrueTokenFees(tokens);
-    }
 }
 
 /// @notice Abstract base class for Uniswap V4 claim fees view function tests
@@ -465,16 +440,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         return fees[0];
     }
 
-    function _accrueTokenFeesAs(address caller) internal {
-        vm.prank(caller);
-        feeHandlerV4.accrueTokenFees(_singleTokenArray());
-    }
-
     function _creatorClaimAs(address caller) internal {
         address[] memory tokens = _singleTokenArray();
-        vm.prank(caller);
-        feeHandlerV4.accrueTokenFees(tokens);
-
         vm.prank(caller);
         feeHandlerV4.claim(tokens);
     }
@@ -494,18 +461,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     modifier afterOneSwapSell(address caller) {
         _swapSell(caller, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
         _;
-    }
-
-    modifier accrueAs(address account) {
-        vm.prank(account);
-        feeHandlerV4.accrueTokenFees(_singleTokenArray());
-        _;
-    }
-
-    function test_viewFunction_positionId() public createAndGraduateToken {
-        uint256 positionId = feeHandlerV4.positionIds(testToken, 0);
-
-        assertEq(positionId, 62898, "wrong position id registered at graduation");
     }
 
     /// @notice test that right after graduation getClaimable gives graduation deposit only
@@ -662,32 +617,19 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         );
     }
 
-    function test_claimFeesOfBothPsitionsDontRevertIfNoFeesToClaim() public createAndGraduateToken {
-        // no LP fees to claim yet, but graduation deposit is claimable
+    function test_claimFeesOfBothPositionsDontRevertIfNoFeesToClaim() public createAndGraduateToken {
         address[] memory tokens = _singleTokenArray();
 
         uint256 creatorEthBalanceBefore = creator.balance;
 
-        // should not revert even if there are no LP fees to claim
-        vm.prank(creator);
-        feeHandlerV4.accrueTokenFees(tokens);
         vm.prank(creator);
         feeHandlerV4.claim(tokens);
 
-        // Creator receives only the graduation deposit (no LP fees yet)
         assertEq(
             creator.balance,
             creatorEthBalanceBefore + graduationCreatorClaimable,
             "creator should receive graduation deposit only"
         );
-    }
-
-    function test_claimFees_arrayOfZeroTokens() public createAndGraduateToken {
-        address[] memory tokens = new address[](0);
-
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSignature("NoTokens()"));
-        feeHandlerV4.accrueTokenFees(tokens);
     }
 
     function test_depositAccruedTaxes_reverts_whenCallerIsNotHook() public createAndGraduateToken {
@@ -791,11 +733,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         );
     }
 
-    /// @dev when anyone calls `accrueTokenFees()`, then creator pending increases and treasury receives funds directly
+    /// @dev when a swap occurs, creator pending increases and treasury receives funds directly during the swap
     function test_accrueTokenFees_calledByAnyone_accruesToCreatorAndTreasury() public createAndGraduateToken {
         uint256 treasuryEthBefore = treasury.balance;
         uint256 creatorEthBefore = creator.balance;
-        uint256 aliceEthBefore = alice.balance;
         uint256 creatorPendingBefore = _claimable(testToken, creator);
 
         // Perform swap buy (LP fees are charged during swap by the hook)
@@ -810,13 +751,14 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
             "treasury should receive 0.5% LP fee share during swap"
         );
 
-        _accrueTokenFeesAs(alice);
-
-        assertEq(creator.balance, creatorEthBefore, "creator balance should not change on accrue");
-        // Treasury LP share was already sent during swap by the hook, not during accrue
-        assertEq(treasury.balance - treasuryEthBefore, MATRIX_BUY_AMOUNT_1 / 200, "treasury should not receive more on accrue");
-        assertEq(alice.balance, aliceEthBefore, "caller balance should not change on accrue");
-        assertEq(_claimable(testToken, creator), creatorPendingBefore, "creator pending should not change");
+        // Creator pending should increase by 0.5% of buy amount (deposited during swap by the hook)
+        assertEq(creator.balance, creatorEthBefore, "creator ETH balance should not change (fees are pending)");
+        assertApproxEqAbs(
+            _claimable(testToken, creator) - creatorPendingBefore,
+            MATRIX_BUY_AMOUNT_1 / 200,
+            1,
+            "creator pending should increase by 0.5% of buy amount"
+        );
     }
 
     /// @dev when fees are accrued, treasury receives immediately; creator receives only on explicit claim
@@ -825,7 +767,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         uint256 treasuryEthBefore = treasury.balance;
 
         // Accrual sends treasury fees directly, but creator fees remain pending
-        _accrueTokenFeesAs(alice);
 
         assertEq(creator.balance, creatorEthBefore, "creator should not be paid before creatorClaim");
         // Treasury LP share was already sent during swap by the hook
@@ -841,8 +782,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     function test_treasury_receivesDirectlyOnAccrue() public createAndGraduateToken afterOneSwapBuy(buyer) {
         uint256 treasuryEthBefore = treasury.balance;
         uint256 creatorEthBefore = creator.balance;
-
-        _accrueTokenFeesAs(alice);
 
         assertEq(creator.balance, creatorEthBefore, "creator should not receive fees on accrue");
         // Treasury LP share was already sent during swap by the hook
@@ -870,7 +809,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapBuy(buyer)
     {
-        _accrueTokenFeesAs(creator);
         uint256 fees = _creatorClaimable();
         assertApproxEqAbs(
             fees,
@@ -886,7 +824,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapBuy(buyer)
     {
-        _accrueTokenFeesAs(alice);
         uint256 fees = _creatorClaimable();
         assertApproxEqAbs(
             fees,
@@ -924,7 +861,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapBuy(buyer)
     {
-        _accrueTokenFeesAs(creator);
         _creatorClaimAs(creator);
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
 
@@ -938,10 +874,8 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapBuy(buyer)
     {
-        _accrueTokenFeesAs(creator);
         _creatorClaimAs(creator);
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
-        _accrueTokenFeesAs(alice);
 
         uint256 fees = _creatorClaimable();
         assertApproxEqAbs(
@@ -955,7 +889,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapBuy(buyer)
     {
-        _accrueTokenFeesAs(creator);
         _creatorClaimAs(creator);
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
         _creatorClaimAs(creator);
@@ -969,8 +902,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapBuy(buyer)
     {
-        _accrueTokenFeesAs(creator);
-
         uint256 creatorEthBeforeFirstClaim = creator.balance;
         uint256 treasuryEthBeforeFirstClaim = treasury.balance;
         _creatorClaimAs(creator);
@@ -1022,7 +953,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         afterOneSwapSell(buyer)
     {
         uint256 feesBefore = _creatorClaimable();
-        _accrueTokenFeesAs(creator);
         uint256 feesAfter = _creatorClaimable();
 
         assertApproxEqAbs(feesAfter, feesBefore, 2, "accrue should not change total creator claimable");
@@ -1060,7 +990,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapSell(buyer)
     {
-        _accrueTokenFeesAs(creator);
         _creatorClaimAs(creator);
         _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
 
@@ -1077,12 +1006,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapSell(buyer)
     {
-        _accrueTokenFeesAs(creator);
         _creatorClaimAs(creator);
         _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
 
         uint256 feesBefore = _creatorClaimable();
-        _accrueTokenFeesAs(alice);
         uint256 feesAfter = _creatorClaimable();
 
         assertApproxEqAbs(feesAfter, feesBefore, 2, "no more taxes as there hasnt been any new sells");
@@ -1094,7 +1021,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapSell(buyer)
     {
-        _accrueTokenFeesAs(creator);
         _creatorClaimAs(creator);
         _swapSell(buyer, MATRIX_SELL_AMOUNT, MATRIX_SELL_MIN_OUT, true);
         _creatorClaimAs(creator);
@@ -1108,8 +1034,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         createAndGraduateToken
         afterOneSwapSell(buyer)
     {
-        _accrueTokenFeesAs(creator);
-
         uint256 creatorEthBeforeFirstClaim = creator.balance;
         _creatorClaimAs(creator);
         uint256 creatorEthAfterFirstClaim = creator.balance;
@@ -1132,7 +1056,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         public
         createAndGraduateToken
         afterOneSwapBuy(buyer)
-        accrueAs(alice)
         transferOwnership(creator, alice)
         setReceiver(alice, alice)
     {
@@ -1144,7 +1067,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         public
         createAndGraduateToken
         afterOneSwapBuy(buyer)
-        accrueAs(alice)
         transferOwnership(creator, alice)
         setReceiver(alice, alice)
     {
@@ -1163,7 +1085,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
     {
         _creatorClaimAs(creator);
         _swapBuy(buyer, MATRIX_BUY_AMOUNT_2, 10e18, true);
-        _accrueTokenFeesAs(alice);
         _transferOwnership(alice);
 
         uint256 oldOwnerClaimable = _claimableFor(creator);
@@ -1178,7 +1099,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         public
         createAndGraduateToken
         afterOneSwapBuy(buyer)
-        accrueAs(alice)
         transferOwnership(creator, alice)
         setReceiver(alice, alice)
     {
@@ -1208,7 +1128,6 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
         public
         createAndGraduateToken
         afterOneSwapSell(buyer)
-        accrueAs(alice)
         transferOwnership(creator, alice)
     {
         if (!_expectsSellTaxes()) return;

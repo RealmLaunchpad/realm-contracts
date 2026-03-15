@@ -44,14 +44,7 @@ contract LivoFeeHandlerBase is ILivoFeeHandler {
 
     /////////////////////////// VIEW /////////////////////////////////
 
-    /// @notice Returns the address that should own LP position NFTs
-    /// @dev This fee handler is not expected to handle LP fees, so this is the default
-    function liquidityPositionOwner() external view virtual returns (address) {
-        return address(this);
-    }
-
     /// @notice Returns the pending claimable ETH fees for an account across the given tokens
-    /// @dev This doesn't include non-accrued LP fees that are sitting in the LP position
     function getClaimable(address[] calldata tokens, address account)
         external
         view
