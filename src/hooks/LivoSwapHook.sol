@@ -29,12 +29,23 @@ contract LivoSwapHook is BaseHook {
     event CreatorTaxesAccrued(address indexed token, uint256 amount);
     /// @notice Emitted when LP fees are accrued
     event LpFeesAccrued(address indexed token, uint256 creatorShare, uint256 treasuryShare);
+    /// @notice Emitted on every buy for off-chain indexing
+    event LivoSwapBuy(
+        address indexed token, address indexed txOrigin, uint256 ethIn, uint256 tokensOut, uint256 ethFees
+    );
+    /// @notice Emitted on every sell for off-chain indexing
+    event LivoSwapSell(
+        address indexed token, address indexed txOrigin, uint256 tokensIn, uint256 ethOut, uint256 ethFees
+    );
 
     /// @notice Basis points denominator (10000 = 100%)
     uint256 private constant BASIS_POINTS = 10000;
 
     /// @notice LP fee rate in basis points (1%)
     uint256 private constant LP_FEE_BPS = 100;
+
+    /// @notice Cached buy fee between beforeSwap and afterSwap to avoid redundant _getTaxParams call
+    uint256 private transient _cachedBuyFee;
 
     /// @notice Launchpad contract for resolving treasury address
     address public immutable LAUNCHPAD;
@@ -109,6 +120,9 @@ contract LivoSwapHook is BaseHook {
 
         uint256 totalFee = feeAmount + taxAmount;
 
+        // Cache totalFee for afterSwap event emission
+        _cachedBuyFee = totalFee;
+
         // Take ETH from the pool to this contract
         poolManager.take(key.currency0, address(this), totalFee);
 
@@ -131,14 +145,20 @@ contract LivoSwapHook is BaseHook {
         override
         returns (bytes4, int128)
     {
-        // Only charge fees on sells (tokens→ETH, zeroForOne=false)
-        // Buy LP fees are handled in beforeSwap
+        address tokenAddress = Currency.unwrap(key.currency1);
+
+        // BUY: fees already charged in beforeSwap, just emit event
         if (params.zeroForOne) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 ethIn = uint256(-params.amountSpecified);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 tokensOut = uint256(uint128(delta.amount1()));
+
+            emit LivoSwapBuy(tokenAddress, tx.origin, ethIn, tokensOut, _cachedBuyFee);
             return (IHooks.afterSwap.selector, 0);
         }
 
-        address tokenAddress = Currency.unwrap(key.currency1);
-
+        // SELL: charge fees on ETH output
         // ETH output from the swap (amount0 is positive for sells = ETH going out)
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 absEthAmount = uint256(uint128(delta.amount0()));
@@ -158,6 +178,11 @@ contract LivoSwapHook is BaseHook {
 
         // Deposit LP fee (50/50 creator/treasury) + sell tax (100% creator) in a single accrueFees call
         _accrue(tokenAddress, lpFee, taxAmount);
+
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 tokensIn = uint256(uint128(-delta.amount1()));
+
+        emit LivoSwapSell(tokenAddress, tx.origin, tokensIn, absEthAmount, totalFee);
 
         // forge-lint: disable-next-line(unsafe-typecast)
         return (IHooks.afterSwap.selector, int128(uint128(totalFee)));

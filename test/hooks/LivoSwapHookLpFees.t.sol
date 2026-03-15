@@ -6,6 +6,8 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoTaxableTokenUniV4} from "src/interfaces/ILivoTaxableTokenUniV4.sol";
+import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 /// @notice PoC tests for hook-based LP fees (1% charged by LivoSwapHook, split 50/50 creator/treasury)
 contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
@@ -244,6 +246,111 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         assertApproxEqAbs(
             creatorFeesFromSell - treasuryFromSell, expectedSellTax, 2, "Sell creator excess should be ~sell tax"
         );
+    }
+
+    // ─── LivoSwapBuy / LivoSwapSell event tests ────────────────────────
+
+    bytes32 constant LIVO_SWAP_BUY_SIG = keccak256("LivoSwapBuy(address,address,uint256,uint256,uint256)");
+    bytes32 constant LIVO_SWAP_SELL_SIG = keccak256("LivoSwapSell(address,address,uint256,uint256,uint256)");
+
+    function _findLog(Vm.Log[] memory logs, bytes32 sig) internal pure returns (Vm.Log memory) {
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == sig) {
+                return logs[i];
+            }
+        }
+        revert("event not found");
+    }
+
+    /// @notice Buy emits LivoSwapBuy with correct fields
+    function test_buyEmitsLivoSwapBuy() public createDefaultTaxToken {
+        _graduateToken();
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+
+        vm.recordLogs();
+        _swapBuy(buyer, buyAmount, 0, true);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
+
+        // Indexed: token
+        assertEq(address(uint160(uint256(log.topics[1]))), testToken, "token mismatch");
+
+        // Data: (ethIn, tokensOut, ethFees)
+        (uint256 ethIn, uint256 tokensOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
+
+        assertEq(ethIn, buyAmount, "ethIn should be buy amount");
+        assertGt(tokensOut, 0, "tokensOut should be > 0");
+        // No buy tax on default token, only 1% LP fee
+        assertEq(ethFees, buyAmount / 100, "ethFees should be 1% LP fee");
+    }
+
+    /// @notice Sell emits LivoSwapSell with correct fields
+    function test_sellEmitsLivoSwapSell() public createDefaultTaxToken {
+        vm.deal(buyer, 2 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
+
+        // Warp past tax period so only LP fee applies
+        vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
+
+        uint256 sellAmount = IERC20(testToken).balanceOf(buyer) / 2;
+
+        vm.recordLogs();
+        _swapSell(buyer, sellAmount, 0, true);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_SELL_SIG);
+
+        // Indexed: token
+        assertEq(address(uint160(uint256(log.topics[1]))), testToken, "token mismatch");
+
+        // Data: (tokensIn, ethOut, ethFees)
+        (uint256 tokensIn, uint256 ethOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
+
+        assertEq(tokensIn, sellAmount, "tokensIn should be sell amount");
+        assertGt(ethOut, 0, "ethOut should be > 0");
+        // LP fee = 1% of ethOut
+        assertApproxEqAbs(ethFees, ethOut / 100, 1, "ethFees should be ~1% LP fee");
+    }
+
+    /// @notice Buy with tax emits correct fee amount
+    function test_buyWithTaxEmitsCorrectFees() public {
+        uint16 buyTax = 300; // 3%
+        testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        _graduateToken();
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+
+        vm.recordLogs();
+        _swapBuy(buyer, buyAmount, 0, true);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
+
+        (, , uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
+
+        // LP fee 1% + buy tax 3% = 4%
+        uint256 expectedFees = (buyAmount * (100 + buyTax)) / 10000;
+        assertEq(ethFees, expectedFees, "ethFees should be LP fee + buy tax");
+    }
+
+    /// @notice Sell with tax emits correct fee amount
+    function test_sellWithTaxEmitsCorrectFees() public createDefaultTaxToken {
+        vm.deal(buyer, 2 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
+
+        uint256 sellAmount = IERC20(testToken).balanceOf(buyer) / 2;
+
+        vm.recordLogs();
+        _swapSell(buyer, sellAmount, 0, true);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_SELL_SIG);
+
+        (, uint256 ethOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
+
+        // LP fee 1% + sell tax 5% = 6% of gross ETH
+        uint256 expectedFees = (ethOut * (100 + DEFAULT_SELL_TAX_BPS)) / 10000;
+        assertApproxEqAbs(ethFees, expectedFees, 2, "ethFees should be LP fee + sell tax");
     }
 
     /// @notice Accurate fee amounts: buy 10 ETH, verify exactly 0.05 ETH to each of creator and treasury
