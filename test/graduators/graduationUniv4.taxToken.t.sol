@@ -865,4 +865,161 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             "Token owner token balance should not change after zero transfer (no buy tax)"
         );
     }
+
+    /////////////////////////////////// CATEGORY 8: BUY TAX CLAIM-FEES ///////////////////////////////////
+
+    /// @notice Test that buy tax + LP fees are collected correctly during active tax period
+    function test_buyTaxCollected_withinTaxPeriod() public {
+        testToken = _createTaxToken(300, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        _graduateToken();
+
+        uint256 creatorBefore = _pendingTaxes(testToken, creator);
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        uint256 creatorDelta = _pendingTaxes(testToken, creator) - creatorBefore;
+
+        // Buy tax (3%) + LP creator share (0.5%) = 3.5% of buyAmount
+        uint256 expectedCreatorTotal = (buyAmount * (50 + 300)) / 10000;
+        assertApproxEqRel(
+            creatorDelta,
+            expectedCreatorTotal,
+            0.0000015e18, // 0.015% tolerance
+            "Creator should accrue buy tax (3%) + LP share (0.5%)"
+        );
+    }
+
+    /// @notice Test that buy tax is isolated from LP fees — treasury only gets LP share
+    function test_buyTaxRates_isolateTaxFromLpFees() public {
+        testToken = _createTaxToken(300, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        _graduateToken();
+
+        uint256 creatorBefore = _pendingTaxes(testToken, creator);
+        uint256 treasuryBefore = treasury.balance;
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        uint256 creatorDelta = _pendingTaxes(testToken, creator) - creatorBefore;
+        uint256 treasuryDelta = treasury.balance - treasuryBefore;
+
+        // Treasury only gets LP share (0.5%)
+        assertApproxEqAbs(treasuryDelta, buyAmount / 200, 1, "Treasury should receive only ~0.5% LP fee");
+        // Creator gets LP share (0.5%) + buy tax (3%)
+        assertApproxEqAbs(
+            creatorDelta,
+            (buyAmount * (50 + 300)) / 10000,
+            1,
+            "Creator should receive LP share + buy tax"
+        );
+        // Isolated buy tax = creator - treasury
+        uint256 taxOnly = creatorDelta - treasuryDelta;
+        assertApproxEqAbs(taxOnly, (buyAmount * 300) / 10000, 1, "Isolated buy tax should be ~3%");
+    }
+
+    /// @notice Test that no buy tax is charged after the tax period expires
+    function test_buyTax_noBuyTaxAfterPeriodExpires() public {
+        testToken = _createTaxToken(300, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        _graduateToken();
+
+        // Warp past tax period
+        vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1 seconds);
+
+        uint256 creatorBefore = _pendingTaxes(testToken, creator);
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        uint256 creatorDelta = _pendingTaxes(testToken, creator) - creatorBefore;
+
+        // After expiry, creator only gets LP share (0.5%), no buy tax
+        assertApproxEqAbs(creatorDelta, buyAmount / 200, 1, "Creator should only accrue LP share after tax expiry");
+    }
+
+    /// @notice Test full claim flow: creator receives buy tax + LP fees as ETH after claiming
+    function test_buyTax_claimFlow_creatorReceivesBuyTaxAndLpFees() public {
+        testToken = _createTaxToken(300, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        _graduateToken();
+
+        address[] memory _t = new address[](1);
+        _t[0] = testToken;
+        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t, creator)[0];
+
+        uint256 creatorEthBefore = creator.balance;
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        // Claim all fees
+        _collectFees(testToken);
+
+        uint256 creatorEthAfter = creator.balance;
+        uint256 creatorReceived = creatorEthAfter - creatorEthBefore;
+
+        // Creator should receive graduation deposit + LP share (0.5%) + buy tax (3%)
+        uint256 expectedFees = (buyAmount * (50 + 300)) / 10000;
+        assertApproxEqAbs(
+            creatorReceived,
+            graduationDeposit + expectedFees,
+            1,
+            "Creator should receive graduation deposit + LP fees + buy tax"
+        );
+    }
+
+    /// @notice Test that both buy and sell taxes are collected and claimable together
+    function test_buyAndSellTax_bothCollectedAndClaimable() public {
+        testToken = _createTaxToken(300, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+
+        // Buy on bonding curve so buyer has tokens for selling
+        vm.deal(buyer, 2 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+
+        _graduateToken();
+
+        address[] memory _t = new address[](1);
+        _t[0] = testToken;
+        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t, creator)[0];
+
+        uint256 creatorEthBefore = creator.balance;
+        uint256 creatorFeesBefore = _pendingTaxes(testToken, creator);
+
+        // Buy 1 ETH on Uniswap → accrues buy tax (3%) + LP creator share (0.5%)
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        uint256 feesAfterBuy = _pendingTaxes(testToken, creator);
+        uint256 buyFees = feesAfterBuy - creatorFeesBefore;
+
+        // Sell tokens → accrues sell tax (5%) + LP creator share (0.5%)
+        uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
+        uint256 sellAmount = buyerTokenBalance / 2;
+        _swapSell(buyer, sellAmount, 0, true);
+
+        uint256 feesAfterSell = _pendingTaxes(testToken, creator);
+        uint256 sellFees = feesAfterSell - feesAfterBuy;
+
+        // Both buy and sell should generate fees
+        assertGt(buyFees, 0, "Buy should generate fees");
+        assertGt(sellFees, 0, "Sell should generate fees");
+
+        // Claim all
+        _collectFees(testToken);
+
+        uint256 creatorReceived = creator.balance - creatorEthBefore;
+
+        // Creator total should exceed LP-only amount (graduation + both LP shares)
+        uint256 lpOnlyAmount = graduationDeposit + buyAmount / 200; // graduation + buy LP share only
+        assertGt(creatorReceived, lpOnlyAmount, "Creator should receive more than LP-only amount (taxes included)");
+
+        // Total fees (excl graduation) should include buy tax + sell tax + LP shares
+        uint256 feesExclGraduation = creatorReceived - graduationDeposit;
+        assertGt(feesExclGraduation, buyFees, "Total fees should exceed buy-only fees (sell fees also included)");
+    }
 }
