@@ -22,10 +22,15 @@ contract DeployHook is Script {
         console.log("Deploying on chain ID:", block.chainid);
         console.log("Pool Manager:", poolManager);
 
-        // Hook permission flags: AFTER_SWAP_FLAG | AFTER_SWAP_RETURNS_DELTA_FLAG | BEFORE_SWAP_FLAG
-        uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_SWAP_FLAG);
+        address launchpad = _getLaunchpad();
 
-        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager));
+        // Hook permission flags: AFTER_SWAP_FLAG | AFTER_SWAP_RETURNS_DELTA_FLAG | BEFORE_SWAP_FLAG | BEFORE_SWAP_RETURNS_DELTA_FLAG
+        uint160 flags = uint160(
+            Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+        );
+
+        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), launchpad);
         bytes memory creationCode = type(LivoSwapHook).creationCode;
 
         console.log("Mining hook address...");
@@ -40,7 +45,7 @@ contract DeployHook is Script {
 
         // Deploy the hook using CREATE2
         vm.broadcast();
-        LivoSwapHook livoSwapHook = new LivoSwapHook{salt: salt}(IPoolManager(poolManager));
+        LivoSwapHook livoSwapHook = new LivoSwapHook{salt: salt}(IPoolManager(poolManager), launchpad);
 
         console.log("Deployed hook at:", address(livoSwapHook));
         require(address(livoSwapHook) == hookAddress, "DeployHook: hook address mismatch");
@@ -50,6 +55,10 @@ contract DeployHook is Script {
         require((addressFlags & expectedFlags) == expectedFlags, "Address flags mismatch");
 
         console.log("LivoSwapHook successfully deployed at:", address(livoSwapHook));
+    }
+
+    function _getLaunchpad() internal view returns (address) {
+        return vm.envAddress("LAUNCHPAD_ADDRESS");
     }
 
     function _getPoolManager() internal view returns (address poolManager) {

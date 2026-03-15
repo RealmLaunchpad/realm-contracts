@@ -126,7 +126,9 @@ contract LaunchpadBaseTests is Test {
         liquidityLock = new LiquidityLockUniv4WithFees(positionManagerAddress);
 
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress), DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+            "LivoSwapHook.sol:LivoSwapHook",
+            abi.encode(poolManagerAddress, address(launchpad)),
+            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
         taxHook = LivoSwapHook(payable(DeploymentAddressesMainnet.LIVO_SWAP_HOOK));
 

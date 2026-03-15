@@ -42,7 +42,7 @@ library DeploymentAddressesMainnet {
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     /// @notice LivoSwapHook address for Uniswap V4
-    address public constant LIVO_SWAP_HOOK = 0x2Ca2764a626De36331e20B08AEd13e5C7A0240c4;
+    address public constant LIVO_SWAP_HOOK = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
 
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
@@ -80,7 +80,7 @@ library DeploymentAddressesSepolia {
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     /// @notice LivoSwapHook address for Uniswap V4
-    address public constant LIVO_SWAP_HOOK = 0x62FB818a1aB96211531641AeE3244E42deD8C0C4;
+    address public constant LIVO_SWAP_HOOK = 0x62fb818A1aB96211531641aeE3244e42dED8C0cc;
 
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
