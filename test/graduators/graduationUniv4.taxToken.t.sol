@@ -11,7 +11,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
-import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
+import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
@@ -24,7 +24,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
         vm.prank(creator);
-        feeHandlerV4.claim(tokens);
+        feeHandler.claim(tokens);
     }
 
     function _pendingTaxes(address token, address tokenOwner) internal view returns (uint256) {
@@ -558,7 +558,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _graduateToken();
         address[] memory _t = new address[](1);
         _t[0] = testToken;
-        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t, creator)[0];
+        uint256 graduationDeposit = feeHandler.getClaimable(_t, creator)[0];
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 treasuryEthBalanceBefore = treasury.balance;
@@ -571,7 +571,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Verify fees accumulated
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory fees = feeHandlerV4.getClaimable(tokens, creator);
+        uint256[] memory fees = feeHandler.getClaimable(tokens, creator);
         assertGt(fees[0], 0, "Fees should have accumulated");
         assertApproxEqAbs(fees[0] - graduationDeposit, buyAmount / 200, 1, "Expected ~0.5% of buy amount");
 
@@ -608,7 +608,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _graduateToken();
         address[] memory _t = new address[](1);
         _t[0] = testToken;
-        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t, creator)[0];
+        uint256 graduationDeposit = feeHandler.getClaimable(_t, creator)[0];
 
         uint256 creatorEthBalanceBefore = creator.balance;
         uint256 creatorTaxesBefore = _pendingTaxes(testToken, creator);
@@ -625,7 +625,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Verify LP fees accumulated from buy (in ETH, not WETH)
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory claimableFees = feeHandlerV4.getClaimable(tokens, creator);
+        uint256[] memory claimableFees = feeHandler.getClaimable(tokens, creator);
         assertApproxEqAbs(
             claimableFees[0] - graduationDeposit, buyAmount / 200, 5, "LP fees should be ~0.5% of buy amount in ETH"
         );
@@ -658,7 +658,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _graduateToken();
         address[] memory _t2 = new address[](1);
         _t2[0] = testToken;
-        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t2, creator)[0];
+        uint256 graduationDeposit = feeHandler.getClaimable(_t2, creator)[0];
 
         // Fast-forward past tax period
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
@@ -691,7 +691,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         );
 
         // Verify LP fees are still claimable after tax period has expired
-        uint256 claimableAfterExpiry = feeHandlerV4.getClaimable(_t2, creator)[0];
+        uint256 claimableAfterExpiry = feeHandler.getClaimable(_t2, creator)[0];
         assertGt(claimableAfterExpiry, graduationDeposit, "LP fees should still be claimable after tax period expires");
 
         // Claim LP fees (treasury already received its share during swaps)
@@ -736,10 +736,10 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         tokens[0] = testToken;
 
         vm.prank(alice);
-        feeHandlerV4.claim(tokens);
+        feeHandler.claim(tokens);
 
         vm.prank(creator);
-        feeHandlerV4.claim(tokens);
+        feeHandler.claim(tokens);
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 aliceEthBalanceAfter = alice.balance;
@@ -769,7 +769,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
 
-        uint256[] memory totalClaimable = feeHandlerV4.getClaimable(tokens, creator);
+        uint256[] memory totalClaimable = feeHandler.getClaimable(tokens, creator);
         assertGt(totalClaimable[0], 0, "claimable amount should be positive");
 
         // Record balances
@@ -777,7 +777,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Claim from both positions
         vm.prank(creator);
-        feeHandlerV4.claim(tokens);
+        feeHandler.claim(tokens);
 
         uint256 creatorEthBalanceAfter = creator.balance;
         uint256 totalCreatorFees = creatorEthBalanceAfter - creatorEthBalanceBefore;
@@ -910,10 +910,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertApproxEqAbs(treasuryDelta, buyAmount / 200, 1, "Treasury should receive only ~0.5% LP fee");
         // Creator gets LP share (0.5%) + buy tax (3%)
         assertApproxEqAbs(
-            creatorDelta,
-            (buyAmount * (50 + 300)) / 10000,
-            1,
-            "Creator should receive LP share + buy tax"
+            creatorDelta, (buyAmount * (50 + 300)) / 10000, 1, "Creator should receive LP share + buy tax"
         );
         // Isolated buy tax = creator - treasury
         uint256 taxOnly = creatorDelta - treasuryDelta;
@@ -947,7 +944,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         address[] memory _t = new address[](1);
         _t[0] = testToken;
-        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t, creator)[0];
+        uint256 graduationDeposit = feeHandler.getClaimable(_t, creator)[0];
 
         uint256 creatorEthBefore = creator.balance;
 
@@ -984,7 +981,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         address[] memory _t = new address[](1);
         _t[0] = testToken;
-        uint256 graduationDeposit = feeHandlerV4.getClaimable(_t, creator)[0];
+        uint256 graduationDeposit = feeHandler.getClaimable(_t, creator)[0];
 
         uint256 creatorEthBefore = creator.balance;
         uint256 creatorFeesBefore = _pendingTaxes(testToken, creator);

@@ -10,8 +10,7 @@ import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol"
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
-import {LivoFeeHandlerUniV2} from "src/feeHandlers/LivoFeeHandlerUniV2.sol";
-import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
+import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
@@ -25,8 +24,7 @@ contract LaunchpadInvariants is Test {
     LivoGraduatorUniswapV4 public graduatorV4;
     LivoFactoryBase public factoryV2;
     LivoFactoryBase public factoryV4;
-    LivoFeeHandlerUniV2 public feeHandler;
-    LivoFeeHandlerUniV4 public feeHandlerV4;
+    LivoFeeHandler public feeHandler;
 
     InvariantsHelperLaunchpad public helper;
 
@@ -77,8 +75,7 @@ contract LaunchpadInvariants is Test {
         deployCodeTo(
             "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress), DeploymentAddressesMainnet.LIVO_SWAP_HOOK
         );
-        feeHandler = new LivoFeeHandlerUniV2();
-        feeHandlerV4 = new LivoFeeHandlerUniV4(address(launchpad));
+        feeHandler = new LivoFeeHandler();
 
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad),
@@ -104,7 +101,7 @@ contract LaunchpadInvariants is Test {
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandlerV4),
+            address(feeHandler),
             address(feeSplitterImpl)
         );
 

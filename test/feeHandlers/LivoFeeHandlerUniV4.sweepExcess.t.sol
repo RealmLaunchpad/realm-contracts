@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
+import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
@@ -25,8 +25,8 @@ contract MockToken {
     }
 }
 
-contract LivoFeeHandlerUniV4SweepExcessTests is Test {
-    LivoFeeHandlerUniV4 public handler;
+contract LivoFeeHandlerSweepExcessTests is Test {
+    LivoFeeHandler public handler;
 
     address public owner = makeAddr("owner");
     address public treasury = makeAddr("treasury");
@@ -42,7 +42,7 @@ contract LivoFeeHandlerUniV4SweepExcessTests is Test {
         tokenB = address(new MockToken(alice));
 
         vm.prank(owner);
-        handler = new LivoFeeHandlerUniV4(address(mockLaunchpad));
+        handler = new LivoFeeHandler();
     }
 
     // ======================== Helpers ========================

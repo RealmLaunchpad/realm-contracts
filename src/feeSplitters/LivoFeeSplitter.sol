@@ -83,11 +83,6 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
         _setShares(recipients_, sharesBps_);
     }
 
-    /// @notice Accrues pending LP fees by delegating to the UniV4 fee handler
-    function accrueTokenFees(address[] calldata tokens) external {
-        ILivoFeeHandler(_univ4FeeHandler).accrueTokenFees(tokens);
-    }
-
     ////////////////// FEE HANDLER INTERFACE /////////////////
 
     /// @notice Accepts ETH fees and accrues them for shareholders.

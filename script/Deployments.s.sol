@@ -10,8 +10,7 @@ import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol"
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
-import {LivoFeeHandlerUniV2} from "src/feeHandlers/LivoFeeHandlerUniV2.sol";
-import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
+import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
@@ -115,11 +114,9 @@ contract Deployments is Script {
         LivoGraduatorUniswapV2 graduatorV2 = new LivoGraduatorUniswapV2(univ2Router, address(launchpad));
         console.log("| LivoGraduatorUniswapV2 | ", address(graduatorV2));
 
-        // 6. Deploy fee handlers used by factories
-        LivoFeeHandlerUniV2 feeHandlerV2 = new LivoFeeHandlerUniV2();
-        console.log("| LivoFeeHandlerUniV2 | ", address(feeHandlerV2));
-        LivoFeeHandlerUniV4 feeHandlerV4 = new LivoFeeHandlerUniV4(address(launchpad));
-        console.log("| LivoFeeHandlerUniV4 | ", address(feeHandlerV4));
+        // 6. Deploy fee handler used by all factories
+        LivoFeeHandler feeHandler = new LivoFeeHandler();
+        console.log("| LivoFeeHandler | ", address(feeHandler));
 
         // 7. Deploy LivoGraduatorUniswapV4
         // NOTE: Hook address must be mined first and updated in DeploymentAddresses.sol
@@ -138,7 +135,7 @@ contract Deployments is Script {
             address(livoToken),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandlerV2),
+            address(feeHandler),
             address(feeSplitterImpl)
         );
         console.log("| LivoFactory (V2) | ", address(factoryV2));
@@ -147,7 +144,7 @@ contract Deployments is Script {
             address(livoToken),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandlerV4),
+            address(feeHandler),
             address(feeSplitterImpl)
         );
         console.log("| LivoFactory (V4) | ", address(factoryV4));
@@ -157,7 +154,7 @@ contract Deployments is Script {
             address(livoTaxableToken),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandlerV4),
+            address(feeHandler),
             address(feeSplitterImpl)
         );
         console.log("| LivoFactoryTaxToken (V4) | ", address(factoryTax));

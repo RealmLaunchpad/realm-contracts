@@ -736,7 +736,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 poolBalanceAfterGraduation = address(poolManager).balance;
         uint256 buyerEtherBefore = buyer.balance;
         uint256 treasuryEtherBefore = treasury.balance;
-        uint256 feeHandlerEtherBefore = address(feeHandlerV4).balance;
+        uint256 feeHandlerEtherBefore = address(feeHandler).balance;
 
         // when selling everything back, almost all eth deposited as liquidity should be recovered
 
@@ -745,7 +745,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 treasuryDelta = treasury.balance - treasuryEtherBefore;
-        uint256 feeHandlerDelta = address(feeHandlerV4).balance - feeHandlerEtherBefore;
+        uint256 feeHandlerDelta = address(feeHandler).balance - feeHandlerEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
         // Hook takes LP fees from pool: treasury share (direct) + creator share (to fee handler)
         assertEq(
@@ -918,7 +918,7 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
         vm.prank(creator);
-        feeHandlerV4.claim(tokens);
+        feeHandler.claim(tokens);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;

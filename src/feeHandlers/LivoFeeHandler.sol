@@ -1,37 +1,33 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LivoFeeHandlerBase} from "src/feeHandlers/LivoFeeHandlerBase.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 
-/// @title LivoFeeHandlerUniV4
-/// @notice Fee handler that extends LivoFeeHandlerBase with pending-claims tracking
-///         and excess ETH sweep functionality.
-contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTransient {
-    /// @notice launchpad address, to resolve treasury
-    address public immutable LIVO_LAUNCHPAD;
+/// @title LivoFeeHandler
+/// @notice Fee handler with pending-claims tracking, reentrancy protection, and excess ETH sweep.
+contract LivoFeeHandler is ILivoFeeHandler, Ownable, ReentrancyGuardTransient {
+    /// @notice claimable eth per account associated to a token
+    /// @dev claims are per token to not force an account to claim all-or-none
+    mapping(address token => mapping(address account => uint256 amount)) internal _pendingClaims;
 
     /// @notice Sum of all pending creator claims (used to identify excess/stuck ETH)
     uint256 public totalPendingCreatorClaims;
 
-    /// @notice Initializes the Uniswap V4 fee handler
-    /// @param _launchpad Address of the LivoLaunchpad contract
-    constructor(address _launchpad) Ownable(msg.sender) {
-        LIVO_LAUNCHPAD = _launchpad;
-    }
+    constructor() Ownable(msg.sender) {}
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
     /// @notice Deposits ETH fees for a token's fee receiver, tracking total pending claims
-    function depositFees(address token, address feeReceiver) external payable override {
+    function depositFees(address token, address feeReceiver) external payable {
         _pendingClaims[token][feeReceiver] += msg.value;
         totalPendingCreatorClaims += msg.value;
         emit CreatorFeesDeposited(token, feeReceiver, msg.value);
     }
 
     /// @notice Claims accumulated ETH fees for msg.sender from the provided `tokens`
-    function claim(address[] calldata tokens) external override nonReentrant {
+    function claim(address[] calldata tokens) external nonReentrant {
         uint256 claimable;
         uint256 nTokens = tokens.length;
 
@@ -70,7 +66,6 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
     function getClaimable(address[] calldata tokens, address receiver)
         external
         view
-        override
         returns (uint256[] memory creatorClaimable)
     {
         uint256 nTokens = tokens.length;
@@ -79,5 +74,14 @@ contract LivoFeeHandlerUniV4 is LivoFeeHandlerBase, Ownable, ReentrancyGuardTran
         for (uint256 i = 0; i < nTokens; i++) {
             creatorClaimable[i] = _pendingClaims[tokens[i]][receiver];
         }
+    }
+
+    ///////////////////////// INTERNAL //////////////////////////
+
+    /// @notice Transfers ETH to a recipient, reverting on failure
+    function _transferEth(address recipient, uint256 amount) internal {
+        if (amount == 0) return;
+        (bool success,) = recipient.call{value: amount}("");
+        require(success, EthTransferFailed());
     }
 }

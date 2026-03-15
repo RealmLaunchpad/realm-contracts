@@ -12,7 +12,4 @@ interface ILivoFeeHandler is ILivoClaims {
 
     /// @notice Deposits msg.value into `feeReceiver` balance for `token`
     function depositFees(address token, address feeReceiver) external payable;
-
-    /// @notice Accrues pending LP fees for the given tokens
-    function accrueTokenFees(address[] calldata tokens) external;
 }
