@@ -143,6 +143,109 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         _swapBuy(buyer, 1 ether, 0, false);
     }
 
+    /// @notice Buy charges LP fee (50/50 split) + buy tax (100% creator) during active tax period
+    function test_buyChargesBuyTaxAndLpFee() public {
+        uint16 buyTax = 300; // 3%
+        testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        _graduateToken();
+
+        uint256 creatorFeesBefore = _pendingCreatorFees(testToken);
+        uint256 treasuryBefore = treasury.balance;
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        uint256 creatorFeesAccrued = _pendingCreatorFees(testToken) - creatorFeesBefore;
+        uint256 treasuryLpFee = treasury.balance - treasuryBefore;
+
+        // LP fee = 1% of buyAmount, split 50/50
+        // Buy tax = 3% of buyAmount, 100% to creator
+        uint256 expectedTreasuryLpFee = buyAmount / 200; // 0.5%
+        uint256 expectedCreatorLpFee = buyAmount / 200; // 0.5%
+        uint256 expectedBuyTax = (buyAmount * buyTax) / 10000; // 3%
+
+        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 1, "Treasury should get ~0.5% LP fee");
+        assertApproxEqAbs(
+            creatorFeesAccrued,
+            expectedCreatorLpFee + expectedBuyTax,
+            1,
+            "Creator should get ~0.5% LP fee + ~3% buy tax"
+        );
+    }
+
+    /// @notice After tax period expires, buy only charges LP fee (no buy tax)
+    function test_buyOnlyLpFeeAfterTaxExpires() public {
+        uint16 buyTax = 300; // 3%
+        testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        _graduateToken();
+
+        // Warp past tax period
+        vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
+
+        uint256 creatorFeesBefore = _pendingCreatorFees(testToken);
+        uint256 treasuryBefore = treasury.balance;
+
+        uint256 buyAmount = 1 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        uint256 creatorLpFee = _pendingCreatorFees(testToken) - creatorFeesBefore;
+        uint256 treasuryLpFee = treasury.balance - treasuryBefore;
+        uint256 totalLpFee = creatorLpFee + treasuryLpFee;
+
+        // Only LP fee, no buy tax
+        assertApproxEqAbs(totalLpFee, buyAmount / 100, 1, "Only LP fee (~1%) should be charged after tax expires");
+        assertApproxEqAbs(creatorLpFee, treasuryLpFee, 1, "LP fee split should be ~50/50");
+    }
+
+    /// @notice Both buy and sell are taxed during active tax period
+    function test_buyAndSellBothTaxed() public {
+        uint16 buyTax = 300; // 3%
+        testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+
+        // Buy on bonding curve first so buyer has tokens
+        vm.deal(buyer, 2 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _graduateToken();
+
+        // --- Buy ---
+        uint256 creatorFeesBefore = _pendingCreatorFees(testToken);
+        uint256 treasuryBefore = treasury.balance;
+
+        uint256 buyAmount = 0.5 ether;
+        deal(buyer, buyAmount);
+        _swapBuy(buyer, buyAmount, 0, true);
+
+        uint256 creatorFeesFromBuy = _pendingCreatorFees(testToken) - creatorFeesBefore;
+        uint256 treasuryFromBuy = treasury.balance - treasuryBefore;
+
+        // Buy should have LP fee + buy tax
+        uint256 expectedBuyTax = (buyAmount * buyTax) / 10000;
+        assertGt(creatorFeesFromBuy, treasuryFromBuy, "Creator should get more than treasury on taxed buy");
+        assertApproxEqAbs(creatorFeesFromBuy - treasuryFromBuy, expectedBuyTax, 1, "Difference should be ~buy tax");
+
+        // --- Sell ---
+        creatorFeesBefore = _pendingCreatorFees(testToken);
+        treasuryBefore = treasury.balance;
+        uint256 buyerEthBefore = buyer.balance;
+
+        uint256 sellAmount = IERC20(testToken).balanceOf(buyer) / 4;
+        _swapSell(buyer, sellAmount, 0, true);
+
+        uint256 ethReceived = buyer.balance - buyerEthBefore;
+        uint256 creatorFeesFromSell = _pendingCreatorFees(testToken) - creatorFeesBefore;
+        uint256 treasuryFromSell = treasury.balance - treasuryBefore;
+
+        // Sell should have LP fee + sell tax
+        uint256 grossEth = ethReceived + creatorFeesFromSell + treasuryFromSell;
+        uint256 expectedSellTax = (grossEth * DEFAULT_SELL_TAX_BPS) / 10000;
+        assertApproxEqAbs(
+            creatorFeesFromSell - treasuryFromSell, expectedSellTax, 2, "Sell creator excess should be ~sell tax"
+        );
+    }
+
     /// @notice Accurate fee amounts: buy 10 ETH, verify exactly 0.05 ETH to each of creator and treasury
     function test_accurateFeeAmounts() public createDefaultTaxToken {
         _graduateToken();
