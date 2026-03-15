@@ -250,16 +250,16 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     /// @notice Quotes how many tokens must be sold to receive an exact amount of ETH
     /// @param token Address of the token to quote
     /// @param ethAmount Amount of ETH the seller wants to receive
-    /// @return tokensRequired Amount of tokens that must be sold
     /// @return ethPulledFromReserves Amount of ETH pulled from reserves (before fee)
     /// @return ethFee Fee amount in ETH
+    /// @return tokensRequired Amount of tokens that must be sold
     function quoteSellTokensForExactEth(address token, uint256 ethAmount)
         external
         view
-        returns (uint256 tokensRequired, uint256 ethPulledFromReserves, uint256 ethFee)
+        returns (uint256 ethPulledFromReserves, uint256 ethFee, uint256 tokensRequired)
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
-        (tokensRequired, ethPulledFromReserves, ethFee) = _quoteSellTokensForExactEth(token, ethAmount);
+        (ethPulledFromReserves, ethFee, tokensRequired) = _quoteSellTokensForExactEth(token, ethAmount);
     }
 
     /// @notice Returns the maximum amount of ETH that can be spent on a given token
@@ -440,7 +440,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     function _quoteSellTokensForExactEth(address token, uint256 ethAmount)
         internal
         view
-        returns (uint256 tokensRequired, uint256 ethPulledFromReserves, uint256 ethFee)
+        returns (uint256 ethPulledFromReserves, uint256 ethFee, uint256 tokensRequired)
     {
         TokenConfig storage tokenConfig = tokenConfigs[token];
 

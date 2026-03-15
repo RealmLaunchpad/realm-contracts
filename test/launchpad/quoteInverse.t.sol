@@ -44,7 +44,7 @@ abstract contract QuoteInverseTests is LaunchpadBaseTests {
         _launchpadBuy(testToken, 2 ether);
         uint256 tokensIn = 100_000_000e18;
         (,, uint256 ethOut) = launchpad.quoteSellExactTokens(testToken, tokensIn);
-        (uint256 tokensBack,,) = launchpad.quoteSellTokensForExactEth(testToken, ethOut);
+        (,, uint256 tokensBack) = launchpad.quoteSellTokensForExactEth(testToken, ethOut);
         assertApproxEqAbs(tokensBack, tokensIn, SELL_ABS_TOLERANCE, "sell round-trip token mismatch");
     }
 
@@ -52,7 +52,7 @@ abstract contract QuoteInverseTests is LaunchpadBaseTests {
         _launchpadBuy(testToken, 1 ether);
         uint256 tokensIn = 1_000e18;
         (,, uint256 ethOut) = launchpad.quoteSellExactTokens(testToken, tokensIn);
-        (uint256 tokensBack,,) = launchpad.quoteSellTokensForExactEth(testToken, ethOut);
+        (,, uint256 tokensBack) = launchpad.quoteSellTokensForExactEth(testToken, ethOut);
         assertApproxEqAbs(tokensBack, tokensIn, SELL_ABS_TOLERANCE, "sell round-trip token mismatch");
     }
 
@@ -89,7 +89,7 @@ abstract contract QuoteInverseTests is LaunchpadBaseTests {
         // ethOut must not exceed the available reserves
         if (ethOut > ethCollected) return;
 
-        (uint256 tokensBack,,) = launchpad.quoteSellTokensForExactEth(testToken, ethOut);
+        (,, uint256 tokensBack) = launchpad.quoteSellTokensForExactEth(testToken, ethOut);
         assertApproxEqAbs(tokensBack, tokensIn, SELL_ABS_TOLERANCE, "fuzz sell round-trip token mismatch");
     }
 
