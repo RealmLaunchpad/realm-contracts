@@ -30,12 +30,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
     address public pair;
 
-    /// @notice Token name
-    string internal _tokenName;
-
-    /// @notice Token symbol
-    string internal _tokenSymbol;
-
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
 
@@ -44,6 +38,12 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     /// @notice Address that receives fees within the fee handler
     address public feeReceiver;
+
+    /// @notice Token name
+    string internal _tokenName;
+
+    /// @notice Token symbol
+    string internal _tokenSymbol;
 
     //////////////////////// Errors //////////////////////
 
