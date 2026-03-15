@@ -124,14 +124,14 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
     function test_cannotCreateToken_sellTaxAboveMax() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidSellTaxBps.selector));
-        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 501, uint32(14 days));
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxBps.selector));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 501, uint32(14 days));
     }
 
     function test_cannotCreateToken_taxDurationAboveMax() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxDuration.selector));
-        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 500, uint32(14 days + 1));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days + 1));
     }
 }
 
@@ -141,7 +141,7 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         emit LivoTaxableTokenUniV4.LivoTaxableTokenInitialized(0, 500, 14 days);
 
         vm.prank(creator);
-        address deployedToken = factoryTax.createToken("TestToken", "TEST", creator, "0x12", 500, uint32(14 days));
+        address deployedToken = factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days));
 
         assertTrue(deployedToken != address(0));
     }
@@ -150,7 +150,7 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         vm.recordLogs();
 
         vm.prank(creator);
-        address deployedToken = factoryTax.createToken("TestToken", "TEST", creator, "0x12", 500, uint32(14 days));
+        address deployedToken = factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(14 days));
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
 

@@ -37,7 +37,9 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
     {
         vm.prank(creator);
         return
-            factoryTax.createToken(name, symbol, creator, metadata, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION));
+            factoryTax.createToken(
+                name, symbol, creator, metadata, 0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
+            );
     }
 
     /// @notice Verify that sell tax math is correct: tax/T == taxBps and claimable == tax

@@ -32,6 +32,9 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
     //////////////////////// potentially immutable //////////////////
 
+    /// @notice Buy tax rate in basis points (set during initialization, cannot be changed)
+    uint16 public buyTaxBps;
+
     /// @notice Sell tax rate in basis points (set during initialization, cannot be changed)
     uint16 public sellTaxBps;
 
@@ -66,12 +69,15 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
     /// @notice Initializes the token clone with its parameters including tax configuration
     /// @param params Shared token initialization parameters
+    /// @param buyTaxBps_ Buy tax rate in basis points
     /// @param sellTaxBps_ Sell tax rate in basis points
     /// @param taxDurationSeconds_ Duration in seconds after graduation during which taxes apply
-    function initialize(ILivoToken.InitializeParams memory params, uint16 sellTaxBps_, uint40 taxDurationSeconds_)
-        external
-        initializer
-    {
+    function initialize(
+        ILivoToken.InitializeParams memory params,
+        uint16 buyTaxBps_,
+        uint16 sellTaxBps_,
+        uint40 taxDurationSeconds_
+    ) external initializer {
         require(params.graduator != address(0), InvalidGraduator());
 
         // storage variables inherited from LivoToken
@@ -85,7 +91,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         feeReceiver = params.feeReceiver;
 
         // Validate and store tax configuration
-        _initializeTaxConfig(sellTaxBps_, taxDurationSeconds_);
+        _initializeTaxConfig(buyTaxBps_, sellTaxBps_, taxDurationSeconds_);
 
         // all is minted back to the launchpad
         _mint(params.launchpad, TOTAL_SUPPLY);
@@ -96,7 +102,7 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @notice Returns the tax configuration for this taxable token
     function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
         config = TaxConfig({
-            buyTaxBps: 0, // Buy tax is always 0 in this token implementation
+            buyTaxBps: buyTaxBps,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: taxDurationSeconds,
             graduationTimestamp: graduationTimestamp
@@ -105,15 +111,12 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
 
     /// @notice Internal helper to store tax configuration
     /// @dev Separated to reduce stack depth in initialize()
-    function _initializeTaxConfig(uint16 _sellTaxBps, uint40 _taxDurationSeconds) internal {
+    function _initializeTaxConfig(uint16 _buyTaxBps, uint16 _sellTaxBps, uint40 _taxDurationSeconds) internal {
         // there is no restrictions here anymore regarding sell tax an tax duration. Restrictions are enforced in the factory
-        emit LivoTaxableTokenInitialized(
-            0, // Buy tax is always 0 in this token implementation
-            _sellTaxBps,
-            _taxDurationSeconds
-        );
+        emit LivoTaxableTokenInitialized(_buyTaxBps, _sellTaxBps, _taxDurationSeconds);
 
         // Store tax configuration
+        buyTaxBps = _buyTaxBps;
         sellTaxBps = _sellTaxBps;
         taxDurationSeconds = _taxDurationSeconds;
     }

@@ -192,7 +192,7 @@ contract LaunchpadBaseTests is Test {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV4)) {
             if (address(implementation) == address(livoTaxToken)) {
-                testToken = factoryTax.createToken("TestToken", "TEST", creator, "0x003", 500, uint32(14 days));
+                testToken = factoryTax.createToken("TestToken", "TEST", creator, "0x003", 0, 500, uint32(14 days));
             } else {
                 testToken = factoryV4.createToken("TestToken", "TEST", creator, "0x003");
             }

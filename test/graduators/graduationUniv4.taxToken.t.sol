@@ -174,7 +174,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Sell tax goes directly to creator as WETH, buy taxes are never collected
     function test_sellTaxRates_appliedCorrectly() public {
         // Create token with 5% sell tax (buy tax is always 0)
-        testToken = _createTaxToken(500, 14 days);
+        testToken = _createTaxToken(0, 500, 14 days);
 
         // First get some tokens through launchpad BEFORE graduating
         vm.deal(buyer, 3 ether);
@@ -218,7 +218,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     /// @notice Test that zero sell tax rate results in no tax collection
     function test_zeroSellTaxRate_noTaxCollected() public {
         // Create token with 0% sell tax (buy tax is always 0)
-        testToken = _createTaxToken(0, 14 days);
+        testToken = _createTaxToken(0, 0, 14 days);
 
         // Buy tokens through launchpad
         vm.deal(buyer, 2 ether);
@@ -399,7 +399,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Sell tax goes directly to creator as WETH
     function test_maxSellRate_collectedTaxMatchesExpectation() public {
         // Create token with max sell tax rate
-        testToken = _createTaxToken(500, 14 days);
+        testToken = _createTaxToken(0, 500, 14 days);
 
         // Buy tokens through launchpad (buy enough to have tokens to sell)
         vm.deal(buyer, 3 ether);
@@ -434,9 +434,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
     /// @notice Test that token creation with invalid tax rate reverts
     function test_tokenCreation_invalidTaxRate_reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidSellTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxBps.selector));
         vm.prank(creator);
-        factoryTax.createToken("InvalidToken", "INV", creator, "0x003", 600, uint32(14 days));
+        factoryTax.createToken("InvalidToken", "INV", creator, "0x003", 0, 600, uint32(14 days));
     }
 
     /// @notice Test that swap before graduation has no liquidity to swap with
@@ -779,8 +779,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidSellTaxBps.selector));
-        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 550, uint32(4 days));
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxBps.selector));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 550, uint32(4 days));
     }
 
     // This test is removed because buy taxes no longer exist, so there's no tax swap to trigger

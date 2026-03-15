@@ -17,11 +17,11 @@ import {ILivoFeeSplitter} from "src/interfaces/ILivoFeeSplitter.sol";
 
 /// @notice This can be used for univ2 or univ4 tokens. Just with different graduators
 contract LivoFactoryTaxToken is ILivoFactory {
-    error InvalidSellTaxBps();
+    error InvalidTaxBps();
     error InvalidTaxDuration();
 
-    /// @notice max configurable sell tax
-    uint256 public constant MAX_SELL_TAX_BPS = 500;
+    /// @notice max configurable tax (buy or sell)
+    uint256 public constant MAX_TAX_BPS = 500;
 
     /// @notice max configurable sell tax duration
     uint256 public constant MAX_SELL_TAX_DURATION_SECONDS = 14 days;
@@ -62,12 +62,13 @@ contract LivoFactoryTaxToken is ILivoFactory {
         string calldata symbol,
         address feeReceiver,
         bytes32 salt,
+        uint16 buyTaxBps,
         uint16 sellTaxBps,
         uint32 taxDurationSeconds
     ) external returns (address token) {
         require(feeReceiver != address(0), InvalidFeeReceiver());
         token = _createAndInitializeTaxToken(
-            name, symbol, address(FEE_HANDLER), feeReceiver, salt, sellTaxBps, taxDurationSeconds
+            name, symbol, address(FEE_HANDLER), feeReceiver, salt, buyTaxBps, sellTaxBps, taxDurationSeconds
         );
     }
 
@@ -78,12 +79,14 @@ contract LivoFactoryTaxToken is ILivoFactory {
         address[] calldata recipients,
         uint256[] calldata sharesBps,
         bytes32 salt,
+        uint16 buyTaxBps,
         uint16 sellTaxBps,
         uint32 taxDurationSeconds
     ) external returns (address token, address feeSplitter) {
         feeSplitter = _deployFeeSplitter(symbol, salt);
-        token =
-            _createAndInitializeTaxToken(name, symbol, feeSplitter, feeSplitter, salt, sellTaxBps, taxDurationSeconds);
+        token = _createAndInitializeTaxToken(
+            name, symbol, feeSplitter, feeSplitter, salt, buyTaxBps, sellTaxBps, taxDurationSeconds
+        );
         // IMPORTANT: FeeSplitterCreated must be emitted BEFORE initialize() because the indexer
         // creates the FeeSplitter entity from this event, and events emitted during initialize()
         // (SharesUpdated) depend on the FeeSplitter entity existing.
@@ -105,52 +108,43 @@ contract LivoFactoryTaxToken is ILivoFactory {
         address feeHandler_,
         address feeReceiver,
         bytes32 salt,
+        uint16 buyTaxBps,
         uint16 sellTaxBps,
         uint32 taxDurationSeconds
     ) internal returns (address token) {
         require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
         require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
 
-        require(sellTaxBps <= MAX_SELL_TAX_BPS, InvalidSellTaxBps());
+        require(buyTaxBps <= MAX_TAX_BPS && sellTaxBps <= MAX_TAX_BPS, InvalidTaxBps());
         require(taxDurationSeconds <= MAX_SELL_TAX_DURATION_SECONDS, InvalidTaxDuration());
 
-        // forge-lint: disable-next-line
-        bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
-        // minimal proxy pattern to deploy a new LivoToken instance
-        token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
+        {
+            // forge-lint: disable-next-line
+            bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
+            // minimal proxy pattern to deploy a new LivoToken instance
+            token = Clones.cloneDeterministic(address(TOKEN_IMPLEMENTATION), salt_);
+        }
 
-        // IMPORTANT: TokenCreated must be emitted BEFORE initialize() because the indexer
-        // creates the TokenData entity from this event, and events emitted during initialize()
-        // (PairInitialized, PoolIdRegistered, LivoTaxableTokenInitialized, etc.) depend on TokenData existing.
         emit TokenCreated(
             token, name, symbol, msg.sender, address(LAUNCHPAD), address(GRADUATOR), feeHandler_, feeReceiver
         );
 
-        _initializeToken(
-            token,
-            ILivoToken.InitializeParams({
-                name: name,
-                symbol: symbol,
-                tokenOwner: msg.sender,
-                graduator: address(GRADUATOR),
-                launchpad: address(LAUNCHPAD),
-                feeHandler: feeHandler_,
-                feeReceiver: feeReceiver
-            }),
-            sellTaxBps,
-            taxDurationSeconds
-        );
-
+        LivoTaxableTokenUniV4(payable(token))
+            .initialize(
+                ILivoToken.InitializeParams({
+                    name: name,
+                    symbol: symbol,
+                    tokenOwner: msg.sender,
+                    graduator: address(GRADUATOR),
+                    launchpad: address(LAUNCHPAD),
+                    feeHandler: feeHandler_,
+                    feeReceiver: feeReceiver
+                }),
+                buyTaxBps,
+                sellTaxBps,
+                uint40(taxDurationSeconds)
+            );
         // this will emit another event (from the launchpad)
         LAUNCHPAD.launchToken(token, BONDING_CURVE);
-    }
-
-    function _initializeToken(
-        address token,
-        ILivoToken.InitializeParams memory initParams,
-        uint16 sellTaxBps,
-        uint32 taxDurationSeconds
-    ) internal {
-        LivoTaxableTokenUniV4(payable(token)).initialize(initParams, sellTaxBps, uint40(taxDurationSeconds));
     }
 }

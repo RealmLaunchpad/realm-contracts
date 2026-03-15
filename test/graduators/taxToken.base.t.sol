@@ -42,10 +42,14 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     /// @param sellTaxBps Sell tax rate in basis points (max 500)
     /// @param taxDurationSeconds Duration in seconds after graduation during which taxes apply
     /// @return tokenAddress The address of the created tax token
-    function _createTaxToken(uint16 sellTaxBps, uint40 taxDurationSeconds) internal returns (address tokenAddress) {
+    function _createTaxToken(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds)
+        internal
+        returns (address tokenAddress)
+    {
         vm.prank(creator);
-        tokenAddress =
-            factoryTax.createToken("TaxToken", "TAX", creator, "0x003", sellTaxBps, uint32(taxDurationSeconds));
+        tokenAddress = factoryTax.createToken(
+            "TaxToken", "TAX", creator, "0x003", buyTaxBps, sellTaxBps, uint32(taxDurationSeconds)
+        );
     }
 
     /// @notice Helper to get pool key with tax hook
@@ -63,7 +67,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
 
     /// @notice Modifier to create a default tax token for testing
     modifier createDefaultTaxToken() {
-        testToken = _createTaxToken(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
+        testToken = _createTaxToken(0, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
         _;
     }
 

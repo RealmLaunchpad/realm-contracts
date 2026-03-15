@@ -6,7 +6,11 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary, toBeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {
+    BeforeSwapDelta,
+    BeforeSwapDeltaLibrary,
+    toBeforeSwapDelta
+} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
@@ -99,15 +103,21 @@ contract LivoSwapHook is BaseHook {
         uint256 absAmount = uint256(-params.amountSpecified);
         uint256 feeAmount = (absAmount * LP_FEE_BPS) / BASIS_POINTS;
 
-        // Take ETH from the pool to this contract
-        poolManager.take(key.currency0, address(this), feeAmount);
+        // Calculate buy tax if applicable
+        (bool shouldTax, uint16 taxBps) = _getTaxParams(tokenAddress, true);
+        uint256 taxAmount = shouldTax ? (absAmount * taxBps) / BASIS_POINTS : 0;
 
-        // Split and deposit LP fee (no tax on buys)
-        _accrue(tokenAddress, feeAmount, 0);
+        uint256 totalFee = feeAmount + taxAmount;
+
+        // Take ETH from the pool to this contract
+        poolManager.take(key.currency0, address(this), totalFee);
+
+        // Split and deposit LP fee + buy tax
+        _accrue(tokenAddress, feeAmount, taxAmount);
 
         // Return delta: positive deltaSpecified means hook is taking from the specified (input) currency
         // forge-lint: disable-next-line(unsafe-typecast)
-        return (IHooks.beforeSwap.selector, toBeforeSwapDelta(int128(uint128(feeAmount)), 0), 0);
+        return (IHooks.beforeSwap.selector, toBeforeSwapDelta(int128(uint128(totalFee)), 0), 0);
     }
 
     /// @notice Hook callback executed after each swap to collect sell taxes and LP fees on sells
@@ -169,7 +179,6 @@ contract LivoSwapHook is BaseHook {
             return (false, 0);
         }
 
-        // buy tax will always be zero in the current tax-token implementation
         taxBps = isBuy ? config.buyTaxBps : config.sellTaxBps;
         if (taxBps == 0) {
             return (false, 0);
@@ -188,13 +197,13 @@ contract LivoSwapHook is BaseHook {
 
         // Single accrueFees call: creator LP share + sell tax
         uint256 creatorTotal = creatorLpShare + taxAmount;
-        
+
         // emit events for accounting purposes
         emit LpFeesAccrued(tokenAddress, creatorLpShare, treasuryShare);
         if (taxAmount > 0) {
             emit CreatorTaxesAccrued(tokenAddress, taxAmount);
         }
-        
+
         ILivoToken(tokenAddress).accrueFees{value: creatorTotal}();
 
         // Treasury share via direct transfer
