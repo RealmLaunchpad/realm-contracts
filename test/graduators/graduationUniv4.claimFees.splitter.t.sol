@@ -123,23 +123,21 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
         assertApproxEqAbs(s1Earned * 3000, s2Earned * 7000, 1e12, "fee split should respect 70/30 shares");
     }
 
-    /// @notice Total fees across shareholders + treasury match expected 1% LP fee
+    /// @notice Total fees across shareholders match expected 0.5% creator LP fee
     function test_totalFeesMatchExpected() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
         uint256 s1Before = shareholder1.balance;
         uint256 s2Before = shareholder2.balance;
-        uint256 treasuryBefore = treasury.balance;
 
         _collectFees(testToken);
 
         uint256 totalShareholderFees = (shareholder1.balance - s1Before) + (shareholder2.balance - s2Before);
-        uint256 treasuryFees = treasury.balance - treasuryBefore;
 
         // graduation compensation (0.1 ETH) is routed through the splitter to shareholders
         uint256 graduationCompensation = CREATOR_GRADUATION_COMPENSATION;
         uint256 lpFeesOnly = totalShareholderFees - graduationCompensation;
 
-        // total LP fees = creator share + treasury share ≈ 1% of buy amount
-        assertApproxEqAbs(lpFeesOnly + treasuryFees, 1 ether / 100, 1, "total LP fees should be 1% of buy amount");
+        // Treasury LP share sent during swap by hook; shareholders get creator's 0.5% share
+        assertApproxEqAbs(lpFeesOnly, 1 ether / 200, 1, "shareholder LP fees should be 0.5% of buy amount");
     }
 
     /// @notice getClaimable on splitter returns correct values before claim
