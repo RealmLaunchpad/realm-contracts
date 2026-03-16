@@ -23,7 +23,7 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
-        uint256[] memory feeReceiverFees = feeHandlerV4.getClaimable(_singleTokenArray(), alice);
+        uint256[] memory feeReceiverFees = feeHandler.getClaimable(_singleTokenArray(), alice);
         assertGt(feeReceiverFees[0], 0, "feeReceiver should have non-zero claimable");
     }
 
@@ -38,7 +38,7 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
         deal(buyer, 10 ether);
         _swapBuy(buyer, 1 ether, 10e18, true);
 
-        uint256[] memory ownerFees = feeHandlerV4.getClaimable(_singleTokenArray(), creator);
+        uint256[] memory ownerFees = feeHandler.getClaimable(_singleTokenArray(), creator);
         assertEq(ownerFees[0], 0, "tokenOwner should have zero claimable when not feeReceiver");
     }
 }

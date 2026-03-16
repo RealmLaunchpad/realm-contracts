@@ -6,17 +6,20 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
-import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
-import {LivoFeeHandlerUniV2} from "src/feeHandlers/LivoFeeHandlerUniV2.sol";
-import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
+import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {DeploymentAddressesMainnet, DeploymentAddressesSepolia} from "src/config/DeploymentAddresses.sol";
 
 import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
+
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
+import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 
 /// @title Livo Protocol Deployment Script
 /// @notice Deploys all core Livo contracts and configures whitelisted component sets
@@ -27,18 +30,15 @@ contract Deployments is Script {
     // TODO: Set treasury address before deployment (this is livo.dev for now)
     address constant TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181; // TODO: Set before deployment
 
+    // Foundry's deterministic deployment proxy (Create2 deployer)
+    address constant FOUNDRY_CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+
     // ========================= Network Config =========================
 
     function _getNetworkAddresses()
         internal
         view
-        returns (
-            address univ2Router,
-            address univ4PoolManager,
-            address univ4PositionManager,
-            address permit2,
-            address hookAddress
-        )
+        returns (address univ2Router, address univ4PoolManager, address univ4PositionManager, address permit2)
     {
         if (block.chainid == 1) {
             // Mainnet
@@ -46,14 +46,12 @@ contract Deployments is Script {
             univ4PoolManager = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
             univ4PositionManager = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
             permit2 = DeploymentAddressesMainnet.PERMIT2;
-            hookAddress = DeploymentAddressesMainnet.LIVO_SWAP_HOOK;
         } else if (block.chainid == 11155111) {
             // Sepolia
             univ2Router = DeploymentAddressesSepolia.UNIV2_ROUTER;
             univ4PoolManager = DeploymentAddressesSepolia.UNIV4_POOL_MANAGER;
             univ4PositionManager = DeploymentAddressesSepolia.UNIV4_POSITION_MANAGER;
             permit2 = DeploymentAddressesSepolia.PERMIT2;
-            hookAddress = DeploymentAddressesSepolia.LIVO_SWAP_HOOK;
         } else {
             revert("Unsupported chain");
         }
@@ -67,18 +65,30 @@ contract Deployments is Script {
         );
     }
 
+    // ========================= Hook Deployment =========================
+
+    function _deployHook(address poolManager, address launchpad) internal returns (address hookAddress) {
+        uint160 flags = uint160(
+            Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+        );
+        bytes memory constructorArgs = abi.encode(IPoolManager(poolManager), launchpad);
+        bytes memory creationCode = type(LivoSwapHook).creationCode;
+
+        bytes32 salt;
+        (hookAddress, salt) = HookMiner.find(FOUNDRY_CREATE2_DEPLOYER, flags, creationCode, constructorArgs);
+
+        LivoSwapHook livoSwapHook = new LivoSwapHook{salt: salt}(IPoolManager(poolManager), launchpad);
+        require(address(livoSwapHook) == hookAddress, "Hook address mismatch");
+    }
+
     // ========================= Deployment =========================
 
     function run() public {
         require(TREASURY != address(0), "TREASURY address not set");
 
-        (
-            address univ2Router,
-            address univ4PoolManager,
-            address univ4PositionManager,
-            address permit2,
-            address hookAddress
-        ) = _getNetworkAddresses();
+        (address univ2Router, address univ4PoolManager, address univ4PositionManager, address permit2) =
+            _getNetworkAddresses();
 
         console.log("=== Livo Protocol Deployment ===");
         console.log("Chain ID:", block.chainid);
@@ -112,31 +122,23 @@ contract Deployments is Script {
         LivoLaunchpad launchpad = new LivoLaunchpad(TREASURY);
         console.log("| LivoLaunchpad | ", address(launchpad));
 
-        // 4. Deploy LivoGraduatorUniswapV2
+        // 5. Deploy fee handler used by all factories
+        LivoFeeHandler feeHandler = new LivoFeeHandler();
+        console.log("| LivoFeeHandler | ", address(feeHandler));
+
+        // 6. Mine and deploy LivoSwapHook via CREATE2
+        address hookAddress = _deployHook(univ4PoolManager, address(launchpad));
+        console.log("| LivoSwapHook | ", hookAddress);
+
+        // 8. Deploy LivoGraduatorUniswapV2
         LivoGraduatorUniswapV2 graduatorV2 = new LivoGraduatorUniswapV2(univ2Router, address(launchpad));
         console.log("| LivoGraduatorUniswapV2 | ", address(graduatorV2));
 
-        // 5. Deploy LiquidityLockUniv4WithFees
-        LiquidityLockUniv4WithFees liquidityLock = new LiquidityLockUniv4WithFees(univ4PositionManager);
-        console.log("| LiquidityLockUniv4WithFees | ", address(liquidityLock));
-
-        // 6. Deploy fee handlers used by factories
-        LivoFeeHandlerUniV2 feeHandlerV2 = new LivoFeeHandlerUniV2();
-        console.log("| LivoFeeHandlerUniV2 | ", address(feeHandlerV2));
-        LivoFeeHandlerUniV4 feeHandlerV4 = new LivoFeeHandlerUniV4(
-            address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, hookAddress
-        );
-        console.log("| LivoFeeHandlerUniV4 | ", address(feeHandlerV4));
-
         // 7. Deploy LivoGraduatorUniswapV4
-        // NOTE: Hook address must be mined first and updated in DeploymentAddresses.sol
         LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad), address(liquidityLock), univ4PoolManager, univ4PositionManager, permit2, hookAddress
+            address(launchpad), univ4PoolManager, univ4PositionManager, permit2, hookAddress
         );
         console.log("| LivoGraduatorUniswapV4 | ", address(graduatorV4));
-
-        // authorize the V4 graduator in the v4 fee handler, which is the only one allowed to register univ4 positionIds
-        feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 
         // 9. Deploy fee splitter implementation
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
@@ -148,7 +150,7 @@ contract Deployments is Script {
             address(livoToken),
             address(bondingCurve),
             address(graduatorV2),
-            address(feeHandlerV2),
+            address(feeHandler),
             address(feeSplitterImpl)
         );
         console.log("| LivoFactory (V2) | ", address(factoryV2));
@@ -157,7 +159,7 @@ contract Deployments is Script {
             address(livoToken),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandlerV4),
+            address(feeHandler),
             address(feeSplitterImpl)
         );
         console.log("| LivoFactory (V4) | ", address(factoryV4));
@@ -167,13 +169,10 @@ contract Deployments is Script {
             address(livoTaxableToken),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandlerV4),
+            address(feeHandler),
             address(feeSplitterImpl)
         );
         console.log("| LivoFactoryTaxToken (V4) | ", address(factoryTax));
-
-        // log the hook, for completeness
-        console.log("| LivoSwapHook | ", hookAddress);
 
         console.log("");
         console.log("Whitelisting factories...");

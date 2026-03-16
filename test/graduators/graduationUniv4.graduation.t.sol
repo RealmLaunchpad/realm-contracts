@@ -735,22 +735,23 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         uint256 poolBalanceAfterGraduation = address(poolManager).balance;
         uint256 buyerEtherBefore = buyer.balance;
-        uint256 creatorEtherBefore = creator.balance;
+        uint256 treasuryEtherBefore = treasury.balance;
+        uint256 feeHandlerEtherBefore = address(feeHandler).balance;
 
-        // ~190M tokens are in liquidity, 10M owned by the creator, and ~800M owned by `buyer`
         // when selling everything back, almost all eth deposited as liquidity should be recovered
 
         // sell the full balance of the buyer, who has most of the supply
         _swapSell(buyer, buyerBalanceBefore, 2.5 ether, true);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
-        uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
+        uint256 treasuryDelta = treasury.balance - treasuryEtherBefore;
+        uint256 feeHandlerDelta = address(feeHandler).balance - feeHandlerEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
-        // check that the eth collected by buyer and seller matches the eth left the pool
+        // Hook takes LP fees from pool: treasury share (direct) + creator share (to fee handler)
         assertEq(
-            ethRecoveredByBuyer + ethRecoveredByCreator,
+            ethRecoveredByBuyer + treasuryDelta + feeHandlerDelta,
             ethLeavingFromThePoolManager,
-            "eth recovered by buyer and creator should match eth in pool"
+            "eth recovered by buyer + hook fees should match eth leaving pool"
         );
 
         // because of the liquidity boundaries set when adding liquidity, there is a tiny amount of eth that won't be recoverable
@@ -874,7 +875,7 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
     modifier createTestToken() override {
         vm.prank(creator);
         testToken = factoryTax.createToken(
-            "TestToken", "TEST", creator, "0x003", DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
+            "TestToken", "TEST", creator, "0x003", 0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
         );
         _;
     }
@@ -905,6 +906,7 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         uint256 poolBalanceAfterGraduation = address(poolManager).balance;
         uint256 buyerEtherBefore = buyer.balance;
         uint256 creatorEtherBefore = creator.balance;
+        uint256 treasuryEtherBefore = treasury.balance;
 
         // ~190M tokens are in liquidity, 10M owned by the dead address, and ~800M owned by `buyer`
         // when selling everything back, almost all eth deposited as liquidity should be recovered
@@ -912,23 +914,22 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         // sell the full balance of the buyer, who has most of the supply
         _swapSell(buyer, buyerBalanceBefore, 2.5 ether, true);
 
-        // this should transfer taxes to the creator, completing the fund flow
+        // Claim creator's share (graduation deposit + LP creator share + sell tax)
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
         vm.prank(creator);
-        feeHandlerV4.accrueTokenFees(tokens);
-        vm.prank(creator);
-        feeHandlerV4.claim(tokens);
+        feeHandler.claim(tokens);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
+        uint256 treasuryDelta = treasury.balance - treasuryEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
 
-        // Subtract graduation deposit: it came from the fee handler, not the pool manager
+        // Subtract graduation deposit (from fee handler, not pool) and add treasury delta (hook LP share)
         assertEq(
-            ethRecoveredByBuyer + ethRecoveredByCreator - graduationDeposit,
+            ethRecoveredByBuyer + ethRecoveredByCreator - graduationDeposit + treasuryDelta,
             ethLeavingFromThePoolManager,
-            "eth recovered by buyer and creator should match eth in pool"
+            "eth recovered by buyer + creator + treasury hook fees should match eth leaving pool"
         );
 
         // because of the liquidity boundaries set when adding liquidity, there is a tiny amount of eth that won't be recoverable

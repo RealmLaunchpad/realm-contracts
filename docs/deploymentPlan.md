@@ -5,15 +5,7 @@
 
 # Deployments
 
-### 1. Deploy the hook with create2 and the found salt (if not already deployed):
-
-```bash
-forge script DeployHook --rpc-url sepolia --verify --account livo.dev --broadcast
-```
-
-### 2. Update the hook address in deployments.md and in the `DeploymentAddresses`
-
-### 3. Deploy the remaining contracts. The `--slow` flag is to wait for transactions to succeed before broadcasting more.
+### 1. Deploy all contracts (including hook via CREATE2). The `--slow` flag is to wait for transactions to succeed before broadcasting more.
 
 ```bash
 forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
@@ -21,13 +13,13 @@ forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --
 
 If it fails with "UNIV4_POOL_MANAGER address. Wrong chain id", update the import in `LivoTaxableTokenUniV4.sol`.
 
-### 4. Put back `LivoTaxableTokenUniV4.sol` imports to mainnet if run with sepolia (only after verification)
+### 2. Put back `LivoTaxableTokenUniV4.sol` imports to mainnet if run with sepolia (only after verification)
 
-### 5. Update addresses in justfile (only for sepolia)
+### 3. Update addresses in justfile (only for sepolia)
 
-### 6. Update addresses in envio
+### 4. Update addresses in envio
 
-### 7. Verify any contract of which verification failed
+### 5. Verify any contract of which verification failed
 
 Note that you can take the constructor args already encoded from the transaction logs of the deployment script.
 

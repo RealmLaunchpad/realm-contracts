@@ -50,15 +50,16 @@ taxtokenaddresses:
     sed -i 's#import {DeploymentAddressesMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#import {DeploymentAddressesSepolia as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";#' src/tokens/LivoTaxableTokenUniV4.sol
 
 ##################### Deployed addresses (sepolia) #######################
-launchpad := "0xf29c6a8eCAD0a2ca908c9076dD2E4A025be75EF7"
+launchpad := "0xcc47d4870ceCF6CB7F41a769A7BA24dFAA4d046e"
 
-bondingCurve := "0x36cfDfd23fDe89dc067ac17901BC5959c6bD2eeB"
-graduatorV2 := "0x6aCB368dB13eF4d29F516DDB464f62A6D168C248"
-graduatorV4 := "0x23DAE4f548af2F7e7a65C903c74F3168Ba1C734D"
+bondingCurve := "0xa7066fa5793749C98d85C6Ab40EBaDDF8e3eCCF3"
+graduatorV2 := "0x265f62eede21d77435D8967a7e209B3e9a88AAF6"
+graduatorV4 := "0xdDa7863749Bf4509B20776c226609959D52Af479"
 
-factoryV2 := "0x494BDb64b52c54c3c9133308c34253a492f925Be"
-factoryV4 := "0xA3bcfc113064A4b8bFC15d219146c6b0141C2C1B"
-factoryTaxToken := "0x4c1F43317137485763eDFAE1eA4c727e42ee7306"
+factoryV2 := "0xc5Edf1fe961fC3e4433851281F3d954cc30F14ed"
+factoryV4 := "0x234Fe08709963566ab7121F060CE229eb7EfEDe5"
+factoryTaxToken := "0xF2ACD88C7234996A18a4C35a5BCddFD957A52eE4"
+hookAddress := "0x0C5B302c0733716b7ee33995f4a9A19cFBa780CC"
 
 # ##################### Create tokens #######################
 
@@ -68,6 +69,7 @@ factoryTaxToken := "0x4c1F43317137485763eDFAE1eA4c727e42ee7306"
 # tiswallet2 = 0xdbB91f98C5826C89CC2312AD0B5a377a77613884
 
 deploy-sepolia: taxtokenaddresses
+    # Hook address is logged in deployment output (LivoSwapHook row)
     forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
 create-token-v2 tokenName:
@@ -77,7 +79,7 @@ create-token-v4 tokenName:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} "createToken(string,string,address,bytes32)" {{tokenName}} {{uppercase(tokenName)}} 0xBa489180Ea6EEB25cA65f123a46F3115F388f181 0x1230000000000000000000000000000000000000000000000000000000000001
 
 create-tax-token tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} "createToken(string,string,address,bytes32,uint16,uint32)" {{tokenName}} {{uppercase(tokenName)}} 0xBa489180Ea6EEB25cA65f123a46F3115F388f181 0x1230000000000000000000000000000000000000000000000000000000000001 500 1209600
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} "createToken(string,string,address,bytes32,uint16,uint16,uint32)" {{tokenName}} {{uppercase(tokenName)}} 0xBa489180Ea6EEB25cA65f123a46F3115F388f181 0x1230000000000000000000000000000000000000000000000000000000000001 0 500 1209600
 
 create-token-v2-feesplit tokenName:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2}} "createTokenWithFeeSplit(string,string,address[],uint256[],bytes32)" {{tokenName}} {{uppercase(tokenName)}} "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" [3000,7000] 0x1230000000000000000000000000000000000000000000000000000000000000
@@ -86,7 +88,7 @@ create-token-v4-feesplit tokenName:
     cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} "createTokenWithFeeSplit(string,string,address[],uint256[],bytes32)" {{tokenName}} {{uppercase(tokenName)}} "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" [3000,7000] 0x1230000000000000000000000000000000000000000000000000000000000001
 
 create-tax-token-feesplit tokenName:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} "createTokenWithFeeSplit(string,string,address[],uint256[],bytes32,uint16,uint32)" {{tokenName}} {{uppercase(tokenName)}} "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" [3000,7000] 0x1230000000000000000000000000000000000000000000000000000000000001 500 1209600
+    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} "createTokenWithFeeSplit(string,string,address[],uint256[],bytes32,uint16,uint16,uint32)" {{tokenName}} {{uppercase(tokenName)}} "[0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f]" [3000,7000] 0x1230000000000000000000000000000000000000000000000000000000000001 0 500 1209600
 
 ####################### Buys / sells #################################
 
@@ -105,13 +107,13 @@ v2sell tokenAddress amount:
 ##########################################################
 
 v4approve tokenAddress:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=0 forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=0 HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
 v4buy tokenAddress value:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=1 AMOUNT_IN={{value}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=1 AMOUNT_IN={{value}} HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
 v4sell tokenAddress amount:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=2 AMOUNT_IN={{amount}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=2 AMOUNT_IN={{amount}} HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
 ##########################################################
 

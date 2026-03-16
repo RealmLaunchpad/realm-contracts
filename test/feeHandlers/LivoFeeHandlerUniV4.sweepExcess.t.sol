@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
+import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
@@ -16,9 +16,6 @@ contract MockLaunchpad {
     }
 }
 
-/// @dev Minimal mock that pretends to be a liquidity lock (not called in these tests)
-contract MockLiquidityLock {}
-
 /// @dev Minimal mock token that returns a fee receiver
 contract MockToken {
     address public feeReceiver;
@@ -28,8 +25,8 @@ contract MockToken {
     }
 }
 
-contract LivoFeeHandlerUniV4SweepExcessTests is Test {
-    LivoFeeHandlerUniV4 public handler;
+contract LivoFeeHandlerSweepExcessTests is Test {
+    LivoFeeHandler public handler;
 
     address public owner = makeAddr("owner");
     address public treasury = makeAddr("treasury");
@@ -40,19 +37,12 @@ contract LivoFeeHandlerUniV4SweepExcessTests is Test {
 
     function setUp() public {
         MockLaunchpad mockLaunchpad = new MockLaunchpad(treasury);
-        MockLiquidityLock mockLock = new MockLiquidityLock();
 
         tokenA = address(new MockToken(creator));
         tokenB = address(new MockToken(alice));
 
         vm.prank(owner);
-        handler = new LivoFeeHandlerUniV4(
-            address(mockLaunchpad),
-            address(mockLock),
-            address(1), // poolManager (unused in these tests)
-            address(2), // positionManager (unused)
-            address(3) // hook (unused)
-        );
+        handler = new LivoFeeHandler();
     }
 
     // ======================== Helpers ========================

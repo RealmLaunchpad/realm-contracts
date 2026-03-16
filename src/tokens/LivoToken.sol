@@ -30,12 +30,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
     address public pair;
 
-    /// @notice Token name
-    string internal _tokenName;
-
-    /// @notice Token symbol
-    string internal _tokenSymbol;
-
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
 
@@ -44,6 +38,12 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
 
     /// @notice Address that receives fees within the fee handler
     address public feeReceiver;
+
+    /// @notice Token name
+    string internal _tokenName;
+
+    /// @notice Token symbol
+    string internal _tokenSymbol;
 
     //////////////////////// Errors //////////////////////
 
@@ -119,11 +119,6 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
     function setFeeReceiver(address newFeeReceiver) external {
         require(msg.sender == owner, Unauthorized());
         require(newFeeReceiver != address(0), InvalidFeeReceiver());
-
-        // Accrue pending LP fees to credit the current feeReceiver before changing
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(this);
-        try ILivoFeeHandler(feeHandler).accrueTokenFees(tokens) {} catch {}
 
         feeReceiver = newFeeReceiver;
 

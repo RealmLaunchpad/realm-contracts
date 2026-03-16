@@ -253,6 +253,40 @@
   },
   {
     "type": "function",
+    "name": "quoteBuyExactTokens",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tokenAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "ethFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "ethForReserves",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalEthNeeded",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "quoteBuyTokensWithExactEth",
     "inputs": [
       {
@@ -313,6 +347,40 @@
       },
       {
         "name": "ethForSeller",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteSellTokensForExactEth",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "ethAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "ethPulledFromReserves",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "ethFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokensRequired",
         "type": "uint256",
         "internalType": "uint256"
       }

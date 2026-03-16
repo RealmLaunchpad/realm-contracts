@@ -25,7 +25,7 @@ contract BuySellSimulations is Script {
 
         address TOKEN1 = factoryV2.createToken("MEMEV2", "MAMIV2", LIVODEV, salt);
         address TOKEN2 = factoryV4.createToken("projecTV4", "PROJECTV4", LIVODEV, salt);
-        address TOKEN3 = factoryTax.createToken("projecTaxTV4", "PROJECTAXV4", LIVODEV, salt, 500, uint32(14 days));
+        address TOKEN3 = factoryTax.createToken("projecTaxTV4", "PROJECTAXV4", LIVODEV, salt, 0, 500, uint32(14 days));
 
         uint256 deadline = block.timestamp + 300 days;
 

@@ -5,8 +5,8 @@ pragma solidity 0.8.28;
 /// @notice Shared Uniswap V4 pool configuration constants used by the graduator and fee handler.
 library UniswapV4PoolConstants {
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
-    /// @dev 10000 pips = 1%
-    uint24 internal constant LP_FEE = 10000;
+    /// @dev Set to 0 because LP fees are now charged by the hook (LivoSwapHook)
+    uint24 internal constant LP_FEE = 0;
 
     /// @notice Tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
     /// @dev The larger the spacing the cheaper to swap gas-wise

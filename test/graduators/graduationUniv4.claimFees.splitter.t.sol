@@ -58,10 +58,7 @@ abstract contract FeeSplitterV4BaseTests is BaseUniswapV4FeesTests {
     }
 
     function _collectFees(address[] memory tokens) internal override {
-        // first accrue LP fees in the V4 handler
-        feeHandlerV4.accrueTokenFees(tokens);
-
-        // then each shareholder claims from the splitter
+        // each shareholder claims from the splitter
         vm.prank(shareholder1);
         ILivoFeeHandler(splitterAddress).claim(tokens);
         vm.prank(shareholder2);
@@ -94,18 +91,6 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
         assertEq(ILivoToken(testToken).feeReceiver(), splitterAddress, "feeReceiver should be splitter");
     }
 
-    /// @notice splitter.liquidityPositionOwner() delegates to real handler
-    function test_liquidityPositionOwner_delegatesToRealHandler() public createAndGraduateToken {
-        address positionOwner = ILivoFeeHandler(splitterAddress).liquidityPositionOwner();
-        assertEq(positionOwner, address(feeHandlerV4), "positionOwner should be the real V4 handler");
-    }
-
-    /// @notice LP position is registered on the real V4 handler (not the splitter)
-    function test_positionRegisteredOnRealHandler() public createAndGraduateToken {
-        uint256 positionId = feeHandlerV4.positionIds(testToken, 0);
-        assertGt(positionId, 0, "position should be registered on real handler");
-    }
-
     /// @notice After graduation + buy swap, shareholders can claim LP fees
     function test_shareholdersCanClaimLpFees() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
         uint256 s1Before = shareholder1.balance;
@@ -123,23 +108,21 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
         assertApproxEqAbs(s1Earned * 3000, s2Earned * 7000, 1e12, "fee split should respect 70/30 shares");
     }
 
-    /// @notice Total fees across shareholders + treasury match expected 1% LP fee
+    /// @notice Total fees across shareholders match expected 0.5% creator LP fee
     function test_totalFeesMatchExpected() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
         uint256 s1Before = shareholder1.balance;
         uint256 s2Before = shareholder2.balance;
-        uint256 treasuryBefore = treasury.balance;
 
         _collectFees(testToken);
 
         uint256 totalShareholderFees = (shareholder1.balance - s1Before) + (shareholder2.balance - s2Before);
-        uint256 treasuryFees = treasury.balance - treasuryBefore;
 
         // graduation compensation (0.1 ETH) is routed through the splitter to shareholders
         uint256 graduationCompensation = CREATOR_GRADUATION_COMPENSATION;
         uint256 lpFeesOnly = totalShareholderFees - graduationCompensation;
 
-        // total LP fees = creator share + treasury share ≈ 1% of buy amount
-        assertApproxEqAbs(lpFeesOnly + treasuryFees, 1 ether / 100, 1, "total LP fees should be 1% of buy amount");
+        // Treasury LP share sent during swap by hook; shareholders get creator's 0.5% share
+        assertApproxEqAbs(lpFeesOnly, 1 ether / 200, 1, "shareholder LP fees should be 0.5% of buy amount");
     }
 
     /// @notice getClaimable on splitter returns correct values before claim
@@ -162,7 +145,6 @@ contract UniswapV4ClaimFees_Splitter_NormalToken is FeeSplitterV4BaseTests {
     function test_nonShareholderGetsNothing() public createAndGraduateToken generateFeesWithBuySwap(1 ether) {
         uint256 aliceBefore = alice.balance;
 
-        feeHandlerV4.accrueTokenFees(_singleToken(testToken));
         vm.prank(alice);
         ILivoFeeHandler(splitterAddress).claim(_singleToken(testToken));
 
@@ -199,7 +181,7 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
     {
         vm.prank(creator);
         (address token, address splitter) = factoryTax.createTokenWithFeeSplit(
-            name, symbol, _recipients(), _sharesBps(), metadata, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
+            name, symbol, _recipients(), _sharesBps(), metadata, 0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
         );
         splitterAddress = splitter;
         return token;
@@ -214,18 +196,6 @@ contract UniswapV4ClaimFees_Splitter_TaxToken is TaxTokenUniV4BaseTests, FeeSpli
     function test_feeHandler_isSplitter_taxToken() public createAndGraduateToken {
         assertEq(ILivoToken(testToken).feeHandler(), splitterAddress, "feeHandler should be splitter");
         assertEq(ILivoToken(testToken).feeReceiver(), splitterAddress, "feeReceiver should be splitter");
-    }
-
-    /// @notice splitter.liquidityPositionOwner() delegates to real handler
-    function test_liquidityPositionOwner_delegatesToRealHandler_taxToken() public createAndGraduateToken {
-        address positionOwner = ILivoFeeHandler(splitterAddress).liquidityPositionOwner();
-        assertEq(positionOwner, address(feeHandlerV4), "positionOwner should be the real V4 handler");
-    }
-
-    /// @notice LP position registered on the real V4 handler
-    function test_positionRegisteredOnRealHandler_taxToken() public createAndGraduateToken {
-        uint256 positionId = feeHandlerV4.positionIds(testToken, 0);
-        assertGt(positionId, 0, "position should be registered on real handler");
     }
 
     /// @notice Shareholders can claim LP fees from buy swaps

@@ -8,11 +8,9 @@ import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBond
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
-import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
-import {LivoFeeHandlerUniV2} from "src/feeHandlers/LivoFeeHandlerUniV2.sol";
-import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
+import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
@@ -26,15 +24,16 @@ contract LaunchpadInvariants is Test {
     LivoGraduatorUniswapV4 public graduatorV4;
     LivoFactoryBase public factoryV2;
     LivoFactoryBase public factoryV4;
-    LiquidityLockUniv4WithFees public liquidityLock;
-    LivoFeeHandlerUniV2 public feeHandler;
-    LivoFeeHandlerUniV4 public feeHandlerV4;
+    LivoFeeHandler public feeHandler;
 
     InvariantsHelperLaunchpad public helper;
 
     address constant poolManagerAddress = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
     address constant positionManagerAddress = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
     address constant permit2Address = DeploymentAddressesMainnet.PERMIT2;
+
+    // Hook address with correct Uniswap V4 permission bits; deployCodeTo() overrides whatever is at this address
+    address constant TEST_HOOK_ADDRESS = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -76,29 +75,12 @@ contract LaunchpadInvariants is Test {
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
-        liquidityLock = new LiquidityLockUniv4WithFees(positionManagerAddress);
-
-        deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress), DeploymentAddressesMainnet.LIVO_SWAP_HOOK
-        );
-        feeHandler = new LivoFeeHandlerUniV2();
-        feeHandlerV4 = new LivoFeeHandlerUniV4(
-            address(launchpad),
-            address(liquidityLock),
-            poolManagerAddress,
-            positionManagerAddress,
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
-        );
+        deployCodeTo("LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress), TEST_HOOK_ADDRESS);
+        feeHandler = new LivoFeeHandler();
 
         graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad),
-            address(liquidityLock),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+            address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
         );
-        feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
 
@@ -116,7 +98,7 @@ contract LaunchpadInvariants is Test {
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandlerV4),
+            address(feeHandler),
             address(feeSplitterImpl)
         );
 

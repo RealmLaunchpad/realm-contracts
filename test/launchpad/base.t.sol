@@ -11,8 +11,6 @@ import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol"
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
-import {LiquidityLockUniv4WithFees} from "src/locks/LiquidityLockUniv4WithFees.sol";
-import {ILiquidityLockUniv4WithFees} from "src/interfaces/ILiquidityLockUniv4WithFees.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
@@ -20,8 +18,7 @@ import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
 import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
-import {LivoFeeHandlerUniV2} from "src/feeHandlers/LivoFeeHandlerUniV2.sol";
-import {LivoFeeHandlerUniV4} from "src/feeHandlers/LivoFeeHandlerUniV4.sol";
+import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 
 contract TestLivoFactory is LivoFactoryBase {
@@ -50,8 +47,7 @@ contract LaunchpadBaseTests is Test {
     TestLivoFactory public factoryV2;
     TestLivoFactory public factoryV4;
     LivoFactoryTaxToken public factoryTax;
-    LivoFeeHandlerUniV2 public feeHandler;
-    LivoFeeHandlerUniV4 public feeHandlerV4;
+    LivoFeeHandler public feeHandler;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -79,6 +75,9 @@ contract LaunchpadBaseTests is Test {
     uint256 constant DEADLINE = type(uint256).max;
     address constant DEAD_ADDRESS = DeploymentAddressesMainnet.DEAD_ADDRESS;
 
+    // Hook address with correct Uniswap V4 permission bits; deployCodeTo() overrides whatever is at this address
+    address constant TEST_HOOK_ADDRESS = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
+
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
@@ -98,7 +97,6 @@ contract LaunchpadBaseTests is Test {
     // This is the pool setpoint price derived from SQRT_PRICEX96_GRADUATION
     uint256 constant POOL_SETPOINT_PRICE = 12249999999; // ETH/token (eth per token, expressed in wei)
 
-    LiquidityLockUniv4WithFees public liquidityLock;
     LivoGraduatorUniswapV2 public graduatorV2;
     LivoGraduatorUniswapV4 public graduatorV4;
     LivoSwapHook public taxHook;
@@ -123,32 +121,16 @@ contract LaunchpadBaseTests is Test {
         bondingCurve = new ConstantProductBondingCurve();
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
-        liquidityLock = new LiquidityLockUniv4WithFees(positionManagerAddress);
-
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress), DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS
         );
-        taxHook = LivoSwapHook(payable(DeploymentAddressesMainnet.LIVO_SWAP_HOOK));
+        taxHook = LivoSwapHook(payable(TEST_HOOK_ADDRESS));
 
-        feeHandler = new LivoFeeHandlerUniV2();
-
-        feeHandlerV4 = new LivoFeeHandlerUniV4(
-            address(launchpad),
-            address(liquidityLock),
-            poolManagerAddress,
-            positionManagerAddress,
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
-        );
+        feeHandler = new LivoFeeHandler();
 
         graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad),
-            address(liquidityLock),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+            address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
         );
-        feeHandlerV4.setAuthorizedGraduator(address(graduatorV4), true);
 
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
 
@@ -166,7 +148,7 @@ contract LaunchpadBaseTests is Test {
             address(livoToken),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandlerV4),
+            address(feeHandler),
             address(feeSplitterImpl)
         );
 
@@ -175,7 +157,7 @@ contract LaunchpadBaseTests is Test {
             address(livoTaxToken),
             address(bondingCurve),
             address(graduatorV4),
-            address(feeHandlerV4),
+            address(feeHandler),
             address(feeSplitterImpl)
         );
 
@@ -190,7 +172,7 @@ contract LaunchpadBaseTests is Test {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV4)) {
             if (address(implementation) == address(livoTaxToken)) {
-                testToken = factoryTax.createToken("TestToken", "TEST", creator, "0x003", 500, uint32(14 days));
+                testToken = factoryTax.createToken("TestToken", "TEST", creator, "0x003", 0, 500, uint32(14 days));
             } else {
                 testToken = factoryV4.createToken("TestToken", "TEST", creator, "0x003");
             }

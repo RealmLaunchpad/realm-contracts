@@ -37,25 +37,31 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
     {
         vm.prank(creator);
         return
-            factoryTax.createToken(name, symbol, creator, metadata, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION));
+            factoryTax.createToken(
+                name, symbol, creator, metadata, 0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
+            );
     }
 
-    /// @notice Verify that sell tax math is correct: tax/T == taxBps and claimable == tax
+    /// @notice Verify that sell tax math is correct: tax/gross == taxBps
     function test_sellTax_amountIsCorrect() public createAndGraduateToken {
         uint256 claimableBefore = _creatorClaimable();
         uint256 ethBefore = buyer.balance;
+        uint256 treasuryBefore = treasury.balance;
 
         uint256 sellAmount = 100_000_000e18;
         _swapSell(buyer, sellAmount, 0.1 ether, true);
 
         uint256 Y = buyer.balance - ethBefore; // ETH received by seller
-        uint256 tax = _creatorClaimable() - claimableBefore; // tax accrued as claimable
-        uint256 T = Y + tax; // total ETH that left the pool
+        uint256 creatorDelta = _creatorClaimable() - claimableBefore; // LP creator share + sell tax
+        uint256 treasuryDelta = treasury.balance - treasuryBefore; // LP treasury share
+        uint256 gross = Y + creatorDelta + treasuryDelta; // total ETH from pool
 
-        // tax / T == 5%
-        assertApproxEqRel(tax * 10_000, T * DEFAULT_SELL_TAX_BPS, 0.0000001e18, "tax/T should be ~5%");
-        // Y / T == 95%
-        assertApproxEqRel(Y * 10_000, T * (10_000 - DEFAULT_SELL_TAX_BPS), 0.0000001e18, "Y/T should be ~95%");
+        // creatorDelta = lpCreatorShare + taxAmount; treasuryDelta = lpTreasuryShare ≈ lpCreatorShare
+        // so taxOnly ≈ creatorDelta - treasuryDelta
+        uint256 taxOnly = creatorDelta - treasuryDelta;
+
+        // taxOnly / gross == 5%
+        assertApproxEqRel(taxOnly * 10_000, gross * DEFAULT_SELL_TAX_BPS, 0.0000001e18, "tax/gross should be ~5%");
     }
 
     /// @notice Verify that buys have no sell tax, only 1% LP fees
