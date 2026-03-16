@@ -102,7 +102,7 @@
   },
   {
     "type": "function",
-    "name": "MAX_SELL_TAX_BPS",
+    "name": "MAX_SELL_TAX_DURATION_SECONDS",
     "inputs": [],
     "outputs": [
       {
@@ -115,7 +115,7 @@
   },
   {
     "type": "function",
-    "name": "MAX_SELL_TAX_DURATION_SECONDS",
+    "name": "MAX_TAX_BPS",
     "inputs": [],
     "outputs": [
       {
@@ -162,6 +162,11 @@
         "name": "salt",
         "type": "bytes32",
         "internalType": "bytes32"
+      },
+      {
+        "name": "buyTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
       },
       {
         "name": "sellTaxBps",
@@ -211,6 +216,11 @@
         "name": "salt",
         "type": "bytes32",
         "internalType": "bytes32"
+      },
+      {
+        "name": "buyTaxBps",
+        "type": "uint16",
+        "internalType": "uint16"
       },
       {
         "name": "sellTaxBps",
@@ -356,7 +366,7 @@
   },
   {
     "type": "error",
-    "name": "InvalidSellTaxBps",
+    "name": "InvalidTaxBps",
     "inputs": []
   },
   {
