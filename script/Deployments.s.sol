@@ -122,10 +122,6 @@ contract Deployments is Script {
         LivoLaunchpad launchpad = new LivoLaunchpad(TREASURY);
         console.log("| LivoLaunchpad | ", address(launchpad));
 
-        // 4. Deploy LivoGraduatorUniswapV2
-        LivoGraduatorUniswapV2 graduatorV2 = new LivoGraduatorUniswapV2(univ2Router, address(launchpad));
-        console.log("| LivoGraduatorUniswapV2 | ", address(graduatorV2));
-
         // 5. Deploy fee handler used by all factories
         LivoFeeHandler feeHandler = new LivoFeeHandler();
         console.log("| LivoFeeHandler | ", address(feeHandler));
@@ -133,6 +129,10 @@ contract Deployments is Script {
         // 6. Mine and deploy LivoSwapHook via CREATE2
         address hookAddress = _deployHook(univ4PoolManager, address(launchpad));
         console.log("| LivoSwapHook | ", hookAddress);
+
+        // 8. Deploy LivoGraduatorUniswapV2
+        LivoGraduatorUniswapV2 graduatorV2 = new LivoGraduatorUniswapV2(univ2Router, address(launchpad));
+        console.log("| LivoGraduatorUniswapV2 | ", address(graduatorV2));
 
         // 7. Deploy LivoGraduatorUniswapV4
         LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
@@ -190,9 +190,8 @@ contract Deployments is Script {
         console.log("=== Deployment Complete ===");
         console.log("");
         console.log("Next steps:");
-        console.log("1. Update LIVO_SWAP_HOOK in DeploymentAddresses.sol with:", hookAddress);
-        console.log("2. Update deployed addresses in justfile");
-        console.log("3. Update launchpad address in envio");
-        console.log("4. (Optional) Transfer ownership if needed");
+        console.log("1. Update deployed addresses in justfile");
+        console.log("2. Update launchpad address in envio");
+        console.log("3. (Optional) Transfer ownership if needed");
     }
 }

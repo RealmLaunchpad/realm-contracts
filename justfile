@@ -59,6 +59,7 @@ graduatorV4 := "0x23DAE4f548af2F7e7a65C903c74F3168Ba1C734D"
 factoryV2 := "0x494BDb64b52c54c3c9133308c34253a492f925Be"
 factoryV4 := "0xA3bcfc113064A4b8bFC15d219146c6b0141C2C1B"
 factoryTaxToken := "0x4c1F43317137485763eDFAE1eA4c727e42ee7306"
+hookAddress := "0x0000000000000000000000000000000000000000"
 
 # ##################### Create tokens #######################
 
@@ -68,6 +69,7 @@ factoryTaxToken := "0x4c1F43317137485763eDFAE1eA4c727e42ee7306"
 # tiswallet2 = 0xdbB91f98C5826C89CC2312AD0B5a377a77613884
 
 deploy-sepolia: taxtokenaddresses
+    # Hook address is logged in deployment output (LivoSwapHook row)
     forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
 create-token-v2 tokenName:
@@ -105,13 +107,13 @@ v2sell tokenAddress amount:
 ##########################################################
 
 v4approve tokenAddress:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=0 forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=0 HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
 v4buy tokenAddress value:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=1 AMOUNT_IN={{value}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=1 AMOUNT_IN={{value}} HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
 v4sell tokenAddress amount:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=2 AMOUNT_IN={{amount}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=2 AMOUNT_IN={{amount}} HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
 
 ##########################################################
 

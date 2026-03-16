@@ -36,13 +36,13 @@ contract UniswapV4Swaps is Script {
     /// @notice Constructs a PoolKey for the given token paired with ETH
     /// @param token The ERC20 token address
     /// @return key The configured PoolKey
-    function _getPoolKey(address token) internal pure returns (PoolKey memory key) {
+    function _getPoolKey(address token) internal view returns (PoolKey memory key) {
         key = PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(token)),
             fee: LP_FEE,
             tickSpacing: TICK_SPACING,
-            hooks: IHooks(DeploymentAddressesSepolia.LIVO_SWAP_HOOK)
+            hooks: IHooks(vm.envAddress("HOOK_ADDRESS"))
         });
     }
 

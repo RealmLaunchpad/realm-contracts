@@ -75,6 +75,9 @@ contract LaunchpadBaseTests is Test {
     uint256 constant DEADLINE = type(uint256).max;
     address constant DEAD_ADDRESS = DeploymentAddressesMainnet.DEAD_ADDRESS;
 
+    // Hook address with correct Uniswap V4 permission bits; deployCodeTo() overrides whatever is at this address
+    address constant TEST_HOOK_ADDRESS = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
+
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
@@ -119,20 +122,14 @@ contract LaunchpadBaseTests is Test {
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
 
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook",
-            abi.encode(poolManagerAddress, address(launchpad)),
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS
         );
-        taxHook = LivoSwapHook(payable(DeploymentAddressesMainnet.LIVO_SWAP_HOOK));
+        taxHook = LivoSwapHook(payable(TEST_HOOK_ADDRESS));
 
         feeHandler = new LivoFeeHandler();
 
         graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+            address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
         );
 
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();

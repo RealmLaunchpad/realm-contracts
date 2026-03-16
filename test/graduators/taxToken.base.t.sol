@@ -55,13 +55,13 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     /// @notice Helper to get pool key with tax hook
     /// @param tokenAddress The token address
     /// @return PoolKey with tax hook configured
-    function _getPoolKeyWithTaxHook(address tokenAddress) internal pure returns (PoolKey memory) {
+    function _getPoolKeyWithTaxHook(address tokenAddress) internal view returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(tokenAddress)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(DeploymentAddressesMainnet.LIVO_SWAP_HOOK)
+            hooks: IHooks(address(taxHook))
         });
     }
 
@@ -91,7 +91,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
             currency1: Currency.wrap(address(token)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(DeploymentAddressesMainnet.LIVO_SWAP_HOOK)
+            hooks: IHooks(address(taxHook))
         });
 
         bytes[] memory params = new bytes[](3);

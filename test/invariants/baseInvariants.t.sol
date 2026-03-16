@@ -32,6 +32,9 @@ contract LaunchpadInvariants is Test {
     address constant positionManagerAddress = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
     address constant permit2Address = DeploymentAddressesMainnet.PERMIT2;
 
+    // Hook address with correct Uniswap V4 permission bits; deployCodeTo() overrides whatever is at this address
+    address constant TEST_HOOK_ADDRESS = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
+
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
     address public buyer = makeAddr("buyer");
@@ -72,17 +75,11 @@ contract LaunchpadInvariants is Test {
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
-        deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress), DeploymentAddressesMainnet.LIVO_SWAP_HOOK
-        );
+        deployCodeTo("LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress), TEST_HOOK_ADDRESS);
         feeHandler = new LivoFeeHandler();
 
         graduatorV4 = new LivoGraduatorUniswapV4(
-            address(launchpad),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            DeploymentAddressesMainnet.LIVO_SWAP_HOOK
+            address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
         );
 
         LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();

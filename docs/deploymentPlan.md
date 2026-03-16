@@ -13,15 +13,13 @@ forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --
 
 If it fails with "UNIV4_POOL_MANAGER address. Wrong chain id", update the import in `LivoTaxableTokenUniV4.sol`.
 
-### 2. Post-deploy: update `LIVO_SWAP_HOOK` in `DeploymentAddresses.sol` with the deployed hook address (for tests)
+### 2. Put back `LivoTaxableTokenUniV4.sol` imports to mainnet if run with sepolia (only after verification)
 
-### 3. Put back `LivoTaxableTokenUniV4.sol` imports to mainnet if run with sepolia (only after verification)
+### 3. Update addresses in justfile (only for sepolia)
 
-### 4. Update addresses in justfile (only for sepolia)
+### 4. Update addresses in envio
 
-### 5. Update addresses in envio
-
-### 6. Verify any contract of which verification failed
+### 5. Verify any contract of which verification failed
 
 Note that you can take the constructor args already encoded from the transaction logs of the deployment script.
 

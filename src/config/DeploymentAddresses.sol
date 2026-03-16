@@ -41,9 +41,6 @@ library DeploymentAddressesMainnet {
     /// @dev Standard burn address that works on all chains
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
-    /// @notice LivoSwapHook address for Uniswap V4
-    address public constant LIVO_SWAP_HOOK = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
-
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -78,9 +75,6 @@ library DeploymentAddressesSepolia {
     /// @notice Dead address used for burning LP tokens
     /// @dev Standard burn address that works on all chains
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
-
-    /// @notice LivoSwapHook address for Uniswap V4
-    address public constant LIVO_SWAP_HOOK = 0x62fb818A1aB96211531641aeE3244e42dED8C0cc;
 
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;

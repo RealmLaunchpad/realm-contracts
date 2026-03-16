@@ -22,7 +22,6 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
@@ -48,13 +47,13 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
 
-    function _getPoolKey(address tokenAddress) internal pure returns (PoolKey memory) {
+    function _getPoolKey(address tokenAddress) internal view returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(tokenAddress)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(DeploymentAddressesMainnet.LIVO_SWAP_HOOK)
+            hooks: IHooks(address(taxHook))
         });
     }
 
@@ -110,7 +109,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
             currency1: Currency.wrap(address(token)),
             fee: lpFee,
             tickSpacing: tickSpacing,
-            hooks: IHooks(DeploymentAddressesMainnet.LIVO_SWAP_HOOK)
+            hooks: IHooks(address(taxHook))
         });
 
         bytes[] memory params = new bytes[](3);
