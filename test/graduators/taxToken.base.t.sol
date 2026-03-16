@@ -134,14 +134,4 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         IUniversalRouter(universalRouter).execute{value: valueIn}(commands, inputs, block.timestamp);
         vm.stopPrank();
     }
-
-    /// @notice make sure the hook precomputed for the tests is set in the LivoSwapHook correctly
-    function test_percomputedHookInLivoSwapHook() public {
-        LivoTaxableTokenUniV4 taxToken = new LivoTaxableTokenUniV4();
-        address taxHook_inToken = taxToken.TAX_HOOK();
-
-        address taxHook_inTests = DeploymentAddressesMainnet.LIVO_SWAP_HOOK;
-
-        assertEq(taxHook_inToken, taxHook_inTests, "missmatching hook address in tests and in LivoTaxableTokenUniV4");
-    }
 }

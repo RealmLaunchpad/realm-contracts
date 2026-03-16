@@ -27,9 +27,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
     /// @notice Pool manager for lock state checking
     IPoolManager public constant UNIV4_POOL_MANAGER = IPoolManager(DeploymentAddresses.UNIV4_POOL_MANAGER);
 
-    /// @notice the hook address which will charge the sell taxes
-    address public constant TAX_HOOK = DeploymentAddresses.LIVO_SWAP_HOOK;
-
     //////////////////////// potentially immutable //////////////////
 
     /// @notice Buy tax rate in basis points (set during initialization, cannot be changed)
