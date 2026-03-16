@@ -326,7 +326,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         _swapBuy(buyer, buyAmount, 0, true);
         Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
 
-        (, , uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
+        (,, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
 
         // LP fee 1% + buy tax 3% = 4%
         uint256 expectedFees = (buyAmount * (100 + buyTax)) / 10000;

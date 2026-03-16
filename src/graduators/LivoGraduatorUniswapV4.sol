@@ -162,8 +162,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
             );
 
         PoolKey memory pool = _getPoolKey(tokenAddress);
-        (uint128 liquidity1, uint128 liquidity2) =
-            _addLiquidityPositions(pool, ethForLiquidity, tokenAmount, treasury);
+        (uint128 liquidity1, uint128 liquidity2) = _addLiquidityPositions(pool, ethForLiquidity, tokenAmount, treasury);
 
         // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
@@ -204,12 +203,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     }
 
     /// @notice Adds primary and secondary liquidity positions
-    function _addLiquidityPositions(
-        PoolKey memory pool,
-        uint256 ethForLiquidity,
-        uint256 tokenAmount,
-        address treasury
-    ) internal returns (uint128 liquidity1, uint128 liquidity2) {
+    function _addLiquidityPositions(PoolKey memory pool, uint256 ethForLiquidity, uint256 tokenAmount, address treasury)
+        internal
+        returns (uint128 liquidity1, uint128 liquidity2)
+    {
         uint256 ethBalanceBefore = address(this).balance;
 
         liquidity1 = LiquidityAmounts.getLiquidityForAmounts(
