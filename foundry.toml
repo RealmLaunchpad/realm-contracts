@@ -5,7 +5,7 @@ libs = ["lib"]
 # via_ir = true
 optimizer = true
 optimizer_runs = 200
-threads = 2   
+threads = 8 
 
 verbosity = 3
 
