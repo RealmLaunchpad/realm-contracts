@@ -29,7 +29,7 @@ import {IUniversalRouter} from "../../src/interfaces/IUniswapV4UniversalRouter.s
 /// @dev Uses environment variables for configuration. Assumes token is already graduated.
 contract UniswapV4Swaps is Script {
     // Pool configuration constants
-    uint24 constant LP_FEE = 10000; // 1% fee
+    uint24 constant LP_FEE = 0; // 0% LPfee configured
     int24 constant TICK_SPACING = 200;
     uint256 constant V4_SWAP = 0x10;
 
@@ -37,12 +37,16 @@ contract UniswapV4Swaps is Script {
     /// @param token The ERC20 token address
     /// @return key The configured PoolKey
     function _getPoolKey(address token) internal view returns (PoolKey memory key) {
+        address hook = vm.envAddress("HOOK_ADDRESS");
+        console.log("Using hook at address:", hook);
+        require(hook != address(0), "HOOK_ADDRESS must be set in environment variables");
+
         key = PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(token)),
             fee: LP_FEE,
             tickSpacing: TICK_SPACING,
-            hooks: IHooks(vm.envAddress("HOOK_ADDRESS"))
+            hooks: IHooks(hook)
         });
     }
 
