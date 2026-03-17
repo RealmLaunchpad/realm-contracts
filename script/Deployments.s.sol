@@ -27,8 +27,8 @@ import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 contract Deployments is Script {
     // ========================= Configuration =========================
 
-    // TODO: Set treasury address before deployment (this is livo.dev for now)
-    address constant TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181; // TODO: Set before deployment
+    // set to livodev in sepolia
+    address constant TREASURY = DeploymentAddressesMainnet.LIVO_TREASURY;
 
     // Foundry's deterministic deployment proxy (Create2 deployer)
     address constant FOUNDRY_CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
