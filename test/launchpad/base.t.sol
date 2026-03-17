@@ -16,8 +16,8 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
-import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
+import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
 import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 

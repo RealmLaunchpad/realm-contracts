@@ -7,8 +7,8 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
-import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
+import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 

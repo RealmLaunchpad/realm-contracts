@@ -2,8 +2,8 @@
 pragma solidity 0.8.28;
 
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
-import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
+import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {Script} from "lib/forge-std/src/Script.sol";
 
 contract BuySellSimulations is Script {

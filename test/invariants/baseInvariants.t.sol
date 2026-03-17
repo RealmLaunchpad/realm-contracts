@@ -7,7 +7,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
-import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
+import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";

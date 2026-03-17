@@ -56,6 +56,8 @@ contract LivoFactoryTaxToken is ILivoFactory {
         FEE_SPLITTER_IMPLEMENTATION = ILivoFeeSplitter(feeSplitterImplementation);
     }
 
+    //////////////////////// EXTERNAL FUNCTIONS ////////////////////////
+
     /// @notice Deploys a new taxable token clone with sell tax configuration
     function createToken(
         string calldata name,
@@ -93,6 +95,8 @@ contract LivoFactoryTaxToken is ILivoFactory {
         emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
         ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
     }
+
+    /////////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
     function _deployFeeSplitter(string calldata symbol, bytes32 salt) internal returns (address feeSplitter) {
         // forge-lint: disable-next-line

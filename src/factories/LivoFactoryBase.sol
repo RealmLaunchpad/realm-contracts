@@ -44,6 +44,8 @@ contract LivoFactoryBase is ILivoFactory {
         FEE_SPLITTER_IMPLEMENTATION = ILivoFeeSplitter(feeSplitterImplementation);
     }
 
+    /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
+
     /// @notice Deploys a new token clone, initializes it, and registers it in the launchpad
     function createToken(string calldata name, string calldata symbol, address feeReceiver, bytes32 salt)
         external
@@ -69,6 +71,8 @@ contract LivoFactoryBase is ILivoFactory {
         emit FeeSplitterCreated(token, feeSplitter, recipients, sharesBps);
         ILivoFeeSplitter(feeSplitter).initialize(address(FEE_HANDLER), token, recipients, sharesBps);
     }
+
+    ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
     function _deployFeeSplitter(string calldata symbol, bytes32 salt) internal returns (address feeSplitter) {
         // forge-lint: disable-next-line

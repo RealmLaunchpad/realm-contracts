@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoFactoryBase} from "src/tokenFactories/LivoFactoryBase.sol";
+import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
 import {EnumerableSet} from "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 import {TokenState} from "src/types/tokenData.sol";
 

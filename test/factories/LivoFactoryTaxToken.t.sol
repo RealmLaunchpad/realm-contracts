@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv4GraduatorTaxableToken} from "test/launchpad/base.t.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryTaxToken} from "src/tokenFactories/LivoFactoryTaxToken.sol";
+import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
