@@ -60,43 +60,21 @@ contract LivoFeeHandlerSweepExcessTests is Test {
 
     // ======================== depositFees tracking ========================
 
-    function test_depositFees_tracksTotalPendingCreatorClaims() public {
-        handler.depositFees{value: 1 ether}(tokenA, creator);
-        assertEq(handler.totalPendingCreatorClaims(), 1 ether);
-
-        handler.depositFees{value: 2 ether}(tokenB, creator);
-        assertEq(handler.totalPendingCreatorClaims(), 3 ether);
-    }
-
     function test_depositFees_tracksDifferentReceivers() public {
         handler.depositFees{value: 1 ether}(tokenA, creator);
         handler.depositFees{value: 0.5 ether}(tokenA, alice);
-        assertEq(handler.totalPendingCreatorClaims(), 1.5 ether);
+        assertEq(address(handler).balance, 1.5 ether);
     }
 
     // ======================== claim decrements tracker ========================
 
-    function test_claim_decrementsTotalPendingCreatorClaims() public {
-        handler.depositFees{value: 3 ether}(tokenA, creator);
-        handler.depositFees{value: 2 ether}(tokenB, creator);
-        assertEq(handler.totalPendingCreatorClaims(), 5 ether);
-
-        vm.prank(creator);
-        handler.claim(_toArray(tokenA));
-        assertEq(handler.totalPendingCreatorClaims(), 2 ether);
-
-        vm.prank(creator);
-        handler.claim(_toArray(tokenB));
-        assertEq(handler.totalPendingCreatorClaims(), 0);
-    }
-
-    function test_claim_noPending_trackerUnchanged() public {
+    function test_claim_noPending_balanceUnchanged() public {
         handler.depositFees{value: 1 ether}(tokenA, creator);
 
         // alice has nothing to claim
         vm.prank(alice);
         handler.claim(_toArray(tokenA));
-        assertEq(handler.totalPendingCreatorClaims(), 1 ether);
+        assertEq(address(handler).balance, 1 ether);
     }
 
     // ======================== sweepExcessEth ========================
@@ -112,7 +90,7 @@ contract LivoFeeHandlerSweepExcessTests is Test {
 
         assertEq(alice.balance - balBefore, 3 ether, "should receive excess");
         assertEq(address(handler).balance, 2 ether, "pending claims untouched");
-        assertEq(handler.totalPendingCreatorClaims(), 2 ether, "tracker unchanged");
+        assertEq(address(handler).balance, 2 ether, "pending claims untouched after sweep");
     }
 
     function test_sweepExcessEth_noExcess_noTransfer() public {
@@ -153,7 +131,7 @@ contract LivoFeeHandlerSweepExcessTests is Test {
         handler.claim(_toArray(tokenB));
         assertEq(alice.balance - aliceBal, 2 ether, "alice claim intact");
 
-        assertEq(handler.totalPendingCreatorClaims(), 0, "all claimed");
+        assertEq(address(handler).balance, 0, "all claimed, contract empty");
         assertEq(address(handler).balance, 0, "contract empty");
     }
 
@@ -162,16 +140,16 @@ contract LivoFeeHandlerSweepExcessTests is Test {
     function test_fullLifecycle_depositClaimSweep() public {
         // 1. Deposit fees
         handler.depositFees{value: 3 ether}(tokenA, creator);
-        assertEq(handler.totalPendingCreatorClaims(), 3 ether);
+        assertEq(address(handler).balance, 3 ether);
 
         // 2. Someone sends ETH directly (stuck)
         vm.deal(address(handler), 5 ether); // 2 ether excess
-        assertEq(handler.totalPendingCreatorClaims(), 3 ether, "tracker unaffected by direct send");
+        assertEq(address(handler).balance, 5 ether, "balance includes excess");
 
         // 3. Creator claims
         vm.prank(creator);
         handler.claim(_toArray(tokenA));
-        assertEq(handler.totalPendingCreatorClaims(), 0);
+        assertEq(address(handler).balance, 2 ether, "only excess remains after claim");
         assertEq(address(handler).balance, 2 ether, "only excess remains");
 
         // 4. Sweep excess

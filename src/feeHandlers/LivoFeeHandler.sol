@@ -13,7 +13,7 @@ contract LivoFeeHandler is ILivoFeeHandler, Ownable, ReentrancyGuardTransient {
     mapping(address token => mapping(address account => uint256 amount)) internal _pendingClaims;
 
     /// @notice Sum of all pending creator claims (used to identify excess/stuck ETH)
-    uint256 public totalPendingCreatorClaims;
+    uint256 internal totalPendingCreatorClaims;
 
     constructor() Ownable(msg.sender) {}
 
