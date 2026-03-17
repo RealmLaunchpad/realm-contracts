@@ -11,11 +11,6 @@ getcontext().prec = 90
 
 WAD = 10**18
 TOTAL_SUPPLY = 1_000_000_000 * WAD
-TARGET_ETH = Decimal("8.5")
-TARGET_ETH_WEI = int(TARGET_ETH * WAD)
-TARGET_TOKENS = 200_000_000 * WAD
-TARGET_FEE_ETH = Decimal("0.5")
-TARGET_FEE_WEI = int(TARGET_FEE_ETH * WAD)
 
 
 @dataclass(frozen=True)
@@ -50,10 +45,6 @@ def reserves_from_eth(k: int, t0: int, e0: int, eth_reserves: int) -> int:
     return k // (eth_reserves + e0) - t0
 
 
-def t0_real_numerator(e0: int) -> int:
-    return (TOTAL_SUPPLY - TARGET_TOKENS) * e0 - TARGET_TOKENS * TARGET_ETH_WEI
-
-
 def score_candidate(
     token_error_wei: int,
     fee_error_wei: int,
@@ -62,9 +53,11 @@ def score_candidate(
     w_fee: Decimal,
     w_price: Decimal,
     fee_for_price_match_wei: int,
+    target_tokens: int,
+    target_fee_wei: int,
 ) -> Decimal:
-    token_error_ratio = Decimal(token_error_wei) / Decimal(TARGET_TOKENS)
-    fee_error_ratio = Decimal(fee_error_wei) / Decimal(TARGET_FEE_WEI)
+    token_error_ratio = Decimal(token_error_wei) / Decimal(target_tokens)
+    fee_error_ratio = Decimal(fee_error_wei) / Decimal(target_fee_wei)
 
     score = (
         w_token * token_error_ratio
@@ -85,6 +78,8 @@ def evaluate_candidate(
     w_token: Decimal,
     w_fee: Decimal,
     w_price: Decimal,
+    target_tokens: int,
+    target_eth_wei: int,
 ) -> Candidate | None:
     if e0 <= 0 or t0 < 0:
         return None
@@ -94,15 +89,15 @@ def evaluate_candidate(
     if t_at_zero != TOTAL_SUPPLY:
         return None
 
-    t_at_grad = reserves_from_eth(k, t0, e0, TARGET_ETH_WEI)
+    t_at_grad = reserves_from_eth(k, t0, e0, target_eth_wei)
     if t_at_grad <= 0:
         return None
 
-    token_error_wei = abs(t_at_grad - TARGET_TOKENS)
+    token_error_wei = abs(t_at_grad - target_tokens)
 
-    price_curve = Decimal((TARGET_ETH_WEI + e0) ** 2) / Decimal(k)
+    price_curve = Decimal((target_eth_wei + e0) ** 2) / Decimal(k)
 
-    uni_eth_after_target_fee = TARGET_ETH_WEI - target_fee_wei
+    uni_eth_after_target_fee = target_eth_wei - target_fee_wei
     if uni_eth_after_target_fee <= 0:
         return None
     price_uni_with_target_fee = Decimal(uni_eth_after_target_fee) / Decimal(t_at_grad)
@@ -113,7 +108,7 @@ def evaluate_candidate(
     price_deviation_ratio = abs(price_uni_with_target_fee - price_curve) / price_curve
 
     fee_for_price_match_wei = int(
-        Decimal(TARGET_ETH_WEI) - (Decimal(t_at_grad) * price_curve)
+        Decimal(target_eth_wei) - (Decimal(t_at_grad) * price_curve)
     )
     fee_error_wei = abs(fee_for_price_match_wei - target_fee_wei)
 
@@ -125,6 +120,8 @@ def evaluate_candidate(
         w_fee=w_fee,
         w_price=w_price,
         fee_for_price_match_wei=fee_for_price_match_wei,
+        target_tokens=target_tokens,
+        target_fee_wei=target_fee_wei,
     )
 
     return Candidate(
@@ -152,6 +149,9 @@ def search(
     w_token: Decimal,
     w_fee: Decimal,
     w_price: Decimal,
+    target_tokens: int,
+    target_eth_wei: int,
+    starting_mcap_wei: int,
 ) -> Candidate:
     min_e0 = to_wei(min_e0_eth)
     max_e0 = to_wei(max_e0_eth)
@@ -166,14 +166,16 @@ def search(
         raise ValueError("step_e0_eth must be > 0")
     if t0_window < 0:
         raise ValueError("t0_window must be >= 0")
-    if target_fee_wei <= 0 or target_fee_wei >= TARGET_ETH_WEI:
-        raise ValueError("target_fee_eth must be in (0, TARGET_ETH)")
+    if target_fee_wei <= 0 or target_fee_wei >= target_eth_wei:
+        raise ValueError("target_fee_eth must be in (0, target_eth)")
+    if starting_mcap_wei <= 0:
+        raise ValueError("starting_mcap_eth must be > 0")
 
     best: Candidate | None = None
 
     e0 = min_e0
     while e0 <= max_e0:
-        floor_t0 = t0_real_numerator(e0) // TARGET_ETH_WEI
+        floor_t0 = TOTAL_SUPPLY * e0 // starting_mcap_wei - TOTAL_SUPPLY
         for t0 in range(floor_t0 - t0_window, floor_t0 + t0_window + 1):
             cand = evaluate_candidate(
                 e0=e0,
@@ -182,6 +184,8 @@ def search(
                 w_token=w_token,
                 w_fee=w_fee,
                 w_price=w_price,
+                target_tokens=target_tokens,
+                target_eth_wei=target_eth_wei,
             )
             if cand is None:
                 continue
@@ -197,7 +201,14 @@ def search(
     return best
 
 
-def print_result(best: Candidate, target_fee_eth: Decimal) -> None:
+def print_result(
+    best: Candidate,
+    target_fee_eth: Decimal,
+    target_tokens: int,
+    target_eth: Decimal,
+    graduation_mcap_eth: Decimal,
+    eth_usd_price: Decimal = Decimal("2000"),
+) -> None:
     print("Best parameters found")
     print("---------------------")
     print(f"K  = {best.k}")
@@ -212,9 +223,9 @@ def print_result(best: Candidate, target_fee_eth: Decimal) -> None:
         f" (error = {best.t_at_zero - TOTAL_SUPPLY})"
     )
     print(
-        f"at e = {TARGET_ETH} ETH:"
+        f"at e = {target_eth} ETH:"
         f" t = {best.t_at_grad}"
-        f" (target error = {best.t_at_grad - TARGET_TOKENS})"
+        f" (target error = {best.t_at_grad - target_tokens})"
     )
     print(
         "fee needed for exact price match:"
@@ -227,15 +238,69 @@ def print_result(best: Candidate, target_fee_eth: Decimal) -> None:
         f" {best.price_deviation_ratio * Decimal(100):.8f}%"
     )
     print(f"composite score: {best.score}")
+    print()
+    initial_price = Decimal(best.e0) / Decimal(TOTAL_SUPPLY + best.t0)
+    initial_mcap = initial_price * Decimal(TOTAL_SUPPLY)
+    initial_mcap_eth = initial_mcap / WAD
+    print("Initial State (e = 0)")
+    print("---------------------")
+    print(f"initial price:      {initial_price:.30f} wei/wei")
+    print(f"initial market cap: {initial_mcap_eth:.18f} ETH")
+    print(f"initial market cap: ${initial_mcap_eth * eth_usd_price:,.2f} (ETH = ${eth_usd_price})")
+    print()
+    print("Liquidity & Marketcap")
+    print("---------------------")
+    tokens_deposited = from_wei(best.t_at_grad)
+    eth_as_liquidity = target_eth - target_fee_eth
+    token_price = eth_as_liquidity / tokens_deposited
+    marketcap = token_price * from_wei(TOTAL_SUPPLY)
+    pct_supply = tokens_deposited / from_wei(TOTAL_SUPPLY) * 100
+    print(f"graduation threshold:          {target_eth} ETH")
+    print(f"tokens deposited as liquidity: {tokens_deposited / 1_000_000:.2f}M ({pct_supply:.1f}% of total supply)")
+    print(f"ETH deposited as liquidity:    {eth_as_liquidity} ETH")
+    print(f"graduation fee:                {target_fee_eth} ETH")
+    print(f"  - treasury fee:              {target_fee_eth * Decimal('0.8')} ETH")
+    print(f"  - creator fee:               {target_fee_eth * Decimal('0.2')} ETH")
+    print(f"token price in ETH:            {token_price:.18f}")
+    print(f"token marketcap in ETH:        {marketcap:.6f}")
+    marketcap_usd = marketcap * eth_usd_price
+    print(f"token marketcap in USD:        ${marketcap_usd:,.2f} (ETH = ${eth_usd_price})")
+    print()
+    actual_grad_mcap = token_price * from_wei(TOTAL_SUPPLY)
+    print("Graduation Marketcap")
+    print("--------------------")
+    print(f"target graduation mcap:  {graduation_mcap_eth} ETH")
+    print(f"actual graduation mcap:  {actual_grad_mcap:.6f} ETH")
+    print(f"actual graduation mcap:  ${actual_grad_mcap * eth_usd_price:,.2f} (ETH = ${eth_usd_price})")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Searches K, T0, E0 for ConstantProductBondingCurve under graduation "
-            "constraints: ~200M tokens at 8.5 ETH, ~0.5 ETH fee, and low price gap "
-            "between bonding curve and Uniswap"
+            "constraints: target tokens at graduation price with target fee, "
+            "and low price gap between bonding curve and Uniswap"
         )
+    )
+    parser.add_argument(
+        "target_eth",
+        type=Decimal,
+        help="Target ETH reserves in bonding curve at graduation",
+    )
+    parser.add_argument(
+        "target_fee_eth",
+        type=Decimal,
+        help="Target graduation fee in ETH",
+    )
+    parser.add_argument(
+        "starting_mcap_eth",
+        type=Decimal,
+        help="Starting market cap in ETH (e.g., 2.5)",
+    )
+    parser.add_argument(
+        "graduation_mcap_eth",
+        type=Decimal,
+        help="Target graduation market cap in ETH (e.g., 12)",
     )
     parser.add_argument(
         "--min-e0-eth",
@@ -262,12 +327,6 @@ def parse_args() -> argparse.Namespace:
         help="Number of integer wei points to test around derived T0 (default: 5)",
     )
     parser.add_argument(
-        "--target-fee-eth",
-        type=Decimal,
-        default=TARGET_FEE_ETH,
-        help="Target graduation fee in ETH (default: 0.5)",
-    )
-    parser.add_argument(
         "--weight-token",
         type=Decimal,
         default=Decimal("1.0"),
@@ -285,11 +344,24 @@ def parse_args() -> argparse.Namespace:
         default=Decimal("1.0"),
         help="Weight for price deviation at target fee (default: 1.0)",
     )
+    parser.add_argument(
+        "--eth-usd-price",
+        type=Decimal,
+        default=Decimal("2000"),
+        help="ETH price in USD for marketcap conversion (e.g., 2000)",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+
+    target_eth_wei = to_wei(args.target_eth)
+    starting_mcap_wei = to_wei(args.starting_mcap_eth)
+    graduation_mcap_wei = to_wei(args.graduation_mcap_eth)
+    uni_eth_wei = target_eth_wei - to_wei(args.target_fee_eth)
+    target_tokens = TOTAL_SUPPLY * uni_eth_wei // graduation_mcap_wei
+
     best = search(
         min_e0_eth=args.min_e0_eth,
         max_e0_eth=args.max_e0_eth,
@@ -299,8 +371,18 @@ def main() -> None:
         w_token=args.weight_token,
         w_fee=args.weight_fee,
         w_price=args.weight_price,
+        target_tokens=target_tokens,
+        target_eth_wei=target_eth_wei,
+        starting_mcap_wei=starting_mcap_wei,
     )
-    print_result(best=best, target_fee_eth=args.target_fee_eth)
+    print_result(
+        best=best,
+        target_fee_eth=args.target_fee_eth,
+        target_tokens=target_tokens,
+        target_eth=args.target_eth,
+        graduation_mcap_eth=args.graduation_mcap_eth,
+        eth_usd_price=args.eth_usd_price,
+    )
 
 
 if __name__ == "__main__":

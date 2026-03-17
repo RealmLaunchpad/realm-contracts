@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
+import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 
 // This is a test file to test the bonding curve ConstantProductBondingCurve
 contract ConstantProductBondingCurveTest is Test {
@@ -12,8 +13,9 @@ contract ConstantProductBondingCurveTest is Test {
 
     // Graduation parameters
     // These ones are set in the LivoLaunchpad contract, and the curves need to be compliant with them
-    uint256 constant GRADUATION_THRESHOLD = 8.5 ether;
-    uint256 constant GRADUATION_ETH_FEE = 0.5 ether;
+    uint256 constant GRADUATION_THRESHOLD = 3.75 ether;
+    uint256 constant GRADUATION_MAX_EXCESS = 0.05 ether;
+    uint256 constant GRADUATION_ETH_FEE = 0.25 ether;
     uint256 constant GRADUATION_TOKEN_CREATOR_REWARD = 0;
 
     function setUp() public {
@@ -35,9 +37,7 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 tokenReserves = curve.getTokenReserves(GRADUATION_THRESHOLD);
         // here we accept a 0.1%  error as 200,000,000 is pretty much arbitrary
         // note that 1M are for the token creator, included in this tokenReserves
-        assertApproxEqRel(
-            tokenReserves, 200_000_000e18, 0.001e18, "Token reserves should be 201M at graduation (1M for creator)"
-        );
+        assertApproxEqRel(tokenReserves, 285_714_286e18, 0.001e18, "Token reserves should be ~285.7M at graduation");
     }
 
     function test_buyTokensWithExactEth_initialState() public {
@@ -45,8 +45,15 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 ethReserves = 0;
         uint256 ethAmount = 1;
 
-        uint256 tokens = curve.buyTokensWithExactEth(ethReserves, ethAmount);
+        (uint256 tokens,) = curve.buyTokensWithExactEth(ethReserves, ethAmount);
         assertTrue(tokens > 0, "Should mint non-zero amount of tokens");
+    }
+
+    function test_logStartingPrice() public {
+        uint256 ethAmount = 1 wei;
+        (uint256 tokensReceived,) = curve.buyTokensWithExactEth(0, ethAmount);
+        uint256 priceWeiPerToken = (ethAmount * 1e18) / tokensReceived;
+        console.log("Starting price [wei/token]:", priceWeiPerToken);
     }
 
     function test_initialState_buyTokensLowestPrice() public {
@@ -54,7 +61,7 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
         uint256 ethAmount = 0.00000000001e18;
 
-        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, ethAmount);
+        (uint256 tokensReceived,) = curve.buyTokensWithExactEth(ethReserves, ethAmount);
         uint256 tokenPrice = 1e18 * ethAmount / tokensReceived; // ETH per token
         console.log("Initial token price [eth/token]", tokenPrice);
 
@@ -69,7 +76,7 @@ contract ConstantProductBondingCurveTest is Test {
         uint256 ethReserves = GRADUATION_THRESHOLD;
         // the buy value cannot be too hight, otherwise we affect the price too much
         uint256 buyValue = 0.000001e18;
-        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, buyValue);
+        (uint256 tokensReceived,) = curve.buyTokensWithExactEth(ethReserves, buyValue);
         uint256 curvePrice = (1e18 * buyValue) / tokensReceived; // ETH/tokens
         console.log("Curve price at graduation [eth/token]", curvePrice);
 
@@ -84,12 +91,24 @@ contract ConstantProductBondingCurveTest is Test {
     }
 
     function test_fuzz_buyTokensWithExactEth(uint256 ethReserves, uint256 ethAmount) public {
-        // This is way outside the expected range, as tokens would be graduated when reserves are about 8 ETH, but just in case
-        ethReserves = bound(ethReserves, 0, 37e18);
-        ethAmount = bound(ethAmount, 0, 37e18);
+        uint256 maxEthReserves = curve.maxEthReserves();
+        ethReserves = bound(ethReserves, 0, 30 ether);
+
+        uint256 ethAmountLimit = maxEthReserves > ethReserves ? maxEthReserves - ethReserves : 0;
+        if (ethAmountLimit == 0) return;
+
+        ethAmount = bound(ethAmount, 0, ethAmountLimit);
+        console.log("ethReserves", ethReserves);
+        console.log("ethAmount", ethAmount);
+
+        if (ethReserves + ethAmount > curve.maxEthReserves()) {
+            vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+            curve.buyTokensWithExactEth(ethReserves, ethAmount);
+            return;
+        }
 
         // token reserves are calculated internally from the ethReserves so it doesn't matter what we pass here
-        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, ethAmount);
+        (uint256 tokensReceived,) = curve.buyTokensWithExactEth(ethReserves, ethAmount);
     }
 
     // This basically tests that a buy can happen after the first small purchase. Not the most useful test though.
@@ -119,7 +138,7 @@ contract ConstantProductBondingCurveTest is Test {
     }
 
     function test_fuzz_sellExactTokens(uint256 ethReserves, uint256 tokenAmount) public {
-        ethReserves = bound(ethReserves, 0.000001e18, 30e18);
+        ethReserves = bound(ethReserves, 0.000001e18, 11e18);
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
         tokenAmount = bound(tokenAmount, 1e18, tokenReserves / 10);
 
@@ -128,11 +147,14 @@ contract ConstantProductBondingCurveTest is Test {
     }
 
     function test_fuzz_buyAndSell(uint256 ethReserves, uint256 ethAmount, uint256 tokenAmount) public {
-        ethReserves = bound(ethReserves, 0, 30e18);
+        uint256 maxEthReserves = curve.maxEthReserves();
+        ethReserves = bound(ethReserves, 0, maxEthReserves);
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
 
-        ethAmount = bound(ethAmount, 0.000001e18, 2e18);
-        uint256 tokensReceived = curve.buyTokensWithExactEth(ethReserves, ethAmount);
+        uint256 maxEthAmount = maxEthReserves - ethReserves;
+        if (maxEthAmount < 0.000001e18) return;
+        ethAmount = bound(ethAmount, 0.000001e18, maxEthAmount);
+        (uint256 tokensReceived,) = curve.buyTokensWithExactEth(ethReserves, ethAmount);
         ethReserves += ethAmount;
         console.log("before updating tokenReserves");
         tokenReserves -= tokensReceived;
@@ -145,10 +167,17 @@ contract ConstantProductBondingCurveTest is Test {
     }
 
     function test_fuzz_getTokenReserves(uint256 ethReserves) public {
-        ethReserves = bound(ethReserves, 0, 30 ether);
+        ethReserves = bound(ethReserves, 0, 10 ether);
 
         uint256 tokenReserves = curve.getTokenReserves(ethReserves);
 
         assertTrue(tokenReserves > 0, "Token reserves should be non-zero");
+    }
+
+    function test_maxEthReserves() public view {
+        uint256 maxReserves = curve.maxEthReserves();
+        assertEq(
+            maxReserves, GRADUATION_THRESHOLD + GRADUATION_MAX_EXCESS, "Max reserves should be threshold + max excess"
+        );
     }
 }

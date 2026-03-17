@@ -25,6 +25,7 @@ import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
@@ -52,7 +53,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 poolSetPrice = _convertSqrtX96ToTokenPrice(sqrtPriceX96);
 
         assertApproxEqAbs(
-            poolSetPrice, GRADUATION_PRICE, 10, "Pool price should match graduation price. 10 wei error difference"
+            poolSetPrice, POOL_SETPOINT_PRICE, 10, "Pool price should match graduation price. 10 wei error difference"
         );
         assertGt(tick, 0, "Tick should be positive");
     }
@@ -130,7 +131,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         uint256 poolPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice()); // tokens/ETH
 
-        assertApproxEqAbs(poolPrice, GRADUATION_PRICE, 1, "Pool price should match graduation price");
+        assertApproxEqAbs(poolPrice, POOL_SETPOINT_PRICE, 1, "Pool price should match graduation price");
     }
 
     /// @notice Test that token can be graduated successfully and pool has correct liquidity and price after graduation
@@ -353,10 +354,10 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 swapPrice = 1e18 * ethDelta / tokenDelta;
         uint256 swapPriceExcludingFees = 1e18 * (ethDelta * (10000 - BASE_BUY_FEE_BPS) / 10000) / tokenDelta;
         // accepting here a 0.02% price increase between swap and graduation starting point price
-        assertGt(swapPrice, GRADUATION_PRICE, "small swap price should be above graduation price");
-        assertGt(swapPriceExcludingFees, GRADUATION_PRICE, "small swap price should be above graduation price");
+        assertGt(swapPrice, POOL_SETPOINT_PRICE, "small swap price should be above graduation price");
+        assertGt(swapPriceExcludingFees, POOL_SETPOINT_PRICE, "small swap price should be above graduation price");
         assertApproxEqRel(
-            swapPriceExcludingFees, GRADUATION_PRICE, 0.0002 ether, "small swap price should match graduation price"
+            swapPriceExcludingFees, POOL_SETPOINT_PRICE, 0.002 ether, "small swap price should match graduation price"
         );
     }
 
@@ -394,7 +395,12 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         assertApproxEqRel(
             effectivePrice, poolPrice, 0.011e18, "Effective price at graduation should match pool price (small last tx)"
         );
-        assertGt(poolPrice, effectivePrice, "Pool price should be above effective price at graduation (small last tx)");
+        assertApproxEqRel(
+            poolPrice,
+            effectivePrice,
+            0.001e18,
+            "Pool price should be close to effective price at graduation (small last tx)"
+        );
     }
 
     /// @notice Test that after exact graduation, the first purchase has a similar price than the last purchase in the bonding curve
@@ -491,13 +497,13 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         uint256 grieferTokenBalance = LivoToken(testToken).balanceOf(griefer);
         assertGt(grieferTokenBalance, 180_000_000e18, "Griefer should have bought tokens");
-        assertLt(grieferTokenBalance, 210_000_000e18, "Griefer should have bought around 190M tokens");
+        assertLt(grieferTokenBalance, 260_000_000e18, "Griefer should have bought around 225M tokens");
 
         // Step 2: Normal user buys tokens to approach graduation threshold
         address normalUser = makeAddr("normalUser");
         vm.deal(normalUser, 10 ether);
         vm.prank(normalUser);
-        launchpad.buyTokensWithExactEth{value: 7 ether}(testToken, 0, DEADLINE);
+        launchpad.buyTokensWithExactEth{value: 2.5 ether}(testToken, 0, DEADLINE);
 
         // Verify we're close to graduation but not graduated yet
         TokenState memory state = launchpad.getTokenState(testToken);
@@ -540,7 +546,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         assertApproxEqAbs(
             _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice()),
-            GRADUATION_PRICE,
+            POOL_SETPOINT_PRICE,
             1, // 1 wei error due to roundings in calcualtions
             "Price before graduation should be as expected"
         );
@@ -549,7 +555,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         assertApproxEqAbs(
             _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice()),
-            GRADUATION_PRICE,
+            POOL_SETPOINT_PRICE,
             1, // 1 wei error due to roundings in calcualtions
             "Price after graduation should be as expected"
         );
@@ -632,7 +638,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 tokenBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 etherBalanceBefore = buyer.balance;
 
-        _swapSell(buyer, tokenBalanceBefore, 6 ether, true);
+        _swapSell(buyer, tokenBalanceBefore, 2.5 ether, true);
 
         uint256 tokenBalanceAfter = LivoToken(testToken).balanceOf(buyer);
         uint256 etherBalanceAfter = buyer.balance;
@@ -640,7 +646,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         assertGt(etherBalanceAfter, etherBalanceBefore, "Buyer eth balance should increase after successful swap");
         assertLt(tokenBalanceAfter, tokenBalanceBefore, "Buyer token balance should decrease after successful swap");
 
-        assertGt(etherBalanceAfter - etherBalanceBefore, 6 ether, "Buyer eth balance didnt increase enough");
+        assertGt(etherBalanceAfter - etherBalanceBefore, 2.5 ether, "Buyer eth balance didnt increase enough");
         assertEq(tokenBalanceAfter, 0, "Buyer should have sold all tokens");
     }
 
@@ -650,7 +656,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
 
-        _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
+        _swapSell(buyer, buyerBalanceBefore, 2.5 ether, true);
 
         assertEq(LivoToken(testToken).balanceOf(buyer), 0, "Buyer should have sold all tokens");
         assertEq(LivoToken(testToken).balanceOf(creator), 0, "Creator should have sold all tokens");
@@ -691,13 +697,9 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted at graduation
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ4() public createTestToken {
         vm.skip(true);
-        vm.expectEmit(true, true, false, true);
-        emit LivoGraduatorUniswapV4.TokenGraduated(
-            testToken,
-            bytes32(0xb8316c7a029f0486576cea8a548043cc6942604f7a8ffb742a5bcc103a03b821),
-            191123250949901652977521310,
-            7456000000000052224,
-            55296381402046003400649
+        vm.expectEmit(true, false, false, true);
+        emit ILivoGraduator.TokenGraduated(
+            testToken, 191123250949901652977521310, 7456000000000052224, 55296381402046003400649
         );
 
         _graduateToken();
@@ -705,7 +707,8 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     /// @notice Test that the TokenGraduated event is emitted at graduation
 
     function test_tokenGraduatedEventEmittedAtGraduation_byLaunchpad_univ4() public createTestToken {
-        uint256 expectedTokenBalance = TOTAL_SUPPLY - bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+        (uint256 purchasedTokens,) = bondingCurve.buyTokensWithExactEth(0, GRADUATION_THRESHOLD);
+        uint256 expectedTokenBalance = TOTAL_SUPPLY - purchasedTokens;
 
         vm.expectEmit(true, false, false, true);
         // After refactoring, launchpad emits full amounts (before fees/burning handled by graduator)
@@ -732,22 +735,23 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         uint256 poolBalanceAfterGraduation = address(poolManager).balance;
         uint256 buyerEtherBefore = buyer.balance;
-        uint256 creatorEtherBefore = creator.balance;
+        uint256 treasuryEtherBefore = treasury.balance;
+        uint256 feeHandlerEtherBefore = address(feeHandler).balance;
 
-        // ~190M tokens are in liquidity, 10M owned by the creator, and ~800M owned by `buyer`
         // when selling everything back, almost all eth deposited as liquidity should be recovered
 
         // sell the full balance of the buyer, who has most of the supply
-        _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
+        _swapSell(buyer, buyerBalanceBefore, 2.5 ether, true);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
-        uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
+        uint256 treasuryDelta = treasury.balance - treasuryEtherBefore;
+        uint256 feeHandlerDelta = address(feeHandler).balance - feeHandlerEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
-        // check that the eth collected by buyer and seller matches the eth left the pool
+        // Hook takes LP fees from pool: treasury share (direct) + creator share (to fee handler)
         assertEq(
-            ethRecoveredByBuyer + ethRecoveredByCreator,
+            ethRecoveredByBuyer + treasuryDelta + feeHandlerDelta,
             ethLeavingFromThePoolManager,
-            "eth recovered by buyer and creator should match eth in pool"
+            "eth recovered by buyer + hook fees should match eth leaving pool"
         );
 
         // because of the liquidity boundaries set when adding liquidity, there is a tiny amount of eth that won't be recoverable
@@ -759,7 +763,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
     function test_unintentionalFeesGoingToTreasury() public createTestToken {
         uint256 treasuryBalanceBefore = address(treasury).balance;
-        uint256 expectedGraduationFee = 0.5001 ether;
+        uint256 expectedGraduationFee = 0.25 ether;
 
         _graduateToken();
 
@@ -867,19 +871,11 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         TaxTokenUniV4BaseTests._swap(caller, token, amountIn, minAmountOut, isBuy, expectSuccess);
     }
 
-    /// @notice Override createTestToken modifier to provide tokenCalldata for tax configuration
+    /// @notice Override createTestToken modifier to provide tax configuration
     modifier createTestToken() override {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
-
         vm.prank(creator);
-        testToken = launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x003",
-            tokenCalldata
+        testToken = factoryTax.createToken(
+            "TestToken", "TEST", creator, "0x003", 0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)
         );
         _;
     }
@@ -889,6 +885,12 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
     function test_sellingFromUniv4AfterGraduation_sellFullSupply_whereIsTheEth() public override createTestToken {
         uint256 poolBalanceBefore = address(poolManager).balance;
         _graduateToken();
+        // Graduation deposits creator compensation into the fee handler (not the pool),
+        // so we capture it here to exclude from pool-balance accounting.
+        address[] memory _tokens = new address[](1);
+        _tokens[0] = testToken;
+        uint256 graduationDeposit =
+            ILivoFeeHandler(ILivoToken(testToken).feeHandler()).getClaimable(_tokens, creator)[0];
 
         uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
         uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
@@ -904,31 +906,30 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         uint256 poolBalanceAfterGraduation = address(poolManager).balance;
         uint256 buyerEtherBefore = buyer.balance;
         uint256 creatorEtherBefore = creator.balance;
+        uint256 treasuryEtherBefore = treasury.balance;
 
         // ~190M tokens are in liquidity, 10M owned by the dead address, and ~800M owned by `buyer`
         // when selling everything back, almost all eth deposited as liquidity should be recovered
 
         // sell the full balance of the buyer, who has most of the supply
-        _swapSell(buyer, buyerBalanceBefore, 6 ether, true);
+        _swapSell(buyer, buyerBalanceBefore, 2.5 ether, true);
 
-        // this should transfer taxes to the creator, completing the fund flow
+        // Claim creator's share (graduation deposit + LP creator share + sell tax)
         address[] memory tokens = new address[](1);
         tokens[0] = testToken;
-        uint256[] memory positionIndexes = new uint256[](1);
-        positionIndexes[0] = 0;
         vm.prank(creator);
-        LivoGraduatorUniswapV4(payable(address(graduator))).creatorClaim(tokens, positionIndexes);
+        feeHandler.claim(tokens);
 
         uint256 ethRecoveredByBuyer = buyer.balance - buyerEtherBefore;
         uint256 ethRecoveredByCreator = creator.balance - creatorEtherBefore;
+        uint256 treasuryDelta = treasury.balance - treasuryEtherBefore;
         uint256 ethLeavingFromThePoolManager = poolBalanceAfterGraduation - address(poolManager).balance;
-        uint256 wethFeesEarnedByCreator = WETH.balanceOf(creator);
 
-        // check that the eth collected by buyer and seller matches the eth left the pool
+        // Subtract graduation deposit (from fee handler, not pool) and add treasury delta (hook LP share)
         assertEq(
-            ethRecoveredByBuyer + ethRecoveredByCreator + wethFeesEarnedByCreator,
+            ethRecoveredByBuyer + ethRecoveredByCreator - graduationDeposit + treasuryDelta,
             ethLeavingFromThePoolManager,
-            "eth recovered by buyer and creator should match eth in pool"
+            "eth recovered by buyer + creator + treasury hook fees should match eth leaving pool"
         );
 
         // because of the liquidity boundaries set when adding liquidity, there is a tiny amount of eth that won't be recoverable

@@ -12,6 +12,13 @@ import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 contract LivoGraduatorUniswapV2 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
+    /// @notice Graduation ETH fee split between creator and treasury
+    uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
+
+    /// @notice ETH compensation paid to token creator at graduation
+    /// @dev this is part of the GRADUATION_ETH_FEE
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
+
     /// @notice Where LP tokens are sent at graduation, effectively locking the liquidity
     address internal constant DEAD_ADDRESS = address(0xdEaD);
 
@@ -26,20 +33,9 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
 
     /// @notice Wrapped ETH address
     address internal immutable WETH;
-
-    /// @notice Graduation ETH fee split between creator and treasury
-    uint256 public constant GRADUATION_ETH_FEE = 0.5 ether;
-
-    /// @notice ETH compensation paid to token creator at graduation
-    /// @dev this is part of the GRADUATION_ETH_FEE
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.1 ether;
-
     //////////////////////// EVENTS ////////////////////////
 
     event SweepedRemainingEth(address graduatedToken, uint256 amount);
-    event TokenGraduated(
-        address indexed token, address indexed pair, uint256 tokenAmount, uint256 ethAmount, uint256 liquidity
-    );
 
     //////////////////////// ERRORS ////////////////////////
 
@@ -59,22 +55,18 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         UNISWAP_FACTORY = IUniswapV2Factory(UNISWAP_ROUTER.factory());
     }
 
-    modifier onlyLaunchpad() {
-        require(msg.sender == LIVO_LAUNCHPAD, OnlyLaunchpadAllowed());
-        _;
-    }
-
     /// @notice Creates a Uniswap V2 pair for the token to reserve the pair and know the pair address
     /// @param tokenAddress Address of the token
     /// @return pair Address of the created Uniswap V2 pair
-    function initialize(address tokenAddress) external override onlyLaunchpad returns (address pair) {
+    function initialize(address tokenAddress) external override returns (address pair) {
         pair = UNISWAP_FACTORY.createPair(tokenAddress, WETH);
         emit PairInitialized(tokenAddress, pair);
     }
 
     /// @notice Graduates a token by adding liquidity to Uniswap V2
     /// @param tokenAddress Address of the token to graduate
-    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override onlyLaunchpad {
+    function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override {
+        require(msg.sender == LIVO_LAUNCHPAD, OnlyLaunchpadAllowed());
         ILivoToken token = ILivoToken(tokenAddress);
         require(tokenAmount > 0, NoTokensToGraduate());
         require(msg.value > 0, NoETHToGraduate());
@@ -104,7 +96,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         }
 
         _cleanup(tokenAddress);
-        emit TokenGraduated(tokenAddress, pair, amountToken, amountEth, liquidity);
+        emit TokenGraduated(tokenAddress, amountToken, amountEth, liquidity);
     }
 
     /// @dev Reads the actual eth reserves after syncing
@@ -164,25 +156,17 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         require(msg.value > GRADUATION_ETH_FEE, NotEnoughEthForGraduation());
 
         ethForLiquidity = msg.value - GRADUATION_ETH_FEE;
-        uint256 treasuryShare = GRADUATION_ETH_FEE;
+        uint256 treasuryShare = GRADUATION_ETH_FEE - CREATOR_GRADUATION_COMPENSATION;
 
-        address tokenOwner = ILivoLaunchpad(LIVO_LAUNCHPAD).getTokenOwner(tokenAddress);
+        // Deposit creator compensation through the token
+        emit CreatorGraduationFeeCollected(tokenAddress, CREATOR_GRADUATION_COMPENSATION);
+        ILivoToken(tokenAddress).accrueFees{value: CREATOR_GRADUATION_COMPENSATION}();
+
+        // Send treasury share directly to treasury
         address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-
-        // Pay creator (non-reverting, fallback to treasury if fails)
-        if (_transferEth(tokenOwner, CREATOR_GRADUATION_COMPENSATION, false)) {
-            treasuryShare -= CREATOR_GRADUATION_COMPENSATION;
-        }
-
-        // Pay treasury
-        _transferEth(treasury, treasuryShare, true);
-    }
-
-    function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
-        if (amount == 0) return true;
-        (bool success,) = recipient.call{value: amount}("");
-        require(!requireSuccess || success, EtherTransferFailed());
-        return success;
+        (bool success,) = treasury.call{value: treasuryShare}("");
+        require(success, EtherTransferFailed());
+        emit TreasuryGraduationFeeCollected(tokenAddress, treasuryShare);
     }
 
     function _cleanup(address tokenAddress) internal {
@@ -195,8 +179,8 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator {
         // send any remaining ETH to the owner (launchpad)
         uint256 remainingEth = address(this).balance;
         if (remainingEth > 0) {
-            address livoTreasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
-            (bool success,) = livoTreasury.call{value: remainingEth}("");
+            address treasury = ILivoLaunchpad(LIVO_LAUNCHPAD).treasury();
+            (bool success,) = treasury.call{value: remainingEth}("");
             require(success, EtherTransferFailed());
 
             // for transparency, to be able to detect if some graduation went completely wrong

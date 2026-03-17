@@ -58,20 +58,10 @@
   },
   {
     "type": "function",
-    "name": "blacklistComponents",
+    "name": "blacklistFactory",
     "inputs": [
       {
-        "name": "implementation",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "bondingCurve",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "graduator",
+        "name": "factory",
         "type": "address",
         "internalType": "address"
       }
@@ -110,13 +100,6 @@
   },
   {
     "type": "function",
-    "name": "collectTreasuryFees",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "communityTakeOver",
     "inputs": [
       {
@@ -135,131 +118,6 @@
   },
   {
     "type": "function",
-    "name": "createCustomToken",
-    "inputs": [
-      {
-        "name": "name",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "symbol",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "implementation",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "bondingCurve",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "graduator",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "salt",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "tokenCalldata",
-        "type": "bytes",
-        "internalType": "bytes"
-      },
-      {
-        "name": "thresholdSettings",
-        "type": "tuple",
-        "internalType": "struct LivoLaunchpad.ThresholdSettings",
-        "components": [
-          {
-            "name": "ethGraduationThreshold",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "maxExcessOverThreshold",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
-      }
-    ],
-    "outputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "createToken",
-    "inputs": [
-      {
-        "name": "name",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "symbol",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "implementation",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "bondingCurve",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "graduator",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "salt",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "tokenCalldata",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "getMaxEthToSpend",
     "inputs": [
       {
@@ -273,47 +131,6 @@
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getThresholdSettings",
-    "inputs": [
-      {
-        "name": "implementation",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "bondingCurve",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "graduator",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct LivoLaunchpad.ThresholdSettings",
-        "components": [
-          {
-            "name": "ethGraduationThreshold",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "maxExcessOverThreshold",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
       }
     ],
     "stateMutability": "view"
@@ -340,26 +157,6 @@
             "internalType": "contract ILivoBondingCurve"
           },
           {
-            "name": "graduator",
-            "type": "address",
-            "internalType": "contract ILivoGraduator"
-          },
-          {
-            "name": "ethGraduationThreshold",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "maxExcessOverThreshold",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "tokenOwner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
             "name": "buyFeeBps",
             "type": "uint16",
             "internalType": "uint16"
@@ -370,25 +167,6 @@
             "internalType": "uint16"
           }
         ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getTokenOwner",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -431,32 +209,21 @@
   },
   {
     "type": "function",
-    "name": "isSetWhitelisted",
+    "name": "launchToken",
     "inputs": [
       {
-        "name": "implementation",
+        "name": "token",
         "type": "address",
         "internalType": "address"
       },
       {
         "name": "bondingCurve",
         "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "graduator",
-        "type": "address",
-        "internalType": "address"
+        "internalType": "contract ILivoBondingCurve"
       }
     ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -486,7 +253,41 @@
   },
   {
     "type": "function",
-    "name": "quoteBuyWithExactEth",
+    "name": "quoteBuyExactTokens",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tokenAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "ethFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "ethForReserves",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalEthNeeded",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteBuyTokensWithExactEth",
     "inputs": [
       {
         "name": "token",
@@ -546,6 +347,40 @@
       },
       {
         "name": "ethForSeller",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteSellTokensForExactEth",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "ethAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "ethPulledFromReserves",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "ethFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokensRequired",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -641,26 +476,6 @@
         "internalType": "contract ILivoBondingCurve"
       },
       {
-        "name": "graduator",
-        "type": "address",
-        "internalType": "contract ILivoGraduator"
-      },
-      {
-        "name": "ethGraduationThreshold",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "maxExcessOverThreshold",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "buyFeeBps",
         "type": "uint16",
         "internalType": "uint16"
@@ -730,45 +545,12 @@
   },
   {
     "type": "function",
-    "name": "treasuryEthFeesCollected",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "whitelistComponents",
+    "name": "whitelistFactory",
     "inputs": [
       {
-        "name": "implementation",
+        "name": "factory",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "bondingCurve",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "graduator",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "ethGraduationThreshold",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "maxExcessOverThreshold",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -776,56 +558,35 @@
   },
   {
     "type": "function",
-    "name": "whitelistedComponents",
+    "name": "whitelistedFactories",
     "inputs": [
       {
-        "name": "implementation",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "curve",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "graduator",
+        "name": "factory",
         "type": "address",
         "internalType": "address"
       }
     ],
     "outputs": [
       {
-        "name": "ethGraduationThreshold",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "maxExcessOverThreshold",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "authorized",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
   },
   {
     "type": "event",
-    "name": "ComponentsSetBlacklisted",
+    "name": "CommunityTakeOver",
     "inputs": [
       {
-        "name": "implementation",
+        "name": "token",
         "type": "address",
-        "indexed": false,
+        "indexed": true,
         "internalType": "address"
       },
       {
-        "name": "bondingCurve",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "graduator",
+        "name": "newOwner",
         "type": "address",
         "indexed": false,
         "internalType": "address"
@@ -835,37 +596,26 @@
   },
   {
     "type": "event",
-    "name": "ComponentsSetWhitelisted",
+    "name": "FactoryBlacklisted",
     "inputs": [
       {
-        "name": "implementation",
+        "name": "factory",
         "type": "address",
-        "indexed": false,
+        "indexed": true,
         "internalType": "address"
-      },
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "FactoryWhitelisted",
+    "inputs": [
       {
-        "name": "bondingCurve",
+        "name": "factory",
         "type": "address",
-        "indexed": false,
+        "indexed": true,
         "internalType": "address"
-      },
-      {
-        "name": "graduator",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "ethGraduationThreshold",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "maxExcessOverThreshold",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -984,61 +734,6 @@
   },
   {
     "type": "event",
-    "name": "TokenCreated",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "tokenOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "creator",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "name",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      },
-      {
-        "name": "symbol",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      },
-      {
-        "name": "implementation",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "bondingCurve",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "graduator",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "TokenGraduated",
     "inputs": [
       {
@@ -1064,7 +759,7 @@
   },
   {
     "type": "event",
-    "name": "TokenOwnerUpdated",
+    "name": "TokenLaunched",
     "inputs": [
       {
         "name": "token",
@@ -1073,10 +768,16 @@
         "internalType": "address"
       },
       {
-        "name": "newOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        "name": "graduationThreshold",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "maxExcessOverThreshold",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -1114,30 +815,6 @@
     "anonymous": false
   },
   {
-    "type": "event",
-    "name": "TreasuryFeesCollected",
-    "inputs": [
-      {
-        "name": "treasury",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "error",
-    "name": "AlreadyBlacklisted",
-    "inputs": []
-  },
-  {
     "type": "error",
     "name": "AlreadyConfigured",
     "inputs": []
@@ -1159,28 +836,7 @@
   },
   {
     "type": "error",
-    "name": "FailedDeployment",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "InsufficientBalance",
-    "inputs": [
-      {
-        "name": "balance",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "needed",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "InsufficientETHReserves",
+    "name": "InsufficientEthReserves",
     "inputs": []
   },
   {
@@ -1191,11 +847,6 @@
   {
     "type": "error",
     "name": "InvalidAmount",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "InvalidNameOrSymbol",
     "inputs": []
   },
   {
@@ -1216,17 +867,7 @@
   },
   {
     "type": "error",
-    "name": "InvalidTokenOwner",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "NotEnoughSupply",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotWhitelistedComponents",
     "inputs": []
   },
   {
@@ -1253,11 +894,6 @@
   },
   {
     "type": "error",
-    "name": "PurchaseExceedsLimitPostGraduation",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "ReceivingZeroAmount",
     "inputs": []
   },
@@ -1275,6 +911,11 @@
   {
     "type": "error",
     "name": "SlippageExceeded",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnauthorizedFactory",
     "inputs": []
   }
 ]

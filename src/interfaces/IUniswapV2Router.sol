@@ -3,7 +3,11 @@ pragma solidity 0.8.28;
 
 interface IUniswapV2Router {
     function factory() external pure returns (address);
+
+    // forge-lint: disable-next-line(mixed-case-function)
     function WETH() external pure returns (address);
+
+    // forge-lint: disable-next-line(mixed-case-function)
     function addLiquidityETH(
         address token,
         uint256 amountTokenDesired,

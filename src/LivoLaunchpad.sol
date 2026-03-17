@@ -4,29 +4,25 @@ pragma solidity 0.8.28;
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
-import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {TokenConfig, TokenState, TokenDataLib} from "src/types/tokenData.sol";
 
-contract LivoLaunchpad is Ownable2Step {
+contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
     using SafeERC20 for IERC20;
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
+
+    /// @notice Authorized factories
+    mapping(address factory => bool authorized) public whitelistedFactories;
 
     /// @notice Max allowed trading fees in basis points
     uint256 internal constant MAX_TRADING_FEE_BPS = 500; // 5%
 
     /// @notice 100% in basis points
     uint256 public constant BASIS_POINTS = 10_000;
-
-    /// @notice The total supply of all deployed tokens
-    /// @dev 1 billion tokens with 18 decimals
-    uint256 private constant TOTAL_SUPPLY = 1_000_000_000e18; // 1B tokens
-
-    /// @notice Total fees collected by the treasury (in wei)
-    uint256 public treasuryEthFeesCollected;
 
     /// @notice Livo Treasury, receiver of all trading/graduation fees
     address public treasury;
@@ -37,52 +33,31 @@ contract LivoLaunchpad is Ownable2Step {
     /// @notice Trading fees (sells) in basis points (100 bps = 1%). Updates to these only affect future tokens
     uint16 public baseSellFeeBps;
 
-    /// @notice Whitelisted sets of (implementation, bonding curve, graduator)
-    mapping(address implementation => mapping(address curve => mapping(address graduator => ThresholdSettings))) public
-        whitelistedComponents;
-
     /// @notice Mapping of token address to its configuration
     mapping(address => TokenConfig) public tokenConfigs;
 
     /// @notice Mapping of token address to its state variables
     mapping(address => TokenState) public tokenStates;
 
-    struct ThresholdSettings {
-        uint256 ethGraduationThreshold;
-        uint256 maxExcessOverThreshold;
-    }
-
     ///////////////////// Errors /////////////////////
 
-    error NotWhitelistedComponents();
-    error InvalidNameOrSymbol();
+    error InvalidAddress();
     error InvalidAmount();
     error ReceivingZeroAmount();
     error InvalidParameter(uint256 parameter);
     error InvalidToken();
-    error InvalidTokenOwner();
     error NotEnoughSupply();
     error AlreadyGraduated();
-    error InsufficientETHReserves();
+    error InsufficientEthReserves();
     error EthTransferFailed();
     error DeadlineExceeded();
     error SlippageExceeded();
-    error PurchaseExceedsLimitPostGraduation();
     error AlreadyConfigured();
-    error AlreadyBlacklisted();
-    error InvalidAddress();
+    error UnauthorizedFactory();
 
     ///////////////////// Events /////////////////////
 
-    event TokenCreated(
-        address indexed token,
-        address indexed tokenOwner,
-        string name,
-        string symbol,
-        address implementation,
-        address bondingCurve,
-        address graduator
-    );
+    event TokenLaunched(address indexed token, uint256 graduationThreshold, uint256 maxExcessOverThreshold);
     event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation);
     event LivoTokenBuy(
         address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 ethFee
@@ -90,19 +65,18 @@ contract LivoLaunchpad is Ownable2Step {
     event LivoTokenSell(
         address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 ethFee
     );
-    event TreasuryFeesCollected(address indexed treasury, uint256 amount);
     event TreasuryAddressUpdated(address newTreasury);
     event TradingFeesUpdated(uint16 buyFeeBps, uint16 sellFeeBps);
-    event ComponentsSetWhitelisted(
-        address implementation,
-        address bondingCurve,
-        address graduator,
-        uint256 ethGraduationThreshold,
-        uint256 maxExcessOverThreshold
-    );
-    event ComponentsSetBlacklisted(address implementation, address bondingCurve, address graduator);
-    event TokenOwnerUpdated(address indexed token, address indexed newOwner);
-    event TokenOwnerProposed(address indexed token, address indexed currentOwner, address indexed proposedOwner);
+    event CommunityTakeOver(address indexed token, address newOwner);
+    event FactoryWhitelisted(address indexed factory);
+    event FactoryBlacklisted(address indexed factory);
+
+    ////////////////// MODIFIERS ///////////////////////
+
+    modifier onlyWhitelistedFactory() {
+        _onlyWhitelistedFactory();
+        _;
+    }
 
     /////////////////////////////////////////////////
 
@@ -114,60 +88,18 @@ contract LivoLaunchpad is Ownable2Step {
         setTradingFees(100, 100);
     }
 
-    /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
-    /// @dev Selected bonding curve and graduator must be a whitelisted pair
-    /// @dev The caller (msg.sender) becomes the token owner
-    /// @param name The name of the token
-    /// @param symbol The symbol of the token (max 32 characters)
-    /// @param implementation Token implementation contract
-    /// @param bondingCurve Address of the bonding curve contract
-    /// @param graduator Address of the graduator contract
-    /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
-    /// @param tokenCalldata Extra initialization parameters for the token
-    /// @return token The address of the newly created token
-    function createToken(
-        string calldata name,
-        string calldata symbol,
-        address implementation,
-        address bondingCurve,
-        address graduator,
-        bytes32 salt,
-        bytes memory tokenCalldata
-    ) external returns (address token) {
-        ThresholdSettings memory thresholdSettings = whitelistedComponents[implementation][bondingCurve][graduator];
-        // manual check here to reduce number of SLOADs of this storage mapping
-        require(thresholdSettings.ethGraduationThreshold > 0, NotWhitelistedComponents());
+    /// @notice Registers a new token in the launchpad with its bonding curve, callable only by whitelisted factories
+    function launchToken(address token, ILivoBondingCurve bondingCurve) external onlyWhitelistedFactory {
+        // this check is important because bondingCurve!=address(0) is used as proxy for valid existing tokens within the Launchpad
+        // the msg.sender is a trusted factory, which should have a valid bonding curve compliant with IBondingCurve
+        require(address(bondingCurve) != address(0), InvalidAddress());
 
-        token = _createToken(
-            name, symbol, implementation, bondingCurve, graduator, msg.sender, salt, tokenCalldata, thresholdSettings
-        );
-    }
+        // these token configs become immutable once set here
+        tokenConfigs[token] =
+            TokenConfig({bondingCurve: bondingCurve, buyFeeBps: baseBuyFeeBps, sellFeeBps: baseSellFeeBps});
 
-    /// @notice Same as createToken, but allows admin to create a token bypassing the whitelisting sets of graduator, bonding curve and token implementation
-    /// @dev Projects can contact the team for custom implementations that can only be deployed by admins
-    /// @dev example: if a project wants to deploy with longer tax period, admins deploy a taxable-token without the 14day restriction, and use this function without whitelisting such token implementation.
-    /// @param thresholdSettings Custom graduation threshold settings for this token
-    function createCustomToken(
-        string calldata name,
-        string calldata symbol,
-        address implementation,
-        address bondingCurve,
-        address graduator,
-        address tokenOwner,
-        bytes32 salt,
-        bytes memory tokenCalldata,
-        ThresholdSettings memory thresholdSettings
-    ) external onlyOwner returns (address token) {
-        // Validate threshold settings
-        require(
-            thresholdSettings.ethGraduationThreshold > 0, InvalidParameter(thresholdSettings.ethGraduationThreshold)
-        );
-
-        // note: the graduation threshold must be higher than the graduatoin fee in the graduators, but that is the graduators' responsibility
-
-        token = _createToken(
-            name, symbol, implementation, bondingCurve, graduator, tokenOwner, salt, tokenCalldata, thresholdSettings
-        );
+        ILivoBondingCurve.GraduationConfig memory gradConfig = bondingCurve.getGraduationConfig();
+        emit TokenLaunched(token, gradConfig.ethGraduationThreshold, gradConfig.maxExcessOverThreshold);
     }
 
     /// @notice Buys tokens with exact ETH amount
@@ -185,34 +117,32 @@ contract LivoLaunchpad is Ownable2Step {
         payable
         returns (uint256 receivedTokens)
     {
-        TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
         require(msg.value > 0, InvalidAmount());
-        require(tokenConfig.exists(), InvalidToken());
-        require(tokenState.notGraduated(), AlreadyGraduated());
         require(block.timestamp <= deadline, DeadlineExceeded());
+        require(tokenConfigs[token].exists(), InvalidToken());
+        require(tokenState.notGraduated(), AlreadyGraduated());
 
-        (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive) = _quoteBuyWithExactEth(token, msg.value);
+        // this call to bonding curve reverts if exceeds graduation margins
+        // The internal function also reverts with NotEnoughSupply if exceeding this contract token balance
+        (uint256 ethForReserves, uint256 ethFee, uint256 tokensToReceive, bool canGraduate) =
+            _quoteBuyTokensWithExactEth(token, msg.value);
 
+        require(tokensToReceive > 0, ReceivingZeroAmount());
         require(tokensToReceive >= minTokenAmount, SlippageExceeded());
-        require(tokensToReceive <= _availableTokensForPurchase(token), NotEnoughSupply());
-        require(
-            tokenState.ethCollected + ethForReserves <= tokenConfig.maxEthReserves(),
-            PurchaseExceedsLimitPostGraduation()
-        );
 
-        treasuryEthFeesCollected += ethFee;
         tokenState.ethCollected += ethForReserves;
         tokenState.releasedSupply += tokensToReceive;
 
         IERC20(token).safeTransfer(msg.sender, tokensToReceive);
+        _transferEth(treasury, ethFee, true);
 
         emit LivoTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
         // if the graduation criteria is met, graduation happens automatically
-        if (tokenState.ethCollected >= tokenConfig.ethGraduationThreshold) {
-            _graduateToken(token, tokenState, tokenConfig);
+        if (canGraduate) {
+            _graduateToken(token, tokenState);
         }
 
         return tokensToReceive;
@@ -235,11 +165,13 @@ contract LivoLaunchpad is Ownable2Step {
         TokenConfig storage tokenConfig = tokenConfigs[token];
         TokenState storage tokenState = tokenStates[token];
 
-        require(tokenConfig.exists(), InvalidToken());
-        require(tokenState.notGraduated(), AlreadyGraduated());
         require(tokenAmount > 0, InvalidAmount());
         require(block.timestamp <= deadline, DeadlineExceeded());
+        require(tokenConfig.exists(), InvalidToken());
+        require(tokenState.notGraduated(), AlreadyGraduated());
 
+        // reverts with InsufficientEthReserves if seller would receive more than eth reserves allocated to the token
+        // that scenario should never happen, it is an extra cautious measure
         (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller) =
             _quoteSellExactTokens(token, tokenAmount);
 
@@ -247,18 +179,17 @@ contract LivoLaunchpad is Ownable2Step {
         // When minEthAmount==0, we assume that the seller accepts any kind of "reasonable" slippage
         // However, receiving eth in exchange for a non-zero amount of tokens would be unfair
         require(ethForSeller > 0, ReceivingZeroAmount());
-        // Hopefully this scenario never happens
-        require(_availableEthFromReserves(token) >= ethPulledFromReserves, InsufficientETHReserves());
 
         tokenState.ethCollected -= ethPulledFromReserves;
         tokenState.releasedSupply -= tokenAmount;
-        treasuryEthFeesCollected += ethFee;
+
+        emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
 
         // funds transfers
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
-        _transferEth(msg.sender, ethForSeller, true);
 
-        emit LivoTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
+        _transferEth(treasury, ethFee, true);
+        _transferEth(msg.sender, ethForSeller, true);
 
         return ethForSeller;
     }
@@ -271,17 +202,15 @@ contract LivoLaunchpad is Ownable2Step {
     /// @return ethForPurchase Amount of ETH used effectively for purchase (after fees)
     /// @return ethFee Fee amount in ETH
     /// @return tokensToReceive Amount of tokens that would be received
-    function quoteBuyWithExactEth(address token, uint256 ethValue)
+    function quoteBuyTokensWithExactEth(address token, uint256 ethValue)
         external
         view
         returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
-        if (ethValue > _maxEthToSpend(token)) revert PurchaseExceedsLimitPostGraduation();
 
-        (ethForPurchase, ethFee, tokensToReceive) = _quoteBuyWithExactEth(token, ethValue);
-
-        if (tokensToReceive > _availableTokensForPurchase(token)) revert NotEnoughSupply();
+        // this reverts with NotEnoughSupply if attempting to purchase more than this contract's balance
+        (ethForPurchase, ethFee, tokensToReceive,) = _quoteBuyTokensWithExactEth(token, ethValue);
     }
 
     /// @notice Quotes the result of selling exact amount of tokens
@@ -297,9 +226,39 @@ contract LivoLaunchpad is Ownable2Step {
     {
         if (!tokenConfigs[token].exists()) revert InvalidToken();
 
+        // reverts with InsufficientEthReserves if seller would receive more than eth reserves allocated to the token
+        // that scenario should never happen, it is an extra cautious measure
         (ethPulledFromReserves, ethFee, ethForSeller) = _quoteSellExactTokens(token, tokenAmount);
+    }
 
-        if (ethPulledFromReserves > _availableEthFromReserves(token)) revert InsufficientETHReserves();
+    /// @notice Quotes how much total ETH is needed to buy an exact amount of tokens
+    /// @param token Address of the token to quote
+    /// @param tokenAmount Amount of tokens to buy
+    /// @return ethFee Fee amount in ETH
+    /// @return ethForReserves ETH that goes into the reserves
+    /// @return totalEthNeeded Total ETH to send (including fee)
+    function quoteBuyExactTokens(address token, uint256 tokenAmount)
+        external
+        view
+        returns (uint256 ethFee, uint256 ethForReserves, uint256 totalEthNeeded)
+    {
+        if (!tokenConfigs[token].exists()) revert InvalidToken();
+        (totalEthNeeded, ethFee, ethForReserves,) = _quoteBuyExactTokens(token, tokenAmount);
+    }
+
+    /// @notice Quotes how many tokens must be sold to receive an exact amount of ETH
+    /// @param token Address of the token to quote
+    /// @param ethAmount Amount of ETH the seller wants to receive
+    /// @return ethPulledFromReserves Amount of ETH pulled from reserves (before fee)
+    /// @return ethFee Fee amount in ETH
+    /// @return tokensRequired Amount of tokens that must be sold
+    function quoteSellTokensForExactEth(address token, uint256 ethAmount)
+        external
+        view
+        returns (uint256 ethPulledFromReserves, uint256 ethFee, uint256 tokensRequired)
+    {
+        if (!tokenConfigs[token].exists()) revert InvalidToken();
+        (ethPulledFromReserves, ethFee, tokensRequired) = _quoteSellTokensForExactEth(token, ethAmount);
     }
 
     /// @notice Returns the maximum amount of ETH that can be spent on a given token
@@ -322,38 +281,23 @@ contract LivoLaunchpad is Ownable2Step {
         return tokenConfigs[token];
     }
 
-    /// @notice Returns the owner of a token
-    /// @param token The address of the token
-    /// @return The address of the token owner
-    function getTokenOwner(address token) external view returns (address) {
-        TokenConfig storage config = tokenConfigs[token];
-        // reverts on purpose because other parts of the system rely on the veracity of this output
-        if (!config.exists()) revert InvalidToken();
-        return config.tokenOwner;
-    }
-
-    /// @notice Retrieves the threshold settings for a given launchpad implementation.
-    /// @param implementation The address of the token implementation contract.
-    /// @param bondingCurve The address of the bonding curve contract.
-    /// @param graduator The address of the graduator contract
-    /// @return Returns the threshold settings relevant to the provided implementation, bonding curve, and graduator.
-    function getThresholdSettings(address implementation, address bondingCurve, address graduator)
-        external
-        view
-        returns (ThresholdSettings memory)
-    {
-        return whitelistedComponents[implementation][bondingCurve][graduator];
-    }
-
-    function isSetWhitelisted(address implementation, address bondingCurve, address graduator)
-        external
-        view
-        returns (bool)
-    {
-        return _isSetWhitelisted(whitelistedComponents[implementation][bondingCurve][graduator]);
-    }
-
     //////////////////////////// Admin functions //////////////////////////
+
+    /// @notice Whitelist a Factory allowed to launch tokens here
+    function whitelistFactory(address factory) external onlyOwner {
+        require(factory != address(0), InvalidAddress());
+        require(!whitelistedFactories[factory], AlreadyConfigured());
+        whitelistedFactories[factory] = true;
+        emit FactoryWhitelisted(factory);
+    }
+
+    /// @notice blacklist a Factory not allowed to launch tokens here anymore
+    function blacklistFactory(address factory) external onlyOwner {
+        require(factory != address(0), InvalidAddress());
+        require(whitelistedFactories[factory], UnauthorizedFactory());
+        whitelistedFactories[factory] = false;
+        emit FactoryBlacklisted(factory);
+    }
 
     /// @notice Updates the buy/sell fees, which only affects new token deployments
     /// @param buyFeeBps The buy fee in basis points (100 = 1%)
@@ -366,65 +310,12 @@ contract LivoLaunchpad is Ownable2Step {
         emit TradingFeesUpdated(buyFeeBps, sellFeeBps);
     }
 
-    /// @notice Whitelists a set of components (token implementation, bonding curve, graduator) with threshold settings.
-    /// @param implementation Token implementation address
-    /// @param bondingCurve Address of the bonding curve contract
-    /// @param graduator Address of the graduator contract
-    /// @param ethGraduationThreshold ETH threshold required for graduation
-    /// @param maxExcessOverThreshold Maximum ETH excess allowed over the graduation threshold
-    function whitelistComponents(
-        address implementation,
-        address bondingCurve,
-        address graduator,
-        uint256 ethGraduationThreshold,
-        uint256 maxExcessOverThreshold
-    ) external onlyOwner {
-        // ethGraduationThreshold == 0 is used as proxy to know if the set has been whitelisted
-        require(ethGraduationThreshold > 0, InvalidParameter(ethGraduationThreshold));
-        // A set of (implementation, curve, graduator) can only have one configuration
-        // If more are required, new copies of those components can be deployed, and a new configuration can be made with those
-        require(!_isSetWhitelisted(whitelistedComponents[implementation][bondingCurve][graduator]), AlreadyConfigured());
-
-        whitelistedComponents[implementation][bondingCurve][graduator] = ThresholdSettings({
-            ethGraduationThreshold: ethGraduationThreshold, maxExcessOverThreshold: maxExcessOverThreshold
-        });
-
-        emit ComponentsSetWhitelisted(
-            implementation, bondingCurve, graduator, ethGraduationThreshold, maxExcessOverThreshold
-        );
-    }
-
-    /// @notice Blacklists a previously whitelisted deployment set of components.
-    /// @param implementation The address of the implementation contract to blacklist.
-    /// @param bondingCurve The address of the bonding curve contract to blacklist.
-    /// @param graduator The address of the graduator contract to blacklist.
-    function blacklistComponents(address implementation, address bondingCurve, address graduator) external onlyOwner {
-        require(_isSetWhitelisted(whitelistedComponents[implementation][bondingCurve][graduator]), AlreadyBlacklisted());
-
-        delete whitelistedComponents[implementation][bondingCurve][graduator];
-
-        emit ComponentsSetBlacklisted(implementation, bondingCurve, graduator);
-    }
-
     /// @notice Updates the treasury address
     /// @param recipient The new treasury address
     function setTreasuryAddress(address recipient) public onlyOwner {
         require(recipient != address(0), InvalidAddress());
         treasury = recipient;
         emit TreasuryAddressUpdated(recipient);
-    }
-
-    /// @notice Collects accumulated treasury fees and transfers them to the treasury
-    /// @dev No access control, as the receiver of the fees is the treasury itself
-    function collectTreasuryFees() external {
-        uint256 amount = treasuryEthFeesCollected;
-        if (amount == 0) return;
-
-        treasuryEthFeesCollected = 0;
-
-        _transferEth(treasury, amount, true);
-
-        emit TreasuryFeesCollected(treasury, amount);
     }
 
     /// @notice If a token is abandoned by original creators and the community wants to step in,
@@ -434,61 +325,38 @@ contract LivoLaunchpad is Ownable2Step {
     /// @param token The address of the token
     /// @param newTokenOwner The address of the proposed new tokenOwner (must not be address(0))
     function communityTakeOver(address token, address newTokenOwner) external onlyOwner {
-        // address(0) is accepted as the newTokenOwner, to cancel an existing proposal
-        require(tokenConfigs[token].exists(), InvalidToken());
-        _proposeNewOwner(token, newTokenOwner);
-    }
-
-    /// @notice Proposes a new owner for a token. Only callable by the current tokenOwner.
-    ///         Pass address(0) as newOwner to cancel a pending proposal.
-    function proposeTokenOwner(address token, address newOwner) external {
-        require(tokenConfigs[token].tokenOwner == msg.sender, InvalidTokenOwner());
-        _proposeNewOwner(token, newOwner);
-    }
-
-    /// @notice Accepts token ownership. Only callable by the address proposed as new owner.
-    function acceptTokenOwnership(address token) external {
-        TokenConfig storage config = tokenConfigs[token];
-        require(config.proposedOwner == msg.sender, InvalidTokenOwner());
-
-        config.tokenOwner = msg.sender;
-        config.proposedOwner = address(0);
-
-        emit TokenOwnerUpdated(token, msg.sender);
+        // address(0) is allowed, to cancel an existing proposed owner
+        ILivoToken(token).proposeNewOwner(newTokenOwner);
+        emit CommunityTakeOver(token, newTokenOwner);
     }
 
     //////////////////////////// Internal functions //////////////////////////
 
-    /// @dev pass newOwner=address(0) to cancel an existing proposal
-    function _proposeNewOwner(address token, address newOwner) internal {
-        tokenConfigs[token].proposedOwner = newOwner;
-        emit TokenOwnerProposed(token, tokenConfigs[token].tokenOwner, newOwner);
-    }
-
     /// @dev This function assumes that the graduation criteria is met
     /// @dev It also assumes that the token hasn't been graduated yet
-    function _graduateToken(address tokenAddress, TokenState storage tokenState, TokenConfig storage tokenConfig)
-        internal
-    {
+    function _graduateToken(address tokenAddress, TokenState storage tokenState) internal {
         IERC20 token = IERC20(tokenAddress);
         tokenState.graduated = true;
 
         uint256 ethCollected = tokenState.ethCollected;
-        uint256 tokenBalance = token.balanceOf(address(this));
+        uint256 tokenBalance = _availableTokens(tokenAddress);
 
         // Update state - all resources transferred to graduator
         tokenState.ethCollected = 0;
         tokenState.releasedSupply += tokenBalance;
 
+        address graduator = ILivoToken(tokenAddress).graduator();
+
         // Transfer ALL tokens to graduator
-        token.safeTransfer(address(tokenConfig.graduator), tokenBalance);
+        token.safeTransfer(graduator, tokenBalance);
 
         // Graduator handles: burning, fees, compensation, liquidity
-        tokenConfig.graduator.graduateToken{value: ethCollected}(tokenAddress, tokenBalance);
+        ILivoGraduator(graduator).graduateToken{value: ethCollected}(tokenAddress, tokenBalance);
 
         emit TokenGraduated(tokenAddress, ethCollected, tokenBalance);
     }
 
+    /// @notice Transfers ETH to a recipient, optionally reverting on failure
     function _transferEth(address recipient, uint256 amount, bool requireSuccess) internal returns (bool) {
         if (amount == 0) return true;
         // note: this call happens always after all state changes in all callers of this function to protect against re-entrancy
@@ -498,98 +366,21 @@ contract LivoLaunchpad is Ownable2Step {
         return success;
     }
 
-    function _emitTokenCreated(
-        address token,
-        address tokenOwner,
-        string calldata name,
-        string calldata symbol,
-        address implementation,
-        address bondingCurve,
-        address graduator
-    ) internal {
-        emit TokenCreated(token, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
-    }
-
     //////////////////////// INTERNAL VIEW FUNCTIONS //////////////////////////
 
-    /// @notice Creates a token with bonding curve and graduator with 1B total supply held by launchpad initially.
-    /// @param name The name of the token
-    /// @param symbol The symbol of the token (max 32 characters)
-    /// @param implementation Token implementation contract
-    /// @param bondingCurve Address of the bonding curve contract
-    /// @param graduator Address of the graduator contract
-    /// @param tokenOwner Address of the token owner (receives graduation compensation and fees)
-    /// @param salt Salt for deterministic deployment, avoiding (to some extent) tokenCreation DOS.
-    /// @param tokenCalldata Extra initialization parameters for the token
-    /// @param thresholdSettings Threshold settings for this token
-    /// @return token The address of the newly created token
-    function _createToken(
-        string calldata name,
-        string calldata symbol,
-        address implementation,
-        address bondingCurve,
-        address graduator,
-        address tokenOwner,
-        bytes32 salt,
-        bytes memory tokenCalldata,
-        ThresholdSettings memory thresholdSettings
-    ) internal returns (address token) {
-        require(bytes(name).length > 0 && bytes(symbol).length > 0, InvalidNameOrSymbol());
-        require(bytes(symbol).length <= 32, InvalidNameOrSymbol());
-        require(tokenOwner != address(0), InvalidTokenOwner());
-
-        bytes32 salt_ = keccak256(abi.encodePacked(msg.sender, block.timestamp, symbol, salt));
-        // minimal proxy pattern to deploy a new LivoToken instance
-        // Deploying the contracts with new() costs 3-4 times more gas than cloning
-        // trading will be a bit more expensive, as variables cannot be immutable
-        token = Clones.cloneDeterministic(implementation, salt_);
-
-        // This event needs to be emitted before the tokens are minted so that the indexer starts tracking this token address first
-        // function to avoid stack to deep errors
-        _emitTokenCreated(token, tokenOwner, name, symbol, implementation, bondingCurve, graduator);
-
-        // at creation all tokens are held by this contract
-        tokenConfigs[token] = TokenConfig({
-            bondingCurve: ILivoBondingCurve(bondingCurve),
-            graduator: ILivoGraduator(graduator),
-            tokenOwner: tokenOwner,
-            ethGraduationThreshold: thresholdSettings.ethGraduationThreshold,
-            maxExcessOverThreshold: thresholdSettings.maxExcessOverThreshold,
-            buyFeeBps: baseBuyFeeBps,
-            sellFeeBps: baseSellFeeBps,
-            proposedOwner: address(0)
-        });
-
-        // Creates the Uniswap Pair or whatever other initialization is necessary
-        // in the case of univ4, the pair will be the address of the pool manager,
-        // to which tokens cannot be transferred until graduation
-        address pair = ILivoGraduator(graduator).initialize(token);
-
-        LivoToken(token)
-            .initialize(
-                name,
-                symbol,
-                graduator, // graduator address
-                pair, // uniswap pair
-                address(this), // supply receiver, all tokens are held by the launchpad initially
-                TOTAL_SUPPLY,
-                tokenCalldata // this may carry extra arguments, implementation specific
-            );
-
-        return token;
-    }
-
+    /// @notice Returns the maximum ETH a user can spend on a token without exceeding graduation limits
     function _maxEthToSpend(address token) internal view returns (uint256 ethBuy) {
-        uint256 remainingReserves = tokenConfigs[token].maxEthReserves() - tokenStates[token].ethCollected;
+        uint256 remainingReserves = tokenConfigs[token].bondingCurve.maxEthReserves() - tokenStates[token].ethCollected;
 
         // apply inverse fees
         ethBuy = (remainingReserves * BASIS_POINTS) / (BASIS_POINTS - tokenConfigs[token].buyFeeBps);
     }
 
-    function _quoteBuyWithExactEth(address token, uint256 ethValue)
+    /// @notice Computes the buy quote: ETH split, fee, tokens received, and graduation eligibility
+    function _quoteBuyTokensWithExactEth(address token, uint256 ethValue)
         internal
         view
-        returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive)
+        returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive, bool canGraduate)
     {
         TokenConfig storage tokenConfig = tokenConfigs[token];
 
@@ -597,40 +388,84 @@ contract LivoLaunchpad is Ownable2Step {
         ethFee = (ethValue * tokenConfig.buyFeeBps) / BASIS_POINTS;
         ethForPurchase = ethValue - ethFee;
 
-        tokensToReceive =
+        (tokensToReceive, canGraduate) =
             tokenConfig.bondingCurve.buyTokensWithExactEth(tokenStates[token].ethCollected, ethForPurchase);
 
-        return (ethForPurchase, ethFee, tokensToReceive);
+        if (tokensToReceive > _availableTokens(token)) revert NotEnoughSupply();
+
+        return (ethForPurchase, ethFee, tokensToReceive, canGraduate);
     }
 
+    /// @notice Computes the sell quote: ETH pulled from reserves, fee, and ETH for the seller
     function _quoteSellExactTokens(address token, uint256 tokenAmount)
         internal
         view
-        returns (uint256 ethFromSale, uint256 ethFee, uint256 ethForSeller)
+        returns (uint256 ethPulledFromReserves, uint256 ethFee, uint256 ethForSeller)
     {
         TokenConfig storage tokenConfig = tokenConfigs[token];
 
-        ethFromSale = tokenConfig.bondingCurve.sellExactTokens(tokenStates[token].ethCollected, tokenAmount);
+        ethPulledFromReserves = tokenConfig.bondingCurve.sellExactTokens(tokenStates[token].ethCollected, tokenAmount);
 
         // it is ok that these fees round in favor of the user (1 wei less fee on every sale)
-        ethFee = (ethFromSale * tokenConfig.sellFeeBps) / BASIS_POINTS;
-        ethForSeller = ethFromSale - ethFee;
+        ethFee = (ethPulledFromReserves * tokenConfig.sellFeeBps) / BASIS_POINTS;
+        ethForSeller = ethPulledFromReserves - ethFee;
 
-        return (ethFromSale, ethFee, ethForSeller);
+        if (ethPulledFromReserves > _availableEthFromReserves(token)) revert InsufficientEthReserves();
+
+        return (ethPulledFromReserves, ethFee, ethForSeller);
+    }
+
+    /// @notice Computes the inverse buy quote: total ETH needed to buy exact tokens
+    function _quoteBuyExactTokens(address token, uint256 tokenAmount)
+        internal
+        view
+        returns (uint256 totalEthNeeded, uint256 ethFee, uint256 ethForReserves, bool canGraduate)
+    {
+        TokenConfig storage tokenConfig = tokenConfigs[token];
+
+        (ethForReserves, canGraduate) =
+            tokenConfig.bondingCurve.buyExactTokens(tokenStates[token].ethCollected, tokenAmount);
+
+        // Inverse fee: ethForReserves = totalEthNeeded * (BASIS_POINTS - buyFeeBps) / BASIS_POINTS
+        // So totalEthNeeded = ceil(ethForReserves * BASIS_POINTS / (BASIS_POINTS - buyFeeBps))
+        uint256 denom = BASIS_POINTS - tokenConfig.buyFeeBps;
+        totalEthNeeded = (ethForReserves * BASIS_POINTS + denom - 1) / denom;
+        ethFee = totalEthNeeded - ethForReserves;
+
+        if (tokenAmount > _availableTokens(token)) revert NotEnoughSupply();
+    }
+
+    /// @notice Computes the inverse sell quote: tokens needed to receive exact ETH
+    function _quoteSellTokensForExactEth(address token, uint256 ethAmount)
+        internal
+        view
+        returns (uint256 ethPulledFromReserves, uint256 ethFee, uint256 tokensRequired)
+    {
+        TokenConfig storage tokenConfig = tokenConfigs[token];
+
+        // ethAmount = ethPulledFromReserves * (BASIS_POINTS - sellFeeBps) / BASIS_POINTS
+        // So ethPulledFromReserves = ceil(ethAmount * BASIS_POINTS / (BASIS_POINTS - sellFeeBps))
+        uint256 denom = BASIS_POINTS - tokenConfig.sellFeeBps;
+        ethPulledFromReserves = (ethAmount * BASIS_POINTS + denom - 1) / denom;
+        ethFee = ethPulledFromReserves - ethAmount;
+
+        tokensRequired =
+            tokenConfig.bondingCurve.sellTokensForExactEth(tokenStates[token].ethCollected, ethPulledFromReserves);
+
+        if (ethPulledFromReserves > _availableEthFromReserves(token)) revert InsufficientEthReserves();
     }
 
     /// @dev The supply of a token that can be purchased
-    function _availableTokensForPurchase(address token) internal view returns (uint256) {
-        // This is equivalent to: return IERC20(token).balanceOf(address(this));
-        // But the below formulation is more gas efficient as it avoids an external call
-        return TOTAL_SUPPLY - tokenStates[token].releasedSupply;
+    function _availableTokens(address token) internal view returns (uint256) {
+        return ILivoToken(token).balanceOf(address(this));
     }
 
+    /// @notice Returns the ETH reserves currently allocated to a token
     function _availableEthFromReserves(address token) internal view returns (uint256) {
         return tokenStates[token].ethCollected;
     }
 
-    function _isSetWhitelisted(ThresholdSettings storage thresholdSettings) internal view returns (bool) {
-        return (thresholdSettings.ethGraduationThreshold > 0);
+    function _onlyWhitelistedFactory() internal view {
+        require(whitelistedFactories[msg.sender], UnauthorizedFactory());
     }
 }

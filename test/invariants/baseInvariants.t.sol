@@ -7,7 +7,11 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {LivoFactoryBase} from "src/factories/LivoFactoryBase.sol";
+import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {DeploymentAddressesMainnet} from "src/config/DeploymentAddresses.sol";
+import {LivoFeeHandler} from "src/feeHandlers/LivoFeeHandler.sol";
+import {LivoFeeSplitter} from "src/feeSplitters/LivoFeeSplitter.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
@@ -18,10 +22,18 @@ contract LaunchpadInvariants is Test {
     ConstantProductBondingCurve public bondingCurve;
     LivoGraduatorUniswapV2 public graduatorV2;
     LivoGraduatorUniswapV4 public graduatorV4;
+    LivoFactoryBase public factoryV2;
+    LivoFactoryBase public factoryV4;
+    LivoFeeHandler public feeHandler;
 
     InvariantsHelperLaunchpad public helper;
 
     address constant poolManagerAddress = DeploymentAddressesMainnet.UNIV4_POOL_MANAGER;
+    address constant positionManagerAddress = DeploymentAddressesMainnet.UNIV4_POSITION_MANAGER;
+    address constant permit2Address = DeploymentAddressesMainnet.PERMIT2;
+
+    // Hook address with correct Uniswap V4 permission bits; deployCodeTo() overrides whatever is at this address
+    address constant TEST_HOOK_ADDRESS = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -47,7 +59,7 @@ contract LaunchpadInvariants is Test {
     uint256 constant BLOCKNUMBER = 23327777;
 
     // used for both combinations of curves,graduators for univ2 and univ4
-    uint256 constant GRADUATION_THRESHOLD = 8.5 ether;
+    uint256 constant GRADUATION_THRESHOLD = 3.75 ether;
     uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
 
     function setUp() public virtual {
@@ -63,26 +75,40 @@ contract LaunchpadInvariants is Test {
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
         graduatorV2 = new LivoGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad));
+        deployCodeTo(
+            "LivoSwapHook.sol:LivoSwapHook", abi.encode(poolManagerAddress, address(launchpad)), TEST_HOOK_ADDRESS
+        );
+        feeHandler = new LivoFeeHandler();
 
-        launchpad.whitelistComponents(
+        graduatorV4 = new LivoGraduatorUniswapV4(
+            address(launchpad), poolManagerAddress, positionManagerAddress, permit2Address, TEST_HOOK_ADDRESS
+        );
+
+        LivoFeeSplitter feeSplitterImpl = new LivoFeeSplitter();
+
+        factoryV2 = new LivoFactoryBase(
+            address(launchpad),
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV2),
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS
+            address(feeHandler),
+            address(feeSplitterImpl)
         );
-        launchpad.whitelistComponents(
+
+        factoryV4 = new LivoFactoryBase(
+            address(launchpad),
             address(tokenImplementation),
             address(bondingCurve),
             address(graduatorV4),
-            GRADUATION_THRESHOLD,
-            MAX_THRESHOLD_EXCESS
+            address(feeHandler),
+            address(feeSplitterImpl)
         );
+
+        launchpad.whitelistFactory(address(factoryV2));
+        launchpad.whitelistFactory(address(factoryV4));
         vm.stopPrank();
 
-        helper = new InvariantsHelperLaunchpad(
-            launchpad, address(tokenImplementation), address(bondingCurve), address(graduatorV2), address(graduatorV4)
-        );
+        helper = new InvariantsHelperLaunchpad(launchpad, factoryV2, factoryV4);
 
         targetContract(address(helper));
     }
@@ -94,9 +120,7 @@ contract LaunchpadInvariants is Test {
     /// @notice the launchpad eth balance should match the sum of all token ethCollected plus the treasury balance
     function invariant_launchpadEthBalance() public view {
         assertEq(
-            address(launchpad).balance,
-            _totalEthCollected() + launchpad.treasuryEthFeesCollected(),
-            "launchpad eth balance does not match total eth collected plus treasury fees"
+            address(launchpad).balance, _totalEthCollected(), "launchpad eth balance does not match total eth collected"
         );
     }
 

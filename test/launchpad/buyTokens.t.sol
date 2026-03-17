@@ -7,6 +7,7 @@ import {
     LaunchpadBaseTestsWithUniv4Graduator
 } from "./base.t.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
@@ -22,7 +23,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         uint256 launchpadEthBalanceBefore = address(launchpad).balance;
 
         (uint256 expectedEthForPurchase, uint256 expectedEthFee, uint256 expectedTokensToReceive) =
-            launchpad.quoteBuyWithExactEth(testToken, ethAmount);
+            launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         vm.prank(buyer);
         vm.expectEmit(true, true, false, true);
@@ -31,13 +32,13 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         assertEq(buyer.balance, buyerEthBalanceBefore - ethAmount);
         assertEq(IERC20(testToken).balanceOf(buyer), buyerTokenBalanceBefore + expectedTokensToReceive);
-        assertEq(address(launchpad).balance, launchpadEthBalanceBefore + ethAmount);
+        assertEq(address(launchpad).balance, launchpadEthBalanceBefore + ethAmount - expectedEthFee);
         assertEq(IERC20(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY - expectedTokensToReceive);
 
         TokenState memory state = launchpad.getTokenState(testToken);
         assertEq(state.ethCollected, expectedEthForPurchase);
         assertEq(state.releasedSupply, expectedTokensToReceive);
-        assertEq(launchpad.treasuryEthFeesCollected(), expectedEthFee);
+        assertEq(treasury.balance, expectedEthFee);
     }
 
     function testBuyTokensWithExactEth_multipleBuys() public createTestToken {
@@ -50,7 +51,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         TokenState memory stateAfterFirst = launchpad.getTokenState(testToken);
         uint256 firstTokensReceived = IERC20(testToken).balanceOf(buyer);
-        uint256 firstFeesCollected = launchpad.treasuryEthFeesCollected();
+        uint256 firstTreasuryBalance = treasury.balance;
 
         // Second buy
         vm.prank(buyer);
@@ -58,32 +59,30 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         TokenState memory stateAfterSecond = launchpad.getTokenState(testToken);
         uint256 totalTokensReceived = IERC20(testToken).balanceOf(buyer);
-        uint256 totalFeesCollected = launchpad.treasuryEthFeesCollected();
 
         assertTrue(stateAfterSecond.ethCollected > stateAfterFirst.ethCollected);
         assertTrue(stateAfterSecond.releasedSupply > stateAfterFirst.releasedSupply);
         assertTrue(totalTokensReceived > firstTokensReceived);
-        assertTrue(totalFeesCollected > firstFeesCollected);
+        assertTrue(treasury.balance > firstTreasuryBalance);
         assertEq(stateAfterSecond.releasedSupply, totalTokensReceived);
     }
 
     function testBuyTwoTimesSameAmount_secondGetsLessTokens() public createTestToken {
         uint256 ethAmount = 1 ether;
+        uint256 treasuryBalanceBeforeFirstBuy = treasury.balance;
 
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
         uint256 firstTokensReceived = IERC20(testToken).balanceOf(buyer);
-        uint256 firstFeesCollected = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryBalanceAfterFirstBuy = treasury.balance;
 
         // Second buy
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
         uint256 secondTokensReceived = IERC20(testToken).balanceOf(buyer) - firstTokensReceived;
-        uint256 totalFeesCollected = launchpad.treasuryEthFeesCollected();
-
-        assertEq(totalFeesCollected, 2 * firstFeesCollected);
+        uint256 totalFeesCollected = treasury.balance - treasuryBalanceBeforeFirstBuy;
         assertLt(
             secondTokensReceived,
             firstTokensReceived,
@@ -93,14 +92,15 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
     function test_quoteInitialPrice() public createTestToken {
         // how many tokens do you get with the first wei?
-        (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(testToken, 1);
-        assertApproxEqAbs(expectedTokens, 352107262, 1);
+        (,, uint256 expectedTokens) = launchpad.quoteBuyTokensWithExactEth(testToken, 1);
+        // initial price in the curve is 0.00000000225 ETH/token, so with 1 wei you should get 444,444,444
+        assertApproxEqAbs(expectedTokens, 444444444, 1);
     }
 
     function testBuyTokensWithExactEth_withMinTokenAmount() public createTestToken {
         uint256 ethAmount = 1 ether;
 
-        (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(testToken, ethAmount);
+        (,, uint256 expectedTokens) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         // Should succeed with exact min amount
         vm.prank(buyer);
@@ -112,7 +112,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function testBuyTokensWithExactEth_slippageProtection() public createTestToken {
         uint256 ethAmount = 1 ether;
 
-        (,, uint256 expectedTokens) = launchpad.quoteBuyWithExactEth(testToken, ethAmount);
+        (,, uint256 expectedTokens) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
         // Set min higher than expected to trigger slippage protection
         uint256 minTokenAmount = expectedTokens + 1;
 
@@ -173,7 +173,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         vm.deal(buyer, excessiveAmount);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: excessiveAmount}(testToken, 0, DEADLINE);
     }
 
@@ -201,7 +201,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         vm.deal(buyer, excessiveAmount);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: excessiveAmount}(testToken, 0, DEADLINE);
     }
 
@@ -210,41 +210,39 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         uint256 expectedFee = 0.01 ether;
         uint256 expectedEthForPurchase = ethAmount - expectedFee;
 
-        (uint256 actualEthForPurchase, uint256 actualFee,) = launchpad.quoteBuyWithExactEth(testToken, ethAmount);
+        (uint256 actualEthForPurchase, uint256 actualFee,) = launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
         assertEq(actualFee, expectedFee);
         assertEq(actualEthForPurchase, expectedEthForPurchase);
 
-        uint256 feesBefore = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryBefore = treasury.balance;
 
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
-        uint256 feesAfter = launchpad.treasuryEthFeesCollected();
-        assertEq(feesAfter - feesBefore, expectedFee);
+        assertEq(treasury.balance - treasuryBefore, expectedFee);
 
         TokenState memory state = launchpad.getTokenState(testToken);
         assertEq(state.ethCollected, expectedEthForPurchase);
     }
 
     function testBuyTokensWithExactEth_quotingAccuracy() public createTestToken {
-        uint256 ethAmount = 5 ether;
+        uint256 ethAmount = 2 ether;
 
         (uint256 quotedEthForPurchase, uint256 quotedEthFee, uint256 quotedTokens) =
-            launchpad.quoteBuyWithExactEth(testToken, ethAmount);
+            launchpad.quoteBuyTokensWithExactEth(testToken, ethAmount);
 
-        uint256 treasuryFeesBefore = launchpad.treasuryEthFeesCollected();
+        uint256 treasuryBefore = treasury.balance;
         TokenState memory stateBefore = launchpad.getTokenState(testToken);
 
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, 0, DEADLINE);
 
-        uint256 treasuryFeesAfter = launchpad.treasuryEthFeesCollected();
         TokenState memory stateAfter = launchpad.getTokenState(testToken);
         uint256 tokensReceived = IERC20(testToken).balanceOf(buyer);
 
         // Verify quote accuracy
-        assertEq(treasuryFeesAfter - treasuryFeesBefore, quotedEthFee);
+        assertEq(treasury.balance - treasuryBefore, quotedEthFee);
         assertEq(stateAfter.ethCollected - stateBefore.ethCollected, quotedEthForPurchase);
         assertEq(tokensReceived, quotedTokens);
     }
@@ -295,9 +293,9 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         // Reset state by creating a new token for the second scenario
         vm.prank(creator);
-        address testToken2 = launchpad.createToken(
-            "Test Token 2", "TT2", address(implementation), address(bondingCurve), address(graduator), "0x12", ""
-        );
+        address testToken2 = address(graduator) == address(graduatorV2)
+            ? factoryV2.createToken("Test Token 2", "TT2", creator, "0x12")
+            : factoryV4.createToken("Test Token 2", "TT2", creator, "0x12");
 
         // Scenario 2: One big buy
         address buyer2 = makeAddr("buyer2");
@@ -328,8 +326,8 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         assertEq(
             address(launchpad).balance - initialLaunchpadBalance,
-            launchpad.getTokenState(testToken).ethCollected + launchpad.treasuryEthFeesCollected(),
-            "eth balance should match reserves + fees"
+            launchpad.getTokenState(testToken).ethCollected,
+            "eth balance should match reserves"
         );
     }
 
@@ -373,7 +371,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
     function test_quoteBuyTokens_invalidToken() public {
         vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidToken.selector));
-        launchpad.quoteBuyWithExactEth(address(0), 1 ether);
+        launchpad.quoteBuyTokensWithExactEth(address(0), 1 ether);
     }
 
     function test_quoteSellTokens_invalidToken() public {
@@ -384,13 +382,13 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     function test_quoteBuyTokens_rightBelowHittingExcessLimit() public createTestToken {
         uint256 maxValue = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS + 1);
 
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.PurchaseExceedsLimitPostGraduation.selector));
-        launchpad.quoteBuyWithExactEth(testToken, maxValue);
+        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+        launchpad.quoteBuyTokensWithExactEth(testToken, maxValue);
 
         // however, one wei less should be fine
         uint256 maxValueJustBelow = maxValue - 1;
         (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive) =
-            launchpad.quoteBuyWithExactEth(testToken, maxValueJustBelow);
+            launchpad.quoteBuyTokensWithExactEth(testToken, maxValueJustBelow);
 
         assertGt(tokensToReceive, 0, "No tokens received");
         assertEq(ethForPurchase + ethFee, maxValueJustBelow, "Amounts don't add up");

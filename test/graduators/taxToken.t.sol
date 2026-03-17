@@ -10,42 +10,18 @@ import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {LivoFactoryTaxToken} from "src/factories/LivoFactoryTaxToken.sol";
 
 /// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
-    function test_deployLivoToken_withEncodedCalldataFromWrongImplementation() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
-
-        vm.expectRevert("Token calldata must be empty");
-        launchpad.createToken(
-            "TestToken",
-            "TEST",
-            address(implementation),
-            address(bondingCurve),
-            address(graduator),
-            "0x12",
-            tokenCalldata
-        );
-    }
-
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(550, 4 days);
-
-        vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxRate.selector, uint16(550)));
-        launchpad.createToken(
-            "TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), "0x12", tokenCalldata
-        );
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxBps.selector));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 550, uint32(4 days));
     }
-
-    // This test is removed because buy taxes no longer exist in the implementation
 
     function test_deployTaxTokenWithTooLongTaxPeriod() public {
-        bytes memory tokenCalldata = taxTokenImpl.encodeTokenCalldata(500, 15 days);
-
-        vm.expectRevert(abi.encodeWithSelector(LivoTaxableTokenUniV4.InvalidTaxDuration.selector, 15 days));
-        launchpad.createToken(
-            "TestToken", "TEST", address(taxTokenImpl), address(bondingCurve), address(graduator), "0x12", tokenCalldata
-        );
+        vm.expectRevert(abi.encodeWithSelector(LivoFactoryTaxToken.InvalidTaxDuration.selector));
+        factoryTax.createToken("TestToken", "TEST", creator, "0x12", 0, 500, uint32(15 days));
     }
 
     function test_markGraduateOnlyGraduatorAllowed() public createDefaultTaxToken {

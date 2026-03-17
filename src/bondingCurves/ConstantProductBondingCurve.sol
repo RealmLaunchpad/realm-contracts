@@ -15,39 +15,70 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
 
     // Here are the constraints to calculate K, T0, E0 as follows (top one is the most important)
     //  - when no eth has been collected, the token supply should equal 1B tokens (so 1,000,000,000e18)
-    //  - The graduation should happen when ~8.5 ETH are collected, and 200,000,000 tokens are still in the reserves
-    //  - 0.5 ETH will be used as graduation fees (for treasury and creator)
-    //  - The remaining 8 ETH + 200M tokens are deployed in uniswap, so the price in uniswap must not deviate too much from the price in the bonding curve
+    //  - The graduation should happen when ~3.75 ETH are collected, and ~285.71M tokens are still in the reserves
+    //  - 0.25 ETH will be used as graduation fees (0.05 ETH creator + 0.20 ETH treasury)
+    //  - The remaining 3.5 ETH + 285.71M tokens are deployed in uniswap, so the price in uniswap must not deviate too much from the price in the bonding curve
 
     /// @notice Constant K for the bonding curve formula
     /// @dev Solving numerically for the above constraints. Only the first constraint above is strictly enforced
-    uint256 public constant K = 3385715840941176470588235277153900000000000000;
+    uint256 public constant K = 3515625000000000000000000000000000000000000000;
     /// @notice Constant T0 for the bonding curve formula
-    uint256 public constant T0 = 91849411764705882352941171;
+    uint256 public constant T0 = 250000000000000000000000000;
     /// @notice Constant E0 for the bonding curve formula
-    uint256 public constant E0 = 3100900000000000000;
-
-    /// - t(8.5 ETH) = 199999999999999999999999985 (off from 200M target by 15 token-wei)
-    /// - fee needed for exact price match: 0.499999837370237712 ETH (off from 0.5 ETH target by 0.000000162629762288 ETH)
-    /// - price deviation if you take exactly 0.5 ETH fee: 0.00000203%
+    uint256 public constant E0 = 2812500000000000000;
 
     // IMPORTANT: These constants define a curve that doesn't behave well for ethReserves > 30 eth.
     // This is not a problem in practice as long as the graduation threshold + limit excess is well below that.
+
+    /// @notice The graduation threshold in terms of ETH reserves
+    uint256 internal constant _GRADUATION_THRESHOLD = 3.75 ether;
+
+    /// @notice Max amount of eth above the graduation that the curve accepts
+    uint256 internal constant _MAX_EXCESS_OVER_THRESHOLD = 0.05 ether;
+
+    /// @notice Returns the ETH reserves threshold at which graduation can be triggered
+    function ethGraduationThreshold() external pure returns (uint256) {
+        return _GRADUATION_THRESHOLD;
+    }
+
+    /// @notice Returns the maximum ETH excess allowed above the graduation threshold
+    function maxExcessOverThreshold() external pure returns (uint256) {
+        return _MAX_EXCESS_OVER_THRESHOLD;
+    }
+
+    /// @notice Returns the graduation configuration
+    function getGraduationConfig() external pure returns (GraduationConfig memory) {
+        return GraduationConfig({
+            ethGraduationThreshold: _GRADUATION_THRESHOLD, maxExcessOverThreshold: _MAX_EXCESS_OVER_THRESHOLD
+        });
+    }
+
+    /// @notice Returns the absolute maximum ETH reserves (graduation threshold + max excess)
+    function maxEthReserves() external pure returns (uint256) {
+        return _maxEthReserves();
+    }
 
     /// @notice Calculates how many tokens can be purchased with a given amount of ETH
     /// @param ethReserves Current ETH reserves in the bonding curve
     /// @param ethAmount Amount of ETH to spend
     /// @return tokensReceived Amount of tokens that would be received
+    /// @return canGraduate Whether this buy reaches the graduation threshold
     function buyTokensWithExactEth(uint256 ethReserves, uint256 ethAmount)
         external
         pure
-        returns (uint256 tokensReceived)
+        returns (uint256 tokensReceived, bool canGraduate)
     {
+        uint256 newEthReserves = ethReserves + ethAmount;
+        if (newEthReserves > _maxEthReserves()) {
+            revert MaxEthReservesExceeded();
+        }
+
         // The final expression is derived from these two:
         //      tokenReserves = K / (ethReserves + E0) - T0;
         //      tokensReceived = T0 + tokenReserves - K / (ethReserves + ethAmount + E0);
         // The denominator can never be 0, as E0 is a non-zero constant
         tokensReceived = K * ethAmount / ((ethReserves + E0) * (ethReserves + ethAmount + E0));
+        canGraduate = newEthReserves >= _GRADUATION_THRESHOLD;
     }
 
     /// @notice Calculates how much ETH will be received when selling an exact amount of tokens
@@ -62,6 +93,56 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
         ethReceived = tokenAmount * (ethReserves + E0) ** 2 / (K + tokenAmount * (ethReserves + E0));
     }
 
+    /// @notice Calculates how much ETH is required to buy an exact amount of tokens
+    /// @param ethReserves Current ETH reserves in the bonding curve
+    /// @param tokenAmount Amount of tokens to buy
+    /// @return ethRequired Amount of ETH required
+    /// @return canGraduate Whether this buy reaches the graduation threshold
+    function buyExactTokens(uint256 ethReserves, uint256 tokenAmount)
+        external
+        pure
+        returns (uint256 ethRequired, bool canGraduate)
+    {
+        // Derived from the same formula as buyTokensWithExactEth, solving for ethAmount:
+        //   ethRequired = tokenAmount * A² / (K - tokenAmount * A)
+        // where A = ethReserves + E0
+        uint256 A = ethReserves + E0;
+        uint256 denom = K - tokenAmount * A;
+        if (denom == 0) revert InsufficientLiquidity();
+        // If tokenAmount * A >= K, the subtraction above would underflow (revert),
+        // but if it equals K exactly, denom=0 and we catch it above.
+
+        uint256 num = tokenAmount * A * A;
+        // Ceiling division: round up so the user pays more ETH
+        ethRequired = (num + denom - 1) / denom;
+
+        uint256 newEthReserves = ethReserves + ethRequired;
+        if (newEthReserves > _maxEthReserves()) revert MaxEthReservesExceeded();
+
+        canGraduate = newEthReserves >= _GRADUATION_THRESHOLD;
+    }
+
+    /// @notice Calculates how many tokens must be sold to receive an exact amount of ETH
+    /// @param ethReserves Current ETH reserves in the bonding curve
+    /// @param ethAmount Amount of ETH to receive
+    /// @return tokensRequired Amount of tokens that must be sold
+    function sellTokensForExactEth(uint256 ethReserves, uint256 ethAmount)
+        external
+        pure
+        returns (uint256 tokensRequired)
+    {
+        // Derived from the same formula as sellExactTokens, solving for tokenAmount:
+        //   tokensRequired = K * ethAmount / (A * (A - ethAmount))
+        // where A = ethReserves + E0
+        uint256 A = ethReserves + E0;
+        if (A <= ethAmount) revert InsufficientLiquidity();
+
+        uint256 num = K * ethAmount;
+        uint256 denom = A * (A - ethAmount);
+        // Ceiling division: round up so the user sells more tokens
+        tokensRequired = (num + denom - 1) / denom;
+    }
+
     /// @notice Returns the token reserves for a given amount of ETH reserves
     /// @dev this calculation starts reverting with an overflow at some point above ethReserves > 37 ether
     /// @param ethReserves Current ETH reserves in the bonding curve
@@ -73,9 +154,13 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     ///////////////////////////// INTERNALS //////////////////////////////////
 
     function _getTokenReserves(uint256 ethReserves) internal pure returns (uint256) {
-        // note: this calculation starts reverting with an overflow at some point above ethReserves > 37 ether
-        // So this curve should not be used in that range
-        // For the current graduation setup it should be safe, as the graduation happens at around 8.5 ether
+        // note: this calculation starts reverting with an overflow at some point above ethReserves > 11 ether // check fuzz tests in ConstantProductBondingCurve.t.sol
+        // So this curve should not be used in that range.
+        // A graduation threshold of 3.75 ether is way below that, so it is safe.
         return K / (ethReserves + E0) - T0;
+    }
+
+    function _maxEthReserves() internal pure returns (uint256) {
+        return _GRADUATION_THRESHOLD + _MAX_EXCESS_OVER_THRESHOLD;
     }
 }
