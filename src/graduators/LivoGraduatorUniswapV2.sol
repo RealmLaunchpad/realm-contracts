@@ -8,9 +8,8 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {ILivoLaunchpad} from "src/interfaces/ILivoLaunchpad.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
-import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable {
+contract LivoGraduatorUniswapV2 is ILivoGraduator {
     using SafeERC20 for ILivoToken;
 
     /// @notice Graduation ETH fee split between creator and treasury
@@ -48,7 +47,7 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable {
     /// @notice Initializes the Uniswap V2 graduator
     /// @param _uniswapRouter Address of the Uniswap V2 router
     /// @param _launchpad Address of the LivoLaunchpad contract
-    constructor(address _uniswapRouter, address _launchpad) Ownable(msg.sender) {
+    constructor(address _uniswapRouter, address _launchpad) {
         LIVO_LAUNCHPAD = _launchpad;
         UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
 
