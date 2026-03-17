@@ -8,35 +8,38 @@ import {ILivoFeeHandler} from "src/interfaces/ILivoFeeHandler.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 
 /// @notice Splits ETH fees received from a `LivoFeeHandler` among multiple recipients according to configurable BPS shares.
-/// @dev Uses a cumulative `ethPerBps` accumulator pattern to track each recipient's claimable amount without iterating over all recipients on every deposit.
+/// @dev Uses a cumulative `_ethPerBps` accumulator pattern to track each recipient's claimable amount without iterating over all recipients on every deposit.
 contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTransient {
     uint256 internal constant BPS_TOTAL = 10_000;
     uint256 internal constant PRECISION = 1e18;
 
-    /// @dev This is a UniV4 handler that manages the liquidity positions, and pending LP fees view functions, etc.
-    address internal _univ4FeeHandler;
     /// @notice The token whose fees are being split. This splitter only supports one token
     address public token;
+
     /// @notice List of current fee recipients. The index of each recipient corresponds to their share in `sharesBps`.
     address[] public recipients;
+    
     /// @notice BPS shares corresponding to each recipient in `recipients`. Must sum to 10 000.
     uint256[] public sharesBps;
 
-    /// @notice Cumulative ETH earned per basis point of share, scaled by `PRECISION`. Up-only variable.
-    uint256 public ethPerBps;
-
-    /// @notice BPS share assigned to each recipient.
-    mapping(address => uint256) public sharesBpsOf;
-
-    /// @notice Snapshot of `ethPerBps` at the time of the recipient's last claim or share update.
-    mapping(address => uint256) public claimedPerBps;
-
-    /// @notice Residual claimable ETH carried over after a share update for a recipient.
-    mapping(address => uint256) public pendingClaims;
-
-    /// @dev Tracks ETH already accounted for in `ethPerBps` so new deposits can be detected via `address(this).balance - totalAccounted`.
+    /// @dev Tracks ETH already accounted for in `ethPerBps` so new deposits can be detected via `address(this).balance - _totalAccounted`.
     /// @dev It is decreased when eth leaves the contract via claims.
-    uint256 internal totalAccounted;
+    uint256 internal _totalAccounted;
+
+    /// @dev Cumulative ETH earned per basis point of share, scaled by `PRECISION`. Up-only variable.
+    uint256 internal _ethPerBps;
+
+    /// @dev BPS share assigned to each recipient.
+    mapping(address => uint256) internal _sharesBpsOf;
+
+    /// @dev Snapshot of `_ethPerBps` at the time of the recipient's last claim or share update.
+    mapping(address => uint256) internal _claimedPerBps;
+
+    /// @dev Residual claimable ETH carried over after a share update for a recipient.
+    mapping(address => uint256) internal _pendingClaims;
+
+    /// @dev This is a UniV4 handler that manages the liquidity positions, and pending LP fees view functions, etc.
+    address internal _univ4FeeHandler;
 
     constructor() {
         _disableInitializers();
@@ -76,8 +79,8 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
         uint256 len = recipients.length;
         for (uint256 i = 0; i < len; i++) {
             address r = recipients[i];
-            pendingClaims[r] = _getClaimableFromAccrued(r);
-            claimedPerBps[r] = ethPerBps;
+            _pendingClaims[r] = _getClaimableFromAccrued(r);
+            _claimedPerBps[r] = _ethPerBps;
         }
 
         _setShares(recipients_, sharesBps_);
@@ -100,9 +103,9 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
         uint256 claimable = _getClaimableFromAccrued(msg.sender);
         if (claimable == 0) return;
 
-        claimedPerBps[msg.sender] = ethPerBps;
-        pendingClaims[msg.sender] = 0;
-        totalAccounted -= claimable;
+        _claimedPerBps[msg.sender] = _ethPerBps;
+        _pendingClaims[msg.sender] = 0;
+        _totalAccounted -= claimable;
 
         (bool success,) = msg.sender.call{value: claimable}("");
         require(success);
@@ -141,23 +144,23 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
     /// @dev Returns the total claimable ETH for `account`, including any unaccrued ETH in the contract and upstream pending fees.
     function _getFullClaimable(address account) internal view returns (uint256) {
         uint256 fromAccrued = _getClaimableFromAccrued(account);
-        uint256 unaccounted = address(this).balance - totalAccounted;
+        uint256 unaccounted = address(this).balance - _totalAccounted;
         uint256[] memory upstream = ILivoFeeHandler(_univ4FeeHandler).getClaimable(_tokens(), address(this));
 
         // from Accrued is already given by shareholder, but the others need to be split still
-        return fromAccrued + ((unaccounted + upstream[0]) * sharesBpsOf[account]) / BPS_TOTAL;
+        return fromAccrued + ((unaccounted + upstream[0]) * _sharesBpsOf[account]) / BPS_TOTAL;
     }
 
     /// @dev Returns the claimable ETH for `account` based on already-accrued balances only (excludes pending in fee handler).
     function _getClaimableFromAccrued(address account) internal view returns (uint256) {
-        return ((ethPerBps - claimedPerBps[account]) * sharesBpsOf[account]) / PRECISION + pendingClaims[account];
+        return ((_ethPerBps - _claimedPerBps[account]) * _sharesBpsOf[account]) / PRECISION + _pendingClaims[account];
     }
 
     /// @dev Overwrites the recipient list and shares. Clears old mappings, validates inputs, and sets new state.
     function _setShares(address[] calldata recipients_, uint256[] calldata sharesBps_) internal {
         uint256 oldLen = recipients.length;
         for (uint256 i = 0; i < oldLen; i++) {
-            delete sharesBpsOf[recipients[i]];
+            delete _sharesBpsOf[recipients[i]];
         }
 
         uint256 len = recipients_.length;
@@ -179,8 +182,8 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
         sharesBps = sharesBps_;
 
         for (uint256 i = 0; i < len; i++) {
-            sharesBpsOf[recipients_[i]] = sharesBps_[i];
-            claimedPerBps[recipients_[i]] = ethPerBps;
+            _sharesBpsOf[recipients_[i]] = sharesBps_[i];
+            _claimedPerBps[recipients_[i]] = _ethPerBps;
         }
 
         emit SharesUpdated(recipients_, sharesBps_);
@@ -200,12 +203,12 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
 
     /// @dev Accounts for any new ETH that has arrived since the last accrual by updating `ethPerBps`.
     function _accrueBalance() internal {
-        uint256 newEth = address(this).balance - totalAccounted;
+        uint256 newEth = address(this).balance - _totalAccounted;
         if (newEth == 0) return;
 
-        totalAccounted += newEth;
+        _totalAccounted += newEth;
         // negligible precision loss
-        ethPerBps += (newEth * PRECISION) / BPS_TOTAL;
+        _ethPerBps += (newEth * PRECISION) / BPS_TOTAL;
 
         emit FeesAccrued(newEth);
     }

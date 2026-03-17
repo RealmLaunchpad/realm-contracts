@@ -144,8 +144,6 @@ contract LivoFeeSplitterTests is Test {
         assertEq(recipients[1], bob);
         assertEq(shares[0], 7000);
         assertEq(shares[1], 3000);
-        assertEq(splitter.sharesBpsOf(alice), 7000);
-        assertEq(splitter.sharesBpsOf(bob), 3000);
     }
 
     /// @dev when already initialized, then reinitialize reverts
@@ -213,7 +211,6 @@ contract LivoFeeSplitterTests is Test {
         assertEq(newRecipients.length, 3);
         assertEq(newRecipients[2], charlie);
         assertEq(newShares[2], 2000);
-        assertEq(splitter.sharesBpsOf(charlie), 2000);
     }
 
     /// @dev when non-owner calls setShares, then it reverts with Unauthorized
