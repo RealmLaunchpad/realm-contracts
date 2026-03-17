@@ -29,8 +29,9 @@ forge verify-contract {{address}} {{contractName}} --compiler-version 0.8.28+com
 
 # Transfer ownerships ?
 
-- livo launchpad owner -> multisig ?
-- graduator v4 ownership can be kept as mine, since I can only claim on behalf of users for ease of use
+- livo launchpad owner -> multisig ?  functions: whitelist/blacklist factories. Set trading fees, Set trasury address, community takeover.
+- LivoGraduatorUniswapV4: leave deployer as owner, No critical functions. 
+- LivoFeeHandler -> leave deployer as owner. No critical functions
 
 ---
 
