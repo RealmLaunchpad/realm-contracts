@@ -144,6 +144,7 @@ contract LivoToken is ERC20, ILivoToken, Initializable {
                 return (recipients, sharesBps);
             } catch {}
         }
+        // fallback to direct fee receiver with 100% share if the fee receiver is not a fee splitter
         address[] memory result = new address[](1);
         result[0] = feeReceiver_;
         uint256[] memory shares = new uint256[](1);

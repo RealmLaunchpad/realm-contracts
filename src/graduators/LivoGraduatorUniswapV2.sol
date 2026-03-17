@@ -13,6 +13,13 @@ import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable {
     using SafeERC20 for ILivoToken;
 
+    /// @notice Graduation ETH fee split between creator and treasury
+    uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
+
+    /// @notice ETH compensation paid to token creator at graduation
+    /// @dev this is part of the GRADUATION_ETH_FEE
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
+
     /// @notice Where LP tokens are sent at graduation, effectively locking the liquidity
     address internal constant DEAD_ADDRESS = address(0xdEaD);
 
@@ -27,14 +34,6 @@ contract LivoGraduatorUniswapV2 is ILivoGraduator, Ownable {
 
     /// @notice Wrapped ETH address
     address internal immutable WETH;
-
-    /// @notice Graduation ETH fee split between creator and treasury
-    uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
-
-    /// @notice ETH compensation paid to token creator at graduation
-    /// @dev this is part of the GRADUATION_ETH_FEE
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
-
     //////////////////////// EVENTS ////////////////////////
 
     event SweepedRemainingEth(address graduatedToken, uint256 amount);

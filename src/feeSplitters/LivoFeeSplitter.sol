@@ -18,9 +18,12 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
 
     /// @notice List of current fee recipients. The index of each recipient corresponds to their share in `sharesBps`.
     address[] public recipients;
-    
+
     /// @notice BPS shares corresponding to each recipient in `recipients`. Must sum to 10 000.
     uint256[] public sharesBps;
+
+    /// @dev This is a UniV4 handler that manages the liquidity positions, and pending LP fees view functions, etc.
+    address public univ4FeeHandler;
 
     /// @dev Tracks ETH already accounted for in `ethPerBps` so new deposits can be detected via `address(this).balance - _totalAccounted`.
     /// @dev It is decreased when eth leaves the contract via claims.
@@ -37,9 +40,6 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
 
     /// @dev Residual claimable ETH carried over after a share update for a recipient.
     mapping(address => uint256) internal _pendingClaims;
-
-    /// @dev This is a UniV4 handler that manages the liquidity positions, and pending LP fees view functions, etc.
-    address internal _univ4FeeHandler;
 
     constructor() {
         _disableInitializers();
@@ -60,7 +60,7 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
         uint256[] calldata sharesBps_
     ) external initializer {
         token = token_;
-        _univ4FeeHandler = univ4FeeHandler_;
+        univ4FeeHandler = univ4FeeHandler_;
         _setShares(recipients_, sharesBps_);
     }
 
@@ -145,7 +145,7 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
     function _getFullClaimable(address account) internal view returns (uint256) {
         uint256 fromAccrued = _getClaimableFromAccrued(account);
         uint256 unaccounted = address(this).balance - _totalAccounted;
-        uint256[] memory upstream = ILivoFeeHandler(_univ4FeeHandler).getClaimable(_tokens(), address(this));
+        uint256[] memory upstream = ILivoFeeHandler(univ4FeeHandler).getClaimable(_tokens(), address(this));
 
         // from Accrued is already given by shareholder, but the others need to be split still
         return fromAccrued + ((unaccounted + upstream[0]) * _sharesBpsOf[account]) / BPS_TOTAL;
@@ -191,7 +191,7 @@ contract LivoFeeSplitter is ILivoFeeSplitter, Initializable, ReentrancyGuardTran
 
     /// @dev Claims pending fees from the underlying fee handler, then accrues the new ETH.
     function _claimFromSource() internal {
-        ILivoFeeHandler(_univ4FeeHandler).claim(_tokens());
+        ILivoFeeHandler(univ4FeeHandler).claim(_tokens());
         _accrueBalance();
     }
 

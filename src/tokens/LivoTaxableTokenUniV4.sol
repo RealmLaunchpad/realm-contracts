@@ -96,28 +96,6 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
         launchpad = LivoLaunchpad(params.launchpad);
     }
 
-    /// @notice Returns the tax configuration for this taxable token
-    function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
-        config = TaxConfig({
-            buyTaxBps: buyTaxBps,
-            sellTaxBps: sellTaxBps,
-            taxDurationSeconds: taxDurationSeconds,
-            graduationTimestamp: graduationTimestamp
-        });
-    }
-
-    /// @notice Internal helper to store tax configuration
-    /// @dev Separated to reduce stack depth in initialize()
-    function _initializeTaxConfig(uint16 _buyTaxBps, uint16 _sellTaxBps, uint40 _taxDurationSeconds) internal {
-        // there is no restrictions here anymore regarding sell tax an tax duration. Restrictions are enforced in the factory
-        emit LivoTaxableTokenInitialized(_buyTaxBps, _sellTaxBps, _taxDurationSeconds);
-
-        // Store tax configuration
-        buyTaxBps = _buyTaxBps;
-        sellTaxBps = _sellTaxBps;
-        taxDurationSeconds = _taxDurationSeconds;
-    }
-
     /// @notice Marks the token as graduated and records the timestamp
     /// @dev Can only be called by the pre-set graduator contract
     /// @dev Overrides LivoToken.markGraduated() to add timestamp tracking
@@ -141,5 +119,31 @@ contract LivoTaxableTokenUniV4 is LivoToken, ILivoTaxableTokenUniV4 {
             uint256 balance = IERC20(token).balanceOf(address(this));
             IERC20(token).safeTransfer(msg.sender, balance);
         }
+    }
+
+    //////////////////////// VIEW FUNCTIONS //////////////////////
+
+    /// @notice Returns the tax configuration for this taxable token
+    function getTaxConfig() external view override(ILivoToken, LivoToken) returns (TaxConfig memory config) {
+        config = TaxConfig({
+            buyTaxBps: buyTaxBps,
+            sellTaxBps: sellTaxBps,
+            taxDurationSeconds: taxDurationSeconds,
+            graduationTimestamp: graduationTimestamp
+        });
+    }
+
+    ////////////////////// INTERNAL FUNCTIONS //////////////////////
+
+    /// @notice Internal helper to store tax configuration
+    /// @dev Separated to reduce stack depth in initialize()
+    function _initializeTaxConfig(uint16 _buyTaxBps, uint16 _sellTaxBps, uint40 _taxDurationSeconds) internal {
+        // there is no restrictions here anymore regarding sell tax an tax duration. Restrictions are enforced in the factory
+        emit LivoTaxableTokenInitialized(_buyTaxBps, _sellTaxBps, _taxDurationSeconds);
+
+        // Store tax configuration
+        buyTaxBps = _buyTaxBps;
+        sellTaxBps = _sellTaxBps;
+        taxDurationSeconds = _taxDurationSeconds;
     }
 }

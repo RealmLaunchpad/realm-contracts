@@ -22,6 +22,13 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     using SafeERC20 for ILivoToken;
     using PoolIdLibrary for PoolKey;
 
+    /// @notice Graduation ETH fee (creator compensation + treasury fee)
+    uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
+
+    /// @notice ETH compensation paid to token creator at graduation
+    /// @dev this is part of the GRADUATION_ETH_FEE
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
+
     /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
 
@@ -57,13 +64,6 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     uint160 immutable SQRT_LOWER_2;
     /// @notice The sqrtX96 price at the upper tick of the secondary ETH-only liquidity position
     uint160 immutable SQRT_UPPER_2;
-
-    /// @notice Graduation ETH fee (creator compensation + treasury fee)
-    uint256 public constant GRADUATION_ETH_FEE = 0.25 ether;
-
-    /// @notice ETH compensation paid to token creator at graduation
-    /// @dev this is part of the GRADUATION_ETH_FEE
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.05 ether;
 
     /////////////////////// Errors ///////////////////////
 
