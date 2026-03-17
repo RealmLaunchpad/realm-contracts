@@ -370,7 +370,7 @@ contract LivoLaunchpad is ILivoLaunchpad, Ownable2Step {
 
     /// @notice Returns the maximum ETH a user can spend on a token without exceeding graduation limits
     function _maxEthToSpend(address token) internal view returns (uint256 ethBuy) {
-        uint256 remainingReserves = tokenConfigs[token].maxEthReserves() - tokenStates[token].ethCollected;
+        uint256 remainingReserves = tokenConfigs[token].bondingCurve.maxEthReserves() - tokenStates[token].ethCollected;
 
         // apply inverse fees
         ethBuy = (remainingReserves * BASIS_POINTS) / (BASIS_POINTS - tokenConfigs[token].buyFeeBps);

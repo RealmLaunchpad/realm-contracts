@@ -30,9 +30,4 @@ library TokenDataLib {
     function notGraduated(TokenState storage state) internal view returns (bool) {
         return !state.graduated;
     }
-
-    /// @dev above this value, the buy transaction should revert
-    function maxEthReserves(TokenConfig storage config) internal view returns (uint256) {
-        return config.bondingCurve.maxEthReserves();
-    }
 }
