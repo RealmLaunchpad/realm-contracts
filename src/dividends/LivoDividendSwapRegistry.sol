@@ -55,7 +55,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 ///      — so refusing them was refusing the chain. They get in through `setRoute`: an admin names the
 ///      exact pools, one hop at a time, and THAT naming is the curation. No depth threshold is applied
 ///      to a routed asset, because a threshold would be pretending to measure something the admin has
-///      already asserted. V3 is still not supported; nothing needs it.
+///      already asserted.
 ///
 /// @dev CUSTODIES NOTHING. `swapNativeToAsset` receives, swaps and forwards inside one call, and holds
 ///      no balance between calls. There is deliberately no `receive()`, so the only native that can

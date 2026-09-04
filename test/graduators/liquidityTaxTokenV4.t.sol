@@ -10,10 +10,14 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
+import {ILivoUniV4LiquidityAdder, LivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
+import {ILivoV4Graduator} from "src/tokens/LivoTaxableTokenUniV4Base.sol";
+import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 interface IERC721Minimal {
     function balanceOf(address owner) external view returns (uint256);
@@ -24,10 +28,18 @@ interface IERC721Minimal {
 ///         far below anything a Livo pool's tick range can produce, so the branch is mocked rather than
 ///         contrived.
 contract RefundingLiquidityAdderStub {
-    function addSingleSidedEthBelowPrice(PoolKey calldata, int24, address, address) external payable returns (uint128) {
+    function addOrTopUpSingleSidedEth(
+        PoolKey calldata,
+        int24,
+        int24,
+        uint256[2] calldata,
+        int24[2] calldata,
+        address,
+        address
+    ) external payable returns (uint128, uint256, int24) {
         (bool sent,) = msg.sender.call{value: msg.value}("");
         require(sent, "refund failed");
-        return 0;
+        return (0, 0, 0);
     }
 }
 
@@ -293,5 +305,98 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         );
         assertEq(third[0], first[0], "and was promoted to the most-recently-used slot");
         assertEq(third[1], second[0], "with the newer wall demoted behind it");
+    }
+
+    /// @dev The assumption the whole reuse rule rests on: a topped-up wall is ETH-ONLY, so the call
+    ///      settles native and nothing else. If the eligibility check ever let a wall through that the
+    ///      price had entered, the position would demand token1 — and the token would be spending the
+    ///      supply it holds for other buckets.
+    function test_v4ProcessLiquidity_topUpSpendsNoTokens() public {
+        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
+        (uint256[2] memory ids,) = _rollAndProcess(liqToken);
+        assertGt(ids[0], 0, "precondition: a wall exists");
+
+        _swapBuy(buyer, 0.05 ether, 0, true);
+        uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(testToken);
+        uint256 supplyBefore = IERC20(testToken).totalSupply();
+
+        (uint256[2] memory idsAfter,) = _rollAndProcess(liqToken);
+
+        assertEq(idsAfter[0], ids[0], "precondition: this call took the top-up path");
+        assertEq(IERC20(testToken).balanceOf(testToken), tokenBalanceBefore, "no tokens left the contract");
+        assertEq(IERC20(testToken).totalSupply(), supplyBefore, "and none were minted or burned");
+    }
+
+    /// @dev The once-per-block cap bounds what a manipulated wall placement can extract per block. It must
+    ///      hold on the top-up path too, which no longer goes through the mint.
+    function test_v4ProcessLiquidity_cooldownAppliesToTopUps() public {
+        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
+        _rollAndProcess(liqToken);
+
+        _swapBuy(buyer, 0.05 ether, 0, true);
+        vm.roll(block.number + 1);
+        liqToken.processLiquidity(); // top-up
+
+        _swapBuy(buyer, 0.05 ether, 0, true);
+        vm.expectRevert(LivoTaxableTokenUniV4.ProcessCooldown.selector);
+        liqToken.processLiquidity();
+    }
+
+    /// @dev The per-call spend cap must bind on the top-up path as well; the remainder stays on the
+    ///      liquidity ledger rather than becoming stray ETH the sweep would re-split into other buckets.
+    function test_v4ProcessLiquidity_topUpHonoursThePerCallCap() public {
+        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
+        (uint256[2] memory ids,) = _rollAndProcess(liqToken);
+
+        // Overfill the buffer well past the cap, without moving the price out of the reuse window.
+        uint256 cap = liqToken.MAX_EARNINGS_PER_PROCESS();
+        _swapBuy(buyer, 0.05 ether, 0, true);
+        vm.deal(address(liqToken), address(liqToken).balance + 5 * cap);
+        liqToken.sweepStrayEth();
+        uint256 pending = liqToken.liquidityPendingEth();
+        assertGt(pending, cap, "precondition: the buffer exceeds the per-call cap");
+
+        uint256 ethBefore = testToken.balance;
+        (uint256[2] memory idsAfter,) = _rollAndProcess(liqToken);
+
+        assertEq(idsAfter[0], ids[0], "precondition: this call took the top-up path");
+        assertApproxEqAbs(ethBefore - testToken.balance, cap, 1e12, "at most one cap's worth was spent");
+        assertApproxEqAbs(liqToken.liquidityPendingEth(), pending - cap, 1e12, "the remainder stays earmarked");
+    }
+
+    /// @dev The token grants the adder an ERC721 approval so it can top up. That approval must not become
+    ///      a way for a passer-by to route the position's payouts to themselves: minting stays open to
+    ///      anyone, but topping up someone else's wall does not.
+    function test_v4LiquidityAdder_topUpIsOwnerOnly() public {
+        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
+        (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
+        assertGt(ids[0], 0, "precondition: the token owns a wall");
+
+        address adder = ILivoV4Graduator(liqToken.graduator()).LIQUIDITY_ADDER();
+        assertTrue(
+            IERC721(positionManagerAddress).isApprovedForAll(testToken, adder), "the adder is approved to top up"
+        );
+
+        address attacker = makeAddr("attacker");
+        vm.deal(attacker, 1 ether);
+        vm.prank(attacker);
+        vm.expectRevert(LivoUniV4LiquidityAdder.NotPositionOwner.selector);
+        ILivoUniV4LiquidityAdder(adder).addOrTopUpSingleSidedEth{value: 1 ether}(
+            UniswapV4PoolConstants.livoPoolKey(testToken, address(taxHook)),
+            14000,
+            2000,
+            ids,
+            tickLowers,
+            attacker,
+            attacker
+        );
     }
 }

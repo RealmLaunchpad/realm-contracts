@@ -13,12 +13,7 @@ import {ILivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.so
 // Self-aliased so the `chain-arc-*` recipes can import-swap it for the ARC pool constants.
 import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
-import {PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
-import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
-import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
-import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
-import {PositionInfo, PositionInfoLibrary} from "lib/v4-periphery/src/libraries/PositionInfoLibrary.sol";
-import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
+import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
@@ -35,10 +30,6 @@ import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/con
 ///      `delegatecall` stubs into `DIVIDEND_LOGIC`; only their
 ///      bodies live elsewhere, and nothing on the swap hot path does. See `DividendDistributionLogic`.
 contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
-    using PoolIdLibrary for PoolKey;
-    using StateLibrary for IPoolManager;
-    using PositionInfoLibrary for PositionInfo;
-
     ///////////////////////////////// uniswap v4 related /////////////////////////////////////////
     // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
 
@@ -175,8 +166,10 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
     }
 
     /// @notice Deposits the accrued liquidity ETH as a single-sided ETH position just below the current
-    ///         price — a protective bid wall. Tops up a wall this token already owns when one is still
-    ///         usable, and otherwise mints a fresh one via the shared `LivoUniV4LiquidityAdder`.
+    ///         price — a protective bid wall. Both placing and reusing run through the shared
+    ///         `LivoUniV4LiquidityAdder`: this token only keeps the memory of the two walls it most
+    ///         recently used and the policy (`LIQUIDITY_WALL_TICK_WIDTH`, `LIQUIDITY_WALL_REUSE_MAX_GAP`)
+    ///         that decides between topping one of them up and minting a fresh one.
     ///         Permissionless and off the swap hot path, mirroring `processBurn`: the ETH is
     ///         protocol-committed to liquidity, so any keeper may trigger it. Positions are held by this
     ///         token and never withdrawn, so they are permanent pool depth. Spends at most
@@ -199,36 +192,27 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
 
         PoolKey memory key =
             UniswapV4PoolConstants.livoPoolKey(address(this), ILivoV4Graduator(graduator).HOOK_ADDRESS());
-        (, int24 currentTick,,) = IPoolManager(UNIV4_POOL_MANAGER).getSlot0(key.toId());
+        address adder = ILivoV4Graduator(graduator).LIQUIDITY_ADDER();
 
-        // NFT and leftover ETH both return to this token (permanent depth; the ETH stays earmarked).
+        // The adder needs the position manager's `onlyIfApproved` to top up a wall this token owns. Set
+        // unconditionally rather than once: it is a same-value SSTORE after the first call, and it
+        // self-heals if the graduator ever points at a different adder — where a one-shot grant would
+        // leave `processLiquidity` reverting on every reusable wall. The adder is already trusted with the
+        // ETH handed to it, cannot decrease, burn or transfer a position, and comes from the same
+        // graduator that names the hook mediating every swap.
+        IERC721(UNIV4_POSITION_MANAGER).setApprovalForAll(adder, true);
+
+        // NFT and leftover ETH both return to this token (permanent depth; the ETH stays earmarked). The
+        // adder picks between topping up one of the remembered walls and minting a fresh one, and reports
+        // back which position took the ETH so the memory below can be updated.
         uint256 balanceBefore = address(this).balance;
-        uint128 liquidity;
-
-        (uint112 wallId, bool fromSlot1) = _reusableWall(currentTick);
-        if (wallId != 0) {
-            liquidity = _topUpWall(key, wallId, ethIn);
-            // Keep the memory most-recently-used first, so the wall we just proved good survives the next
-            // mint's eviction. Only slot 1 needs moving; a slot-0 hit is already in place.
-            if (fromSlot1) _swapRememberedWalls();
-        } else {
-            address adder = ILivoV4Graduator(graduator).LIQUIDITY_ADDER();
-            liquidity = ILivoUniV4LiquidityAdder(adder).addSingleSidedEthBelowPrice{value: ethIn}(
-                key, LIQUIDITY_WALL_TICK_WIDTH, address(this), address(this)
-            );
-            // Zero liquidity means the adder placed nothing and refunded, so no id was consumed and there
-            // is no wall to remember. The lower tick is read back from the position manager rather than
-            // recomputed here: a second copy of the adder's tick math could drift from it, and this way a
-            // wrong entry is impossible rather than merely unlikely.
-            if (liquidity != 0) {
-                uint256 mintedId = IPositionManager(UNIV4_POSITION_MANAGER).nextTokenId() - 1;
-                // Safe: the position manager's id is a counter incremented once per mint, from 1.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                _rememberWall(
-                    uint112(mintedId), IPositionManager(UNIV4_POSITION_MANAGER).positionInfo(mintedId).tickLower()
-                );
-            }
-        }
+        (uint256[2] memory ids, int24[2] memory tickLowers) = getLiquidityWalls();
+        (uint128 liquidity, uint256 usedId, int24 usedTickLower) = ILivoUniV4LiquidityAdder(adder)
+        .addOrTopUpSingleSidedEth{value: ethIn}(
+            key, LIQUIDITY_WALL_TICK_WIDTH, LIQUIDITY_WALL_REUSE_MAX_GAP, ids, tickLowers, address(this), address(this)
+        );
+        // A zero id means nothing was placed and the ETH came back — no wall to record.
+        if (usedId != 0) _recordUsedWall(usedId, usedTickLower);
 
         // Whatever was not placed stays earmarked for liquidity, mirroring the V2 processor:
         // `liquidityPendingEth` was debited by the full `ethIn` above, so without this the unplaced
@@ -250,94 +234,25 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
     ///         entries here are candidates for a top-up.
     /// @dev One packed view rather than four generated getters: on this contract, which sits close to the
     ///      EIP-170 limit, the getters cost more bytecode than the reuse path they describe.
-    function getLiquidityWalls() external view returns (uint256[2] memory ids, int24[2] memory tickLowers) {
+    function getLiquidityWalls() public view returns (uint256[2] memory ids, int24[2] memory tickLowers) {
         ids = [uint256(liquidityWall0Id), uint256(liquidityWall1Id)];
         tickLowers = [liquidityWall0TickLower, liquidityWall1TickLower];
     }
 
-    /// @notice The remembered wall `processLiquidity` should top up at `currentTick`, or a zero id when
-    ///         it should mint a fresh one instead.
-    /// @dev Picks the CLOSEST eligible wall, not the first: a price that zigzags can leave the older of
-    ///      the two nearer the current price, and topping up the deeper of two candidates is exactly what
-    ///      `LIQUIDITY_WALL_REUSE_MAX_GAP` exists to prevent.
-    function _reusableWall(int24 currentTick) private view returns (uint112 id, bool fromSlot1) {
-        int24 tickLower;
+    /// @dev Moves the wall that just took the ETH to the front of the two-entry memory: a repeat of the
+    ///      most recent one changes nothing, the second entry is promoted past the first, and anything
+    ///      else is a fresh mint that evicts the older of the two. Most-recently-USED order is what keeps
+    ///      a wall the price keeps returning to from being evicted by a mint it sat out.
+    function _recordUsedWall(uint256 id, int24 tickLower) private {
         (uint112 id0, int24 lower0) = (liquidityWall0Id, liquidityWall0TickLower);
-        if (_wallIsReusable(id0, lower0, currentTick)) (id, tickLower) = (id0, lower0);
+        if (id == id0) return;
 
-        (uint112 id1, int24 lower1) = (liquidityWall1Id, liquidityWall1TickLower);
-        if (_wallIsReusable(id1, lower1, currentTick) && (id == 0 || lower1 < tickLower)) {
-            (id, fromSlot1) = (id1, true);
-        }
-    }
-
-    /// @dev A wall can take more ETH only while its whole range sits STRICTLY above the current tick —
-    ///      that is what keeps it ETH-only. At or below it the position already holds token, and the
-    ///      increase would demand a token1 settlement this call never makes. The gap bound is the second
-    ///      half: a range far above the tick is a wall the price has long left behind, and thickening it
-    ///      would park the ETH as deep depth instead of the protective bid it is meant to be.
-    function _wallIsReusable(uint112 id, int24 tickLower, int24 currentTick) private pure returns (bool) {
-        return id != 0 && currentTick < tickLower && tickLower - currentTick <= LIQUIDITY_WALL_REUSE_MAX_GAP;
-    }
-
-    /// @dev Adds `ethIn` to an existing wall and returns the liquidity the position gained.
-    /// @dev No zero-liquidity guard, unlike the mint path: a wall's range sits entirely above the current
-    ///      tick, and liquidity per ETH grows with that distance, so across a Livo pool's whole tick range
-    ///      even 1 wei sizes to at least 1 unit of liquidity. `ethIn` is non-zero by the caller's
-    ///      `NothingToAdd` check, so v4-core's `CannotUpdateEmptyPosition` is unreachable here.
-    /// @dev Called from the token rather than the shared adder because `PositionManager._increase` is
-    ///      `onlyIfApproved`: this token owns the NFT, and the alternative — approving a permissionless
-    ///      contract for all of its positions — buys nothing.
-    function _topUpWall(PoolKey memory key, uint112 tokenId, uint256 ethIn) private returns (uint128 liquidity) {
-        IPositionManager posm = IPositionManager(UNIV4_POSITION_MANAGER);
-        uint128 liquidityBefore = posm.getPositionLiquidity(tokenId);
-
-        // SETTLE the ETH in, then let the position manager size the add from the resulting credit and the
-        // position's own recorded range. Sizing it here instead would pull `TickMath` and
-        // `LiquidityAmounts` into a contract with barely any EIP-170 headroom, to compute a number the
-        // position manager already computes.
-        // CLOSE_CURRENCY twice rather than SETTLE_PAIR/TAKE_PAIR: an increase folds the position's accrued
-        // fees into the deltas, and either paired action reverts as soon as one side is a credit and the
-        // other a debt. The pool's LP fee is zero and the hook holds no add-liquidity permissions, so no
-        // fee can accrue today — but bricking `processLiquidity` if that ever changes is not worth the two
-        // bytes. Anything closed out comes back to this contract, which the ETH re-earmarking below and
-        // the stray-token accounting already handle.
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.SETTLE),
-            uint8(Actions.INCREASE_LIQUIDITY_FROM_DELTAS),
-            uint8(Actions.CLOSE_CURRENCY),
-            uint8(Actions.CLOSE_CURRENCY),
-            uint8(Actions.SWEEP)
-        );
-        bytes[] memory params = new bytes[](5);
-        // `payerIsUser` is irrelevant for native: the settle draws on the `msg.value` sent below.
-        params[0] = abi.encode(key.currency0, ethIn, false);
-        // amount0Max = ethIn (slippage cap), amount1Max = 0 (ETH-only, checked on the principal delta).
-        // Safe: `ethIn` is clamped to `MAX_EARNINGS_PER_PROCESS` by the caller. The cast is not cosmetic —
-        // the position manager decodes these fields with a raw `calldataload`, so an over-wide value would
-        // be read back dirty rather than truncated.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        params[1] = abi.encode(uint256(tokenId), uint128(ethIn), uint128(0), bytes(""));
-        params[2] = abi.encode(key.currency0);
-        params[3] = abi.encode(key.currency1);
-        params[4] = abi.encode(key.currency0, address(this)); // SWEEP native ETH dust
-
-        posm.modifyLiquidities{value: ethIn}(abi.encode(actions, params), block.timestamp);
-        liquidity = posm.getPositionLiquidity(tokenId) - liquidityBefore;
-    }
-
-    /// @dev Records a freshly minted wall as the most recent one, evicting the older of the two.
-    function _rememberWall(uint112 id, int24 tickLower) private {
-        (liquidityWall1Id, liquidityWall1TickLower) = (liquidityWall0Id, liquidityWall0TickLower);
-        (liquidityWall0Id, liquidityWall0TickLower) = (id, tickLower);
-    }
-
-    /// @dev Moves the slot-1 wall to slot 0 after topping it up, so the memory stays most-recently-used
-    ///      first.
-    function _swapRememberedWalls() private {
-        (uint112 id0, int24 lower0) = (liquidityWall0Id, liquidityWall0TickLower);
-        (liquidityWall0Id, liquidityWall0TickLower) = (liquidityWall1Id, liquidityWall1TickLower);
+        // One shift covers both remaining cases: if `id` was the second entry this swaps the two, and if
+        // it is a fresh mint this evicts the older one.
         (liquidityWall1Id, liquidityWall1TickLower) = (id0, lower0);
+        // Safe: the position manager's id is a counter incremented once per mint, from 1.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (liquidityWall0Id, liquidityWall0TickLower) = (uint112(id), tickLower);
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////
