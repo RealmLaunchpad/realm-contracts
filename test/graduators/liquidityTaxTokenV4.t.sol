@@ -10,6 +10,10 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 
 interface IERC721Minimal {
     function balanceOf(address owner) external view returns (uint256);
@@ -30,9 +34,14 @@ contract RefundingLiquidityAdderStub {
 /// @notice Integration tests for the V4 single-sided-ETH liquidity earnings-allocation leg: the tax ETH
 ///         is buffered and, on `processLiquidity`, deposited as an ETH-only bid wall below the price.
 contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
+    using StateLibrary for IPoolManager;
+
     /// @dev Creates a taxable V4 token with a `liquidityBps` earnings allocation via the allocation-aware
-    ///      `createToken` overload. 4%-configurable sell tax, creation-anchored 14-day window.
-    function _createLiquidityTaxToken(uint16 sellTaxBps, uint16 liquidityBps) internal returns (address token) {
+    ///      `createToken` overload. Configurable buy/sell tax, creation-anchored 14-day window.
+    function _createLiquidityTaxToken(uint16 buyTaxBps, uint16 sellTaxBps, uint16 liquidityBps)
+        internal
+        returns (address token)
+    {
         ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
             name: "LiqToken",
             symbol: "LIQ",
@@ -41,7 +50,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             liquidityTier: LiquidityTier.DEFAULT
         });
         TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
-            buyTaxBps: 0,
+            buyTaxBps: buyTaxBps,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: uint32(14 days),
             startTaxFromLaunch: true,
@@ -65,12 +74,12 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_liquidityBps_storedAtCreation() public {
-        address token = _createLiquidityTaxToken(400, 5000);
+        address token = _createLiquidityTaxToken(0, 400, 5000);
         assertEq(LivoTaxableTokenUniV4(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
     }
 
     function test_v4Liquidity_accruesThenProcessMintsPosition() public {
-        address token = _createLiquidityTaxToken(400, 5000); // 4% sell tax; 50% of earnings → liquidity
+        address token = _createLiquidityTaxToken(0, 400, 5000); // 4% sell tax; 50% of earnings → liquidity
         testToken = token;
         LivoTaxableTokenUniV4 liqToken = LivoTaxableTokenUniV4(payable(token));
 
@@ -107,7 +116,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      permissionless `sweepStrayEth` re-splits an allocation earmarked for liquidity into the burn /
     ///      dividend / fund buckets.
     function test_v4ProcessLiquidity_unplacedEthStaysEarmarked() public {
-        address token = _createLiquidityTaxToken(400, 5000);
+        address token = _createLiquidityTaxToken(0, 400, 5000);
         testToken = token;
         LivoTaxableTokenUniV4 liqToken = LivoTaxableTokenUniV4(payable(token));
 
@@ -133,8 +142,156 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_v4ProcessLiquidity_revertsWhenNothingPending() public {
-        address token = _createLiquidityTaxToken(400, 5000);
+        address token = _createLiquidityTaxToken(0, 400, 5000);
         vm.expectRevert(LivoTaxableTokenUniV4.NothingToAdd.selector);
         LivoTaxableTokenUniV4(payable(token)).processLiquidity();
+    }
+
+    /// @dev Sets up a graduated token with a buy AND sell tax, so either swap direction both moves the
+    ///      price and refills the liquidity buffer. Returns the token, already assigned to `testToken`.
+    function _graduatedLiquidityToken() internal returns (LivoTaxableTokenUniV4 liqToken) {
+        address token = _createLiquidityTaxToken(400, 400, 5000);
+        testToken = token;
+        liqToken = LivoTaxableTokenUniV4(payable(token));
+        vm.deal(buyer, 100 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _graduateToken();
+    }
+
+    function _currentTick() internal view returns (int24 tick) {
+        PoolId poolId = _getPoolKey(testToken).toId();
+        (, tick,,) = poolManager.getSlot0(poolId);
+    }
+
+    function _positionCount() internal view returns (uint256) {
+        return IERC721Minimal(positionManagerAddress).balanceOf(testToken);
+    }
+
+    /// @dev Rolls a block (the once-per-block cooldown) and processes, returning the wall memory after.
+    function _rollAndProcess(LivoTaxableTokenUniV4 liqToken)
+        internal
+        returns (uint256[2] memory ids, int24[2] memory tickLowers)
+    {
+        vm.roll(block.number + 1);
+        liqToken.processLiquidity();
+        (ids, tickLowers) = liqToken.getLiquidityWalls();
+    }
+
+    /// @dev The point of the whole reuse path: a second `processLiquidity` while the price is still just
+    ///      below the wall thickens the SAME position instead of minting a second NFT.
+    function test_v4ProcessLiquidity_topsUpTheWallWhilePriceStaysNear() public {
+        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
+        (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
+        assertGt(ids[0], 0, "first call mints and remembers a wall");
+        uint256 positionsAfterMint = _positionCount();
+        uint128 liquidityAfterMint = IPositionManager(positionManagerAddress).getPositionLiquidity(ids[0]);
+
+        // A small buy nudges the price UP (the tick DOWN, since the pair is (ETH, token)) and, thanks to
+        // the buy tax, refills the buffer. The wall stays above the tick and within the reuse gap.
+        _swapBuy(buyer, 0.05 ether, 0, true);
+        int24 tickAfter = _currentTick();
+        assertLt(tickAfter, tickLowers[0], "precondition: the wall is still entirely below the price");
+        assertLt(tickLowers[0] - tickAfter, int24(2000), "precondition: and within the reuse gap");
+        uint256 pending = liqToken.liquidityPendingEth();
+        assertGt(pending, 0, "precondition: the buy refilled the buffer");
+        uint256 tokenEthBefore = testToken.balance;
+
+        (uint256[2] memory idsAfter, int24[2] memory tickLowersAfter) = _rollAndProcess(liqToken);
+
+        // Same money-safety property as the mint path: the buffer is spent, not stranded or leaked.
+        assertApproxEqAbs(
+            tokenEthBefore - testToken.balance, pending, 1e12, "almost the whole buffer went into the wall"
+        );
+
+        assertEq(_positionCount(), positionsAfterMint, "no second NFT was minted");
+        assertEq(idsAfter[0], ids[0], "the same wall is still the most recent one");
+        assertEq(tickLowersAfter[0], tickLowers[0], "and its range did not move");
+        assertGt(
+            IPositionManager(positionManagerAddress).getPositionLiquidity(ids[0]),
+            liquidityAfterMint,
+            "the existing position got thicker"
+        );
+    }
+
+    /// @dev A price DROP puts the current tick inside the old wall, which then holds token rather than
+    ///      pure ETH. An ETH-only top-up cannot settle there, so the call must mint a fresh wall.
+    function test_v4ProcessLiquidity_mintsAgainWhenPriceFallsIntoTheWall() public {
+        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
+        (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
+        uint256 positionsAfterMint = _positionCount();
+
+        // Selling pushes the tick UP, through the wall's lower tick.
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 2, 0, true);
+        assertGe(_currentTick(), tickLowers[0], "precondition: the price fell into the old wall");
+
+        (uint256[2] memory idsAfter,) = _rollAndProcess(liqToken);
+
+        assertEq(_positionCount(), positionsAfterMint + 1, "a fresh wall was minted");
+        assertGt(idsAfter[0], ids[0], "the new wall is the most recent one");
+        assertEq(idsAfter[1], ids[0], "and the old one is remembered in the second slot");
+    }
+
+    /// @dev A price rise beyond `LIQUIDITY_WALL_REUSE_MAX_GAP` leaves the old wall stranded far below the
+    ///      market. Topping it up would park the ETH as deep depth instead of a protective bid, so the
+    ///      call mints at the live tick instead.
+    function test_v4ProcessLiquidity_mintsAgainWhenPriceRanFarAboveTheWall() public {
+        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
+        (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
+        uint256 positionsAfterMint = _positionCount();
+
+        // A large buy moves the tick far DOWN — the wall is still ETH-only, just far too deep to be a bid.
+        vm.deal(buyer, 20 ether);
+        _swapBuy(buyer, 20 ether, 0, true);
+        int24 tickAfter = _currentTick();
+        assertLt(tickAfter, tickLowers[0], "precondition: the wall is still entirely below the price");
+        assertGt(tickLowers[0] - tickAfter, int24(2000), "precondition: but beyond the reuse gap");
+
+        (uint256[2] memory idsAfter,) = _rollAndProcess(liqToken);
+
+        assertEq(_positionCount(), positionsAfterMint + 1, "a fresh wall was minted");
+        assertEq(idsAfter[1], ids[0], "the stranded wall is kept as the second entry");
+    }
+
+    /// @dev The reason the memory holds TWO walls. Price runs up (wall 2 minted far below wall 1), then
+    ///      falls back to between them: wall 2 is now in-range and unusable, but wall 1 is once again just
+    ///      below the price. A one-entry memory would mint a third position here.
+    function test_v4ProcessLiquidity_reusesTheOlderWallAfterAZigzag() public {
+        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
+        (uint256[2] memory first,) = _rollAndProcess(liqToken);
+
+        // Run the price up far enough that the next call mints rather than tops up.
+        vm.deal(buyer, 20 ether);
+        _swapBuy(buyer, 20 ether, 0, true);
+        (uint256[2] memory second, int24[2] memory secondLowers) = _rollAndProcess(liqToken);
+        assertEq(second[1], first[0], "precondition: both walls are remembered");
+        uint256 positionsAfterTwoMints = _positionCount();
+
+        // Fall back to between the two walls: above the newer wall's lower tick, below the older one's.
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) * 4 / 10, 0, true);
+        int24 tickAfter = _currentTick();
+        assertGe(tickAfter, secondLowers[0], "precondition: the newer wall is now in range and unusable");
+        assertLt(tickAfter, secondLowers[1], "precondition: the older wall is above the price again");
+        assertLt(secondLowers[1] - tickAfter, int24(2000), "precondition: and within the reuse gap");
+
+        uint128 olderLiquidityBefore = IPositionManager(positionManagerAddress).getPositionLiquidity(first[0]);
+        (uint256[2] memory third,) = _rollAndProcess(liqToken);
+
+        assertEq(_positionCount(), positionsAfterTwoMints, "no third NFT was minted");
+        assertGt(
+            IPositionManager(positionManagerAddress).getPositionLiquidity(first[0]),
+            olderLiquidityBefore,
+            "the older wall took the ETH"
+        );
+        assertEq(third[0], first[0], "and was promoted to the most-recently-used slot");
+        assertEq(third[1], second[0], "with the newer wall demoted behind it");
     }
 }

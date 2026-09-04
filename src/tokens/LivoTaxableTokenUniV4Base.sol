@@ -40,6 +40,30 @@ abstract contract LivoTaxableTokenUniV4Base is LivoTaxableToken, LivoUniv4BuyBac
     /// @notice `block.number` of the last `processLiquidity` — enforces its once-per-block cooldown.
     uint48 public lastLiquidityProcessBlock;
 
+    /// @notice Position-manager NFT id of the most recently USED single-sided ETH wall.
+    ///         `processLiquidity` tops this position up instead of minting a fresh one whenever its range
+    ///         still sits entirely below the current price and close to it. Zero id means "no wall yet".
+    /// @dev `uint112` so this and its lower tick fill out the tail of the block-marker slot, which
+    ///      `processLiquidity` already dirties on every call — the first entry therefore costs no extra
+    ///      slot at all, and only the second one below takes a slot of its own. The position manager's id
+    ///      is a sequential counter, so 2^112 is not a bound anything can reach.
+    uint112 internal liquidityWall0Id;
+
+    /// @notice Lower tick of `liquidityWall0Id`'s range (the wall's top price — ETH-only positions live
+    ///         at ticks ABOVE the current one, since the pair is `(ETH, token)`). The upper tick is not
+    ///         kept: it decides nothing here, and the position manager sizes the top-up from the
+    ///         position's own recorded range.
+    int24 internal liquidityWall0TickLower;
+
+    /// @notice Second-most recently used wall, same shape as `liquidityWall0Id`. Two entries, kept
+    ///         most-recently-used first, because a price that dips and then recovers leaves the PREVIOUS
+    ///         wall as the only one still below the price — a one-entry memory would mint a fresh
+    ///         position on every such zigzag.
+    uint112 internal liquidityWall1Id;
+
+    /// @notice Lower tick of `liquidityWall1Id`'s range.
+    int24 internal liquidityWall1TickLower;
+
     // Reentrancy: `processBurn` and `processLiquidity` share the transient `nonReentrant` lock that
     // `LivoTaxableToken` inherits for `sweepStrayEth` (they make external calls that pass through
     // `LivoSwapHook`/the fee handler and could reenter). The hot-path `accrueFees` deliberately does
