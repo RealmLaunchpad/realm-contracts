@@ -389,6 +389,19 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
         _delegateToDividendLogic();
     }
 
+    /// @notice Same, for one of the payout assets of a token that pays in several. `assetIndex` selects
+    ///         which; each asset crosses its own threshold, prices its own floor and holds its own
+    ///         per-block cooldown, so a keeper services them one call at a time.
+    /// @param assetIndex Which configured payout asset to service, `0 .. dividendAssetCount() - 1`.
+    /// @param minOut Slippage floor for that asset's conversion, in its own decimals.
+    /// @param holders Addresses to push that asset's accrued payouts to. May be empty.
+    function processDividends(uint8 assetIndex, uint256 minOut, address[] calldata holders) external {
+        assetIndex;
+        minOut;
+        holders;
+        _delegateToDividendLogic();
+    }
+
     /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
     function claimDividends() external {
         _delegateToDividendLogic();

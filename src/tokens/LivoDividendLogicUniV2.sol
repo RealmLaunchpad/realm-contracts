@@ -22,12 +22,15 @@ contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributi
     ///      native. Every other payout asset is native-buffered and goes through the base.
     /// @dev Staleness is the threshold's ONLY bypass, for the reason the base spells out: a residual
     ///      below the threshold on a token nobody trades would otherwise strand forever.
-    function _fundDividends(uint256 minOut) internal override returns (FundOutcome, uint256, uint256) {
-        if (dividendToken != address(this)) return super._fundDividends(minOut);
+    /// @dev A self-token payout is only ever configured as the SOLE asset, so `i` is 0 whenever this
+    ///      branch is taken; the index is still threaded through so the base's asset-agnostic path stays
+    ///      the one that decides.
+    function _fundDividends(uint256 i, uint256 minOut) internal override returns (FundOutcome, uint256, uint256) {
+        if (dividendAssets[i].token != address(this)) return super._fundDividends(i, minOut);
 
         uint256 buffered = dividendPendingTokens;
         if (buffered == 0) return (FundOutcome.NotReady, 0, 0);
-        if (buffered < SWAP_THRESHOLD && !dividendsStale()) return (FundOutcome.NotReady, 0, 0);
+        if (buffered < SWAP_THRESHOLD && !dividendsStale(i)) return (FundOutcome.NotReady, 0, 0);
 
         dividendPendingTokens = 0;
         return (FundOutcome.Funded, 0, buffered);
@@ -56,7 +59,25 @@ contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributi
         require(msg.sender == tokenFactory, Unauthorized());
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
         if (_dividendsBps != 0) {
-            _initializeDividends(_dividendToken);
+            (address[] memory tokens, uint16[] memory weights) = _soleAssetSet(_dividendToken);
+            dividendAssetCount = _initializeDividends(tokens, weights);
+            hasDividends = true;
+        }
+    }
+
+    /// @notice Multi-asset creation-time dividend configuration. See
+    ///         `LivoTaxableToken.initializeEarningsAllocation(uint16,uint16,uint16,address[],uint16[])`.
+    function initializeEarningsAllocation(
+        uint16 _burnBps,
+        uint16 _dividendsBps,
+        uint16 _liquidityBps,
+        address[] calldata _dividendTokens,
+        uint16[] calldata _dividendWeightsBps
+    ) external override {
+        require(msg.sender == tokenFactory, Unauthorized());
+        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
+        if (_dividendsBps != 0) {
+            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps);
             hasDividends = true;
         }
     }

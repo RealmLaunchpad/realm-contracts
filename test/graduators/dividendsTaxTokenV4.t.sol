@@ -7,12 +7,18 @@ import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
+import {
+    TaxConfigsWithAllocation,
+    EarningsAllocationConfig,
+    TaxConfigsWithMultiAllocation,
+    EarningsAllocationMultiConfig
+} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
+import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
 /// @notice Integration tests for the holder-dividends earnings-allocation leg on Uniswap V4: the
 ///         continuous accumulator, threshold-gated funding, the drip that makes a flash loan worthless,
@@ -110,6 +116,144 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     receive() external payable {}
 
+    /// @dev Creates a taxable V4 token paying holders in a SET of assets, through the multi-allocation
+    ///      `createToken` overload — the real creation path a frontend uses, not the token's initializer.
+    function _createMultiAssetToken(address[] memory assets, uint16[] memory weights) internal returns (address token) {
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "MultiDiv",
+            symbol: "MDIV",
+            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
+            buyTaxBps: 0,
+            sellTaxBps: 400,
+            taxDurationSeconds: uint32(14 days),
+            startTaxFromLaunch: true,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0,
+            earningsAllocation: EarningsAllocationMultiConfig({
+                burnBps: 0, dividendsBps: 5_000, liquidityBps: 0, dividendTokens: assets, dividendWeightsBps: weights
+            })
+        });
+        vm.prank(creator);
+        token = factoryTax.createToken(
+            setup,
+            cfg,
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
+        );
+    }
+
+    /// @dev The product's own example: 20% of the dividends slice in one asset, 80% in another.
+    function _nativeAndDaiToken() internal returns (LivoTaxableTokenUniV4 token) {
+        address[] memory assets = new address[](2);
+        assets[0] = address(0);
+        assets[1] = DAI;
+        uint16[] memory weights = new uint16[](2);
+        weights[0] = 2_000;
+        weights[1] = 8_000;
+
+        address addr = _createMultiAssetToken(assets, weights);
+        testToken = addr;
+        _launchpadBuy(addr, 2 ether);
+        _graduateToken();
+        return LivoTaxableTokenUniV4(payable(addr));
+    }
+
+    ///////////////////////// several payout assets /////////////////////////
+
+    /// @dev The creation path stores the whole set, and the warm count is what the transfer hook reads.
+    function test_multiAsset_creationStoresTheWholeSet() public {
+        LivoTaxableTokenUniV4 token = _nativeAndDaiToken();
+
+        assertEq(token.dividendAssetCount(), 2, "two payout assets");
+        assertTrue(token.hasDividends(), "and the warm flag is on");
+        (,,,,, address first,,,,) = token.dividendAssets(0);
+        (,,,,, address second,,,,) = token.dividendAssets(1);
+        assertEq(first, address(0), "asset 0 is native");
+        assertEq(second, DAI, "asset 1 is DAI");
+        assertEq(token.dividendWeightsBps(0), 2_000, "20% to the native leg");
+        assertEq(token.dividendWeightsBps(1), 8_000, "80% to the DAI leg");
+    }
+
+    /// @dev Graduation activates EVERY asset at once, so no leg silently misses the seconds between
+    ///      going live and its own first distribution.
+    function test_multiAsset_graduationActivatesEveryAsset() public {
+        LivoTaxableTokenUniV4 token = _nativeAndDaiToken();
+
+        (, uint40 finish0,,,,,,,,) = token.dividendAssets(0);
+        (, uint40 finish1,,,,,,,,) = token.dividendAssets(1);
+        assertGt(finish0, 0, "asset 0 is live");
+        assertEq(finish1, finish0, "and asset 1 went live in the same instant");
+    }
+
+    /// @dev End to end, through the real earnings split: one accrual, two buffers, two conversions, two
+    ///      payouts, one holder.
+    function test_multiAsset_earningsReachHoldersInBothAssets() public {
+        LivoTaxableTokenUniV4 token = _nativeAndDaiToken();
+        _accrue(token, 1 ether);
+
+        (,,,,,,,, uint88 buffer0,) = token.dividendAssets(0);
+        (,,,,,,,, uint88 buffer1,) = token.dividendAssets(1);
+        assertEq(uint256(buffer0) * 4, uint256(buffer1), "the 20/80 split reached the buffers");
+
+        token.processDividends(0, 0, _noHolders());
+        token.processDividends(1, 0, _noHolders());
+        skip(token.DIVIDEND_DRIP_DURATION());
+
+        uint256 ethBefore = buyer.balance;
+        vm.prank(buyer);
+        token.claimDividends();
+
+        assertGt(buyer.balance, ethBefore, "the holder was paid in native");
+        assertGt(IERC20(DAI).balanceOf(buyer), 0, "and in DAI");
+    }
+
+    /// @dev The undelivered pot of EVERY asset has to stay out of every sweep path. `_reservedNative`
+    ///      loops the set for exactly this reason: a buffer it forgot would be recycled through the
+    ///      earnings split on every permissionless `sweepStrayEth`, handing holders' money to the
+    ///      creator's fee receivers.
+    function test_multiAsset_sweepStrayEthCannotReachAnyAssetBuffer() public {
+        LivoTaxableTokenUniV4 token = _nativeAndDaiToken();
+        _accrue(token, 1 ether);
+
+        (,,,,,,,, uint88 buffer0,) = token.dividendAssets(0);
+        (,,,,,,,, uint88 buffer1,) = token.dividendAssets(1);
+        uint256 balanceBefore = address(token).balance;
+
+        token.sweepStrayEth();
+
+        assertEq(address(token).balance, balanceBefore, "nothing was stray, so nothing moved");
+        (,,,,,,,, uint88 after0,) = token.dividendAssets(0);
+        (,,,,,,,, uint88 after1,) = token.dividendAssets(1);
+        assertEq(after0, buffer0, "asset 0's buffer is intact");
+        assertEq(after1, buffer1, "asset 1's buffer is intact");
+    }
+
+    /// @dev `rescueTokens` subtracts `committedDividends`, which answers per asset. A pot bought for one
+    ///      leg must be unreachable even though the token also pays in another.
+    function test_multiAsset_rescueTokensCannotTakeAPayoutPot() public {
+        LivoTaxableTokenUniV4 token = _nativeAndDaiToken();
+        _accrue(token, 1 ether);
+        token.processDividends(1, 0, _noHolders());
+
+        uint256 pot = IERC20(DAI).balanceOf(address(token));
+        assertGt(pot, 0, "precondition: a DAI pot exists");
+        assertEq(token.committedDividends(DAI), pot, "and all of it is owed to holders");
+
+        vm.prank(creator);
+        token.rescueTokens(DAI);
+
+        assertEq(IERC20(DAI).balanceOf(address(token)), pot, "the pot is untouched");
+        assertEq(IERC20(DAI).balanceOf(creator), 0, "and the owner got nothing");
+    }
+
     ///////////////////////// the keeper gate /////////////////////////
 
     /// @dev THE reason the gate exists. `processDividends` takes its slippage floor from the caller, so
@@ -134,7 +278,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         vm.prank(keeper);
         token.processDividends(0, new address[](0));
 
-        assertGt(token.dividendRate(), 0, "the appointed keeper funded the stream");
+        assertGt(divRate(address(token), 0), 0, "the appointed keeper funded the stream");
     }
 
     /// @dev Revocation is immediate: a rotated-out key stops working in the next transaction.
@@ -158,12 +302,12 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
 
         skip(token.STALE_DIVIDEND_WINDOW() + 1);
-        assertTrue(token.dividendsStale(), "precondition: the token is stale");
+        assertTrue(token.dividendsStale(0), "precondition: the token is stale");
 
         vm.prank(makeAddr("randomCaller"));
         token.processDividends(0, new address[](0));
 
-        assertGt(token.dividendRate(), 0, "a stale token can be funded by anyone");
+        assertGt(divRate(address(token), 0), 0, "a stale token can be funded by anyone");
     }
 
     /// @dev The gate never stands between a holder and their own money. `claimDividends()` is open to
@@ -235,7 +379,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_dividendsActivateAtGraduation() public {
         LivoTaxableTokenUniV4 token = _graduatedDividendToken();
         assertGt(token.dividendPeriodFinish(), 0, "activated by graduation itself");
-        assertEq(token.dividendRate(), 0, "but nothing is streaming yet");
+        assertEq(divRate(address(token), 0), 0, "but nothing is streaming yet");
         assertEq(token.previewDividend(buyer), 0, "so nobody has accrued anything");
     }
 
@@ -281,7 +425,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_fundingMidStreamJustChangesTheSlope() public {
         LivoTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
-        uint256 firstRate = token.dividendRate();
+        uint256 firstRate = divRate(address(token), 0);
 
         skip(token.DIVIDEND_DRIP_DURATION() / 2);
         vm.roll(block.number + 1); // the funding leg is once per block
@@ -293,7 +437,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             block.timestamp + token.DIVIDEND_DRIP_DURATION(),
             "a full fresh window from now"
         );
-        assertApproxEqRel(token.dividendRate(), firstRate * 3 / 2, 1e14, "slope is (remainder + new) / duration");
+        assertApproxEqRel(divRate(address(token), 0), firstRate * 3 / 2, 1e14, "slope is (remainder + new) / duration");
         assertEq(token.dividendsOwed(), 1 ether, "and both distributions are owed in full");
     }
 

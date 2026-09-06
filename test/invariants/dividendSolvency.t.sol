@@ -7,8 +7,9 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
 /// @notice Drives every path that can move a dividend-paying token's native balance: fresh earnings, the
 ///         permissionless stray-ETH sweep, the distribution, the payout push, and ordinary transfers
@@ -43,10 +44,13 @@ contract DividendSolvencyHandler is Test {
         try TOKEN.sweepStrayEth() {} catch {}
     }
 
-    /// @dev Fund-only: the single entry point does whichever of conversion / funding / pushing there is
-    ///      anything to do, so a call with no holders exercises the conversion path on its own.
-    function process() public {
-        try TOKEN.processDividends(0, new address[](0)) {} catch {}
+    /// @dev Fund-only, on one of the configured assets: the single entry point does whichever of
+    ///      conversion / funding / pushing there is anything to do, so a call with no holders exercises
+    ///      the conversion path on its own. `seed` picks the asset so the run interleaves the legs
+    ///      instead of always draining the same one.
+    function process(uint256 seed) public {
+        uint8 index = uint8(seed % TOKEN.dividendAssetCount());
+        try TOKEN.processDividends(index, 0, new address[](0)) {} catch {}
     }
 
     function distribute(uint256 seed) public {
@@ -54,7 +58,16 @@ contract DividendSolvencyHandler is Test {
         for (uint256 i; i < holders.length; ++i) {
             batch[i] = holders[(i + seed) % holders.length];
         }
-        try TOKEN.processDividends(0, batch) {} catch {}
+        uint8 index = uint8(seed % TOKEN.dividendAssetCount());
+        try TOKEN.processDividends(index, 0, batch) {} catch {}
+    }
+
+    /// @dev The holder's own route, which pays every asset in one call. Included so the run interleaves
+    ///      self-serve claims with keeper pushes on the same accruals.
+    function claim(uint256 seed) public {
+        address holder = holders[seed % holders.length];
+        vm.prank(holder);
+        try TOKEN.claimDividends() {} catch {}
     }
 
     function transferBetweenHolders(uint256 seed, uint96 raw) public {
@@ -79,6 +92,8 @@ contract DividendSolvencyHandler is Test {
 ///         through `_sweepableNative` / `_sweepableAsset`; this suite is what stops a fourth bucket from
 ///         being added to one of them and forgotten in the others.
 contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
+    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+
     LivoTaxableTokenUniV4 internal divToken;
     DividendSolvencyHandler internal handler;
 
@@ -97,7 +112,19 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
         });
         // Every bucket non-zero on purpose: burn and liquidity share the same native balance as the
         // dividend buffers, which is exactly the confusion the accessors exist to prevent.
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        // TWO payout assets, weighted unevenly: the legs then cross their thresholds at different times,
+        // which is the interleaving only a multi-asset token can produce. One native (no conversion) and
+        // one that really swaps, so the run covers both shapes of `_fundDividends` against the same
+        // balance. Native twice is impossible — duplicates are rejected — and the self-token payout is
+        // only legal on its own.
+        address[] memory dividendTokens = new address[](2);
+        dividendTokens[0] = address(0);
+        dividendTokens[1] = DAI;
+        uint16[] memory dividendWeights = new uint16[](2);
+        dividendWeights[0] = 7_000;
+        dividendWeights[1] = 3_000;
+
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: 400,
             taxDurationSeconds: uint32(365 days),
@@ -105,8 +132,12 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 2_000, dividendsBps: 4_000, liquidityBps: 1_000, dividendToken: address(0)
+            earningsAllocation: EarningsAllocationMultiConfig({
+                burnBps: 2_000,
+                dividendsBps: 4_000,
+                liquidityBps: 1_000,
+                dividendTokens: dividendTokens,
+                dividendWeightsBps: dividendWeights
             })
         });
         vm.prank(creator);
@@ -148,8 +179,15 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
     /// @dev Everything the token owes somebody must be backed by a real balance. A violation here is not
     ///      a lost balance — it is holders' money already handed to the creator's fee receivers.
     function invariant_nativeBalanceCoversEveryCommitment() public view {
-        uint256 committed = divToken.burnPendingEth() + divToken.liquidityPendingEth() + divToken.pendingNative()
-            + divToken.committedDividends(address(0));
+        uint256 committed =
+            divToken.burnPendingEth() + divToken.liquidityPendingEth() + divToken.committedDividends(address(0));
+        // EVERY asset's buffer, not just asset 0's: each holds native waiting for its own conversion, and
+        // a buffer this sum forgot is one `sweepStrayEth` away from the creator's fee receivers.
+        uint256 n = divToken.dividendAssetCount();
+        for (uint256 i; i < n; ++i) {
+            (,,,,,,,, uint88 buffered,) = divToken.dividendAssets(i);
+            committed += buffered;
+        }
         assertGe(address(divToken).balance, committed, "native balance must cover every committed bucket");
     }
 
@@ -157,14 +195,23 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
     ///      favour at every step, so what has been promised can never exceed what was funded. If this
     ///      ever trips, that argument has been broken.
     function invariant_promisedNeverExceedsFunded() public view {
-        uint256 promised =
-            divToken.previewDividend(buyer) + divToken.previewDividend(holderA) + divToken.previewDividend(holderB);
-        assertLe(promised, divToken.dividendsOwed(), "more promised to holders than was ever funded");
+        // Per asset: the two legs are denominated in different units and must never be added together.
+        uint256 n = divToken.dividendAssetCount();
+        for (uint256 i; i < n; ++i) {
+            uint256 promised = divToken.previewDividend(buyer, i) + divToken.previewDividend(holderA, i)
+                + divToken.previewDividend(holderB, i);
+            (,,,,,,, uint128 owed,,) = divToken.dividendAssets(i);
+            assertLe(promised, owed, "more promised to holders than was ever funded");
+        }
     }
 
     /// @dev The stream can never run past its own end, so the accumulator's clock is always clamped to
     ///      `dividendPeriodFinish`. A `lastDividendUpdate` beyond it would double-count the tail.
     function invariant_accumulatorClockNeverOutrunsTheStream() public view {
-        assertLe(divToken.lastDividendUpdate(), divToken.dividendPeriodFinish(), "clock outran the stream");
+        uint256 n = divToken.dividendAssetCount();
+        for (uint256 i; i < n; ++i) {
+            (, uint40 finish, uint40 lastUpdate,,,,,,,) = divToken.dividendAssets(i);
+            assertLe(lastUpdate, finish, "clock outran the stream");
+        }
     }
 }

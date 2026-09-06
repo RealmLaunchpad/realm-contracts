@@ -56,8 +56,13 @@ contract LivoDividendLogicUniV4 is LivoTaxableTokenUniV4Base, DividendDistributi
         uint256 lhs = balanceBeforeEth + _reservedNative();
         uint256 rhs = address(this).balance + reservedBefore;
         uint256 spent = lhs > rhs ? lhs - rhs : 0;
+        // Asset 0 by construction: a self-token payout may only be configured as the SOLE asset, so this
+        // branch is only ever reached for index 0 and there is no other buffer the refund could belong to.
         // forge-lint: disable-next-line(unsafe-typecast)
-        if (spent < nativeIn) pendingNative = uint88(pendingNative + (nativeIn - spent));
+        if (spent < nativeIn) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            dividendAssets[0].pendingNative = uint88(dividendAssets[0].pendingNative + (nativeIn - spent));
+        }
 
         return bought;
     }
@@ -73,7 +78,25 @@ contract LivoDividendLogicUniV4 is LivoTaxableTokenUniV4Base, DividendDistributi
         require(msg.sender == tokenFactory, Unauthorized());
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
         if (_dividendsBps != 0) {
-            _initializeDividends(_dividendToken);
+            (address[] memory tokens, uint16[] memory weights) = _soleAssetSet(_dividendToken);
+            dividendAssetCount = _initializeDividends(tokens, weights);
+            hasDividends = true;
+        }
+    }
+
+    /// @notice Multi-asset creation-time dividend configuration. See
+    ///         `LivoTaxableToken.initializeEarningsAllocation(uint16,uint16,uint16,address[],uint16[])`.
+    function initializeEarningsAllocation(
+        uint16 _burnBps,
+        uint16 _dividendsBps,
+        uint16 _liquidityBps,
+        address[] calldata _dividendTokens,
+        uint16[] calldata _dividendWeightsBps
+    ) external override {
+        require(msg.sender == tokenFactory, Unauthorized());
+        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
+        if (_dividendsBps != 0) {
+            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps);
             hasDividends = true;
         }
     }

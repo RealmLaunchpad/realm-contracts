@@ -54,6 +54,14 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
     ///         for the feature — no extra SLOAD, no branch that costs a cold read.
     bool public hasDividends;
 
+    /// @notice How many payout assets this token pays dividends in (0 when `hasDividends` is false,
+    ///         otherwise 1..`DividendDistribution.MAX_DIVIDEND_ASSETS`). Set once at creation, alongside
+    ///         `hasDividends`, and never changed — the set a token pays in is fixed for its life.
+    /// @dev Lives HERE, beside `hasDividends` and for the same reason: it packs into the `pair` slot that
+    ///      `_update` already loads, so the transfer hook learns how many assets to settle from a WARM
+    ///      slot instead of a cold one. A token without dividends never reads it at all.
+    uint8 public dividendAssetCount;
+
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
 

@@ -20,7 +20,8 @@ import {
     ILivoTaxableToken,
     TaxConfigInit,
     TaxConfigs,
-    TaxConfigsWithAllocation
+    TaxConfigsWithAllocation,
+    TaxConfigsWithMultiAllocation
 } from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
@@ -597,6 +598,18 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      `TaxConfigs` the shared creation pipeline consumes. The allocation bps are read separately by
     ///      the allocation-aware overload and forwarded to `initializeEarningsAllocation`.
     function _toTaxConfigs(TaxConfigsWithAllocation calldata c) internal pure returns (TaxConfigs memory cfg) {
+        cfg.buyTaxBps = c.buyTaxBps;
+        cfg.sellTaxBps = c.sellTaxBps;
+        cfg.taxDurationSeconds = c.taxDurationSeconds;
+        cfg.startTaxFromLaunch = c.startTaxFromLaunch;
+        cfg.buyTaxDecayStartBps = c.buyTaxDecayStartBps;
+        cfg.sellTaxDecayStartBps = c.sellTaxDecayStartBps;
+        cfg.taxDecayDuration = c.taxDecayDuration;
+    }
+
+    /// @dev Same, for the multi-asset allocation variant. The two structs share their leading fields by
+    ///      construction; only the nested allocation differs, and that is read by the overload itself.
+    function _toTaxConfigs(TaxConfigsWithMultiAllocation calldata c) internal pure returns (TaxConfigs memory cfg) {
         cfg.buyTaxBps = c.buyTaxBps;
         cfg.sellTaxBps = c.sellTaxBps;
         cfg.taxDurationSeconds = c.taxDurationSeconds;

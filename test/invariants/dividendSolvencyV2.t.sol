@@ -9,6 +9,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
 /// @notice Drives every path that can move a V2 dividend token's balances. Unlike the V4 handler, the
 ///         interesting balance here is the token's own ERC20 balance: the tax pool, the liquidity buffer,
@@ -187,6 +188,6 @@ contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V
     ///      `dividendPeriodFinish`. A `lastDividendUpdate` beyond it would double-count the tail — even
     ///      as the burn leg shrinks the eligible supply underneath it.
     function invariant_accumulatorClockNeverOutrunsTheStream() public view {
-        assertLe(divToken.lastDividendUpdate(), divToken.dividendPeriodFinish(), "clock outran the stream");
+        assertLe(divLastUpdate(address(divToken), 0), divToken.dividendPeriodFinish(), "clock outran the stream");
     }
 }

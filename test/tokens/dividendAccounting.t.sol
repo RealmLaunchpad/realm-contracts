@@ -22,7 +22,21 @@ contract StreamHarness is DividendDistributionLogic {
     address[3] internal excluded;
 
     function configure(address asset) external {
-        _initializeDividends(asset);
+        (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
+        assetCount = _initializeDividends(assets, weights);
+    }
+
+    /// @dev How many payout assets the harness was configured with. The production token keeps this in
+    ///      its `pair` slot; here it is plain storage.
+    uint8 public assetCount;
+
+    function _dividendAssetCount() internal view override returns (uint256) {
+        return assetCount;
+    }
+
+    /// @notice Configure a multi-asset payout set, as `initializeEarningsAllocation`'s array overload does.
+    function configureMulti(address[] calldata assets, uint16[] calldata weights) external {
+        assetCount = _initializeDividends(assets, weights);
     }
 
     function activate() external {
@@ -75,6 +89,20 @@ contract StreamHarness is DividendDistributionLogic {
         if (account == address(0) || seen[account]) return;
         seen[account] = true;
         tracked.push(account);
+    }
+
+    /// @dev Single-asset conveniences the production token dropped to stay inside EIP-170. A harness is
+    ///      not size-bound, so the tests keep reading them by name.
+    function dividendRate() external view returns (uint96) {
+        return dividendAssets[0].rate;
+    }
+
+    function dividendPrecisionExp() external view returns (uint8) {
+        return dividendAssets[0].precisionExp;
+    }
+
+    function failedConversionBlock() external view returns (uint40) {
+        return dividendAssets[0].failedConversionBlock;
     }
 
     function _dividendBalanceOf(address account) internal view override returns (uint256) {
@@ -426,9 +454,9 @@ contract DividendAccountingTests is Test {
         h.transfer(alice, sink, SUPPLY - 1);
         assertLt(h.eligibleSupply(), h.minDividendSupply(), "under the floor");
 
-        uint256 before = h.dividendRewardPerToken();
+        uint256 before = h.dividendRewardPerToken(0);
         skip(h.DIVIDEND_DRIP_DURATION() / 2);
-        assertEq(h.dividendRewardPerToken(), before, "nothing accrued while paused");
+        assertEq(h.dividendRewardPerToken(0), before, "nothing accrued while paused");
 
         // Supply comes back. The paused half-window must NOT land on whoever is holding now.
         h.transfer(sink, bob, SUPPLY - 1);

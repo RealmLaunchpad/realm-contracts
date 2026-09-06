@@ -7,7 +7,12 @@ import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
+import {
+    TaxConfigsWithAllocation,
+    EarningsAllocationConfig,
+    TaxConfigsWithMultiAllocation,
+    EarningsAllocationMultiConfig
+} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice The hot-path gas measurement the dividends design hangs on.
@@ -219,6 +224,114 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
     function _bps(uint256 baseline, uint256 withDiv) internal pure returns (uint256) {
         if (baseline == 0 || withDiv <= baseline) return 0;
         return ((withDiv - baseline) * 10_000) / baseline;
+    }
+
+    ///////////////////////// several payout assets /////////////////////////
+
+    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+
+    /// @dev The same token as `_create`, paying in a SET of assets. Everything else is identical, so the
+    ///      only difference between the measurements is how many assets the transfer hook settles.
+    function _createMulti(address[] memory assets, uint16[] memory weights) internal returns (LivoTaxableTokenUniV4) {
+        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+            name: "GasTok",
+            symbol: "GAS",
+            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
+            buyTaxBps: 0,
+            sellTaxBps: 400,
+            taxDurationSeconds: uint32(14 days),
+            startTaxFromLaunch: true,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0,
+            earningsAllocation: EarningsAllocationMultiConfig({
+                burnBps: 0, dividendsBps: 5_000, liquidityBps: 0, dividendTokens: assets, dividendWeightsBps: weights
+            })
+        });
+        vm.prank(creator);
+        address token = factoryTax.createToken(
+            setup,
+            cfg,
+            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new ILivoFactory.CreatorVault[](0),
+            address(0)
+        );
+        testToken = token;
+        _launchpadBuy(token, 2 ether);
+        _graduateToken();
+        vm.deal(address(this), 3 ether);
+        LivoTaxableTokenUniV4(payable(token)).accrueFees{value: 3 ether}();
+        return LivoTaxableTokenUniV4(payable(token));
+    }
+
+    /// @dev Puts EVERY configured asset into a live stream, so the measurement below is the worst case:
+    ///      every leg has to be settled on every transfer.
+    function _fundEveryAsset(LivoTaxableTokenUniV4 token) internal {
+        uint256 n = token.dividendAssetCount();
+        for (uint256 i; i < n; ++i) {
+            token.processDividends(uint8(i), 0, new address[](0));
+        }
+    }
+
+    /// @dev Steady-state transfer cost as the payout set grows. This is the number the deployer has to
+    ///      be shown: every extra payout asset is another per-account slot settled on both sides of every
+    ///      transfer while that asset's stream is running — and with staggered thresholds, something is
+    ///      almost always running.
+    function test_gas_perExtraDividendAsset() public {
+        address[] memory one = new address[](1);
+        one[0] = address(0);
+        uint16[] memory w1 = new uint16[](1);
+        w1[0] = 10_000;
+
+        address[] memory two = new address[](2);
+        two[0] = address(0);
+        two[1] = DAI;
+        uint16[] memory w2 = new uint16[](2);
+        w2[0] = 5_000;
+        w2[1] = 5_000;
+
+        address[] memory three = new address[](3);
+        three[0] = address(0);
+        three[1] = DAI;
+        three[2] = USDC;
+        uint16[] memory w3 = new uint16[](3);
+        w3[0] = 4_000;
+        w3[1] = 3_000;
+        w3[2] = 3_000;
+
+        uint256 g1 = _measureMulti(_createMulti(one, w1));
+        uint256 g2 = _measureMulti(_createMulti(two, w2));
+        uint256 g3 = _measureMulti(_createMulti(three, w3));
+
+        console.log("--- steady-state transfer, all streams live, execution gas ---");
+        console.log("1 asset / 2 assets / 3 assets", g1, g2, g3);
+        console.log("marginal per extra asset: 2nd / 3rd", g2 - g1, g3 - g2);
+
+        assertGt(g2, g1, "a second payout asset costs something");
+        assertLt(g3 - g2, 40_000, "and the third costs about the same as the second, not more");
+    }
+
+    /// @dev One steady-state transfer with every stream running and every account slot already warm.
+    function _measureMulti(LivoTaxableTokenUniV4 token) internal returns (uint256 used) {
+        IERC20 erc = IERC20(address(token));
+        _fundEveryAsset(token);
+
+        uint256 unit = erc.balanceOf(buyer) / 1000;
+        skip(1);
+        vm.startPrank(buyer);
+        erc.transfer(holderA, unit); // warm both account slots for every asset
+        skip(1);
+        uint256 g = gasleft();
+        erc.transfer(holderA, unit);
+        used = g - gasleft();
+        vm.stopPrank();
     }
 
     /// @dev The gate has to be free, not merely cheap: every non-dividend Livo token pays it forever.

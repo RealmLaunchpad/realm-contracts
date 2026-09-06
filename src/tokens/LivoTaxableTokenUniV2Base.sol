@@ -99,10 +99,13 @@ abstract contract LivoTaxableTokenUniV2Base is LivoTaxableToken {
     /// @dev The share of total earnings the self-token dividend payout takes, in token space: all of
     ///      the dividends slice when the payout asset IS this token, none of it otherwise.
     /// @dev Gated on the warm `hasDividends` flag first, as `_sweepableAsset` below is: without dividends
-    ///      `dividendToken` is structurally zero and the answer can only be 0, so the cold SLOAD buys
-    ///      nothing on the swap-back and earnings-routing paths of every non-dividend token.
+    ///      asset 0's payout token is structurally zero and the answer can only be 0, so the cold SLOAD
+    ///      buys nothing on the swap-back and earnings-routing paths of every non-dividend token.
+    /// @dev Asset 0 alone answers this, and that is exact rather than an approximation: a self-token
+    ///      payout may only be configured as the SOLE asset (`_initializeDividends` rejects it in any
+    ///      larger set), so if it exists at all it is asset 0 and it takes the whole dividends slice.
     function _tokenSpaceDividendBps() internal view override returns (uint256) {
-        return hasDividends && dividendToken == address(this) ? dividendsBps : 0;
+        return hasDividends && dividendAssets[0].token == address(this) ? dividendsBps : 0;
     }
 
     /// @dev The token's own balance is shared by the tax pool, the liquidity buffer, the self-token
@@ -114,11 +117,14 @@ abstract contract LivoTaxableTokenUniV2Base is LivoTaxableToken {
         uint256 balance = balanceOf(address(this));
         // Gated on warm-slot flags so a token with no allocation pays for no cold SLOAD here.
         uint256 reserved = liquidityBps != 0 ? liquidityPendingTokens : 0;
-        // ONE cold read (`dividendToken`) decides the whole dividend leg. Only a self-token payout has
-        // anything in token space: for a native or third-asset payout both `dividendPendingTokens` and
-        // `dividendsOwed` are structurally zero, and reading them on every sell that reaches the
-        // swap-back branch is a cold SLOAD paid for a value that cannot be non-zero.
-        if (hasDividends && dividendToken == asset) reserved += dividendPendingTokens + dividendsOwed;
+        // ONE cold read (asset 0's payout token) decides the whole dividend leg, and asset 0 is the only
+        // slot that can hold it — a self-token payout is only legal as the sole asset. Only a self-token
+        // payout has anything in token space: for a native or third-asset payout both
+        // `dividendPendingTokens` and the ledger are structurally zero, and reading them on every sell
+        // that reaches the swap-back branch is a cold SLOAD paid for a value that cannot be non-zero.
+        if (hasDividends && dividendAssets[0].token == asset) {
+            reserved += dividendPendingTokens + dividendAssets[0].owed;
+        }
         return balance > reserved ? balance - reserved : 0;
     }
 }

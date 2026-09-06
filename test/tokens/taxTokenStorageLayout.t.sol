@@ -25,21 +25,29 @@ import {
 ///      added ahead of these, the slot index moves and this test fails — which is exactly the moment a
 ///      human should look at it, so update the constants deliberately rather than reflexively.
 contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
-    /// @dev `pair` + `graduated` + `hasSniperProt` + `hasDividends`. `_update` loads this slot on every
-    ///      transfer, which is the entire reason `hasDividends` lives on `LivoToken` instead of beside
-    ///      the rest of the dividend state.
+    /// @dev `pair` + `graduated` + `hasSniperProt` + `hasDividends` + `dividendAssetCount`. `_update`
+    ///      loads this slot on every transfer, which is the entire reason `hasDividends` and the payout
+    ///      count live on `LivoToken` instead of beside the rest of the dividend state — the transfer
+    ///      hook learns how many assets to settle without a cold read.
     uint256 internal constant WARM_FLAGS_SLOT = 10;
 
     /// @dev The three `EarningsAllocation` bps + the eight tax fields: 240 bits, one slot. The per-trade
     ///      tax read and the earnings-split read must hit the SAME warm slot.
     /// @dev Moved 21 -> 19 when the dividend round machinery was replaced by the streaming accumulator,
     ///      which needs three global slots instead of five, then 19 -> 20 when the treasury sweep's
-    ///      persistence marker (`failedConversionBlock`) took a full word ahead of it — a full word
-    ///      precisely so it could NOT pack into the head of this slot and evict `graduationTimestamp`.
-    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 20;
+    ///      persistence marker (`failedConversionBlock`) took a full word ahead of it, then 20 -> 26 when
+    ///      the payout became a SET: `dividendAssets` is three slots per asset (15..23),
+    ///      `dividendAccounts` 24 and `dividendWeightsBps` 25. `failedConversionBlock` no longer needs a
+    ///      word of its own — inside a struct array it cannot leak into the head of this slot — but the
+    ///      arrays that replaced it occupy whole slots, so the effect is the same.
+    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 26;
 
     /// @dev The V2 swap-back counters, which the packing above pushes into the following slot.
-    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 21;
+    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 27;
+
+    /// @dev First `DivAsset` of the payout set. Three slots each: the hot slot (accumulator + the three
+    ///      clocks + the precision exponent), then `token` + `rate`, then the ledger + the buffer.
+    uint256 internal constant DIVIDEND_ASSETS_SLOT = 15;
 
     LivoTaxableTokenUniV2 internal tok;
 
@@ -119,7 +127,43 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
         assertEq((word >> 160) & 0xff, token.graduated() ? 1 : 0, "graduated at byte 20");
         assertEq((word >> 168) & 0xff, token.hasSniperProt() ? 1 : 0, "hasSniperProt at byte 21");
         assertEq((word >> 176) & 0xff, token.hasDividends() ? 1 : 0, "hasDividends at byte 22");
+        assertEq((word >> 184) & 0xff, token.dividendAssetCount(), "dividendAssetCount at byte 23");
         assertTrue(token.hasDividends(), "fixture opted into dividends, so the flag is observable");
+        assertEq(token.dividendAssetCount(), 1, "the fixture pays in one asset, and says so");
+    }
+
+    /// @dev The hot slot of a `DivAsset` is what makes a single-asset token cost what it always did: the
+    ///      "has anything accrued since the last sync?" test and the settle arithmetic both read this ONE
+    ///      slot, and only reach `token`/`rate` in the next one when the accumulator actually advances.
+    ///      A field slipping out of it would put a second SLOAD on every transfer of every dividend token.
+    function test_dividendAssetHotSlotHoldsTheAccumulatorAndAllThreeClocks() public {
+        LivoTaxableTokenUniV2 token = tok;
+        // Graduation starts the clocks, which is what makes the packed fields observable at all.
+        testToken = address(token);
+        _launchpadBuy(address(token), 1 ether);
+        _graduateToken();
+
+        uint256 hot = _slot(address(token), DIVIDEND_ASSETS_SLOT);
+        (
+            uint128 rewardPerTokenStored,
+            uint40 periodFinish,
+            uint40 lastUpdate,
+            uint40 lastProcessBlock,
+            uint8 precisionExp,
+            address asset,
+            uint96 rate,,,
+        ) = token.dividendAssets(0);
+
+        assertEq(uint128(hot), rewardPerTokenStored, "rewardPerTokenStored at byte 0");
+        assertEq(uint40(hot >> 128), periodFinish, "periodFinish at byte 16");
+        assertEq(uint40(hot >> 168), lastUpdate, "lastUpdate at byte 21");
+        assertEq(uint40(hot >> 208), lastProcessBlock, "lastProcessBlock at byte 26");
+        assertEq(uint8(hot >> 248), precisionExp, "precisionExp at byte 31");
+        assertGt(periodFinish, 0, "graduation started the clocks, so the slot is actually populated");
+
+        uint256 second = _slot(address(token), DIVIDEND_ASSETS_SLOT + 1);
+        assertEq(address(uint160(second)), asset, "the payout asset is in the SECOND slot");
+        assertEq(uint96(second >> 160), rate, "and so is the slope");
     }
 
     /// @dev The counters were pushed out of the tax slot by the allocation bps. Documented as a

@@ -239,7 +239,7 @@ abstract contract LivoTaxableToken is
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
     }
 
-    /// @notice Same as the three-bps overload, plus the asset the dividends slice buys. Kept as a
+    /// @notice Same as the three-bps overload, plus the single asset the dividends slice buys. Kept as a
     ///         separate overload so the original signature stays untouched.
     /// @dev `hasDividends` is what actually turns the feature on. It lives on `LivoToken`, packed into
     ///      the `pair` slot `_update` already loads, so a token that leaves `_dividendsBps` at 0 pays
@@ -258,6 +258,26 @@ abstract contract LivoTaxableToken is
         // Runs in the extension: the payout configuration is validated once, at creation, and the
         // validation is the same ~0.9 KB of bytecode a clone would otherwise carry forever. Delegated
         // rather than duplicated, so there is exactly one copy of the rules.
+        _delegateToDividendLogic();
+    }
+
+    /// @notice Same again, for a token paying in UP TO `MAX_DIVIDEND_ASSETS` assets: the payout set and
+    ///         the bps split of the dividends slice between its members. `dividendWeightsBps` must sum
+    ///         to 10,000 and hold no zero; the assets must be distinct; `DIVIDEND_SELF_TOKEN` is only
+    ///         legal on its own. The single-asset overload above is exactly this with a one-entry set.
+    function initializeEarningsAllocation(
+        uint16 _burnBps,
+        uint16 _dividendsBps,
+        uint16 _liquidityBps,
+        address[] calldata _dividendTokens,
+        uint16[] calldata _dividendWeightsBps
+    ) external virtual {
+        // Named for the ABI, unread here: the extension decodes them straight out of calldata.
+        _burnBps;
+        _dividendsBps;
+        _liquidityBps;
+        _dividendTokens;
+        _dividendWeightsBps;
         _delegateToDividendLogic();
     }
 
@@ -300,11 +320,11 @@ abstract contract LivoTaxableToken is
     /// @dev Hooked HERE rather than in `_handleDividends` so the Uniswap-V2 self-token leg is covered
     ///      too: that leg is carved in token space and never reaches `_handleDividends`, so a token
     ///      paying only in itself would otherwise never start.
-    /// @dev One-off cost: one SSTORE, once per token, inside the router's gas budget. If it ever ran out
-    ///      of gas the fee falls through to the treasury and the next accrual activates instead —
-    ///      self-healing, not a one-shot.
+    /// @dev One-off cost: one SSTORE per configured asset, once per token, inside the router's gas
+    ///      budget. If it ever ran out of gas the fee falls through to the treasury and the next accrual
+    ///      activates instead — self-healing, not a one-shot.
     function _onGraduatedEarnings() internal override {
-        if (hasDividends && dividendPeriodFinish == 0) _activateDividends();
+        if (hasDividends && dividendAssets[0].periodFinish == 0) _activateDividends();
     }
 
     //////////////////////// DIVIDEND LOGIC EXTENSION //////////////////////
@@ -351,6 +371,13 @@ abstract contract LivoTaxableToken is
     /// @inheritdoc LivoToken
     function _onBalanceChange(address from, address to, uint256) internal override {
         _onDividendTransfer(from, to);
+    }
+
+    /// @inheritdoc DividendDistribution
+    /// @dev Reads the `LivoToken` field packed into the `pair` slot, which `_update` has already loaded
+    ///      by the time the transfer hook asks — so the loop bound costs a warm SLOAD, not a cold one.
+    function _dividendAssetCount() internal view override returns (uint256) {
+        return dividendAssetCount;
     }
 
     /// @inheritdoc DividendDistribution
@@ -436,10 +463,19 @@ abstract contract LivoTaxableToken is
     }
 
     /// @dev Native this contract holds on someone else's behalf. Venues extend it with their own
-    ///      buffers; the base covers the dividend buffers and the undelivered dividend pots.
-    function _reservedNative() internal view virtual returns (uint256) {
+    ///      buffers; the base covers EVERY asset's native buffer plus the undelivered pot of whichever
+    ///      asset is the native one.
+    /// @dev The loop is not optional. `sweepStrayEth()` is permissionless and repeatable, so an asset
+    ///      whose buffer this forgot would be recycled through the earnings split on every call, handing
+    ///      its fund-wallet slice to the creator's receivers out of holders' money.
+    function _reservedNative() internal view virtual returns (uint256 reserved) {
         if (!hasDividends) return 0;
-        return pendingNative + committedDividends(address(0));
+        uint256 n = dividendAssetCount;
+        for (uint256 i; i < n; ++i) {
+            DivAsset storage a = dividendAssets[i];
+            reserved += a.pendingNative;
+            if (a.token == address(0)) reserved += a.owed;
+        }
     }
 
     //////////////////////// VIEW FUNCTIONS //////////////////////

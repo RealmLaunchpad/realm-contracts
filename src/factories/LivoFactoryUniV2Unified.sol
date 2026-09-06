@@ -6,7 +6,9 @@ import {
     TaxConfigInit,
     TaxConfigs,
     TaxConfigsWithAllocation,
+    TaxConfigsWithMultiAllocation,
     EarningsAllocationConfig,
+    EarningsAllocationMultiConfig,
     ILivoTaxableToken
 } from "src/interfaces/ILivoTaxableToken.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
@@ -202,6 +204,55 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
             ILivoTaxableToken(payable(token))
                 .initializeEarningsAllocation(
                     alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps, alloc.dividendToken
+                );
+        }
+        if (referral != address(0)) emit TokenReferral(token, referral);
+    }
+
+    /// @notice Multi-asset dividends overload: identical to the `TaxConfigsWithAllocation` one above,
+    ///         except the dividends slice may name UP TO THREE payout assets and the bps split between
+    ///         them. Every rule the single-asset path enforces still applies to each member of the set,
+    ///         and a few more that only a set can break — distinct assets, non-zero weights summing to
+    ///         10,000, and `DIVIDEND_SELF_TOKEN` only on its own. See `EarningsAllocationMultiConfig`.
+    /// @dev A one-entry set weighted 10,000 is exactly the single-asset overload; the two produce
+    ///      identical tokens, so there is nothing an integrator loses by moving to this one.
+    function createToken(
+        TokenSetupTiered calldata tokenSetup,
+        TaxConfigsWithMultiAllocation calldata taxAllocationConfigs,
+        SupplyShare[] calldata buyOnDeployShares,
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata creatorVaults,
+        address referral
+    ) external payable returns (address token) {
+        EarningsAllocationMultiConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
+        bool hasAllocation = alloc.burnBps != 0 || alloc.dividendsBps != 0 || alloc.liquidityBps != 0;
+        // Naming payout assets with a zero share would leave dividends silently OFF, forever: clones
+        // are not upgradeable and `initializeEarningsAllocation` only ever runs here, at creation.
+        require(alloc.dividendTokens.length == 0 || alloc.dividendsBps != 0, DividendAssetWithoutShare());
+
+        TaxConfigs memory taxConfigs = _toTaxConfigs(taxAllocationConfigs);
+        if (hasAllocation) require(_hasStaticTax(taxConfigs), EarningsAllocationRequiresTax());
+
+        // V2-family tokens are always deployed ownerless; V2 never emits `LpFeeBpsSet`.
+        _validateTotalFee(V2_POST_GRADUATION_LP_FEE_BPS, taxConfigs);
+        token = _createToken(
+            tokenSetup,
+            address(0),
+            address(GRADUATOR),
+            V2_POST_GRADUATION_LP_FEE_BPS,
+            buyOnDeployShares,
+            taxConfigs,
+            antiSniperConfigs,
+            creatorVaults
+        );
+        if (hasAllocation) {
+            ILivoTaxableToken(payable(token))
+                .initializeEarningsAllocation(
+                    alloc.burnBps,
+                    alloc.dividendsBps,
+                    alloc.liquidityBps,
+                    alloc.dividendTokens,
+                    alloc.dividendWeightsBps
                 );
         }
         if (referral != address(0)) emit TokenReferral(token, referral);

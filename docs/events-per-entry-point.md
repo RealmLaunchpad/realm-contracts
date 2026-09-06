@@ -58,11 +58,13 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 
 ## 1. `createToken` — unified factory paths
 
-Each unified factory exposes four `createToken` overloads with different selectors:
+Each unified factory exposes five `createToken` overloads with different selectors:
 - **Legacy positional** (deprecated): `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4. Never creates creator vaults. Takes the legacy `TaxConfigInit` (static tax only) and always uses `LiquidityTier.DEFAULT`.
 - **Struct-based, tiered** (backwards-compat): `(TokenSetupTiered, TaxConfigs, [UniV4Configs,] SupplyShare[], AntiSniperConfigs, CreatorVault[])` — struct-grouped inputs (to keep the ABI extensible without hitting stack-too-deep) plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults. `TokenSetupTiered` carries the `liquidityTier` field selecting the post-graduation pool depth. Takes the full `TaxConfigs` (static tax + the three launch-tax-decay fields).
 - **Struct-based, tiered + referral** (current/recommended): the same shape plus a trailing `address referral` for relayers that forward the creation and are entitled to a cut of the fees. When `referral != address(0)` it additionally emits `LivoFactory.TokenReferral` (see §1.1 step 7). No token storage or on-chain payout is wired to the referral yet — it is purely an off-chain signal for now.
 - **Struct-based, tiered + referral + earnings allocation**: the referral overload's shape but with `TaxConfigsWithAllocation` in place of `TaxConfigs` — the flat `TaxConfigs` fields plus a nested `earningsAllocation` = `{burnBps, dividendsBps, liquidityBps, dividendToken}` (post-graduation earnings routed to buy-back-and-burn / holder dividends / liquidity; the fund wallets take the remainder). The split is stored on the token at creation via a factory-guarded `initializeEarningsAllocation` call, emitting `EarningsAllocationInitialized` and — when `dividendsBps != 0` — `DividendsInitialized` (see §1.1 step 6b). A non-zero split requires a taxable token (the split machinery lives on the taxable impl); otherwise the overload reverts `EarningsAllocationRequiresTax`. A token pays dividends in exactly ONE asset: `address(0)` (native), `DividendDistribution.DIVIDEND_SELF_TOKEN` (paid in the token itself), or ANY ERC20. There is no asset whitelist and no per-asset approval — an ERC20 is eligible if and only if `LivoDividendSwapRegistry.isSwapSupported(quote, asset)` holds at creation time, which happens either way in: a Uniswap **V2** pair for `quote`/`asset` exists and its quote-side reserve clears the registry's threshold for that quote token, OR a registry admin has given the asset a curated Uniswap **V4** route (`setRoute`), which is how assets that only have V4 liquidity — Robinhood Chain's ~190 xStocks, quoted in USDG — qualify. Otherwise the token reverts `DividendAssetNotSupported(rejection)` at creation, where `rejection` is `NoPair` | `InsufficientLiquidity` | `Blacklisted` | `QuoteNotAllowed`, because a clone cannot be patched afterwards. The registry is never consulted for the native and self-token payouts, which buy nothing. An all-zero `earningsAllocation` behaves exactly like the referral overload (no extra call, no event).
+
+- **Struct-based, tiered + referral + MULTI-ASSET earnings allocation**: the allocation overload's shape but with `TaxConfigsWithMultiAllocation` in place of `TaxConfigsWithAllocation` — its nested `earningsAllocation` is `{burnBps, dividendsBps, liquidityBps, dividendTokens[], dividendWeightsBps[]}`. Identical in every respect except that the dividends slice may name UP TO THREE payout assets (`DividendDistribution.MAX_DIVIDEND_ASSETS`) and how it is divided between them: `dividendWeightsBps[i]` is asset `i`'s share OF THE DIVIDENDS SLICE, in bps. The set is validated once, at creation, and is permanent: 1..3 entries with both arrays the same length, every weight non-zero, the weights summing to exactly 10 000, the assets DISTINCT, and `DIVIDEND_SELF_TOKEN` legal only as the sole entry — otherwise `InvalidDividendAssetSet` / `SelfTokenDividendMustBeSole`. Every non-native, non-self entry is put to `LivoDividendSwapRegistry` individually, on the same terms as the single-asset overload. A one-entry set weighted 10 000 produces a token identical to the single-asset overload's. Emits `EarningsAllocationInitialized`, then one `DividendAssetInitialized` per asset, then `DividendsInitialized` (see §1.1 step 6c).
 
 The legacy positional overload internally lifts its `TaxConfigInit` into a `TaxConfigs` (decay fields zeroed) before dispatch, so all three share the same internal flow and emit the events listed below in the same order; only the two struct-based overloads can emit the creator-vault events in §1 step 4b.
 
@@ -87,7 +89,7 @@ For both unified factories, the common Livo event order is:
 6. V4 only: **`LivoFactory.LpFeeBpsSet`** (`token, lpFeeBps`) — emitted by `LivoFactoryUniV4Unified` for every created token, unconditionally (presence of the event is itself the V4-origin signal). `LivoFactoryUniV2Unified` never emits it. With `msg.value > 0`, this fires *after* the deployer-buy events listed in 1.2.
 6b. Earnings-allocation overload only, and only when `earningsAllocation` is non-zero: **`EarningsAllocation.EarningsAllocationInitialized`** (`burnBps, dividendsBps, liquidityBps`) — the creation-time earnings split. Emitted by the token itself from the factory-guarded `initializeEarningsAllocation` call, which the factory makes *after* the shared creation body — so it fires after the fee registration (step 5), any deployer-buy events (§1.2) and `LpFeeBpsSet` (step 6, V4), and before `TokenReferral` (step 7). Both factories emit it (via the token); an all-zero allocation, or any other overload, emits nothing here.
 
-6c. Same call, immediately after 6b, and only when `dividendsBps != 0`: **`DividendDistribution.DividendsInitialized`** (`dividendToken`) — the ONE asset holders are paid in. The self-token sentinel is already resolved to the token's own address in the emitted value. Nothing else fires here: the first dividend ROUND opens at graduation, not at creation (see §graduation).
+6c. Same call, immediately after 6b, and only when `dividendsBps != 0`: one **`DividendDistribution.DividendAssetInitialized`** (`index` indexed, `asset`, `weightBps`) per configured payout asset, in index order, followed by exactly one **`DividendDistribution.DividendsInitialized`** (`dividendToken`) carrying asset 0. `DividendAssetInitialized` is the complete description of the payout configuration — how many assets, which, and each one's share of the dividends slice; `DividendsInitialized` is kept, and kept last, so indexers written against the single-asset shape keep working (a single-asset token emits one of each, with the same address). The self-token sentinel is already resolved to the token's own address in both. The set is fixed for the token's life — there is no add, no remove and no re-weight, on any path. Nothing else fires here: the accumulators start at graduation, not at creation (see §graduation).
 7. Referral overload only, and only when `referral != address(0)`: **`LivoFactory.TokenReferral`** (`token, referral`, both indexed) — records the relayer/referrer that forwarded the creation. Emitted last of all factory events (after `LpFeeBpsSet` on V4, and after `EarningsAllocationInitialized` on the allocation overload). Both factories emit it; the common no-referral deploy emits nothing here.
 
 Notes:
@@ -346,9 +348,19 @@ clone's implementation under EIP-170. This changes nothing observable: the selec
 shapes, the event signatures and the emitting ADDRESS are all still the token's. The extension address
 is never an event source and never needs indexing.
 
-A token pays dividends in exactly ONE asset, fixed at creation: native, the token itself, or any ERC20
-whose configured pool held liquidity at creation. `asset` on every event below is the same address for
-the life of the token, with no exceptions — it is written once and never rewritten, by anyone.
+A token pays dividends in ONE TO THREE assets (`MAX_DIVIDEND_ASSETS`), fixed at creation: native, the
+token itself (only when it is the sole asset), or any ERC20 whose configured pool held liquidity at
+creation. The SET is written once and never rewritten, by anyone — there is no path that adds an asset,
+removes one, or re-weights the split, so an indexer reads the whole configuration off the
+`DividendAssetInitialized` events at creation and never has to watch for a change. `asset` on every
+event below identifies WHICH member of that set the event is about, and is always one of them.
+
+The assets are independent machines sharing only the token's eligible supply. Each has its own native
+buffer, its own `DIVIDEND_THRESHOLD` to cross, its own conversion, its own stream and slope, its own
+accumulator, its own per-block funding cooldown and its own staleness clock. So the events below
+interleave freely ACROSS assets, and nothing may be inferred about asset `j` from an event carrying
+asset `i` — a 20/80 split converts the 20% leg roughly four times less often, and one leg can go stale
+and be swept while the other is streaming normally.
 
 Dividends are STREAMED, not dropped. Each distribution funds a linear stream over
 `DIVIDEND_DRIP_DURATION` (15 minutes) and every holder accrues against a `balance x time` accumulator.
@@ -363,16 +375,23 @@ ONE exception to the timing: a deploy buy large enough to graduate the token ins
 `markGraduated()` before the allocation is configured, so that token emits `DividendsActivated` on its
 first earnings instead.
 
-**`processDividends(uint256 minOut, address[] holders)`** — KEEPER-GATED, and the ONLY keeper entry
-point. Reverts `NotAKeeper` unless `msg.sender` is on the `LivoKeepersRegistry` allowlist, with one
-exception: once the token is stale (`dividendsStale()`, i.e. `STALE_DIVIDEND_WINDOW` with no
-distribution) anyone may call it, so a keeper set that goes away cannot strand holders' money. Holders
+**`processDividends(uint8 assetIndex, uint256 minOut, address[] holders)`** — KEEPER-GATED, and the ONLY
+keeper entry point. It services ONE payout asset per call: each asset crosses its threshold on its own
+schedule, prices its floor against its own pool and holds its own cooldown, so a keeper calls it once
+per asset and the assets never contend. `assetIndex` past `dividendAssetCount()` reverts
+`DividendAssetOutOfRange`. The pre-existing two-argument form
+**`processDividends(uint256 minOut, address[] holders)`** is still there and services asset 0, so a
+keeper written for a single-asset token needs no change. Reverts `NotAKeeper` unless `msg.sender` is on
+the `LivoKeepersRegistry` allowlist, with one exception: once THAT ASSET is stale
+(`dividendsStale(assetIndex)`, i.e. `STALE_DIVIDEND_WINDOW` with no distribution of it) anyone may call
+it for that asset, so a keeper set that goes away cannot strand holders' money. Holders
 are never gated — `claimDividends()` stays open to everyone. Nothing about the gate changes the EVENT
 sequence; it only adds a revert path. It converts the buffer, folds the proceeds into the running stream, and pushes payouts, doing
 whichever of the three there is anything to do. A keeper whose holder list does not fit in one block
 just calls it again; there is no phase to sequence and no state that a second call could disturb.
 
-The FUNDING leg — steps 1 and 1b — runs at most once per block. A second call in the same block that
+The FUNDING leg — steps 1 and 1b — runs at most once per block PER ASSET; servicing all three assets in
+one block is normal and expected. A second call in the same block that
 actually moved the buffer skips straight to the payouts, and reverts `DividendProcessCooldown` if it
 was given no holders either. Pushing payouts is never rate-limited, so splitting a large holder set
 across several transactions in one block works exactly as before.
@@ -413,8 +432,9 @@ across several transactions in one block works exactly as before.
    it resolved the buffer, and reverting would undo the sweep. A call carrying holders never reverts for
    either reason — it pushes the payouts it was asked to push.
 
-**`claimDividends()`** — the self-serve backstop, emitting the same single **`DividendPaid`** for
-`msg.sender`. It differs from a batch payout in one respect: a native payout inside `processDividends`
+**`claimDividends()`** — the self-serve backstop, emitting one **`DividendPaid`** for `msg.sender` PER
+CONFIGURED ASSET that had anything accrued, in index order. It is the holder's one call for the whole
+set, so a holder never has to know how many assets there are. It differs from a batch payout in one respect: a native payout inside `processDividends`
 is gas-capped, so one expensive holder cannot starve the batch — at the chain's `NATIVE_PAYOUT_GAS` for
 a native payout, and at the far larger `ASSET_PAYOUT_GAS` for an ERC20 one, whose `transfer` is a
 contract the registry only ever vetted for liquidity. `claimDividends` forwards all remaining gas for

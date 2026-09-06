@@ -13,6 +13,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {LivoDividendLogicUniV2} from "src/tokens/LivoDividendLogicUniV2.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
 /// @notice Integration tests for holder dividends on Uniswap V2. Two things are V2-specific and get the
 ///         attention here: a leg paying the TOKEN ITSELF must be carved in token space (a V2 pair reverts
@@ -306,9 +307,9 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         token.processDividends(0, _noHolders());
 
         assertGt(token.dividendsOwed(), 0, "the token's stream was funded through the delegatecall");
-        assertGt(token.dividendRate(), 0, "and its slope is set");
+        assertGt(divRate(address(token), 0), 0, "and its slope is set");
         assertEq(extension.dividendsOwed(), 0, "the extension kept nothing of its own");
-        assertEq(extension.dividendRate(), 0, "and never ran a stream of its own");
+        assertEq(divRate(address(extension), 0), 0, "and never ran a stream of its own");
         assertEq(address(extension).balance, 0, "the extension holds no money");
     }
 
