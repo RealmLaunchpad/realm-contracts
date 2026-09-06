@@ -196,6 +196,17 @@ deploy-tiers-sepolia:
 deploy-tiers-mainnet:
     forge script DeployTierLiquiditySystem --rpc-url mainnet --verify --account livo.dev --slow --broadcast
 
+# Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded
+# with liquidity — replicating the symbols, fee tiers, tick spacings and prices of the real xStock pools
+# on Robinhood mainnet. Exists so third-asset dividends can be exercised on a chain the indexer runs on;
+# Robinhood testnet has the assets but no indexer. Writes the registry routes too when
+# DIVIDEND_SWAP_REGISTRY is deployed on Sepolia and the broadcaster is one of its admins.
+# Costs ETH_PER_POOL (default 0.05) of testnet ETH per pool. Dry-run it first — the same command
+# without --broadcast simulates the whole thing against live Sepolia state, and IS the check:
+#   forge script DeployDummyXStocks --rpc-url sepolia --account livo.dev
+deploy-dummy-xstocks-sepolia:
+    forge script DeployDummyXStocks --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+
 # The from-scratch two-part full-stack deploy (`DeployFullStack` + `DeployFullStackPart2`, and the
 # `deploy-robinhood-part1/part2` recipes) was removed: both Robinhood chains are already deployed, and the
 # two-pass flow only existed because the old swap hooks baked their LP fee in as a `constant`, needing one
