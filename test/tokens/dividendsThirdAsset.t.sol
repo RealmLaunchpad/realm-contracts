@@ -23,7 +23,16 @@ contract DividendHarness is DividendDistributionLogic {
 
     function configure(address asset) external {
         (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
-        assetCount = _initializeDividends(assets, weights);
+        assetCount = _initializeDividends(assets, weights, new bytes[](0));
+    }
+
+    /// @notice Same, naming the pools explicitly. No routes at all means the permissionless V2 pair,
+    ///         which is what every other helper here relies on.
+    function configureRouted(address asset, bytes calldata route) external {
+        (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
+        bytes[] memory routes = new bytes[](1);
+        routes[0] = route;
+        assetCount = _initializeDividends(assets, weights, routes);
     }
 
     /// @dev How many payout assets the harness was configured with. The production token keeps this in
@@ -36,7 +45,7 @@ contract DividendHarness is DividendDistributionLogic {
 
     /// @notice Configure a multi-asset payout set, as `initializeEarningsAllocation`'s array overload does.
     function configureMulti(address[] calldata assets, uint16[] calldata weights) external {
-        assetCount = _initializeDividends(assets, weights);
+        assetCount = _initializeDividends(assets, weights, new bytes[](0));
     }
 
     function activate() external {
@@ -248,9 +257,7 @@ contract DividendsThirdAssetTests is Test {
         address ghost = address(new GhostToken());
 
         DividendHarness h = new DividendHarness();
-        vm.expectRevert(
-            abi.encodeWithSelector(DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.NoPair)
-        );
+        vm.expectRevert(abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
         h.configure(ghost);
     }
 
@@ -268,9 +275,7 @@ contract DividendsThirdAssetTests is Test {
 
         DividendHarness h = new DividendHarness();
         vm.expectRevert(
-            abi.encodeWithSelector(
-                DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.InsufficientLiquidity
-            )
+            abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.InsufficientLiquidity)
         );
         h.configure(address(thin));
 
@@ -288,9 +293,7 @@ contract DividendsThirdAssetTests is Test {
     ///      deliberate cost of a V2-only registry, and the reason the registry is upgradeable.
     function test_anAssetWithoutAV2PairIsRejectedEvenIfItTradesElsewhere() public {
         DividendHarness h = new DividendHarness();
-        vm.expectRevert(
-            abi.encodeWithSelector(DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.NoPair)
-        );
+        vm.expectRevert(abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
         h.configure(makeAddr("v4OnlyToken"));
     }
 
@@ -310,16 +313,14 @@ contract DividendsThirdAssetTests is Test {
     /// @dev The point of putting the rule behind a proxy: a threshold raised AFTER a token was created
     ///      still governs it. A creation-time check compiled into an unpatchable clone could not.
     function test_aRaisedThresholdRefusesAssetsThatUsedToQualify() public {
-        assertTrue(registry.isSwapSupported(registry.nativeQuoteToken(), DAI), "DAI qualifies today");
+        assertTrue(registry.validateRoute(DAI, "") == SwapRejection.OK, "DAI qualifies today");
 
         vm.prank(registryOwner);
         registry.setDefaultThreshold(type(uint128).max);
 
         DividendHarness h = new DividendHarness();
         vm.expectRevert(
-            abi.encodeWithSelector(
-                DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.InsufficientLiquidity
-            )
+            abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.InsufficientLiquidity)
         );
         h.configure(DAI);
     }
@@ -335,9 +336,8 @@ contract DividendsThirdAssetTests is Test {
         _fundAndActivate(harness);
 
         // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
-        uint8 blacklisted = registry.TRUST_BLACKLISTED();
         vm.prank(registryOwner);
-        registry.setTrustStatus(DAI, blacklisted);
+        registry.setBlacklisted(DAI, true);
 
         uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
@@ -345,9 +345,8 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "a live veto sweeps nothing");
         assertEq(harness.pendingNative(), 1 ether, "the whole buffer waits for the veto to lift");
 
-        uint8 unknown = registry.TRUST_UNKNOWN();
         vm.prank(registryOwner);
-        registry.setTrustStatus(DAI, unknown);
+        registry.setBlacklisted(DAI, false);
         harness.processDividends(0, _noHolders());
         assertGt(harness.dividendsOwed(), 0, "and it converts in full once the veto is lifted");
     }

@@ -1,87 +1,72 @@
-# Curated V4 dividend routes
+# Dividend swap routes
 
-`LivoDividendSwapRegistry` admits a dividend payout asset by measuring it: any ERC20 with a deep
-enough Uniswap V2 pair against the chain's quote token is eligible, with nobody's permission. That
-test cannot see a Uniswap V4 asset. A V4 pool is identified by a `(fee, tickSpacing, hooks)` tuple
-that is not derivable from its two currencies, one pair can have hundreds of pools, and only one of
-them is the liquid one — so for V4 somebody has to *name* the pools.
+A dividend payout asset is bought, not held: the token accrues native currency and converts it into the
+asset on every distribution. Which pools that conversion crosses is the **route**, and the token's
+creator picks it at creation. `LivoDividendSwapRegistry` records it against that token and never lets it
+change.
 
-That is what a **route** is: an ordered list of hops from the native coin to the asset, written by a
-registry admin with `setRoute`. It is the only admin lever in the registry that admits an asset
-rather than refusing one, and the naming itself is the curation — no depth threshold is applied to a
-routed asset, because the registry has nothing honest to measure.
+**Livo does not review payout assets.** There is no whitelist and no admin approval — a creator names
+the pools and the registry checks only that they are real: initialized, holding liquidity, and ending at
+the asset. What nothing on-chain can check is whether those pools quote the asset's real market price, so
+a creator can point their own token at a pool they control. The blacklist is the one lever left for an
+asset that turns out to be hostile, and it can only refuse.
 
-The case this exists for is Robinhood Chain, where ~190 tokenized stocks (xStocks) have no V2 pair at
-all. Measured against the chain as of the last scan: 189 of them have a live V4 pool against native
-ETH and route in one hop; 3 (`GEV`, `PWR`, `SHY`) only have USDG liquidity and need the two-hop
-`native -> USDG -> xSTOCK` shape; 2 (`BND`, `SATS`) have no pool with any liquidity at all.
+An asset with a deep enough Uniswap V2 pair needs no route at all — the empty route selects that pair,
+which is the permissionless path the registry has always had. Routes exist for the assets that pair
+cannot reach: Robinhood Chain's ~190 xStocks have no V2 pair, and their liquidity is Uniswap V4, most of
+it against native ETH and the rest against USDG.
 
-## Rebuilding the routes
+## The suggested-asset catalogue
 
-```
-just discover-dividend-routes
-```
-
-`discover_xstock_routes.py` pulls the stock-token list from Robinhood's public asset API, replays
-every `Initialize` log on the V4 pool manager that pairs one of those tokens (or USDG) with a
-currency we care about, reads each pool's live in-range liquidity out of the singleton, and keeps the
-deepest one per pair. A token with a direct native pool gets a one-hop route instead.
-
-Output is `routes.robinhood.mainnet.json`. It carries a `readable` block alongside the encoded
-routes — **review that diff**. "Deepest pool right now" is a heuristic, and this is the one place a
-wrong answer silently routes a token's dividends through somebody else's pool.
-
-## Writing them on-chain
+The frontend ships a shortlist of payout assets so a creator picks a ticker instead of pasting an address
+and hunting for pools. Each entry carries its route, and this directory is where those routes come from.
 
 ```
-export DIVIDEND_SWAP_REGISTRY=0x…      # the registry proxy on the target chain
-just set-dividend-routes               # dry run; add --broadcast when the summary looks right
+just discover-dividend-routes    # scan the pool manager for candidates
+just pick-dividend-routes        # probe them and keep the winners
 ```
 
-`SetDividendRoutes.s.sol` buys a little of every asset through every candidate against forked state
-first, in simulation only, and keeps whichever actually delivers most. Only routes that both work and
-differ from what is already live get broadcast, so re-running is cheap and idempotent.
+`discover_xstock_routes.py` pulls the stock-token list from Robinhood's public asset API, replays every
+`Initialize` log on the V4 pool manager that pairs one of those tokens (or USDG) with a currency we care
+about, reads each pool's live in-range liquidity out of the singleton, and shortlists the deepest few per
+pair. It does NOT pick a winner: `liquidity` is denominated in each pool's own currencies, so an
+ETH-quoted pool and a USDG-quoted one are not comparable, and a fat 5% pool loses to a thin 0.05% one.
 
-The broadcaster must be a registry admin (or its owner).
+`PickDividendRoutes.s.sol` settles it by buying a little of every asset through every candidate against
+forked state and keeping whichever delivers most. It **broadcasts nothing** and needs no signer — there
+is no on-chain route table to write to any more. Its output is
+`catalogue.robinhood.mainnet.json`: asset address to route bytes, in the exact wire format
+`initializeEarningsAllocation` takes. Paste it into the frontend's payout catalogue.
 
-## Adding one asset later
+Re-running is also the catalogue's health check. An asset whose pools have moved reports a different
+winner, or none at all — and a shipped entry that can no longer buy its asset is worse than no entry,
+because it hands a creator a permanent, unfixable configuration.
 
-Do not regenerate the whole file — narrow the scan and point the script at the result:
+## Adding one asset
+
+Narrow the scan and point the picker at the result:
 
 ```
 uv run script/operations/dividend-routes/discover_xstock_routes.py --only NVDA -o /tmp/nvda.json
-DIVIDEND_SWAP_REGISTRY=0x… ROUTES_JSON=/tmp/nvda.json just set-dividend-routes
+DIVIDEND_SWAP_REGISTRY=0x… ROUTES_JSON=/tmp/nvda.json ROUTES_OUT=/tmp/nvda-catalogue.json just pick-dividend-routes
 ```
 
-`--only` takes ticker symbols or token addresses, comma-separated. The dry run tells you whether the
-route it found actually buys the asset before you broadcast anything; that probe — a real swap through
-the real registry against forked state — IS the validation. Do not try to reimplement it in Python: an
-approximation of the swap can disagree with the contract it is meant to be validating.
+`--only` takes ticker symbols or token addresses, comma-separated, and today resolves them against
+Robinhood's asset list — an address outside it is refused. The probe is the validation: do not try to
+reimplement it in Python, because an approximation of the swap can disagree with the contract it is meant
+to be validating.
 
-## Keeping routes valid
+## The wire format
 
-A route is not self-maintaining. Nothing on-chain re-checks that the pool it names still holds depth,
-so a pool that gets drained, or liquidity that migrates to a different fee tier, leaves a route that
-fails every future conversion for every token configured to be paid in that asset.
+One `bytes` per asset, decoded by `DividendRouteLib`:
 
-The dry run is the health check. It probes the route each asset is ALREADY configured with alongside
-the fresh candidates and reports one of:
-
-| line | meaning |
+| Route | Meaning |
 | --- | --- |
-| `ok` | the live route still beats every candidate — nothing to do |
-| `better route found` | a candidate now delivers more; broadcasting switches to it |
-| `BROKEN` | the live route AND every candidate fail — the asset's dividends cannot convert |
-| `no candidate route could buy it` | never had a route, still cannot get one |
+| empty | the asset's permissionless Uniswap V2 pair, subject to the registry's depth threshold |
+| `0x04` + `abi.encode(Hop[])` | a Uniswap V4 path from the native coin; each hop is `{currency, fee, tickSpacing, hooks}` and the last `currency` is the asset |
+| `0x03` + `token \| fee \| token…` | a Uniswap V3 path from the quote token to the asset, one or two hops |
 
-So the maintenance loop is: re-run discovery, dry-run this script, and act on anything that is not
-`ok`. Worth doing on a schedule once routes are live on a chain.
-
-## Known caveat: two-hop routes on Robinhood Chain
-
-Robinhood Chain's universal router rejects the `SWAP_EXACT_IN` (multi-pool) calldata that Ethereum
-mainnet's accepts — it is built against a different v4-periphery. `UniversalRouterVenue` therefore
-sends a one-hop route as `SWAP_EXACT_IN_SINGLE`, which every router understands, and only reaches for
-the multi-pool encoding when a route really has more than one hop. So on Robinhood Chain today the
-one-hop routes all work and the three two-hop ones do not: the probe reports them and skips them, and
-they become writable when that router is upgraded — no contract change needed, just a re-run.
+V4 hops are checked against the pool manager — initialized, non-zero liquidity — which is what catches a
+typo in a fee tier or tick spacing before it becomes permanent. A V3 route is checked for shape only:
+deriving a V3 pool address needs a factory this contract does not hold, and no chain the feature ships on
+has a V3 deployment worth wiring one in for.

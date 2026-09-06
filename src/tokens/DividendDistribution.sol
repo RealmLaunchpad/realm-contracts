@@ -5,7 +5,6 @@ pragma solidity 0.8.28;
 /// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
 /// or DeploymentAddressesArc{Mainnet,Testnet}.
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
-import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 
 /// @title DividendDistribution
 /// @notice Trustless holder dividends for a Livo token: UP TO THREE payout assets, paid out of
@@ -399,10 +398,6 @@ abstract contract DividendDistribution {
     ///         was — the same state a caller who never tried would have seen.
     error DividendSweepFailed();
     error DividendBufferOverflow();
-    /// @notice The named payout asset is not eligible. Carries the registry's own reason — no V2 pair,
-    ///         not enough depth, blacklisted — so a creator learns which gate they failed rather than
-    ///         just that they failed one. The whole of the payout-asset eligibility rule.
-    error DividendAssetNotSupported(SwapRejection rejection);
     error DividendReentrancy();
     /// @notice The payout-asset set is not a valid configuration: no assets, more than
     ///         `MAX_DIVIDEND_ASSETS`, a zero weight, weights that do not sum to `DIVIDEND_BPS_TOTAL`, or

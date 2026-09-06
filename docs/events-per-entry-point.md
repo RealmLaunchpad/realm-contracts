@@ -62,9 +62,9 @@ Each unified factory exposes five `createToken` overloads with different selecto
 - **Legacy positional** (deprecated): `(name, symbol, salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg)` on V2 and the same plus `renounceOwnership_` on V4. Never creates creator vaults. Takes the legacy `TaxConfigInit` (static tax only) and always uses `LiquidityTier.DEFAULT`.
 - **Struct-based, tiered** (backwards-compat): `(TokenSetupTiered, TaxConfigs, [UniV4Configs,] SupplyShare[], AntiSniperConfigs, CreatorVault[])` — struct-grouped inputs (to keep the ABI extensible without hitting stack-too-deep) plus a trailing `CreatorVault[]` (empty for none) that locks supply in vesting vaults. `TokenSetupTiered` carries the `liquidityTier` field selecting the post-graduation pool depth. Takes the full `TaxConfigs` (static tax + the three launch-tax-decay fields).
 - **Struct-based, tiered + referral** (current/recommended): the same shape plus a trailing `address referral` for relayers that forward the creation and are entitled to a cut of the fees. When `referral != address(0)` it additionally emits `LivoFactory.TokenReferral` (see §1.1 step 7). No token storage or on-chain payout is wired to the referral yet — it is purely an off-chain signal for now.
-- **Struct-based, tiered + referral + earnings allocation**: the referral overload's shape but with `TaxConfigsWithAllocation` in place of `TaxConfigs` — the flat `TaxConfigs` fields plus a nested `earningsAllocation` = `{burnBps, dividendsBps, liquidityBps, dividendToken}` (post-graduation earnings routed to buy-back-and-burn / holder dividends / liquidity; the fund wallets take the remainder). The split is stored on the token at creation via a factory-guarded `initializeEarningsAllocation` call, emitting `EarningsAllocationInitialized` and — when `dividendsBps != 0` — `DividendsInitialized` (see §1.1 step 6b). A non-zero split requires a taxable token (the split machinery lives on the taxable impl); otherwise the overload reverts `EarningsAllocationRequiresTax`. A token pays dividends in exactly ONE asset: `address(0)` (native), `DividendDistribution.DIVIDEND_SELF_TOKEN` (paid in the token itself), or ANY ERC20. There is no asset whitelist and no per-asset approval — an ERC20 is eligible if and only if `LivoDividendSwapRegistry.isSwapSupported(quote, asset)` holds at creation time, which happens either way in: a Uniswap **V2** pair for `quote`/`asset` exists and its quote-side reserve clears the registry's threshold for that quote token, OR a registry admin has given the asset a curated Uniswap **V4** route (`setRoute`), which is how assets that only have V4 liquidity — Robinhood Chain's ~190 xStocks, quoted in USDG — qualify. Otherwise the token reverts `DividendAssetNotSupported(rejection)` at creation, where `rejection` is `NoPair` | `InsufficientLiquidity` | `Blacklisted` | `QuoteNotAllowed`, because a clone cannot be patched afterwards. The registry is never consulted for the native and self-token payouts, which buy nothing. An all-zero `earningsAllocation` behaves exactly like the referral overload (no extra call, no event).
+- **Struct-based, tiered + referral + earnings allocation**: the referral overload's shape but with `TaxConfigsWithAllocation` in place of `TaxConfigs` — the flat `TaxConfigs` fields plus a nested `earningsAllocation` = `{burnBps, dividendsBps, liquidityBps, dividendToken}` (post-graduation earnings routed to buy-back-and-burn / holder dividends / liquidity; the fund wallets take the remainder). The split is stored on the token at creation via a factory-guarded `initializeEarningsAllocation` call, emitting `EarningsAllocationInitialized` and — when `dividendsBps != 0` — `DividendsInitialized` (see §1.1 step 6b). A non-zero split requires a taxable token (the split machinery lives on the taxable impl); otherwise the overload reverts `EarningsAllocationRequiresTax`. A token pays dividends in exactly ONE asset: `address(0)` (native), `DividendDistribution.DIVIDEND_SELF_TOKEN` (paid in the token itself), or ANY ERC20. There is no asset whitelist, no per-asset approval and no review: the creator names the pools their token will convert through and the registry checks only that those pools are real. An ERC20 qualifies if `LivoDividendSwapRegistry.registerRoute(asset, route)` accepts it at creation, which is either a Uniswap **V2** pair for `quote`/`asset` whose quote-side reserve clears the registry's threshold (the empty route), or a Uniswap **V4** / **V3** route whose every pool is initialized and holds liquidity — which is how assets with no V2 pair at all, such as Robinhood Chain's ~190 xStocks, qualify. Otherwise the registry reverts `RouteRejected(rejection)` at creation, where `rejection` is `NoPair` | `InsufficientLiquidity` | `Blacklisted` | `QuoteNotAllowed` | `MalformedRoute` | `DeadPool` | `IntermediateNotAllowed`, because a clone cannot be patched afterwards. What is NOT checked, by anyone, is whether the named pool's price tracks the asset's real market. The registry is never consulted for the native and self-token payouts, which buy nothing. An all-zero `earningsAllocation` behaves exactly like the referral overload (no extra call, no event).
 
-- **Struct-based, tiered + referral + MULTI-ASSET earnings allocation**: the allocation overload's shape but with `TaxConfigsWithMultiAllocation` in place of `TaxConfigsWithAllocation` — its nested `earningsAllocation` is `{burnBps, dividendsBps, liquidityBps, dividendTokens[], dividendWeightsBps[]}`. Identical in every respect except that the dividends slice may name UP TO THREE payout assets (`DividendDistribution.MAX_DIVIDEND_ASSETS`) and how it is divided between them: `dividendWeightsBps[i]` is asset `i`'s share OF THE DIVIDENDS SLICE, in bps. The set is validated once, at creation, and is permanent: 1..3 entries with both arrays the same length, every weight non-zero, the weights summing to exactly 10 000, the assets DISTINCT, and `DIVIDEND_SELF_TOKEN` legal only as the sole entry — otherwise `InvalidDividendAssetSet` / `SelfTokenDividendMustBeSole`. Every non-native, non-self entry is put to `LivoDividendSwapRegistry` individually, on the same terms as the single-asset overload. A one-entry set weighted 10 000 produces a token identical to the single-asset overload's. Emits `EarningsAllocationInitialized`, then one `DividendAssetInitialized` per asset, then `DividendsInitialized` (see §1.1 step 6c).
+- **Struct-based, tiered + referral + MULTI-ASSET earnings allocation**: the allocation overload's shape but with `TaxConfigsWithMultiAllocation` in place of `TaxConfigsWithAllocation` — its nested `earningsAllocation` is `{burnBps, dividendsBps, liquidityBps, dividendTokens[], dividendWeightsBps[], dividendRoutes[]}`. Identical in every respect except that the dividends slice may name UP TO THREE payout assets (`DividendDistribution.MAX_DIVIDEND_ASSETS`) and how it is divided between them: `dividendWeightsBps[i]` is asset `i`'s share OF THE DIVIDENDS SLICE, in bps. The set is validated once, at creation, and is permanent: 1..3 entries with both arrays the same length, every weight non-zero, the weights summing to exactly 10 000, the assets DISTINCT, and `DIVIDEND_SELF_TOKEN` legal only as the sole entry — otherwise `InvalidDividendAssetSet` / `SelfTokenDividendMustBeSole`. Every non-native, non-self entry is registered with `LivoDividendSwapRegistry` individually, on the same terms as the single-asset overload, carrying `dividendRoutes[i]` as its route — an array shorter than `dividendTokens` means the empty route (the permissionless V2 pair) for the remainder, which is what the single-asset overload always uses. A one-entry set weighted 10 000 produces a token identical to the single-asset overload's. Emits `EarningsAllocationInitialized`, then one `DividendRouteRegistered` (from the registry) and one `DividendAssetInitialized` per asset, then `DividendsInitialized` (see §1.1 step 6c).
 
 The legacy positional overload internally lifts its `TaxConfigInit` into a `TaxConfigs` (decay fields zeroed) before dispatch, so all three share the same internal flow and emit the events listed below in the same order; only the two struct-based overloads can emit the creator-vault events in §1 step 4b.
 
@@ -470,37 +470,39 @@ token's own `DividendsFunded`:
   `DividendAssetPurchased.nativeIn` is the FULL amount the token sent, this included, so the amount
   actually converted is `nativeIn - amount`.
 
+**Per token creation**, one per non-native, non-self payout asset, inside the creation transaction:
+
+- **`DividendRouteRegistered`** (`token`, `asset`, `route`) — the pools `token` will convert `asset`
+  through, for the rest of its life. `route` is the `DividendRouteLib` wire format: EMPTY means the
+  asset's permissionless Uniswap V2 pair (a real choice, not a missing one), a leading `0x04` is an
+  abi-encoded `Hop[]` of `{currency, fee, tickSpacing, hooks}` running from the native coin, and a
+  leading `0x03` is Uniswap V3's own packed `token | fee | token` path running from the quote token.
+  Chosen by the creator, validated once, and NEVER rewritten — there is no second event for a
+  `(token, asset)` pair and no admin override. Replaying these is the only way to learn which pools a
+  token's dividends cross; nothing else records it, and the route is not derivable from the asset.
+
 **Configuration** (admin, rare, never inside a token's transaction):
 
-- **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the six below.
-- **`TrustStatusSet`** (`asset`, `status`) — `2` (blacklisted) is the only value that changes
-  eligibility; `1` (whitelisted) is a UI badge and gates nothing.
+- **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the four below.
+- **`BlacklistSet`** (`asset`, `blacklisted`) — THE ONLY VETO, and the only admin lever that touches
+  eligibility at all. Retroactive: it stops tokens that already registered a route for the asset, from
+  their next conversion on. Livo does not review payout assets and has no whitelist, so this is what
+  answers an asset that turns out to be hostile after tokens have committed to it.
 - **`DefaultThresholdSet`** (`threshold`) / **`QuoteTokenThresholdSet`** (`quote`, `threshold`) — the
-  quote-side depth an asset's V2 pair must hold. A change applies to tokens that ALREADY exist, for
-  every conversion they have not made yet.
-- **`QuoteTokenAllowed`** (`quote`, `allowed`) — the `from` side of a conversion. Emitted once at
-  deployment for the chain's canonical quote token.
+  quote-side depth an asset's V2 pair must hold. Applies to the EMPTY route only; a route names its
+  pools, which are checked for existence and liquidity instead. A change applies to tokens that ALREADY
+  exist, for every conversion they have not made yet.
+- **`QuoteTokenAllowed`** (`quote`, `allowed`) — the `from` side of a conversion, and the set of
+  currencies a two-hop V3 path may route THROUGH. Emitted once at deployment for the chain's canonical
+  quote token.
 - **`KeeperFundingSet`** (`keeper`) — the wallet the fee above is paid to; `address(0)` turns the fee
   off, which is the state a freshly deployed registry is in. The fee AMOUNT is not here and never
   changes without an upgrade: it is the compile-time `KEEPER_FEE`. Applies to tokens that ALREADY exist,
   from the next conversion on.
-- **`RouteSet`** (`asset`, `route`) — a curated Uniswap V4 route from the native coin to `asset`, as an
-  ordered `Hop[]` of `{currency, fee, tickSpacing, hooks}` whose last `currency` is `asset` itself. An
-  empty `route` CLEARS it. This is the only admin event that can make an asset eligible rather than
-  ineligible: an asset with a route passes `checkSwapSupported` without any depth test, which is how
-  Robinhood Chain's xStocks (V4-only, quoted in USDG) qualify at all. Setting a route on an asset that
-  already had a V2 pair redirects its conversions to the route.
-- **`V3RouteSet`** (`asset`, `path`) — the same admission on Uniswap V3, as V3's own encoded path
-  (`token | fee | token`, repeating) running from the quote token to `asset`. An empty `path` CLEARS it.
-  One or two hops; a two-hop path routes through a token that is itself on the quote allowlist. This is
-  how Ethereum mainnet's tokenized equities qualify — their liquidity is V3-only, and several of them
-  sit in pools holding almost none of the quote token, so no depth read could admit them.
 
-Eligibility is still not fully replayable from logs: for an asset with no route it is a live liquidity
-read against Uniswap V2, so an indexer must call `isSwapSupported` / `checkSwapSupported`. The two route
-events ARE stored state — `routeOf(asset)` and `v3RouteOf(asset)` read them back — and replaying them is
-how a frontend builds the list of curated payout assets. There is no other discovery mechanism for the
-curated venues, and a hardcoded list must not stand in for one.
+Eligibility is not fully replayable from logs: for a token whose route is empty it is a live liquidity
+read against Uniswap V2, and for a routed one it is a live pool read against the V4 singleton, so an
+indexer must call `checkSwapSupported(token, asset)` for a current answer.
 
-Resolution order when more than one applies: V4 route, then V3 route, then the permissionless V2 test.
+Resolution is not an order any more — a token has exactly ONE route per asset and it names its venue.
 `checkSwapSupported` and the swap itself share that order.

@@ -9,14 +9,14 @@ of it in a pool against native ETH and the rest against USDG. `LivoDividendSwapR
 measure a V4 asset the way it measures a long-tail ERC20 -- a V4 pool is identified by a
 (fee, tickSpacing, hooks) tuple that is not derivable from its two currencies, and one pair can
 have hundreds of pools, most of them somebody's dust. This script finds the real ones, on chain,
-and emits the routes `SetDividendRoutes.s.sol` writes.
+and emits the candidates `PickDividendRoutes.s.sol` probes.
 
 How it picks: it replays the pool manager's `Initialize` log for every pool that pairs a stock
 token with native ETH or with USDG, reads each pool's live in-range liquidity, and shortlists the
 deepest few of each. It does NOT pick a winner between them -- `liquidity` is denominated in the
 pool's own currencies, so the number for an ETH-quoted pool and the number for a USDG-quoted one
 are not the same kind of thing, and a fat pool charging 5% still loses to a thin one charging
-0.05%. Choosing between shortlisted candidates is `SetDividendRoutes.s.sol`'s job: it buys the
+0.05%. Choosing between shortlisted candidates is `PickDividendRoutes.s.sol`'s job: it buys the
 asset through each of them against forked state and keeps whichever actually delivers most.
 
 Output is a JSON file that forge script reads. Review it before broadcasting -- this is the one

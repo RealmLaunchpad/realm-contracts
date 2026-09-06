@@ -19,7 +19,7 @@ contract MultiAssetHarness is DividendDistributionLogic {
     uint8 public assetCount;
 
     function configure(address[] calldata assets, uint16[] calldata weights) external {
-        assetCount = _initializeDividends(assets, weights);
+        assetCount = _initializeDividends(assets, weights, new bytes[](0));
     }
 
     function activate() external {

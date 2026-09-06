@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {ILivoDividendSwapRegistry, SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {ILivoDividendSwapRegistry} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
@@ -116,10 +116,17 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      asset the token cannot reach, which is a disclosure problem for the frontend, not a value
     ///      leak here. Making it un-fakeable would need depth measured across blocks, which is not worth
     ///      the permanent complexity for a gate whose only failure mode is a token that pays nobody.
+    /// @param routes one per asset, in the `DividendRouteLib` wire format: the pools this token will
+    ///        convert that asset through, for life. Empty for an asset bought on its permissionless V2
+    ///        pair, which is also what a shorter array means for the assets it does not reach.
     /// @return count How many assets were configured, for the caller to store on the token.
-    function _initializeDividends(address[] memory tokens, uint16[] memory weights) internal returns (uint8 count) {
+    function _initializeDividends(address[] memory tokens, uint16[] memory weights, bytes[] memory routes)
+        internal
+        returns (uint8 count)
+    {
         uint256 n = tokens.length;
         require(n != 0 && n <= MAX_DIVIDEND_ASSETS && weights.length == n, InvalidDividendAssetSet());
+        require(routes.length <= n, InvalidDividendAssetSet());
         count = uint8(n);
 
         ILivoDividendSwapRegistry registry = ILivoDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
@@ -143,9 +150,10 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
             // for a constant would be a wasted CALL).
             uint8 assetDecimals = 18;
             if (token != address(0) && token != address(this)) {
-                (bool supported,, SwapRejection rejection) =
-                    registry.checkSwapSupported(registry.nativeQuoteToken(), token);
-                require(supported, DividendAssetNotSupported(rejection));
+                // Registers AND validates in one call: the registry refuses a route whose pools are not
+                // real, and stores the accepted one against this token. Write-once and unfixable
+                // afterwards, which is why the refusal has to happen here, while the mistake is free.
+                registry.registerRoute(token, i < routes.length ? routes[i] : bytes(""));
                 // Not `try`/`catch`: an asset with no `decimals()` reverts the CREATION, which is the only
                 // moment this is cheap to discover. Defaulting to 18 instead would silently under-scale
                 // the accumulator for the rest of that token's life, and a clone cannot be patched.

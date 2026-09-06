@@ -23,7 +23,16 @@ contract StreamHarness is DividendDistributionLogic {
 
     function configure(address asset) external {
         (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
-        assetCount = _initializeDividends(assets, weights);
+        assetCount = _initializeDividends(assets, weights, new bytes[](0));
+    }
+
+    /// @notice Same, naming the pools explicitly. No routes at all means the permissionless V2 pair,
+    ///         which is what every other helper here relies on.
+    function configureRouted(address asset, bytes calldata route) external {
+        (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
+        bytes[] memory routes = new bytes[](1);
+        routes[0] = route;
+        assetCount = _initializeDividends(assets, weights, routes);
     }
 
     /// @dev How many payout assets the harness was configured with. The production token keeps this in
@@ -36,7 +45,7 @@ contract StreamHarness is DividendDistributionLogic {
 
     /// @notice Configure a multi-asset payout set, as `initializeEarningsAllocation`'s array overload does.
     function configureMulti(address[] calldata assets, uint16[] calldata weights) external {
-        assetCount = _initializeDividends(assets, weights);
+        assetCount = _initializeDividends(assets, weights, new bytes[](0));
     }
 
     function activate() external {

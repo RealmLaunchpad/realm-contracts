@@ -201,8 +201,8 @@ deploy-tiers-mainnet:
 # on Robinhood mainnet. Exists so third-asset dividends can be exercised on a chain the indexer runs on;
 # Robinhood testnet has the assets but no indexer. Writes the registry routes too when
 # DIVIDEND_SWAP_REGISTRY is deployed on Sepolia and the broadcaster is one of its admins.
-# Costs ETH_PER_POOL (default 0.05) of testnet ETH per pool. Dry-run it first — the same command
-# without --broadcast simulates the whole thing against live Sepolia state, and IS the check:
+# Costs ETH_PER_POOL (default 1) of testnet ETH per pool, so 5 ETH for the five. Dry-run it first —
+# the same command without --broadcast simulates it against live Sepolia state, and IS the check:
 #   forge script DeployDummyXStocks --rpc-url sepolia --account livo.dev
 deploy-dummy-xstocks-sepolia:
     forge script DeployDummyXStocks --rpc-url sepolia --verify --account livo.dev --slow --broadcast
@@ -255,20 +255,20 @@ export-deployments:
 unfunded-creators:
     uv run script/operations/unfunded-accounts/check_unfunded_creators.py
 
-# Rebuild the curated Uniswap V4 dividend routes for Robinhood Chain's xStocks by scanning the
-# pool manager on-chain. Writes script/operations/dividend-routes/routes.robinhood.mainnet.json.
-# Review the diff before writing it on-chain — a wrong pool routes a token's dividends elsewhere.
+# Rebuild the Uniswap V4 route CANDIDATES for Robinhood Chain's xStocks by scanning the pool manager
+# on-chain. Writes script/operations/dividend-routes/routes.robinhood.mainnet.json.
 discover-dividend-routes:
     uv run script/operations/dividend-routes/discover_xstock_routes.py
 
-# Write those routes into the registry, and — without --broadcast — the health check for the ones
-# already live: it probes each asset's CURRENT route next to the fresh candidates and flags any that
-# has stopped working. Only routes that differ from what is live get written, so re-running is a no-op.
-# Needs DIVIDEND_SWAP_REGISTRY exported and an admin/owner signer. Set ROUTES_JSON to a narrowed file
-# (discover_xstock_routes.py --only SYMBOL -o …) to add a single asset without touching the rest.
-set-dividend-routes:
+# Probe those candidates against forked state and keep whichever actually buys the most of each asset,
+# writing the winners to catalogue.robinhood.mainnet.json in the wire format a token creation takes.
+# BROADCASTS NOTHING and needs no signer: routes belong to the token that converts through them and are
+# registered by that token at its own creation. The output feeds the frontend's suggested-asset list, so
+# a creator picking a listed asset ships its route and never has to search for pools. Re-running is also
+# the catalogue's health check — an asset whose pools have moved reports a different winner, or none.
+pick-dividend-routes:
     just chain-robinhood
-    forge script SetDividendRoutes --rpc-url robinhood-mainnet --account livo.dev
+    forge script PickDividendRoutes --rpc-url robinhood-mainnet
 
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS

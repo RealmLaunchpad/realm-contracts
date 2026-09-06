@@ -60,7 +60,9 @@ contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributi
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
         if (_dividendsBps != 0) {
             (address[] memory tokens, uint16[] memory weights) = _soleAssetSet(_dividendToken);
-            dividendAssetCount = _initializeDividends(tokens, weights);
+            // No routes: the legacy single-asset shape predates them, and an empty route is exactly the
+            // permissionless V2 pair it always meant.
+            dividendAssetCount = _initializeDividends(tokens, weights, new bytes[](0));
             hasDividends = true;
         }
     }
@@ -72,12 +74,13 @@ contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributi
         uint16 _dividendsBps,
         uint16 _liquidityBps,
         address[] calldata _dividendTokens,
-        uint16[] calldata _dividendWeightsBps
+        uint16[] calldata _dividendWeightsBps,
+        bytes[] calldata _dividendRoutes
     ) external override {
         require(msg.sender == tokenFactory, Unauthorized());
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
         if (_dividendsBps != 0) {
-            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps);
+            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
             hasDividends = true;
         }
     }

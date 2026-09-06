@@ -261,16 +261,22 @@ abstract contract LivoTaxableToken is
         _delegateToDividendLogic();
     }
 
-    /// @notice Same again, for a token paying in UP TO `MAX_DIVIDEND_ASSETS` assets: the payout set and
-    ///         the bps split of the dividends slice between its members. `dividendWeightsBps` must sum
-    ///         to 10,000 and hold no zero; the assets must be distinct; `DIVIDEND_SELF_TOKEN` is only
-    ///         legal on its own. The single-asset overload above is exactly this with a one-entry set.
+    /// @notice Same again, for a token paying in UP TO `MAX_DIVIDEND_ASSETS` assets: the payout set, the
+    ///         bps split of the dividends slice between its members, and the swap route each asset is
+    ///         bought through. `dividendWeightsBps` must sum to 10,000 and hold no zero; the assets must
+    ///         be distinct; `DIVIDEND_SELF_TOKEN` is only legal on its own. The single-asset overload
+    ///         above is exactly this with a one-entry set and no route.
+    /// @dev The routes are the creator's choice and are fixed here for the token's life — the registry
+    ///      records them against this token and refuses to rewrite them. It checks the pools they name
+    ///      exist and hold liquidity; it cannot check the price those pools quote is the asset's real
+    ///      one, and nobody reviews that afterwards either.
     function initializeEarningsAllocation(
         uint16 _burnBps,
         uint16 _dividendsBps,
         uint16 _liquidityBps,
         address[] calldata _dividendTokens,
-        uint16[] calldata _dividendWeightsBps
+        uint16[] calldata _dividendWeightsBps,
+        bytes[] calldata _dividendRoutes
     ) external virtual {
         // Named for the ABI, unread here: the extension decodes them straight out of calldata.
         _burnBps;
@@ -278,6 +284,7 @@ abstract contract LivoTaxableToken is
         _liquidityBps;
         _dividendTokens;
         _dividendWeightsBps;
+        _dividendRoutes;
         _delegateToDividendLogic();
     }
 

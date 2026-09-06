@@ -18,6 +18,7 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 import {DeploymentAddressesEthereumSepolia as Sepolia} from "src/config/DeploymentAddresses.sol";
 import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
 import {Hop, SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice Stand-in for a Robinhood xStock: a plain 18-decimal ERC20, whole supply to the deployer.
 /// @dev The real xStocks are 18-decimal ERC20s with no hooks of their own, so a stock ERC20 is a
@@ -45,10 +46,11 @@ contract DummyXStock is ERC20 {
 ///
 /// @dev LIQUIDITY IS FULL-RANGE, which is the one deliberate departure. It is capital-inefficient — a
 ///      swap of `x` ETH against a pool seeded with `e` ETH moves the price by roughly `(1 + x/e)^2` — but
-///      it can never fall out of range, whatever the price does afterwards, and testnet ETH is the
-///      scarce resource here, not slippage. Size `ETH_PER_POOL` against the conversions you mean to run:
-///      Sepolia's dividend buffer converts between `DIVIDEND_THRESHOLD` (0.001 ETH) and
-///      `MAX_EARNINGS_PER_PROCESS` (0.2 ETH) at a time.
+///      it can never fall out of range, whatever the price does afterwards. The default is sized off the
+///      conversions the pool has to absorb rather than off what a pool costs: Sepolia's dividend buffer
+///      converts between `DIVIDEND_THRESHOLD` (0.001 ETH) and `MAX_EARNINGS_PER_PROCESS` (0.2 ETH) at a
+///      time, so 1 ETH keeps even a max-size conversion inside ~44% impact and an ordinary one inside a
+///      few percent. Raise `ETH_PER_POOL` further if the max-size case needs to price realistically.
 ///
 /// @dev The position NFT goes to the BROADCASTER, not to a locked contract like graduation does, so the
 ///      testnet ETH can be pulled back out when the experiment is over.
@@ -62,7 +64,7 @@ contract DummyXStock is ERC20 {
 /// Usage (deploy):   forge script DeployDummyXStocks --rpc-url sepolia --account livo.dev --slow --broadcast --verify
 ///
 /// Env:
-///   ETH_PER_POOL   (optional) native seeded into each pool, in wei. Default 0.05 ETH.
+///   ETH_PER_POOL   (optional) native seeded into each pool, in wei. Default 1 ETH (5 ETH total).
 contract DeployDummyXStocks is Script {
     /// @notice One dummy stock: its identity, its pool's shape, and the price the pool opens at.
     /// @param tokensPerEth 18-decimal price as `currency1 per currency0` — how many of the stock one ETH
@@ -79,7 +81,7 @@ contract DeployDummyXStocks is Script {
     ///         hand to test wallets.
     uint256 internal constant SUPPLY = 1_000_000e18;
 
-    uint256 internal constant DEFAULT_ETH_PER_POOL = 0.05 ether;
+    uint256 internal constant DEFAULT_ETH_PER_POOL = 1 ether;
 
     function run() external {
         require(block.chainid == Sepolia.BLOCKCHAIN_ID, "Sepolia only");
@@ -95,7 +97,7 @@ contract DeployDummyXStocks is Script {
         vm.startBroadcast();
         address deployer = _broadcaster();
         console.log("Deployer:     %s", deployer);
-        bool writeRoutes = _canWriteRoutes(registry, deployer);
+        bool haveRegistry = address(registry).code.length != 0;
 
         for (uint256 i; i < stocks.length; ++i) {
             address token = address(new DummyXStock(stocks[i].name, stocks[i].symbol, deployer, SUPPLY));
@@ -114,15 +116,15 @@ contract DeployDummyXStocks is Script {
             console.log("%s: %s", stocks[i].symbol, token);
             console.log("   pool liquidity %d, fee %d", liquidity, stocks[i].fee);
 
-            if (writeRoutes) _writeRoute(registry, token, stocks[i]);
+            _reportRoute(registry, haveRegistry, token, stocks[i]);
         }
         vm.stopBroadcast();
 
-        if (!writeRoutes) {
+        if (!haveRegistry) {
             console.log("");
-            console.log("No routes written: registry %s is not deployed, or", address(registry));
-            console.log("the broadcaster is not one of its admins. Each token needs a one-hop route");
-            console.log("(currency = the token, fee and tickSpacing as printed above, hooks = 0).");
+            console.log("Registry %s is not deployed here, so the routes above", address(registry));
+            console.log("could not be validated. They are still correct by construction: one hop,");
+            console.log("currency = the token, fee and tickSpacing as printed, hooks = 0.");
         }
     }
 
@@ -184,28 +186,28 @@ contract DeployDummyXStocks is Script {
         );
     }
 
-    /// @notice Registers the one-hop native -> stock route and reports whether the registry now considers
-    ///         the asset swappable.
-    /// @dev The route alone is not quite enough: a routed asset still fails `checkSwapSupported` unless
-    ///      the native quote token is on the registry's allowlist. `initialize` puts it there, so this
-    ///      normally passes — but a `setAllowedQuoteToken(quote, false)` since then would not, and
-    ///      printing the rejection here is what stops that being discovered later, from a failing
-    ///      conversion.
-    function _writeRoute(LivoDividendSwapRegistry registry, address token, XStock memory stock) internal {
+    /// @notice Prints the one-hop native -> stock route, in the exact wire format a token creation takes.
+    /// @dev NOTHING IS WRITTEN ON-CHAIN HERE ANY MORE. Routes belong to the token that converts through
+    ///      them and are registered by that token at ITS creation, so a payout asset has no registry
+    ///      state of its own to seed. What this script owes its caller is therefore the bytes: paste
+    ///      them into the frontend's payout catalogue next to the address printed above, and a creator
+    ///      picking this asset ships the route with it.
+    /// @dev The validation is a dry read against the pool just seeded, and it is the point of doing it
+    ///      here rather than trusting the encoding: it proves the pool is initialized and holds
+    ///      liquidity, which is exactly what `registerRoute` will demand at creation time.
+    function _reportRoute(LivoDividendSwapRegistry registry, bool haveRegistry, address token, XStock memory stock)
+        internal
+        view
+    {
         Hop[] memory hops = new Hop[](1);
         hops[0] = Hop({currency: token, fee: stock.fee, tickSpacing: stock.tickSpacing, hooks: address(0)});
-        registry.setRoute(token, hops);
+        bytes memory route = DividendRouteLib.encodeV4(hops);
+        console.logBytes(route);
 
-        (bool supported,, SwapRejection rejection) = registry.checkSwapSupported(registry.nativeQuoteToken(), token);
-        if (supported) console.log("   route set, swappable");
-        else console.log("   route set, but NOT swappable yet (rejection %d)", uint8(rejection));
-    }
-
-    /// @dev Whether the registry exists on this chain and the broadcaster may write routes to it. Checked
-    ///      up front so the tokens are not deployed and then lost to a revert on the first `setRoute`.
-    function _canWriteRoutes(LivoDividendSwapRegistry registry, address deployer) internal view returns (bool) {
-        if (address(registry).code.length == 0) return false;
-        return registry.isAdmin(deployer) || registry.owner() == deployer;
+        if (!haveRegistry) return;
+        SwapRejection rejection = registry.validateRoute(token, route);
+        if (rejection == SwapRejection.OK) console.log("   route valid");
+        else console.log("   route REJECTED (rejection %d)", uint8(rejection));
     }
 
     /// @dev The account forge will actually send from. NOT `msg.sender`: with `--account <keystore>` the

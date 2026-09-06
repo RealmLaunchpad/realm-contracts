@@ -75,6 +75,13 @@ struct EarningsAllocationMultiConfig {
     uint16 liquidityBps;
     address[] dividendTokens;
     uint16[] dividendWeightsBps;
+    /// @dev One route per asset, positionally, in the `DividendRouteLib` wire format: the pools this
+    ///      token converts that asset through, chosen by the creator and fixed for the token's life.
+    ///      An entry may be empty — that is the explicit choice of the asset's permissionless Uniswap V2
+    ///      pair — and the array may be SHORTER than `dividendTokens`, which means empty for the rest.
+    ///      Livo does not review these: the registry checks the pools are real and holds liquidity, and
+    ///      nothing on-chain can check the price they name is the asset's real one.
+    bytes[] dividendRoutes;
 }
 
 /// @notice The full `TaxConfigs` fields (flattened) plus a nested `earningsAllocation` split. Consumed
@@ -153,14 +160,16 @@ interface ILivoTaxableToken is ILivoToken {
         address dividendToken
     ) external;
 
-    /// @notice Same again for a multi-asset payout: the set of assets and the bps split of the dividends
-    ///         slice between them. See `EarningsAllocationMultiConfig` for the rules. The single-asset
-    ///         overload above is exactly this with a one-entry set weighted 10,000.
+    /// @notice Same again for a multi-asset payout: the set of assets, the bps split of the dividends
+    ///         slice between them, and the swap route each one is bought through. See
+    ///         `EarningsAllocationMultiConfig` for the rules. The single-asset overload above is exactly
+    ///         this with a one-entry set weighted 10,000 and no route.
     function initializeEarningsAllocation(
         uint16 burnBps,
         uint16 dividendsBps,
         uint16 liquidityBps,
         address[] calldata dividendTokens,
-        uint16[] calldata dividendWeightsBps
+        uint16[] calldata dividendWeightsBps,
+        bytes[] calldata dividendRoutes
     ) external;
 }

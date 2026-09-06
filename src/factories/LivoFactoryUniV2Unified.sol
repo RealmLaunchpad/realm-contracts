@@ -252,7 +252,8 @@ contract LivoFactoryUniV2Unified is LivoFactoryAbstract {
                     alloc.dividendsBps,
                     alloc.liquidityBps,
                     alloc.dividendTokens,
-                    alloc.dividendWeightsBps
+                    alloc.dividendWeightsBps,
+                    alloc.dividendRoutes
                 );
         }
         if (referral != address(0)) emit TokenReferral(token, referral);

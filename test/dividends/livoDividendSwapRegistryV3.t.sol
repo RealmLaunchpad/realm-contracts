@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
+import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
 
@@ -80,23 +81,36 @@ contract LivoDividendSwapRegistryV3Tests is Test {
         return abi.encodePacked(a, f1, b, f2, c);
     }
 
+    /// @dev This test contract stands in for the TOKEN: routes are keyed by the caller, so registering
+    ///      here and converting here is exactly the shape a clone has.
     function _route(address asset, bytes memory path) internal {
-        vm.prank(admin);
-        registry.setV3Route(asset, path);
+        registry.registerRoute(asset, DividendRouteLib.encodeV3(path));
+    }
+
+    function _supported(address asset) internal view returns (bool ok) {
+        (ok,) = registry.checkSwapSupported(address(this), asset);
+    }
+
+    function _expectRejected(SwapRejection why) internal {
+        vm.expectRevert(abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, why));
     }
 
     //////////////////////// admission //////////////////////
 
     /// @dev An asset with no V2 pair is refused until a route admits it. The route IS the curation.
     function test_aV3RouteAdmitsAnAssetTheV2TestCannotSee() public {
-        (bool before,, SwapRejection why) = registry.checkSwapSupported(WETH, NVDAon);
-        assertFalse(before, "no V2 pair, so refused on its own");
-        assertEq(uint8(why), uint8(SwapRejection.NoPair));
+        assertEq(
+            uint8(registry.validateRoute(NVDAon, "")), uint8(SwapRejection.NoPair), "no V2 pair, so refused on its own"
+        );
 
         _route(NVDAon, _path(WETH, FEE_030, NVDAon));
 
-        assertTrue(registry.isSwapSupported(WETH, NVDAon), "the route admits it");
-        assertEq(registry.v3RouteOf(NVDAon), _path(WETH, FEE_030, NVDAon), "and is readable back");
+        assertTrue(_supported(NVDAon), "the route admits it");
+        assertEq(
+            registry.routeOf(address(this), NVDAon),
+            DividendRouteLib.encodeV3(_path(WETH, FEE_030, NVDAon)),
+            "and is readable back"
+        );
     }
 
     /// @dev ⚠️ THE REGRESSION GUARD. The NVDAon/WETH pool holds essentially no WETH — its liquidity is
@@ -113,15 +127,14 @@ contract LivoDividendSwapRegistryV3Tests is Test {
         assertEq(IERC20(NVDAon).balanceOf(recipient), out, "delivered in full");
     }
 
-    /// @dev Clearing a route sends the asset back to the permissionless test, which it fails.
-    function test_clearingARouteWithdrawsTheAdmission() public {
+    /// @dev There is no clearing any more. A route is chosen once, by the creator, and is the token's
+    ///      venue for life — including when the pool it names dies. That permanence is the cost of
+    ///      dropping the review step, and it is why registration validates rather than trusts.
+    function test_aRouteCannotBeClearedOrReplaced() public {
         _route(NVDAon, _path(WETH, FEE_030, NVDAon));
-        assertTrue(registry.isSwapSupported(WETH, NVDAon));
 
-        _route(NVDAon, "");
-
-        assertFalse(registry.isSwapSupported(WETH, NVDAon), "back to the V2 test");
-        assertEq(registry.v3RouteOf(NVDAon).length, 0, "route gone");
+        vm.expectRevert(LivoDividendSwapRegistry.RouteAlreadyRegistered.selector);
+        registry.registerRoute(NVDAon, "");
     }
 
     /// @dev A blacklist still overrides a curated route. The one admin veto outranks the one admin
@@ -129,11 +142,10 @@ contract LivoDividendSwapRegistryV3Tests is Test {
     function test_aBlacklistBeatsAV3Route() public {
         _route(NVDAon, _path(WETH, FEE_030, NVDAon));
 
-        uint8 blacklisted = registry.TRUST_BLACKLISTED();
         vm.prank(admin);
-        registry.setTrustStatus(NVDAon, blacklisted);
+        registry.setBlacklisted(NVDAon, true);
 
-        (bool ok,, SwapRejection why) = registry.checkSwapSupported(WETH, NVDAon);
+        (bool ok, SwapRejection why) = registry.checkSwapSupported(address(this), NVDAon);
         assertFalse(ok);
         assertEq(uint8(why), uint8(SwapRejection.Blacklisted));
     }
@@ -185,7 +197,7 @@ contract LivoDividendSwapRegistryV3Tests is Test {
     function test_aPartialV3FillIsRefusedInsteadOfStrandingTheRest() public {
         _route(NVDAon, _path(WETH, FEE_030, NVDAon));
 
-        address router = registry.UNIV3_UNIVERSAL_ROUTER();
+        address router = registry.UNIV4_UNIVERSAL_ROUTER();
         vm.etch(router, address(new PartialFillV3RouterStub()).code);
         deal(NVDAon, router, 1000e18);
 
@@ -214,7 +226,7 @@ contract LivoDividendSwapRegistryV3Tests is Test {
     /// @dev An asset that ALSO passes the V2 test is redirected by its route: the curated pool wins,
     ///      because an asset only carries a route when an admin judged it the better venue.
     function test_aV3RouteWinsOverAViableV2Pair() public {
-        assertTrue(registry.isSwapSupported(WETH, DAI), "DAI passes the V2 test on its own");
+        assertEq(uint8(registry.validateRoute(DAI, "")), uint8(SwapRejection.OK), "DAI passes the V2 test");
 
         _route(DAI, _path(WETH, FEE_030, DAI));
 
@@ -230,30 +242,26 @@ contract LivoDividendSwapRegistryV3Tests is Test {
 
         (address pair,) = registry.pairFor(WETH, DAI);
         assertTrue(pair != address(0), "DAI still resolves to its V2 pair");
-        assertEq(registry.v3RouteOf(DAI).length, 0, "and has no route of its own");
+        assertEq(registry.routeOf(address(this), DAI).length, 0, "and has no route of its own");
     }
 
     //////////////////////// path validation //////////////////////
 
     function test_aPathThatDoesNotStartAtTheQuoteIsRejected() public {
-        vm.prank(admin);
-        vm.expectRevert(LivoDividendSwapRegistry.V3RouteMustSpanQuoteToAsset.selector);
-        registry.setV3Route(NVDAon, _path(DAI, FEE_030, NVDAon));
+        _expectRejected(SwapRejection.MalformedRoute);
+        _route(NVDAon, _path(DAI, FEE_030, NVDAon));
     }
 
     function test_aPathThatDoesNotEndAtTheAssetIsRejected() public {
-        vm.prank(admin);
-        vm.expectRevert(LivoDividendSwapRegistry.V3RouteMustSpanQuoteToAsset.selector);
-        registry.setV3Route(NVDAon, _path(WETH, FEE_030, HOODon));
+        _expectRejected(SwapRejection.MalformedRoute);
+        _route(NVDAon, _path(WETH, FEE_030, HOODon));
     }
 
     function test_aMalformedPathIsRejected() public {
-        vm.startPrank(admin);
-        vm.expectRevert(LivoDividendSwapRegistry.InvalidV3Path.selector);
-        registry.setV3Route(NVDAon, abi.encodePacked(WETH, FEE_030)); // no destination
-        vm.expectRevert(LivoDividendSwapRegistry.InvalidV3Path.selector);
-        registry.setV3Route(NVDAon, abi.encodePacked(WETH, FEE_030, NVDAon, hex"00")); // a trailing byte
-        vm.stopPrank();
+        _expectRejected(SwapRejection.MalformedRoute);
+        _route(NVDAon, abi.encodePacked(WETH, FEE_030)); // no destination
+        _expectRejected(SwapRejection.MalformedRoute);
+        _route(NVDAon, abi.encodePacked(WETH, FEE_030, NVDAon, hex"00")); // a trailing byte
     }
 
     /// @dev Three hops is refused: each extra hop is another pool that can drain, and the safety of a
@@ -261,43 +269,37 @@ contract LivoDividendSwapRegistryV3Tests is Test {
     function test_aRouteLongerThanTwoHopsIsRejected() public {
         vm.prank(admin);
         registry.setAllowedQuoteToken(USDC, true);
-        vm.prank(admin);
-        vm.expectRevert(LivoDividendSwapRegistry.InvalidV3Path.selector);
-        registry.setV3Route(SPYon, abi.encodePacked(WETH, FEE_001, USDC, FEE_005, DAI, FEE_030, SPYon));
+        _expectRejected(SwapRejection.MalformedRoute);
+        _route(SPYon, abi.encodePacked(WETH, FEE_001, USDC, FEE_005, DAI, FEE_030, SPYon));
     }
 
     /// @dev A middle token has to be one the protocol already trusts to route through. Without this a
     ///      two-hop route could put a long-tail pool in the middle, giving the path two fragile legs.
     function test_anUnapprovedIntermediateIsRejected() public {
-        vm.prank(admin);
-        vm.expectRevert(
-            abi.encodeWithSelector(LivoDividendSwapRegistry.V3IntermediateNotAllowed.selector, address(DAI))
-        );
-        registry.setV3Route(SPYon, _path(WETH, FEE_005, DAI, FEE_030, SPYon));
+        _expectRejected(SwapRejection.IntermediateNotAllowed);
+        _route(SPYon, _path(WETH, FEE_005, DAI, FEE_030, SPYon));
     }
 
     //////////////////////// discoverability + access //////////////////////
 
-    /// @dev The frontend learns the selectable set by replaying this event, so it has to fire on every
-    ///      write — including the clear, which is how an asset leaves the set.
-    function test_everyRouteWriteIsAnnounced() public {
-        bytes memory path = _path(WETH, FEE_030, NVDAon);
+    /// @dev An indexer learns which pools a token's dividends cross by replaying this event; nothing
+    ///      else records it, since the route is not derivable from the asset.
+    function test_everyRegistrationIsAnnounced() public {
+        bytes memory route = DividendRouteLib.encodeV3(_path(WETH, FEE_030, NVDAon));
 
-        vm.expectEmit(true, false, false, true, address(registry));
-        emit LivoDividendSwapRegistry.V3RouteSet(NVDAon, path);
-        vm.prank(admin);
-        registry.setV3Route(NVDAon, path);
-
-        vm.expectEmit(true, false, false, true, address(registry));
-        emit LivoDividendSwapRegistry.V3RouteSet(NVDAon, "");
-        vm.prank(admin);
-        registry.setV3Route(NVDAon, "");
+        vm.expectEmit(true, true, false, true, address(registry));
+        emit LivoDividendSwapRegistry.DividendRouteRegistered(address(this), NVDAon, route);
+        registry.registerRoute(NVDAon, route);
     }
 
-    function test_onlyAnAdminCanRegisterARoute() public {
+    /// @dev NOBODY IS ASKED. A stranger registers their own token's route with no role at all — the
+    ///      inverse of what this test asserted before the review step was dropped.
+    function test_anyoneCanRegisterTheirOwnRoute() public {
         vm.prank(stranger);
-        vm.expectRevert(LivoDividendSwapRegistry.NotAdmin.selector);
-        registry.setV3Route(NVDAon, _path(WETH, FEE_030, NVDAon));
+        registry.registerRoute(NVDAon, DividendRouteLib.encodeV3(_path(WETH, FEE_030, NVDAon)));
+
+        (bool ok,) = registry.checkSwapSupported(stranger, NVDAon);
+        assertTrue(ok);
     }
 
     receive() external payable {}

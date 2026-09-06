@@ -8,6 +8,7 @@ import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contrac
 
 import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
 import {SwapRejection, Hop} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 import {installDividendSwapRegistry, DEFAULT_DIVIDEND_POOL_LIQUIDITY} from "test/helpers/DividendRegistryHelpers.sol";
@@ -33,9 +34,12 @@ contract PartialFillV4RouterStub {
     }
 }
 
-/// @notice The eligibility gate and swap venue for third-asset dividends, tested on its own. The rule it
-///         enforces is deliberately permissionless — a deep enough Uniswap V2 pair, nothing else — so
-///         most of what is asserted here is what the admin levers CANNOT do.
+/// @notice The swap venue for third-asset dividends, and the keeper of the route each token registered.
+///         The rule it enforces is deliberately permissionless — Livo does not review payout assets and
+///         has no allowlist of them — so most of what is asserted here is what nobody needs permission
+///         for, and what the one remaining admin lever CANNOT do.
+/// @dev This test contract stands in for a TOKEN throughout: routes are keyed by the caller, so
+///      `address(this)` registering a route and then converting is exactly the shape a clone has.
 contract LivoDividendSwapRegistryTests is Test {
     uint256 internal constant BLOCKNUMBER = 23327777;
     address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
@@ -48,6 +52,9 @@ contract LivoDividendSwapRegistryTests is Test {
     int24 internal constant V4_SPACING_10 = 10;
     uint24 internal constant V4_FEE_001 = 100;
     int24 internal constant V4_SPACING_1 = 1;
+
+    /// @dev The empty route: the explicit choice of the asset's permissionless Uniswap V2 pair.
+    bytes internal constant V2_ROUTE = "";
 
     LivoDividendSwapRegistry internal registry;
     address internal weth;
@@ -71,17 +78,25 @@ contract LivoDividendSwapRegistryTests is Test {
 
     //////////////////////// the rule //////////////////////
 
-    /// @dev The whole eligibility rule: liquidity, measured live, with nobody's approval. An asset the
-    ///      admins have never heard of passes as readily as one they have.
+    /// @dev The whole eligibility rule for an unrouted asset: liquidity, measured live, with nobody's
+    ///      approval. An asset the admins have never heard of passes as readily as one they have.
     function test_anyAssetWithADeepPairQualifiesUnprompted() public view {
-        assertTrue(registry.isSwapSupported(weth, DAI), "DAI");
-        assertTrue(registry.isSwapSupported(weth, USDC), "USDC");
-        assertEq(registry.trustStatus(DAI), registry.TRUST_UNKNOWN(), "and neither is whitelisted");
+        assertEq(uint8(registry.validateRoute(DAI, V2_ROUTE)), uint8(SwapRejection.OK), "DAI");
+        assertEq(uint8(registry.validateRoute(USDC, V2_ROUTE)), uint8(SwapRejection.OK), "USDC");
+    }
+
+    /// @dev NOBODY IS ASKED. Registration is open to any caller, because the caller is always the token
+    ///      committing itself. If this ever needs a role, the feature has quietly become a curated list.
+    function test_anyoneMayRegisterARouteForThemselves() public {
+        vm.prank(stranger);
+        registry.registerRoute(DAI, V2_ROUTE);
+
+        (bool ok,) = registry.checkSwapSupported(stranger, DAI);
+        assertTrue(ok, "a stranger configured their own token with no permission at all");
     }
 
     function test_anAssetWithNoPairIsRejectedWithNoPair() public {
-        (bool ok,, SwapRejection why) = registry.checkSwapSupported(weth, address(new Ghost()));
-        assertFalse(ok);
+        SwapRejection why = registry.validateRoute(address(new Ghost()), V2_ROUTE);
         assertEq(uint8(why), uint8(SwapRejection.NoPair));
     }
 
@@ -97,60 +112,113 @@ contract LivoDividendSwapRegistryTests is Test {
         thin.approve(address(router), type(uint256).max);
         router.addLiquidityETH{value: seeded}(address(thin), 500_000e18, 0, 0, address(this), block.timestamp);
 
-        (bool ok,, SwapRejection why) = registry.checkSwapSupported(weth, address(thin));
-        assertFalse(ok);
-        assertEq(uint8(why), uint8(SwapRejection.InsufficientLiquidity));
+        assertEq(uint8(registry.validateRoute(address(thin), V2_ROUTE)), uint8(SwapRejection.InsufficientLiquidity));
 
         (address pair, uint256 depth) = registry.pairFor(weth, address(thin));
         assertTrue(pair != address(0), "the pair does exist");
         assertEq(depth, seeded, "and its depth is what was seeded");
     }
 
-    /// @dev `whitelisted` is a UI badge. If it ever starts gating eligibility, the feature has quietly
-    ///      become a curated list — which is exactly what this design refuses to be.
-    function test_whitelistingChangesNothingAboutEligibility() public {
-        assertTrue(registry.isSwapSupported(weth, DAI), "eligible while unknown");
-
-        uint8 whitelisted = registry.TRUST_WHITELISTED();
-        vm.prank(admin);
-        registry.setTrustStatus(DAI, whitelisted);
-
-        (bool ok, uint8 trust,) = registry.checkSwapSupported(weth, DAI);
-        assertTrue(ok, "still eligible");
-        assertEq(trust, whitelisted, "the badge is reported, not required");
-    }
-
-    /// @dev The one veto.
+    /// @dev The one veto. It refuses; nothing here can admit.
     function test_blacklistingRefusesTheAsset() public {
-        uint8 blacklisted = registry.TRUST_BLACKLISTED();
         vm.prank(admin);
-        registry.setTrustStatus(DAI, blacklisted);
+        registry.setBlacklisted(DAI, true);
 
-        (bool ok,, SwapRejection why) = registry.checkSwapSupported(weth, DAI);
-        assertFalse(ok);
-        assertEq(uint8(why), uint8(SwapRejection.Blacklisted));
-    }
-
-    function test_anUnlistedQuoteTokenIsRefused() public view {
-        (bool ok,, SwapRejection why) = registry.checkSwapSupported(USDC, DAI);
-        assertFalse(ok);
-        assertEq(uint8(why), uint8(SwapRejection.QuoteNotAllowed));
+        assertEq(uint8(registry.validateRoute(DAI, V2_ROUTE)), uint8(SwapRejection.Blacklisted));
     }
 
     /// @dev A per-quote override beats the default in both directions.
     function test_aPerQuoteThresholdOverridesTheDefault() public {
         vm.prank(admin);
         registry.setQuoteTokenThreshold(weth, type(uint128).max);
-        assertFalse(registry.isSwapSupported(weth, DAI), "the override refuses what the default allowed");
+        assertEq(
+            uint8(registry.validateRoute(DAI, V2_ROUTE)),
+            uint8(SwapRejection.InsufficientLiquidity),
+            "the override refuses what the default allowed"
+        );
 
         vm.prank(admin);
         registry.setQuoteTokenThreshold(weth, 0);
-        assertTrue(registry.isSwapSupported(weth, DAI), "clearing it falls back to the default");
+        assertEq(uint8(registry.validateRoute(DAI, V2_ROUTE)), uint8(SwapRejection.OK), "clearing it falls back");
+    }
+
+    function test_anUnlistedQuoteTokenIsRefused() public {
+        vm.prank(admin);
+        registry.setAllowedQuoteToken(weth, false);
+        assertEq(uint8(registry.validateRoute(DAI, V2_ROUTE)), uint8(SwapRejection.QuoteNotAllowed));
+    }
+
+    //////////////////////// registration //////////////////////
+
+    /// @dev WRITE-ONCE. A route the creator could rewrite later would be a rug lever: point the token at
+    ///      a pool you control the day before a big conversion. Creation runs once, so nothing legitimate
+    ///      ever calls this twice.
+    function test_aRouteCannotBeRewritten() public {
+        registry.registerRoute(DAI, V2_ROUTE);
+
+        vm.expectRevert(LivoDividendSwapRegistry.RouteAlreadyRegistered.selector);
+        registry.registerRoute(DAI, _v4(DAI, V4_FEE_005, V4_SPACING_10));
+    }
+
+    /// @dev The empty route is a REAL registration, not an absent one — which is why the write-once
+    ///      guard is a separate flag rather than a test on the stored bytes.
+    function test_theEmptyRouteIsARegistrationOfItsOwn() public {
+        registry.registerRoute(DAI, V2_ROUTE);
+        assertEq(registry.routeOf(address(this), DAI).length, 0, "stored as empty");
+        assertTrue(registry.routeRegistered(address(this), DAI), "but registered all the same");
+    }
+
+    /// @dev Two tokens naming the same asset carry their own routes. One creator's bad choice cannot
+    ///      reach another creator's holders, and nobody can grief a popular asset globally.
+    function test_routesAreScopedToTheTokenThatRegisteredThem() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+        vm.prank(stranger);
+        registry.registerRoute(USDC, V2_ROUTE);
+
+        assertGt(registry.routeOf(address(this), USDC).length, 0, "ours is the V4 route");
+        assertEq(registry.routeOf(stranger, USDC).length, 0, "theirs is the V2 pair");
+    }
+
+    /// @dev A route whose last hop buys something else would leave the swap unable to take what it was
+    ///      told to take. Caught where it is cheap to catch instead of at the next freeze.
+    function test_aRouteMustEndAtTheAsset() public {
+        _expectRejected(SwapRejection.MalformedRoute);
+        registry.registerRoute(DAI, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+    }
+
+    function test_aRouteLongerThanTheCapIsRefused() public {
+        Hop[] memory hops = new Hop[](registry.MAX_ROUTE_HOPS() + 1);
+        for (uint256 i; i < hops.length; ++i) {
+            hops[i] = Hop({currency: DAI, fee: V4_FEE_005, tickSpacing: V4_SPACING_10, hooks: address(0)});
+        }
+        _expectRejected(SwapRejection.MalformedRoute);
+        registry.registerRoute(DAI, DividendRouteLib.encodeV4(hops));
+    }
+
+    function test_anUnknownVenueTagIsRefusedRatherThanTreatedAsV2() public {
+        _expectRejected(SwapRejection.MalformedRoute);
+        registry.registerRoute(DAI, hex"07deadbeef");
+    }
+
+    /// @dev THE TYPO GATE, and the reason registration validates at all. A fee/tickSpacing/hooks
+    ///      combination nobody ever initialized is indistinguishable from the right pool until the pool
+    ///      manager is asked. Without this the mistake would surface at some future `processDividends`,
+    ///      on a clone nobody can patch, and there is no second chance to fix the route.
+    function test_aRouteNamingAPoolThatWasNeverInitializedIsRefused() public {
+        _expectRejected(SwapRejection.DeadPool);
+        registry.registerRoute(USDC, _v4(USDC, 3000, int24(199)));
+    }
+
+    /// @dev The precheck a frontend runs before a token exists: same answer, no state, no caller.
+    function test_validateRouteAnswersWithoutATokenAtAll() public view {
+        assertEq(uint8(registry.validateRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10))), uint8(SwapRejection.OK));
+        assertEq(uint8(registry.validateRoute(USDC, _v4(USDC, 3000, int24(199)))), uint8(SwapRejection.DeadPool));
     }
 
     //////////////////////// the swap //////////////////////
 
     function test_swapDeliversToTheRecipientAndKeepsNothing() public {
+        registry.registerRoute(DAI, V2_ROUTE);
         vm.deal(address(this), 1 ether);
         uint256 out = registry.swapNativeToAsset{value: 1 ether}(DAI, 1, recipient);
 
@@ -170,12 +238,13 @@ contract LivoDividendSwapRegistryTests is Test {
         registry.swapNativeToAsset{value: 1 ether}(ghost, 1, recipient);
     }
 
-    /// @dev Eligibility is re-checked on every conversion, not trusted from creation time. Without this
-    ///      a blacklist would only ever bind tokens created after it was set.
-    function test_swapRevertsForAnAssetBlacklistedAfterCreation() public {
-        uint8 blacklisted = registry.TRUST_BLACKLISTED();
+    /// @dev Eligibility is re-checked on every conversion, not trusted from registration time. Without
+    ///      this a blacklist would only ever bind tokens created after it was set — and since routes are
+    ///      permanent, the blacklist is the ONLY thing that can still stop a hostile asset.
+    function test_swapRevertsForAnAssetBlacklistedAfterRegistration() public {
+        registry.registerRoute(DAI, V2_ROUTE);
         vm.prank(admin);
-        registry.setTrustStatus(DAI, blacklisted);
+        registry.setBlacklisted(DAI, true);
 
         vm.deal(address(this), 1 ether);
         vm.expectRevert(
@@ -185,6 +254,7 @@ contract LivoDividendSwapRegistryTests is Test {
     }
 
     function test_swapRevertsOnAMissedFloor() public {
+        registry.registerRoute(DAI, V2_ROUTE);
         vm.deal(address(this), 1 ether);
         vm.expectRevert();
         registry.swapNativeToAsset{value: 1 ether}(DAI, 1_000_000e18, recipient);
@@ -194,6 +264,7 @@ contract LivoDividendSwapRegistryTests is Test {
     ///      what is left is swapped. The registry still keeps nothing: the fee rests here for the length
     ///      of the call and no longer.
     function test_theKeeperIsFundedOutOfEveryConversion() public {
+        registry.registerRoute(DAI, V2_ROUTE);
         address keeper = makeAddr("keeper");
         uint256 fee = registry.KEEPER_FEE();
         vm.prank(admin);
@@ -215,6 +286,7 @@ contract LivoDividendSwapRegistryTests is Test {
     /// @dev No keeper wallet, no fee — which is the state every registry is in until an admin configures
     ///      one, so an upgrade that ships this changes nothing on its own.
     function test_noKeeperMeansNoFee() public {
+        registry.registerRoute(DAI, V2_ROUTE);
         vm.deal(address(this), 1 ether);
         registry.swapNativeToAsset{value: 1 ether}(DAI, 1, recipient);
         assertEq(address(registry).balance, 0, "nothing was withheld");
@@ -224,6 +296,7 @@ contract LivoDividendSwapRegistryTests is Test {
     ///      the swap would be handed nothing and revert, bricking the dust path the staleness bypass
     ///      exists for.
     function test_theFeeIsClippedOnATinyConversion() public {
+        registry.registerRoute(DAI, V2_ROUTE);
         address keeper = makeAddr("keeper");
         vm.prank(admin);
         registry.setKeeperFunding(keeper);
@@ -249,10 +322,103 @@ contract LivoDividendSwapRegistryTests is Test {
         registry.swapNativeToAsset(DAI, 1, recipient);
     }
 
+    //////////////////////// V4 routes //////////////////////
+
+    /// @dev A route BYPASSES the V2 depth test entirely: the creator named the pools, so there is nothing
+    ///      for the registry to measure against a threshold. Shown by making the V2 test impossible to
+    ///      pass and watching the routed asset sail through anyway.
+    function test_aRoutedAssetIgnoresTheV2DepthTest() public {
+        vm.prank(admin);
+        registry.setQuoteTokenThreshold(weth, type(uint128).max);
+        assertEq(uint8(registry.validateRoute(USDC, V2_ROUTE)), uint8(SwapRejection.InsufficientLiquidity));
+
+        assertEq(
+            uint8(registry.validateRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10))),
+            uint8(SwapRejection.OK),
+            "the route is the eligibility"
+        );
+    }
+
+    /// @dev A route ADMITS; it never overrides the veto.
+    function test_aRoutedAssetIsStillRefusedWhenBlacklisted() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+
+        vm.prank(admin);
+        registry.setBlacklisted(USDC, true);
+
+        (bool ok, SwapRejection why) = registry.checkSwapSupported(address(this), USDC);
+        assertFalse(ok);
+        assertEq(uint8(why), uint8(SwapRejection.Blacklisted));
+    }
+
+    /// @dev The single-hop shape: an asset that DOES have a native V4 pool, bought through it rather
+    ///      than through V2.
+    function test_aSingleHopRouteBuysTheAssetOnV4() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+
+        vm.deal(address(this), 1 ether);
+        uint256 out = registry.swapNativeToAsset{value: 1 ether}(USDC, 1, recipient);
+
+        assertGt(out, 0, "bought something");
+        assertEq(IERC20(USDC).balanceOf(recipient), out, "the recipient got exactly what was reported");
+        assertEq(IERC20(USDC).balanceOf(address(registry)), 0, "the registry kept no asset");
+        assertEq(address(registry).balance, 0, "and no native");
+    }
+
+    /// @dev THE xStock SHAPE. The asset has no native pool of its own, so the route goes through an
+    ///      intermediate — USDC here, USDG on Robinhood Chain — and the swap is still one call.
+    function test_aTwoHopRouteReachesAnAssetWithNoNativePool() public {
+        Hop[] memory hops = new Hop[](2);
+        hops[0] = Hop({currency: USDC, fee: V4_FEE_005, tickSpacing: V4_SPACING_10, hooks: address(0)});
+        hops[1] = Hop({currency: USDT, fee: V4_FEE_001, tickSpacing: V4_SPACING_1, hooks: address(0)});
+        registry.registerRoute(USDT, DividendRouteLib.encodeV4(hops));
+
+        vm.deal(address(this), 1 ether);
+        uint256 out = registry.swapNativeToAsset{value: 1 ether}(USDT, 1, recipient);
+
+        assertGt(out, 0, "bought something two pools away");
+        assertEq(IERC20(USDT).balanceOf(recipient), out, "the recipient got exactly what was reported");
+        assertEq(IERC20(USDT).balanceOf(address(registry)), 0, "the registry kept no asset");
+        assertEq(IERC20(USDC).balanceOf(address(registry)), 0, "nor any of the intermediate");
+        assertEq(address(registry).balance, 0, "and no native");
+    }
+
+    /// @dev The floor is the keeper's protection and it is the ROUTER that enforces it. A route does not
+    ///      soften it just because its pools validated.
+    function test_aRoutedSwapStillHonoursTheFloor() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+
+        vm.deal(address(this), 1 ether);
+        vm.expectRevert(LivoDividendSwapRegistry.SwapFailed.selector);
+        registry.swapNativeToAsset{value: 1 ether}(USDC, 1_000_000e6, recipient);
+    }
+
+    /// @dev A partial fill must FAIL the conversion, not book it. `SETTLE_ALL` settles what the swap
+    ///      actually took, so the unspent native stays in the router — unrefunded, sweepable by anyone —
+    ///      while the token has already debited the full spend from its dividend buffer. Refusing it
+    ///      leaves the caller exactly the state it assumes after a failed swap: buffer intact, native
+    ///      returned, retry next call. The real-pool route tests above are the full-fill control.
+    function test_aPartialV4FillIsRefusedInsteadOfStrandingTheRest() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+
+        address router = registry.UNIV4_UNIVERSAL_ROUTER();
+        vm.etch(router, address(new PartialFillV4RouterStub()).code);
+        deal(USDC, router, 1000e6);
+
+        vm.deal(address(this), 1 ether);
+        uint256 balanceBefore = address(this).balance;
+        vm.expectRevert(LivoDividendSwapRegistry.SwapFailed.selector);
+        registry.swapNativeToAsset{value: 1 ether}(USDC, 1, recipient);
+
+        assertEq(address(this).balance, balanceBefore, "the native never left the caller");
+        assertEq(IERC20(USDC).balanceOf(recipient), 0, "and nothing was delivered on a half-spent swap");
+    }
+
     //////////////////////// access control //////////////////////
 
     /// @dev Two tiers: the owner is a cold key that manages admins and upgrades; admins do the frequent,
-    ///      operational work. Neither tier can be reached by anyone else.
+    ///      operational work. Neither tier can be reached by anyone else — and neither can admit an
+    ///      asset, only refuse one.
     function test_onlyTheOwnerManagesAdmins() public {
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, admin));
@@ -266,7 +432,7 @@ contract LivoDividendSwapRegistryTests is Test {
     function test_strangersCannotTouchEntries() public {
         vm.startPrank(stranger);
         vm.expectRevert(LivoDividendSwapRegistry.NotAdmin.selector);
-        registry.setTrustStatus(DAI, 2);
+        registry.setBlacklisted(DAI, true);
         vm.expectRevert(LivoDividendSwapRegistry.NotAdmin.selector);
         registry.setDefaultThreshold(1);
         vm.expectRevert(LivoDividendSwapRegistry.NotAdmin.selector);
@@ -289,33 +455,6 @@ contract LivoDividendSwapRegistryTests is Test {
         registry.setDefaultThreshold(0);
     }
 
-    /// @dev The UI badge: whitelisted OR routed means "we vouched for it", and blacklisted overrides a
-    ///      route. Eligibility is a separate question, which is why a deep V2 pair alone is not "trusted".
-    function test_isTrustedTracksBothVouches() public {
-        (uint8 unknown, uint8 whitelisted, uint8 blacklisted) =
-            (registry.TRUST_UNKNOWN(), registry.TRUST_WHITELISTED(), registry.TRUST_BLACKLISTED());
-        assertFalse(registry.isTrusted(DAI), "unknown, even with a deep pair");
-
-        vm.prank(admin);
-        registry.setTrustStatus(DAI, whitelisted);
-        assertTrue(registry.isTrusted(DAI), "badge");
-
-        vm.prank(admin);
-        registry.setTrustStatus(DAI, unknown);
-        _setRoute(DAI, _hop(DAI, V4_FEE_005, V4_SPACING_10, address(0)));
-        assertTrue(registry.isTrusted(DAI), "a curated route is a vouch too");
-
-        vm.prank(admin);
-        registry.setTrustStatus(DAI, blacklisted);
-        assertFalse(registry.isTrusted(DAI), "the veto wins over the route");
-    }
-
-    function test_trustStatusIsBounded() public {
-        vm.prank(admin);
-        vm.expectRevert(LivoDividendSwapRegistry.InvalidTrustStatus.selector);
-        registry.setTrustStatus(DAI, 3);
-    }
-
     /// @dev The chain's own quote currency is allowed from the start, so the first token created after a
     ///      deployment does not need an admin transaction to name a payout asset.
     function test_theNativeQuoteIsAllowedOutOfTheBox() public view {
@@ -323,166 +462,15 @@ contract LivoDividendSwapRegistryTests is Test {
         assertEq(registry.defaultThreshold(), DEFAULT_DIVIDEND_POOL_LIQUIDITY);
     }
 
-    //////////////////////// curated V4 routes //////////////////////
-
-    /// @dev The whole point of the feature: an asset with NO native pair anywhere becomes reachable
-    ///      because an admin named the pools, and nothing about the depth test is consulted.
-    function test_aRoutedAssetIsEligibleWithNoV2PairAtAll() public {
-        address ghost = address(new Ghost());
-        (bool before,, SwapRejection why) = registry.checkSwapSupported(weth, ghost);
-        assertFalse(before, "no pair to start with");
-        assertEq(uint8(why), uint8(SwapRejection.NoPair));
-
-        _setRoute(ghost, _hop(ghost, V4_FEE_005, V4_SPACING_10, address(0)));
-
-        (bool ok,, SwapRejection rejection) = registry.checkSwapSupported(weth, ghost);
-        assertTrue(ok, "the route is the eligibility");
-        assertEq(uint8(rejection), uint8(SwapRejection.OK));
-        assertEq(registry.routeOf(ghost).length, 1, "and it is readable by a keeper");
-    }
-
-    /// @dev A route ADMITS; it never overrides the veto. Otherwise an admin fixing a route would be one
-    ///      slip away from un-blacklisting a hostile asset.
-    function test_aRoutedAssetIsStillRefusedWhenBlacklisted() public {
-        address ghost = address(new Ghost());
-        _setRoute(ghost, _hop(ghost, V4_FEE_005, V4_SPACING_10, address(0)));
-
-        uint8 blacklisted = registry.TRUST_BLACKLISTED();
-        vm.prank(admin);
-        registry.setTrustStatus(ghost, blacklisted);
-
-        (bool ok,, SwapRejection why) = registry.checkSwapSupported(weth, ghost);
-        assertFalse(ok);
-        assertEq(uint8(why), uint8(SwapRejection.Blacklisted));
-    }
-
-    /// @dev Clearing a route is not a blacklist: the asset simply goes back to being judged on its own
-    ///      liquidity, and an asset that has a deep pair still passes.
-    function test_clearingARouteReturnsTheAssetToTheV2Test() public {
-        _setRoute(DAI, _hop(DAI, V4_FEE_005, V4_SPACING_10, address(0)));
-        assertEq(registry.routeOf(DAI).length, 1);
-
-        vm.prank(admin);
-        registry.setRoute(DAI, new Hop[](0));
-
-        assertEq(registry.routeOf(DAI).length, 0, "cleared");
-        assertTrue(registry.isSwapSupported(weth, DAI), "and still eligible on its own merits");
-    }
-
-    /// @dev A route whose last hop buys something else would leave the swap unable to take what it was
-    ///      told to take. Caught where it is cheap to catch instead of at the next freeze.
-    function test_aRouteMustEndAtTheAsset() public {
-        Hop[] memory hops = _hop(USDC, V4_FEE_005, V4_SPACING_10, address(0));
-        vm.prank(admin);
-        vm.expectRevert(LivoDividendSwapRegistry.RouteMustEndAtAsset.selector);
-        registry.setRoute(DAI, hops);
-    }
-
-    function test_aRouteLongerThanTheCapIsRefused() public {
-        Hop[] memory hops = new Hop[](registry.MAX_ROUTE_HOPS() + 1);
-        for (uint256 i; i < hops.length; ++i) {
-            hops[i] = Hop({currency: DAI, fee: V4_FEE_005, tickSpacing: V4_SPACING_10, hooks: address(0)});
-        }
-        vm.prank(admin);
-        vm.expectRevert(LivoDividendSwapRegistry.RouteTooLong.selector);
-        registry.setRoute(DAI, hops);
-    }
-
-    function test_strangersCannotSetARoute() public {
-        Hop[] memory hops = _hop(DAI, V4_FEE_005, V4_SPACING_10, address(0));
-        vm.prank(stranger);
-        vm.expectRevert(LivoDividendSwapRegistry.NotAdmin.selector);
-        registry.setRoute(DAI, hops);
-    }
-
-    /// @dev The single-hop shape: an asset that DOES have a native V4 pool, bought through it rather
-    ///      than through V2.
-    function test_aSingleHopRouteBuysTheAssetOnV4() public {
-        _setRoute(USDC, _hop(USDC, V4_FEE_005, V4_SPACING_10, address(0)));
-
-        vm.deal(address(this), 1 ether);
-        uint256 out = registry.swapNativeToAsset{value: 1 ether}(USDC, 1, recipient);
-
-        assertGt(out, 0, "bought something");
-        assertEq(IERC20(USDC).balanceOf(recipient), out, "the recipient got exactly what was reported");
-        assertEq(IERC20(USDC).balanceOf(address(registry)), 0, "the registry kept no asset");
-        assertEq(address(registry).balance, 0, "and no native");
-    }
-
-    /// @dev THE xStock SHAPE. The asset has no native pool of its own, so the route goes through an
-    ///      intermediate — USDC here, USDG on Robinhood Chain — and the swap is still one call.
-    function test_aTwoHopRouteReachesAnAssetWithNoNativePool() public {
-        Hop[] memory hops = new Hop[](2);
-        hops[0] = Hop({currency: USDC, fee: V4_FEE_005, tickSpacing: V4_SPACING_10, hooks: address(0)});
-        hops[1] = Hop({currency: USDT, fee: V4_FEE_001, tickSpacing: V4_SPACING_1, hooks: address(0)});
-        vm.prank(admin);
-        registry.setRoute(USDT, hops);
-
-        vm.deal(address(this), 1 ether);
-        uint256 out = registry.swapNativeToAsset{value: 1 ether}(USDT, 1, recipient);
-
-        assertGt(out, 0, "bought something two pools away");
-        assertEq(IERC20(USDT).balanceOf(recipient), out, "the recipient got exactly what was reported");
-        assertEq(IERC20(USDT).balanceOf(address(registry)), 0, "the registry kept no asset");
-        assertEq(IERC20(USDC).balanceOf(address(registry)), 0, "nor any of the intermediate");
-        assertEq(address(registry).balance, 0, "and no native");
-    }
-
-    /// @dev The floor is the keeper's protection and it is the ROUTER that enforces it. A route does not
-    ///      soften it just because an admin vouched for the pools.
-    function test_aRoutedSwapStillHonoursTheFloor() public {
-        _setRoute(USDC, _hop(USDC, V4_FEE_005, V4_SPACING_10, address(0)));
-
-        vm.deal(address(this), 1 ether);
-        vm.expectRevert(LivoDividendSwapRegistry.SwapFailed.selector);
-        registry.swapNativeToAsset{value: 1 ether}(USDC, 1_000_000e6, recipient);
-    }
-
-    /// @dev A route that names a pool nobody ever initialized fails the CONVERSION, not the round: the
-    ///      caller keeps its native and the registry keeps nothing.
-    function test_aRouteToAPoolThatDoesNotExistFailsTheSwap() public {
-        _setRoute(USDC, _hop(USDC, 3000, int24(199), address(0)));
-
-        vm.deal(address(this), 1 ether);
-        vm.expectRevert(LivoDividendSwapRegistry.SwapFailed.selector);
-        registry.swapNativeToAsset{value: 1 ether}(USDC, 1, recipient);
-        assertEq(address(registry).balance, 0);
-    }
-
-    /// @dev A partial fill must FAIL the conversion, not book it. `SETTLE_ALL` settles what the swap
-    ///      actually took, so the unspent native stays in the router — unrefunded, sweepable by anyone —
-    ///      while the token has already debited the full spend from its dividend buffer. Refusing it
-    ///      leaves the caller exactly the state it assumes after a failed swap: buffer intact, native
-    ///      returned, retry next call. The real-pool route tests above are the full-fill control.
-    function test_aPartialV4FillIsRefusedInsteadOfStrandingTheRest() public {
-        _setRoute(USDC, _hop(USDC, V4_FEE_005, V4_SPACING_10, address(0)));
-
-        address router = registry.UNIV4_UNIVERSAL_ROUTER();
-        vm.etch(router, address(new PartialFillV4RouterStub()).code);
-        deal(USDC, router, 1000e6);
-
-        vm.deal(address(this), 1 ether);
-        uint256 balanceBefore = address(this).balance;
-        vm.expectRevert(LivoDividendSwapRegistry.SwapFailed.selector);
-        registry.swapNativeToAsset{value: 1 ether}(USDC, 1, recipient);
-
-        assertEq(address(this).balance, balanceBefore, "the native never left the caller");
-        assertEq(IERC20(USDC).balanceOf(recipient), 0, "and nothing was delivered on a half-spent swap");
-    }
-
     //////////////////////// helpers //////////////////////
 
-    function _hop(address currency, uint24 fee, int24 tickSpacing, address hooks)
-        internal
-        pure
-        returns (Hop[] memory hops)
-    {
-        hops = new Hop[](1);
-        hops[0] = Hop({currency: currency, fee: fee, tickSpacing: tickSpacing, hooks: hooks});
+    function _v4(address currency, uint24 fee, int24 tickSpacing) internal pure returns (bytes memory) {
+        Hop[] memory hops = new Hop[](1);
+        hops[0] = Hop({currency: currency, fee: fee, tickSpacing: tickSpacing, hooks: address(0)});
+        return DividendRouteLib.encodeV4(hops);
     }
 
-    function _setRoute(address asset, Hop[] memory hops) internal {
-        vm.prank(admin);
-        registry.setRoute(asset, hops);
+    function _expectRejected(SwapRejection why) internal {
+        vm.expectRevert(abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, why));
     }
 }

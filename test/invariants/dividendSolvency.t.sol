@@ -137,7 +137,8 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
                 dividendsBps: 4_000,
                 liquidityBps: 1_000,
                 dividendTokens: dividendTokens,
-                dividendWeightsBps: dividendWeights
+                dividendWeightsBps: dividendWeights,
+                dividendRoutes: new bytes[](0)
             })
         });
         vm.prank(creator);

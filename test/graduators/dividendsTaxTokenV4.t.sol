@@ -17,6 +17,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
@@ -135,7 +136,12 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationMultiConfig({
-                burnBps: 0, dividendsBps: 5_000, liquidityBps: 0, dividendTokens: assets, dividendWeightsBps: weights
+                burnBps: 0,
+                dividendsBps: 5_000,
+                liquidityBps: 0,
+                dividendTokens: assets,
+                dividendWeightsBps: weights,
+                dividendRoutes: new bytes[](0)
             })
         });
         vm.prank(creator);
@@ -348,9 +354,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev An asset with no Uniswap V2 pair at all is refused at creation. A clone cannot be patched,
     ///      so the buffer would accrue forever behind it.
     function test_thirdAssetWithNoPairRejected() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.NoPair)
-        );
+        vm.expectRevert(abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
         _createDividendToken(5_000, makeAddr("xStock"));
     }
 
@@ -358,12 +362,11 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      veto in the path — and it applies to tokens that already exist, not just new ones.
     function test_blacklistedThirdAssetRejected() public {
         // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
-        uint8 blacklisted = dividendSwapRegistry.TRUST_BLACKLISTED();
         vm.prank(admin);
-        dividendSwapRegistry.setTrustStatus(DAI, blacklisted);
+        dividendSwapRegistry.setBlacklisted(DAI, true);
 
         vm.expectRevert(
-            abi.encodeWithSelector(DividendDistribution.DividendAssetNotSupported.selector, SwapRejection.Blacklisted)
+            abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.Blacklisted)
         );
         _createDividendToken(5_000, DAI);
     }
