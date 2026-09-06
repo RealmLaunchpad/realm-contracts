@@ -103,6 +103,24 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     uint256 private constant V3_ADDR_BYTES = 20;
     uint256 private constant V3_FEE_BYTES = 3;
 
+    /// @notice Flat amount of native each conversion pays the keeper wallet as gas money, clipped by
+    ///         `MAX_KEEPER_CUT_BPS`. Paid only while `keeper` is set.
+    /// @dev Per-chain and compile-time, like every other number in `DeploymentAddresses`: repricing it is
+    ///      a proxy upgrade, which is the right cadence for a value that tracks gas regimes rather than
+    ///      the market. See that library for how it is sized.
+    uint256 public constant KEEPER_FEE = DeploymentAddresses.KEEPER_FEE;
+
+    /// @notice Ceiling on what one conversion can pay the keeper, as bps of the native sent in.
+    /// @dev NOT the fee — the fee is flat (`KEEPER_FEE`) and this only clips it. Gas is an absolute cost,
+    ///      so a percentage would under-fund the keeper on a small conversion and overcharge holders on a
+    ///      large one; a flat fee is what actually tracks the expense. It still needs a relative ceiling
+    ///      for the one case where "flat" breaks down: a conversion smaller than the fee itself, which
+    ///      the staleness bypass can produce. Without the clip that swap would be handed nothing and
+    ///      revert; with it the keeper simply eats the difference on a conversion it chose to trigger.
+    uint16 public constant MAX_KEEPER_CUT_BPS = 2_000;
+
+    uint256 private constant BPS_TOTAL = 10_000;
+
     //////////////////////// storage //////////////////////
 
     /// @notice Addresses allowed to manage entries (thresholds, trust status, the quote allowlist).
@@ -145,9 +163,17 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     ///      is no translation step at either call site, and one and two hops are the same shape.
     mapping(address => bytes) internal _v3Routes;
 
+    /// @notice Hot wallet that pays the gas for the out-of-band conversions, funded by `KEEPER_FEE` out
+    ///          of every conversion it triggers. `address(0)` — the default — disables the fee entirely,
+    ///          so a registry that has not been configured yet converts exactly as it did before.
+    /// @dev NOT the keeper allowlist — that is `LivoKeepersRegistry`, a different contract with a
+    ///      different question. This is only where the gas money goes, and it is deliberately a single
+    ///      address: splitting a cut across several would need a schedule nobody has asked for.
+    address public keeper;
+
     /// @dev Reserved for future storage. Appending past this on an upgrade is safe; reordering anything
     ///      above it is not.
-    uint256[43] private __gap;
+    uint256[42] private __gap;
 
     //////////////////////// events //////////////////////
 
@@ -162,6 +188,14 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     ///         is no other mechanism, and no hardcoded list should stand in for it.
     event V3RouteSet(address indexed asset, bytes path);
     event DividendAssetPurchased(address indexed asset, address indexed recipient, uint256 nativeIn, uint256 assetOut);
+    /// @notice The wallet the per-conversion `KEEPER_FEE` is paid to changed. `address(0)` turns the fee
+    ///          off. Named for the funding, not for the keeper set — the allowlist lives in
+    ///          `LivoKeepersRegistry` and emits its own `KeeperSet`.
+    event KeeperFundingSet(address indexed keeper);
+    /// @notice A conversion paid the keeper its fee. Reported per conversion because the clip makes it
+    ///          less than `KEEPER_FEE` on a small one. `DividendAssetPurchased.nativeIn` for the same
+    ///          conversion is the FULL amount the token sent, this included, not the amount swapped.
+    event KeeperFunded(address indexed keeper, uint256 amount);
 
     //////////////////////// errors //////////////////////
 
@@ -174,6 +208,9 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     ///         Reported as a revert because the caller (a dividend freeze) must keep its native.
     error SwapFailed();
     error InsufficientOutput();
+    /// @notice The keeper wallet refused its cut. Reverting is deliberate: the alternative is a keeper
+    ///          that silently stops being funded while conversions keep spending its gas.
+    error KeeperFundingFailed();
     error RouteTooLong();
     /// @notice The last hop buys something other than the asset the route is filed under. A route that
     ///         landed elsewhere would leave the swap unable to take what it was told to take.
@@ -311,10 +348,21 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
         (bool supported,, SwapRejection rejection) = checkSwapSupported(quote, asset);
         require(supported, SwapNotSupported(rejection));
 
+        // The keeper's fee comes off the top, so what follows only ever spends what is left. `minOut` is
+        // therefore a floor on the SWAPPED amount, not on `msg.value` — the keeper computes it off-chain
+        // and has to quote the net.
+        address keeperWallet = keeper;
+        uint256 cut;
+        if (keeperWallet != address(0)) {
+            uint256 maxCut = (MAX_KEEPER_CUT_BPS * msg.value) / BPS_TOTAL;
+            cut = KEEPER_FEE < maxCut ? KEEPER_FEE : maxCut;
+        }
+        uint256 nativeIn = msg.value - cut;
+
         // Buy to THIS contract, not straight to `recipient`: the amount forwarded has to be a balance
         // delta measured here, because a fee-on-transfer asset delivers less than the router reports.
         uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
-        bool swapped = _venueSwap(quote, asset, minOut);
+        bool swapped = _venueSwap(quote, asset, nativeIn, minOut);
         require(swapped, SwapFailed());
         out = IERC20(asset).balanceOf(address(this)) - balanceBefore;
 
@@ -327,13 +375,22 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
 
         IERC20(asset).safeTransfer(recipient, out);
         emit DividendAssetPurchased(asset, recipient, msg.value, out);
+
+        // Paid LAST, and only on a conversion that worked: a reverted swap keeps the caller's native
+        // whole, so the keeper must not have been paid out of it on the way. Still custodies nothing —
+        // the cut only rests here for the length of this call.
+        if (cut != 0) {
+            (bool sent,) = keeperWallet.call{value: cut}("");
+            require(sent, KeeperFundingFailed());
+            emit KeeperFunded(keeperWallet, cut);
+        }
     }
 
-    /// @dev Picks the venue for `asset` and spends `msg.value` on it. A curated route wins when there is
+    /// @dev Picks the venue for `asset` and spends `nativeIn` on it — `msg.value` minus the keeper's cut. A curated route wins when there is
     ///      one — an asset only has a route BECAUSE it could not be reached on V2.
     /// @return ok false if the venue reverted; the caller turns that into `SwapFailed` and keeps the
     ///         native it was sent.
-    function _venueSwap(address quote, address asset, uint256 minOut) private returns (bool ok) {
+    function _venueSwap(address quote, address asset, uint256 nativeIn, uint256 minOut) private returns (bool ok) {
         Hop[] storage route = _routes[asset];
         if (route.length == 0) {
             // V3 before V2, matching `checkSwapSupported`. An asset only carries a V3 route because an
@@ -342,7 +399,7 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
             if (v3Path.length != 0) {
                 return
                     UniversalRouterVenue.swapNativeToAssetV3Path(
-                        UNIV3_UNIVERSAL_ROUTER, quote, v3Path, msg.value, minOut
+                        UNIV3_UNIVERSAL_ROUTER, quote, v3Path, nativeIn, minOut
                     );
             }
             address[] memory path = new address[](2);
@@ -351,7 +408,7 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
             // Through the venue lib, not the router directly: the `chain-arc-*` recipe import-swaps it,
             // and ARC has no WETH — its native USDC shares a balance with the 6-dec ERC-20 the pair is
             // quoted in, so the same `msg.value` becomes a two-ERC20 swap there rather than an ETH-in one.
-            return UniswapV2Venue.trySwapNativeToAsset(IUniswapV2Router(SWAP_ROUTER), quote, path, msg.value, minOut);
+            return UniswapV2Venue.trySwapNativeToAsset(IUniswapV2Router(SWAP_ROUTER), quote, path, nativeIn, minOut);
         }
 
         PathKey[] memory hops = new PathKey[](route.length);
@@ -367,7 +424,7 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
                 hookData: ""
             });
         }
-        return UniversalRouterVenue.swapNativeToAssetV4Path(UNIV4_UNIVERSAL_ROUTER, hops, msg.value, minOut);
+        return UniversalRouterVenue.swapNativeToAssetV4Path(UNIV4_UNIVERSAL_ROUTER, hops, nativeIn, minOut);
     }
 
     //////////////////////// admin //////////////////////
@@ -403,6 +460,15 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
         require(status <= TRUST_BLACKLISTED, InvalidTrustStatus());
         trustStatus[asset] = status;
         emit TrustStatusSet(asset, status);
+    }
+
+    /// @notice Set the wallet `KEEPER_FEE` is paid to. `address(0)` turns the fee off.
+    /// @dev The wallet is storage while the fee is a constant, and the split is on purpose: a hot key
+    ///      rotates on the operations team's schedule (and has to be revocable in one admin transaction
+    ///      if it leaks), while the fee moves with gas regimes and can wait for an upgrade.
+    function setKeeperFunding(address newKeeper) external onlyAdmin {
+        keeper = newKeeper;
+        emit KeeperFundingSet(newKeeper);
     }
 
     /// @notice Name the Uniswap V4 pools a conversion into `asset` crosses, starting from the native

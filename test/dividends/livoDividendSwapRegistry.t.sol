@@ -190,6 +190,60 @@ contract LivoDividendSwapRegistryTests is Test {
         registry.swapNativeToAsset{value: 1 ether}(DAI, 1_000_000e18, recipient);
     }
 
+    /// @dev The keeper is paid a FLAT fee out of every conversion — gas is an absolute cost — and only
+    ///      what is left is swapped. The registry still keeps nothing: the fee rests here for the length
+    ///      of the call and no longer.
+    function test_theKeeperIsFundedOutOfEveryConversion() public {
+        address keeper = makeAddr("keeper");
+        uint256 fee = registry.KEEPER_FEE();
+        vm.prank(admin);
+        registry.setKeeperFunding(keeper);
+
+        vm.deal(address(this), 1 ether);
+        uint256 out = registry.swapNativeToAsset{value: 1 ether}(DAI, 1, recipient);
+
+        assertEq(keeper.balance, fee, "the keeper took its flat fee");
+        assertEq(IERC20(DAI).balanceOf(recipient), out, "the recipient got the rest, converted");
+        assertEq(address(registry).balance, 0, "and the registry kept no native");
+
+        // Ten times the conversion size, same fee: the whole point of flat over percentage.
+        vm.deal(address(this), 10 ether);
+        registry.swapNativeToAsset{value: 10 ether}(DAI, 1, recipient);
+        assertEq(keeper.balance, 2 * fee, "a ten-times-larger conversion pays the same fee");
+    }
+
+    /// @dev No keeper wallet, no fee — which is the state every registry is in until an admin configures
+    ///      one, so an upgrade that ships this changes nothing on its own.
+    function test_noKeeperMeansNoFee() public {
+        vm.deal(address(this), 1 ether);
+        registry.swapNativeToAsset{value: 1 ether}(DAI, 1, recipient);
+        assertEq(address(registry).balance, 0, "nothing was withheld");
+    }
+
+    /// @dev The clip is what keeps "flat" from breaking on a conversion smaller than the fee: without it
+    ///      the swap would be handed nothing and revert, bricking the dust path the staleness bypass
+    ///      exists for.
+    function test_theFeeIsClippedOnATinyConversion() public {
+        address keeper = makeAddr("keeper");
+        vm.prank(admin);
+        registry.setKeeperFunding(keeper);
+
+        // Small enough that the ceiling bites: 20% of this is below `KEEPER_FEE`.
+        uint256 tiny = (registry.KEEPER_FEE() * 10_000) / registry.MAX_KEEPER_CUT_BPS() / 2;
+        vm.deal(address(this), tiny);
+        uint256 out = registry.swapNativeToAsset{value: tiny}(DAI, 1, recipient);
+
+        assertEq(keeper.balance, tiny * registry.MAX_KEEPER_CUT_BPS() / 10_000, "clipped to the ceiling");
+        assertLt(keeper.balance, registry.KEEPER_FEE(), "the keeper ate the difference");
+        assertGt(out, 0, "and the conversion still happened");
+    }
+
+    function test_theKeeperWalletIsAdminOnly() public {
+        vm.prank(stranger);
+        vm.expectRevert(LivoDividendSwapRegistry.NotAdmin.selector);
+        registry.setKeeperFunding(makeAddr("keeper"));
+    }
+
     function test_swapRevertsWithNothingToSwap() public {
         vm.expectRevert(LivoDividendSwapRegistry.NothingToSwap.selector);
         registry.swapNativeToAsset(DAI, 1, recipient);

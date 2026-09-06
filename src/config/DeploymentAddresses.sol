@@ -68,6 +68,22 @@ library DeploymentAddressesEthereumMainnet {
     ///      more can always call `claimDividends()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
 
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev ~300k gas at 20 gwei is ~0.006 ETH, so this is roughly break-even at that regime. NOT
+    ///      DEPLOYED HERE: dividends ship on Robinhood Chain only, and this value exists so the mainnet
+    ///      library stays a complete config, not because anything reads it today.
+    uint256 public constant KEEPER_FEE = 0.005 ether;
+
     /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
     /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The leading zeros and the `D1d3ADd5` tail
@@ -157,6 +173,21 @@ library DeploymentAddressesEthereumSepolia {
     ///      more can always call `claimDividends()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
 
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev Testnet gas is free-ish and the threshold here is 100x smaller than mainnet's; this is only
+    ///      large enough to prove the plumbing moves money.
+    uint256 public constant KEEPER_FEE = 0.0001 ether;
+
     /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
     /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The leading zeros and the `D1d3ADd5` tail
@@ -245,6 +276,24 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
     ///      more can always call `claimDividends()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev THE ONE THAT MATTERS — dividends ship here. Deliberately over-provisioned: an Arbitrum L2
+    ///      conversion costs a tiny fraction of this even with the L1 data fee, so the fee survives an
+    ///      L1 fee spike, a stretch of conversions that revert on their floor, and a gas regime nobody
+    ///      forecast — the cost of being wrong the other way is every token's distributions stopping at
+    ///      once. It is ~2% of a threshold-sized conversion (0.1 ETH) and ~1% of a maximum one.
+    uint256 public constant KEEPER_FEE = 0.002 ether;
 
     /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
@@ -338,6 +387,20 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
     ///      more can always call `claimDividends()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev Scaled to this chain's 100x smaller `DIVIDEND_THRESHOLD`, same ratio as the mainnet pair.
+    uint256 public constant KEEPER_FEE = 0.0002 ether;
 
     /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
@@ -441,6 +504,21 @@ library DeploymentAddressesArcMainnet {
     ///      more can always call `claimDividends()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
 
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev 2 native USDC ~ 0.001 ETH under the x2000 ARC repricing assumption the other values here
+    ///      use. Native is 18-dec USDC on ARC, so this is 2 USDC, not 2 ETH.
+    uint256 public constant KEEPER_FEE = 2e18;
+
     /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
     /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The leading zeros and the `D1d3ADd5` tail
@@ -535,6 +613,20 @@ library DeploymentAddressesArcTestnet {
     ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
     ///      more can always call `claimDividends()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev 2 native USDC, matching ARC mainnet (see there).
+    uint256 public constant KEEPER_FEE = 2e18;
 
     /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.

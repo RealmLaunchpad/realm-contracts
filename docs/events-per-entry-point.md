@@ -443,9 +443,16 @@ token's own `DividendsFunded`:
   whose stream is being funded, which is the only link back to it. Absent when the payout asset is native or
   the token itself (no conversion happens), and absent when the conversion failed (the whole call
   reverted and the token reports `DividendConversionFailed`).
+- **`KeeperFunded`** (`keeper`, `amount`) — immediately after the one above, when a keeper wallet is
+  configured: the slice of the conversion's native paid to it as gas money instead of being swapped.
+  `amount` is the flat per-chain `KEEPER_FEE`, except on a conversion small enough for the
+  `MAX_KEEPER_CUT_BPS` clip to bite, so read it rather than deriving it. Note
+  `DividendAssetPurchased.nativeIn` is the FULL amount the token sent, this included, so the amount
+  actually converted is `nativeIn - amount`.
+
 **Configuration** (admin, rare, never inside a token's transaction):
 
-- **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the five below.
+- **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the six below.
 - **`TrustStatusSet`** (`asset`, `status`) — `2` (blacklisted) is the only value that changes
   eligibility; `1` (whitelisted) is a UI badge and gates nothing.
 - **`DefaultThresholdSet`** (`threshold`) / **`QuoteTokenThresholdSet`** (`quote`, `threshold`) — the
@@ -453,6 +460,10 @@ token's own `DividendsFunded`:
   every conversion they have not made yet.
 - **`QuoteTokenAllowed`** (`quote`, `allowed`) — the `from` side of a conversion. Emitted once at
   deployment for the chain's canonical quote token.
+- **`KeeperFundingSet`** (`keeper`) — the wallet the fee above is paid to; `address(0)` turns the fee
+  off, which is the state a freshly deployed registry is in. The fee AMOUNT is not here and never
+  changes without an upgrade: it is the compile-time `KEEPER_FEE`. Applies to tokens that ALREADY exist,
+  from the next conversion on.
 - **`RouteSet`** (`asset`, `route`) — a curated Uniswap V4 route from the native coin to `asset`, as an
   ordered `Hop[]` of `{currency, fee, tickSpacing, hooks}` whose last `currency` is `asset` itself. An
   empty `route` CLEARS it. This is the only admin event that can make an asset eligible rather than
