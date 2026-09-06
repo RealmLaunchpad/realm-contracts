@@ -11,6 +11,7 @@ import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol"
 import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
 import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 import {installDividendSwapRegistry, DEFAULT_DIVIDEND_POOL_LIQUIDITY} from "test/helpers/DividendRegistryHelpers.sol";
+import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 
 /// @notice A bare `DividendDistributionLogic` with the token's hooks stubbed out. It exists so the
 ///         third-asset payout shape — the only one that actually performs a swap — can be exercised
@@ -105,6 +106,7 @@ contract DividendsThirdAssetTests is Test {
     function setUp() public {
         vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), BLOCKNUMBER);
         registry = installDividendSwapRegistry(registryOwner);
+        installKeepersRegistry(registryOwner, address(this));
         harness = _harness(DAI);
     }
 

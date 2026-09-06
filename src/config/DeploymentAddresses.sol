@@ -49,7 +49,9 @@ library DeploymentAddressesEthereumMainnet {
 
     /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
     /// @dev With the once-per-block cooldown, caps what a price-manipulation sandwich can extract from the
-    ///      earnings buffers per block; the remainder stays buffered for later calls.
+    ///      earnings buffers PER BLOCK; the remainder stays buffered for later calls. It does not bound
+    ///      the fraction of a single call that can be taken — only the keeper gate does that. See
+    ///      `DividendDistribution.MAX_DIVIDEND_PER_CONVERSION`.
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
 
     /// @notice Minimum accrued native amount the dividend buffer must hold before
@@ -82,6 +84,17 @@ library DeploymentAddressesEthereumMainnet {
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
     address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -160,6 +173,17 @@ library DeploymentAddressesEthereumSepolia {
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
     address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
@@ -238,6 +262,17 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
     address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury (same address as Ethereum mainnet)
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -320,6 +355,17 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
     address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
@@ -411,6 +457,17 @@ library DeploymentAddressesArcMainnet {
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
     address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -495,6 +552,17 @@ library DeploymentAddressesArcTestnet {
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
     address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }

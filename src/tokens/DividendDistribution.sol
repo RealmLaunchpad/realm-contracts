@@ -85,12 +85,16 @@ abstract contract DividendDistribution {
     ///         a sub-threshold residual on a dead token is not stranded in the buffer forever.
     uint256 public constant DIVIDEND_THRESHOLD = DeploymentAddresses.DIVIDEND_THRESHOLD;
 
-    /// @notice Max native a token may convert in ONE distribution. `processDividends` is permissionless
-    ///         and takes its slippage floor from the caller, so an unbounded conversion lets anyone
-    ///         sandwich their own conversion and skim it; what bounds the skim is swap size against pool
-    ///         depth. Deliberately the SAME constant `processBurn` and `processLiquidity` cap with, for
-    ///         the same reason and on the same scale — roughly 3-11% of a graduated pool across the
-    ///         liquidity tiers.
+    /// @notice Max native a token may convert in ONE distribution. Deliberately the SAME constant
+    ///         `processBurn` and `processLiquidity` cap with, for the same reason and on the same
+    ///         scale — roughly 3-11% of a graduated pool across the liquidity tiers.
+    /// @dev WHAT THIS DOES AND DOES NOT BOUND. It caps the loss PER BLOCK, and nothing else. It does NOT
+    ///      bound the FRACTION of a conversion a sandwich can take: the cost of pushing a
+    ///      constant-product price arbitrarily far and back is the pool fee paid twice — about 0.6% of
+    ///      the pool's native reserve — and that cost does not grow with how far the price is pushed,
+    ///      while the prize is the whole spend. Against any pool short of very deep, a caller who picks
+    ///      their own zero floor keeps almost all of it. That is why `processDividends` is keeper-gated
+    ///      (see `LivoKeepersRegistry`) and why this cap is a second line, not the first.
     /// @dev Necessarily >= `DIVIDEND_THRESHOLD`: a cap below the floor would leave a token that
     ///      qualifies to distribute unable to convert what qualified it. The remainder above the cap
     ///      stays buffered and funds a later stream, so nothing is stranded.
@@ -98,11 +102,15 @@ abstract contract DividendDistribution {
 
     /// @notice How long each distribution takes to stream out. Every funding restarts a full window of
     ///         this length, folding whatever the previous one had left to deliver into the new slope.
-    /// @dev This is the ENTIRE anti-flash-loan mechanism, and it is deliberately SMALL. A borrowed
-    ///      balance exists for zero seconds and therefore integrates to zero regardless of the length;
-    ///      what the length actually buys is dilution of a ONE-BLOCK hold, and 15 minutes already prices
-    ///      a block at ~0.014% of a distribution against a round-trip cost of two taxes plus two pool
-    ///      fees. Sizing it in days would rule out fast payout cadences for no security gain.
+    /// @dev NOT the anti-flash-loan mechanism, and deliberately SMALL. A borrowed balance exists for
+    ///      zero seconds and therefore integrates to zero regardless of the length — what rules the
+    ///      flash loan out is the accumulator and the settle-before-mutate ordering, not this constant.
+    ///      What the length actually buys is dilution of a ONE-BLOCK hold: 15 minutes prices a 12-second
+    ///      block at ~1.3% of whatever the stream still has to deliver, against a round-trip cost of two
+    ///      taxes plus two pool fees. The ABSOLUTE size of that capture is bounded by
+    ///      `MAX_DIVIDEND_PER_CONVERSION` and the per-block funding cooldown, which cap how large a
+    ///      slope can be built, and that bound is what makes the timed hold uneconomic — not the window.
+    ///      Sizing it in days would rule out fast payout cadences for a proportionally small gain.
     /// @dev It is a smoothing window, not an eligibility gate: nothing about it can make a call revert,
     ///      and a holder is never "too new" for it. Arriving mid-stream simply earns from the moment of
     ///      arrival.

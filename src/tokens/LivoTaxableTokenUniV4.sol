@@ -122,7 +122,11 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
     ///      inside the launch tax window, tax — a fraction of which loops back into `burnPendingEth`
     ///      for the next call). This is accepted rather than special-casing the audited hook.
     function processBurn(uint256 minTokensOut) external nonReentrant {
-        // Once per block + capped spend: bounds what a sandwich can extract per manipulated block.
+        // Keeper-gated: the caller supplies the floor, so a permissionless caller could set it to zero
+        // around their own price manipulation and keep almost the whole spend. See `LivoKeepersRegistry`.
+        _requireKeeper();
+        // Once per block + capped spend: bounds what a sandwich can extract per manipulated block once
+        // the caller can no longer choose the floor. It is a second bound, not the first one.
         require(block.number > lastBurnProcessBlock, ProcessCooldown());
         lastBurnProcessBlock = uint48(block.number);
 
@@ -181,6 +185,9 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
     ///      Batches many small accruals into one add. Guarded by the shared `nonReentrant` lock (both
     ///      paths route through the position manager and the pool).
     function processLiquidity() external nonReentrant {
+        // Keeper-gated, and this one has NO slippage parameter at all: the wall is placed at whatever
+        // price the caller has arranged. See `LivoKeepersRegistry`.
+        _requireKeeper();
         // Once per block + capped spend: bounds what a manipulated wall placement can extract per block.
         require(block.number > lastLiquidityProcessBlock, ProcessCooldown());
         lastLiquidityProcessBlock = uint48(block.number);

@@ -138,6 +138,10 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
         holders[2] = holderB;
 
         handler = new DividendSolvencyHandler(divToken, holders);
+        // `processDividends` is keeper-gated. The handler calls it inside a `try`, so without this the
+        // funding leg would silently never run and the suite would pass while exercising nothing.
+        vm.prank(admin);
+        keepersRegistry.setKeeper(address(handler), true);
         targetContract(address(handler));
     }
 

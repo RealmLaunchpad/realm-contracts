@@ -230,6 +230,14 @@ contract DeployLaunchpadV2Stack is Script {
             "DIVIDEND_SWAP_REGISTRY has no code on this chain: deploy the registry proxy first"
         );
 
+        // Same reasoning, same failure mode: `processDividends`, `processBurn` and `processLiquidity`
+        // all fail closed against a codeless keeper registry, so an impl deployed before it exists can
+        // never run a conversion.
+        require(
+            AddressesFromLivoTaxableTokenV2.LIVO_KEEPERS_REGISTRY.code.length != 0,
+            "LIVO_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
+        );
+
         // Belt-and-braces: catch a stale or zero address in the manifest before we waste a deploy.
         require(d.oldLaunchpad != address(0), "manifest: LAUNCHPAD missing");
         require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");

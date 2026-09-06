@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
+import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 
 /// @notice A bare `DividendDistributionLogic` whose balances move through `_onDividendTransfer`, in the
 ///         order a real token's `_update` moves them: SETTLE FIRST, then mutate. That order is the whole
@@ -182,6 +183,9 @@ contract DividendAccountingTests is Test {
     uint256 internal constant SUPPLY = 1_000_000e18;
 
     function setUp() public {
+        // `processDividends` is keeper-gated and fails closed without a registry to ask.
+        installKeepersRegistry(address(this), address(this));
+
         h = new StreamHarness();
         h.configure(address(0));
     }

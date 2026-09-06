@@ -8,6 +8,7 @@ import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @notice Stand-in for the universal router on its no-fill branch: it takes nothing from the pool and
 ///         sweeps the whole native input back to the caller. A real pool reaches this with an amount too
@@ -190,6 +191,11 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         // The attacker needs a real, dividend-eligible balance to have anything to claim.
         ReentrantDividendClaimer claimer = new ReentrantDividendClaimer();
         claimer.setToken(burnToken);
+        // `processBurn` is keeper-gated, so the re-entry is only REACHABLE for a keeper. The gate is not
+        // what this test is about: the accounting must hold on its own, because a keeper key is hot and
+        // the buffer must not depend on it staying uncompromised.
+        vm.prank(admin);
+        keepersRegistry.setKeeper(address(claimer), true);
         uint256 stake = IERC20(token).balanceOf(buyer) / 2;
         vm.prank(buyer);
         IERC20(token).transfer(address(claimer), stake);
@@ -212,6 +218,16 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertTrue(claimer.reentered(), "the payout did re-enter processBurn");
         assertLt(IERC20(token).totalSupply(), supplyBefore, "the buy-back really spent the ETH and burned");
         assertLt(burnToken.burnPendingEth(), burnPending, "and the buffer was debited for it, not refilled");
+    }
+
+    /// @dev The caller picks `minTokensOut`, so a permissionless caller could set it to zero around
+    ///      their own price manipulation and keep almost the whole spend. The cap and the cooldown bound
+    ///      that per block; only the gate bounds the fraction. See `LivoKeepersRegistry`.
+    function test_v4ProcessBurn_refusesANonKeeper() public {
+        address token = _createBurnTaxToken(400, 5000);
+        vm.prank(makeAddr("randomCaller"));
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
+        LivoTaxableTokenUniV4(payable(token)).processBurn(0);
     }
 
     function test_v4ProcessBurn_revertsWhenNothingPending() public {

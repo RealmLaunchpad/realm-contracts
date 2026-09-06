@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
@@ -184,6 +185,22 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         _graduateToken();
 
         vm.expectRevert(LivoTaxableTokenUniV2.NothingToAdd.selector);
+        LivoTaxableTokenUniV2(payable(token)).processLiquidity(0);
+    }
+
+    /// @dev The caller supplies the floor for the half-sell, so a permissionless caller could set it to
+    ///      zero around their own price manipulation and keep almost the whole sell. See
+    ///      `LivoKeepersRegistry`.
+    function test_v2ProcessLiquidity_refusesANonKeeper() public {
+        address token = _createLiquidityV2Token(400, 5000);
+        testToken = token;
+        vm.deal(buyer, 5 ether);
+        vm.prank(buyer);
+        launchpad.buyTokensWithExactEth{value: 1 ether}(token, 0, DEADLINE);
+        _graduateToken();
+
+        vm.prank(makeAddr("randomCaller"));
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
         LivoTaxableTokenUniV2(payable(token)).processLiquidity(0);
     }
 

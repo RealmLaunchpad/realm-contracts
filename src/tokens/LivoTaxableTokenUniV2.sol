@@ -122,7 +122,8 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
     /// @param amountOutMinWei Slippage floor for the half-sell, in QUOTE decimals (18-dec ETH on
     ///        ETH-family builds, 6-dec USDC on ARC) — the swap reverts if it yields less. Keepers
     ///        should set it from the current price (via a private mempool); 0 invites sandwiching of
-    ///        the half-sell, bounded by the current buffer.
+    ///        the half-sell, bounded by the current buffer. Only a keeper can reach this at all — the
+    ///        floor is the keeper's own discipline, not a bound the contract can enforce.
     /// @dev Token-native: the token side is KEPT (not bought back — a V2 pair reverts INVALID_TO when
     ///      asked to send a token to its own address), only half is sold for the ETH side. Post-graduation
     ///      only. The sell + add run under `_inSwap` so the intrinsic tax / auto-swap-back don't fire on
@@ -136,8 +137,12 @@ contract LivoTaxableTokenUniV2 is LivoTaxableTokenUniV2Base {
     ///      here today; the guard is what keeps that true when a venue or payout asset later does.
     function processLiquidity(uint256 amountOutMinWei) external nonReentrant {
         require(graduated, NotGraduated());
+        // Keeper-gated: the caller supplies the floor for the half-sell, so a permissionless caller could
+        // set it to zero around their own price manipulation and keep almost the whole sell. See
+        // `LivoKeepersRegistry`.
+        _requireKeeper();
         // Once per block + capped at the swap-back's own per-sell size: bounds what a sandwich of the
-        // half-sell can extract per manipulated block; the remainder stays buffered for later calls.
+        // half-sell can extract per manipulated block once the caller can no longer choose the floor.
         require(block.number > lastLiquidityProcessBlock, ProcessCooldown());
         lastLiquidityProcessBlock = uint48(block.number);
 

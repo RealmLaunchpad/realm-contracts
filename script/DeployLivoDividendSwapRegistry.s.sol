@@ -58,6 +58,11 @@ contract DeployLivoDividendSwapRegistry is Script {
     ///      Sized off the per-freeze cap: at 10x, the largest swap a token will ever send through the
     ///      pool is ~10% of its quote side. Changed later with `setDefaultThreshold`, which applies to
     ///      tokens that already exist.
+    /// @dev ⚠️ NOT A SANDWICH DEFENCE, at this or any value. The depth measured is the pair's QUOTE side,
+    ///      which is the exact side an attacker's front-run buy inflates — a decayed pool is lifted back
+    ///      over the bar by the manipulation itself. What this threshold buys is that HONEST conversions
+    ///      do not route through a dead pair. The sandwich is stopped by the keeper gate on
+    ///      `processDividends` (see `LivoKeepersRegistry`), not here.
     function _defaultThreshold() internal view returns (uint256) {
         if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
             return 10 * DeploymentAddressesEthereumMainnet.MAX_EARNINGS_PER_PROCESS;

@@ -100,6 +100,14 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
             "DIVIDEND_SWAP_REGISTRY has no code on this chain: deploy the registry proxy first"
         );
 
+        // Same reasoning, same failure mode: `processDividends`, `processBurn` and `processLiquidity`
+        // all fail closed against a codeless keeper registry, so an impl deployed before it exists can
+        // never run a conversion.
+        require(
+            AddressesFromLivoTaxableTokenV2.LIVO_KEEPERS_REGISTRY.code.length != 0,
+            "LIVO_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
+        );
+
         require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
         require(d.launchpad != address(0), "manifest: LAUNCHPAD missing");
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");

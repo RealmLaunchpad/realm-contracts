@@ -273,8 +273,8 @@ Indexer-relevant points:
 
 For a V4 token with a burn or liquidity allocation, the swap-time `CreatorTaxesAccrued` → `token.accrueFees` splits the tax on the ETH side: the burn slice is buffered in `burnPendingEth` and the liquidity slice in `liquidityPendingEth` (no event beyond the fund-wallet `CreatorFeesDeposited`), the rest routes to the fund wallets. Permissionless entry points then process each buffer:
 
-- **`processBurn(uint256 minTokensOut)`** — buys back tokens with `burnPendingEth` via the universal router and burns them. Emits, in order: **`LivoTaxableTokenUniV4.BuyBackInitiated`** (`ethIn`) — a precursor marker emitted BEFORE the swap so indexers can classify the following hook `LivoSwapBuy` (which carries the keeper's `tx.origin`) as a protocol buy-back rather than a trade — then the external V4 buy-back swap events (`Swap`, plus the hook's own LP-fee/tax events since the buy-back is an ordinary swap), an ERC20 `Transfer(address(token), address(0), tokensBought)`, then **`LivoTaxableToken.CreatorTaxBurn`** (`ethSpent, tokensBurned`) — the same shared event V2 emits, with a non-zero `ethSpent` here since V4 does buy the tokens back before burning. Reverts `NothingToBurn` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call (remainder stays buffered).
-- **`processLiquidity()`** — deposits `liquidityPendingEth` as a single-sided ETH position just below the current price (a bid wall). Takes one of TWO paths, which differ only in their EXTERNAL events; the token's own event is identical either way. Both run through the shared `LivoUniV4LiquidityAdder.addOrTopUpSingleSidedEth`, which is also handed an ERC721 `ApprovalForAll(token, adder, true)` from the token on every call (a no-op after the first). (a) TOP-UP — the token remembers the two walls it most recently used (`getLiquidityWalls()` exposes their NFT ids and lower ticks), and when one of them still sits entirely below the current price and within ~2000 ticks of it, the adder thickens that position: emits `ModifyLiquidity` and settlement `Transfer`s, but NO ERC721 `Transfer` — no new NFT exists. (b) MINT — otherwise a fresh position is minted at the live tick, emitting the external V4 position-mint events (`ModifyLiquidity`, an ERC721 `Transfer(0x0, token, tokenId)`, settlement `Transfer`s). Either path then emits **`LivoTaxableToken.LiquidityAdded`** (`ethIn, tokensAdded, liquidity`) — the shared event; `tokensAdded` is always 0 (ETH-only wall) and `liquidity` is the V4 liquidity units the position GAINED on this call. Indexers that counted one new position per `LiquidityAdded` must key off the ERC721 `Transfer` instead. Reverts `NothingToAdd` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call (remainder stays buffered). Every position the token mints is held by it forever (permanent depth), whether or not it is still one of the two remembered.
+- **`processBurn(uint256 minTokensOut)`** — buys back tokens with `burnPendingEth` via the universal router and burns them. Emits, in order: **`LivoTaxableTokenUniV4.BuyBackInitiated`** (`ethIn`) — a precursor marker emitted BEFORE the swap so indexers can classify the following hook `LivoSwapBuy` (which carries the keeper's `tx.origin`) as a protocol buy-back rather than a trade — then the external V4 buy-back swap events (`Swap`, plus the hook's own LP-fee/tax events since the buy-back is an ordinary swap), an ERC20 `Transfer(address(token), address(0), tokensBought)`, then **`LivoTaxableToken.CreatorTaxBurn`** (`ethSpent, tokensBurned`) — the same shared event V2 emits, with a non-zero `ethSpent` here since V4 does buy the tokens back before burning. Reverts `NotAKeeper` unless `msg.sender` is on the `LivoKeepersRegistry` allowlist, `NothingToBurn` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call (remainder stays buffered).
+- **`processLiquidity()`** — deposits `liquidityPendingEth` as a single-sided ETH position just below the current price (a bid wall). Takes one of TWO paths, which differ only in their EXTERNAL events; the token's own event is identical either way. Both run through the shared `LivoUniV4LiquidityAdder.addOrTopUpSingleSidedEth`, which is also handed an ERC721 `ApprovalForAll(token, adder, true)` from the token on every call (a no-op after the first). (a) TOP-UP — the token remembers the two walls it most recently used (`getLiquidityWalls()` exposes their NFT ids and lower ticks), and when one of them still sits entirely below the current price and within ~2000 ticks of it, the adder thickens that position: emits `ModifyLiquidity` and settlement `Transfer`s, but NO ERC721 `Transfer` — no new NFT exists. (b) MINT — otherwise a fresh position is minted at the live tick, emitting the external V4 position-mint events (`ModifyLiquidity`, an ERC721 `Transfer(0x0, token, tokenId)`, settlement `Transfer`s). Either path then emits **`LivoTaxableToken.LiquidityAdded`** (`ethIn, tokensAdded, liquidity`) — the shared event; `tokensAdded` is always 0 (ETH-only wall) and `liquidity` is the V4 liquidity units the position GAINED on this call. Indexers that counted one new position per `LiquidityAdded` must key off the ERC721 `Transfer` instead. Reverts `NotAKeeper` unless `msg.sender` is on the `LivoKeepersRegistry` allowlist, `NothingToAdd` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call (remainder stays buffered). Every position the token mints is held by it forever (permanent depth), whether or not it is still one of the two remembered.
 - **`sweepStrayEth()`** — routes the token's native balance beyond everything it owes (`burnPendingEth`, `liquidityPendingEth`, the dividend buffers and undelivered pots) back through the earnings-allocation split (same events as an `accrueFees` split), so stray native becomes token earnings instead of being stuck. Permissionless. Present on BOTH venues — it lives on `LivoTaxableToken` — and it is the only exit for stray native on V2, where `rescueTokens` no longer accepts `address(0)` and the swap-back only routes its own swap proceeds. Pre-graduation it deposits the whole balance to the fund wallets, which is what `rescueTokens(address(0))` used to do.
 
 ---
@@ -363,8 +363,12 @@ ONE exception to the timing: a deploy buy large enough to graduate the token ins
 `markGraduated()` before the allocation is configured, so that token emits `DividendsActivated` on its
 first earnings instead.
 
-**`processDividends(uint256 minOut, address[] holders)`** — permissionless, and the ONLY keeper entry
-point. It converts the buffer, folds the proceeds into the running stream, and pushes payouts, doing
+**`processDividends(uint256 minOut, address[] holders)`** — KEEPER-GATED, and the ONLY keeper entry
+point. Reverts `NotAKeeper` unless `msg.sender` is on the `LivoKeepersRegistry` allowlist, with one
+exception: once the token is stale (`dividendsStale()`, i.e. `STALE_DIVIDEND_WINDOW` with no
+distribution) anyone may call it, so a keeper set that goes away cannot strand holders' money. Holders
+are never gated — `claimDividends()` stays open to everyone. Nothing about the gate changes the EVENT
+sequence; it only adds a revert path. It converts the buffer, folds the proceeds into the running stream, and pushes payouts, doing
 whichever of the three there is anything to do. A keeper whose holder list does not fit in one block
 just calls it again; there is no phase to sequence and no state that a second call could disturb.
 
@@ -417,6 +421,16 @@ contract the registry only ever vetted for liquidity. `claimDividends` forwards 
 both shapes, so a holder skipped by a batch can always be paid by claiming. It never funds a stream.
 
 
+### `LivoKeepersRegistry` (one per chain)
+
+The allowlist of addresses permitted to call `processDividends`, `processBurn` and `processLiquidity`.
+It emits nothing inside a token's transaction — it is only ever read — so these events appear on their
+own, rarely, and are not attributable to any token.
+
+- **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the one below.
+- **`KeeperSet`** (`account`, `allowed`) — admin-level; a keeper key being rotated in or out. Revocation
+  takes effect in the next transaction.
+
 ### `LivoDividendSwapRegistry` (one per chain)
 
 The eligibility gate and swap venue behind every third-asset dividend. It is a SHARED contract, so its
@@ -429,7 +443,6 @@ token's own `DividendsFunded`:
   whose stream is being funded, which is the only link back to it. Absent when the payout asset is native or
   the token itself (no conversion happens), and absent when the conversion failed (the whole call
   reverted and the token reports `DividendConversionFailed`).
-
 **Configuration** (admin, rare, never inside a token's transaction):
 
 - **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the five below.

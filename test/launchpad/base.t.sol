@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
 import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
+import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
+import {LivoKeepersRegistry} from "src/access/LivoKeepersRegistry.sol";
 import "forge-std/Test.sol";
 import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
@@ -41,6 +43,7 @@ contract LaunchpadBaseTests is Test {
     /// @notice Eligibility gate + swap venue for third-asset dividends, installed at the constant
     ///         address every taxable token implementation compiles against.
     LivoDividendSwapRegistry internal dividendSwapRegistry;
+    LivoKeepersRegistry internal keepersRegistry;
 
     LivoLaunchpad public launchpad;
 
@@ -430,6 +433,9 @@ contract LaunchpadBaseTests is Test {
         // Must precede the token implementations: they bake the registry's address in as a constant,
         // and a third-asset dividend configuration calls it at creation.
         dividendSwapRegistry = installDividendSwapRegistry(admin);
+        // Same: the three `process*` entry points fail closed without it. The test contract is the
+        // keeper because that is who calls them; suites that need a NON-keeper caller prank one.
+        keepersRegistry = installKeepersRegistry(admin, address(this));
 
         vm.deal(creator, INITIAL_ETH_BALANCE);
         vm.deal(buyer, INITIAL_ETH_BALANCE);

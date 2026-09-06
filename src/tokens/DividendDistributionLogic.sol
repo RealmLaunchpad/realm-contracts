@@ -5,6 +5,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {ILivoDividendSwapRegistry, SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @title DividendDistributionLogic
 /// @notice The COLD half of `DividendDistribution`: the native -> payout-asset conversion, the stream
@@ -39,7 +40,7 @@ import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 ///      both — never hand-maintain it. `just check-dividend-layout` fails if they ever drift.
 ///      The same applies to TRANSIENT slots, which is why `dividendLocked` stays declared in
 ///      `DividendDistribution` rather than moving here with the modifier's users.
-abstract contract DividendDistributionLogic is DividendDistribution {
+abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated {
     /// @notice Thrown by every TOKEN entry point on an extension. An extension is an execution body for
     ///         a token, not a token: deployed once, never cloned, holding no balance, and its own
     ///         storage never read. Anyone reaching one of those entry points here has the wrong address.
@@ -136,6 +137,16 @@ abstract contract DividendDistributionLogic is DividendDistribution {
     ///        thing for a keeper to make.
     function processDividends(uint256 minOut, address[] calldata holders) external nonReentrantDividends {
         require(dividendPeriodFinish != 0, DividendsNotActive());
+
+        // KEEPER-GATED, with staleness as the escape hatch. The conversion below takes its slippage
+        // floor from the caller, so a permissionless caller could manipulate the payout pool, call in
+        // with a zero floor and unwind, all in one transaction — see `LivoKeepersRegistry` for why no
+        // depth threshold bounds that. Holders never depend on a keeper to be PAID: `claimDividends()`
+        // is open to everyone and pays in full. What a keeper is needed for is moving the buffer.
+        // The stale branch is the backstop for a keeper set that has gone away for good: after
+        // `STALE_DIVIDEND_WINDOW` with no distribution, anyone may fund, because a buffer nobody can
+        // ever convert is a worse outcome than one someone can convert badly.
+        if (!dividendsStale()) _requireKeeper();
 
         // Before anything else, for the reason the base spells out: the accumulator has to close the
         // interval that just ended at the supply that was actually in effect for it.

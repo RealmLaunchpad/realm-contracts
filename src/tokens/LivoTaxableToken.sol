@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {EarningsAllocation} from "src/tokens/EarningsAllocation.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
 import {ILivoTaxableToken, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
@@ -36,6 +37,7 @@ abstract contract LivoTaxableToken is
     ILivoTaxableToken,
     DividendDistribution,
     EarningsAllocation,
+    KeeperGated,
     ReentrancyGuardTransient
 {
     using SafeERC20 for IERC20;

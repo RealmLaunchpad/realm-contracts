@@ -148,6 +148,10 @@ contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V
         holders[2] = holderB;
 
         handler = new DividendSolvencyV2Handler(divToken, holders);
+        // `processDividends` is keeper-gated. The handler calls it inside a `try`, so without this the
+        // funding leg would silently never run and the suite would pass while exercising nothing.
+        vm.prank(admin);
+        keepersRegistry.setKeeper(address(handler), true);
         targetContract(address(handler));
     }
 

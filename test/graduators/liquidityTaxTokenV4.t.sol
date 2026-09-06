@@ -9,6 +9,7 @@ import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -151,6 +152,15 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         assertEq(liqToken.liquidityPendingEth(), pending, "refunded ETH stays earmarked for liquidity");
         assertEq(token.balance, ethBefore, "and never left the token");
+    }
+
+    /// @dev This one has NO slippage parameter at all — the wall lands at whatever price the caller has
+    ///      arranged — so it is the entry point that most needs the gate.
+    function test_v4ProcessLiquidity_refusesANonKeeper() public {
+        address token = _createLiquidityTaxToken(0, 400, 5000);
+        vm.prank(makeAddr("randomCaller"));
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
+        LivoTaxableTokenUniV4(payable(token)).processLiquidity();
     }
 
     function test_v4ProcessLiquidity_revertsWhenNothingPending() public {

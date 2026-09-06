@@ -12,6 +12,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @notice Integration tests for the holder-dividends earnings-allocation leg on Uniswap V4: the
 ///         continuous accumulator, threshold-gated funding, the drip that makes a flash loan worthless,
@@ -108,6 +109,79 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     }
 
     receive() external payable {}
+
+    ///////////////////////// the keeper gate /////////////////////////
+
+    /// @dev THE reason the gate exists. `processDividends` takes its slippage floor from the caller, so
+    ///      a permissionless caller could manipulate the payout pool, call in with a zero floor and
+    ///      unwind, atomically and risk-free. The cost of that round trip does not grow with how far the
+    ///      price is pushed, so no cap or depth threshold bounds the fraction it takes — only this does.
+    function test_processDividends_refusesANonKeeper() public {
+        LivoTaxableTokenUniV4 token = _liveDividendToken();
+
+        vm.prank(makeAddr("randomCaller"));
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
+        token.processDividends(0, new address[](0));
+    }
+
+    /// @dev And an appointed keeper goes through, which is what makes the gate a gate rather than a wall.
+    function test_processDividends_allowsAnAppointedKeeper() public {
+        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        address keeper = makeAddr("appointedKeeper");
+        vm.prank(admin);
+        keepersRegistry.setKeeper(keeper, true);
+
+        vm.prank(keeper);
+        token.processDividends(0, new address[](0));
+
+        assertGt(token.dividendRate(), 0, "the appointed keeper funded the stream");
+    }
+
+    /// @dev Revocation is immediate: a rotated-out key stops working in the next transaction.
+    function test_processDividends_refusesARevokedKeeper() public {
+        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        address keeper = makeAddr("rotatedKeeper");
+        vm.startPrank(admin);
+        keepersRegistry.setKeeper(keeper, true);
+        keepersRegistry.setKeeper(keeper, false);
+        vm.stopPrank();
+
+        vm.prank(keeper);
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
+        token.processDividends(0, new address[](0));
+    }
+
+    /// @dev THE ESCAPE HATCH. A keeper set that goes away for good must not strand holders' money in the
+    ///      buffer forever, so once the token is stale anyone may fund it. A buffer someone can convert
+    ///      badly beats a buffer nobody can convert at all.
+    function test_processDividends_goesPermissionlessOnceStale() public {
+        LivoTaxableTokenUniV4 token = _liveDividendToken();
+
+        skip(token.STALE_DIVIDEND_WINDOW() + 1);
+        assertTrue(token.dividendsStale(), "precondition: the token is stale");
+
+        vm.prank(makeAddr("randomCaller"));
+        token.processDividends(0, new address[](0));
+
+        assertGt(token.dividendRate(), 0, "a stale token can be funded by anyone");
+    }
+
+    /// @dev The gate never stands between a holder and their own money. `claimDividends()` is open to
+    ///      everyone, which is what makes keeper-gating the FUNDING leg acceptable at all.
+    function test_claimDividends_staysOpenToNonKeepers() public {
+        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        token.processDividends(0, new address[](0));
+        skip(token.DIVIDEND_DRIP_DURATION());
+
+        uint256 owed = token.previewDividend(buyer);
+        assertGt(owed, 0, "precondition: the holder has accrued");
+        uint256 balanceBefore = buyer.balance;
+
+        vm.prank(buyer);
+        token.claimDividends();
+
+        assertEq(buyer.balance - balanceBefore, owed, "a non-keeper holder was paid in full");
+    }
 
     ///////////////////////// configuration /////////////////////////
 
