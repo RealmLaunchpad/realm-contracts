@@ -6,7 +6,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmClaims} from "src/interfaces/IRealmClaims.sol";
 import {IRealmTaxableToken} from "src/interfaces/IRealmTaxableToken.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -48,10 +48,10 @@ contract RecordingRouter {
     }
 }
 
-/// @notice Tests for hook-based LP fees (1% charged by LivoSwapHook).
+/// @notice Tests for hook-based LP fees (1% charged by RealmSwapHook).
 /// @dev    All these tests run with marketcap below tier 1 (30 ETH), so the active split is
 ///         tier 0: 40% treasury / 60% creator.
-contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
+contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     /// @dev Tier-0 treasury BPS — keep tests symbolic so a future tier rebalance only touches one place.
     uint16 constant TIER0_TREASURY_BPS = 4000;
     /// @dev Tier-0 creator BPS = 10_000 - TIER0_TREASURY_BPS.
@@ -304,10 +304,10 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         );
     }
 
-    // ─── LivoSwapBuy / LivoSwapSell event tests ────────────────────────
+    // ─── RealmSwapBuy / RealmSwapSell event tests ────────────────────────
 
-    bytes32 constant HOOK_SWAP_BUY_SIG = keccak256("LivoSwapBuy(address,address,uint256,uint256,uint256)");
-    bytes32 constant HOOK_SWAP_SELL_SIG = keccak256("LivoSwapSell(address,address,uint256,uint256,uint256)");
+    bytes32 constant HOOK_SWAP_BUY_SIG = keccak256("RealmSwapBuy(address,address,uint256,uint256,uint256)");
+    bytes32 constant HOOK_SWAP_SELL_SIG = keccak256("RealmSwapSell(address,address,uint256,uint256,uint256)");
 
     function _findLog(Vm.Log[] memory logs, bytes32 sig) internal pure returns (Vm.Log memory) {
         for (uint256 i = 0; i < logs.length; i++) {
@@ -318,8 +318,8 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         revert("event not found");
     }
 
-    /// @notice Buy emits LivoSwapBuy with correct fields.
-    function test_buyEmitsLivoSwapBuy() public createDefaultTaxToken {
+    /// @notice Buy emits RealmSwapBuy with correct fields.
+    function test_buyEmitsRealmSwapBuy() public createDefaultTaxToken {
         _graduateToken();
 
         uint256 buyAmount = 1 ether;
@@ -339,8 +339,8 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         assertEq(ethFees, buyAmount / 100, "ethFees should be 1% LP fee");
     }
 
-    /// @notice Sell emits LivoSwapSell with correct fields.
-    function test_sellEmitsLivoSwapSell() public createDefaultTaxToken {
+    /// @notice Sell emits RealmSwapSell with correct fields.
+    function test_sellEmitsRealmSwapSell() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
@@ -493,7 +493,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         // Sell tax + LP fee are active here, so gross strictly exceeds net: the assertion below can
         // only hold for the full gross, distinguishing the fix from the old net-of-fee behavior.
         assertGt(ethFees, 0, "sell fee must be non-zero for this regression to be meaningful");
-        assertEq(routedEth, ethOut, "sell must forward gross pool ETH (LivoSwapSell.ethOut) as the marketcap basis");
+        assertEq(routedEth, ethOut, "sell must forward gross pool ETH (RealmSwapSell.ethOut) as the marketcap basis");
         // The router receives exactly the LP fee as ETH; the sell tax bypasses it straight to accrueFees.
         assertApproxEqAbs(
             routedValue, (ethOut * LP_FEE_BPS) / 10_000, 2, "router must receive exactly the LP fee as msg.value"
@@ -543,7 +543,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
     /// @notice On an exact-output buy with only the LP fee active, the hook must charge
     ///         `feeBps%` of the swapper's TOTAL ETH out (pool input + fee), matching the
-    ///         exact-input convention. The `LivoSwapBuy.ethIn` field carries that total.
+    ///         exact-input convention. The `RealmSwapBuy.ethIn` field carries that total.
     function test_exactOutputBuy_chargesCanonicalRate_lpFeeOnly() public createDefaultTaxToken {
         _graduateToken();
         // Skip past the tax window so only the 1% LP fee applies.

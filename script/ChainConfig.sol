@@ -80,8 +80,9 @@ library ChainConfig {
         require(i.treasury != address(0), "REALM_TREASURY missing");
     }
 
-    /// @notice The `LivoSwapHook` for the active chain. Inherited from the Livo deployment (Uniswap has
-    ///         whitelisted it), so it is a manifest read, not something a fresh deploy produces.
+    /// @notice The V4 swap hook for the active chain (`RealmSwapHook` or `RealmHook` — whichever Uniswap
+    ///         whitelisted). Deployed separately by `DeployRealmSwapHook`, since its address must be
+    ///         mined for the permission flags, so this is a manifest read.
     function swapHook() internal view returns (address hook) {
         if (isSepolia()) hook = DeploymentsEthereumSepolia.SWAP_HOOK;
         else if (isRobinhood()) hook = DeploymentsRobinhoodMainnet.SWAP_HOOK;
@@ -89,9 +90,9 @@ library ChainConfig {
         require(hook != address(0), "manifest: SWAP_HOOK missing");
     }
 
-    /// @notice The LP fee router proxy `SWAP_HOOK` forwards LP fees to. Inherited alongside the hook —
-    ///         the hook holds it as an immutable, so it cannot be repointed; Realm's router policy ships
-    ///         by upgrading this proxy's implementation.
+    /// @notice The LP fee router proxy `SWAP_HOOK` forwards LP fees to. Deployed by `DeployRealmPrereqs`
+    ///         BEFORE the hook, which holds it as an immutable; router policy ships by upgrading this
+    ///         proxy's implementation.
     function lpFeeRouter() internal view returns (address router) {
         if (isSepolia()) router = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
         else if (isRobinhood()) router = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;

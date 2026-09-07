@@ -38,7 +38,7 @@ abstract contract RealmUniv4BuyBacks {
     /// @dev Buys this token with `ethIn` native ETH on its canonical graduated pool
     ///      (`UniswapV4PoolConstants.realmPoolKey` — the same key the graduator initialized), requiring at
     ///      least `minTokensOut`. Tokens are TAKEn to this contract.
-    /// @dev The swap routes through `LivoSwapHook`, which charges the usual LP fee (and, inside the tax
+    /// @dev The swap routes through `RealmSwapHook`, which charges the usual LP fee (and, inside the tax
     ///      window, tax). Callers must guard against reentrancy from those hooks themselves.
     /// @dev A LOW-LEVEL call, on purpose, so a router revert becomes `false` here instead of taking down
     ///      the caller. The dividend freeze needs exactly that: it reads "no tokens bought" as "the

@@ -719,7 +719,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         );
     }
 
-    /// @dev The buy-back is an ordinary pool swap, so `LivoSwapHook` emits a `LivoSwapBuy` crediting
+    /// @dev The buy-back is an ordinary pool swap, so `RealmSwapHook` emits a `RealmSwapBuy` crediting
     ///      `tx.origin` — the keeper. `DividendBuyBackInitiated` must land BEFORE it so an indexer can
     ///      classify that buy as protocol-internal as it arrives, rather than as a trade by the keeper.
     function test_selfTokenBuyBack_isFlaggedBeforeTheSwap() public {
@@ -731,7 +731,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 marker = keccak256("DividendBuyBackInitiated(uint256)");
-        bytes32 swapBuy = keccak256("LivoSwapBuy(address,address,uint256,uint256,uint256)");
+        bytes32 swapBuy = keccak256("RealmSwapBuy(address,address,uint256,uint256,uint256)");
         uint256 markerAt = type(uint256).max;
         uint256 swapAt = type(uint256).max;
         for (uint256 i; i < logs.length; ++i) {

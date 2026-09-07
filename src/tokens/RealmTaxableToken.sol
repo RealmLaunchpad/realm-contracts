@@ -503,11 +503,11 @@ abstract contract RealmTaxableToken is
         return IRealmToken.LaunchpadFees({lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: taxBps});
     }
 
-    /// @notice Returns the effective tax configuration for the PREVIOUSLY-deployed `LivoSwapHook` (and
+    /// @notice Returns the effective tax configuration for the PREVIOUSLY-deployed `RealmSwapHook` (and
     ///         off-chain readers). Reports the CURRENT effective rates — `max(decay, static)` per direction,
     ///         which change every second while the decay window is open — so that hook, which re-reads this
     ///         on every swap, applies the right (possibly decaying) rate.
-    /// @dev LEGACY, kept for backwards compatibility — do not remove. The CURRENT `LivoSwapHook` reads
+    /// @dev LEGACY, kept for backwards compatibility — do not remove. The CURRENT `RealmSwapHook` reads
     ///      `getSwapFees(isBuy)` below instead. This stays live for two readers that cannot be migrated:
     ///      off-chain integrators, and the older hook still serving every token already graduated onto it
     ///      (dropping this would break their swaps). That older hook applies the tax expiry itself, hence
@@ -549,7 +549,7 @@ abstract contract RealmTaxableToken is
         });
     }
 
-    /// @notice Returns the fees `LivoSwapHook` charges on a V4 swap in direction `isBuy` right now (see
+    /// @notice Returns the fees `RealmSwapHook` charges on a V4 swap in direction `isBuy` right now (see
     ///         `IRealmToken`): the always-on post-graduation LP fee, plus the CURRENT effective tax —
     ///         `max(decay, static)` for that direction, which changes every second while the decay window
     ///         is open — so the hook, which re-reads this on every swap, applies the right (possibly

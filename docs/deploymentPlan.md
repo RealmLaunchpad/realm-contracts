@@ -1,8 +1,8 @@
 # Deployment plan
 
 Realm deploys on **Sepolia** (11155111) and **Robinhood Chain mainnet** (4663). Every manifest slot is
-`address(0)` on both except `SWAP_HOOK`, which is inherited from the Livo deployment because Uniswap has
-already whitelisted that hook.
+`address(0)` on both — Realm now deploys its own swap hook and LP fee router too, so nothing is inherited
+from the Livo deployment.
 
 ## What gets deployed
 
@@ -11,7 +11,7 @@ already whitelisted that hook.
 | **Phase 0 — compile-time constants** ||
 | 1 | `RealmKeepersRegistry` | plain, owner = treasury -> `DeploymentAddresses.REALM_KEEPERS_REGISTRY` |
 | 2 | `RealmDividendSwapRegistry` | impl + UUPS proxy -> `DeploymentAddresses.DIVIDEND_SWAP_REGISTRY` (the PROXY) |
-| 3 | `SwapLpFeeRouter` | **implementation only** — upgrade target for the inherited `LP_FEE_ROUTER` proxy |
+| 3 | `SwapLpFeeRouter` | impl + UUPS proxy -> `LP_FEE_ROUTER_IMPL` / `LP_FEE_ROUTER`. Must precede the hook, which holds the proxy as an immutable |
 | **Phase 1 — the stack** ||
 | 4 | `RealmMasterFeeHandler` | |
 | 5 | `RealmLaunchpad` | owner = broadcaster, treasury from `DeploymentAddresses` |
@@ -29,7 +29,7 @@ already whitelisted that hook.
 | 17 | `RealmFactoryUniV2Unified` | impl + UUPS proxy, whitelisted on the launchpad by the script |
 | 18 | `RealmFactoryUniV4Unified` | impl + UUPS proxy, whitelisted on the launchpad by the script |
 
-Not deployed: `LivoSwapHook` (inherited), and the dividend-logic extensions (self-deployed by the
+Not deployed: `RealmSwapHook` (inherited), and the dividend-logic extensions (self-deployed by the
 taxable token constructors).
 
 ## Sequence
@@ -63,32 +63,32 @@ FACTORY_ADDRESS=<factoryV4 proxy> forge script CreateV4Token --rpc-url sepolia -
 Verification on Robinhood uses Blockscout, not Etherscan — the `*-robinhood` recipes do not pass
 `--verify`; verify from the CLI with `--verifier blockscout --verifier-url <explorer>/api/`.
 
-## The inherited hook and the LP fee router
+## The swap hook and the LP fee router
 
-`LivoSwapHook.FEE_ROUTER` is an **immutable** and Realm reuses the already-whitelisted hook, so the
-router address is fixed. Both are inherited from the Livo deployment and recorded in the manifests:
+Realm deploys its **own** hook rather than reusing the Livo one. The Livo hook's `TREASURY` and
+`FEE_ROUTER` are `immutable` and point at Livo-controlled addresses, so a router outage would send LP
+fees to an address Realm does not control, and the router proxy is owned by the retired `livo.dev` key.
+Neither is fixable without a new hook — hence the redeploy, which costs a fresh Uniswap whitelisting.
 
-| Chain | `SWAP_HOOK` | `LP_FEE_ROUTER` (proxy) |
+Order matters: `DeployRealmPrereqs` deploys the `SwapLpFeeRouter` proxy first, because the hook takes it
+as a constructor immutable. Later router policy changes ship as an `upgradeToAndCall` on that proxy,
+whose owner is now the `realm.dev` deployer.
+
+**Two hook variants are deployed, and both are submitted to Uniswap for whitelisting:**
+
+| Contract | Script / recipe | Difference |
 |---|---|---|
-| Sepolia | `0x681F2EEf3F43CfC6Eea7BFdAa801135E04ff00cC` | `0x0cEC114e1b8712EBd9d67a773381410F0F78985A` |
-| Robinhood mainnet | `0xdB1902Bc975992828616b0224D9C5Ff907E9c0Cc` | `0x3175bB69cfeE26FC90ea0A33E45BbDe466053f43` |
+| `RealmSwapHook` | `DeployRealmSwapHook` / `just deploy-swap-hook-<chain>` | Logic-for-logic the already-whitelisted hook — the conservative candidate |
+| `RealmHook` | `DeployRealmHook` / `just deploy-realm-hook-<chain>` | Same, plus a `RealmPoolState(token, sqrtPriceX96, liquidity)` log per swap |
 
-Realm's router policy therefore ships as an **upgrade of that proxy**, not a new deployment — which is
-why `DeployRealmPrereqs` deploys the `SwapLpFeeRouter` implementation and no proxy. Both proxies are
-owned by the old `livo.dev` key (`0xBa489180Ea6EEB25cA65f123a46F3115F388f181`), so that key must sign:
+`RealmPoolState` carries the only two fields the indexer reads from the singleton
+`UniswapV4PoolManager.Swap` event, at the same log position relative to the hook's own events. On a
+`RealmHook` pool the indexer can therefore drop that subscription entirely, instead of filtering every
+V4 swap on the chain to find the ~0.4% that are Realm's. See §6.0 of `docs/events-per-entry-point.md`.
 
-```bash
-cast send <LP_FEE_ROUTER> 'upgradeToAndCall(address,bytes)' <SwapLpFeeRouter impl> 0x \
-    --rpc-url <chain> --account <old livo.dev>
-```
-
-Then set `LP_FEE_ROUTER_IMPL` in the manifest and `just export-deployments`.
-
-⚠️ `LivoSwapHook.TREASURY` is also immutable and cannot be fixed by the upgrade. It is the old Livo
-treasury on both chains (Sepolia `0xBa4891…f181`, Robinhood `0x2F56CB…329D`). It is only used on the
-**router-failure fallback path**, so as long as the router works no fee reaches it — but a router
-outage sends LP fees to an address Realm does not control. Replacing the hook is the only fix, and
-that costs the Uniswap whitelisting.
+Both hook addresses must be **mined**: a V4 hook advertises its callbacks in the low 14 bits of its own
+address (mask `0xCC` here), so the scripts brute-force a CREATE2 salt via `HookMiner.find`. Paste
+whichever variant Uniswap approves into the manifest's `SWAP_HOOK`, then `just export-deployments`.
 
 ## Upgrades
 

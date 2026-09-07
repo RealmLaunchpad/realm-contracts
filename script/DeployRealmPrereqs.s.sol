@@ -18,19 +18,18 @@ import {
 ///         addresses are baked into other contracts' bytecode rather than passed at runtime:
 ///           1. `RealmKeepersRegistry`         -> `DeploymentAddresses.REALM_KEEPERS_REGISTRY`
 ///           2. `RealmDividendSwapRegistry`    -> `DeploymentAddresses.DIVIDEND_SWAP_REGISTRY` (PROXY)
-///           3. `SwapLpFeeRouter` (IMPLEMENTATION ONLY) -> upgrade target for the inherited router proxy
+///           3. `SwapLpFeeRouter` impl + UUPS proxy -> `LP_FEE_ROUTER_IMPL` / `LP_FEE_ROUTER`
 ///
 ///         (1) and (2) are read by the taxable token implementations, which are non-upgradeable clone
 ///         masters: an impl compiled against the placeholder fails closed FOREVER — every
 ///         `processDividends` / `processBurn` / `processLiquidity` reverts, and third-asset dividend
 ///         tokens cannot be created. So: run this, paste, rebuild, and only then run `DeployRealmStack`.
 ///
-///         (3) deploys NO proxy on purpose. `LivoSwapHook.FEE_ROUTER` is an immutable, and Realm reuses
-///         the already-whitelisted hook rather than redeploying it, so the router address is fixed at
-///         the inherited proxy (`LP_FEE_ROUTER` in the manifest). A fresh proxy would receive nothing.
-///         The way to ship Realm's router policy is to `upgradeToAndCall` that proxy onto the
-///         implementation deployed here — the script prints the exact command. The proxy is owned by
-///         the old `livo.dev` key, so that key has to sign the upgrade.
+///         (3) is not a compile-time constant but must exist before the hook: `RealmSwapHook.FEE_ROUTER`
+///         is an immutable, so the router proxy has to be deployed and its address passed at hook
+///         construction. Realm deploys its own proxy (it no longer inherits Livo's, which is owned by
+///         the old `livo.dev` key and pinned to the Livo treasury). Later router policy changes ship by
+///         `upgradeToAndCall`ing this proxy, whose owner is the `realm.dev` deployer.
 ///
 /// @dev    Run: just chain-<sepolia|robinhood> && forge script DeployRealmPrereqs \
 ///                  --rpc-url <sepolia|robinhood-mainnet> --account realm.dev --slow --broadcast --verify
@@ -55,8 +54,10 @@ contract DeployRealmPrereqs is Script {
             new ERC1967Proxy(dividendImpl, abi.encodeCall(RealmDividendSwapRegistry.initialize, (treasury, threshold)))
         );
 
-        // Implementation only — see (3) in the contract docstring.
+        // The hook takes this proxy as an immutable, so it must exist before `DeployRealmSwapHook`.
+        // `initialize()` runs inside the proxy constructor so ownership cannot be front-run.
         address routerImpl = address(new SwapLpFeeRouter(treasury, _lpFeeRouterConfig()));
+        address routerProxy = address(new ERC1967Proxy(routerImpl, abi.encodeCall(SwapLpFeeRouter.initialize, ())));
 
         vm.stopBroadcast();
 
@@ -65,22 +66,16 @@ contract DeployRealmPrereqs is Script {
         console.log("  DIVIDEND_SWAP_REGISTRY  =", dividendProxy);
         console.log("");
         console.log("=== Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
+        console.log("  LP_FEE_ROUTER           =", routerProxy);
         console.log("  LP_FEE_ROUTER_IMPL      =", routerImpl);
         console.log("  (RealmDividendSwapRegistry impl, not in the manifest:", dividendImpl, ")");
         console.log("");
-        console.log("=== Point the inherited router proxy at the new implementation ===");
-        console.log("  The proxy below is what SWAP_HOOK forwards LP fees to; it is owned by the old");
-        console.log("  livo.dev key, which must sign this:");
-        console.log("  cast send %s \\", ChainConfig.lpFeeRouter());
-        console.log(
-            "    'upgradeToAndCall(address,bytes)' %s 0x --rpc-url <chain> --account <old livo.dev>", routerImpl
-        );
-        console.log("");
         console.log("Next:");
         console.log("  1. Paste the two DeploymentAddresses constants, then `forge build` (bytecode changes).");
-        console.log("  2. `just export-deployments`.");
-        console.log("  3. forge script DeployRealmStack ...");
-        console.log("  4. Appoint admins/keepers: setAdmin + setKeeper, from the treasury account.");
+        console.log("  2. Paste LP_FEE_ROUTER into the manifest, then `just export-deployments`.");
+        console.log("  3. forge script DeployRealmSwapHook ...  (needs LP_FEE_ROUTER)");
+        console.log("  4. forge script DeployRealmStack ...");
+        console.log("  5. Appoint admins/keepers: setAdmin + setKeeper, from the treasury account.");
     }
 
     /// @dev Depth an asset's V2 pair must hold to be an eligible dividend payout asset, in native

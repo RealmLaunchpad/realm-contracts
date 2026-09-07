@@ -9,7 +9,7 @@ import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 
 /// @title SwapLpFeeRouter
-/// @notice UUPS-upgradeable router that splits LP fees collected by `LivoSwapHook` between the
+/// @notice UUPS-upgradeable router that splits LP fees collected by `RealmSwapHook` between the
 ///         protocol treasury, the per-token creator share, and (future) a liquidity-reinvestment
 ///         slice, using a marketcap-tiered split.
 /// @dev    The implementation contract is intentionally stateless beyond standard UUPS storage

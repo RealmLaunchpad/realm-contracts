@@ -8,12 +8,12 @@ import {IRealmTaxableToken} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
-/// @notice Comprehensive tests for RealmTaxableTokenUniV4 and LivoTaxSwapHook functionality
+/// @notice Comprehensive tests for RealmTaxableTokenUniV4 and RealmSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_deployTaxTokenWithTooHighSellTaxes() public {
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));

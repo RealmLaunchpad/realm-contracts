@@ -6,7 +6,7 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -20,7 +20,7 @@ import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 
-/// @notice Base test class for RealmTaxableTokenUniV4 with LivoTaxSwapHook functionality
+/// @notice Base test class for RealmTaxableTokenUniV4 with RealmSwapHook functionality
 /// @dev Extends BaseUniswapV4GraduationTests and sets up tax-specific components
 contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     // Tax system components
@@ -132,7 +132,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     }
 
     /// @notice Override _swap to use the tax hook address in the pool key
-    /// @dev Both taxable and non-tax tokens use the same LivoSwapHook
+    /// @dev Both taxable and non-tax tokens use the same RealmSwapHook
     function _swap(
         address caller,
         address token,

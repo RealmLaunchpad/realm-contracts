@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 /// @title ISwapLpFeeRouter
-/// @notice Receives LP fee deposits from `LivoSwapHook` and splits them between the protocol
+/// @notice Receives LP fee deposits from `RealmSwapHook` and splits them between the protocol
 ///         treasury, the token's creator (via the master fee handler), and a future
 ///         liquidity-reinvestment slice, using a marketcap-tiered split.
 /// @dev This interface is intentionally minimal so the router implementation can be upgraded

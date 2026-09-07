@@ -31,7 +31,7 @@ import {DeploymentAddresses as TaxV2Build} from "src/tokens/RealmTaxableTokenUni
 import {DeploymentAddresses as TaxV4Build} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
 /// @title Phase 1 — deploy the whole Realm stack on a fresh chain, in one broadcast
-/// @notice Everything Realm owns except the phase-0 prerequisites and the `LivoSwapHook`:
+/// @notice Everything Realm owns except the phase-0 prerequisites and the `RealmSwapHook`:
 ///
 ///           core      `RealmMasterFeeHandler`, `RealmLaunchpad`, `RealmQuoter`,
 ///                     `RealmUniV4LiquidityAdder`

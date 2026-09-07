@@ -13,7 +13,7 @@ import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 /// @title Launchpad pre-graduation fee routing — LP-fee split + creator tax
 /// @notice The launchpad reads `getLaunchpadFees` per trade. The LP fee is split treasury/creator by
 ///         `treasuryShareBps`; the tax goes 100% to the creator. Events (`LpFeesAccrued`,
-///         `CreatorTaxesAccrued`) mirror the post-graduation `LivoSwapHook` for accounting parity.
+///         `CreatorTaxesAccrued`) mirror the post-graduation `RealmSwapHook` for accounting parity.
 contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
     event LpFeesAccrued(address indexed token, uint256 creatorShare, uint256 treasuryShare);
     event CreatorTaxesAccrued(address indexed token, uint256 amount);

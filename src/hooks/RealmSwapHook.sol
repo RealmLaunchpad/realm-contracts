@@ -18,7 +18,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 
-/// @title LivoSwapHook V2
+/// @title RealmSwapHook V2
 /// @notice Uniswap V4 hook that collects LP fees and time-limited buy/sell taxes on swaps of
 ///         tokens graduated via RealmGraduatorUniswapV4.
 /// @dev Singleton, ownerless hook shared by every taxable token. Per-token LP-fee + tax rates come
@@ -41,7 +41,7 @@ import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 ///                           still receives the exact ETH they requested.
 ///      - exact-output buy:  ETH is the input, size unknown until the swap → settled in `afterSwap`.
 ///      - exact-input sell:  ETH is the output, size unknown until the swap → settled in `afterSwap`.
-contract LivoSwapHook is BaseHook {
+contract RealmSwapHook is BaseHook {
     uint256 public constant VERSION = 2;
 
     /// @notice LP fee router that splits forwarded fees between treasury and creator.
@@ -103,11 +103,11 @@ contract LivoSwapHook is BaseHook {
     ///      which is how indexers detect the fallback.
     event LpFeesForwarded(address indexed token, uint256 amount);
     /// @notice Emitted on every buy for off-chain indexing.
-    event LivoSwapBuy(
+    event RealmSwapBuy(
         address indexed token, address indexed txOrigin, uint256 ethIn, uint256 tokensOut, uint256 ethFees
     );
     /// @notice Emitted on every sell for off-chain indexing.
-    event LivoSwapSell(
+    event RealmSwapSell(
         address indexed token, address indexed txOrigin, uint256 tokensIn, uint256 ethOut, uint256 ethFees
     );
 
@@ -201,6 +201,7 @@ contract LivoSwapHook is BaseHook {
     ///         buy, exact-input sell).
     function _afterSwap(address, PoolKey calldata key, SwapParams calldata params, BalanceDelta delta, bytes calldata)
         internal
+        virtual
         override
         returns (bytes4, int128)
     {
@@ -234,7 +235,7 @@ contract LivoSwapHook is BaseHook {
 
         // `ethIn - totalFee` is the ETH that actually crossed into the pool against `tokensOut`.
         _route(token, lpFee, tax, ethIn - totalFee, tokensOut);
-        emit LivoSwapBuy(token, tx.origin, ethIn, tokensOut, totalFee);
+        emit RealmSwapBuy(token, tx.origin, ethIn, tokensOut, totalFee);
         return 0;
     }
 
@@ -265,7 +266,7 @@ contract LivoSwapHook is BaseHook {
 
         // Report the swapper's total ETH outflow (pool input + hook fee) so the event matches
         // exact-input's `ethIn` semantics.
-        emit LivoSwapBuy(token, tx.origin, ethInPool + totalFee, tokensOut, totalFee);
+        emit RealmSwapBuy(token, tx.origin, ethInPool + totalFee, tokensOut, totalFee);
         return _toInt128(totalFee);
     }
 
@@ -285,7 +286,7 @@ contract LivoSwapHook is BaseHook {
         // `ethGross` (the pool-side ETH the buy legs also forward) so the router reads the same avg
         // price a buy at this pool state would, not an under-stated net-of-fee one.
         _route(token, lpFee, tax, ethGross, tokensIn);
-        emit LivoSwapSell(token, tx.origin, tokensIn, ethGross, totalFee);
+        emit RealmSwapSell(token, tx.origin, tokensIn, ethGross, totalFee);
         return _toInt128(totalFee);
     }
 
@@ -295,7 +296,7 @@ contract LivoSwapHook is BaseHook {
     ///
     ///      `ethGross = -delta.amount0()` is the full ETH the pool paid out (`request + totalFee`);
     ///      it carries the same "full pool ETH" meaning as the exact-input sell's `ethGross`, so the
-    ///      router and the `LivoSwapSell.ethOut` field stay consistent across both sell legs.
+    ///      router and the `RealmSwapSell.ethOut` field stay consistent across both sell legs.
     function _settleSellExactOutput(address token, BalanceDelta delta) private returns (int128) {
         uint256 ethGross = _abs(delta.amount0());
         uint256 tokensIn = _abs(delta.amount1());
@@ -303,7 +304,7 @@ contract LivoSwapHook is BaseHook {
         uint256 tax = _cachedTax;
 
         _route(token, lpFee, tax, ethGross, tokensIn);
-        emit LivoSwapSell(token, tx.origin, tokensIn, ethGross, lpFee + tax);
+        emit RealmSwapSell(token, tx.origin, tokensIn, ethGross, lpFee + tax);
         return 0;
     }
 

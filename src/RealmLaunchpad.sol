@@ -64,11 +64,11 @@ contract RealmLaunchpad is IRealmLaunchpad2, Ownable2Step, ReentrancyGuardTransi
         address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 ethFee
     );
     /// @notice LP/trading fee split for a pre-graduation trade — creator share routed via the token's
-    ///         `accrueFees`, treasury share pushed. Mirrors `LivoSwapHook.LpFeesAccrued` so pre- and
+    ///         `accrueFees`, treasury share pushed. Mirrors `RealmSwapHook.LpFeesAccrued` so pre- and
     ///         post-graduation fees aggregate identically.
     event LpFeesAccrued(address indexed token, uint256 creatorShare, uint256 treasuryShare);
     /// @notice Creator tax taken on a pre-graduation trade (100% to the creator via `accrueFees`).
-    ///         Mirrors `LivoSwapHook.CreatorTaxesAccrued`. Emitted only when the tax is non-zero.
+    ///         Mirrors `RealmSwapHook.CreatorTaxesAccrued`. Emitted only when the tax is non-zero.
     event CreatorTaxesAccrued(address indexed token, uint256 amount);
     event TreasuryAddressUpdated(address newTreasury);
     event CommunityTakeOver(address indexed token, address newOwner);
@@ -154,7 +154,7 @@ contract RealmLaunchpad is IRealmLaunchpad2, Ownable2Step, ReentrancyGuardTransi
         _settleFee(token, lpFee, ethFee - lpFee, treasuryShareBps);
 
         // Fee breakdown (lpFee/tax/split) is intentionally NOT included here: it is emitted in the same tx
-        // via LpFeesAccrued/CreatorTaxesAccrued, which mirror LivoSwapHook so the indexer aggregates pre- and
+        // via LpFeesAccrued/CreatorTaxesAccrued, which mirror RealmSwapHook so the indexer aggregates pre- and
         // post-graduation fees through one code path.
         emit RealmTokenBuy(token, msg.sender, msg.value, tokensToReceive, ethFee);
 
@@ -217,7 +217,7 @@ contract RealmLaunchpad is IRealmLaunchpad2, Ownable2Step, ReentrancyGuardTransi
         _settleFee(token, lpFee, ethFee - lpFee, treasuryShareBps);
 
         // Emitted after the fee events (LpFeesAccrued/CreatorTaxesAccrued in _settleFee) so the
-        // pre-graduation event order matches buys and the post-graduation LivoSwapHook: fee events
+        // pre-graduation event order matches buys and the post-graduation RealmSwapHook: fee events
         // first, trade event last. Fee breakdown is intentionally NOT included here (see buy).
         emit RealmTokenSell(token, msg.sender, tokenAmount, ethForSeller, ethFee);
 
@@ -395,7 +395,7 @@ contract RealmLaunchpad is IRealmLaunchpad2, Ownable2Step, ReentrancyGuardTransi
         return success;
     }
 
-    /// @notice Routes a trading fee for accounting parity with the post-graduation `LivoSwapHook`:
+    /// @notice Routes a trading fee for accounting parity with the post-graduation `RealmSwapHook`:
     ///         the LP fee is split between treasury (pushed) and creator, while the tax goes entirely
     ///         to the creator. Emits `LpFeesAccrued` (and `CreatorTaxesAccrued` when the tax is non-zero).
     /// @dev Must be called after all state changes (CEI). Trade entry points are also nonReentrant,

@@ -16,7 +16,7 @@ Pre-graduation trading fees are no longer global launchpad state. Each token car
 (trading) fee — split treasury/creator by `treasuryShareBps` — plus, on taxable variants, a creator
 tax (100% to the creator), read per-trade by the launchpad via `IRealmToken.getLaunchpadFees` and
 reported through `RealmLaunchpad.LpFeesAccrued` / `RealmLaunchpad.CreatorTaxesAccrued` (mirroring the
-post-graduation `LivoSwapHook` for accounting parity). The launchpad's global `setTradingFees` /
+post-graduation `RealmSwapHook` for accounting parity). The launchpad's global `setTradingFees` /
 `TradingFeesUpdated` are removed; the per-token LP-fee config surfaces as
 `RealmToken.LaunchpadFeesInitialized` (at creation). The LP fee is immutable after launch (no setter).
 The creator tax is configured on taxable variants and surfaces via `RealmTaxableTokenInitialized` /
@@ -36,7 +36,7 @@ Unified factories register fee config automatically during token creation:
 - `RealmToken` / `RealmTaxableTokenUniV4` / `RealmTaxableTokenUniV2` / sniper-protected variants
 - `RealmGraduatorUniswapV2` / `RealmGraduatorUniswapV4` — the ARC variant `RealmGraduatorUniswapV2Arc` shares `RealmGraduatorUniswapV2Base` and emits the identical events in the identical order; every `RealmGraduatorUniswapV2` mention below applies to it unchanged.
 - `RealmMasterFeeHandler`
-- `LivoSwapHook`
+- `RealmSwapHook`
 - `RealmDividendSwapRegistry` — one shared upgradeable proxy per chain, not a per-token contract
 
 External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this file focuses on Realm-owned events and notes the main external-operation points.
@@ -116,7 +116,7 @@ The pre-graduation fee policy is read per-trade from the token (`IRealmToken.get
 capped by the launchpad. The LP (trading) fee is split treasury/creator by `treasuryShareBps`; the
 optional tax goes 100% to the creator. The treasury share is pushed; the creator total (LP creator
 share + tax) is routed through `RealmToken.accrueFees` into `RealmMasterFeeHandler`. The event
-vocabulary mirrors the post-graduation `LivoSwapHook` for accounting parity.
+vocabulary mirrors the post-graduation `RealmSwapHook` for accounting parity.
 
 When the buy does not graduate the token:
 
@@ -186,7 +186,7 @@ When a token is not graduated yet, sells happen against launchpad reserves. As w
 policy is read per-trade from the token: the LP fee is split treasury/creator, the tax goes 100% to
 the creator. The treasury share is pushed and the creator total is routed through `accrueFees`.
 
-The event order matches buys (§2) and the post-graduation `LivoSwapHook` (§6): the fee events come
+The event order matches buys (§2) and the post-graduation `RealmSwapHook` (§6): the fee events come
 first and the trade event closes the sequence.
 
 Realm event order:
@@ -205,13 +205,31 @@ Realm event order:
 
 ## 6. V4 post-graduation swaps
 
-V4 swaps are mediated by `LivoSwapHook`. Swaps before graduation revert with `NoSwapsBeforeGraduation` and emit no Realm swap/fee events.
+V4 swaps are mediated by the swap hook. Swaps before graduation revert with `NoSwapsBeforeGraduation` and emit no Realm swap/fee events.
+
+Two hook contracts exist, identical in fee behaviour and each deployed at its own mined address:
+`RealmSwapHook`, and `RealmHook` which additionally emits `RealmPoolState` (§6.0) on every swap. A pool is
+attached to exactly one of them at graduation, so a given token emits one shape or the other, never both.
+Event names below are qualified as `RealmSwapHook.*`; on a `RealmHook` pool the emitter is the `RealmHook`
+address and the signatures are identical (they are inherited).
 
 The hook reads the per-token fees via `RealmToken.getSwapFees(isBuy)` (LP fee + currently-effective tax for
 that direction). The LP fee is forwarded whole to `SwapLpFeeRouter`, which splits it between treasury and
 creator by a marketcap tier; the tax (if any) is forwarded to the token's master fee handler. The LP fee and
 the tax are accrued in **separate** `accrueFees` calls, so the creator can see up to two
 `CreatorFeesDeposited`.
+
+### 6.0 Pool state (`RealmHook` only)
+
+**`RealmHook.RealmPoolState`** (`token, sqrtPriceX96, liquidity`) — the post-swap price and active
+liquidity of the token's pool, emitted once per swap leg as the FIRST hook event, before any fee event and
+before the buy/sell event.
+
+It carries the same two values the singleton `UniswapV4PoolManager.Swap` event reports, at the same log
+position relative to the hook's own events, so an indexer can derive virtual reserves
+(`eth = L * 2**96 / sqrtPriceX96`, `token = L * sqrtPriceX96 / 2**96`) from a Realm-only log instead of
+subscribing to every V4 swap on the chain. `RealmSwapHook` pools do not emit it and still need the
+`PoolManager.Swap` subscription.
 
 ### 6.1 Buy (`ETH -> token`)
 
@@ -220,15 +238,16 @@ routing and all events below are emitted in `afterSwap`.
 
 Realm event order (LP fee `> 0`, buy tax active, router healthy):
 
-1. **`LivoSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
+0. `RealmHook` pools only: **`RealmPoolState`** (`token, sqrtPriceX96, liquidity`) — see §6.0.
+1. **`RealmSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
 2. **`SwapLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
 3. Treasury LP share is sent to the router's treasury via native ETH call (no event).
 4. Creator LP share is routed through `RealmToken.accrueFees()` into `RealmMasterFeeHandler.depositFees(token)`:
    - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare`).
    - Optional **`RealmMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) per successful direct forward.
-5. Optional **`LivoSwapHook.CreatorTaxesAccrued`** (`token, taxAmount`) if buy tax is active and non-zero, then the
+5. Optional **`RealmSwapHook.CreatorTaxesAccrued`** (`token, taxAmount`) if buy tax is active and non-zero, then the
    tax is routed through `RealmToken.accrueFees()` (a second **`CreatorFeesDeposited`** / optional `CreatorClaimed`).
-6. **`LivoSwapHook.LivoSwapBuy`** (`token, txOrigin, ethIn, tokensOut, ethFees`).
+6. **`RealmSwapHook.RealmSwapBuy`** (`token, txOrigin, ethIn, tokensOut, ethFees`).
 
 Router-failure fallback: if `SwapLpFeeRouter.depositLpFees` reverts, step 2 (`LpFeesRouted`) and step 4 are
 absent — the hook instead pushes the **entire** LP fee to the protocol treasury via a native ETH call (no
@@ -241,15 +260,16 @@ the routing and all events below are emitted in `afterSwap`.
 
 Realm event order (LP fee `> 0`, sell tax active, router healthy):
 
-1. **`LivoSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
+0. `RealmHook` pools only: **`RealmPoolState`** (`token, sqrtPriceX96, liquidity`) — see §6.0.
+1. **`RealmSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
 2. **`SwapLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
 3. Treasury LP share is sent to the router's treasury via native ETH call (no event).
 4. Creator LP share is routed through `RealmToken.accrueFees()` into `RealmMasterFeeHandler.depositFees(token)`:
    - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare`).
    - Optional **`RealmMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) per successful direct forward.
-5. Optional **`LivoSwapHook.CreatorTaxesAccrued`** (`token, taxAmount`) if sell tax is active and non-zero, then the
+5. Optional **`RealmSwapHook.CreatorTaxesAccrued`** (`token, taxAmount`) if sell tax is active and non-zero, then the
    tax is routed through `RealmToken.accrueFees()` (a second **`CreatorFeesDeposited`** / optional `CreatorClaimed`).
-6. **`LivoSwapHook.LivoSwapSell`** (`token, txOrigin, tokensIn, ethOut, ethFees`).
+6. **`RealmSwapHook.RealmSwapSell`** (`token, txOrigin, tokensIn, ethOut, ethFees`).
 
 Router-failure fallback: same as §6.1 — `LpFeesRouted` + step 4 absent, full LP fee pushed to treasury.
 
@@ -275,7 +295,7 @@ Indexer-relevant points:
 
 For a V4 token with a burn or liquidity allocation, the swap-time `CreatorTaxesAccrued` → `token.accrueFees` splits the tax on the ETH side: the burn slice is buffered in `burnPendingEth` and the liquidity slice in `liquidityPendingEth` (no event beyond the fund-wallet `CreatorFeesDeposited`), the rest routes to the fund wallets. Permissionless entry points then process each buffer:
 
-- **`processBurn(uint256 minTokensOut)`** — buys back tokens with `burnPendingEth` via the universal router and burns them. Emits, in order: **`RealmTaxableTokenUniV4.BuyBackInitiated`** (`ethIn`) — a precursor marker emitted BEFORE the swap so indexers can classify the following hook `LivoSwapBuy` (which carries the keeper's `tx.origin`) as a protocol buy-back rather than a trade — then the external V4 buy-back swap events (`Swap`, plus the hook's own LP-fee/tax events since the buy-back is an ordinary swap), an ERC20 `Transfer(address(token), address(0), tokensBought)`, then **`RealmTaxableToken.CreatorTaxBurn`** (`ethSpent, tokensBurned`) — the same shared event V2 emits, with a non-zero `ethSpent` here since V4 does buy the tokens back before burning. Reverts `NotAKeeper` unless `msg.sender` is on the `RealmKeepersRegistry` allowlist, `NothingToBurn` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call (remainder stays buffered).
+- **`processBurn(uint256 minTokensOut)`** — buys back tokens with `burnPendingEth` via the universal router and burns them. Emits, in order: **`RealmTaxableTokenUniV4.BuyBackInitiated`** (`ethIn`) — a precursor marker emitted BEFORE the swap so indexers can classify the following hook `RealmSwapBuy` (which carries the keeper's `tx.origin`) as a protocol buy-back rather than a trade — then the external V4 buy-back swap events (`Swap`, plus the hook's own LP-fee/tax events since the buy-back is an ordinary swap), an ERC20 `Transfer(address(token), address(0), tokensBought)`, then **`RealmTaxableToken.CreatorTaxBurn`** (`ethSpent, tokensBurned`) — the same shared event V2 emits, with a non-zero `ethSpent` here since V4 does buy the tokens back before burning. Reverts `NotAKeeper` unless `msg.sender` is on the `RealmKeepersRegistry` allowlist, `NothingToBurn` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call (remainder stays buffered).
 - **`processLiquidity()`** — deposits `liquidityPendingEth` as a single-sided ETH position just below the current price (a bid wall). Takes one of TWO paths, which differ only in their EXTERNAL events; the token's own event is identical either way. Both run through the shared `RealmUniV4LiquidityAdder.addOrTopUpSingleSidedEth`, which is also handed an ERC721 `ApprovalForAll(token, adder, true)` from the token on every call (a no-op after the first). (a) TOP-UP — the token remembers the two walls it most recently used (`getLiquidityWalls()` exposes their NFT ids and lower ticks), and when one of them still sits entirely below the current price and within ~2000 ticks of it, the adder thickens that position: emits `ModifyLiquidity` and settlement `Transfer`s, but NO ERC721 `Transfer` — no new NFT exists. (b) MINT — otherwise a fresh position is minted at the live tick, emitting the external V4 position-mint events (`ModifyLiquidity`, an ERC721 `Transfer(0x0, token, tokenId)`, settlement `Transfer`s). Either path then emits **`RealmTaxableToken.LiquidityAdded`** (`ethIn, tokensAdded, liquidity`) — the shared event; `tokensAdded` is always 0 (ETH-only wall) and `liquidity` is the V4 liquidity units the position GAINED on this call. Indexers that counted one new position per `LiquidityAdded` must key off the ERC721 `Transfer` instead. Reverts `NotAKeeper` unless `msg.sender` is on the `RealmKeepersRegistry` allowlist, `NothingToAdd` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call (remainder stays buffered). Every position the token mints is held by it forever (permanent depth), whether or not it is still one of the two remembered.
 - **`sweepStrayEth()`** — routes the token's native balance beyond everything it owes (`burnPendingEth`, `liquidityPendingEth`, the dividend buffers and undelivered pots) back through the earnings-allocation split (same events as an `accrueFees` split), so stray native becomes token earnings instead of being stuck. Permissionless. Present on BOTH venues — it lives on `RealmTaxableToken` — and it is the only exit for stray native on V2, where `rescueTokens` no longer accepts `address(0)` and the swap-back only routes its own swap proceeds. Pre-graduation it deposits the whole balance to the fund wallets, which is what `rescueTokens(address(0))` used to do.
 
@@ -423,7 +443,7 @@ across several transactions in one block works exactly as before.
    untouched, so an indexer needs only to stop expecting that native to become a distribution. A caller
    whose own `minOut` was simply unreachable gets `DividendConversionFailed` and no sweep.
 2. V4 self-token only, immediately BEFORE its buy-back swap: **`DividendBuyBackInitiated`**
-   (`ethIn`), followed by the pool's own `LivoSwapHook.LivoSwapBuy`. Same contract as
+   (`ethIn`), followed by the pool's own `RealmSwapHook.RealmSwapBuy`. Same contract as
    `BuyBackInitiated`: the precursor must be classified as it arrives, so the keeper's PnL is not
    credited with a bag it never bought.
 3. One **`DividendPaid`** (`holder, asset, amount`) per holder actually paid, in the order the caller

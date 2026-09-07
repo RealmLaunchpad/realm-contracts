@@ -70,14 +70,14 @@ contract RealmToken is ERC20, IRealmToken, Initializable, SniperProtection {
 
     /// @notice Pre-graduation LP/trading fee on buys and sells (bps), read by the launchpad each trade
     ///         and split between treasury and creator. Single rate for both directions, mirroring the
-    ///         post-graduation `LivoSwapHook`. Fixed at launch (no setter — the owner cannot change LP fees).
+    ///         post-graduation `RealmSwapHook`. Fixed at launch (no setter — the owner cannot change LP fees).
     uint16 public lpFeeBps;
 
     /// @notice Share of the LP fee routed to the treasury (bps); the remainder goes to the creator via
     ///         `accrueFees`. Fixed at launch.
     uint16 public treasuryShareBps;
 
-    /// @notice Post-graduation LP fee `LivoSwapHook` charges on every V4 swap (bps), surfaced via
+    /// @notice Post-graduation LP fee `RealmSwapHook` charges on every V4 swap (bps), surfaced via
     ///         `getSwapFees`. 0 for Uniswap V2 (no hook LP fee); 50 or 100 for V4. Distinct from the
     ///         pre-graduation `lpFeeBps` the launchpad charges on the bonding curve. Fixed at launch.
     /// @dev Packs into the `feeHandler` + `launchTimestamp` slot alongside `lpFeeBps`/`treasuryShareBps`.

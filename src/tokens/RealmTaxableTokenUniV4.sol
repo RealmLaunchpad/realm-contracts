@@ -23,7 +23,7 @@ import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/con
 /// @title RealmTaxableTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks.
 /// @dev Extends `RealmTaxableTokenUniV4Base` (tax config + earnings split + the V4 buy-back primitive).
-///      Tax accounting on swaps lives in `LivoSwapHook`; the token exposes the tax config via
+///      Tax accounting on swaps lives in `RealmSwapHook`; the token exposes the tax config via
 ///      `getTaxConfig()`. The earnings-allocation burn bucket is buffered here as ETH
 ///      (`burnPendingEth`) and processed out-of-band by `processBurn`, which buys back and burns tokens.
 /// @dev The out-of-band dividend entry points (`processDividends`, `claimDividends`) are thin
@@ -118,7 +118,7 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     ///         sandwiching manipulator's per-block take is capped; the remainder stays buffered.
     /// @param minTokensOut Slippage floor — the minimum tokens the buy-back must yield, or the swap
     ///        reverts. Callers should set this from the current price; a value of 0 invites sandwiching.
-    /// @dev The buy-back is an ordinary pool swap, so `LivoSwapHook` charges its usual LP fee (and,
+    /// @dev The buy-back is an ordinary pool swap, so `RealmSwapHook` charges its usual LP fee (and,
     ///      inside the launch tax window, tax — a fraction of which loops back into `burnPendingEth`
     ///      for the next call). This is accepted rather than special-casing the audited hook.
     function processBurn(uint256 minTokensOut) external nonReentrant {
@@ -145,7 +145,7 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         uint256 balanceBeforeEth = address(this).balance;
         uint256 reservedBefore = _reservedNative();
         // Precursor marker: must stay BEFORE the swap so indexers can classify the resulting
-        // `LivoSwapHook.LivoSwapBuy` as a protocol buy-back rather than a trade by `tx.origin`.
+        // `RealmSwapHook.RealmSwapBuy` as a protocol buy-back rather than a trade by `tx.origin`.
         emit BuyBackInitiated(ethIn);
         require(_buyBackTokensWithEth(hook, ethIn, minTokensOut), BuyBackFailed());
         uint256 tokensBought = balanceOf(address(this)) - balanceBefore;

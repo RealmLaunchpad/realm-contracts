@@ -122,7 +122,7 @@ struct TaxConfigsWithMultiAllocation {
 /// @dev Extends `IRealmToken`. Variant-specific entry points (e.g. V2's owner-only `swapBack`)
 ///      and variant-specific events (e.g. V2's `CreatorTaxSwapback`) are not surfaced here —
 ///      callers that need them should cast to the concrete contract. On the V4 variant the
-///      equivalent accrual is emitted by `LivoSwapHook` as `CreatorTaxesAccrued(token, amount)`.
+///      equivalent accrual is emitted by `RealmSwapHook` as `CreatorTaxesAccrued(token, amount)`.
 interface IRealmTaxableToken is IRealmToken {
     /// @notice Returns the graduation timestamp for this token (0 before graduation).
     function graduationTimestamp() external view returns (uint40);

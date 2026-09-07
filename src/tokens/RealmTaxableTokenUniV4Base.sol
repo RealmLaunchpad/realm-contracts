@@ -66,13 +66,13 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
 
     // Reentrancy: `processBurn` and `processLiquidity` share the transient `nonReentrant` lock that
     // `RealmTaxableToken` inherits for `sweepStrayEth` (they make external calls that pass through
-    // `LivoSwapHook`/the fee handler and could reenter). The hot-path `accrueFees` deliberately does
+    // `RealmSwapHook`/the fee handler and could reenter). The hot-path `accrueFees` deliberately does
     // NOT take the lock, so fee accrual during a buy-back still works.
 
     //////////////////////// Events & errors //////////////////////
 
     /// @notice Emitted immediately BEFORE `processBurn`'s buy-back swap, as a precursor marker.
-    /// @dev The buy-back is an ordinary pool swap, so `LivoSwapHook` emits a normal `LivoSwapBuy`
+    /// @dev The buy-back is an ordinary pool swap, so `RealmSwapHook` emits a normal `RealmSwapBuy`
     ///      carrying `tx.origin` — the keeper that triggered the call, not a trader. Without a marker an
     ///      indexer credits that keeper with a buy it never made: the tokens go to this contract and are
     ///      burned in the same call. Emitting BEFORE the swap is what makes it usable — the indexer can
@@ -83,7 +83,7 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
 
     /// @notice Emitted immediately BEFORE the buy-back swap that funds a SELF-TOKEN dividend pot. Same
     ///         job as `BuyBackInitiated`, for the same reason: the swap is an ordinary pool swap, so
-    ///         `LivoSwapHook` emits a `LivoSwapBuy` carrying `tx.origin` — the keeper that called
+    ///         `RealmSwapHook` emits a `RealmSwapBuy` carrying `tx.origin` — the keeper that called
     ///         `processDividends` — and without a precursor marker an indexer credits that keeper with a
     ///         buy it never made. Kept as its own event rather than reusing `BuyBackInitiated` so the two
     ///         protocol buy-backs stay distinguishable off-chain (one shrinks supply, one pays holders).

@@ -195,7 +195,7 @@ event SharesUpdated(address[] recipients, uint256[] sharesBps)
 event FeesAccrued(uint256 amount)
 ```
 
-### Hook event (`LivoSwapHook`)
+### Hook event (`RealmSwapHook`)
 
 ```solidity
 event CreatorTaxesAccrued(address indexed token, uint256 amount)

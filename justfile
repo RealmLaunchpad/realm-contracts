@@ -122,8 +122,7 @@ next-salt factory:
 
 ##################### Deployed addresses (sepolia) #######################
 # Realm is a clean start: every slot below is zero until the Realm stack is deployed. Fill each one in
-# from src/config/manifest.ethereum.sepolia.sol after deploying. `hookAddress` is the ONE exception —
-# it is the LivoSwapHook Realm inherits rather than redeploys (Uniswap has already whitelisted it).
+# from src/config/manifest.ethereum.sepolia.sol after deploying.
 launchpad := "0x0000000000000000000000000000000000000000"
 
 bondingCurve := "0x0000000000000000000000000000000000000000"
@@ -137,7 +136,7 @@ factoryTaxToken := "0x0000000000000000000000000000000000000000"
 factorySniperProtected := "0x0000000000000000000000000000000000000000"
 factoryV2SniperProtected := "0x0000000000000000000000000000000000000000"
 factoryTaxTokenSniperProtected := "0x0000000000000000000000000000000000000000"
-hookAddress := "0x681F2EEf3F43CfC6Eea7BFdAa801135E04ff00cC"
+hookAddress := "0x0000000000000000000000000000000000000000"
 
 realmdev := "0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb"
 
@@ -193,15 +192,27 @@ upgrade-factories-robinhood: chain-robinhood
     forge script UpgradeRealmFactories --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
-# Mines a valid hook salt and deploys a NEW LivoSwapHook against the manifest's LP_FEE_ROUTER
-# (override with ROUTER_ADDRESS=<addr> before the manifest is pasted). Only needed if the inherited,
-# Uniswap-whitelisted hook is ever replaced — both manifests already carry a live SWAP_HOOK, and
-# replacing it means re-doing the whitelisting with Uniswap.
+# Mines a valid hook salt (the permission bits live in the hook's own address) and deploys the hook
+# against the manifest's LP_FEE_ROUTER — override with ROUTER_ADDRESS=<addr> before the manifest is
+# pasted. Run DeployRealmPrereqs first: it deploys the router proxy the hook takes as an immutable.
+#
+# Two variants, both deployed and both submitted to Uniswap for whitelisting; whichever is approved goes
+# into the manifest's SWAP_HOOK:
+#   *-swap-hook-*  -> RealmSwapHook: logic-for-logic the already-whitelisted hook.
+#   *-realm-hook-* -> RealmHook: same, plus a RealmPoolState log per swap so the indexer can drop its
+#                     PoolManager.Swap subscription.
 deploy-swap-hook-sepolia:
-    forge script DeployLivoSwapHook --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+    forge script DeployRealmSwapHook --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 deploy-swap-hook-robinhood:
-    forge script DeployLivoSwapHook --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmSwapHook --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
+deploy-realm-hook-sepolia:
+    forge script DeployRealmHook --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+deploy-realm-hook-robinhood:
+    forge script DeployRealmHook --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
 # Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded

@@ -23,22 +23,20 @@ library DeploymentsRobinhoodMainnet {
     address internal constant UNIV4_LIQUIDITY_ADDER = address(0);
     address internal constant MASTER_FEE_HANDLER = address(0);
 
-    /// @notice Marketcap-tiered `LivoSwapHook`: fee-agnostic, reads each token's `swapLpFeeBps` via
-    ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`.
-    /// @dev The ONE address inherited from the Livo deployment — Realm reuses this hook instead of
-    ///      redeploying it, since Uniswap has already whitelisted it. Every other entry in this manifest
-    ///      is `address(0)` until Realm deploys its own stack; the V4 graduators must be pointed at this
-    ///      address when they are.
-    address internal constant SWAP_HOOK = 0xdB1902Bc975992828616b0224D9C5Ff907E9c0Cc;
+    /// @notice Marketcap-tiered swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
+    ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. The V4 graduators point here.
+    /// @dev Realm deploys its OWN hook rather than reusing the Livo one, whose `TREASURY` and
+    ///      `FEE_ROUTER` immutables are pinned to Livo addresses and cannot be repointed. Deploy with
+    ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
+    ///      variant Uniswap whitelists. `address(0)` until then.
+    address internal constant SWAP_HOOK = address(0);
     /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees treasury/creator
     ///         by marketcap tier.
-    /// @dev INHERITED from the Livo deployment, like `SWAP_HOOK` — the hook holds it as an immutable,
-    ///      so it cannot be repointed. Realm's router policy ships by upgrading this proxy onto a
-    ///      `SwapLpFeeRouter` implementation (`DeployRealmPrereqs`); the proxy is owned by the old
-    ///      `livo.dev` key, which must sign that upgrade.
-    address internal constant LP_FEE_ROUTER = 0x3175bB69cfeE26FC90ea0A33E45BbDe466053f43;
-    /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. `address(0)` until Realm
-    ///         deploys its own and upgrades the proxy; the retired Livo impl is live until then.
+    /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook
+    ///      (`DeployRealmPrereqs`). Router policy changes ship by `upgradeToAndCall`ing this proxy.
+    address internal constant LP_FEE_ROUTER = address(0);
+    /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
+    ///         upgrade; tracked for verification and audit trails only.
     address internal constant LP_FEE_ROUTER_IMPL = address(0);
     address internal constant QUOTER = address(0);
 

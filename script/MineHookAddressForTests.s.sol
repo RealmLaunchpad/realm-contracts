@@ -6,7 +6,7 @@ import {console} from "lib/forge-std/src/console.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {DeploymentAddressesEthereumSepolia} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Simple script to mine a hook address for testing purposes
@@ -29,7 +29,7 @@ contract MineHookAddressForTests is Script {
         uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_SWAP_FLAG);
 
         bytes memory constructorArgs = abi.encode(IPoolManager(poolManager));
-        bytes memory creationCode = type(LivoSwapHook).creationCode;
+        bytes memory creationCode = type(RealmSwapHook).creationCode;
 
         console.log("Mining... (this may take 30-60 seconds)");
         (address hookAddress, bytes32 salt) = HookMiner.find(CREATE2_DEPLOYER, flags, creationCode, constructorArgs);

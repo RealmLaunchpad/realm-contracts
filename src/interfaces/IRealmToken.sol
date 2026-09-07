@@ -30,7 +30,7 @@ interface IRealmToken is IERC20 {
         uint256 vaultAllocation;
         uint16 lpFeeBps; // pre-graduation LP/trading fee on buys and sells (bps), split treasury/creator
         uint16 treasuryShareBps; // share of the LP fee routed to the treasury (bps); remainder to creator
-        uint16 swapLpFeeBps; // post-graduation LP fee `LivoSwapHook` charges on V4 swaps (bps); 0 for V2, 50/100 for V4
+        uint16 swapLpFeeBps; // post-graduation LP fee `RealmSwapHook` charges on V4 swaps (bps); 0 for V2, 50/100 for V4
     }
 
     /// @notice Tax configuration for a token.
@@ -61,14 +61,14 @@ interface IRealmToken is IERC20 {
     /// @notice Pre-graduation fee policy returned by the token for a given trade. The launchpad always
     ///         charges the LP (trading) fee, splitting it between treasury and creator by
     ///         `treasuryShareBps`; the optional tax (0 when not configured) goes entirely to the creator.
-    ///         Mirrors the post-graduation `LivoSwapHook` accounting (LP fee split + creator tax).
+    ///         Mirrors the post-graduation `RealmSwapHook` accounting (LP fee split + creator tax).
     struct LaunchpadFees {
         uint16 lpFeeBps; // LP/trading fee for THIS trade, in bps of gross ETH; split treasury/creator
         uint16 treasuryShareBps; // share of the LP fee routed to the treasury; remainder to the creator
         uint16 taxBps; // creator tax for THIS trade (0 if none), in bps of gross ETH; 100% to creator
     }
 
-    /// @notice Fees `LivoSwapHook` charges on a single post-graduation V4 swap leg, for one direction.
+    /// @notice Fees `RealmSwapHook` charges on a single post-graduation V4 swap leg, for one direction.
     /// @dev Post-graduation analogue of `LaunchpadFees`, without `treasuryShareBps`: the LP-fee split is
     ///      performed downstream by `SwapLpFeeRouter`'s marketcap tiers, not by the token.
     struct RealmTradeFees {
@@ -104,13 +104,13 @@ interface IRealmToken is IERC20 {
     /// @notice Returns the tax configuration for this token
     /// @return config The complete tax configuration
     /// @dev LEGACY, kept for backwards compatibility — do not remove. Superseded by `getSwapFees`, which
-    ///      the current `LivoSwapHook` reads instead. Two live readers still depend on this: off-chain
-    ///      integrators, and the PREVIOUSLY-DEPLOYED `LivoSwapHook` (which applies the tax expiry itself
+    ///      the current `RealmSwapHook` reads instead. Two live readers still depend on this: off-chain
+    ///      integrators, and the PREVIOUSLY-DEPLOYED `RealmSwapHook` (which applies the tax expiry itself
     ///      from the returned rates + synthetic duration) — every token already graduated onto that hook
     ///      would break if this were dropped. New integrations should use `getSwapFees`.
     function getTaxConfig() external view returns (TaxConfig memory config);
 
-    /// @notice Returns the fees `LivoSwapHook` charges right now on a V4 swap in the given direction:
+    /// @notice Returns the fees `RealmSwapHook` charges right now on a V4 swap in the given direction:
     ///         the always-on LP fee plus the effective tax (non-zero only while the post-graduation tax
     ///         window is open).
     /// @dev Non-taxable tokens return only the LP fee (zero tax); taxable variants override to add the

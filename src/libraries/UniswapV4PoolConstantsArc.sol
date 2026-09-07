@@ -22,7 +22,7 @@ import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 ///      the range bounds preserve the exact ETH tick DISTANCES (same distance ⇒ same price ratio ⇒ same
 ///      pool geometry). Validated in `test/graduators/uniswapV4ConstantsArc.t.sol`.
 library UniswapV4PoolConstantsArc {
-    /// @notice LP fees in pips. 0 because LP fees are charged by the hook (LivoSwapHook). Chain-invariant.
+    /// @notice LP fees in pips. 0 because LP fees are charged by the hook (RealmSwapHook). Chain-invariant.
     uint24 internal constant LP_FEE = 0;
 
     /// @notice Tick spacing. Chain-invariant (pool granularity, not a price).

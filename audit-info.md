@@ -23,14 +23,14 @@ We want users to be able to deploy taxable tokens via Realm Launchpad. This requ
 
 - The token creator can be changed dynamically via the RealmLaunchpad contract, and this should have effect everywhere. The token owner set in the launchpad should receive fees and taxes
 - Swaps before the token has graduated are forbidden (even for non-taxable tokens) if the graduation happens with univ4 liquidity
-- The LivoSwapHook used to collect taxes is also used for non-taxable tokens graduated via univ4. In those cases, the hook is used to prevent swaps before graduation.
+- The RealmSwapHook used to collect taxes is also used for non-taxable tokens graduated via univ4. In those cases, the hook is used to prevent swaps before graduation.
 - communityTakeOver() function gives admins ability to change token ownership
 - createCustomToken() allows admins to bypass safety limits (tax duration, tax rates)
 
 ## Main focus of the audit:
 
 - `src/graduators/RealmGraduatorUniswapV4.sol`
-- `src/hooks/LivoSwapHook.sol`
+- `src/hooks/RealmSwapHook.sol`
 - `src/tokens/RealmTaxableTokenUniV4.sol`
 
 

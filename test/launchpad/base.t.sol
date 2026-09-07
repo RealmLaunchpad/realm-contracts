@@ -33,7 +33,7 @@ import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {SwapLpFeeRouter} from "src/feeRouters/SwapLpFeeRouter.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
@@ -147,7 +147,7 @@ contract LaunchpadBaseTests is Test {
 
     RealmGraduatorUniswapV2 public graduatorV2;
     RealmGraduatorUniswapV4 public graduatorV4;
-    LivoSwapHook public taxHook;
+    RealmSwapHook public taxHook;
     SwapLpFeeRouter public lpFeeRouter;
 
     // Default LP-fee-router tier thresholds used in tests (ETH wei). Tier 0 covers `[0, T1)`.
@@ -462,11 +462,11 @@ contract LaunchpadBaseTests is Test {
         );
 
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook",
+            "RealmSwapHook.sol:RealmSwapHook",
             abi.encode(poolManagerAddress, address(lpFeeRouter), treasury),
             TEST_HOOK_ADDRESS
         );
-        taxHook = LivoSwapHook(payable(TEST_HOOK_ADDRESS));
+        taxHook = RealmSwapHook(payable(TEST_HOOK_ADDRESS));
 
         feeHandler = new RealmMasterFeeHandler();
 

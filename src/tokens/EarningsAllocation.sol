@@ -15,7 +15,7 @@ pragma solidity 0.8.28;
 ///
 /// @dev ⚠️ GAS BUDGET — READ BEFORE IMPLEMENTING A BUCKET. Earnings reach this split via
 ///      `RealmToken.accrueFees`. On the V4 LP-fee route that call is made by `SwapLpFeeRouter` from
-///      inside `LivoSwapHook`'s `try { ... } { gas: ROUTER_GAS_LIMIT }` (≈1M gas) during a swap; if it
+///      inside `RealmSwapHook`'s `try { ... } { gas: ROUTER_GAS_LIMIT }` (≈1M gas) during a swap; if it
 ///      runs out of gas the hook drops the LP fee to the treasury. The split therefore MUST stay cheap:
 ///      each `_handle*` leg may only ACCRUE its slice (ideally a single SSTORE) for OUT-OF-BAND
 ///      processing — a keeper- or threshold-triggered swap / burn / liquidity-add in a separate tx with

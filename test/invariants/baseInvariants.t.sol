@@ -14,7 +14,7 @@ import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.s
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
@@ -86,7 +86,7 @@ contract LaunchpadInvariants is Test {
         // fee and its LP-fee router is a dummy. Deploy a real `SwapLpFeeRouter` here if a handler ever
         // starts performing post-graduation V4 swaps.
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook",
+            "RealmSwapHook.sol:RealmSwapHook",
             abi.encode(poolManagerAddress, makeAddr("lpFeeRouterDummy"), treasury),
             TEST_HOOK_ADDRESS
         );

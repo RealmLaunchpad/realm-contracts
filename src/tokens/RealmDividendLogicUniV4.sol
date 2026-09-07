@@ -19,7 +19,7 @@ contract RealmDividendLogicUniV4 is RealmTaxableTokenUniV4Base, DividendDistribu
     ///      buys itself back on its own pool, reusing the same primitive `processBurn` uses. Native and
     ///      third-asset payouts fall through to the base.
     /// @dev The precursor event must stay BEFORE the swap: an indexer has to classify the resulting
-    ///      `LivoSwapHook.LivoSwapBuy` as protocol-internal as it arrives, whereas anything emitted after
+    ///      `RealmSwapHook.RealmSwapBuy` as protocol-internal as it arrives, whereas anything emitted after
     ///      the swap lands once the keeper's PnL has already been updated.
     function _acquireDividendAsset(address asset, uint256 nativeIn, uint256 minOut)
         internal

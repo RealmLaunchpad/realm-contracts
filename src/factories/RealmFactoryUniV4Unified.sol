@@ -22,7 +22,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///         and `RealmFactoryTaxTokenSniperProtected`.
 contract RealmFactoryUniV4Unified is RealmFactoryAbstract {
     /// @notice V4-specific config bundle for the struct-based `createToken` overload.
-    /// @dev `lpFeeBps` is the per-swap LP fee `LivoSwapHook` charges post-graduation. It is stored on
+    /// @dev `lpFeeBps` is the per-swap LP fee `RealmSwapHook` charges post-graduation. It is stored on
     ///      the token (via `InitializeParams.swapLpFeeBps`) and read back by the hook through
     ///      `getSwapFees`. Only `100` (1%) and `50` (0.5%) are accepted; `_validateUniv4Configs`
     ///      enforces the allowlist so misconfiguration is loud. A single graduator/hook pair serves both
@@ -49,7 +49,7 @@ contract RealmFactoryUniV4Unified is RealmFactoryAbstract {
     }
 
     /// @notice THIN/THICK tier graduators, one per tier. Each initializes its pool at the tier-specific
-    ///         graduation price and pairs with the single fee-agnostic `LivoSwapHook`. Selected by
+    ///         graduation price and pairs with the single fee-agnostic `RealmSwapHook`. Selected by
     ///         `_resolveGraduator(tier)`.
     address public immutable GRADUATOR_THIN;
     address public immutable GRADUATOR_THICK;
@@ -296,7 +296,7 @@ contract RealmFactoryUniV4Unified is RealmFactoryAbstract {
     }
 
     /// @dev Maps a liquidity `tier` to its graduator, which graduates at the tier's price and pairs with
-    ///      the single fee-agnostic `LivoSwapHook`. The swap fee is not a selection axis: it is stored on
+    ///      the single fee-agnostic `RealmSwapHook`. The swap fee is not a selection axis: it is stored on
     ///      the token (`swapLpFeeBps`) and read by the hook, so one graduator serves both 100 and 50 bps.
     function _resolveGraduator(LiquidityTier tier) internal view returns (address) {
         if (tier == LiquidityTier.DEFAULT) return address(GRADUATOR);
