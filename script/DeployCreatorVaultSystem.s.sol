@@ -6,9 +6,7 @@ import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 
 import {RealmCreatorVault} from "src/vaults/RealmCreatorVault.sol";
 import {RealmCreatorVaultFactory} from "src/vaults/RealmCreatorVaultFactory.sol";
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
-import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 
 /// @title Deploy the creator-vault system
 /// @notice Deploys the net-new creator-vault contracts:
@@ -28,12 +26,7 @@ import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 ///         forge script DeployCreatorVaultSystem --rpc-url <chain> --verify --account livo.dev --slow --broadcast
 contract DeployCreatorVaultSystem is Script {
     function run() public {
-        require(
-            block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID
-                || block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID
-                || block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID,
-            "Unsupported chain"
-        );
+        require(block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID, "Unsupported chain");
 
         console.log("=== Realm Creator-Vault System Deployment ===");
         console.log("Chain ID:", block.chainid);

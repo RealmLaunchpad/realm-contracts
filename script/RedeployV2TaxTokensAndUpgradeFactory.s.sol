@@ -11,11 +11,7 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 
 import {DeploymentAddresses as AddressesFromRealmTaxableTokenV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 
-import {
-    DeploymentAddressesEthereumMainnet,
-    DeploymentAddressesEthereumSepolia
-} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
+import {DeploymentAddressesEthereumSepolia} from "src/config/DeploymentAddresses.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
 /// @title Redeploy the V2 taxable token implementation and upgrade the V2 unified factory proxy
@@ -61,20 +57,7 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
     }
 
     function _getDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
-                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
-                bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
-                graduatorV2: DeploymentsEthereumMainnet.GRADUATOR_UNIV2,
-                masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
-                tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL
-            });
-            require(
-                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "RealmTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
-            );
-        } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
                 factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
                 launchpad: DeploymentsEthereumSepolia.LAUNCHPAD,

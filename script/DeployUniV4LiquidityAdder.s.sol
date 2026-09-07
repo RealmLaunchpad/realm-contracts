@@ -4,10 +4,8 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {
-    DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet
+    DeploymentAddressesRobinhoodMainnet
 } from "src/config/DeploymentAddresses.sol";
 
 /// @title DeployUniV4LiquidityAdder
@@ -33,12 +31,7 @@ contract DeployUniV4LiquidityAdder is Script {
     }
 
     function _infra() internal view returns (address positionManager, address poolManager) {
-        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
-            return (
-                DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
-                DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER
-            );
-        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             return (
                 DeploymentAddressesEthereumSepolia.UNIV4_POSITION_MANAGER,
                 DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER
@@ -47,11 +40,6 @@ contract DeployUniV4LiquidityAdder is Script {
             return (
                 DeploymentAddressesRobinhoodMainnet.UNIV4_POSITION_MANAGER,
                 DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER
-            );
-        } else if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) {
-            return (
-                DeploymentAddressesRobinhoodTestnet.UNIV4_POSITION_MANAGER,
-                DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER
             );
         }
         revert("Unsupported chain ID");

@@ -6,20 +6,11 @@ import {Script, console} from "forge-std/Script.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
-import {CreatorVaultCurveConstantsArc} from "src/config/CreatorVaultCurveConstantsArc.sol";
 import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
-import {UniswapV4PoolConstantsArc} from "src/libraries/UniswapV4PoolConstantsArc.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {
-    DeploymentAddressesEthereumMainnet,
-    DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesArcTestnet,
-    DeploymentAddressesArcMainnet
-} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
+import {DeploymentAddressesEthereumSepolia} from "src/config/DeploymentAddresses.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
-import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 
 /// @title Deploy the liquidity-tier system (DEFAULT redeploy + THIN + THICK)
 /// @notice Deploys the net-new on-chain pieces the deployer-selectable liquidity tiers need:
@@ -101,14 +92,7 @@ contract DeployTierLiquiditySystem is Script {
     ///      (its base is the hardcoded curve, not a configurable instance), so index 0 is special-cased.
     function _deployDefaultCurves(uint256[7] memory bpsList) internal returns (address[7] memory curves) {
         (uint256 threshold, uint256 maxExcess) = _grad(LiquidityTier.DEFAULT);
-        // On ARC every curve — including the base — is a configurable instance (there is no hardcoded
-        // ARC base curve), so index 0 uses the (DEFAULT, 0) params instead of `ConstantProductBondingCurve`.
-        if (_isArc()) {
-            (uint256 k0, uint256 t00, uint256 e00) = _params(LiquidityTier.DEFAULT, 0);
-            curves[0] = address(new ConstantProductBondingCurveConfigurable(k0, t00, e00, threshold, maxExcess));
-        } else {
-            curves[0] = address(new ConstantProductBondingCurve());
-        }
+        curves[0] = address(new ConstantProductBondingCurve());
         for (uint256 i = 1; i < 7; ++i) {
             (uint256 k, uint256 t0, uint256 e0) = _params(LiquidityTier.DEFAULT, bpsList[i]);
             curves[i] = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, threshold, maxExcess));
@@ -127,42 +111,24 @@ contract DeployTierLiquiditySystem is Script {
         }
     }
 
-    /// @dev True on ARC (native = USDC), which uses the re-solved ×2000 curve/pool constants. Covers
-    ///      BOTH ARC chain-ids: unlike the graduators, the configurable curves have no constructor
-    ///      chain-guard, so an ARC chain missing here would silently deploy ETH-priced curves.
-    function _isArc() internal view returns (bool) {
-        return block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID
-            || block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID;
-    }
-
-    /// @dev Curve (k, t0, e0) for a (tier, bps) on the active chain.
-    function _params(LiquidityTier tier, uint256 bps) internal view returns (uint256 k, uint256 t0, uint256 e0) {
-        if (_isArc()) return CreatorVaultCurveConstantsArc.paramsFor(tier, bps);
+    /// @dev Curve (k, t0, e0) for a (tier, bps).
+    function _params(LiquidityTier tier, uint256 bps) internal pure returns (uint256 k, uint256 t0, uint256 e0) {
         return CreatorVaultCurveConstants.paramsFor(tier, bps);
     }
 
-    /// @dev Graduation threshold + max-excess for a tier on the active chain.
-    function _grad(LiquidityTier tier) internal view returns (uint256 threshold, uint256 maxExcess) {
-        if (_isArc()) return CreatorVaultCurveConstantsArc.tierGraduation(tier);
+    /// @dev Graduation threshold + max-excess for a tier.
+    function _grad(LiquidityTier tier) internal pure returns (uint256 threshold, uint256 maxExcess) {
         return CreatorVaultCurveConstants.tierGraduation(tier);
     }
 
-    /// @dev THIN/THICK graduation sqrtPrices + primary-range upper ticks for the active chain. These feed
-    ///      the tier graduators' constructors; the graduator bytecode itself bakes ARC pool geometry via
-    ///      the `just chain-arc-testnet` import-swap.
+    /// @dev THIN/THICK graduation sqrtPrices + primary-range upper ticks. These feed the tier
+    ///      graduators' constructors; the graduator bytecode bakes pool geometry via the
+    ///      `just chain-*` import-swap.
     function _graduationSetpoints()
         internal
-        view
+        pure
         returns (uint160 thinSqrt, uint160 thickSqrt, int24 thinTickUpper, int24 thickTickUpper)
     {
-        if (_isArc()) {
-            return (
-                UniswapV4PoolConstantsArc.SQRT_PRICEX96_GRADUATION_THIN,
-                UniswapV4PoolConstantsArc.SQRT_PRICEX96_GRADUATION_THICK,
-                UniswapV4PoolConstantsArc.TICK_UPPER_THIN,
-                UniswapV4PoolConstantsArc.TICK_UPPER
-            );
-        }
         return (
             THIN_GRAD_SQRT_PRICE_X96,
             THICK_GRAD_SQRT_PRICE_X96,
@@ -220,16 +186,7 @@ contract DeployTierLiquiditySystem is Script {
     }
 
     function _resolveDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
-                poolManager: DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                positionManager: DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesEthereumMainnet.PERMIT2,
-                hook: DeploymentsEthereumMainnet.SWAP_HOOK,
-                liquidityAdder: DeploymentsEthereumMainnet.UNIV4_LIQUIDITY_ADDER
-            });
-        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
                 launchpad: DeploymentsEthereumSepolia.LAUNCHPAD,
                 poolManager: DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
@@ -237,15 +194,6 @@ contract DeployTierLiquiditySystem is Script {
                 permit2: DeploymentAddressesEthereumSepolia.PERMIT2,
                 hook: DeploymentsEthereumSepolia.SWAP_HOOK,
                 liquidityAdder: DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER
-            });
-        } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                launchpad: DeploymentsArcTestnet.LAUNCHPAD,
-                poolManager: DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
-                positionManager: DeploymentAddressesArcTestnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesArcTestnet.PERMIT2,
-                hook: DeploymentsArcTestnet.SWAP_HOOK,
-                liquidityAdder: DeploymentsArcTestnet.UNIV4_LIQUIDITY_ADDER
             });
         } else {
             revert("Unsupported chain ID");

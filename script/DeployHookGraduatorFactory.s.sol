@@ -13,15 +13,11 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {
-    DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet
+    DeploymentAddressesRobinhoodMainnet
 } from "src/config/DeploymentAddresses.sol";
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
-import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
 /// @title One-off: THIN-tier V4 graduator + minimal factory around an already-deployed `LivoSwapHook`
 /// @notice Targeted, throwaway deployment for graduating a single barebone V4 token (no tax / no decay /
@@ -51,7 +47,7 @@ import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet
 ///
 /// @dev    Run with:
 ///         HOOK_ADDRESS=<hook> forge script DeployHookGraduatorFactory \
-///             --rpc-url <mainnet|sepolia|robinhood-mainnet|robinhood-testnet> \
+///             --rpc-url <sepolia|robinhood-mainnet> \
 ///             --account livo.dev --slow --broadcast
 ///         On Robinhood add `--gas-estimate-multiplier 300` (Arbitrum L2: forge under-provisions
 ///         contract-creation gas) and verify via Blockscout rather than the `[etherscan]` table.
@@ -148,15 +144,7 @@ contract DeployHookGraduatorFactory is Script {
     function _emptyVaults() internal pure returns (address[6] memory v) {}
 
     function _infra() internal view returns (Infra memory infra) {
-        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
-            infra = Infra({
-                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
-                masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
-                poolManager: DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                positionManager: DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesEthereumMainnet.PERMIT2
-            });
-        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             infra = Infra({
                 launchpad: DeploymentsEthereumSepolia.LAUNCHPAD,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
@@ -171,14 +159,6 @@ contract DeployHookGraduatorFactory is Script {
                 poolManager: DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER,
                 positionManager: DeploymentAddressesRobinhoodMainnet.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesRobinhoodMainnet.PERMIT2
-            });
-        } else if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) {
-            infra = Infra({
-                launchpad: DeploymentsRobinhoodTestnet.LAUNCHPAD,
-                masterFeeHandler: DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER,
-                poolManager: DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER,
-                positionManager: DeploymentAddressesRobinhoodTestnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesRobinhoodTestnet.PERMIT2
             });
         } else {
             revert("Unsupported chain ID");

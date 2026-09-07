@@ -9,10 +9,8 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
-import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
 /// @title Redeploy BOTH unified factory implementations and upgrade their proxies — factories only
 /// @notice For changes that live in `RealmFactoryAbstract` / the concrete factories ONLY, leaving every
@@ -65,20 +63,7 @@ contract RedeployUnifiedFactoriesOnly is Script {
     }
 
     function _getDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
-                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
-                bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
-                graduatorV2: DeploymentsEthereumMainnet.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsEthereumMainnet.GRADUATOR_UNIV4,
-                masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
-                tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL,
-                taxTokenV2Impl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_IMPL,
-                taxTokenV4Impl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V4_IMPL
-            });
-        } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
                 factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
                 factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED,
@@ -103,19 +88,6 @@ contract RedeployUnifiedFactoriesOnly is Script {
                 tokenImpl: DeploymentsRobinhoodMainnet.TOKEN_IMPL,
                 taxTokenV2Impl: DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL,
                 taxTokenV4Impl: DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V4_IMPL
-            });
-        } else if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                factoryV2Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED,
-                launchpad: DeploymentsRobinhoodTestnet.LAUNCHPAD,
-                bondingCurve: DeploymentsRobinhoodTestnet.BONDING_CURVE,
-                graduatorV2: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4,
-                masterFeeHandler: DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER,
-                tokenImpl: DeploymentsRobinhoodTestnet.TOKEN_IMPL,
-                taxTokenV2Impl: DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL,
-                taxTokenV4Impl: DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL
             });
         } else {
             revert("Unsupported chain");

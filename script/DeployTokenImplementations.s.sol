@@ -9,11 +9,7 @@ import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
 import {DeploymentAddresses as AddressesFromRealmTaxableTokenV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {DeploymentAddresses as AddressesFromRealmTaxableTokenV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {
-    DeploymentAddressesEthereumMainnet,
-    DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesArcTestnet
-} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumSepolia} from "src/config/DeploymentAddresses.sol";
 
 /// @title Deploy the three token implementations only — no factory deploy, no proxy upgrade
 /// @notice All three are no-arg clone masters, so this deploy has no dependency on the manifest: the
@@ -46,17 +42,7 @@ contract DeployTokenImplementations is Script {
     }
 
     function _checkTaxableTokenChainAddresses() internal view {
-        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
-            require(
-                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "RealmTaxableTokenUniV2 import is not Mainnet (run `just taxtokenaddresses` only for sepolia)"
-            );
-            require(
-                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
-                    == DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                "RealmTaxableTokenUniV4 import is not Mainnet"
-            );
-        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             require(
                 AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
                 "RealmTaxableTokenUniV2 import is not Sepolia (run `just taxtokenaddresses`)"
@@ -65,15 +51,6 @@ contract DeployTokenImplementations is Script {
                 AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
                 "RealmTaxableTokenUniV4 import is not Sepolia (run `just taxtokenaddresses`)"
-            );
-        } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
-            require(
-                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID,
-                "RealmTaxableTokenUniV2 import is not ARC testnet (run `just chain-arc-testnet`)"
-            );
-            require(
-                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER == DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
-                "RealmTaxableTokenUniV4 import is not ARC testnet (run `just chain-arc-testnet`)"
             );
         } else {
             revert("Unsupported chain");

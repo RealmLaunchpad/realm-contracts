@@ -438,7 +438,7 @@ library DeploymentAddressesRobinhoodTestnet {
 /// @dev Uniswap is OFFICIALLY deployed on ARC mainnet; the addresses below were verified on-chain by
 ///      byte-diffing each runtime against the Ethereum canonical deployment (identical except the
 ///      20-byte self-address immutable). Realm's own contracts are not deployed yet — see
-///      `manifest.arc.mainnet.sol`. There is NO WETH on ARC: the V2 pair quote token is the
+///      a per-chain manifest (ARC is no longer a deploy target). There is NO WETH on ARC: the V2 pair quote token is the
 ///      6-decimal USDC ERC-20 alias (V4 pairs use native address(0)); the `WETH` field name is kept
 ///      for consumer compatibility but holds that USDC ERC-20 address.
 library DeploymentAddressesArcMainnet {
@@ -556,7 +556,7 @@ library DeploymentAddressesArcMainnet {
 ///      Uniswap, so nothing needs it again; recover it from git history (branch
 ///      `feat/arc-chain-support`) if a future chain does. USDC ERC-20 is the documented predeploy
 ///      0x3600..0000; Permit2 is at the canonical address. Realm's own contracts live in
-///      `manifest.arc.testnet.sol` and are deployed.
+///      a per-chain manifest (ARC is no longer a deploy target).
 library DeploymentAddressesArcTestnet {
     /// @notice Blockchain ID for ARC testnet
     uint256 public constant BLOCKCHAIN_ID = 5042002;

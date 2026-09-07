@@ -16,15 +16,11 @@ import {DeploymentAddresses as AddressesFromRealmTaxableTokenV2} from "src/token
 import {DeploymentAddresses as AddressesFromRealmTaxableTokenV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
 import {
-    DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet
+    DeploymentAddressesRobinhoodMainnet
 } from "src/config/DeploymentAddresses.sol";
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
-import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
 /// @title Redeploy every token implementation + both unified factory implementations and upgrade
 ///        the unified factory proxies
@@ -47,7 +43,7 @@ import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet
 ///
 ///         Pre-broadcast sanity: confirms that `RealmTaxableTokenUniV2` and `RealmTaxableTokenUniV4`
 ///         have their hardcoded `DeploymentAddresses` import pointing at the active chain (run the
-///         matching `just chain-{mainnet,sepolia,robinhood,robintest}` recipe BEFORE building).
+///         matching `just chain-{sepolia,robinhood}` recipe BEFORE building).
 ///
 ///         Post-broadcast: update these five address constants in `src/config/manifest.<chain>.sol`,
 ///         then run `just export-deployments`:
@@ -59,7 +55,7 @@ import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet
 ///
 /// @dev    Run with:
 ///         forge script RedeployAllTokensAndUpgradeFactories \
-///             --rpc-url <mainnet|sepolia|robinhood-mainnet|robinhood-testnet> \
+///             --rpc-url <sepolia|robinhood-mainnet> \
 ///             --verify --account livo.dev --slow --broadcast
 ///         On Robinhood drop `--verify` (Blockscout, not the `[etherscan]` table) and add
 ///         `--gas-estimate-multiplier 300` (Arbitrum L2: forge under-provisions creation gas).
@@ -87,26 +83,7 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
     }
 
     function _getDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
-                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
-                bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
-                graduatorV2: DeploymentsEthereumMainnet.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsEthereumMainnet.GRADUATOR_UNIV4,
-                masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER
-            });
-            require(
-                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "RealmTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
-            );
-            require(
-                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
-                    == DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                "RealmTaxableTokenUniV4 import is not Mainnet"
-            );
-        } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
                 factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
                 factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED,
@@ -143,25 +120,6 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER,
                 "RealmTaxableTokenUniV4 import is not Robinhood mainnet (run `just chain-robinhood`)"
-            );
-        } else if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                factoryV2Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED,
-                launchpad: DeploymentsRobinhoodTestnet.LAUNCHPAD,
-                bondingCurve: DeploymentsRobinhoodTestnet.BONDING_CURVE,
-                graduatorV2: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4,
-                masterFeeHandler: DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER
-            });
-            require(
-                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID,
-                "RealmTaxableTokenUniV2 import is not Robinhood testnet (run `just chain-robintest`)"
-            );
-            require(
-                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
-                    == DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER,
-                "RealmTaxableTokenUniV4 import is not Robinhood testnet (run `just chain-robintest`)"
             );
         } else {
             revert("Unsupported chain");

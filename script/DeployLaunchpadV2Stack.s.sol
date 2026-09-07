@@ -23,7 +23,6 @@ import {
     DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia
 } from "src/config/DeploymentAddresses.sol";
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
 /// @title Launchpad-v2 rollout, phase 1: deploy the entire v2 stack (incl. factory implementations)
@@ -167,32 +166,7 @@ contract DeployLaunchpadV2Stack is Script {
     }
 
     function _getDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                oldLaunchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
-                factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
-                swapHook: DeploymentsEthereumMainnet.SWAP_HOOK,
-                liquidityAdder: DeploymentsEthereumMainnet.UNIV4_LIQUIDITY_ADDER,
-                bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
-                masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
-                univ2Router: DeploymentAddressesEthereumMainnet.UNIV2_ROUTER,
-                univ2PairInitCodeHash: DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH,
-                univ4PoolManager: DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                univ4PositionManager: DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesEthereumMainnet.PERMIT2,
-                chainTreasury: DeploymentAddressesEthereumMainnet.REALM_TREASURY
-            });
-            require(
-                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "RealmTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
-            );
-            require(
-                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
-                    == DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                "RealmTaxableTokenUniV4 import is not Mainnet"
-            );
-        } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
                 oldLaunchpad: DeploymentsEthereumSepolia.LAUNCHPAD,
                 factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,

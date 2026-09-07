@@ -68,6 +68,8 @@ error-inspection errorhex:
 # time. The rule is per-CHAIN, never per-chain-AND-per-contract: add every future per-chain contract
 # swap to `_retarget` so callers keep using a single command. Run the `chain-*` recipe matching your
 # target BEFORE `forge build`/deploy. Idempotent. Committed default is Ethereum mainnet, used by all tests.
+# NOT a deploy target — Ethereum mainnet is the committed build default the whole test suite forks
+# against. Run this to get back to it after retargeting to a real deploy chain.
 chain-mainnet:
     @just _retarget DeploymentAddressesEthereumMainnet
 
@@ -76,15 +78,6 @@ chain-sepolia:
 
 chain-robinhood:
     @just _retarget DeploymentAddressesRobinhoodMainnet
-
-chain-robintest:
-    @just _retarget DeploymentAddressesRobinhoodTestnet
-
-chain-arc-testnet:
-    @just _retarget DeploymentAddressesArcTestnet Arc
-
-chain-arc-mainnet:
-    @just _retarget DeploymentAddressesArcMainnet Arc
 
 # Fans a target chain out to every per-contract import-swap. `gradsuffix` is the lib variant
 # ("" = the committed ETH-priced libs, "Arc" = the ARC variants). Add future per-chain swaps HERE.
@@ -128,20 +121,23 @@ next-salt factory:
         | awk '/^Salt:/ {print $2}'
 
 ##################### Deployed addresses (sepolia) #######################
-launchpad := "0xd9f8bbe437a3423b725c6616C1B543775ecf1110"
+# Realm is a clean start: every slot below is zero until the Realm stack is deployed. Fill each one in
+# from src/config/manifest.ethereum.sepolia.sol after deploying. `hookAddress` is the ONE exception —
+# it is the LivoSwapHook Realm inherits rather than redeploys (Uniswap has already whitelisted it).
+launchpad := "0x0000000000000000000000000000000000000000"
 
-bondingCurve := "0x1A7f2E2e4bdB14Dd75b6ce60ce7a6Ff7E0a3F3A5"
-graduatorV2 := "0x1c10331F153cD344Feb030Aad7A11E2119F6f59A"
-graduatorV4 := "0xc304593F9297f4f67E07cc7cAf3128F9027A2A3d"
+bondingCurve := "0x0000000000000000000000000000000000000000"
+graduatorV2 := "0x0000000000000000000000000000000000000000"
+graduatorV4 := "0x0000000000000000000000000000000000000000"
 
-factoryV2 := "0x2E8325243b87fB78711092D13538cB4CDbf3d098"
-factoryV4 := "0xE6A46F0c681F7F67b349C77Ff2329dB4F016691E"
-factoryTaxToken := "0x124972595Af23c2FbEE4b77a24ceF8d6af800016"
+factoryV2 := "0x0000000000000000000000000000000000000000"
+factoryV4 := "0x0000000000000000000000000000000000000000"
+factoryTaxToken := "0x0000000000000000000000000000000000000000"
 # Sniper-protected factories — fill in after deploy.
 factorySniperProtected := "0x0000000000000000000000000000000000000000"
 factoryV2SniperProtected := "0x0000000000000000000000000000000000000000"
 factoryTaxTokenSniperProtected := "0x0000000000000000000000000000000000000000"
-hookAddress := "0x0591a87D3a56797812C4DA164C1B005c545400Cc"
+hookAddress := "0x681F2EEf3F43CfC6Eea7BFdAa801135E04ff00cC"
 
 realmdev := "0xBa489180Ea6EEB25cA65f123a46F3115F388f181"
 
@@ -164,27 +160,32 @@ realmdev := "0xBa489180Ea6EEB25cA65f123a46F3115F388f181"
 #   tiswallet1 = 0xd6fa895fABA3FE48410e9A00504BB556C89dd2E6
 #   tiswallet2 = 0xdbB91f98C5826C89CC2312AD0B5a377a77613884
 
-deploy-sepolia: chain-sepolia
-    # Hook address is logged in deployment output (LivoSwapHook row)
-    forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+# From-scratch core bootstrap (fee handler, launchpad, quoter, V2/V4 graduators, liquidity adder).
+# Realm inherits SWAP_HOOK from Livo, so this is the FIRST script to run on a chain; paste the printed
+# addresses into src/config/manifest.<chain>.sol and run `just export-deployments`.
+deploy-core-sepolia: chain-sepolia
+    forge script DeployLaunchpadCore --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
-# Re-deploys the four token implementations and all six factories (V2/V4/TaxToken + sniper-protected
-# variants) against the existing Realm core, then whitelists them on the launchpad.
+deploy-core-robinhood: chain-robinhood
+    forge script DeployLaunchpadCore --rpc-url robinhood-mainnet --account livo.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
+# Deploys the token implementations + the unified V2/V4 factories against the core above, then
+# whitelists them on the launchpad.
 deploy-sepolia-factories: chain-sepolia
-    forge script DeploymentsFactories --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+    forge script DeploymentsUnifiedFactories --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
-deploy-mainnet-factories:
-    forge script DeploymentsFactories --rpc-url mainnet --verify --account livo.dev --slow --broadcast
+deploy-robinhood-factories: chain-robinhood
+    forge script DeploymentsUnifiedFactories --rpc-url robinhood-mainnet --account livo.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
 
 # Mines a valid hook salt and deploys LivoSwapHook with whatever fee the current build bakes
 # (`LP_FEE_BPS` constant in src/hooks/LivoSwapHook.sol: 100 = 1%, edit to 50 for the 0.5% variant and
 # rebuild). After broadcast, paste the deployed address into src/config/manifest.<chain>.sol and
 # run `just export-deployments`.
+# Only needed if the inherited hook is ever replaced — both manifests already carry a live SWAP_HOOK.
 deploy-swap-hook-sepolia:
     forge script DeployLivoSwapHook --rpc-url sepolia --verify --account livo.dev --slow --broadcast
-
-deploy-swap-hook-mainnet:
-    forge script DeployLivoSwapHook --rpc-url mainnet --verify --account livo.dev --slow --broadcast
 
 # Deploys the SMALL + LARGE liquidity-tier system (14 bonding curves + 4 V4 graduators).
 # After broadcast, paste the logged addresses into the {SMALL,LARGE}_* and GRADUATOR_UNIV4_{SMALL,LARGE}*
@@ -193,8 +194,9 @@ deploy-swap-hook-mainnet:
 deploy-tiers-sepolia:
     forge script DeployTierLiquiditySystem --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
-deploy-tiers-mainnet:
-    forge script DeployTierLiquiditySystem --rpc-url mainnet --verify --account livo.dev --slow --broadcast
+deploy-tiers-robinhood:
+    forge script DeployTierLiquiditySystem --rpc-url robinhood-mainnet --account livo.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
 
 # Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded
 # with liquidity — replicating the symbols, fee tiers, tick spacings and prices of the real xStock pools
@@ -207,44 +209,7 @@ deploy-tiers-mainnet:
 deploy-dummy-xstocks-sepolia:
     forge script DeployDummyXStocks --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
-# The from-scratch two-part full-stack deploy (`DeployFullStack` + `DeployFullStackPart2`, and the
-# `deploy-robinhood-part1/part2` recipes) was removed: both Robinhood chains are already deployed, and the
-# two-pass flow only existed because the old swap hooks baked their LP fee in as a `constant`, needing one
-# build per fee variant. The current `LivoSwapHook` is fee-agnostic (it reads `swapLpFeeBps` off the token),
-# so a single build serves both fees. Recover the scripts from git history if a new chain ever needs one.
-
-# Robinhood TESTNET has no Uniswap V2, so the V2 graduation path is skipped there
-# (hasV2 = UNIV2_ROUTER != address(0)). Deploy a stock V2 instance ONCE, then paste the
-# printed addresses into DeploymentAddressesRobinhoodTestnet (src/config/DeploymentAddresses.sol)
-# and rebuild — after that `deploy-robinhood-testnet-part1` wires the V2 graduator/factory/tax-impls.
-# Uses Uniswap's CANONICAL creation bytecode (pinned unpkg artifacts); the resulting pair init-code
-# hash equals the canonical 0x96e8ac42…845f already set as UNIV2_PAIR_INIT_CODE_HASH, so that constant
-# does NOT change. WETH is the chain's existing WETH; feeToSetter defaults to the testnet treasury.
-deploy-univ2-robintest feeToSetter="0xBa489180Ea6EEB25cA65f123a46F3115F388f181":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    WETH=0x7943e237c7F95DA44E0301572D358911207852Fa
-    RPC=$ROBINHOOD_TESTNET_RPC_URL
-    FAC_CODE=$(curl -fsSL "https://unpkg.com/@uniswap/v2-core@1.0.1/build/UniswapV2Factory.json" | jq -r .bytecode)
-    FAC_ARGS=$(cast abi-encode "c(address)" {{feeToSetter}})
-    FAC=$(cast send --rpc-url $RPC --account livo.dev --json --create "0x${FAC_CODE}${FAC_ARGS:2}" | jq -r .contractAddress)
-    echo "UNIV2_FACTORY = $FAC"
-    RTR_CODE=$(curl -fsSL "https://unpkg.com/@uniswap/v2-periphery@1.1.0-beta.0/build/UniswapV2Router02.json" | jq -r .bytecode)
-    RTR_ARGS=$(cast abi-encode "c(address,address)" "$FAC" "$WETH")
-    RTR=$(cast send --rpc-url $RPC --account livo.dev --json --create "0x${RTR_CODE}${RTR_ARGS:2}" | jq -r .contractAddress)
-    echo "UNIV2_ROUTER  = $RTR"
-    echo
-    echo ">>> Paste into DeploymentAddressesRobinhoodTestnet, then rebuild:"
-    echo "    UNIV2_FACTORY = $FAC"
-    echo "    UNIV2_ROUTER  = $RTR"
-    echo "    UNIV2_PAIR_INIT_CODE_HASH stays 0x96e8ac42…845f (canonical, unchanged)"
-
-# NB: ARC testnet had no official Uniswap, so Realm self-deployed the V2+V4 stack there (addresses in
-# `DeploymentAddressesArcTestnet`). The deploy scripts, the vendored V2 router and the Uniswap V2
-# submodules have since been removed — ARC mainnet ships official Uniswap, so nothing needs them
-# again. Recover from git history (branch `feat/arc-chain-support`) if a future chain does.
-
-# Regenerates deployments.{mainnet,sepolia}.md from the matching .sol manifests.
+# Regenerates deployments.{ethereum.sepolia,robinhood.mainnet}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
 export-deployments:
     forge script ExportDeployments
@@ -279,11 +244,9 @@ pick-dividend-routes:
 # graduators are baked into the previous V4 impl as immutables; they still live on-chain).
 # The manifest is NOT auto-edited — if you keep the rollback, update FACTORY_UNIV{2,4}_UNIFIED_IMPL
 # in src/config/manifest.<chain>.sol and run `just export-deployments`.
-rollback-mainnet:
-    just _rollback-unified "$ETH_RPC_URL" 0x78Af7E41ab894fc2aCd1b1c918e3CC6d710054b9 0x9A996216c0Cd3B1cDeDC4D2A38E0ca94eBeC3565
-
+# Fill the two proxy addresses in from src/config/manifest.ethereum.sepolia.sol once deployed.
 rollback-sepolia:
-    just _rollback-unified "$SEPOLIA_RPC_URL" 0x87Dd69F8d294fA9cd704fccd38d36d6197F80868 0x2a992f6f5F7c049A165a13069BE3DbDEaa5C391b
+    just _rollback-unified "$SEPOLIA_RPC_URL" 0x0000000000000000000000000000000000000000 0x0000000000000000000000000000000000000000
 
 _rollback-unified rpc v2proxy v4proxy:
     #!/usr/bin/env bash
@@ -320,15 +283,13 @@ _rollback-unified rpc v2proxy v4proxy:
     echo "Done. Reminder: if keeping this, update FACTORY_UNIV{2,4}_UNIFIED_IMPL in src/config/manifest.<chain>.sol and run 'just export-deployments'."
 
 ##################### ROLLBACK — Robinhood (unified factory proxies) #######################
-# Same break-glass rollback as `rollback-mainnet`, but Robinhood is on Blockscout, not Etherscan,
+# Same break-glass rollback as `rollback-sepolia`, but Robinhood is on Blockscout, not Etherscan,
 # so the previous impl is read from the node via `cast logs` (fresh L2 → full-range getLogs is cheap)
 # instead of the Etherscan API. Broadcaster must be the proxy owner (livo.dev). Same guards; mainnet
-# (chain 4663) asks to confirm. Manifest is NOT auto-edited — see the note under `rollback-mainnet`.
+# (chain 4663) asks to confirm. Manifest is NOT auto-edited — see the note under `rollback-sepolia`.
+# Fill the two proxy addresses in from src/config/manifest.robinhood.mainnet.sol once deployed.
 rollback-robinhood:
-    just _rollback-unified-rpclogs "$ROBINHOOD_RPC_URL" 0x7843203be233b3Be7E5017A68a64FdBf32b45fFE 0xb637800Dcd5c83913D828E961dBB964A9896f19d
-
-rollback-robinhood-testnet:
-    just _rollback-unified-rpclogs "$ROBINHOOD_TESTNET_RPC_URL" 0xc0dE7109626A458dE1E0Ff06106830beD96DE971 0xfBa7137768E53f3B6a0d2333F41C44BaC7161FA0
+    just _rollback-unified-rpclogs "$ROBINHOOD_RPC_URL" 0x0000000000000000000000000000000000000000 0x0000000000000000000000000000000000000000
 
 _rollback-unified-rpclogs rpc v2proxy v4proxy:
     #!/usr/bin/env bash

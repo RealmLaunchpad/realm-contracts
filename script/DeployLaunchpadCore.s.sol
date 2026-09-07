@@ -7,12 +7,15 @@ import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {RealmQuoter} from "src/RealmQuoter.sol";
 import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
 import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
-import {RealmGraduatorUniswapV2Arc} from "src/graduators/RealmGraduatorUniswapV2Arc.sol";
 import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
-import {UniswapV4PoolConstantsArc} from "src/libraries/UniswapV4PoolConstantsArc.sol";
-import {DeploymentAddressesArcTestnet} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {
+    DeploymentAddressesEthereumSepolia,
+    DeploymentAddressesRobinhoodMainnet
+} from "src/config/DeploymentAddresses.sol";
+import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
+import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
 
 /// @title Deploy the from-scratch launchpad core for a brand-new chain
 /// @notice Deploys the core Realm contracts that no other current script bootstraps — the pieces the
@@ -26,20 +29,27 @@ import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 ///           6. `RealmGraduatorUniswapV4` (DEFAULT tier / V4 venue)
 ///
 ///         It does NOT deploy the DEFAULT `BONDING_CURVE`: `DeployTierLiquiditySystem` (re)deploys that
-///         (and every tier curve) and is the source of truth for it — and on ARC the base curve is a
-///         configurable instance, not the hardcoded `ConstantProductBondingCurve`.
+///         (and every tier curve) and is the source of truth for it.
 ///
-/// @dev    Ordering: run `DeployRealmLpFeeRouter` then `DeployLivoSwapHook` FIRST — the DEFAULT V4
-///         graduator takes the hook as a constructor immutable, so `SWAP_HOOK` must already be in the
-///         manifest. After this: paste the printed addresses into `src/config/manifest.arc.testnet.sol`,
-///         `just export-deployments`, then the vault/tier/factory scripts.
+///         Realm inherits only `SWAP_HOOK` from the Livo deployment; every other manifest slot on both
+///         supported chains is `address(0)`, so this script is the FIRST one to run on each of them.
 ///
-///         Build for ARC first: `just chain-arc-testnet && forge build`
-///         (the graduators bake ARC pool geometry + fees via import-swap).
+/// @dev    Ordering: run `DeployRealmLpFeeRouter` then `DeployLivoSwapHook` FIRST unless the manifest
+///         already carries an inherited `SWAP_HOOK` — the DEFAULT V4 graduator takes the hook as a
+///         constructor immutable. After this: paste the printed addresses into
+///         `src/config/manifest.<chain>.sol`, `just export-deployments`, then the vault/tier/factory
+///         scripts.
 ///
-///         Run: forge script DeployLaunchpadCore --rpc-url arc-testnet --account livo.dev --slow \
-///                  --broadcast --gas-estimate-multiplier 300
+///         Retarget the build first: `just chain-sepolia` / `just chain-robinhood`, then `forge build`
+///         (the graduators bake pool geometry + fees via import-swap).
+///
+///         Run: forge script DeployLaunchpadCore --rpc-url <sepolia|robinhood-mainnet> \
+///                  --account livo.dev --slow --broadcast
 contract DeployLaunchpadCore is Script {
+    /// @dev DEFAULT-tier graduation price (12.25 ETH mcap), from `simulations/script/uniswapV4Settings.py`.
+    ///      Same value `RedeployUniV4Graduators` and `DeployTierLiquiditySystem` use.
+    uint160 internal constant DEFAULT_GRAD_SQRT_PRICE_X96 = 715832709642994126662528799866880;
+
     struct Deps {
         address treasury;
         address swapHook;
@@ -48,8 +58,6 @@ contract DeployLaunchpadCore is Script {
         address univ4PoolManager;
         address univ4PositionManager;
         address permit2;
-        uint160 defaultGradSqrtPrice; // DEFAULT-tier graduation price
-        int24 defaultTickUpper; // DEFAULT/THICK primary-range upper tick
     }
 
     function run() public {
@@ -71,11 +79,7 @@ contract DeployLaunchpadCore is Script {
         address feeHandler = address(new RealmMasterFeeHandler());
         address launchpad = address(new RealmLaunchpad(d.treasury, msg.sender));
         address quoter = address(new RealmQuoter(launchpad));
-        // Pick the V2 graduator by chain: ARC (native = USDC) pairs `<token, USDC-ERC20>` via a
-        // behaviorally different contract, not an import-swapped constant. Both self-guard in their ctor.
-        address graduatorV2 = block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID
-            ? address(new RealmGraduatorUniswapV2Arc(d.univ2Router, launchpad, d.univ2PairInitCodeHash))
-            : address(new RealmGraduatorUniswapV2(d.univ2Router, launchpad, d.univ2PairInitCodeHash));
+        address graduatorV2 = address(new RealmGraduatorUniswapV2(d.univ2Router, launchpad, d.univ2PairInitCodeHash));
         // Chain-shared singleton; the V4 graduator and taxable tokens' `processLiquidity` both need it.
         address liquidityAdder = address(new RealmUniV4LiquidityAdder(d.univ4PositionManager, d.univ4PoolManager));
         address graduatorV4 = address(
@@ -85,15 +89,15 @@ contract DeployLaunchpadCore is Script {
                 d.univ4PositionManager,
                 d.permit2,
                 d.swapHook,
-                d.defaultGradSqrtPrice,
-                d.defaultTickUpper,
+                DEFAULT_GRAD_SQRT_PRICE_X96,
+                UniswapV4PoolConstants.TICK_UPPER,
                 liquidityAdder
             )
         );
 
         vm.stopBroadcast();
 
-        console.log("=== Deployed. Paste into src/config/manifest.arc.testnet.sol ===");
+        console.log("=== Deployed. Paste into src/config/manifest.<chain>.sol ===");
         console.log("MASTER_FEE_HANDLER  ", feeHandler);
         console.log("LAUNCHPAD           ", launchpad);
         console.log("QUOTER              ", quoter);
@@ -105,20 +109,28 @@ contract DeployLaunchpadCore is Script {
     }
 
     function _resolveDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
-                treasury: DeploymentAddressesArcTestnet.REALM_TREASURY,
-                swapHook: DeploymentsArcTestnet.SWAP_HOOK,
-                univ2Router: DeploymentAddressesArcTestnet.UNIV2_ROUTER,
-                univ2PairInitCodeHash: DeploymentAddressesArcTestnet.UNIV2_PAIR_INIT_CODE_HASH,
-                univ4PoolManager: DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
-                univ4PositionManager: DeploymentAddressesArcTestnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesArcTestnet.PERMIT2,
-                defaultGradSqrtPrice: UniswapV4PoolConstantsArc.SQRT_PRICEX96_GRADUATION_DEFAULT,
-                defaultTickUpper: UniswapV4PoolConstantsArc.TICK_UPPER
+                treasury: DeploymentAddressesEthereumSepolia.REALM_TREASURY,
+                swapHook: DeploymentsEthereumSepolia.SWAP_HOOK,
+                univ2Router: DeploymentAddressesEthereumSepolia.UNIV2_ROUTER,
+                univ2PairInitCodeHash: DeploymentAddressesEthereumSepolia.UNIV2_PAIR_INIT_CODE_HASH,
+                univ4PoolManager: DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
+                univ4PositionManager: DeploymentAddressesEthereumSepolia.UNIV4_POSITION_MANAGER,
+                permit2: DeploymentAddressesEthereumSepolia.PERMIT2
+            });
+        } else if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) {
+            d = Deps({
+                treasury: DeploymentAddressesRobinhoodMainnet.REALM_TREASURY,
+                swapHook: DeploymentsRobinhoodMainnet.SWAP_HOOK,
+                univ2Router: DeploymentAddressesRobinhoodMainnet.UNIV2_ROUTER,
+                univ2PairInitCodeHash: DeploymentAddressesRobinhoodMainnet.UNIV2_PAIR_INIT_CODE_HASH,
+                univ4PoolManager: DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER,
+                univ4PositionManager: DeploymentAddressesRobinhoodMainnet.UNIV4_POSITION_MANAGER,
+                permit2: DeploymentAddressesRobinhoodMainnet.PERMIT2
             });
         } else {
-            revert("Unsupported chain (this is a new-chain bootstrap; existing chains are already deployed)");
+            revert("Unsupported chain (Realm deploys on Sepolia and Robinhood mainnet only)");
         }
     }
 }

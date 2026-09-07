@@ -7,12 +7,8 @@ import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {
-    DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet,
-    DeploymentAddressesArcMainnet,
-    DeploymentAddressesArcTestnet
+    DeploymentAddressesRobinhoodMainnet
 } from "src/config/DeploymentAddresses.sol";
 
 /// @notice Deploys the `RealmDividendSwapRegistry` implementation + UUPS proxy.
@@ -64,35 +60,19 @@ contract DeployRealmDividendSwapRegistry is Script {
     ///      do not route through a dead pair. The sandwich is stopped by the keeper gate on
     ///      `processDividends` (see `RealmKeepersRegistry`), not here.
     function _defaultThreshold() internal view returns (uint256) {
-        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
-            return 10 * DeploymentAddressesEthereumMainnet.MAX_EARNINGS_PER_PROCESS;
-        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             return 10 * DeploymentAddressesEthereumSepolia.MAX_EARNINGS_PER_PROCESS;
         } else if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) {
             return 10 * DeploymentAddressesRobinhoodMainnet.MAX_EARNINGS_PER_PROCESS;
-        } else if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) {
-            return 10 * DeploymentAddressesRobinhoodTestnet.MAX_EARNINGS_PER_PROCESS;
-        } else if (block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID) {
-            return 10 * DeploymentAddressesArcMainnet.MAX_EARNINGS_PER_PROCESS;
-        } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
-            return 10 * DeploymentAddressesArcTestnet.MAX_EARNINGS_PER_PROCESS;
         }
         revert("Unsupported chain ID");
     }
 
     function _resolveOwner() internal view returns (address owner) {
-        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
-            owner = DeploymentAddressesEthereumMainnet.REALM_TREASURY;
-        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             owner = DeploymentAddressesEthereumSepolia.REALM_TREASURY;
         } else if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) {
             owner = DeploymentAddressesRobinhoodMainnet.REALM_TREASURY;
-        } else if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) {
-            owner = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
-        } else if (block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID) {
-            owner = DeploymentAddressesArcMainnet.REALM_TREASURY;
-        } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
-            owner = DeploymentAddressesArcTestnet.REALM_TREASURY;
         } else {
             revert("Unsupported chain ID");
         }
@@ -101,11 +81,8 @@ contract DeployRealmDividendSwapRegistry is Script {
 
     /// @dev Library suffix for the current chain, for the "paste it here" hint.
     function _libraryName() internal view returns (string memory) {
-        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) return "EthereumMainnet";
         if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) return "EthereumSepolia";
         if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) return "RobinhoodMainnet";
-        if (block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID) return "ArcMainnet";
-        if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) return "ArcTestnet";
         return "RobinhoodTestnet";
     }
 }

@@ -10,11 +10,7 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 
 import {DeploymentAddresses as AddressesFromRealmTaxableToken} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
-import {
-    DeploymentAddressesEthereumMainnet,
-    DeploymentAddressesEthereumSepolia
-} from "src/config/DeploymentAddresses.sol";
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
+import {DeploymentAddressesEthereumSepolia} from "src/config/DeploymentAddresses.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
 /// @title Upgrade the RealmFactoryUniV4Unified proxy to a fresh implementation
@@ -58,22 +54,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
     }
 
     function _getDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
-                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
-                bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
-                graduatorV4: DeploymentsEthereumMainnet.GRADUATOR_UNIV4,
-                masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
-                tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL,
-                taxTokenImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V4_IMPL
-            });
-            require(
-                AddressesFromRealmTaxableToken.UNIV4_POOL_MANAGER
-                    == DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                "RealmTaxableTokenUniV4 import is not Mainnet"
-            );
-        } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
                 factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED,
                 launchpad: DeploymentsEthereumSepolia.LAUNCHPAD,

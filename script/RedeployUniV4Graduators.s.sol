@@ -5,15 +5,11 @@ import {Script, console} from "forge-std/Script.sol";
 import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {
-    DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet
+    DeploymentAddressesRobinhoodMainnet
 } from "src/config/DeploymentAddresses.sol";
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
-import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
 /// @title Redeploy all three `RealmGraduatorUniswapV4` instances (bytecode-only change)
 /// @notice Redeploys the three V4 graduators (one per liquidity tier: DEFAULT/THIN/THICK) with
@@ -29,7 +25,7 @@ import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet
 ///
 /// @dev    Run with:
 ///         forge script RedeployUniV4Graduators \
-///             --rpc-url <mainnet|sepolia|robinhood-mainnet|robinhood-testnet> \
+///             --rpc-url <sepolia|robinhood-mainnet> \
 ///             --verify --account livo.dev --slow --broadcast
 ///         On Robinhood drop `--verify` (Blockscout, not the `[etherscan]` table) and add
 ///         `--gas-estimate-multiplier 300` (Arbitrum L2: forge under-provisions creation gas).
@@ -93,16 +89,7 @@ contract RedeployUniV4Graduators is Script {
     }
 
     function _resolveDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD,
-                poolManager: DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                positionManager: DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesEthereumMainnet.PERMIT2,
-                hook: DeploymentsEthereumMainnet.SWAP_HOOK,
-                liquidityAdder: DeploymentsEthereumMainnet.UNIV4_LIQUIDITY_ADDER
-            });
-        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
                 launchpad: DeploymentsEthereumSepolia.LAUNCHPAD,
                 poolManager: DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
@@ -119,15 +106,6 @@ contract RedeployUniV4Graduators is Script {
                 permit2: DeploymentAddressesRobinhoodMainnet.PERMIT2,
                 hook: DeploymentsRobinhoodMainnet.SWAP_HOOK,
                 liquidityAdder: DeploymentsRobinhoodMainnet.UNIV4_LIQUIDITY_ADDER
-            });
-        } else if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                launchpad: DeploymentsRobinhoodTestnet.LAUNCHPAD,
-                poolManager: DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER,
-                positionManager: DeploymentAddressesRobinhoodTestnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesRobinhoodTestnet.PERMIT2,
-                hook: DeploymentsRobinhoodTestnet.SWAP_HOOK,
-                liquidityAdder: DeploymentsRobinhoodTestnet.UNIV4_LIQUIDITY_ADDER
             });
         } else {
             revert("Unsupported chain ID");

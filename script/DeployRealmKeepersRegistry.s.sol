@@ -6,12 +6,8 @@ import {console} from "lib/forge-std/src/console.sol";
 
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 import {
-    DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet,
-    DeploymentAddressesArcMainnet,
-    DeploymentAddressesArcTestnet
+    DeploymentAddressesRobinhoodMainnet
 } from "src/config/DeploymentAddresses.sol";
 
 /// @notice Deploys the `RealmKeepersRegistry`.
@@ -51,18 +47,10 @@ contract DeployRealmKeepersRegistry is Script {
     }
 
     function _resolveOwner() internal view returns (address owner) {
-        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
-            owner = DeploymentAddressesEthereumMainnet.REALM_TREASURY;
-        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             owner = DeploymentAddressesEthereumSepolia.REALM_TREASURY;
         } else if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) {
             owner = DeploymentAddressesRobinhoodMainnet.REALM_TREASURY;
-        } else if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) {
-            owner = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
-        } else if (block.chainid == DeploymentAddressesArcMainnet.BLOCKCHAIN_ID) {
-            owner = DeploymentAddressesArcMainnet.REALM_TREASURY;
-        } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
-            owner = DeploymentAddressesArcTestnet.REALM_TREASURY;
         } else {
             revert("Unsupported chain ID");
         }

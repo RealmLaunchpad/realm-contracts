@@ -3,19 +3,11 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
-import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
-import {DeploymentsArcMainnet} from "src/config/manifest.arc.mainnet.sol";
-import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 import {
-    DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet,
-    DeploymentAddressesArcMainnet,
-    DeploymentAddressesArcTestnet
+    DeploymentAddressesRobinhoodMainnet
 } from "src/config/DeploymentAddresses.sol";
 
 /// @title ExportDeployments
@@ -72,12 +64,8 @@ contract ExportDeployments is Script {
     }
 
     function run() public {
-        _write("deployments.ethereum.mainnet.md", _render(_ethereumMainnet()));
         _write("deployments.ethereum.sepolia.md", _render(_ethereumSepolia()));
         _write("deployments.robinhood.mainnet.md", _render(_robinhoodMainnet()));
-        _write("deployments.robinhood.testnet.md", _render(_robinhoodTestnet()));
-        _write("deployments.arc.mainnet.md", _render(_arcMainnet()));
-        _write("deployments.arc.testnet.md", _render(_arcTestnet()));
     }
 
     function _write(string memory path, string memory content) internal {
@@ -86,48 +74,6 @@ contract ExportDeployments is Script {
     }
 
     // ---------------------------------------------------------------- Per-chain collectors
-
-    function _ethereumMainnet() internal pure returns (ChainDeployments memory d) {
-        d.title = "Mainnet";
-        d.manifestFile = "manifest.ethereum.mainnet.sol";
-        d.launchpad = DeploymentsEthereumMainnet.LAUNCHPAD;
-        d.bondingCurve = DeploymentsEthereumMainnet.BONDING_CURVE;
-        d.graduatorUniV2 = DeploymentsEthereumMainnet.GRADUATOR_UNIV2;
-        d.graduatorUniV4 = DeploymentsEthereumMainnet.GRADUATOR_UNIV4;
-        d.masterFeeHandler = DeploymentsEthereumMainnet.MASTER_FEE_HANDLER;
-        d.univ4LiquidityAdder = DeploymentsEthereumMainnet.UNIV4_LIQUIDITY_ADDER;
-        d.swapHook = DeploymentsEthereumMainnet.SWAP_HOOK;
-        d.lpFeeRouter = DeploymentsEthereumMainnet.LP_FEE_ROUTER;
-        d.lpFeeRouterImpl = DeploymentsEthereumMainnet.LP_FEE_ROUTER_IMPL;
-        d.quoter = DeploymentsEthereumMainnet.QUOTER;
-        d.tokenImpl = DeploymentsEthereumMainnet.TOKEN_IMPL;
-        d.taxableTokenImpl = DeploymentsEthereumMainnet.TAXABLE_TOKEN_V4_IMPL;
-        d.taxableTokenV2Impl = DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_IMPL;
-        d.factoryUniV2Unified = DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED;
-        d.factoryUniV2UnifiedImpl = DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.factoryUniV4Unified = DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED;
-        d.factoryUniV4UnifiedImpl = DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED_IMPL;
-        d.creatorVaultFactory = DeploymentsEthereumMainnet.CREATOR_VAULT_FACTORY;
-        d.creatorVaultFactoryImpl = DeploymentsEthereumMainnet.CREATOR_VAULT_FACTORY_IMPL;
-        d.creatorVaultImpl = DeploymentsEthereumMainnet.CREATOR_VAULT_IMPL;
-        d.vaultCurves = DeploymentsEthereumMainnet.vaultBondingCurves();
-        d.graduatorThin = DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THIN;
-        d.graduatorThick = DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THICK;
-        d.thinCurveBase = DeploymentsEthereumMainnet.THIN_CURVE_BASE;
-        d.thinVaultCurves = DeploymentsEthereumMainnet.thinVaultCurves();
-        d.thickCurveBase = DeploymentsEthereumMainnet.THICK_CURVE_BASE;
-        d.thickVaultCurves = DeploymentsEthereumMainnet.thickVaultCurves();
-        d.realmDev = DeploymentsEthereumMainnet.REALM_DEV;
-        d.realmTreasury = DeploymentAddressesEthereumMainnet.REALM_TREASURY;
-        d.realmTokenDeployer = DeploymentsEthereumMainnet.REALM_TOKEN_DEPLOYER;
-        d.weth = DeploymentAddressesEthereumMainnet.WETH;
-        d.univ2Router = DeploymentAddressesEthereumMainnet.UNIV2_ROUTER;
-        d.univ2Factory = DeploymentAddressesEthereumMainnet.UNIV2_FACTORY;
-        d.univ4PoolManager = DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER;
-        d.univ4PositionManager = DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER;
-        d.univ4UniversalRouter = DeploymentAddressesEthereumMainnet.UNIV4_UNIVERSAL_ROUTER;
-        d.permit2 = DeploymentAddressesEthereumMainnet.PERMIT2;
-    }
 
     function _ethereumSepolia() internal pure returns (ChainDeployments memory d) {
         d.title = "Sepolia";
@@ -211,132 +157,6 @@ contract ExportDeployments is Script {
         d.univ4PositionManager = DeploymentAddressesRobinhoodMainnet.UNIV4_POSITION_MANAGER;
         d.univ4UniversalRouter = DeploymentAddressesRobinhoodMainnet.UNIV4_UNIVERSAL_ROUTER;
         d.permit2 = DeploymentAddressesRobinhoodMainnet.PERMIT2;
-    }
-
-    function _robinhoodTestnet() internal pure returns (ChainDeployments memory d) {
-        d.title = "Robinhood Chain Testnet";
-        d.manifestFile = "manifest.robinhood.testnet.sol";
-        d.launchpad = DeploymentsRobinhoodTestnet.LAUNCHPAD;
-        d.bondingCurve = DeploymentsRobinhoodTestnet.BONDING_CURVE;
-        d.graduatorUniV2 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2;
-        d.graduatorUniV4 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4;
-        d.masterFeeHandler = DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER;
-        d.univ4LiquidityAdder = DeploymentsRobinhoodTestnet.UNIV4_LIQUIDITY_ADDER;
-        d.swapHook = DeploymentsRobinhoodTestnet.SWAP_HOOK;
-        d.lpFeeRouter = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
-        d.lpFeeRouterImpl = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER_IMPL;
-        d.quoter = DeploymentsRobinhoodTestnet.QUOTER;
-        d.tokenImpl = DeploymentsRobinhoodTestnet.TOKEN_IMPL;
-        d.taxableTokenImpl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL;
-        d.taxableTokenV2Impl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL;
-        d.factoryUniV2Unified = DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED;
-        d.factoryUniV2UnifiedImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.factoryUniV4Unified = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED;
-        d.factoryUniV4UnifiedImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED_IMPL;
-        d.creatorVaultFactory = DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY;
-        d.creatorVaultFactoryImpl = DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY_IMPL;
-        d.creatorVaultImpl = DeploymentsRobinhoodTestnet.CREATOR_VAULT_IMPL;
-        d.vaultCurves = DeploymentsRobinhoodTestnet.vaultBondingCurves();
-        d.graduatorThin = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN;
-        d.graduatorThick = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK;
-        d.thinCurveBase = DeploymentsRobinhoodTestnet.THIN_CURVE_BASE;
-        d.thinVaultCurves = DeploymentsRobinhoodTestnet.thinVaultCurves();
-        d.thickCurveBase = DeploymentsRobinhoodTestnet.THICK_CURVE_BASE;
-        d.thickVaultCurves = DeploymentsRobinhoodTestnet.thickVaultCurves();
-        d.realmDev = DeploymentsRobinhoodTestnet.REALM_DEV;
-        d.realmTreasury = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
-        d.realmTokenDeployer = DeploymentsRobinhoodTestnet.REALM_TOKEN_DEPLOYER;
-        d.weth = DeploymentAddressesRobinhoodTestnet.WETH;
-        d.univ2Router = DeploymentAddressesRobinhoodTestnet.UNIV2_ROUTER;
-        d.univ2Factory = DeploymentAddressesRobinhoodTestnet.UNIV2_FACTORY;
-        d.univ4PoolManager = DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER;
-        d.univ4PositionManager = DeploymentAddressesRobinhoodTestnet.UNIV4_POSITION_MANAGER;
-        d.univ4UniversalRouter = DeploymentAddressesRobinhoodTestnet.UNIV4_UNIVERSAL_ROUTER;
-        d.permit2 = DeploymentAddressesRobinhoodTestnet.PERMIT2;
-    }
-
-    function _arcMainnet() internal pure returns (ChainDeployments memory d) {
-        d.title = "ARC Chain Mainnet";
-        d.manifestFile = "manifest.arc.mainnet.sol";
-        d.launchpad = DeploymentsArcMainnet.LAUNCHPAD;
-        d.bondingCurve = DeploymentsArcMainnet.BONDING_CURVE;
-        d.graduatorUniV2 = DeploymentsArcMainnet.GRADUATOR_UNIV2;
-        d.graduatorUniV4 = DeploymentsArcMainnet.GRADUATOR_UNIV4;
-        d.masterFeeHandler = DeploymentsArcMainnet.MASTER_FEE_HANDLER;
-        d.univ4LiquidityAdder = DeploymentsArcMainnet.UNIV4_LIQUIDITY_ADDER;
-        d.swapHook = DeploymentsArcMainnet.SWAP_HOOK;
-        d.lpFeeRouter = DeploymentsArcMainnet.LP_FEE_ROUTER;
-        d.lpFeeRouterImpl = DeploymentsArcMainnet.LP_FEE_ROUTER_IMPL;
-        d.quoter = DeploymentsArcMainnet.QUOTER;
-        d.tokenImpl = DeploymentsArcMainnet.TOKEN_IMPL;
-        d.taxableTokenImpl = DeploymentsArcMainnet.TAXABLE_TOKEN_V4_IMPL;
-        d.taxableTokenV2Impl = DeploymentsArcMainnet.TAXABLE_TOKEN_V2_IMPL;
-        d.factoryUniV2Unified = DeploymentsArcMainnet.FACTORY_UNIV2_UNIFIED;
-        d.factoryUniV2UnifiedImpl = DeploymentsArcMainnet.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.factoryUniV4Unified = DeploymentsArcMainnet.FACTORY_UNIV4_UNIFIED;
-        d.factoryUniV4UnifiedImpl = DeploymentsArcMainnet.FACTORY_UNIV4_UNIFIED_IMPL;
-        d.creatorVaultFactory = DeploymentsArcMainnet.CREATOR_VAULT_FACTORY;
-        d.creatorVaultFactoryImpl = DeploymentsArcMainnet.CREATOR_VAULT_FACTORY_IMPL;
-        d.creatorVaultImpl = DeploymentsArcMainnet.CREATOR_VAULT_IMPL;
-        d.vaultCurves = DeploymentsArcMainnet.vaultBondingCurves();
-        d.graduatorThin = DeploymentsArcMainnet.GRADUATOR_UNIV4_THIN;
-        d.graduatorThick = DeploymentsArcMainnet.GRADUATOR_UNIV4_THICK;
-        d.thinCurveBase = DeploymentsArcMainnet.THIN_CURVE_BASE;
-        d.thinVaultCurves = DeploymentsArcMainnet.thinVaultCurves();
-        d.thickCurveBase = DeploymentsArcMainnet.THICK_CURVE_BASE;
-        d.thickVaultCurves = DeploymentsArcMainnet.thickVaultCurves();
-        d.realmDev = DeploymentsArcMainnet.REALM_DEV;
-        d.realmTreasury = DeploymentAddressesArcMainnet.REALM_TREASURY;
-        d.realmTokenDeployer = DeploymentsArcMainnet.REALM_TOKEN_DEPLOYER;
-        d.weth = DeploymentAddressesArcMainnet.WETH;
-        d.univ2Router = DeploymentAddressesArcMainnet.UNIV2_ROUTER;
-        d.univ2Factory = DeploymentAddressesArcMainnet.UNIV2_FACTORY;
-        d.univ4PoolManager = DeploymentAddressesArcMainnet.UNIV4_POOL_MANAGER;
-        d.univ4PositionManager = DeploymentAddressesArcMainnet.UNIV4_POSITION_MANAGER;
-        d.univ4UniversalRouter = DeploymentAddressesArcMainnet.UNIV4_UNIVERSAL_ROUTER;
-        d.permit2 = DeploymentAddressesArcMainnet.PERMIT2;
-    }
-
-    function _arcTestnet() internal pure returns (ChainDeployments memory d) {
-        d.title = "ARC Chain Testnet";
-        d.manifestFile = "manifest.arc.testnet.sol";
-        d.launchpad = DeploymentsArcTestnet.LAUNCHPAD;
-        d.bondingCurve = DeploymentsArcTestnet.BONDING_CURVE;
-        d.graduatorUniV2 = DeploymentsArcTestnet.GRADUATOR_UNIV2;
-        d.graduatorUniV4 = DeploymentsArcTestnet.GRADUATOR_UNIV4;
-        d.masterFeeHandler = DeploymentsArcTestnet.MASTER_FEE_HANDLER;
-        d.univ4LiquidityAdder = DeploymentsArcTestnet.UNIV4_LIQUIDITY_ADDER;
-        d.swapHook = DeploymentsArcTestnet.SWAP_HOOK;
-        d.lpFeeRouter = DeploymentsArcTestnet.LP_FEE_ROUTER;
-        d.lpFeeRouterImpl = DeploymentsArcTestnet.LP_FEE_ROUTER_IMPL;
-        d.quoter = DeploymentsArcTestnet.QUOTER;
-        d.tokenImpl = DeploymentsArcTestnet.TOKEN_IMPL;
-        d.taxableTokenImpl = DeploymentsArcTestnet.TAXABLE_TOKEN_V4_IMPL;
-        d.taxableTokenV2Impl = DeploymentsArcTestnet.TAXABLE_TOKEN_V2_IMPL;
-        d.factoryUniV2Unified = DeploymentsArcTestnet.FACTORY_UNIV2_UNIFIED;
-        d.factoryUniV2UnifiedImpl = DeploymentsArcTestnet.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.factoryUniV4Unified = DeploymentsArcTestnet.FACTORY_UNIV4_UNIFIED;
-        d.factoryUniV4UnifiedImpl = DeploymentsArcTestnet.FACTORY_UNIV4_UNIFIED_IMPL;
-        d.creatorVaultFactory = DeploymentsArcTestnet.CREATOR_VAULT_FACTORY;
-        d.creatorVaultFactoryImpl = DeploymentsArcTestnet.CREATOR_VAULT_FACTORY_IMPL;
-        d.creatorVaultImpl = DeploymentsArcTestnet.CREATOR_VAULT_IMPL;
-        d.vaultCurves = DeploymentsArcTestnet.vaultBondingCurves();
-        d.graduatorThin = DeploymentsArcTestnet.GRADUATOR_UNIV4_THIN;
-        d.graduatorThick = DeploymentsArcTestnet.GRADUATOR_UNIV4_THICK;
-        d.thinCurveBase = DeploymentsArcTestnet.THIN_CURVE_BASE;
-        d.thinVaultCurves = DeploymentsArcTestnet.thinVaultCurves();
-        d.thickCurveBase = DeploymentsArcTestnet.THICK_CURVE_BASE;
-        d.thickVaultCurves = DeploymentsArcTestnet.thickVaultCurves();
-        d.realmDev = DeploymentsArcTestnet.REALM_DEV;
-        d.realmTreasury = DeploymentAddressesArcTestnet.REALM_TREASURY;
-        d.realmTokenDeployer = DeploymentsArcTestnet.REALM_TOKEN_DEPLOYER;
-        d.weth = DeploymentAddressesArcTestnet.WETH;
-        d.univ2Router = DeploymentAddressesArcTestnet.UNIV2_ROUTER;
-        d.univ2Factory = DeploymentAddressesArcTestnet.UNIV2_FACTORY;
-        d.univ4PoolManager = DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER;
-        d.univ4PositionManager = DeploymentAddressesArcTestnet.UNIV4_POSITION_MANAGER;
-        d.univ4UniversalRouter = DeploymentAddressesArcTestnet.UNIV4_UNIVERSAL_ROUTER;
-        d.permit2 = DeploymentAddressesArcTestnet.PERMIT2;
     }
 
     // ---------------------------------------------------------------- Renderer

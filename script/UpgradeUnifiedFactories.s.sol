@@ -7,7 +7,6 @@ import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.s
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
 /// @title Flip the unified factory proxies onto their pre-deployed v2 implementations — the launchpad v1->v2 cutover
@@ -55,15 +54,7 @@ contract UpgradeUnifiedFactories is Script {
     }
 
     function _getDeps() internal view returns (Deps memory d) {
-        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            d = Deps({
-                factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
-                factoryV2Impl: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED_IMPL,
-                factoryV4Impl: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED_IMPL,
-                launchpad: DeploymentsEthereumMainnet.LAUNCHPAD
-            });
-        } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
                 factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
                 factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED,

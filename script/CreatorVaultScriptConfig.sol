@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
-import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
-import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 
@@ -22,40 +19,22 @@ import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.s
 library CreatorVaultScriptConfig {
     /// @notice The `RealmCreatorVaultFactory` proxy for the active chain.
     function factoryFor() internal view returns (address) {
-        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            return DeploymentsEthereumMainnet.CREATOR_VAULT_FACTORY;
-        }
         if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             return DeploymentsEthereumSepolia.CREATOR_VAULT_FACTORY;
         }
         if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
             return DeploymentsRobinhoodMainnet.CREATOR_VAULT_FACTORY;
         }
-        if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
-            return DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY;
-        }
-        if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
-            return DeploymentsArcTestnet.CREATOR_VAULT_FACTORY;
-        }
         revert("CreatorVaultScriptConfig: unsupported chain");
     }
 
     /// @notice The six allocation-specific bonding curves [5%..30%] for the active chain.
     function curvesFor() internal view returns (address[6] memory) {
-        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            return DeploymentsEthereumMainnet.vaultBondingCurves();
-        }
         if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             return DeploymentsEthereumSepolia.vaultBondingCurves();
         }
         if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
             return DeploymentsRobinhoodMainnet.vaultBondingCurves();
-        }
-        if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
-            return DeploymentsRobinhoodTestnet.vaultBondingCurves();
-        }
-        if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
-            return DeploymentsArcTestnet.vaultBondingCurves();
         }
         revert("CreatorVaultScriptConfig: unsupported chain");
     }
@@ -67,15 +46,6 @@ library CreatorVaultScriptConfig {
     ///      THIN/THICK tier, so an early factory deploy/upgrade won't revert. You MUST deploy the tier
     ///      system and refresh the manifest before THIN/THICK tokens can be created.
     function tierConfigFor() internal view returns (IRealmFactory.LiquidityTierConfig memory tierConfig) {
-        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            tierConfig.thin = IRealmFactory.TierCurves({
-                base: DeploymentsEthereumMainnet.THIN_CURVE_BASE, vaults: DeploymentsEthereumMainnet.thinVaultCurves()
-            });
-            tierConfig.thick = IRealmFactory.TierCurves({
-                base: DeploymentsEthereumMainnet.THICK_CURVE_BASE, vaults: DeploymentsEthereumMainnet.thickVaultCurves()
-            });
-            return tierConfig;
-        }
         if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             tierConfig.thin = IRealmFactory.TierCurves({
                 base: DeploymentsEthereumSepolia.THIN_CURVE_BASE, vaults: DeploymentsEthereumSepolia.thinVaultCurves()
@@ -95,38 +65,12 @@ library CreatorVaultScriptConfig {
             });
             return tierConfig;
         }
-        if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
-            tierConfig.thin = IRealmFactory.TierCurves({
-                base: DeploymentsRobinhoodTestnet.THIN_CURVE_BASE, vaults: DeploymentsRobinhoodTestnet.thinVaultCurves()
-            });
-            tierConfig.thick = IRealmFactory.TierCurves({
-                base: DeploymentsRobinhoodTestnet.THICK_CURVE_BASE,
-                vaults: DeploymentsRobinhoodTestnet.thickVaultCurves()
-            });
-            return tierConfig;
-        }
-        if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
-            tierConfig.thin = IRealmFactory.TierCurves({
-                base: DeploymentsArcTestnet.THIN_CURVE_BASE, vaults: DeploymentsArcTestnet.thinVaultCurves()
-            });
-            tierConfig.thick = IRealmFactory.TierCurves({
-                base: DeploymentsArcTestnet.THICK_CURVE_BASE, vaults: DeploymentsArcTestnet.thickVaultCurves()
-            });
-            return tierConfig;
-        }
         revert("CreatorVaultScriptConfig: unsupported chain");
     }
 
     /// @notice The full V4 tier config (curves + per-tier graduators) for the active chain. See `tierConfigFor`.
     function v4TierConfigFor() internal view returns (RealmFactoryUniV4Unified.V4TierConfig memory v4Tier) {
         v4Tier.curves = tierConfigFor();
-        if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            v4Tier.graduators = RealmFactoryUniV4Unified.TierGraduators({
-                thin: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THIN,
-                thick: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THICK
-            });
-            return v4Tier;
-        }
         if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             v4Tier.graduators = RealmFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN,
@@ -138,19 +82,6 @@ library CreatorVaultScriptConfig {
             v4Tier.graduators = RealmFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN,
                 thick: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK
-            });
-            return v4Tier;
-        }
-        if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
-            v4Tier.graduators = RealmFactoryUniV4Unified.TierGraduators({
-                thin: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN,
-                thick: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK
-            });
-            return v4Tier;
-        }
-        if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
-            v4Tier.graduators = RealmFactoryUniV4Unified.TierGraduators({
-                thin: DeploymentsArcTestnet.GRADUATOR_UNIV4_THIN, thick: DeploymentsArcTestnet.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;
         }
