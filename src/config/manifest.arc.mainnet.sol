@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-/// @title Livo deployment manifest — ARC Chain Mainnet (chain id 5042)
-/// @notice Single source of truth for Livo's own deployed contracts on ARC mainnet.
+/// @title Realm deployment manifest — ARC Chain Mainnet (chain id 5042)
+/// @notice Single source of truth for Realm's own deployed contracts on ARC mainnet.
 /// @dev ARC mainnet is live and Uniswap is officially deployed there. External infrastructure
 ///      (Uniswap V2/V3/V4, Permit2, the USDC-ERC20 quote alias) lives in
 ///      `src/config/DeploymentAddresses.sol` (`DeploymentAddressesArcMainnet`); treasury also lives
-///      there. No Livo contract is deployed yet — every address below is `address(0)`; fill each on
+///      there. No Realm contract is deployed yet — every address below is `address(0)`; fill each on
 ///      deploy and run `just export-deployments`.
 library DeploymentsArcMainnet {
     uint256 internal constant BLOCKCHAIN_ID = 5042;
@@ -18,7 +18,7 @@ library DeploymentsArcMainnet {
     address internal constant GRADUATOR_UNIV4 = address(0);
     address internal constant MASTER_FEE_HANDLER = address(0);
 
-    /// @notice Shared, permissionless `LivoUniV4LiquidityAdder` singleton — one per chain, passed to every
+    /// @notice Shared, permissionless `RealmUniV4LiquidityAdder` singleton — one per chain, passed to every
     ///         V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
     ///         `DeployUniV4LiquidityAdder`; `address(0)` until first deployed on this chain.
     address internal constant UNIV4_LIQUIDITY_ADDER = address(0);
@@ -105,6 +105,6 @@ library DeploymentsArcMainnet {
     }
 
     // --- Accounts ---
-    address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
-    address internal constant LIVO_TOKEN_DEPLOYER = address(0);
+    address internal constant REALM_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
+    address internal constant REALM_TOKEN_DEPLOYER = address(0);
 }

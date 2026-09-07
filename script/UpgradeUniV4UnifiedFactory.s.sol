@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {DeploymentAddresses as AddressesFromRealmTaxableToken} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
 import {
     DeploymentAddressesEthereumMainnet,
@@ -17,7 +17,7 @@ import {
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 
-/// @title Upgrade the LivoFactoryUniV4Unified proxy to a fresh implementation
+/// @title Upgrade the RealmFactoryUniV4Unified proxy to a fresh implementation
 /// @notice Redeploys the V4 unified factory implementation from the current manifest and points the
 ///         existing proxy at it. `createToken` selects its graduator by liquidity tier alone: the
 ///         single `SWAP_HOOK` is fee-agnostic (it reads the LP fee back from the token), so
@@ -27,7 +27,7 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///         proxy address doesn't move.
 ///
 ///         Single broadcast:
-///         1. deploys a fresh `LivoFactoryUniV4Unified` implementation wired to the addresses in
+///         1. deploys a fresh `RealmFactoryUniV4Unified` implementation wired to the addresses in
 ///            the per-chain manifest (`src/config/manifest.{mainnet,sepolia}.sol`).
 ///         2. calls `upgradeToAndCall(newImpl, "")` on the existing V4 factory proxy.
 ///
@@ -69,9 +69,9 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 taxTokenImpl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V4_IMPL
             });
             require(
-                AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableToken.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Mainnet"
+                "RealmTaxableTokenUniV4 import is not Mainnet"
             );
         } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
@@ -84,9 +84,9 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 taxTokenImpl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL
             });
             require(
-                AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableToken.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
+                "RealmTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
             );
         } else {
             revert("Unsupported chain");
@@ -105,11 +105,11 @@ contract UpgradeUniV4UnifiedFactory is Script {
         Deps memory d = _getDeps();
 
         // Sanity: confirm the proxy is responsive and initialized. Catches a wrong manifest
-        // address pointing at a non-Livo contract before we waste a deploy.
-        address proxyOwner = LivoFactoryUniV4Unified(d.factoryV4Proxy).owner();
+        // address pointing at a non-Realm contract before we waste a deploy.
+        address proxyOwner = RealmFactoryUniV4Unified(d.factoryV4Proxy).owner();
         require(proxyOwner != address(0), "V4 proxy not initialized");
 
-        console.log("=== Livo UniV4 Unified Factory Upgrade ===");
+        console.log("=== Realm UniV4 Unified Factory Upgrade ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Required proxy owner:    ", proxyOwner);
@@ -123,9 +123,9 @@ contract UpgradeUniV4UnifiedFactory is Script {
         console.log("| -------------------------------------- | --- |");
 
         address factoryV4Impl = address(
-            new LivoFactoryUniV4Unified(
+            new RealmFactoryUniV4Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenImpl}),
+                IRealmFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenImpl}),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.masterFeeHandler,
@@ -134,7 +134,7 @@ contract UpgradeUniV4UnifiedFactory is Script {
                 CreatorVaultScriptConfig.v4TierConfigFor()
             )
         );
-        console.log("| LivoFactoryUniV4Unified (new impl)    |", factoryV4Impl);
+        console.log("| RealmFactoryUniV4Unified (new impl)    |", factoryV4Impl);
 
         UUPSUpgradeable(d.factoryV4Proxy).upgradeToAndCall(factoryV4Impl, "");
         console.log("| V4 proxy upgraded to                  |", factoryV4Impl);

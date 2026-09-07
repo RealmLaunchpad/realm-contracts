@@ -2,22 +2,22 @@
 pragma solidity 0.8.28;
 
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {
     TaxConfigsWithAllocation,
     EarningsAllocationConfig,
     TaxConfigsWithMultiAllocation,
     EarningsAllocationMultiConfig
-} from "src/interfaces/ILivoTaxableToken.sol";
+} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
+import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
-import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
+import {SwapRejection} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
@@ -45,10 +45,10 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Creates a taxable V4 token routing `dividendsBps` of post-graduation earnings to holders,
     ///      paid in `asset`. 4%-configurable sell tax, creation-anchored 14-day window.
     function _createDividendToken(uint16 dividendsBps, address asset) internal returns (address token) {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DivToken",
             symbol: "DIV",
-            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -68,10 +68,10 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         token = factoryTax.createToken(
             setup,
             cfg,
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
     }
@@ -87,16 +87,16 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     /// @dev A graduated, dividend-paying token with `buyer` as its only holder. Graduation itself
     ///      starts the accumulator.
-    function _graduatedDividendToken() internal returns (LivoTaxableTokenUniV4 token) {
+    function _graduatedDividendToken() internal returns (RealmTaxableTokenUniV4 token) {
         address addr = _createDividendToken(5_000, address(0));
         testToken = addr;
         _launchpadBuy(addr, 2 ether);
         _graduateToken();
-        return LivoTaxableTokenUniV4(payable(addr));
+        return RealmTaxableTokenUniV4(payable(addr));
     }
 
     /// @dev A graduated, dividend-active token with 0.5 ETH buffered for holders.
-    function _liveDividendToken() internal returns (LivoTaxableTokenUniV4 token) {
+    function _liveDividendToken() internal returns (RealmTaxableTokenUniV4 token) {
         token = _graduatedDividendToken();
         _accrue(token, 1 ether);
     }
@@ -110,7 +110,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Pushes `amount` of native earnings through the allocation split, the same way the swap hook
     ///      and the LP-fee router do. Used instead of driving real swaps where the point of the test is
     ///      the dividend mechanics rather than the tax collection.
-    function _accrue(LivoTaxableTokenUniV4 token, uint256 amount) internal {
+    function _accrue(RealmTaxableTokenUniV4 token, uint256 amount) internal {
         vm.deal(address(this), amount);
         token.accrueFees{value: amount}();
     }
@@ -120,10 +120,10 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Creates a taxable V4 token paying holders in a SET of assets, through the multi-allocation
     ///      `createToken` overload — the real creation path a frontend uses, not the token's initializer.
     function _createMultiAssetToken(address[] memory assets, uint16[] memory weights) internal returns (address token) {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "MultiDiv",
             symbol: "MDIV",
-            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -148,16 +148,16 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         token = factoryTax.createToken(
             setup,
             cfg,
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
     }
 
     /// @dev The product's own example: 20% of the dividends slice in one asset, 80% in another.
-    function _nativeAndDaiToken() internal returns (LivoTaxableTokenUniV4 token) {
+    function _nativeAndDaiToken() internal returns (RealmTaxableTokenUniV4 token) {
         address[] memory assets = new address[](2);
         assets[0] = address(0);
         assets[1] = DAI;
@@ -169,14 +169,14 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         testToken = addr;
         _launchpadBuy(addr, 2 ether);
         _graduateToken();
-        return LivoTaxableTokenUniV4(payable(addr));
+        return RealmTaxableTokenUniV4(payable(addr));
     }
 
     ///////////////////////// several payout assets /////////////////////////
 
     /// @dev The creation path stores the whole set, and the warm count is what the transfer hook reads.
     function test_multiAsset_creationStoresTheWholeSet() public {
-        LivoTaxableTokenUniV4 token = _nativeAndDaiToken();
+        RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
 
         assertEq(token.dividendAssetCount(), 2, "two payout assets");
         assertTrue(token.hasDividends(), "and the warm flag is on");
@@ -191,7 +191,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Graduation activates EVERY asset at once, so no leg silently misses the seconds between
     ///      going live and its own first distribution.
     function test_multiAsset_graduationActivatesEveryAsset() public {
-        LivoTaxableTokenUniV4 token = _nativeAndDaiToken();
+        RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
 
         (, uint40 finish0,,,,,,,,) = token.dividendAssets(0);
         (, uint40 finish1,,,,,,,,) = token.dividendAssets(1);
@@ -202,7 +202,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev End to end, through the real earnings split: one accrual, two buffers, two conversions, two
     ///      payouts, one holder.
     function test_multiAsset_earningsReachHoldersInBothAssets() public {
-        LivoTaxableTokenUniV4 token = _nativeAndDaiToken();
+        RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
         _accrue(token, 1 ether);
 
         (,,,,,,,, uint88 buffer0,) = token.dividendAssets(0);
@@ -226,7 +226,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      earnings split on every permissionless `sweepStrayEth`, handing holders' money to the
     ///      creator's fee receivers.
     function test_multiAsset_sweepStrayEthCannotReachAnyAssetBuffer() public {
-        LivoTaxableTokenUniV4 token = _nativeAndDaiToken();
+        RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
         _accrue(token, 1 ether);
 
         (,,,,,,,, uint88 buffer0,) = token.dividendAssets(0);
@@ -245,7 +245,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev `rescueTokens` subtracts `committedDividends`, which answers per asset. A pot bought for one
     ///      leg must be unreachable even though the token also pays in another.
     function test_multiAsset_rescueTokensCannotTakeAPayoutPot() public {
-        LivoTaxableTokenUniV4 token = _nativeAndDaiToken();
+        RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
         _accrue(token, 1 ether);
         token.processDividends(1, 0, _noHolders());
 
@@ -267,7 +267,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      unwind, atomically and risk-free. The cost of that round trip does not grow with how far the
     ///      price is pushed, so no cap or depth threshold bounds the fraction it takes — only this does.
     function test_processDividends_refusesANonKeeper() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
 
         vm.prank(makeAddr("randomCaller"));
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
@@ -276,7 +276,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     /// @dev And an appointed keeper goes through, which is what makes the gate a gate rather than a wall.
     function test_processDividends_allowsAnAppointedKeeper() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         address keeper = makeAddr("appointedKeeper");
         vm.prank(admin);
         keepersRegistry.setKeeper(keeper, true);
@@ -289,7 +289,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     /// @dev Revocation is immediate: a rotated-out key stops working in the next transaction.
     function test_processDividends_refusesARevokedKeeper() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         address keeper = makeAddr("rotatedKeeper");
         vm.startPrank(admin);
         keepersRegistry.setKeeper(keeper, true);
@@ -305,7 +305,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      buffer forever, so once the token is stale anyone may fund it. A buffer someone can convert
     ///      badly beats a buffer nobody can convert at all.
     function test_processDividends_goesPermissionlessOnceStale() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
 
         skip(token.STALE_DIVIDEND_WINDOW() + 1);
         assertTrue(token.dividendsStale(0), "precondition: the token is stale");
@@ -319,7 +319,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev The gate never stands between a holder and their own money. `claimDividends()` is open to
     ///      everyone, which is what makes keeper-gating the FUNDING leg acceptable at all.
     function test_claimDividends_staysOpenToNonKeepers() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, new address[](0));
         skip(token.DIVIDEND_DRIP_DURATION());
 
@@ -336,7 +336,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///////////////////////// configuration /////////////////////////
 
     function test_dividendConfig_storedAtCreation() public {
-        LivoTaxableTokenUniV4 token = LivoTaxableTokenUniV4(payable(_createDividendToken(5_000, address(0))));
+        RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(payable(_createDividendToken(5_000, address(0))));
 
         assertEq(token.dividendsBps(), 5_000, "dividendsBps stored");
         assertTrue(token.hasDividends(), "warm-slot gate flipped on");
@@ -347,14 +347,14 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev The self-token sentinel exists because a creator cannot name an address that does not exist
     ///      yet; it must resolve to the token itself at initialization.
     function test_selfTokenSentinel_resolvesToTheToken() public {
-        LivoTaxableTokenUniV4 token = LivoTaxableTokenUniV4(payable(_createDividendToken(5_000, token_SELF())));
+        RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(payable(_createDividendToken(5_000, token_SELF())));
         assertEq(token.dividendToken(), address(token), "sentinel resolved");
     }
 
     /// @dev An asset with no Uniswap V2 pair at all is refused at creation. A clone cannot be patched,
     ///      so the buffer would accrue forever behind it.
     function test_thirdAssetWithNoPairRejected() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
+        vm.expectRevert(abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
         _createDividendToken(5_000, makeAddr("xStock"));
     }
 
@@ -366,7 +366,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         dividendSwapRegistry.setBlacklisted(DAI, true);
 
         vm.expectRevert(
-            abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.Blacklisted)
+            abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.Blacklisted)
         );
         _createDividendToken(5_000, DAI);
     }
@@ -380,19 +380,19 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      denominator; here there is none to poison, because no stream is running yet and eligible
     ///      supply is read live on every advance.
     function test_dividendsActivateAtGraduation() public {
-        LivoTaxableTokenUniV4 token = _graduatedDividendToken();
+        RealmTaxableTokenUniV4 token = _graduatedDividendToken();
         assertGt(token.dividendPeriodFinish(), 0, "activated by graduation itself");
         assertEq(divRate(address(token), 0), 0, "but nothing is streaming yet");
         assertEq(token.previewDividend(buyer), 0, "so nobody has accrued anything");
     }
 
     function test_accrual_bufferedAsNative() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         assertEq(token.pendingNative(), 0.5 ether, "half of the earnings buffered for holders");
     }
 
     function test_processDividends_revertsBelowThreshold() public {
-        LivoTaxableTokenUniV4 token = _graduatedDividendToken();
+        RealmTaxableTokenUniV4 token = _graduatedDividendToken();
         _accrue(token, 0.01 ether); // 0.005 ETH to dividends, well under the 0.1 ETH threshold
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
         token.processDividends(0, _noHolders());
@@ -403,7 +403,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      a dead V4 token strands everything under `DIVIDEND_THRESHOLD` (0.1 ETH on mainnet), owed to
     ///      holders and unreachable by them.
     function test_staleTokenPaysItsSubThresholdResidual() public {
-        LivoTaxableTokenUniV4 token = _graduatedDividendToken();
+        RealmTaxableTokenUniV4 token = _graduatedDividendToken();
         _accrue(token, 0.01 ether); // 0.005 ETH to dividends, well under the threshold
         uint256 residual = token.pendingNative();
         assertGt(residual, 0, "a residual is buffered");
@@ -426,7 +426,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      the undelivered remainder in and re-spreads the sum over a fresh window: the slope changes,
     ///      nothing is deferred, and no phase has to be waited out.
     function test_fundingMidStreamJustChangesTheSlope() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
         uint256 firstRate = divRate(address(token), 0);
 
@@ -450,7 +450,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      zero. `holder2` receives half the float and gives it straight back in the same block, with a
     ///      distribution funded in between — and is owed nothing.
     function test_aZeroDurationBalanceEarnsNothing() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         IERC20 erc = IERC20(address(token));
         uint256 half = erc.balanceOf(buyer) / 2;
 
@@ -470,7 +470,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Accrual is `balance x time`. Two holders splitting the float evenly for the second half of a
     ///      stream split that half evenly, and the one who held through the first half keeps all of it.
     function test_accrualIsProportionalToBalanceAndTime() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         IERC20 erc = IERC20(address(token));
         token.processDividends(0, _noHolders());
         uint256 pot = token.dividendsOwed();
@@ -489,7 +489,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///////////////////////// payout /////////////////////////
 
     function test_singleHolder_receivesTheWholeStream() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
         assertApproxEqAbs(token.dividendsOwed(), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "the stream is funded");
         skip(token.DIVIDEND_DRIP_DURATION());
@@ -506,7 +506,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev A keeper's list is untrusted input: the same address twice must pay once, because the amount
     ///      is read from the holder's own accrual and zeroed on the first hit.
     function test_payingTwiceIsANoOp() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
         skip(token.DIVIDEND_DRIP_DURATION());
 
@@ -529,7 +529,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      `processDividends(0, holders)` usable as a plain `claimFor` on whatever cadence a keeper
     ///      likes, against whatever holder threshold it likes.
     function test_aPushOnlyCallWorksWithNothingToFund() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
         skip(token.DIVIDEND_DRIP_DURATION());
 
@@ -541,7 +541,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev A holder the keeper never includes loses nothing at all: their accrual keeps compounding
     ///      across distributions until somebody pays them or they claim.
     function test_anOmittedHolderKeepsAccruing() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         IERC20 erc = IERC20(address(token));
         // Read the balance BEFORE the prank: `vm.prank` applies to the next call, view calls included.
         uint256 half = erc.balanceOf(buyer) / 2;
@@ -565,7 +565,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_claimDividends_isABackstopForAMissedHolder() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
         skip(token.DIVIDEND_DRIP_DURATION());
 
@@ -588,7 +588,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      anyone recycle the dividend money through the split, handing the fund slice to the creator
     ///      on every call.
     function test_sweepStrayEth_cannotTouchTheDividendBuffer() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         uint256 buffered = token.pendingNative();
 
         token.sweepStrayEth();
@@ -601,7 +601,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_undeliveredDividendsSurviveASweep() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
 
         token.sweepStrayEth();
@@ -613,7 +613,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     ///////////////////////// the exclusion set /////////////////////////
 
-    /// @dev The excluded set is written out TWICE in `LivoTaxableToken` — once as a predicate
+    /// @dev The excluded set is written out TWICE in `RealmTaxableToken` — once as a predicate
     ///      (`_dividendExcluded`) and once as an arithmetic subtraction (`_dividendEligibleSupply`) — and
     ///      the two must name the same addresses. If they drift, the accumulator's denominator counts a
     ///      balance that can never be paid, and every stream under-distributes by that much, forever.
@@ -621,7 +621,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      `previewDividend` per excluded address (the predicate), and the size of a real holder's
     ///      share of a fully-dripped stream (the subtraction).
     function test_theTwoExclusionListsAgree() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         IERC20 erc = IERC20(address(token));
 
         address[4] memory excluded = [address(token), token.pair(), address(token.launchpad()), address(0xdEaD)];
@@ -651,7 +651,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      the per-transfer SLOAD it avoids) is not quietly reversed: given a real balance it earns like
     ///      any other address.
     function test_graduatorIsAnOrdinaryAddress_notExcluded() public {
-        LivoTaxableTokenUniV4 token = _liveDividendToken();
+        RealmTaxableTokenUniV4 token = _liveDividendToken();
         IERC20 erc = IERC20(address(token));
         address graduator = token.graduator();
 
@@ -672,12 +672,12 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev A graduated token paying its holders in ITSELF. On V4 this is the only leg that runs a swap:
     ///      earnings arrive as ETH and `_acquireDividendAsset` buys the token back on its own pool,
     ///      reusing the primitive `processBurn` uses.
-    function _graduatedSelfTokenDividendToken() internal returns (LivoTaxableTokenUniV4 token) {
+    function _graduatedSelfTokenDividendToken() internal returns (RealmTaxableTokenUniV4 token) {
         address addr = _createDividendToken(5_000, token_SELF());
         testToken = addr;
         _launchpadBuy(addr, 2 ether);
         _graduateToken();
-        return LivoTaxableTokenUniV4(payable(addr));
+        return RealmTaxableTokenUniV4(payable(addr));
     }
 
     /// @dev The whole V4 self-token path end to end: accrue ETH, buy the token back on its own pool
@@ -685,7 +685,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      `_acquireDividendAsset`'s V4 override, so without this the leg is configurable but never
     ///      executed.
     function test_selfTokenLeg_boughtBackOnFundingAndPaidInTokens() public {
-        LivoTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
+        RealmTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
         _accrue(token, 1 ether);
         assertEq(token.pendingNative(), 0.5 ether, "the self-token leg buffers as ETH on V4");
 
@@ -723,7 +723,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      `tx.origin` — the keeper. `DividendBuyBackInitiated` must land BEFORE it so an indexer can
     ///      classify that buy as protocol-internal as it arrives, rather than as a trade by the keeper.
     function test_selfTokenBuyBack_isFlaggedBeforeTheSwap() public {
-        LivoTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
+        RealmTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
         _accrue(token, 1 ether);
 
         vm.recordLogs();
@@ -750,7 +750,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      and fund buckets. Measured against stray native rather than the raw balance because a
     ///      buy-back is a swap: the hook's `accrueFees` can land native here mid-call.
     function test_selfTokenBuyBack_unspentEthStaysEarmarked() public {
-        LivoTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
+        RealmTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
         _accrue(token, 1 ether);
 
         uint256 pending = token.pendingNative();
@@ -771,7 +771,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Undelivered self-token dividends are the token's OWN balance, shared with the tax pool. They
     ///      must be invisible to the swap-back accounting, or holders' money would be re-processed as tax.
     function test_selfTokenDividends_areNotSweepableAsStray() public {
-        LivoTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
+        RealmTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
         _accrue(token, 1 ether);
         token.processDividends(0, _noHolders());
 
@@ -780,7 +780,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         // A rescue must not be able to reach it either: it is holders' money, not a stuck balance.
         vm.prank(creator);
-        vm.expectRevert(LivoTaxableToken.CannotRescueSelfToken.selector);
+        vm.expectRevert(RealmTaxableToken.CannotRescueSelfToken.selector);
         token.rescueTokens(address(token));
     }
 

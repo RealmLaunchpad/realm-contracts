@@ -2,10 +2,10 @@
 
 A dividend payout asset is bought, not held: the token accrues native currency and converts it into the
 asset on every distribution. Which pools that conversion crosses is the **route**, and the token's
-creator picks it at creation. `LivoDividendSwapRegistry` records it against that token and never lets it
+creator picks it at creation. `RealmDividendSwapRegistry` records it against that token and never lets it
 change.
 
-**Livo does not review payout assets.** There is no whitelist and no admin approval — a creator names
+**Realm does not review payout assets.** There is no whitelist and no admin approval — a creator names
 the pools and the registry checks only that they are real: initialized, holding liquidity, and ending at
 the asset. What nothing on-chain can check is whether those pools quote the asset's real market price, so
 a creator can point their own token at a pool they control. The blacklist is the one lever left for an

@@ -2,10 +2,10 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TokenState} from "src/types/tokenData.sol";
 
@@ -73,22 +73,23 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     // ───────────────────────── shared helpers ─────────────────────────
 
-    function _cfg() internal pure returns (LivoFactoryUniV4Unified.UniV4Configs memory) {
-        return LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
+    function _cfg() internal pure returns (RealmFactoryUniV4Unified.UniV4Configs memory) {
+        return RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
     }
 
     /// @dev Creates a plain V4 token in `tier` with a single creator vault holding `vaultBps`. When
     ///      `value > 0`, `ss` recipients receive the buy-on-deploy supply funded by that ETH.
-    function _create(LiquidityTier tier, uint256 vaultBps, uint256 value, ILivoFactory.SupplyShare[] memory ss)
+    function _create(LiquidityTier tier, uint256 vaultBps, uint256 value, IRealmFactory.SupplyShare[] memory ss)
         internal
         returns (address token)
     {
-        ILivoFactory.CreatorVault[] memory vaults = new ILivoFactory.CreatorVault[](1);
-        vaults[0] = ILivoFactory.CreatorVault({owner: creator, supplyBps: vaultBps, cliffSeconds: 0, vestingSeconds: 1});
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.CreatorVault[] memory vaults = new IRealmFactory.CreatorVault[](1);
+        vaults[0] =
+            IRealmFactory.CreatorVault({owner: creator, supplyBps: vaultBps, cliffSeconds: 0, vestingSeconds: 1});
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "Tier",
             symbol: "TIER",
-            salt: _nextValidSalt(address(factoryV4Unified), address(livoToken)),
+            salt: _nextValidSalt(address(factoryV4Unified), address(realmToken)),
             feeShares: _fs(creator),
             liquidityTier: tier
         });
@@ -102,15 +103,15 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
     /// @dev Scenario 1 assertion: the token is wired to the tier+vault curve and the tier graduator.
     function _assertWiring(address token, LiquidityTier tier, uint256 bpsIdx) internal view {
         string memory ctx = _ctx(tier, BPS[bpsIdx]);
-        ILivoBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
+        IRealmBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
         assertEq(address(curve), _expectedCurve(tier, bpsIdx), string.concat(ctx, "wrong tier+vault curve"));
         assertEq(curve.ethGraduationThreshold(), _expectedThreshold(tier), string.concat(ctx, "wrong tier threshold"));
-        assertEq(ILivoToken(token).graduator(), _expectedGraduator(tier), string.concat(ctx, "wrong tier graduator"));
+        assertEq(IRealmToken(token).graduator(), _expectedGraduator(tier), string.concat(ctx, "wrong tier graduator"));
     }
 
     /// @dev Buys (from `buyer`) exactly enough to reach the token's tier-specific graduation threshold.
     function _buyToGraduation(address token) internal {
-        ILivoBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
+        IRealmBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
         uint256 threshold = curve.ethGraduationThreshold();
         uint256 ethReserves = launchpad.getTokenState(token).ethCollected;
         uint256 buyFeeBps = _currentBuyFeeBps(token);
@@ -141,7 +142,7 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
                 factoryV4Unified.quoteBuyOnDeploy(tier, tokenAmount, BPS[i], _toCfgs(_emptyTaxCfg()), _cfg());
             address token = _create(tier, BPS[i], ethNeeded, _ss(creator));
             _assertWiring(token, tier, i);
-            uint256 received = ILivoToken(token).balanceOf(creator);
+            uint256 received = IRealmToken(token).balanceOf(creator);
             assertGe(received, tokenAmount, string.concat(ctx, "deployer got less than quoted"));
             assertApproxEqRel(received, tokenAmount, 0.00000001e18, string.concat(ctx, "deployer not ~= quoted"));
         }
@@ -162,7 +163,7 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
             assertTrue(
                 launchpad.getTokenState(token).graduated, string.concat(ctx, "max creator buy must graduate the token")
             );
-            assertGe(ILivoToken(token).balanceOf(creator), maxTokens, string.concat(ctx, "deployer got less than max"));
+            assertGe(IRealmToken(token).balanceOf(creator), maxTokens, string.concat(ctx, "deployer got less than max"));
         }
     }
 

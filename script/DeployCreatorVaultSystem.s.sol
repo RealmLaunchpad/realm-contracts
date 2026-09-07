@@ -4,16 +4,16 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
-import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
+import {RealmCreatorVault} from "src/vaults/RealmCreatorVault.sol";
+import {RealmCreatorVaultFactory} from "src/vaults/RealmCreatorVaultFactory.sol";
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 
 /// @title Deploy the creator-vault system
 /// @notice Deploys the net-new creator-vault contracts:
-///         1. The `LivoCreatorVault` implementation.
-///         2. The `LivoCreatorVaultFactory` implementation + its `ERC1967Proxy`.
+///         1. The `RealmCreatorVault` implementation.
+///         2. The `RealmCreatorVaultFactory` implementation + its `ERC1967Proxy`.
 ///
 ///         The DEFAULT-tier vault bonding curves (`VAULT_CURVE_5..30`) are NOT deployed here — they are
 ///         owned by `DeployTierLiquiditySystem`, the single source of truth for every bonding curve
@@ -35,7 +35,7 @@ contract DeployCreatorVaultSystem is Script {
             "Unsupported chain"
         );
 
-        console.log("=== Livo Creator-Vault System Deployment ===");
+        console.log("=== Realm Creator-Vault System Deployment ===");
         console.log("Chain ID:", block.chainid);
         console.log("Deployer:", msg.sender);
         console.log("");
@@ -46,16 +46,16 @@ contract DeployCreatorVaultSystem is Script {
         console.log("| -------------------------------------- | --- |");
 
         // 1. The vault implementation cloned for every creator vault.
-        address vaultImpl = address(new LivoCreatorVault());
-        console.log("| LivoCreatorVault (impl)               |", vaultImpl);
+        address vaultImpl = address(new RealmCreatorVault());
+        console.log("| RealmCreatorVault (impl)               |", vaultImpl);
 
         // 2. The vault factory implementation + UUPS proxy.
-        address vaultFactoryImpl = address(new LivoCreatorVaultFactory(vaultImpl));
-        console.log("| LivoCreatorVaultFactory (impl)        |", vaultFactoryImpl);
+        address vaultFactoryImpl = address(new RealmCreatorVaultFactory(vaultImpl));
+        console.log("| RealmCreatorVaultFactory (impl)        |", vaultFactoryImpl);
 
         address vaultFactory =
-            address(new ERC1967Proxy(vaultFactoryImpl, abi.encodeCall(LivoCreatorVaultFactory.initialize, ())));
-        console.log("| LivoCreatorVaultFactory (proxy)       |", vaultFactory);
+            address(new ERC1967Proxy(vaultFactoryImpl, abi.encodeCall(RealmCreatorVaultFactory.initialize, ())));
+        console.log("| RealmCreatorVaultFactory (proxy)       |", vaultFactory);
 
         vm.stopBroadcast();
 

@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {
     DeploymentAddressesEthereumMainnet,
@@ -15,7 +15,7 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
 import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
-/// @title Redeploy all three `LivoGraduatorUniswapV4` instances (bytecode-only change)
+/// @title Redeploy all three `RealmGraduatorUniswapV4` instances (bytecode-only change)
 /// @notice Redeploys the three V4 graduators (one per liquidity tier: DEFAULT/THIN/THICK) with
 ///         unchanged constructor args, so the only difference is the updated `PoolIdRegistered` event
 ///         (now carrying `swapHookAddress`). All three pair with the single fee-agnostic `SWAP_HOOK`,
@@ -46,13 +46,13 @@ contract RedeployUniV4Graduators is Script {
         address positionManager;
         address permit2;
         address hook; // fee-agnostic LivoSwapHook (reads the LP fee from the token)
-        address liquidityAdder; // shared LivoUniV4LiquidityAdder singleton
+        address liquidityAdder; // shared RealmUniV4LiquidityAdder singleton
     }
 
     function run() external {
         Deps memory d = _resolveDeps();
 
-        console.log("=== Redeploy the three LivoGraduatorUniswapV4 instances ===");
+        console.log("=== Redeploy the three RealmGraduatorUniswapV4 instances ===");
         console.log("Chain ID:", block.chainid);
         console.log("Deployer:", msg.sender);
         console.log("");
@@ -78,7 +78,7 @@ contract RedeployUniV4Graduators is Script {
         internal
         returns (address)
     {
-        LivoGraduatorUniswapV4 graduator = new LivoGraduatorUniswapV4(
+        RealmGraduatorUniswapV4 graduator = new RealmGraduatorUniswapV4(
             d.launchpad,
             d.poolManager,
             d.positionManager,

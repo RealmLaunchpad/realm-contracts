@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {E2EHappyPath} from "test/e2e/suites/E2EHappyPath.t.sol";
 import {E2EGraduationFlows} from "test/e2e/suites/E2EGraduationFlows.t.sol";
 
@@ -16,7 +16,7 @@ contract E2E_FactoryUniV4 is E2EHappyPath, E2EGraduationFlows, LaunchpadBaseTest
     }
 
     function _tokenImpl() internal view override returns (address) {
-        return address(livoToken);
+        return address(realmToken);
     }
 
     function _createTestToken(bytes32 salt) internal override returns (address token) {
@@ -26,7 +26,7 @@ contract E2E_FactoryUniV4 is E2EHappyPath, E2EGraduationFlows, LaunchpadBaseTest
         );
     }
 
-    function _createTestTokenWithSplit(bytes32 salt, ILivoFactory.FeeShare[] memory feeReceivers)
+    function _createTestTokenWithSplit(bytes32 salt, IRealmFactory.FeeShare[] memory feeReceivers)
         internal
         override
         returns (address token)
@@ -37,11 +37,11 @@ contract E2E_FactoryUniV4 is E2EHappyPath, E2EGraduationFlows, LaunchpadBaseTest
         );
     }
 
-    function _createTokenWithDeployerBuy(bytes32 salt, uint256 ethValue, ILivoFactory.SupplyShare[] memory supplyShares)
-        internal
-        override
-        returns (address token)
-    {
+    function _createTokenWithDeployerBuy(
+        bytes32 salt,
+        uint256 ethValue,
+        IRealmFactory.SupplyShare[] memory supplyShares
+    ) internal override returns (address token) {
         vm.deal(creator, ethValue);
         vm.prank(creator);
         token = factoryV4.createToken{value: ethValue}(

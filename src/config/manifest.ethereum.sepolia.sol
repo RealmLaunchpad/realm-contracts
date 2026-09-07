@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-/// @title Livo deployment manifest — Sepolia
-/// @notice Single source of truth for Livo's own deployed contracts on chain id 11155111.
+/// @title Realm deployment manifest — Sepolia
+/// @notice Single source of truth for Realm's own deployed contracts on chain id 11155111.
 /// @dev External infrastructure (Uniswap V2/V4, Permit2, WETH) lives in
 ///      `src/config/DeploymentAddresses.sol`. Treasury (sepolia: dev EOA) also lives
 ///      there since it is consumed by core contracts at deploy time. Update this file
@@ -17,7 +17,7 @@ library DeploymentsEthereumSepolia {
     address internal constant GRADUATOR_UNIV2 = 0xdf2A4F12Af6Cce0588678FdA7ce69D5Edc7d0897;
     address internal constant GRADUATOR_UNIV4 = 0xa88eAEA0218F0c0E9cbeec17c3CF449379374Cc7;
 
-    /// @notice Shared, permissionless `LivoUniV4LiquidityAdder` singleton — one per chain, passed to every
+    /// @notice Shared, permissionless `RealmUniV4LiquidityAdder` singleton — one per chain, passed to every
     ///         V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
     ///         `DeployUniV4LiquidityAdder`; `address(0)` until first deployed on this chain.
     address internal constant UNIV4_LIQUIDITY_ADDER = address(0);
@@ -33,7 +33,7 @@ library DeploymentsEthereumSepolia {
     address internal constant TOKEN_IMPL = 0x171d6448db236Ca3e185e0c9536f0B4D26C1cc24;
     address internal constant TAXABLE_TOKEN_V4_IMPL = 0xCCAf520224f6334dE8911B20E78B6Fa1df6D75cb;
 
-    /// @notice V2 taxable token implementation (cloned by `LivoFactoryUniV2Unified` when tax is configured)
+    /// @notice V2 taxable token implementation (cloned by `RealmFactoryUniV2Unified` when tax is configured)
     address internal constant TAXABLE_TOKEN_V2_IMPL = 0x89b299A94B6d8Cb1B9F539a1B9B7a2CDd027DFE4;
 
     // --- Factories (unified) ---
@@ -48,11 +48,11 @@ library DeploymentsEthereumSepolia {
     address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x12bEbC0FAeE410F502674e00eaF27ada66b1172F;
 
     // --- Creator vaults ---
-    /// @notice `LivoCreatorVault` implementation cloned by the vault factory. Update after deploying.
+    /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.
     address internal constant CREATOR_VAULT_IMPL = 0xe5aF8d840963060302cf5021630d6dBF41a9e07b;
-    /// @notice `LivoCreatorVaultFactory` UUPS proxy (stable across upgrades). Update after deploying.
+    /// @notice `RealmCreatorVaultFactory` UUPS proxy (stable across upgrades). Update after deploying.
     address internal constant CREATOR_VAULT_FACTORY = 0x804ad45394FCF755350d924f712EC463E5E3147D;
-    /// @notice `LivoCreatorVaultFactory` implementation behind the proxy. Update after deploying.
+    /// @notice `RealmCreatorVaultFactory` implementation behind the proxy. Update after deploying.
     address internal constant CREATOR_VAULT_FACTORY_IMPL = 0xcbeBF86091de0E2c5d18D6c4E3d44e44855C2C47;
 
     /// @notice The six allocation-specific bonding curves (`ConstantProductBondingCurveConfigurable`),
@@ -122,6 +122,6 @@ library DeploymentsEthereumSepolia {
     }
 
     // --- Accounts ---
-    address internal constant LIVO_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
-    address internal constant LIVO_TOKEN_DEPLOYER = 0x566CB296539672bB2419F403d292544E9Abf7815;
+    address internal constant REALM_DEV = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
+    address internal constant REALM_TOKEN_DEPLOYER = 0x566CB296539672bB2419F403d292544E9Abf7815;
 }

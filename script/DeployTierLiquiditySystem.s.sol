@@ -7,7 +7,7 @@ import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBond
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
 import {CreatorVaultCurveConstantsArc} from "src/config/CreatorVaultCurveConstantsArc.sol";
-import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {UniswapV4PoolConstantsArc} from "src/libraries/UniswapV4PoolConstantsArc.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
@@ -26,7 +26,7 @@ import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 ///         1. The DEFAULT, THIN and THICK tier bonding curves — each a no-vault base curve plus six
 ///            vault curves (5%..30%), 21 curve instances total. The DEFAULT tier curves are now
 ///            REDEPLOYED too (not reused): the originally-deployed instances predate the
-///            `LivoBondingCurveDeployed` constructor event, so they are re-created here to emit it for
+///            `RealmBondingCurveDeployed` constructor event, so they are re-created here to emit it for
 ///            the indexer. DEFAULT's base is the hardcoded `ConstantProductBondingCurve`
 ///            (manifest slot `BONDING_CURVE`); its six vault curves are `ConstantProductBondingCurveConfigurable`
 ///            (`VAULT_CURVE_5..30`). THIN/THICK are all `ConstantProductBondingCurveConfigurable`.
@@ -46,7 +46,7 @@ import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 /// @dev    Run with:
 ///         forge script DeployTierLiquiditySystem --rpc-url <mainnet|sepolia> --verify --account livo.dev --slow --broadcast
 contract DeployTierLiquiditySystem is Script {
-    /// @dev THIN-tier graduation price (6.125 ETH mcap). Mirrors the value in `LivoGraduatorUniswapV4`.
+    /// @dev THIN-tier graduation price (6.125 ETH mcap). Mirrors the value in `RealmGraduatorUniswapV4`.
     uint160 internal constant THIN_GRAD_SQRT_PRICE_X96 = 1012340326367404053977557838594048;
     /// @dev THICK-tier graduation price (24.5 ETH mcap).
     uint160 internal constant THICK_GRAD_SQRT_PRICE_X96 = 506170163183702026988778919297024;
@@ -57,13 +57,13 @@ contract DeployTierLiquiditySystem is Script {
         address positionManager;
         address permit2;
         address hook; // fee-agnostic LivoSwapHook (reads the LP fee from the token)
-        address liquidityAdder; // shared LivoUniV4LiquidityAdder singleton
+        address liquidityAdder; // shared RealmUniV4LiquidityAdder singleton
     }
 
     function run() public {
         Deps memory d = _resolveDeps();
 
-        console.log("=== Deploy Livo liquidity-tier system (DEFAULT + THIN + THICK) ===");
+        console.log("=== Deploy Realm liquidity-tier system (DEFAULT + THIN + THICK) ===");
         console.log("Chain ID:", block.chainid);
         console.log("Deployer:", msg.sender);
         console.log("");
@@ -94,7 +94,7 @@ contract DeployTierLiquiditySystem is Script {
         console.log("Next: update the manifest, `just export-deployments`, then RedeployUnifiedFactoriesOnly.");
     }
 
-    /// @dev Redeploys the DEFAULT-tier curves so they emit `LivoBondingCurveDeployed` (the originally
+    /// @dev Redeploys the DEFAULT-tier curves so they emit `RealmBondingCurveDeployed` (the originally
     ///      deployed instances predate that event). Index 0 is the hardcoded `ConstantProductBondingCurve`
     ///      base (manifest slot `BONDING_CURVE`); 1..6 are the 5%..30% configurable vault curves
     ///      (`VAULT_CURVE_5..30`). DEFAULT has no `(DEFAULT, 0)` entry in `CreatorVaultCurveConstants`
@@ -175,7 +175,7 @@ contract DeployTierLiquiditySystem is Script {
         internal
         returns (address)
     {
-        LivoGraduatorUniswapV4 graduator = new LivoGraduatorUniswapV4(
+        RealmGraduatorUniswapV4 graduator = new RealmGraduatorUniswapV4(
             d.launchpad,
             d.poolManager,
             d.positionManager,

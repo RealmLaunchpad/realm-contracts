@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ILivoBondingCurve} from "../interfaces/ILivoBondingCurve.sol";
+import {IRealmBondingCurve} from "../interfaces/IRealmBondingCurve.sol";
 
 /// @title ConstantProductBondingCurveConfigurable
 /// @notice Identical math to `ConstantProductBondingCurve`, but with the shape constants
@@ -20,7 +20,7 @@ import {ILivoBondingCurve} from "../interfaces/ILivoBondingCurve.sol";
 /// @dev    The graduation threshold / max-excess remain `constant` and IDENTICAL to the base curve,
 ///         because the launchpad enforces the same graduation window for every token regardless of
 ///         which curve it uses. Only `K`, `T0`, `E0` change between instances.
-contract ConstantProductBondingCurveConfigurable is ILivoBondingCurve {
+contract ConstantProductBondingCurveConfigurable is IRealmBondingCurve {
     // the bonding curve follows the constant product formula:
     // K = (t + T0) * (e + E0)
     // `t` is the reserves of the token in the bonding curve (not sold yet)
@@ -63,7 +63,7 @@ contract ConstantProductBondingCurveConfigurable is ILivoBondingCurve {
         _GRADUATION_THRESHOLD = graduationThreshold;
         _MAX_EXCESS_OVER_THRESHOLD = maxExcessOverThreshold_;
         // emit the constructor args (not the immutables) to sidestep reading immutables during construction
-        emit LivoBondingCurveDeployed(k, t0, e0, graduationThreshold, maxExcessOverThreshold_);
+        emit RealmBondingCurveDeployed(k, t0, e0, graduationThreshold, maxExcessOverThreshold_);
     }
 
     /// @notice Returns the ETH reserves threshold at which graduation can be triggered

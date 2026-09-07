@@ -8,9 +8,9 @@ import {
     LaunchpadBaseTestsWithUniv2Graduator,
     LaunchpadBaseTestsWithUniv4Graduator
 } from "test/launchpad/base.t.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
@@ -19,7 +19,7 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {BaseUniswapV2GraduationTests} from "test/graduators/graduationUniv2.t.sol";
-import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 
 /// @dev Test that the graduation price matches between launchpad and graduators
@@ -73,7 +73,7 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
     }
 
     function test_exactExcessTriggersRevert() public createTestToken {
-        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmBondingCurve.MaxEthReservesExceeded.selector));
         _launchpadBuy(testToken, MAX_ETH_PURCHASE_TO_GRADUATE + 1);
     }
 
@@ -108,7 +108,7 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
 
         uint256 tokensBoughtSwap = IERC20(testToken).balanceOf(buyer) - tokenBalanceBefore;
         uint256 effectiveSwapPrice = (ethValue * 1e18) / tokensBoughtSwap;
-        uint256 tokensInPair = IERC20(testToken).balanceOf(LivoToken(testToken).pair());
+        uint256 tokensInPair = IERC20(testToken).balanceOf(RealmToken(testToken).pair());
 
         // regardless of both univ2 and univ4.
         // 1% error margin below

@@ -8,8 +8,8 @@ import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/con
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
-import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {SwapRejection} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {installDividendSwapRegistry, DEFAULT_DIVIDEND_POOL_LIQUIDITY} from "test/helpers/DividendRegistryHelpers.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
@@ -124,7 +124,7 @@ contract GhostToken is ERC20 {
 }
 
 /// @notice The third-token payout shape: an accrued native buffer is converted into an arbitrary ERC20
-///         through `LivoDividendSwapRegistry`, and pushed to holders in that asset. Any ERC20 with a
+///         through `RealmDividendSwapRegistry`, and pushed to holders in that asset. Any ERC20 with a
 ///         deep enough Uniswap V2 pair qualifies — there is no asset whitelist and no per-asset
 ///         approval, only the liquidity the registry measures.
 contract DividendsThirdAssetTests is Test {
@@ -133,7 +133,7 @@ contract DividendsThirdAssetTests is Test {
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     DividendHarness internal harness;
-    LivoDividendSwapRegistry internal registry;
+    RealmDividendSwapRegistry internal registry;
 
     address internal holder = makeAddr("holder");
     address internal registryOwner = makeAddr("registryOwner");
@@ -258,7 +258,7 @@ contract DividendsThirdAssetTests is Test {
         address ghost = address(new GhostToken());
 
         DividendHarness h = new DividendHarness();
-        vm.expectRevert(abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
+        vm.expectRevert(abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
         h.configure(ghost);
     }
 
@@ -276,7 +276,9 @@ contract DividendsThirdAssetTests is Test {
 
         DividendHarness h = new DividendHarness();
         vm.expectRevert(
-            abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.InsufficientLiquidity)
+            abi.encodeWithSelector(
+                RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.InsufficientLiquidity
+            )
         );
         h.configure(address(thin));
 
@@ -294,7 +296,7 @@ contract DividendsThirdAssetTests is Test {
     ///      deliberate cost of a V2-only registry, and the reason the registry is upgradeable.
     function test_anAssetWithoutAV2PairIsRejectedEvenIfItTradesElsewhere() public {
         DividendHarness h = new DividendHarness();
-        vm.expectRevert(abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
+        vm.expectRevert(abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
         h.configure(makeAddr("v4OnlyToken"));
     }
 
@@ -321,7 +323,9 @@ contract DividendsThirdAssetTests is Test {
 
         DividendHarness h = new DividendHarness();
         vm.expectRevert(
-            abi.encodeWithSelector(LivoDividendSwapRegistry.RouteRejected.selector, SwapRejection.InsufficientLiquidity)
+            abi.encodeWithSelector(
+                RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.InsufficientLiquidity
+            )
         );
         h.configure(DAI);
     }
@@ -332,7 +336,7 @@ contract DividendsThirdAssetTests is Test {
     ///      the way a dead pool does, so a keeper calling `processDividends(0, ...)` while the veto is up
     ///      sweeps a capped slice to the treasury each time. The sweep condition is deliberately the swap
     ///      itself, with no reason code consulted, so an admin lifting the veto later recovers only what
-    ///      keepers have not already swept. Livo owns both ends of that, which is what makes it tolerable.
+    ///      keepers have not already swept. Realm owns both ends of that, which is what makes it tolerable.
     function test_blacklistingAnAssetHoldsTheBufferUntilTheVetoLifts() public {
         _fundAndActivate(harness);
 

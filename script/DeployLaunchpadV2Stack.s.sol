@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoQuoter} from "src/LivoQuoter.sol";
-import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
-import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {RealmQuoter} from "src/RealmQuoter.sol";
+import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
+import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 
-import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {DeploymentAddresses as AddressesFromRealmTaxableTokenV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {DeploymentAddresses as AddressesFromRealmTaxableTokenV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
 import {
     DeploymentAddressesEthereumMainnet,
@@ -32,18 +32,18 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///         NOT upgraded here (phase 2, see below), so token creation keeps flowing to the OLD
 ///         launchpad until phase 2 lands:
 ///
-///         1.  `LivoLaunchpad` (v2) — via CREATE2 with a mined vanity salt so the address ends in
+///         1.  `RealmLaunchpad` (v2) — via CREATE2 with a mined vanity salt so the address ends in
 ///             `0x1110` AND is identical on mainnet and sepolia (see "Cross-chain address parity").
-///         2.  `LivoQuoter` — immutable `launchpad`, must follow the launchpad.
-///         3.  `LivoGraduatorUniswapV2` — immutable `LIVO_LAUNCHPAD`.
-///         4.  `LivoGraduatorUniswapV4` — immutable `LIVO_LAUNCHPAD`; reuses the existing
+///         2.  `RealmQuoter` — immutable `launchpad`, must follow the launchpad.
+///         3.  `RealmGraduatorUniswapV2` — immutable `REALM_LAUNCHPAD`.
+///         4.  `RealmGraduatorUniswapV4` — immutable `REALM_LAUNCHPAD`; reuses the existing
 ///             `SWAP_HOOK`. One graduator serves every LP fee: the hook is fee-agnostic and reads the
 ///             rate back from the token, so there is no per-fee graduator to deploy.
 ///         5.  The three token implementations (interface changed: `getLaunchpadFees`, lp-fee init
 ///             params, creation-anchored tax window):
-///             `LivoToken`, `LivoTaxableTokenUniV2`, `LivoTaxableTokenUniV4`.
-///         6.  Both unified factory IMPLEMENTATIONS — `LivoFactoryUniV2Unified` and
-///             `LivoFactoryUniV4Unified` — wired to the launchpad / graduators / token impls deployed
+///             `RealmToken`, `RealmTaxableTokenUniV2`, `RealmTaxableTokenUniV4`.
+///         6.  Both unified factory IMPLEMENTATIONS — `RealmFactoryUniV2Unified` and
+///             `RealmFactoryUniV4Unified` — wired to the launchpad / graduators / token impls deployed
 ///             above (1–5) plus the reused bonding curve / master fee handler / creator-vault stack
 ///             from the manifest. These are plain implementation contracts; the proxies are NOT
 ///             pointed at them here (phase 2 does that), so nothing changes for token creators yet.
@@ -104,7 +104,7 @@ contract DeployLaunchpadV2Stack is Script {
     /// @dev Constructor args of the launchpad. Part of the CREATE2 initcode, so they MUST be
     ///      identical on every chain (see "Cross-chain address parity" above). Sepolia's treasury
     ///      is corrected post-deploy via `setTreasuryAddress`.
-    address internal constant LAUNCHPAD_TREASURY = DeploymentAddressesEthereumMainnet.LIVO_TREASURY;
+    address internal constant LAUNCHPAD_TREASURY = DeploymentAddressesEthereumMainnet.REALM_TREASURY;
     address internal constant LAUNCHPAD_OWNER = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181; // livo.dev
 
     /// @dev Foundry's deterministic deployment proxy (CREATE2 deployer used by `new X{salt: ...}`)
@@ -129,16 +129,16 @@ contract DeployLaunchpadV2Stack is Script {
 
     // ========================= Per-chain dependencies =========================
 
-    /// @dev Everything reused (not redeployed) by this rollout, resolved per chain. Livo contracts
+    /// @dev Everything reused (not redeployed) by this rollout, resolved per chain. Realm contracts
     ///      come from `src/config/manifest.<chain>.sol`, external infra from
     ///      `src/config/DeploymentAddresses.sol`.
     struct Deps {
-        // reused Livo contracts
+        // reused Realm contracts
         address oldLaunchpad;
         address factoryV2Proxy;
         address factoryV4Proxy;
         address swapHook;
-        address liquidityAdder; // shared LivoUniV4LiquidityAdder singleton (reused from the manifest)
+        address liquidityAdder; // shared RealmUniV4LiquidityAdder singleton (reused from the manifest)
         // reused (not redeployed) deps the fresh factory impls are wired to
         address bondingCurve;
         address masterFeeHandler;
@@ -181,16 +181,16 @@ contract DeployLaunchpadV2Stack is Script {
                 univ4PoolManager: DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
                 univ4PositionManager: DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesEthereumMainnet.PERMIT2,
-                chainTreasury: DeploymentAddressesEthereumMainnet.LIVO_TREASURY
+                chainTreasury: DeploymentAddressesEthereumMainnet.REALM_TREASURY
             });
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Mainnet"
+                "RealmTaxableTokenUniV4 import is not Mainnet"
             );
         } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
@@ -206,16 +206,16 @@ contract DeployLaunchpadV2Stack is Script {
                 univ4PoolManager: DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
                 univ4PositionManager: DeploymentAddressesEthereumSepolia.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesEthereumSepolia.PERMIT2,
-                chainTreasury: DeploymentAddressesEthereumSepolia.LIVO_TREASURY
+                chainTreasury: DeploymentAddressesEthereumSepolia.REALM_TREASURY
             });
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Sepolia (run `just chain-sepolia`)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not Sepolia (run `just chain-sepolia`)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
+                "RealmTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
             );
         } else {
             revert("Unsupported chain");
@@ -226,7 +226,7 @@ contract DeployLaunchpadV2Stack is Script {
         // placeholder (or at a chain where the proxy is not up yet) reverts EVERY third-asset dividend
         // token creation, for good. Deploy the registry proxy first, retarget the constant, then this.
         require(
-            AddressesFromLivoTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
+            AddressesFromRealmTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
             "DIVIDEND_SWAP_REGISTRY has no code on this chain: deploy the registry proxy first"
         );
 
@@ -234,8 +234,8 @@ contract DeployLaunchpadV2Stack is Script {
         // all fail closed against a codeless keeper registry, so an impl deployed before it exists can
         // never run a conversion.
         require(
-            AddressesFromLivoTaxableTokenV2.LIVO_KEEPERS_REGISTRY.code.length != 0,
-            "LIVO_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
+            AddressesFromRealmTaxableTokenV2.REALM_KEEPERS_REGISTRY.code.length != 0,
+            "REALM_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
         );
 
         // Belt-and-braces: catch a stale or zero address in the manifest before we waste a deploy.
@@ -260,7 +260,7 @@ contract DeployLaunchpadV2Stack is Script {
         returns (bytes32 salt, address vanityAddress)
     {
         bytes32 initCodeHash =
-            keccak256(abi.encodePacked(type(LivoLaunchpad).creationCode, abi.encode(treasury, owner)));
+            keccak256(abi.encodePacked(type(RealmLaunchpad).creationCode, abi.encode(treasury, owner)));
 
         for (uint256 i = VANITY_SALT_OFFSET; i < VANITY_SALT_OFFSET + 500_000; i++) {
             vanityAddress = address(
@@ -279,22 +279,22 @@ contract DeployLaunchpadV2Stack is Script {
         Deps memory d = _getDeps();
         FreshDeployments memory fresh;
 
-        // Catch wrong manifest addresses pointing at non-Livo contracts before we waste deploys
+        // Catch wrong manifest addresses pointing at non-Realm contracts before we waste deploys
         // (the proxies are only whitelisted here, not upgraded — phase 2 does the upgrades).
-        require(LivoFactoryUniV2Unified(d.factoryV2Proxy).owner() != address(0), "V2 proxy not initialized");
-        require(LivoFactoryUniV4Unified(d.factoryV4Proxy).owner() != address(0), "V4 proxy not initialized");
+        require(RealmFactoryUniV2Unified(d.factoryV2Proxy).owner() != address(0), "V2 proxy not initialized");
+        require(RealmFactoryUniV4Unified(d.factoryV4Proxy).owner() != address(0), "V4 proxy not initialized");
 
         // Treasury invariant: the reused swap hooks read `treasury()` from the OLD launchpad, so
         // the new launchpad must end up with the exact same treasury on this chain.
         require(
-            LivoLaunchpad(d.oldLaunchpad).treasury() == d.chainTreasury,
+            RealmLaunchpad(d.oldLaunchpad).treasury() == d.chainTreasury,
             "old launchpad treasury != chain treasury; reconcile before deploying"
         );
 
         // Mine the vanity salt before broadcast (pure computation, no on-chain cost)
         (bytes32 launchpadSalt, address expectedLaunchpad) = _mineVanitySalt(LAUNCHPAD_TREASURY, LAUNCHPAD_OWNER);
 
-        console.log("=== Livo Launchpad-v2 Stack Rollout (phase 1: deploy v2 stack incl. factory impls) ===");
+        console.log("=== Realm Launchpad-v2 Stack Rollout (phase 1: deploy v2 stack incl. factory impls) ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Old launchpad:           ", d.oldLaunchpad);
@@ -312,27 +312,28 @@ contract DeployLaunchpadV2Stack is Script {
         console.log("| ---------------------------------------------- | --- |");
 
         // --- Launchpad v2 (CREATE2 vanity address, identical across chains) ---
-        fresh.launchpad = address(new LivoLaunchpad{salt: launchpadSalt}(LAUNCHPAD_TREASURY, LAUNCHPAD_OWNER));
+        fresh.launchpad = address(new RealmLaunchpad{salt: launchpadSalt}(LAUNCHPAD_TREASURY, LAUNCHPAD_OWNER));
         require(fresh.launchpad == expectedLaunchpad, "Launchpad vanity address mismatch");
-        console.log("| LivoLaunchpad (v2)                            |", fresh.launchpad);
+        console.log("| RealmLaunchpad (v2)                            |", fresh.launchpad);
 
         // The constructor treasury is the mainnet one on every chain (CREATE2 initcode parity);
         // retarget it where this chain's treasury differs (sepolia).
         if (d.chainTreasury != LAUNCHPAD_TREASURY) {
-            LivoLaunchpad(fresh.launchpad).setTreasuryAddress(d.chainTreasury);
+            RealmLaunchpad(fresh.launchpad).setTreasuryAddress(d.chainTreasury);
             console.log("| ^ treasury retargeted to                      |", d.chainTreasury);
         }
 
         // --- Quoter ---
-        fresh.quoter = address(new LivoQuoter(fresh.launchpad));
-        console.log("| LivoQuoter                                    |", fresh.quoter);
+        fresh.quoter = address(new RealmQuoter(fresh.launchpad));
+        console.log("| RealmQuoter                                    |", fresh.quoter);
 
         // --- Graduators (the hook is reused from the manifest) ---
-        fresh.graduatorV2 = address(new LivoGraduatorUniswapV2(d.univ2Router, fresh.launchpad, d.univ2PairInitCodeHash));
-        console.log("| LivoGraduatorUniswapV2                        |", fresh.graduatorV2);
+        fresh.graduatorV2 =
+            address(new RealmGraduatorUniswapV2(d.univ2Router, fresh.launchpad, d.univ2PairInitCodeHash));
+        console.log("| RealmGraduatorUniswapV2                        |", fresh.graduatorV2);
 
         fresh.graduatorV4 = address(
-            new LivoGraduatorUniswapV4(
+            new RealmGraduatorUniswapV4(
                 fresh.launchpad,
                 d.univ4PoolManager,
                 d.univ4PositionManager,
@@ -343,25 +344,25 @@ contract DeployLaunchpadV2Stack is Script {
                 d.liquidityAdder
             )
         );
-        console.log("| LivoGraduatorUniswapV4                        |", fresh.graduatorV4);
+        console.log("| RealmGraduatorUniswapV4                        |", fresh.graduatorV4);
 
         // --- Token implementations (3) ---
-        fresh.tokenImpl = address(new LivoToken());
-        console.log("| LivoToken (new impl)                          |", fresh.tokenImpl);
+        fresh.tokenImpl = address(new RealmToken());
+        console.log("| RealmToken (new impl)                          |", fresh.tokenImpl);
 
-        fresh.taxTokenV2Impl = address(new LivoTaxableTokenUniV2());
-        console.log("| LivoTaxableTokenUniV2 (new impl)              |", fresh.taxTokenV2Impl);
+        fresh.taxTokenV2Impl = address(new RealmTaxableTokenUniV2());
+        console.log("| RealmTaxableTokenUniV2 (new impl)              |", fresh.taxTokenV2Impl);
 
-        fresh.taxTokenV4Impl = address(new LivoTaxableTokenUniV4());
-        console.log("| LivoTaxableTokenUniV4 (new impl)              |", fresh.taxTokenV4Impl);
+        fresh.taxTokenV4Impl = address(new RealmTaxableTokenUniV4());
+        console.log("| RealmTaxableTokenUniV4 (new impl)              |", fresh.taxTokenV4Impl);
 
         // --- Factory implementations (2), wired to the freshly-deployed v2 stack ---
         // Bonding curve / master fee handler / creator-vault stack are reused from the manifest.
         // The PROXIES are NOT pointed at these here; phase 2 (`UpgradeUnifiedFactories`) flips them.
         fresh.factoryV2Impl = address(
-            new LivoFactoryUniV2Unified(
+            new RealmFactoryUniV2Unified(
                 fresh.launchpad,
-                ILivoFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV2Impl}),
+                IRealmFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV2Impl}),
                 d.bondingCurve,
                 fresh.graduatorV2,
                 d.masterFeeHandler,
@@ -370,12 +371,12 @@ contract DeployLaunchpadV2Stack is Script {
                 CreatorVaultScriptConfig.tierConfigFor()
             )
         );
-        console.log("| LivoFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
+        console.log("| RealmFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
 
         fresh.factoryV4Impl = address(
-            new LivoFactoryUniV4Unified(
+            new RealmFactoryUniV4Unified(
                 fresh.launchpad,
-                ILivoFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV4Impl}),
+                IRealmFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV4Impl}),
                 d.bondingCurve,
                 fresh.graduatorV4,
                 d.masterFeeHandler,
@@ -384,13 +385,13 @@ contract DeployLaunchpadV2Stack is Script {
                 CreatorVaultScriptConfig.v4TierConfigFor()
             )
         );
-        console.log("| LivoFactoryUniV4Unified (new impl)            |", fresh.factoryV4Impl);
+        console.log("| RealmFactoryUniV4Unified (new impl)            |", fresh.factoryV4Impl);
 
         // --- Whitelist the (unchanged, not-yet-upgraded) factory proxies on the NEW launchpad ---
         // Harmless ahead of phase 2: the proxies keep registering tokens on the old launchpad
         // until UpgradeUnifiedFactories swaps their implementations.
-        LivoLaunchpad(fresh.launchpad).whitelistFactory(d.factoryV2Proxy);
-        LivoLaunchpad(fresh.launchpad).whitelistFactory(d.factoryV4Proxy);
+        RealmLaunchpad(fresh.launchpad).whitelistFactory(d.factoryV2Proxy);
+        RealmLaunchpad(fresh.launchpad).whitelistFactory(d.factoryV4Proxy);
         console.log("| ^ both factory proxies whitelisted on         |", fresh.launchpad);
 
         vm.stopBroadcast();
@@ -421,59 +422,59 @@ contract DeployLaunchpadV2Stack is Script {
         require(uint160(fresh.launchpad) & VANITY_MASK == VANITY_TARGET, "launchpad: vanity suffix mismatch");
 
         // launchpad config
-        LivoLaunchpad launchpad = LivoLaunchpad(fresh.launchpad);
+        RealmLaunchpad launchpad = RealmLaunchpad(fresh.launchpad);
         require(launchpad.owner() == LAUNCHPAD_OWNER, "launchpad: wrong owner");
         require(launchpad.treasury() == d.chainTreasury, "launchpad: wrong treasury");
         // both launchpads must report the same treasury
         require(
-            launchpad.treasury() == LivoLaunchpad(d.oldLaunchpad).treasury(), "launchpad: treasury diverges from old"
+            launchpad.treasury() == RealmLaunchpad(d.oldLaunchpad).treasury(), "launchpad: treasury diverges from old"
         );
         require(launchpad.whitelistedFactories(d.factoryV2Proxy), "launchpad: V2 proxy not whitelisted");
         require(launchpad.whitelistedFactories(d.factoryV4Proxy), "launchpad: V4 proxy not whitelisted");
 
         // quoter + graduators point at the new launchpad
-        require(address(LivoQuoter(fresh.quoter).launchpad()) == fresh.launchpad, "quoter: wrong launchpad");
+        require(address(RealmQuoter(fresh.quoter).launchpad()) == fresh.launchpad, "quoter: wrong launchpad");
         require(
-            LivoGraduatorUniswapV2(payable(fresh.graduatorV2)).LIVO_LAUNCHPAD() == fresh.launchpad,
+            RealmGraduatorUniswapV2(payable(fresh.graduatorV2)).REALM_LAUNCHPAD() == fresh.launchpad,
             "graduatorV2: wrong launchpad"
         );
         require(
-            LivoGraduatorUniswapV4(payable(fresh.graduatorV4)).LIVO_LAUNCHPAD() == fresh.launchpad,
+            RealmGraduatorUniswapV4(payable(fresh.graduatorV4)).REALM_LAUNCHPAD() == fresh.launchpad,
             "graduatorV4: wrong launchpad"
         );
 
         // the graduator keeps the existing hook
         require(
-            LivoGraduatorUniswapV4(payable(fresh.graduatorV4)).HOOK_ADDRESS() == d.swapHook, "graduatorV4: wrong hook"
+            RealmGraduatorUniswapV4(payable(fresh.graduatorV4)).HOOK_ADDRESS() == d.swapHook, "graduatorV4: wrong hook"
         );
 
         // factory proxies are intentionally untouched in this phase: still on the old impls,
         // still pointing at the OLD launchpad until UpgradeUnifiedFactories runs (phase 2).
         require(
-            address(LivoFactoryUniV2Unified(d.factoryV2Proxy).LAUNCHPAD()) == d.oldLaunchpad,
+            address(RealmFactoryUniV2Unified(d.factoryV2Proxy).LAUNCHPAD()) == d.oldLaunchpad,
             "factoryV2: unexpectedly already migrated"
         );
         require(
-            address(LivoFactoryUniV4Unified(d.factoryV4Proxy).LAUNCHPAD()) == d.oldLaunchpad,
+            address(RealmFactoryUniV4Unified(d.factoryV4Proxy).LAUNCHPAD()) == d.oldLaunchpad,
             "factoryV4: unexpectedly already migrated"
         );
 
         // freshly-deployed factory impls are wired to the NEW launchpad + new graduators, so phase 2
         // can flip the proxies onto them and complete the v1->v2 switch.
         require(
-            address(LivoFactoryUniV2Unified(fresh.factoryV2Impl).LAUNCHPAD()) == fresh.launchpad,
+            address(RealmFactoryUniV2Unified(fresh.factoryV2Impl).LAUNCHPAD()) == fresh.launchpad,
             "factoryV2 impl: wrong launchpad"
         );
         require(
-            address(LivoFactoryUniV2Unified(fresh.factoryV2Impl).GRADUATOR()) == fresh.graduatorV2,
+            address(RealmFactoryUniV2Unified(fresh.factoryV2Impl).GRADUATOR()) == fresh.graduatorV2,
             "factoryV2 impl: wrong graduator"
         );
         require(
-            address(LivoFactoryUniV4Unified(fresh.factoryV4Impl).LAUNCHPAD()) == fresh.launchpad,
+            address(RealmFactoryUniV4Unified(fresh.factoryV4Impl).LAUNCHPAD()) == fresh.launchpad,
             "factoryV4 impl: wrong launchpad"
         );
         require(
-            address(LivoFactoryUniV4Unified(fresh.factoryV4Impl).GRADUATOR()) == fresh.graduatorV4,
+            address(RealmFactoryUniV4Unified(fresh.factoryV4Impl).GRADUATOR()) == fresh.graduatorV4,
             "factoryV4 impl: wrong graduator"
         );
     }

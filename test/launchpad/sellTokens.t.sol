@@ -7,10 +7,10 @@ import {
     LaunchpadBaseTestsWithUniv4Graduator,
     LaunchpadBaseTestsWithUniv4GraduatorTaxableToken
 } from "./base.t.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IERC20Errors} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 abstract contract SellTokensTest is LaunchpadBaseTests {
@@ -53,7 +53,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
         vm.prank(alice);
         vm.expectEmit(true, true, false, true);
-        emit LivoLaunchpad.LivoTokenSell(testToken, alice, tokensToSell, expectedEthForSeller, expectedEthFee);
+        emit RealmLaunchpad.RealmTokenSell(testToken, alice, tokensToSell, expectedEthForSeller, expectedEthFee);
         launchpad.sellExactTokens(testToken, tokensToSell, 0, DEADLINE);
 
         assertEq(alice.balance, aliceEthBalanceBefore + expectedEthForSeller);
@@ -190,15 +190,15 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
 
     function testSellExactTokens_revertZeroTokenAmount() public createTestToken afterOneBuy {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidAmount.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.InvalidAmount.selector));
         launchpad.sellExactTokens(testToken, 0, 0, DEADLINE);
     }
 
     function testSellExactTokens_revertInvalidToken() public {
-        LivoToken invalidToken = new LivoToken();
+        RealmToken invalidToken = new RealmToken();
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidToken.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.InvalidToken.selector));
         launchpad.sellExactTokens(address(invalidToken), 100, 0, DEADLINE);
     }
 
@@ -209,7 +209,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         skip(2 minutes);
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.DeadlineExceeded.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.DeadlineExceeded.selector));
         launchpad.sellExactTokens(testToken, tokensToSell, 0, deadline);
     }
 
@@ -220,7 +220,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
         uint256 minEthAmount = expectedEthForSeller + 1; // Set min higher than expected
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.SlippageExceeded.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.SlippageExceeded.selector));
         launchpad.sellExactTokens(testToken, tokensToSell, minEthAmount, DEADLINE);
     }
 
@@ -355,7 +355,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
             testToken2 = factoryV2.createToken(
                 "Test Token 2",
                 "TT2",
-                _nextValidSalt(address(factoryV2), address(livoToken)),
+                _nextValidSalt(address(factoryV2), address(realmToken)),
                 _fs(creator),
                 _noSs(),
                 _emptyTaxCfg(),
@@ -365,7 +365,7 @@ abstract contract SellTokensTest is LaunchpadBaseTests {
             testToken2 = factoryV4.createToken(
                 "Test Token 2",
                 "TT2",
-                _nextValidSalt(address(factoryV4), address(livoToken)),
+                _nextValidSalt(address(factoryV4), address(realmToken)),
                 _fs(creator),
                 _noSs(),
                 false,

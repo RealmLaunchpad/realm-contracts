@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
+import {DeploymentAddresses as AddressesFromRealmTaxableTokenV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 
 import {
     DeploymentAddressesEthereumMainnet,
@@ -20,8 +20,8 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 
 /// @title Redeploy the V2 taxable token implementation and upgrade the V2 unified factory proxy
 /// @notice Three-step deploy, all in a single broadcast:
-///         1. Deploys a fresh `LivoTaxableTokenUniV2` implementation.
-///         2. Deploys a fresh `LivoFactoryUniV2Unified` implementation wired to the new token impl
+///         1. Deploys a fresh `RealmTaxableTokenUniV2` implementation.
+///         2. Deploys a fresh `RealmFactoryUniV2Unified` implementation wired to the new token impl
 ///            (plus the unchanged non-tax base token impl + bonding curve + V2 graduator + master
 ///            fee handler + launchpad pulled from the per-chain manifest).
 ///         3. Calls `upgradeToAndCall(newFactoryImpl, "")` on the existing V2 factory UUPS proxy.
@@ -71,8 +71,8 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
                 tokenImpl: DeploymentsEthereumMainnet.TOKEN_IMPL
             });
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
             );
         } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
@@ -84,8 +84,8 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
                 tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL
             });
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Sepolia (run `just chain-sepolia`)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not Sepolia (run `just chain-sepolia`)"
             );
         } else {
             revert("Unsupported chain");
@@ -96,7 +96,7 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
         // placeholder (or at a chain where the proxy is not up yet) reverts EVERY third-asset dividend
         // token creation, for good. Deploy the registry proxy first, retarget the constant, then this.
         require(
-            AddressesFromLivoTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
+            AddressesFromRealmTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
             "DIVIDEND_SWAP_REGISTRY has no code on this chain: deploy the registry proxy first"
         );
 
@@ -104,8 +104,8 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
         // all fail closed against a codeless keeper registry, so an impl deployed before it exists can
         // never run a conversion.
         require(
-            AddressesFromLivoTaxableTokenV2.LIVO_KEEPERS_REGISTRY.code.length != 0,
-            "LIVO_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
+            AddressesFromRealmTaxableTokenV2.REALM_KEEPERS_REGISTRY.code.length != 0,
+            "REALM_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
         );
 
         require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
@@ -120,11 +120,11 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
         Deps memory d = _getDeps();
         FreshDeployments memory fresh;
 
-        // Catch a wrong manifest address pointing at a non-Livo contract before we waste a deploy.
-        address proxyOwner = LivoFactoryUniV2Unified(d.factoryV2Proxy).owner();
+        // Catch a wrong manifest address pointing at a non-Realm contract before we waste a deploy.
+        address proxyOwner = RealmFactoryUniV2Unified(d.factoryV2Proxy).owner();
         require(proxyOwner != address(0), "V2 proxy not initialized");
 
-        console.log("=== Livo V2 Tax Stack Redeploy ===");
+        console.log("=== Realm V2 Tax Stack Redeploy ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Required proxy owner:    ", proxyOwner);
@@ -136,13 +136,13 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
         console.log("| Contract Name                                  | Address |");
         console.log("| ---------------------------------------------- | --- |");
 
-        fresh.taxTokenV2Impl = address(new LivoTaxableTokenUniV2());
-        console.log("| LivoTaxableTokenUniV2 (new impl)              |", fresh.taxTokenV2Impl);
+        fresh.taxTokenV2Impl = address(new RealmTaxableTokenUniV2());
+        console.log("| RealmTaxableTokenUniV2 (new impl)              |", fresh.taxTokenV2Impl);
 
         fresh.factoryV2Impl = address(
-            new LivoFactoryUniV2Unified(
+            new RealmFactoryUniV2Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: fresh.taxTokenV2Impl}),
+                IRealmFactory.TokenImpls({base: d.tokenImpl, tax: fresh.taxTokenV2Impl}),
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
@@ -151,7 +151,7 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
                 CreatorVaultScriptConfig.tierConfigFor()
             )
         );
-        console.log("| LivoFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
+        console.log("| RealmFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
 
         UUPSUpgradeable(d.factoryV2Proxy).upgradeToAndCall(fresh.factoryV2Impl, "");
         console.log("| V2 proxy upgraded to                          |", fresh.factoryV2Impl);
@@ -163,6 +163,6 @@ contract RedeployV2TaxTokensAndUpgradeFactory is Script {
         console.log("Proxy address is UNCHANGED - no launchpad whitelisting or integrator action needed.");
         console.log("Update the per-chain manifest with these addresses, then run `just export-deployments`:");
         console.log("  TAXABLE_TOKEN_V2_IMPL                  :", fresh.taxTokenV2Impl);
-        console.log("  LivoFactoryUniV2Unified impl           :", fresh.factoryV2Impl);
+        console.log("  RealmFactoryUniV2Unified impl           :", fresh.factoryV2Impl);
     }
 }

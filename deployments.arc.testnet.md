@@ -2,38 +2,38 @@
 
 # ARC Chain Testnet deployments
 
-## Livo
+## Realm
 
 | Contract                                     | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| LivoLaunchpad                                | `0x586BE26ab3304C119817B8E18467A952C8C0Ecc5` |
+| RealmLaunchpad                                | `0x586BE26ab3304C119817B8E18467A952C8C0Ecc5` |
 | ConstantProductBondingCurve                  | `0x139bce34e7a5A5E4F139d1A3a9aEAFFD46656e6F` |
-| LivoGraduatorUniswapV2                       | `0x5235362Db85d8378E6f72150d2756E80860dB25b` |
-| LivoGraduatorUniswapV4                       | `0x43F8BC6d25BE185711680987019d20543e6B53F6` |
-| LivoMasterFeeHandler                         | `0x3175bB69cfeE26FC90ea0A33E45BbDe466053f43` |
-| LivoUniV4LiquidityAdder                      | _(not deployed)_                             |
+| RealmGraduatorUniswapV2                       | `0x5235362Db85d8378E6f72150d2756E80860dB25b` |
+| RealmGraduatorUniswapV4                       | `0x43F8BC6d25BE185711680987019d20543e6B53F6` |
+| RealmMasterFeeHandler                         | `0x3175bB69cfeE26FC90ea0A33E45BbDe466053f43` |
+| RealmUniV4LiquidityAdder                      | _(not deployed)_                             |
 | LivoSwapHook                                 | `0x432A7d3841F6dFe79F2CB34fb5F1225ba42F00CC` |
-| LivoLpFeeRouter (proxy)                      | `0x522fD5758e5185Cc95e2D0A8CB30f4a4B70c9107` |
-| LivoLpFeeRouter (impl)                       | `0xf69FC76AEdAA95C1EE0f466760290cE77f94885D` |
-| LivoQuoter                                   | `0xa53878A7C2B79465CB6a93deA5DF70a837EadEa4` |
-| LivoToken (impl)                             | `0x8024f24dF3fe8B45dAa0D9D94F59AA7e98DA1B7f` |
-| LivoTaxableTokenUniV4 (impl)                 | `0x2281BE8DbFD38F8B1603AB2c1D6E36afC0851FB8` |
-| LivoTaxableTokenUniV2 (impl)                 | `0x3ddc687a57674F5AD6e3b25f8c41cf41E70c0402` |
-| LivoFactoryUniV2Unified (proxy)              | `0x0776824884d9E10b526ce735f4b110722c2AdB56` |
-| LivoFactoryUniV2Unified (impl)               | `0x3faCE9330730fB6f2a9Bb5994cDC882F21ee0A23` |
-| LivoFactoryUniV4Unified (proxy)              | `0x5E8b516d97C4D9D22e070342cc39EF7De84ab412` |
-| LivoFactoryUniV4Unified (impl)               | `0xc18030d76573784fff4E6365309E1acD967506ff` |
-| LivoCreatorVaultFactory (proxy)              | `0x2714A9E811CC5FBd73fa1b9467FDBe641204D020` |
-| LivoCreatorVaultFactory (impl)               | `0xAB9950BfC212e7a60448a8833f5cD876b10d87D6` |
-| LivoCreatorVault (impl)                      | `0x752A3798893D8987D99A27D2B27F2dfAC6EB9E39` |
+| RealmLpFeeRouter (proxy)                      | `0x522fD5758e5185Cc95e2D0A8CB30f4a4B70c9107` |
+| RealmLpFeeRouter (impl)                       | `0xf69FC76AEdAA95C1EE0f466760290cE77f94885D` |
+| RealmQuoter                                   | `0xa53878A7C2B79465CB6a93deA5DF70a837EadEa4` |
+| RealmToken (impl)                             | `0x8024f24dF3fe8B45dAa0D9D94F59AA7e98DA1B7f` |
+| RealmTaxableTokenUniV4 (impl)                 | `0x2281BE8DbFD38F8B1603AB2c1D6E36afC0851FB8` |
+| RealmTaxableTokenUniV2 (impl)                 | `0x3ddc687a57674F5AD6e3b25f8c41cf41E70c0402` |
+| RealmFactoryUniV2Unified (proxy)              | `0x0776824884d9E10b526ce735f4b110722c2AdB56` |
+| RealmFactoryUniV2Unified (impl)               | `0x3faCE9330730fB6f2a9Bb5994cDC882F21ee0A23` |
+| RealmFactoryUniV4Unified (proxy)              | `0x5E8b516d97C4D9D22e070342cc39EF7De84ab412` |
+| RealmFactoryUniV4Unified (impl)               | `0xc18030d76573784fff4E6365309E1acD967506ff` |
+| RealmCreatorVaultFactory (proxy)              | `0x2714A9E811CC5FBd73fa1b9467FDBe641204D020` |
+| RealmCreatorVaultFactory (impl)               | `0xAB9950BfC212e7a60448a8833f5cD876b10d87D6` |
+| RealmCreatorVault (impl)                      | `0x752A3798893D8987D99A27D2B27F2dfAC6EB9E39` |
 | Creator-vault curve 5%                       | `0x071221210C33962eEd92081e93e73e9a06149E92` |
 | Creator-vault curve 10%                      | `0xa1D4E34AC9946Ab53B155E79d0A3023e52B27400` |
 | Creator-vault curve 15%                      | `0x338728dA52Fb88679793E74D6E3f2177b64C1Dc4` |
 | Creator-vault curve 20%                      | `0x32B4F048d15178FA1958BA6eC3ac8007d516E5e9` |
 | Creator-vault curve 25%                      | `0x50e30bfE4CFB0b6aC6369eE54D7510B2473573fF` |
 | Creator-vault curve 30%                      | `0x2f1C9cf234E17ca0Df9A8071c83D8794B3be2058` |
-| LivoGraduatorUniV4 THIN                      | `0x758Af7bCde2875a6Aa06337125EA81335a860AC5` |
-| LivoGraduatorUniV4 THICK                     | `0x588951ecc682cBbe3BC4fa60F807e2Fa165255B2` |
+| RealmGraduatorUniV4 THIN                      | `0x758Af7bCde2875a6Aa06337125EA81335a860AC5` |
+| RealmGraduatorUniV4 THICK                     | `0x588951ecc682cBbe3BC4fa60F807e2Fa165255B2` |
 | THIN-tier curve base                         | `0x209504c3fB153a2e37690c30441eC67e909FE490` |
 | THIN-tier curve 5%                           | `0x17d5e0776dafa4CAE8e6e1eBbf7278e1c4AF647f` |
 | THIN-tier curve 10%                          | `0x928f2f571BF9f18464fdeC8D36e6A075C3460862` |
@@ -53,9 +53,9 @@
 
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| Livo Deployer                                | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |
-| Livo Treasury                                | `0x2F56CB340FeA590a2A801081118bF3143309329D` |
-| Livo Token Deployer                          | _(not deployed)_                             |
+| Realm Deployer                                | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |
+| Realm Treasury                                | `0x2F56CB340FeA590a2A801081118bF3143309329D` |
+| Realm Token Deployer                          | _(not deployed)_                             |
 
 ## Integrations
 

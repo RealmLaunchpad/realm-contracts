@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 
 // This is a test file to test the bonding curve ConstantProductBondingCurve
 contract ConstantProductBondingCurveTest is Test {
@@ -12,7 +12,7 @@ contract ConstantProductBondingCurveTest is Test {
     uint256 constant TOTAL_SUPPLY = 1_000_000_000e18;
 
     // Graduation parameters
-    // These ones are set in the LivoLaunchpad contract, and the curves need to be compliant with them
+    // These ones are set in the RealmLaunchpad contract, and the curves need to be compliant with them
     uint256 constant GRADUATION_THRESHOLD = 3.75 ether;
     uint256 constant GRADUATION_MAX_EXCESS = 0.05 ether;
     uint256 constant GRADUATION_ETH_FEE = 0.25 ether;
@@ -22,10 +22,10 @@ contract ConstantProductBondingCurveTest is Test {
         curve = new ConstantProductBondingCurve();
     }
 
-    function test_constructor_emitsLivoBondingCurveDeployed() public {
+    function test_constructor_emitsRealmBondingCurveDeployed() public {
         // no indexed fields; check the data payload (K/T0/E0 + graduation window)
         vm.expectEmit(false, false, false, true);
-        emit ILivoBondingCurve.LivoBondingCurveDeployed(
+        emit IRealmBondingCurve.RealmBondingCurveDeployed(
             curve.K(), curve.T0(), curve.E0(), GRADUATION_THRESHOLD, GRADUATION_MAX_EXCESS
         );
         new ConstantProductBondingCurve();
@@ -120,7 +120,7 @@ contract ConstantProductBondingCurveTest is Test {
         console.log("ethAmount", ethAmount);
 
         if (ethReserves + ethAmount > curve.maxEthReserves()) {
-            vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+            vm.expectRevert(abi.encodeWithSelector(IRealmBondingCurve.MaxEthReservesExceeded.selector));
             curve.buyTokensWithExactEth(ethReserves, ethAmount);
             return;
         }

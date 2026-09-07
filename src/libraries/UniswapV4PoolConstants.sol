@@ -51,11 +51,11 @@ library UniswapV4PoolConstants {
     /// @dev However, the second position has much less liquidity, so the impact would be barely noticeable.
     int24 internal constant TICK_UPPER_2_OFFSET = 51 * TICK_SPACING;
 
-    /// @notice The canonical PoolKey of a graduated Livo token's V4 pool: `(ETH, token)` with this
+    /// @notice The canonical PoolKey of a graduated Realm token's V4 pool: `(ETH, token)` with this
     ///         library's fee/spacing and the graduator's hook. THE single source of truth — the
     ///         graduator, the buy-back mixin and the token's liquidity leg must all target the same
     ///         pool, so none of them may hand-roll the key.
-    function livoPoolKey(address token, address hook) internal pure returns (PoolKey memory) {
+    function realmPoolKey(address token, address hook) internal pure returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(token),

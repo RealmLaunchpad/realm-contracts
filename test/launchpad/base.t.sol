@@ -1,100 +1,100 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
+import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
-import {LivoKeepersRegistry} from "src/access/LivoKeepersRegistry.sol";
+import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 import "forge-std/Test.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
-import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {TaxConfigInit, TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
+import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
-import {LivoCreatorVault} from "src/vaults/LivoCreatorVault.sol";
-import {LivoCreatorVaultFactory} from "src/vaults/LivoCreatorVaultFactory.sol";
-import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
-import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
-import {LivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
+import {RealmCreatorVault} from "src/vaults/RealmCreatorVault.sol";
+import {RealmCreatorVaultFactory} from "src/vaults/RealmCreatorVaultFactory.sol";
+import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
+import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
+import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
-import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {LivoLpFeeRouter} from "src/feeRouters/LivoLpFeeRouter.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {RealmLpFeeRouter} from "src/feeRouters/RealmLpFeeRouter.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
-import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
+import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
 
 contract LaunchpadBaseTests is Test {
     /// @notice Eligibility gate + swap venue for third-asset dividends, installed at the constant
     ///         address every taxable token implementation compiles against.
-    LivoDividendSwapRegistry internal dividendSwapRegistry;
-    LivoKeepersRegistry internal keepersRegistry;
+    RealmDividendSwapRegistry internal dividendSwapRegistry;
+    RealmKeepersRegistry internal keepersRegistry;
 
-    LivoLaunchpad public launchpad;
+    RealmLaunchpad public launchpad;
 
-    LivoToken public livoToken;
-    LivoTaxableTokenUniV4 public livoTaxToken;
-    LivoTaxableTokenUniV2 public livoTaxTokenV2;
+    RealmToken public realmToken;
+    RealmTaxableTokenUniV4 public realmTaxToken;
+    RealmTaxableTokenUniV2 public realmTaxTokenV2;
     // Anti-sniper is now a gated feature of the base/tax impls (no separate sniper impls). These
     // `*Sniper` names are kept as ALIASES pointing at the merged impls so existing call sites (impl
     // assertions, salt prediction) keep compiling and stay correct.
-    LivoTaxableTokenUniV2 public livoTaxTokenV2Sniper;
+    RealmTaxableTokenUniV2 public realmTaxTokenV2Sniper;
 
-    ILivoToken public implementation;
+    IRealmToken public implementation;
 
     ConstantProductBondingCurve public bondingCurve;
 
     /// @notice Creator-vault infrastructure (deployed in `setUp`), shared with vault tests.
-    LivoCreatorVaultFactory public creatorVaultFactory;
+    RealmCreatorVaultFactory public creatorVaultFactory;
     address[6] public vaultCurves; // [5%, 10%, 15%, 20%, 25%, 30%] DEFAULT-tier vault curves
 
     /// @notice THIN/THICK tier V4 graduators (single hook in tests). Deployed in `setUp`.
-    LivoGraduatorUniswapV4 public graduatorV4Thin;
-    LivoGraduatorUniswapV4 public graduatorV4Thick;
+    RealmGraduatorUniswapV4 public graduatorV4Thin;
+    RealmGraduatorUniswapV4 public graduatorV4Thick;
 
     /// @notice THIN/THICK tier curves (no-vault base + 6 vault curves each), built in `setUp`.
     ///         Stored so subclasses (e.g. factory-upgrade tests) can rebuild a factory with them.
-    ILivoFactory.TierCurves internal thinCurves;
-    ILivoFactory.TierCurves internal thickCurves;
+    IRealmFactory.TierCurves internal thinCurves;
+    IRealmFactory.TierCurves internal thickCurves;
 
-    ILivoGraduator public graduator;
+    IRealmGraduator public graduator;
 
     // Two unified factories. Legacy aliases below point to these instances so existing call sites
     // that read `factoryV2`, `factoryV4`, `factoryTax`, `factoryV2Sniper`, `factorySniper`, and
     // `factoryTaxSniper` keep working. The unified factories dispatch implementations based on
     // `TaxConfigInit`/`AntiSniperConfigs` sentinels.
-    LivoFactoryUniV2Unified public factoryV2Unified;
-    LivoFactoryUniV4Unified public factoryV4Unified;
+    RealmFactoryUniV2Unified public factoryV2Unified;
+    RealmFactoryUniV4Unified public factoryV4Unified;
 
-    // Legacy aliases (read-only). The pre-consolidation factories (`LivoFactoryUniV2`,
-    // `LivoFactoryUniV4`, `LivoFactoryTaxToken`, `LivoFactoryUniV2SniperProtected`,
-    // `LivoFactoryUniV4SniperProtected`, `LivoFactoryTaxTokenSniperProtected`) no longer exist;
+    // Legacy aliases (read-only). The pre-consolidation factories (`RealmFactoryUniV2`,
+    // `RealmFactoryUniV4`, `RealmFactoryTaxToken`, `RealmFactoryUniV2SniperProtected`,
+    // `RealmFactoryUniV4SniperProtected`, `RealmFactoryTaxTokenSniperProtected`) no longer exist;
     // these names now refer to the unified factories so the test surface remains stable.
-    LivoFactoryUniV2Unified public factoryV2;
-    LivoFactoryUniV2Unified public factoryV2Sniper;
-    LivoFactoryUniV4Unified public factoryV4;
-    LivoFactoryUniV4Unified public factoryTax;
-    LivoFactoryUniV4Unified public factorySniper;
-    LivoFactoryUniV4Unified public factoryTaxSniper;
+    RealmFactoryUniV2Unified public factoryV2;
+    RealmFactoryUniV2Unified public factoryV2Sniper;
+    RealmFactoryUniV4Unified public factoryV4;
+    RealmFactoryUniV4Unified public factoryTax;
+    RealmFactoryUniV4Unified public factorySniper;
+    RealmFactoryUniV4Unified public factoryTaxSniper;
 
-    LivoToken public livoTokenSniper; // alias of `livoToken` (anti-sniper is a gated feature)
-    LivoTaxableTokenUniV4 public livoTaxTokenSniper; // alias of `livoTaxToken`
-    LivoMasterFeeHandler public feeHandler;
+    RealmToken public realmTokenSniper; // alias of `realmToken` (anti-sniper is a gated feature)
+    RealmTaxableTokenUniV4 public realmTaxTokenSniper; // alias of `realmTaxToken`
+    RealmMasterFeeHandler public feeHandler;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -145,10 +145,10 @@ contract LaunchpadBaseTests is Test {
     // This is the pool setpoint price derived from SQRT_PRICEX96_GRADUATION
     uint256 constant POOL_SETPOINT_PRICE = 12249999999; // ETH/token (eth per token, expressed in wei)
 
-    LivoGraduatorUniswapV2 public graduatorV2;
-    LivoGraduatorUniswapV4 public graduatorV4;
+    RealmGraduatorUniswapV2 public graduatorV2;
+    RealmGraduatorUniswapV4 public graduatorV4;
     LivoSwapHook public taxHook;
-    LivoLpFeeRouter public lpFeeRouter;
+    RealmLpFeeRouter public lpFeeRouter;
 
     // Default LP-fee-router tier thresholds used in tests (ETH wei). Tier 0 covers `[0, T1)`.
     uint256 public constant LP_TIER_THRESHOLD_1 = 30 ether;
@@ -182,9 +182,9 @@ contract LaunchpadBaseTests is Test {
         return totalLpFee - (totalLpFee * LP_TIER0_TREASURY_BPS) / 10_000;
     }
 
-    /// @dev Default `LivoLpFeeRouter.Config` used by the test fixtures. Mirrors the tier policy the
+    /// @dev Default `RealmLpFeeRouter.Config` used by the test fixtures. Mirrors the tier policy the
     ///      production deployment is expected to start with.
-    function _defaultLpRouterCfg() internal pure returns (LivoLpFeeRouter.Config memory) {
+    function _defaultLpRouterCfg() internal pure returns (RealmLpFeeRouter.Config memory) {
         uint256[6] memory thresholds = [
             LP_TIER_THRESHOLD_1,
             LP_TIER_THRESHOLD_2,
@@ -202,7 +202,7 @@ contract LaunchpadBaseTests is Test {
             LP_TIER5_TREASURY_BPS,
             LP_TIER6_TREASURY_BPS
         ];
-        return LivoLpFeeRouter.Config({thresholds: thresholds, treasuryBps: treasuryBps});
+        return RealmLpFeeRouter.Config({thresholds: thresholds, treasuryBps: treasuryBps});
     }
 
     uint256 internal _saltCounter;
@@ -249,31 +249,31 @@ contract LaunchpadBaseTests is Test {
     }
 
     /// @dev Build a single-entry FeeShare[] with `account` getting 100% of fees (claimable, no direct).
-    function _fs(address account) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
-        arr = new ILivoFactory.FeeShare[](1);
-        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: false});
+    function _fs(address account) internal pure returns (IRealmFactory.FeeShare[] memory arr) {
+        arr = new IRealmFactory.FeeShare[](1);
+        arr[0] = IRealmFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: false});
     }
 
     /// @dev Build a single-entry FeeShare[] with `account` opted into direct fee forwarding.
-    function _fsDirect(address account) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
-        arr = new ILivoFactory.FeeShare[](1);
-        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: true});
+    function _fsDirect(address account) internal pure returns (IRealmFactory.FeeShare[] memory arr) {
+        arr = new IRealmFactory.FeeShare[](1);
+        arr[0] = IRealmFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: true});
     }
 
     /// @dev Build an empty FeeShare[] (only valid for UniV2 factory).
-    function _noFs() internal pure returns (ILivoFactory.FeeShare[] memory arr) {
-        return new ILivoFactory.FeeShare[](0);
+    function _noFs() internal pure returns (IRealmFactory.FeeShare[] memory arr) {
+        return new IRealmFactory.FeeShare[](0);
     }
 
     /// @dev Build an empty SupplyShare[] (valid when msg.value == 0).
-    function _noSs() internal pure returns (ILivoFactory.SupplyShare[] memory arr) {
-        return new ILivoFactory.SupplyShare[](0);
+    function _noSs() internal pure returns (IRealmFactory.SupplyShare[] memory arr) {
+        return new IRealmFactory.SupplyShare[](0);
     }
 
     /// @dev Build a single-entry SupplyShare[] with `account` receiving 100% of the bought supply.
-    function _ss(address account) internal pure returns (ILivoFactory.SupplyShare[] memory arr) {
-        arr = new ILivoFactory.SupplyShare[](1);
-        arr[0] = ILivoFactory.SupplyShare({account: account, shares: 10_000});
+    function _ss(address account) internal pure returns (IRealmFactory.SupplyShare[] memory arr) {
+        arr = new IRealmFactory.SupplyShare[](1);
+        arr[0] = IRealmFactory.SupplyShare({account: account, shares: 10_000});
     }
 
     /// @dev Build a `TaxConfigInit` struct for passing to any tax-factory's `createToken`. Defaults to
@@ -382,11 +382,11 @@ contract LaunchpadBaseTests is Test {
 
     /// @dev Deploys the creator-vault implementation, the UUPS vault factory proxy, and the six
     ///      allocation-specific bonding curves (stored in `vaultCurves`). Returns the vault factory.
-    function _deployCreatorVaultInfra() internal returns (LivoCreatorVaultFactory factory) {
-        address vaultImpl = address(new LivoCreatorVault());
-        address vaultFactoryImpl = address(new LivoCreatorVaultFactory(vaultImpl));
-        factory = LivoCreatorVaultFactory(
-            address(new ERC1967Proxy(vaultFactoryImpl, abi.encodeCall(LivoCreatorVaultFactory.initialize, ())))
+    function _deployCreatorVaultInfra() internal returns (RealmCreatorVaultFactory factory) {
+        address vaultImpl = address(new RealmCreatorVault());
+        address vaultFactoryImpl = address(new RealmCreatorVaultFactory(vaultImpl));
+        factory = RealmCreatorVaultFactory(
+            address(new ERC1967Proxy(vaultFactoryImpl, abi.encodeCall(RealmCreatorVaultFactory.initialize, ())))
         );
 
         uint256[6] memory bpsList = [uint256(500), 1000, 1500, 2000, 2500, 3000];
@@ -398,7 +398,7 @@ contract LaunchpadBaseTests is Test {
 
     /// @dev Deploys a non-default liquidity tier's seven configurable curves (no-vault base + the six
     ///      vault curves), reading constants + threshold from `CreatorVaultCurveConstants`.
-    function _deployTierCurves(LiquidityTier tier) internal returns (ILivoFactory.TierCurves memory tc) {
+    function _deployTierCurves(LiquidityTier tier) internal returns (IRealmFactory.TierCurves memory tc) {
         (uint256 threshold, uint256 maxExcess) = CreatorVaultCurveConstants.tierGraduation(tier);
         (uint256 k0, uint256 t00, uint256 e00) = CreatorVaultCurveConstants.paramsFor(tier, 0);
         tc.base = address(new ConstantProductBondingCurveConfigurable(k0, t00, e00, threshold, maxExcess));
@@ -411,19 +411,19 @@ contract LaunchpadBaseTests is Test {
 
     /// @dev The V4 tier-graduators struct used by `setUp` (and reusable by subclasses). One graduator
     ///      per tier — the hook is fee-agnostic and reads the swap fee from the token.
-    function _v4TierGraduators() internal view returns (LivoFactoryUniV4Unified.TierGraduators memory) {
+    function _v4TierGraduators() internal view returns (RealmFactoryUniV4Unified.TierGraduators memory) {
         return
-            LivoFactoryUniV4Unified.TierGraduators({thin: address(graduatorV4Thin), thick: address(graduatorV4Thick)});
+            RealmFactoryUniV4Unified.TierGraduators({thin: address(graduatorV4Thin), thick: address(graduatorV4Thick)});
     }
 
     /// @dev THIN+THICK curve bundle for the factory constructors.
-    function _tierConfig() internal view returns (ILivoFactory.LiquidityTierConfig memory) {
-        return ILivoFactory.LiquidityTierConfig({thin: thinCurves, thick: thickCurves});
+    function _tierConfig() internal view returns (IRealmFactory.LiquidityTierConfig memory) {
+        return IRealmFactory.LiquidityTierConfig({thin: thinCurves, thick: thickCurves});
     }
 
     /// @dev Full V4 tier config (curves + graduators) for the V4 factory constructor.
-    function _v4TierConfig() internal view returns (LivoFactoryUniV4Unified.V4TierConfig memory) {
-        return LivoFactoryUniV4Unified.V4TierConfig({curves: _tierConfig(), graduators: _v4TierGraduators()});
+    function _v4TierConfig() internal view returns (RealmFactoryUniV4Unified.V4TierConfig memory) {
+        return RealmFactoryUniV4Unified.V4TierConfig({curves: _tierConfig(), graduators: _v4TierGraduators()});
     }
 
     function setUp() public virtual {
@@ -444,21 +444,21 @@ contract LaunchpadBaseTests is Test {
         vm.deal(bob, INITIAL_ETH_BALANCE);
 
         vm.startPrank(admin);
-        livoToken = new LivoToken();
-        livoTaxToken = new LivoTaxableTokenUniV4();
+        realmToken = new RealmToken();
+        realmTaxToken = new RealmTaxableTokenUniV4();
 
-        implementation = livoToken;
-        launchpad = new LivoLaunchpad(treasury, admin);
+        implementation = realmToken;
+        launchpad = new RealmLaunchpad(treasury, admin);
         bondingCurve = new ConstantProductBondingCurve();
-        graduatorV2 = new LivoGraduatorUniswapV2(
+        graduatorV2 = new RealmGraduatorUniswapV2(
             UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
 
         // Deploy the LP fee router behind a UUPS proxy with the default tier configuration. The hook
         // forwards every LP fee to this router, which performs the marketcap-tiered treasury/creator split.
-        address lpRouterImpl = address(new LivoLpFeeRouter(treasury, _defaultLpRouterCfg()));
-        lpFeeRouter = LivoLpFeeRouter(
-            payable(address(new ERC1967Proxy(lpRouterImpl, abi.encodeCall(LivoLpFeeRouter.initialize, ()))))
+        address lpRouterImpl = address(new RealmLpFeeRouter(treasury, _defaultLpRouterCfg()));
+        lpFeeRouter = RealmLpFeeRouter(
+            payable(address(new ERC1967Proxy(lpRouterImpl, abi.encodeCall(RealmLpFeeRouter.initialize, ()))))
         );
 
         deployCodeTo(
@@ -468,13 +468,13 @@ contract LaunchpadBaseTests is Test {
         );
         taxHook = LivoSwapHook(payable(TEST_HOOK_ADDRESS));
 
-        feeHandler = new LivoMasterFeeHandler();
+        feeHandler = new RealmMasterFeeHandler();
 
         // Single shared liquidity adder, mirroring the production topology (deployed once, all graduators
         // and taxable tokens point at the same one).
-        address univ4LiquidityAdder = address(new LivoUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress));
+        address univ4LiquidityAdder = address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress));
 
-        graduatorV4 = new LivoGraduatorUniswapV4(
+        graduatorV4 = new RealmGraduatorUniswapV4(
             address(launchpad),
             poolManagerAddress,
             positionManagerAddress,
@@ -485,11 +485,11 @@ contract LaunchpadBaseTests is Test {
             univ4LiquidityAdder
         );
 
-        livoTaxTokenV2 = new LivoTaxableTokenUniV2();
+        realmTaxTokenV2 = new RealmTaxableTokenUniV2();
         // Sniper aliases point at the merged impls: anti-sniper is a gated feature, not a distinct impl.
-        livoTokenSniper = livoToken;
-        livoTaxTokenSniper = livoTaxToken;
-        livoTaxTokenV2Sniper = livoTaxTokenV2;
+        realmTokenSniper = realmToken;
+        realmTaxTokenSniper = realmTaxToken;
+        realmTaxTokenV2Sniper = realmTaxTokenV2;
 
         // Creator-vault infrastructure: vault factory (UUPS proxy) + the six allocation-specific curves.
         creatorVaultFactory = _deployCreatorVaultInfra();
@@ -498,7 +498,7 @@ contract LaunchpadBaseTests is Test {
         // single hook, so the 100/50-bps graduator slots reuse the same per-tier graduator instance.
         thinCurves = _deployTierCurves(LiquidityTier.THIN);
         thickCurves = _deployTierCurves(LiquidityTier.THICK);
-        graduatorV4Thin = new LivoGraduatorUniswapV4(
+        graduatorV4Thin = new RealmGraduatorUniswapV4(
             address(launchpad),
             poolManagerAddress,
             positionManagerAddress,
@@ -508,7 +508,7 @@ contract LaunchpadBaseTests is Test {
             UniswapV4PoolConstants.TICK_UPPER_THIN,
             univ4LiquidityAdder
         );
-        graduatorV4Thick = new LivoGraduatorUniswapV4(
+        graduatorV4Thick = new RealmGraduatorUniswapV4(
             address(launchpad),
             poolManagerAddress,
             positionManagerAddress,
@@ -520,9 +520,9 @@ contract LaunchpadBaseTests is Test {
         );
 
         address factoryV2Impl = address(
-            new LivoFactoryUniV2Unified(
+            new RealmFactoryUniV2Unified(
                 address(launchpad),
-                ILivoFactory.TokenImpls({base: address(livoToken), tax: address(livoTaxTokenV2)}),
+                IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxTokenV2)}),
                 address(bondingCurve),
                 address(graduatorV2),
                 address(feeHandler),
@@ -531,14 +531,14 @@ contract LaunchpadBaseTests is Test {
                 _tierConfig()
             )
         );
-        factoryV2Unified = LivoFactoryUniV2Unified(
-            address(new ERC1967Proxy(factoryV2Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())))
+        factoryV2Unified = RealmFactoryUniV2Unified(
+            address(new ERC1967Proxy(factoryV2Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
         );
 
         address factoryV4Impl = address(
-            new LivoFactoryUniV4Unified(
+            new RealmFactoryUniV4Unified(
                 address(launchpad),
-                ILivoFactory.TokenImpls({base: address(livoToken), tax: address(livoTaxToken)}),
+                IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxToken)}),
                 address(bondingCurve),
                 address(graduatorV4),
                 address(feeHandler),
@@ -547,8 +547,8 @@ contract LaunchpadBaseTests is Test {
                 _v4TierConfig()
             )
         );
-        factoryV4Unified = LivoFactoryUniV4Unified(
-            address(new ERC1967Proxy(factoryV4Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())))
+        factoryV4Unified = RealmFactoryUniV4Unified(
+            address(new ERC1967Proxy(factoryV4Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
         );
 
         // Legacy aliases — same instance, different reference name. Kept so existing tests that
@@ -570,11 +570,11 @@ contract LaunchpadBaseTests is Test {
     modifier createTestToken() virtual {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV4)) {
-            if (address(implementation) == address(livoTaxToken)) {
+            if (address(implementation) == address(realmTaxToken)) {
                 testToken = factoryV4Unified.createToken(
                     "TestToken",
                     "TEST",
-                    _nextValidSalt(address(factoryV4Unified), address(livoTaxToken)),
+                    _nextValidSalt(address(factoryV4Unified), address(realmTaxToken)),
                     _fs(creator),
                     _noSs(),
                     false,
@@ -585,7 +585,7 @@ contract LaunchpadBaseTests is Test {
                 testToken = factoryV4Unified.createToken(
                     "TestToken",
                     "TEST",
-                    _nextValidSalt(address(factoryV4Unified), address(livoToken)),
+                    _nextValidSalt(address(factoryV4Unified), address(realmToken)),
                     _fs(creator),
                     _noSs(),
                     false,
@@ -597,7 +597,7 @@ contract LaunchpadBaseTests is Test {
             testToken = factoryV2Unified.createToken(
                 "TestToken",
                 "TEST",
-                _nextValidSalt(address(factoryV2Unified), address(livoToken)),
+                _nextValidSalt(address(factoryV2Unified), address(realmToken)),
                 _fs(creator),
                 _noSs(),
                 _emptyTaxCfg(),
@@ -620,9 +620,9 @@ contract LaunchpadBaseTests is Test {
     ///      reads it per trade via `getLaunchpadFees`.
     function _currentBuyFeeBps(address token) internal view returns (uint256) {
         TokenState memory state = launchpad.getTokenState(token);
-        ILivoToken.LaunchpadFees memory f = ILivoToken(token)
+        IRealmToken.LaunchpadFees memory f = IRealmToken(token)
             .getLaunchpadFees(
-                ILivoToken.LaunchpadTrade({
+                IRealmToken.LaunchpadTrade({
                     isBuy: true, ethReserves: state.ethCollected, releasedSupply: state.releasedSupply
                 })
             );
@@ -644,7 +644,7 @@ contract LaunchpadBaseTests is Test {
     ///      constant: 5000 for V2, 6000 for V4). Assumes a non-tax token, where the whole trading fee
     ///      is LP fee.
     function _treasuryShareOf(uint256 lpFee) internal view returns (uint256) {
-        return lpFee * LivoToken(testToken).treasuryShareBps() / 10_000;
+        return lpFee * RealmToken(testToken).treasuryShareBps() / 10_000;
     }
 }
 
@@ -675,6 +675,6 @@ contract LaunchpadBaseTestsWithUniv4GraduatorTaxableToken is LaunchpadBaseTests 
         super.setUp();
 
         graduator = graduatorV4;
-        implementation = livoTaxToken;
+        implementation = realmTaxToken;
     }
 }

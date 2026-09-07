@@ -14,16 +14,16 @@ compile:
 # copies abis from out/ to abis/ for easier access in frontend
 abis:
     @mkdir -p abis
-    @jq '.abi' out/LivoLaunchpad.sol/LivoLaunchpad.json > abis/LivoLaunchpad.json
-    @jq '.abi' out/ILivoQuoter.sol/ILivoQuoter.json > abis/ILivoQuoter.json
-    @jq '.abi' out/ILivoQuoter2.sol/ILivoQuoter2.json > abis/ILivoQuoter2.json
-    @jq '.abi' out/ILivoLaunchpad2.sol/ILivoLaunchpad2.json > abis/ILivoLaunchpad2.json
-    @jq '.abi' out/ILivoToken.sol/ILivoToken.json > abis/ILivoToken.json
-    @jq '.abi' out/ILivoClaims.sol/ILivoClaims.json > abis/ILivoClaims.json
-    @jq '.abi' out/LivoFactoryUniV2Unified.sol/LivoFactoryUniV2Unified.json > abis/LivoFactoryUniV2Unified.json
-    @jq '.abi' out/LivoFactoryUniV4Unified.sol/LivoFactoryUniV4Unified.json > abis/LivoFactoryUniV4Unified.json
-    @jq '.abi' out/ILivoTaxableToken.sol/ILivoTaxableToken.json > abis/ILivoTaxableToken.json
-    @jq '.abi' out/LivoCreatorVault.sol/LivoCreatorVault.json > abis/LivoCreatorVault.json
+    @jq '.abi' out/RealmLaunchpad.sol/RealmLaunchpad.json > abis/RealmLaunchpad.json
+    @jq '.abi' out/IRealmQuoter.sol/IRealmQuoter.json > abis/IRealmQuoter.json
+    @jq '.abi' out/IRealmQuoter2.sol/IRealmQuoter2.json > abis/IRealmQuoter2.json
+    @jq '.abi' out/IRealmLaunchpad2.sol/IRealmLaunchpad2.json > abis/IRealmLaunchpad2.json
+    @jq '.abi' out/IRealmToken.sol/IRealmToken.json > abis/IRealmToken.json
+    @jq '.abi' out/IRealmClaims.sol/IRealmClaims.json > abis/IRealmClaims.json
+    @jq '.abi' out/RealmFactoryUniV2Unified.sol/RealmFactoryUniV2Unified.json > abis/RealmFactoryUniV2Unified.json
+    @jq '.abi' out/RealmFactoryUniV4Unified.sol/RealmFactoryUniV4Unified.json > abis/RealmFactoryUniV4Unified.json
+    @jq '.abi' out/IRealmTaxableToken.sol/IRealmTaxableToken.json > abis/IRealmTaxableToken.json
+    @jq '.abi' out/RealmCreatorVault.sol/RealmCreatorVault.json > abis/RealmCreatorVault.json
     @echo "✔ ABIs copied to abis/ directory"
     
 
@@ -58,13 +58,13 @@ lean-invariants:
 
 ##################### INSPECTION ####################
 error-inspection errorhex:
-    forge inspect LivoLaunchpad errors | grep {{errorhex}}
+    forge inspect RealmLaunchpad errors | grep {{errorhex}}
 
 # --- Per-chain build retarget ------------------------------------------------
 # ONE rule per target chain repoints EVERY per-chain compile-time import across ALL contracts at once
 # (the taxable tokens' `DeploymentAddresses` + venue lib, and the V4 graduator's pool-geometry/fee
 # libs). Retarget is for constant-only / trivial divergence; the V2 graduator, whose venue difference
-# is behavioral, is instead two separate contracts (LivoGraduatorUniswapV2 / ...Arc) picked at deploy
+# is behavioral, is instead two separate contracts (RealmGraduatorUniswapV2 / ...Arc) picked at deploy
 # time. The rule is per-CHAIN, never per-chain-AND-per-contract: add every future per-chain contract
 # swap to `_retarget` so callers keep using a single command. Run the `chain-*` recipe matching your
 # target BEFORE `forge build`/deploy. Idempotent. Committed default is Ethereum mainnet, used by all tests.
@@ -88,7 +88,7 @@ chain-arc-mainnet:
 
 # Fans a target chain out to every per-contract import-swap. `gradsuffix` is the lib variant
 # ("" = the committed ETH-priced libs, "Arc" = the ARC variants). Add future per-chain swaps HERE.
-# NOTE: the V2 graduator is NOT retargeted — LivoGraduatorUniswapV2 / ...Arc are separate contracts
+# NOTE: the V2 graduator is NOT retargeted — RealmGraduatorUniswapV2 / ...Arc are separate contracts
 # selected at deploy time (their venue difference is behavioral, not just constants).
 _retarget taxlib gradsuffix="":
     @just _taxtoken {{taxlib}} "{{gradsuffix}}"
@@ -100,22 +100,22 @@ _retarget taxlib gradsuffix="":
 # target chain. Use a `chain-*` recipe.
 _taxtoken lib suffix="":
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
-        src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol src/tokens/LivoUniv4BuyBacks.sol \
-        src/tokens/LivoTaxableTokenUniV2Base.sol \
-        src/tokens/DividendDistribution.sol src/dividends/LivoDividendSwapRegistry.sol
+        src/tokens/RealmTaxableTokenUniV2.sol src/tokens/RealmTaxableTokenUniV4.sol src/tokens/RealmUniv4BuyBacks.sol \
+        src/tokens/RealmTaxableTokenUniV2Base.sol \
+        src/tokens/DividendDistribution.sol src/dividends/RealmDividendSwapRegistry.sol
     sed -i -E 's#\{UniswapV2Venue[A-Za-z]* as UniswapV2Venue\} from "src/libraries/UniswapV2Venue[A-Za-z]*\.sol"#{UniswapV2Venue{{suffix}} as UniswapV2Venue} from "src/libraries/UniswapV2Venue{{suffix}}.sol"#' \
-        src/tokens/LivoTaxableTokenUniV2.sol src/dividends/LivoDividendSwapRegistry.sol
+        src/tokens/RealmTaxableTokenUniV2.sol src/dividends/RealmDividendSwapRegistry.sol
     sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
-        src/tokens/LivoTaxableTokenUniV4.sol src/tokens/LivoUniv4BuyBacks.sol
+        src/tokens/RealmTaxableTokenUniV4.sol src/tokens/RealmUniv4BuyBacks.sol
 
 # (internal) Repoints the V4 graduator's pool-geometry + fee libs to the `{{suffix}}` variant
 # ("" = ETH, "Arc" = ARC). The V2 graduators are separate contracts and are NOT touched here.
 # Use a `chain-*` recipe.
 _graduators suffix:
     sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
-        src/graduators/LivoGraduatorUniswapV4.sol
+        src/graduators/RealmGraduatorUniswapV4.sol
     sed -i -E 's#\{GraduationFeeConstants[A-Za-z]* as GraduationFeeConstants\} from "src/libraries/GraduationFeeConstants[A-Za-z]*\.sol"#{GraduationFeeConstants{{suffix}} as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants{{suffix}}.sol"#' \
-        src/graduators/LivoGraduatorUniswapV4.sol
+        src/graduators/RealmGraduatorUniswapV4.sol
 
 # Prints a valid salt (produces a token address ending in 0x1110) for the given factory.
 # Usage: just next-salt <factoryAddress>
@@ -143,7 +143,7 @@ factoryV2SniperProtected := "0x0000000000000000000000000000000000000000"
 factoryTaxTokenSniperProtected := "0x0000000000000000000000000000000000000000"
 hookAddress := "0x0591a87D3a56797812C4DA164C1B005c545400Cc"
 
-livodev := "0xBa489180Ea6EEB25cA65f123a46F3115F388f181"
+realmdev := "0xBa489180Ea6EEB25cA65f123a46F3115F388f181"
 
 # ##################### Create tokens #######################
 #
@@ -169,7 +169,7 @@ deploy-sepolia: chain-sepolia
     forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
 # Re-deploys the four token implementations and all six factories (V2/V4/TaxToken + sniper-protected
-# variants) against the existing Livo core, then whitelists them on the launchpad.
+# variants) against the existing Realm core, then whitelists them on the launchpad.
 deploy-sepolia-factories: chain-sepolia
     forge script DeploymentsFactories --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 
@@ -239,7 +239,7 @@ deploy-univ2-robintest feeToSetter="0xBa489180Ea6EEB25cA65f123a46F3115F388f181":
     echo "    UNIV2_ROUTER  = $RTR"
     echo "    UNIV2_PAIR_INIT_CODE_HASH stays 0x96e8ac42…845f (canonical, unchanged)"
 
-# NB: ARC testnet had no official Uniswap, so Livo self-deployed the V2+V4 stack there (addresses in
+# NB: ARC testnet had no official Uniswap, so Realm self-deployed the V2+V4 stack there (addresses in
 # `DeploymentAddressesArcTestnet`). The deploy scripts, the vendored V2 router and the Uniswap V2
 # submodules have since been removed — ARC mainnet ships official Uniswap, so nothing needs them
 # again. Recover from git history (branch `feat/arc-chain-support`) if a future chain does.
@@ -366,21 +366,21 @@ create-token-v2 tokenName value="0":
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[])" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" --value {{value}}
+            "[({{realmdev}},10000)]" "[]" --value {{value}}
 
 create-token-v4 tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryV4}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool)" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" {{renounceOwnership}} --value {{value}}
+            "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} --value {{value}}
 
 create-tax-token tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryTaxToken}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint32))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" {{renounceOwnership}} \
+            "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} \
             "(300,500,1209600)" --value {{value}}
 
 create-token-v4-feesplit tokenName value="0" renounceOwnership="false":
@@ -408,7 +408,7 @@ create-token-v2-sniper tokenName value="0":
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2SniperProtected}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],(uint16,uint16,uint40,address[]))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" \
+            "[({{realmdev}},10000)]" "[]" \
             "(300,300,10800,[])" --value {{value}}
 
 create-token-v4-sniper tokenName value="0" renounceOwnership="false":
@@ -416,7 +416,7 @@ create-token-v4-sniper tokenName value="0" renounceOwnership="false":
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factorySniperProtected}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint40,address[]))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" {{renounceOwnership}} \
+            "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} \
             "(300,300,10800,[])" --value {{value}}
 
 create-tax-token-sniper tokenName value="0" renounceOwnership="false":
@@ -424,7 +424,7 @@ create-tax-token-sniper tokenName value="0" renounceOwnership="false":
         cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxTokenSniperProtected}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint32),(uint16,uint16,uint40,address[]))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{livodev}},10000)]" "[]" {{renounceOwnership}} \
+            "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} \
             "(300,500,1209600)" \
             "(300,300,10800,[])" --value {{value}}
 

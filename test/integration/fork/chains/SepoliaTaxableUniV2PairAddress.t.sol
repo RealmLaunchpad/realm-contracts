@@ -6,9 +6,9 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {ForkIntegrationBase} from "test/integration/fork/base/ForkIntegrationBase.t.sol";
 import {ForkIntegrationCaseLib} from "test/integration/fork/base/ForkIntegrationCaseLib.t.sol";
 
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {TaxConfigInit} from "src/interfaces/IRealmTaxableToken.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
@@ -22,9 +22,9 @@ contract SepoliaTaxableUniV2PairAddress is ForkIntegrationBase {
         address creator = makeAddr("sepoliaTaxableUniV2Creator");
         vm.deal(creator, INITIAL_ETH_BALANCE);
 
-        ILivoFactory.FeeShare[] memory fees = new ILivoFactory.FeeShare[](1);
-        fees[0] = ILivoFactory.FeeShare({account: creator, shares: 10_000, directFeesEnabled: false});
-        ILivoFactory.SupplyShare[] memory supply = new ILivoFactory.SupplyShare[](0);
+        IRealmFactory.FeeShare[] memory fees = new IRealmFactory.FeeShare[](1);
+        fees[0] = IRealmFactory.FeeShare({account: creator, shares: 10_000, directFeesEnabled: false});
+        IRealmFactory.SupplyShare[] memory supply = new IRealmFactory.SupplyShare[](0);
         TaxConfigInit memory taxCfg = TaxConfigInit({
             buyTaxBps: TAX_BUY_BPS,
             sellTaxBps: TAX_SELL_BPS,
@@ -43,7 +43,7 @@ contract SepoliaTaxableUniV2PairAddress is ForkIntegrationBase {
         address token = factoryV2.createToken("Sepolia Tax V2", "STV2", salt, fees, supply, taxCfg, noSniper);
 
         IUniswapV2Factory uniV2Factory = IUniswapV2Factory(forkCfg.uniV2Factory);
-        address predictedPair = ILivoToken(token).pair();
+        address predictedPair = IRealmToken(token).pair();
         assertEq(uniV2Factory.getPair(token, forkCfg.weth), address(0), "pair exists before graduation");
         assertEq(predictedPair.code.length, 0, "pair code exists before graduation");
 

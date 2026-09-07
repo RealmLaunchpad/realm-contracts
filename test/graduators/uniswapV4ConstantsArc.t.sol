@@ -10,7 +10,7 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 ///         denominated economic value x2000 (native ~$1 vs ETH ~$2000) but keeps 18-dec native + 18-dec
 ///         token, so the pool geometry is the ETH geometry translated to a x1/2000 price (sqrtPrice
 ///         x1/sqrt(2000); ticks shifted -76000, re-derived per set-point via uniswapV4Settings.py). These tests
-///         replicate `LivoGraduatorUniswapV4`'s constructor derivations against the ARC constants and
+///         replicate `RealmGraduatorUniswapV4`'s constructor derivations against the ARC constants and
 ///         fuzz the liquidity-sizing math at ARC scale to prove the constructor invariants hold and the
 ///         `getLiquidityForAmounts`/`getLiquidityForAmount0` (uint128) paths never overflow.
 contract UniswapV4ConstantsArcTest is Test {
@@ -48,7 +48,7 @@ contract UniswapV4ConstantsArcTest is Test {
         }
     }
 
-    /// @dev The exact invariants `LivoGraduatorUniswapV4`'s constructor enforces must hold for every tier
+    /// @dev The exact invariants `RealmGraduatorUniswapV4`'s constructor enforces must hold for every tier
     ///      with the ARC range bounds, and the graduation price must sit strictly inside the range.
     function test_constructorInvariants_holdForEachTier() public pure {
         Tier[3] memory tiers = _tiers();

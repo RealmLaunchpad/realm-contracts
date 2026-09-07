@@ -3,9 +3,9 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
@@ -15,15 +15,15 @@ import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet
 import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
 /// @title Redeploy BOTH unified factory implementations and upgrade their proxies — factories only
-/// @notice For changes that live in `LivoFactoryAbstract` / the concrete factories ONLY, leaving every
+/// @notice For changes that live in `RealmFactoryAbstract` / the concrete factories ONLY, leaving every
 ///         token implementation untouched (e.g. a tweak to `_validateTaxConfig`). Unlike
 ///         `RedeployTaxTokensAndUpgradeFactories`, this deploys NO token impls: it reuses the existing
 ///         `TOKEN_IMPL`, `TAXABLE_TOKEN_V2_IMPL` and `TAXABLE_TOKEN_V4_IMPL` recorded in the per-chain
 ///         manifest, wiring the fresh factory impls to them.
 ///
 ///         Single broadcast, two new deployments + two proxy upgrades:
-///         1. `LivoFactoryUniV2Unified` impl wired to the manifest's V2 token + tax-token impls.
-///         2. `LivoFactoryUniV4Unified` impl wired to the manifest's V4 token + tax-token impls
+///         1. `RealmFactoryUniV2Unified` impl wired to the manifest's V2 token + tax-token impls.
+///         2. `RealmFactoryUniV4Unified` impl wired to the manifest's V4 token + tax-token impls
 ///            (both graduators: 100 bps + 50 bps).
 ///         3. `upgradeToAndCall(newV2FactoryImpl, "")` on the existing V2 UUPS proxy.
 ///         4. `upgradeToAndCall(newV4FactoryImpl, "")` on the existing V4 UUPS proxy.
@@ -136,15 +136,15 @@ contract RedeployUnifiedFactoriesOnly is Script {
     function run() public {
         Deps memory d = _getDeps();
 
-        // Catch wrong manifest addresses pointing at non-Livo contracts before we waste deploys.
-        address v2ProxyOwner = LivoFactoryUniV2Unified(d.factoryV2Proxy).owner();
-        address v4ProxyOwner = LivoFactoryUniV4Unified(d.factoryV4Proxy).owner();
+        // Catch wrong manifest addresses pointing at non-Realm contracts before we waste deploys.
+        address v2ProxyOwner = RealmFactoryUniV2Unified(d.factoryV2Proxy).owner();
+        address v4ProxyOwner = RealmFactoryUniV4Unified(d.factoryV4Proxy).owner();
         require(v2ProxyOwner != address(0), "V2 proxy not initialized");
         require(v4ProxyOwner != address(0), "V4 proxy not initialized");
         // Same key is expected to own both proxies; soft sanity check, not a hard protocol invariant.
         require(v2ProxyOwner == v4ProxyOwner, "V2 and V4 proxy owners differ; review before upgrading");
 
-        console.log("=== Livo Unified Factories Redeploy (factories only, tokens reused) ===");
+        console.log("=== Realm Unified Factories Redeploy (factories only, tokens reused) ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Required proxy owner:    ", v2ProxyOwner);
@@ -159,9 +159,9 @@ contract RedeployUnifiedFactoriesOnly is Script {
 
         // --- Factory implementations (2) wired to the EXISTING token impls from the manifest ---
         address factoryV2Impl = address(
-            new LivoFactoryUniV2Unified(
+            new RealmFactoryUniV2Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenV2Impl}),
+                IRealmFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenV2Impl}),
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
@@ -170,12 +170,12 @@ contract RedeployUnifiedFactoriesOnly is Script {
                 CreatorVaultScriptConfig.tierConfigFor()
             )
         );
-        console.log("| LivoFactoryUniV2Unified (new impl)            |", factoryV2Impl);
+        console.log("| RealmFactoryUniV2Unified (new impl)            |", factoryV2Impl);
 
         address factoryV4Impl = address(
-            new LivoFactoryUniV4Unified(
+            new RealmFactoryUniV4Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenV4Impl}),
+                IRealmFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenV4Impl}),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.masterFeeHandler,
@@ -184,7 +184,7 @@ contract RedeployUnifiedFactoriesOnly is Script {
                 CreatorVaultScriptConfig.v4TierConfigFor()
             )
         );
-        console.log("| LivoFactoryUniV4Unified (new impl)            |", factoryV4Impl);
+        console.log("| RealmFactoryUniV4Unified (new impl)            |", factoryV4Impl);
 
         // --- Proxy upgrades (2) ---
         UUPSUpgradeable(d.factoryV2Proxy).upgradeToAndCall(factoryV2Impl, "");
@@ -196,8 +196,8 @@ contract RedeployUnifiedFactoriesOnly is Script {
         vm.stopBroadcast();
 
         // Post-broadcast: both proxies now delegate to the new impls, so they report the manifest launchpad.
-        require(address(LivoFactoryUniV2Unified(d.factoryV2Proxy).LAUNCHPAD()) == d.launchpad, "V2 upgrade failed");
-        require(address(LivoFactoryUniV4Unified(d.factoryV4Proxy).LAUNCHPAD()) == d.launchpad, "V4 upgrade failed");
+        require(address(RealmFactoryUniV2Unified(d.factoryV2Proxy).LAUNCHPAD()) == d.launchpad, "V2 upgrade failed");
+        require(address(RealmFactoryUniV4Unified(d.factoryV4Proxy).LAUNCHPAD()) == d.launchpad, "V4 upgrade failed");
 
         console.log("");
         console.log("=== Redeploy Complete ===");

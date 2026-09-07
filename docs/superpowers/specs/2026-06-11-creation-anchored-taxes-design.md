@@ -4,7 +4,7 @@ Date: 2026-06-11 · Branch: `feat/launchpad-v2` · Status: approved, pending spe
 
 ## Goal
 
-Make Livo taxable tokens charge tax **from token creation**, not from graduation:
+Make Realm taxable tokens charge tax **from token creation**, not from graduation:
 
 - The tax period is `[launchTimestamp, launchTimestamp + taxDurationSeconds]`, where `launchTimestamp`
   is the token's creation (init) time — the same anchor the sniper-protection window already uses.
@@ -19,51 +19,51 @@ previously sourced taxes only post-grad).
 
 ## Decisions (locked with user)
 
-1. **Single source of truth** for the tax rate = `LivoTaxableToken.buyTaxBps` / `sellTaxBps`, used
+1. **Single source of truth** for the tax rate = `RealmTaxableToken.buyTaxBps` / `sellTaxBps`, used
    pre- and post-graduation interchangeably.
-2. **Remove the redundant base storage** `LivoToken.taxBuyBps` / `taxSellBps`, the
+2. **Remove the redundant base storage** `RealmToken.taxBuyBps` / `taxSellBps`, the
    `InitializeParams.taxBuyBps` / `taxSellBps` fields, and the two tax args of the
    `LaunchpadFeesInitialized` event (full cleanup / "C1"). The indexer sources pre-grad tax config from
-   `LivoTaxableTokenInitialized(buyTaxBps, sellTaxBps, taxDurationSeconds)`; the window start is that
+   `RealmTaxableTokenInitialized(buyTaxBps, sellTaxBps, taxDurationSeconds)`; the window start is that
    event's block timestamp.
 3. **Do not touch `LivoSwapHook`.** It anchors on `graduationTimestamp + taxDurationSeconds`; we make
    `getTaxConfig()` return a dynamically-zeroed tax so the hook's stale math lands correctly.
 4. **Remove `setLaunchpadFees()`.** The LP fee is immutable post-launch (the owner must not be able to
    change LP fees). The only tax control is the existing decrease-only `setTaxBps()` on
-   `LivoTaxableToken`. `LaunchpadFeesUpdated` and `LaunchpadFeesCanOnlyDecrease` go with it.
+   `RealmTaxableToken`. `LaunchpadFeesUpdated` and `LaunchpadFeesCanOnlyDecrease` go with it.
 5. **Reuse one creation timestamp.** Hoist `launchTimestamp` from `SniperProtection` to base
-   `LivoToken`; the tax window and the sniper window share it. No separate `taxStartTimestamp`.
+   `RealmToken`; the tax window and the sniper window share it. No separate `taxStartTimestamp`.
 
 ### Pre-existing-event safety (verified against `main`)
 
 `LaunchpadFeesInitialized`, `LaunchpadFeesUpdated`, `setLaunchpadFees`, base `taxBuyBps`,
 `getLaunchpadFees` are all **branch-new** (0 hits on `main`) — safe to reshape/remove. Events present
-on `main` keep identical signatures and emit behavior: `LivoTaxableTokenInitialized`, `TaxBpsUpdated`,
+on `main` keep identical signatures and emit behavior: `RealmTaxableTokenInitialized`, `TaxBpsUpdated`,
 `CreatorTaxesAccrued`, `LpFeesAccrued`, `Graduated`, `CreatorTaxSwapback`, `SniperProtectionInitialized`
 (no `launchTimestamp` arg, so the hoist doesn't touch it). The only conceptual change is that, for a v2
-token, the indexer anchors the tax window at the `LivoTaxableTokenInitialized` block timestamp instead
+token, the indexer anchors the tax window at the `RealmTaxableTokenInitialized` block timestamp instead
 of `Graduated`; it distinguishes v2 tokens by version/address anyway.
 
 ## Mechanism by phase
 
 | Phase | Who charges tax | Source of rate | Window check |
 |-------|-----------------|----------------|--------------|
-| Pre-grad (V2 & V4) | `LivoLaunchpad` via `getLaunchpadFees()` | `buyTaxBps`/`sellTaxBps` | `launchTimestamp + taxDurationSeconds` (in the token override) |
+| Pre-grad (V2 & V4) | `RealmLaunchpad` via `getLaunchpadFees()` | `buyTaxBps`/`sellTaxBps` | `launchTimestamp + taxDurationSeconds` (in the token override) |
 | Post-grad V4 | `LivoSwapHook` via `getTaxConfig()` | `buyTaxBps`/`sellTaxBps` | hook uses `graduationTimestamp + taxDurationSeconds`; token feeds it a zeroed config once the real (creation-anchored) window closes |
 | Post-grad V2 | token `_update` (intrinsic) + swapbacks | `buyTaxBps`/`sellTaxBps` | `launchTimestamp + taxDurationSeconds` |
 
 ## File-by-file changes
 
-### `src/interfaces/ILivoToken.sol`
+### `src/interfaces/IRealmToken.sol`
 - `InitializeParams`: remove `taxBuyBps`, `taxSellBps`.
 - `LaunchpadFeesInitialized` → `(uint16 lpFeeBps, uint16 treasuryShareBps)`.
 - Remove `event LaunchpadFeesUpdated` and `function setLaunchpadFees(...)`.
 
-### `src/tokens/LivoToken.sol`
+### `src/tokens/RealmToken.sol`
 - Remove storage `taxBuyBps`, `taxSellBps`; remove error `LaunchpadFeesCanOnlyDecrease`.
 - **Add `uint40 public launchTimestamp`** (packs into the slot freed by removing the two tax uint16s,
   alongside `feeHandler`/`lpFeeBps`/`treasuryShareBps`).
-- `_initializeLivoToken`: drop the two tax stores; emit `LaunchpadFeesInitialized(lpFeeBps, treasuryShareBps)`;
+- `_initializeRealmToken`: drop the two tax stores; emit `LaunchpadFeesInitialized(lpFeeBps, treasuryShareBps)`;
   set `launchTimestamp = uint40(block.timestamp)` **at the end of the function (after the initial mint)**, so the
   mint still observes `launchTimestamp == 0` exactly as today.
 - Remove `setLaunchpadFees()`.
@@ -75,16 +75,16 @@ of `Graduated`; it distinguishes v2 tokens by version/address anyway.
 
 ### `src/tokens/SniperProtection.sol`
 - Remove the `launchTimestamp` storage var and its assignment in `_initializeSniperProtection`
-  (now owned by `LivoToken`). The `SniperProtectionInitialized` event is unaffected (never carried it).
+  (now owned by `RealmToken`). The `SniperProtectionInitialized` event is unaffected (never carried it).
 - Add a `uint40 launchTimestamp` **parameter** to `_checkSniperProtection(...)` and
   `_maxTokenPurchase(...)`; use the param in the two `block.timestamp >= launchTimestamp + protectionWindowSeconds`
   checks. Update the "Mints happen when `launchTimestamp == 0`" comment to reflect the param source.
 
-### `src/tokens/LivoTokenSniperProtected.sol`, `LivoTaxableTokenUniV2SniperProtected.sol`, `LivoTaxableTokenUniV4SniperProtected.sol`
+### `src/tokens/RealmTokenSniperProtected.sol`, `RealmTaxableTokenUniV2SniperProtected.sol`, `RealmTaxableTokenUniV4SniperProtected.sol`
 - At each `_checkSniperProtection(...)` and `_maxTokenPurchase(...)` call site (one of each per file),
   pass the inherited base `launchTimestamp`.
 
-### `src/tokens/LivoTaxableToken.sol`
+### `src/tokens/RealmTaxableToken.sol`
 - Add internal helper `_taxWindowActive()`:
   `block.timestamp <= uint256(launchTimestamp) + taxDurationSeconds` (reads base `launchTimestamp`).
 - `_initializeTaxConfig`: unchanged re: timestamps (no `taxStartTimestamp` to set).
@@ -101,16 +101,16 @@ of `Graduated`; it distinguishes v2 tokens by version/address anyway.
     `block.timestamp <= graduationTimestamp + taxDurationSeconds` holds whenever the real window is open.
 - `markGraduated()` keeps stamping `graduationTimestamp` (now only the hook's "has graduated?" guard).
 
-### `src/tokens/LivoTaxableTokenUniV2.sol`
+### `src/tokens/RealmTaxableTokenUniV2.sol`
 - `_update`: re-anchor both window checks from `graduationTimestamp` to `launchTimestamp`
   (the intrinsic-tax gate and the post-window residual-drain branch). **Keep the `_graduated` gate** —
   pre-grad tax is charged by the launchpad, not intrinsically — and swapbacks stay post-grad-only
   (pre-grad `to == pair` already reverts).
 
-### `src/tokens/LivoTaxableTokenUniV4.sol` / `src/hooks/LivoSwapHook.sol`
+### `src/tokens/RealmTaxableTokenUniV4.sol` / `src/hooks/LivoSwapHook.sol`
 - No change (V4 post-grad tax is driven entirely by the dynamic `getTaxConfig()`).
 
-### `src/factories/LivoFactoryAbstract.sol`
+### `src/factories/RealmFactoryAbstract.sol`
 - `_cloneAndCreateToken`: drop `taxBuyBps`/`taxSellBps` from the `InitializeParams` literal (lines ~483-484).
 - No signature changes to any `createToken` / `previewTokenImplementation` / `quoteBuyOnDeploy` overload.
 
@@ -149,9 +149,9 @@ For any timestamp `t`, the effective buy/sell tax bps is identical whether the t
 - Sniper protection unchanged in behavior after the `launchTimestamp` hoist: window timing identical,
   initial mint still uncapped, `launchTimestamp()` getter still readable (now on every token).
 
-Existing suites to update: `test/tokens/launchpadFees.t.sol`, `test/tokens/LivoTaxableTokenUniV2.t.sol`,
+Existing suites to update: `test/tokens/launchpadFees.t.sol`, `test/tokens/RealmTaxableTokenUniV2.t.sol`,
 `test/tokens/sniperProtection.t.sol`, `test/launchpad/launchpadFeeSplit.t.sol`, `test/launchpad/base.t.sol`,
 `test/graduators/taxToken.base.t.sol`, `test/graduators/graduationUniv4.taxToken.t.sol`,
-`test/factories/LivoFactoryUniV2UnifiedTax.t.sol`, `test/factories/LivoFactoryUniV4Unified.t.sol`,
-`test/quoter/LivoQuoter.t.sol`, `test/e2e/suites/E2ESniperWindow.t.sol`, and the e2e/integration bases.
+`test/factories/RealmFactoryUniV2UnifiedTax.t.sol`, `test/factories/RealmFactoryUniV4Unified.t.sol`,
+`test/quoter/RealmQuoter.t.sol`, `test/e2e/suites/E2ESniperWindow.t.sol`, and the e2e/integration bases.
 Verify with `just fast-test`.

@@ -8,14 +8,14 @@ assignees: JacoboLansac
 ---
 
 name: Token launch request
-description: Request deployment of a custom token through Livo
+description: Request deployment of a custom token through Realm
 title: "[Launch] SYMBOL — Token Name"
 labels: ["token-launch"]
 body:
   - type: markdown
     attributes:
       value: |
-        ## Livo token launch request
+        ## Realm token launch request
 
         Fill in every section below. The fields map directly to the on-chain
         `createToken` call, so invalid values will be rejected automatically.
@@ -47,7 +47,7 @@ body:
     id: description
     attributes:
       label: Description
-      description: A paragraph or two about the token. Shown on the Livo app.
+      description: A paragraph or two about the token. Shown on the Realm app.
       placeholder: "What this token is about, why it exists, who it is for."
     validations:
       required: true
@@ -164,7 +164,7 @@ body:
     attributes:
       label: Acknowledgements
       options:
-        - label: I have read and agree to the Livo terms of service.
+        - label: I have read and agree to the Realm terms of service.
           required: true
         - label: I understand the fee_receiver address is final once deployed.
           required: true

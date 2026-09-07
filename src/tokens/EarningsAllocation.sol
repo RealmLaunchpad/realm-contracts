@@ -14,7 +14,7 @@ pragma solidity 0.8.28;
 ///      create a token that bricks on its first post-graduation earnings.
 ///
 /// @dev ⚠️ GAS BUDGET — READ BEFORE IMPLEMENTING A BUCKET. Earnings reach this split via
-///      `LivoToken.accrueFees`. On the V4 LP-fee route that call is made by `LivoLpFeeRouter` from
+///      `RealmToken.accrueFees`. On the V4 LP-fee route that call is made by `RealmLpFeeRouter` from
 ///      inside `LivoSwapHook`'s `try { ... } { gas: ROUTER_GAS_LIMIT }` (≈1M gas) during a swap; if it
 ///      runs out of gas the hook drops the LP fee to the treasury. The split therefore MUST stay cheap:
 ///      each `_handle*` leg may only ACCRUE its slice (ideally a single SSTORE) for OUT-OF-BAND

@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {DeploymentAddresses as AddressesFromRealmTaxableTokenV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {DeploymentAddresses as AddressesFromRealmTaxableTokenV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
 import {
     DeploymentAddressesEthereumMainnet,
@@ -31,12 +31,12 @@ import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet
 /// @notice Single-broadcast rollout that refreshes the full token + factory stack while preserving
 ///         the existing UUPS proxy addresses (so launchpad whitelisting and integrators are
 ///         unaffected). Five new deployments + two proxy upgrades:
-///         1. `LivoToken`
-///         2. `LivoTaxableTokenUniV2`
-///         3. `LivoTaxableTokenUniV4`
-///         4. `LivoFactoryUniV2Unified` impl wired to (1)+(2) and the unchanged
+///         1. `RealmToken`
+///         2. `RealmTaxableTokenUniV2`
+///         3. `RealmTaxableTokenUniV4`
+///         4. `RealmFactoryUniV2Unified` impl wired to (1)+(2) and the unchanged
 ///            bondingCurve / V2 graduator / masterFeeHandler / launchpad from the manifest.
-///         5. `LivoFactoryUniV4Unified` impl wired to (1)+(3) and the unchanged
+///         5. `RealmFactoryUniV4Unified` impl wired to (1)+(3) and the unchanged
 ///            bondingCurve / V4 graduator / masterFeeHandler / launchpad from the manifest.
 ///         6. `upgradeToAndCall(newV2FactoryImpl, "")` on the existing V2 UUPS proxy.
 ///         7. `upgradeToAndCall(newV4FactoryImpl, "")` on the existing V4 UUPS proxy.
@@ -45,7 +45,7 @@ import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet
 ///         be the proxy owner on BOTH proxies, otherwise `_authorizeUpgrade` reverts with
 ///         `OwnableUnauthorizedAccount(broadcaster)` and the whole script reverts.
 ///
-///         Pre-broadcast sanity: confirms that `LivoTaxableTokenUniV2` and `LivoTaxableTokenUniV4`
+///         Pre-broadcast sanity: confirms that `RealmTaxableTokenUniV2` and `RealmTaxableTokenUniV4`
 ///         have their hardcoded `DeploymentAddresses` import pointing at the active chain (run the
 ///         matching `just chain-{mainnet,sepolia,robinhood,robintest}` recipe BEFORE building).
 ///
@@ -98,13 +98,13 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER
             });
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not Mainnet (run `just chain-sepolia` only for sepolia)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Mainnet"
+                "RealmTaxableTokenUniV4 import is not Mainnet"
             );
         } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
@@ -117,13 +117,13 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER
             });
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Sepolia (run `just chain-sepolia`)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not Sepolia (run `just chain-sepolia`)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
+                "RealmTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
             );
         } else if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
             d = Deps({
@@ -136,13 +136,13 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 masterFeeHandler: DeploymentsRobinhoodMainnet.MASTER_FEE_HANDLER
             });
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Robinhood mainnet (run `just chain-robinhood`)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not Robinhood mainnet (run `just chain-robinhood`)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Robinhood mainnet (run `just chain-robinhood`)"
+                "RealmTaxableTokenUniV4 import is not Robinhood mainnet (run `just chain-robinhood`)"
             );
         } else if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
             d = Deps({
@@ -155,13 +155,13 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 masterFeeHandler: DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER
             });
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Robinhood testnet (run `just chain-robintest`)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not Robinhood testnet (run `just chain-robintest`)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Robinhood testnet (run `just chain-robintest`)"
+                "RealmTaxableTokenUniV4 import is not Robinhood testnet (run `just chain-robintest`)"
             );
         } else {
             revert("Unsupported chain");
@@ -172,7 +172,7 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         // placeholder (or at a chain where the proxy is not up yet) reverts EVERY third-asset dividend
         // token creation, for good. Deploy the registry proxy first, retarget the constant, then this.
         require(
-            AddressesFromLivoTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
+            AddressesFromRealmTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
             "DIVIDEND_SWAP_REGISTRY has no code on this chain: deploy the registry proxy first"
         );
 
@@ -180,8 +180,8 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         // all fail closed against a codeless keeper registry, so an impl deployed before it exists can
         // never run a conversion.
         require(
-            AddressesFromLivoTaxableTokenV2.LIVO_KEEPERS_REGISTRY.code.length != 0,
-            "LIVO_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
+            AddressesFromRealmTaxableTokenV2.REALM_KEEPERS_REGISTRY.code.length != 0,
+            "REALM_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
         );
 
         require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
@@ -197,14 +197,14 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         Deps memory d = _getDeps();
         FreshDeployments memory fresh;
 
-        // Catch wrong manifest addresses pointing at non-Livo contracts before we waste deploys.
-        address v2ProxyOwner = LivoFactoryUniV2Unified(d.factoryV2Proxy).owner();
-        address v4ProxyOwner = LivoFactoryUniV4Unified(d.factoryV4Proxy).owner();
+        // Catch wrong manifest addresses pointing at non-Realm contracts before we waste deploys.
+        address v2ProxyOwner = RealmFactoryUniV2Unified(d.factoryV2Proxy).owner();
+        address v4ProxyOwner = RealmFactoryUniV4Unified(d.factoryV4Proxy).owner();
         require(v2ProxyOwner != address(0), "V2 proxy not initialized");
         require(v4ProxyOwner != address(0), "V4 proxy not initialized");
         require(v2ProxyOwner == v4ProxyOwner, "V2 and V4 proxy owners differ; review before upgrading");
 
-        console.log("=== Livo Full Token Stack Redeploy + Both Factory Upgrades ===");
+        console.log("=== Realm Full Token Stack Redeploy + Both Factory Upgrades ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Required proxy owner:    ", v2ProxyOwner);
@@ -218,20 +218,20 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
         console.log("| ---------------------------------------------- | --- |");
 
         // --- Token implementations (3) ---
-        fresh.tokenImpl = address(new LivoToken());
-        console.log("| LivoToken (new impl)                          |", fresh.tokenImpl);
+        fresh.tokenImpl = address(new RealmToken());
+        console.log("| RealmToken (new impl)                          |", fresh.tokenImpl);
 
-        fresh.taxTokenV2Impl = address(new LivoTaxableTokenUniV2());
-        console.log("| LivoTaxableTokenUniV2 (new impl)              |", fresh.taxTokenV2Impl);
+        fresh.taxTokenV2Impl = address(new RealmTaxableTokenUniV2());
+        console.log("| RealmTaxableTokenUniV2 (new impl)              |", fresh.taxTokenV2Impl);
 
-        fresh.taxTokenV4Impl = address(new LivoTaxableTokenUniV4());
-        console.log("| LivoTaxableTokenUniV4 (new impl)              |", fresh.taxTokenV4Impl);
+        fresh.taxTokenV4Impl = address(new RealmTaxableTokenUniV4());
+        console.log("| RealmTaxableTokenUniV4 (new impl)              |", fresh.taxTokenV4Impl);
 
         // --- Factory implementations (2) wired entirely to the fresh token impls ---
         fresh.factoryV2Impl = address(
-            new LivoFactoryUniV2Unified(
+            new RealmFactoryUniV2Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV2Impl}),
+                IRealmFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV2Impl}),
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
@@ -240,12 +240,12 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 CreatorVaultScriptConfig.tierConfigFor()
             )
         );
-        console.log("| LivoFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
+        console.log("| RealmFactoryUniV2Unified (new impl)            |", fresh.factoryV2Impl);
 
         fresh.factoryV4Impl = address(
-            new LivoFactoryUniV4Unified(
+            new RealmFactoryUniV4Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV4Impl}),
+                IRealmFactory.TokenImpls({base: fresh.tokenImpl, tax: fresh.taxTokenV4Impl}),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.masterFeeHandler,
@@ -254,7 +254,7 @@ contract RedeployAllTokensAndUpgradeFactories is Script {
                 CreatorVaultScriptConfig.v4TierConfigFor()
             )
         );
-        console.log("| LivoFactoryUniV4Unified (new impl)            |", fresh.factoryV4Impl);
+        console.log("| RealmFactoryUniV4Unified (new impl)            |", fresh.factoryV4Impl);
 
         // --- Proxy upgrades (2) ---
         UUPSUpgradeable(d.factoryV2Proxy).upgradeToAndCall(fresh.factoryV2Impl, "");

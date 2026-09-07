@@ -2,18 +2,18 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {E2EHappyPath} from "test/e2e/suites/E2EHappyPath.t.sol";
 import {E2EGraduationFlows} from "test/e2e/suites/E2EGraduationFlows.t.sol";
 
 /// @notice E2E variant for the V2 tax token. Mirrors `E2E_FactoryTaxToken` (V4 tax) but uses the
 ///         V2 graduator + V2 tax token implementation. The tax-window suite is V4-hook-specific
 ///         (asserts hook-emitted `CreatorTaxesAccrued`), so it is not mixed in here — the V2
-///         intrinsic-taxation flow is covered by `LivoTaxableTokenUniV2.t.sol`.
+///         intrinsic-taxation flow is covered by `RealmTaxableTokenUniV2.t.sol`.
 contract E2E_FactoryTaxTokenUniV2 is E2EHappyPath, E2EGraduationFlows, LaunchpadBaseTestsWithUniv2Graduator {
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
         super.setUp();
-        implementation = livoTaxTokenV2;
+        implementation = realmTaxTokenV2;
     }
 
     function _factory() internal view override returns (address) {
@@ -21,7 +21,7 @@ contract E2E_FactoryTaxTokenUniV2 is E2EHappyPath, E2EGraduationFlows, Launchpad
     }
 
     function _tokenImpl() internal view override returns (address) {
-        return address(livoTaxTokenV2);
+        return address(realmTaxTokenV2);
     }
 
     function _createTestToken(bytes32 salt) internal override returns (address token) {
@@ -31,7 +31,7 @@ contract E2E_FactoryTaxTokenUniV2 is E2EHappyPath, E2EGraduationFlows, Launchpad
         );
     }
 
-    function _createTestTokenWithSplit(bytes32 salt, ILivoFactory.FeeShare[] memory feeReceivers)
+    function _createTestTokenWithSplit(bytes32 salt, IRealmFactory.FeeShare[] memory feeReceivers)
         internal
         override
         returns (address token)
@@ -42,11 +42,11 @@ contract E2E_FactoryTaxTokenUniV2 is E2EHappyPath, E2EGraduationFlows, Launchpad
         );
     }
 
-    function _createTokenWithDeployerBuy(bytes32 salt, uint256 ethValue, ILivoFactory.SupplyShare[] memory supplyShares)
-        internal
-        override
-        returns (address token)
-    {
+    function _createTokenWithDeployerBuy(
+        bytes32 salt,
+        uint256 ethValue,
+        IRealmFactory.SupplyShare[] memory supplyShares
+    ) internal override returns (address token) {
         vm.deal(creator, ethValue);
         vm.prank(creator);
         token = factoryV2.createToken{value: ethValue}(

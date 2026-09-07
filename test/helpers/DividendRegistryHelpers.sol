@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Vm} from "forge-std/Vm.sol";
-import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
+import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 Vm constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
@@ -15,18 +15,18 @@ Vm constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 // registry proxy with, so tests share it rather than pick one.
 uint256 constant DEFAULT_DIVIDEND_POOL_LIQUIDITY = 10 * DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;
 
-/// @notice Puts a working `LivoDividendSwapRegistry` at the address the token implementations bake in.
+/// @notice Puts a working `RealmDividendSwapRegistry` at the address the token implementations bake in.
 /// @dev Token implementations reach the registry through a compile-time constant, so a test cannot
 ///      simply deploy one and pass the address — it has to appear AT that address. `etch` copies runtime
 ///      code only, leaving the storage at that address empty, which is why `initialize` runs here rather
 ///      than being inherited from the contract this code came from (whose constructor disabled it).
 /// @dev The etched copy is the implementation itself, not a proxy. Tests exercise the registry's
 ///      behaviour, not its upgradeability, and a proxy would only add a hop to every call.
-function installDividendSwapRegistry(address owner) returns (LivoDividendSwapRegistry registry) {
-    LivoDividendSwapRegistry deployed = new LivoDividendSwapRegistry();
+function installDividendSwapRegistry(address owner) returns (RealmDividendSwapRegistry registry) {
+    RealmDividendSwapRegistry deployed = new RealmDividendSwapRegistry();
     VM.etch(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY, address(deployed).code);
     VM.label(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY, "DividendSwapRegistry");
 
-    registry = LivoDividendSwapRegistry(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY);
+    registry = RealmDividendSwapRegistry(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY);
     registry.initialize(owner, DEFAULT_DIVIDEND_POOL_LIQUIDITY);
 }

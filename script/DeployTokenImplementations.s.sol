@@ -3,12 +3,12 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
-import {DeploymentAddresses as AddressesFromLivoTaxableTokenV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {DeploymentAddresses as AddressesFromLivoTaxableTokenV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {DeploymentAddresses as AddressesFromRealmTaxableTokenV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {DeploymentAddresses as AddressesFromRealmTaxableTokenV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {
     DeploymentAddressesEthereumMainnet,
     DeploymentAddressesEthereumSepolia,
@@ -20,14 +20,14 @@ import {
 ///         addresses that reference these implementations (a factory's constructor) are wired up by
 ///         a separate script (e.g. `DeploymentsUnifiedFactories`), which lets a fresh factory be
 ///         deployed and whitelisted WITHOUT touching the live factory proxy or its token impls.
-///         1. `LivoToken`
-///         2. `LivoTaxableTokenUniV2`
-///         3. `LivoTaxableTokenUniV4`
+///         1. `RealmToken`
+///         2. `RealmTaxableTokenUniV2`
+///         3. `RealmTaxableTokenUniV4`
 ///
 ///         Anti-sniper protection is a gated feature of these impls (a warm-slot flag), not a
 ///         separate implementation — there is no sniper-protected variant to deploy.
 ///
-///         Pre-broadcast sanity: confirms that `LivoTaxableTokenUniV2` and `LivoTaxableTokenUniV4`
+///         Pre-broadcast sanity: confirms that `RealmTaxableTokenUniV2` and `RealmTaxableTokenUniV4`
 ///         have their hardcoded `DeploymentAddresses` import pointing at the active chain (run
 ///         `just taxtokenaddresses` before deploying to Sepolia).
 ///
@@ -48,32 +48,32 @@ contract DeployTokenImplementations is Script {
     function _checkTaxableTokenChainAddresses() internal view {
         if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Mainnet (run `just taxtokenaddresses` only for sepolia)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not Mainnet (run `just taxtokenaddresses` only for sepolia)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Mainnet"
+                "RealmTaxableTokenUniV4 import is not Mainnet"
             );
         } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not Sepolia (run `just taxtokenaddresses`)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not Sepolia (run `just taxtokenaddresses`)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Sepolia (run `just taxtokenaddresses`)"
+                "RealmTaxableTokenUniV4 import is not Sepolia (run `just taxtokenaddresses`)"
             );
         } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
             require(
-                AddressesFromLivoTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID,
-                "LivoTaxableTokenUniV2 import is not ARC testnet (run `just chain-arc-testnet`)"
+                AddressesFromRealmTaxableTokenV2.BLOCKCHAIN_ID == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID,
+                "RealmTaxableTokenUniV2 import is not ARC testnet (run `just chain-arc-testnet`)"
             );
             require(
-                AddressesFromLivoTaxableTokenV4.UNIV4_POOL_MANAGER == DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not ARC testnet (run `just chain-arc-testnet`)"
+                AddressesFromRealmTaxableTokenV4.UNIV4_POOL_MANAGER == DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
+                "RealmTaxableTokenUniV4 import is not ARC testnet (run `just chain-arc-testnet`)"
             );
         } else {
             revert("Unsupported chain");
@@ -84,7 +84,7 @@ contract DeployTokenImplementations is Script {
         // placeholder (or at a chain where the proxy is not up yet) reverts EVERY third-asset dividend
         // token creation, for good. Deploy the registry proxy first, retarget the constant, then this.
         require(
-            AddressesFromLivoTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
+            AddressesFromRealmTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
             "DIVIDEND_SWAP_REGISTRY has no code on this chain: deploy the registry proxy first"
         );
 
@@ -92,8 +92,8 @@ contract DeployTokenImplementations is Script {
         // all fail closed against a codeless keeper registry, so an impl deployed before it exists can
         // never run a conversion.
         require(
-            AddressesFromLivoTaxableTokenV2.LIVO_KEEPERS_REGISTRY.code.length != 0,
-            "LIVO_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
+            AddressesFromRealmTaxableTokenV2.REALM_KEEPERS_REGISTRY.code.length != 0,
+            "REALM_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
         );
     }
 
@@ -111,14 +111,14 @@ contract DeployTokenImplementations is Script {
         console.log("| Contract Name                                  | Address |");
         console.log("| ---------------------------------------------- | --- |");
 
-        fresh.tokenImpl = address(new LivoToken());
-        console.log("| LivoToken                                     |", fresh.tokenImpl);
+        fresh.tokenImpl = address(new RealmToken());
+        console.log("| RealmToken                                     |", fresh.tokenImpl);
 
-        fresh.taxTokenV2Impl = address(new LivoTaxableTokenUniV2());
-        console.log("| LivoTaxableTokenUniV2                         |", fresh.taxTokenV2Impl);
+        fresh.taxTokenV2Impl = address(new RealmTaxableTokenUniV2());
+        console.log("| RealmTaxableTokenUniV2                         |", fresh.taxTokenV2Impl);
 
-        fresh.taxTokenV4Impl = address(new LivoTaxableTokenUniV4());
-        console.log("| LivoTaxableTokenUniV4                         |", fresh.taxTokenV4Impl);
+        fresh.taxTokenV4Impl = address(new RealmTaxableTokenUniV4());
+        console.log("| RealmTaxableTokenUniV4                         |", fresh.taxTokenV4Impl);
 
         vm.stopBroadcast();
 

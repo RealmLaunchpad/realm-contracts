@@ -4,9 +4,9 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 
 contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv4Graduator {
     address public nonOwner = makeAddr("nonOwner");
@@ -132,22 +132,22 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
         launchpad.communityTakeOver(testToken, alice);
 
-        assertEq(ILivoToken(testToken).proposedOwner(), address(0));
+        assertEq(IRealmToken(testToken).proposedOwner(), address(0));
     }
 
     function test_communityTakeOver_routesToTokenProposeNewOwner() public createTestToken {
         vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
-        assertEq(ILivoToken(testToken).proposedOwner(), alice);
+        IRealmToken(testToken).proposeNewOwner(alice);
+        assertEq(IRealmToken(testToken).proposedOwner(), alice);
 
         vm.prank(admin);
         launchpad.communityTakeOver(testToken, bob);
 
-        assertEq(ILivoToken(testToken).proposedOwner(), bob);
+        assertEq(IRealmToken(testToken).proposedOwner(), bob);
 
         vm.prank(bob);
-        ILivoToken(testToken).acceptTokenOwnership();
-        assertEq(ILivoToken(testToken).owner(), bob);
+        IRealmToken(testToken).acceptTokenOwnership();
+        assertEq(IRealmToken(testToken).owner(), bob);
     }
 
     event FactoryWhitelisted(address indexed factory);
@@ -161,74 +161,74 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_tokenOwnershipTransfer_happyPath_reflectedInLaunchpad() public createTestToken {
         vm.prank(creator);
-        LivoToken(testToken).proposeNewOwner(alice);
+        RealmToken(testToken).proposeNewOwner(alice);
 
         vm.prank(alice);
-        LivoToken(testToken).acceptTokenOwnership();
+        RealmToken(testToken).acceptTokenOwnership();
 
-        assertEq(ILivoToken(testToken).owner(), alice);
+        assertEq(IRealmToken(testToken).owner(), alice);
     }
 
     function test_tokenOwnershipTransfer_setsAndClearsProposedOwner() public createTestToken {
         vm.prank(creator);
-        LivoToken(testToken).proposeNewOwner(alice);
-        assertEq(LivoToken(testToken).proposedOwner(), alice);
+        RealmToken(testToken).proposeNewOwner(alice);
+        assertEq(RealmToken(testToken).proposedOwner(), alice);
 
         vm.prank(alice);
-        LivoToken(testToken).acceptTokenOwnership();
-        assertEq(LivoToken(testToken).proposedOwner(), address(0));
+        RealmToken(testToken).acceptTokenOwnership();
+        assertEq(RealmToken(testToken).proposedOwner(), address(0));
     }
 
     function test_tokenOwnershipTransfer_emitsTokenEvents() public createTestToken {
         vm.expectEmit(true, true, true, true);
-        emit ILivoToken.NewOwnerProposed(creator, alice, creator);
+        emit IRealmToken.NewOwnerProposed(creator, alice, creator);
 
         vm.prank(creator);
-        LivoToken(testToken).proposeNewOwner(alice);
+        RealmToken(testToken).proposeNewOwner(alice);
 
         vm.expectEmit(true, true, true, true);
         emit OwnershipTransferred(alice);
 
         vm.prank(alice);
-        LivoToken(testToken).acceptTokenOwnership();
+        RealmToken(testToken).acceptTokenOwnership();
     }
 
     function test_tokenOwnershipTransfer_revertsIfNotCurrentOwner() public createTestToken {
         vm.prank(alice);
-        vm.expectRevert(LivoToken.Unauthorized.selector);
-        LivoToken(testToken).proposeNewOwner(alice);
+        vm.expectRevert(RealmToken.Unauthorized.selector);
+        RealmToken(testToken).proposeNewOwner(alice);
     }
 
     function test_tokenOwnershipTransfer_revertsIfNotProposedOwner() public createTestToken {
         vm.prank(creator);
-        LivoToken(testToken).proposeNewOwner(alice);
+        RealmToken(testToken).proposeNewOwner(alice);
 
         vm.prank(nonOwner);
-        vm.expectRevert(LivoToken.Unauthorized.selector);
-        LivoToken(testToken).acceptTokenOwnership();
+        vm.expectRevert(RealmToken.Unauthorized.selector);
+        RealmToken(testToken).acceptTokenOwnership();
     }
 
     function test_tokenOwnershipTransfer_cancelProposalWithZeroAddress() public createTestToken {
         vm.prank(creator);
-        LivoToken(testToken).proposeNewOwner(alice);
+        RealmToken(testToken).proposeNewOwner(alice);
 
         vm.prank(creator);
-        LivoToken(testToken).proposeNewOwner(address(0));
+        RealmToken(testToken).proposeNewOwner(address(0));
 
-        assertEq(LivoToken(testToken).proposedOwner(), address(0));
+        assertEq(RealmToken(testToken).proposedOwner(), address(0));
 
         vm.prank(alice);
-        vm.expectRevert(LivoToken.Unauthorized.selector);
-        LivoToken(testToken).acceptTokenOwnership();
+        vm.expectRevert(RealmToken.Unauthorized.selector);
+        RealmToken(testToken).acceptTokenOwnership();
     }
 
     function test_tokenOwnershipTransfer_ownerCanRepropose() public createTestToken {
         vm.prank(creator);
-        LivoToken(testToken).proposeNewOwner(alice);
+        RealmToken(testToken).proposeNewOwner(alice);
 
         vm.prank(creator);
-        LivoToken(testToken).proposeNewOwner(nonOwner);
+        RealmToken(testToken).proposeNewOwner(nonOwner);
 
-        assertEq(LivoToken(testToken).proposedOwner(), nonOwner);
+        assertEq(RealmToken(testToken).proposedOwner(), nonOwner);
     }
 }

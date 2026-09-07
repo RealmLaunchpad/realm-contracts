@@ -6,12 +6,12 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
 import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 
 /// @title CreatorVaultScriptConfig
 /// @notice Script-only helper that resolves the two creator-vault constructor args the unified
-///         factories now take — the `LivoCreatorVaultFactory` and the six allocation-specific
+///         factories now take — the `RealmCreatorVaultFactory` and the six allocation-specific
 ///         bonding curves — from the per-chain manifest. Lives under `script/` (not `src/`) so the
 ///         per-chain `block.chainid` split stays out of production/deployable code: this is a
 ///         deploy-time-only `internal` library, inlined into the scripts that use it.
@@ -20,7 +20,7 @@ import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol
 ///         when a token actually locks supply in vaults), so an early upgrade won't revert — but
 ///         you MUST deploy the vault system and refresh the manifest before tokens use vaults.
 library CreatorVaultScriptConfig {
-    /// @notice The `LivoCreatorVaultFactory` proxy for the active chain.
+    /// @notice The `RealmCreatorVaultFactory` proxy for the active chain.
     function factoryFor() internal view returns (address) {
         if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
             return DeploymentsEthereumMainnet.CREATOR_VAULT_FACTORY;
@@ -66,50 +66,50 @@ library CreatorVaultScriptConfig {
     ///      constructor doesn't validate them and they're only read when a token actually selects the
     ///      THIN/THICK tier, so an early factory deploy/upgrade won't revert. You MUST deploy the tier
     ///      system and refresh the manifest before THIN/THICK tokens can be created.
-    function tierConfigFor() internal view returns (ILivoFactory.LiquidityTierConfig memory tierConfig) {
+    function tierConfigFor() internal view returns (IRealmFactory.LiquidityTierConfig memory tierConfig) {
         if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            tierConfig.thin = ILivoFactory.TierCurves({
+            tierConfig.thin = IRealmFactory.TierCurves({
                 base: DeploymentsEthereumMainnet.THIN_CURVE_BASE, vaults: DeploymentsEthereumMainnet.thinVaultCurves()
             });
-            tierConfig.thick = ILivoFactory.TierCurves({
+            tierConfig.thick = IRealmFactory.TierCurves({
                 base: DeploymentsEthereumMainnet.THICK_CURVE_BASE, vaults: DeploymentsEthereumMainnet.thickVaultCurves()
             });
             return tierConfig;
         }
         if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
-            tierConfig.thin = ILivoFactory.TierCurves({
+            tierConfig.thin = IRealmFactory.TierCurves({
                 base: DeploymentsEthereumSepolia.THIN_CURVE_BASE, vaults: DeploymentsEthereumSepolia.thinVaultCurves()
             });
-            tierConfig.thick = ILivoFactory.TierCurves({
+            tierConfig.thick = IRealmFactory.TierCurves({
                 base: DeploymentsEthereumSepolia.THICK_CURVE_BASE, vaults: DeploymentsEthereumSepolia.thickVaultCurves()
             });
             return tierConfig;
         }
         if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
-            tierConfig.thin = ILivoFactory.TierCurves({
+            tierConfig.thin = IRealmFactory.TierCurves({
                 base: DeploymentsRobinhoodMainnet.THIN_CURVE_BASE, vaults: DeploymentsRobinhoodMainnet.thinVaultCurves()
             });
-            tierConfig.thick = ILivoFactory.TierCurves({
+            tierConfig.thick = IRealmFactory.TierCurves({
                 base: DeploymentsRobinhoodMainnet.THICK_CURVE_BASE,
                 vaults: DeploymentsRobinhoodMainnet.thickVaultCurves()
             });
             return tierConfig;
         }
         if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
-            tierConfig.thin = ILivoFactory.TierCurves({
+            tierConfig.thin = IRealmFactory.TierCurves({
                 base: DeploymentsRobinhoodTestnet.THIN_CURVE_BASE, vaults: DeploymentsRobinhoodTestnet.thinVaultCurves()
             });
-            tierConfig.thick = ILivoFactory.TierCurves({
+            tierConfig.thick = IRealmFactory.TierCurves({
                 base: DeploymentsRobinhoodTestnet.THICK_CURVE_BASE,
                 vaults: DeploymentsRobinhoodTestnet.thickVaultCurves()
             });
             return tierConfig;
         }
         if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
-            tierConfig.thin = ILivoFactory.TierCurves({
+            tierConfig.thin = IRealmFactory.TierCurves({
                 base: DeploymentsArcTestnet.THIN_CURVE_BASE, vaults: DeploymentsArcTestnet.thinVaultCurves()
             });
-            tierConfig.thick = ILivoFactory.TierCurves({
+            tierConfig.thick = IRealmFactory.TierCurves({
                 base: DeploymentsArcTestnet.THICK_CURVE_BASE, vaults: DeploymentsArcTestnet.thickVaultCurves()
             });
             return tierConfig;
@@ -118,38 +118,38 @@ library CreatorVaultScriptConfig {
     }
 
     /// @notice The full V4 tier config (curves + per-tier graduators) for the active chain. See `tierConfigFor`.
-    function v4TierConfigFor() internal view returns (LivoFactoryUniV4Unified.V4TierConfig memory v4Tier) {
+    function v4TierConfigFor() internal view returns (RealmFactoryUniV4Unified.V4TierConfig memory v4Tier) {
         v4Tier.curves = tierConfigFor();
         if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
-            v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
+            v4Tier.graduators = RealmFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THIN,
                 thick: DeploymentsEthereumMainnet.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;
         }
         if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
-            v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
+            v4Tier.graduators = RealmFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN,
                 thick: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;
         }
         if (block.chainid == DeploymentsRobinhoodMainnet.BLOCKCHAIN_ID) {
-            v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
+            v4Tier.graduators = RealmFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN,
                 thick: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;
         }
         if (block.chainid == DeploymentsRobinhoodTestnet.BLOCKCHAIN_ID) {
-            v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
+            v4Tier.graduators = RealmFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN,
                 thick: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;
         }
         if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
-            v4Tier.graduators = LivoFactoryUniV4Unified.TierGraduators({
+            v4Tier.graduators = RealmFactoryUniV4Unified.TierGraduators({
                 thin: DeploymentsArcTestnet.GRADUATOR_UNIV4_THIN, thick: DeploymentsArcTestnet.GRADUATOR_UNIV4_THICK
             });
             return v4Tier;

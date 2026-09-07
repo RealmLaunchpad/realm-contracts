@@ -1,8 +1,8 @@
-# Livo Launchpad Technical Architecture
+# Realm Launchpad Technical Architecture
 
 ## Core Contracts
 
-### 1. LivoLaunchpad
+### 1. RealmLaunchpad
 **Purpose**: Central contract for creating new token launches, handling pre-graduation trading, bonding curves, and token custody
 
 **Permissionless Functions**:
@@ -28,16 +28,16 @@
 - `graduationFee` (0.1 ETH)
 - `creatorFeeBps` (5000 = 50%)
 - `treasury` address
-- `graduationManager` address (ILivoGraduator) - legacy, kept for backwards compatibility
+- `graduationManager` address (IRealmGraduator) - legacy, kept for backwards compatibility
 - `mapping(address => bool) whitelistedGraduationManagers` - Whitelisted graduation managers
 - `mapping(address => TokenData) tokens` - Consolidated token data mapping
 
 **TokenData Struct**:
 ```solidity
 struct TokenData {
-    address bondingCurve;        // ILivoBoundingCurve compliant contract
+    address bondingCurve;        // IRealmBoundingCurve compliant contract
     address creator;             // Token creator address
-    address graduationManager;   // ILivoGraduator compliant contract assigned to this token
+    address graduationManager;   // IRealmGraduator compliant contract assigned to this token
     uint256 ethCollected;        // ETH collected from trading
     uint256 creatorFeesCollected;// ETH fees collected for the creator
     uint96 buyFeeBps;           // Buy trading fee basis points
@@ -51,13 +51,13 @@ struct TokenData {
 - `createToken` should use OpenZeppelin's clone for minimal proxy.
 - `setGraduationThreshold` and `setCreatorFeeShare` should only affect future tokens, not already deployed ones.
 - Holds all created tokens and all ETH from purchases until each token is graduated
-- Each token has its own bonding curve via the mapping to ILivoBoundingCurve compliant contracts
+- Each token has its own bonding curve via the mapping to IRealmBoundingCurve compliant contracts
 - Each token has its own graduation manager selected at creation time from whitelisted options
 - Each token has its own fee structure via TokenData
 - Admins can whitelist/unwhitelist graduation managers via `whitelistGraduationManager()`
 - Token creators choose their preferred graduation manager at token creation from whitelisted options
 
-### 2. LivoToken
+### 2. RealmToken
 
 **Purpose**: Standard ERC20 token with anti-bot protection and configurable fees
 
@@ -82,7 +82,7 @@ struct TokenData {
 
 ### 3. BondingCurves
 
-Admins will deploy a number of bounding curves with the following pure functions. Admins can whitelist bonding curves such that the creators can chose between them in the LivoLaunchpad.
+Admins will deploy a number of bounding curves with the following pure functions. Admins can whitelist bonding curves such that the creators can chose between them in the RealmLaunchpad.
 
 **Purpose**: Individual bonding curve logic for each token
 
@@ -119,20 +119,20 @@ Admins will deploy one GraduationManager to begin with, but the Launchpad will b
 
 ### Phase 1: Token Creation & Bonding Curve
 0. Admins deploy and whitelist valid BondingCurve and GraduationManager contracts
-1. User creates token with `LivoLaunchpad.createToken()`, choosing from whitelisted bonding curves and graduation managers
-2. LivoLaunchpad deploys new `LivoToken` contract (standard ERC20) mapping the token to specified bonding curve and graduation manager
-3. Users trade via `LivoLaunchpad.buyTokensWithExactEth()` and `sellToken()`
+1. User creates token with `RealmLaunchpad.createToken()`, choosing from whitelisted bonding curves and graduation managers
+2. RealmLaunchpad deploys new `RealmToken` contract (standard ERC20) mapping the token to specified bonding curve and graduation manager
+3. Users trade via `RealmLaunchpad.buyTokensWithExactEth()` and `sellToken()`
 4. 1% trading fee split 50/50 between creator and treasury
 
 ### Phase 2: Graduation Process
-1. Token reaches 20 ETH collected threshold in `LivoLaunchpad`, then `checkGraduationEligibility(token)` returns True.
-2. Anyone can call `LivoLaunchpad.graduateToken()`
+1. Token reaches 20 ETH collected threshold in `RealmLaunchpad`, then `checkGraduationEligibility(token)` returns True.
+2. Anyone can call `RealmLaunchpad.graduateToken()`
 4. Process:
    - Pay 0.1 ETH graduation fee to treasury
    - Transfer 1% of supply to creator  (TBD??)
    - Transfer remaining tokens and ETH to the token's specific `GraduationManager` (chosen at creation)
    - Graduation manager handles liquidity creation according to its implementation
-   - Mark token as graduated in both `LivoToken` and `LivoLaunchpad`
+   - Mark token as graduated in both `RealmToken` and `RealmLaunchpad`
 
 ## Gas Optimization
 

@@ -1,0 +1,240 @@
+[
+  {
+    "type": "function",
+    "name": "getMaxEthToSpend",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "buyer",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "maxEth",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reason",
+        "type": "uint8",
+        "internalType": "enum LimitReason"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteBuyExactTokens",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "buyer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tokenAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "q",
+        "type": "tuple",
+        "internalType": "struct IRealmQuoter.BuyExactTokensQuote",
+        "components": [
+          {
+            "name": "tokensReceived",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ethFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ethForReserves",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "totalEthNeeded",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "reason",
+            "type": "uint8",
+            "internalType": "enum LimitReason"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteBuyTokensWithExactEth",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "buyer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "ethValue",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "q",
+        "type": "tuple",
+        "internalType": "struct IRealmQuoter.BuyExactEthQuote",
+        "components": [
+          {
+            "name": "ethSpent",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ethFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "tokensToReceive",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "reason",
+            "type": "uint8",
+            "internalType": "enum LimitReason"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteSellExactTokens",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tokenAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "q",
+        "type": "tuple",
+        "internalType": "struct IRealmQuoter.SellExactTokensQuote",
+        "components": [
+          {
+            "name": "tokensSold",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ethPulledFromReserves",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ethFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ethForSeller",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "reason",
+            "type": "uint8",
+            "internalType": "enum LimitReason"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteSellTokensForExactEth",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "ethAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "q",
+        "type": "tuple",
+        "internalType": "struct IRealmQuoter.SellForExactEthQuote",
+        "components": [
+          {
+            "name": "ethReceived",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ethFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ethPulledFromReserves",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "tokensRequired",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "reason",
+            "type": "uint8",
+            "internalType": "enum LimitReason"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  }
+]

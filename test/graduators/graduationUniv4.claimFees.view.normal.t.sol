@@ -19,7 +19,7 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
         testToken = factoryV4.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _nextValidSalt(address(factoryV4), address(realmToken)),
             _fs(alice),
             _noSs(),
             false,
@@ -43,7 +43,7 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
         testToken = factoryV4.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _nextValidSalt(address(factoryV4), address(realmToken)),
             _fs(alice),
             _noSs(),
             false,

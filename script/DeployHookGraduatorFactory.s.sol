@@ -3,12 +3,12 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
-import {LivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
+import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
@@ -33,12 +33,12 @@ import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet
 ///         reads constructor immutables, so no `initialize()` is needed; whitelist the impl directly.
 ///
 ///         Deploys:
-///         1. `LivoToken`                          — base token impl (this branch's bytecode, with the
+///         1. `RealmToken`                          — base token impl (this branch's bytecode, with the
 ///                                                    `swapLpFeeBps` the hook reads back via `getSwapFees`)
 ///         2. `ConstantProductBondingCurveConfigurable` — THIN no-vault base curve (params from
 ///                                                    `CreatorVaultCurveConstants`)
-///         3. `LivoGraduatorUniswapV4`             — THIN graduator pointing at `HOOK_ADDRESS`
-///         4. `LivoFactoryUniV4Unified` (impl)     — wired to 1/2/3 + existing launchpad/fee handler
+///         3. `RealmGraduatorUniswapV4`             — THIN graduator pointing at `HOOK_ADDRESS`
+///         4. `RealmFactoryUniV4Unified` (impl)     — wired to 1/2/3 + existing launchpad/fee handler
 ///
 ///         Reuses (read per-chain, not deployed): `LAUNCHPAD`, `MASTER_FEE_HANDLER`, and the Uniswap V4
 ///         pool/position managers + Permit2. Does NOT touch the manifest or the tier machinery.
@@ -81,7 +81,7 @@ contract DeployHookGraduatorFactory is Script {
         vm.startBroadcast();
 
         // 1. Base token implementation (barebone V4 token clones this).
-        address baseImpl = address(new LivoToken());
+        address baseImpl = address(new RealmToken());
 
         // 2. THIN no-vault base bonding curve. Params mirror `DeployTierLiquiditySystem`. Scoped in a
         //    block so the five curve-param locals free up before the graduator/factory construction below
@@ -95,7 +95,7 @@ contract DeployHookGraduatorFactory is Script {
 
         // 3. THIN graduator, pointing at the hook. This one-off barebone factory is self-contained, so
         //    it deploys its OWN liquidity adder inline (the main-stack scripts share the manifest one).
-        LivoGraduatorUniswapV4 graduator = new LivoGraduatorUniswapV4(
+        RealmGraduatorUniswapV4 graduator = new RealmGraduatorUniswapV4(
             infra.launchpad,
             infra.poolManager,
             infra.positionManager,
@@ -103,27 +103,27 @@ contract DeployHookGraduatorFactory is Script {
             hook,
             THIN_GRAD_SQRT_PRICE_X96,
             UniswapV4PoolConstants.TICK_UPPER_THIN,
-            address(new LivoUniV4LiquidityAdder(infra.positionManager, infra.poolManager))
+            address(new RealmUniV4LiquidityAdder(infra.positionManager, infra.poolManager))
         );
         require(graduator.HOOK_ADDRESS() == hook, "graduator hook mismatch");
 
         // 4. Minimal V4 factory implementation. Only base impl + THIN base curve + THIN graduator are
         //    wired; everything a no-vault THIN base token never reads is address(0).
         address factory = address(
-            new LivoFactoryUniV4Unified(
+            new RealmFactoryUniV4Unified(
                 infra.launchpad,
-                ILivoFactory.TokenImpls({base: baseImpl, tax: address(0)}),
+                IRealmFactory.TokenImpls({base: baseImpl, tax: address(0)}),
                 address(0), // DEFAULT bonding curve — unused by THIN
                 address(0), // DEFAULT graduator — unused by THIN
                 infra.masterFeeHandler,
                 address(0), // creator vault factory — no vaults
                 _emptyVaults(), // vault bonding curves — no vaults
-                LivoFactoryUniV4Unified.V4TierConfig({
-                    curves: ILivoFactory.LiquidityTierConfig({
-                        thin: ILivoFactory.TierCurves({base: thinCurve, vaults: _emptyVaults()}),
-                        thick: ILivoFactory.TierCurves({base: address(0), vaults: _emptyVaults()})
+                RealmFactoryUniV4Unified.V4TierConfig({
+                    curves: IRealmFactory.LiquidityTierConfig({
+                        thin: IRealmFactory.TierCurves({base: thinCurve, vaults: _emptyVaults()}),
+                        thick: IRealmFactory.TierCurves({base: address(0), vaults: _emptyVaults()})
                     }),
-                    graduators: LivoFactoryUniV4Unified.TierGraduators({thin: address(graduator), thick: address(0)})
+                    graduators: RealmFactoryUniV4Unified.TierGraduators({thin: address(graduator), thick: address(0)})
                 })
             )
         );
@@ -131,7 +131,7 @@ contract DeployHookGraduatorFactory is Script {
         vm.stopBroadcast();
 
         console.log("=== Deployed ===");
-        console.log("Base LivoToken impl :", baseImpl);
+        console.log("Base RealmToken impl :", baseImpl);
         console.log("THIN bonding curve  :", thinCurve);
         console.log("THIN graduator      :", address(graduator));
         console.log("V4 factory (impl)   :", factory);

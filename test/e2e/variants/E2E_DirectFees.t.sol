@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {V4SwapHelpers} from "test/e2e/base/V4SwapHelpers.t.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 /// @notice End-to-end coverage for direct fees: deploy a V4 token with a single direct receiver,
 ///         graduate, swap, and assert the receiver's wallet balance increased without ever calling
@@ -16,9 +16,9 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
     /// @dev Direct receiver auto-receives all creator fees (graduation + post-grad LP fees).
     function test_singleDirect_receiverGetsFeesWithoutClaiming() public {
         // alice is the direct receiver
-        ILivoFactory.FeeShare[] memory fs = _fsDirect(alice);
+        IRealmFactory.FeeShare[] memory fs = _fsDirect(alice);
 
-        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
         vm.prank(creator);
         address token =
             factoryV4Unified.createToken("DF", "DF", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg());
@@ -60,11 +60,11 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
     /// @dev Multi-recipient mode: alice (direct) receives her share immediately, bob (claimable) accrues.
     function test_multiRecipientDirect_aliceImmediateBobClaimable() public {
         // 40% direct to alice, 60% claimable to bob
-        ILivoFactory.FeeShare[] memory fs = new ILivoFactory.FeeShare[](2);
-        fs[0] = ILivoFactory.FeeShare({account: alice, shares: 4_000, directFeesEnabled: true});
-        fs[1] = ILivoFactory.FeeShare({account: bob, shares: 6_000, directFeesEnabled: false});
+        IRealmFactory.FeeShare[] memory fs = new IRealmFactory.FeeShare[](2);
+        fs[0] = IRealmFactory.FeeShare({account: alice, shares: 4_000, directFeesEnabled: true});
+        fs[1] = IRealmFactory.FeeShare({account: bob, shares: 6_000, directFeesEnabled: false});
 
-        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
         vm.prank(creator);
         address token =
             factoryV4Unified.createToken("DFS", "DFS", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg());

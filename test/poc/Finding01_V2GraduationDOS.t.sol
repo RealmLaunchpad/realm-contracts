@@ -3,10 +3,10 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {TaxConfigInit} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -26,18 +26,18 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 //      INSUFFICIENT_LIQUIDITY, taking the entire graduation tx down.
 //   4. The token is permanently stuck pre-graduation.
 contract Finding01_V2GraduationDOS is LaunchpadBaseTestsWithUniv2Graduator {
-    LivoTaxableTokenUniV2 internal taxToken;
+    RealmTaxableTokenUniV2 internal taxToken;
     address internal attacker = makeAddr("attacker");
 
     function setUp() public override {
         super.setUp();
 
-        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2));
+        bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2));
         TaxConfigInit memory cfg = _taxCfg(100, 400, 7 days); // 1% buy / 4% sell
 
         vm.prank(creator);
         testToken = factoryV2Unified.createToken("Tax", "TAX", salt, _fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
-        taxToken = LivoTaxableTokenUniV2(payable(testToken));
+        taxToken = RealmTaxableTokenUniV2(payable(testToken));
 
         vm.deal(attacker, 1 ether);
     }

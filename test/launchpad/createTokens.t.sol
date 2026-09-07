@@ -6,23 +6,23 @@ import {
     LaunchpadBaseTestsWithUniv4Graduator,
     LaunchpadBaseTestsWithUniv4GraduatorTaxableToken
 } from "./base.t.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
-contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
-    function testDeployLivoToken_happyPath() public {
+contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
+    function testDeployRealmToken_happyPath() public {
         vm.prank(creator);
         address deployedToken = factoryV2.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryV2), address(livoToken)),
+            _nextValidSalt(address(factoryV2), address(realmToken)),
             _fs(creator),
             _noSs(),
             _emptyTaxCfg(),
@@ -31,7 +31,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
 
         assertTrue(deployedToken != address(0));
 
-        LivoToken token = LivoToken(deployedToken);
+        RealmToken token = RealmToken(deployedToken);
         assertEq(token.name(), "TestToken");
         assertEq(token.symbol(), "TEST");
         assertEq(token.totalSupply(), TOTAL_SUPPLY);
@@ -51,11 +51,11 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     function test_cannotInitializeImplementation() public {
-        LivoToken imp = new LivoToken();
+        RealmToken imp = new RealmToken();
 
         vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
         imp.initialize(
-            ILivoToken.InitializeParams({
+            IRealmToken.InitializeParams({
                 name: "ImplToken",
                 symbol: "IMPL",
                 tokenOwner: msg.sender,
@@ -76,7 +76,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         address deployedToken = factoryV2.createToken(
             "Sanitator",
             "SANIT",
-            _nextValidSalt(address(factoryV2), address(livoToken)),
+            _nextValidSalt(address(factoryV2), address(realmToken)),
             _fs(creator),
             _noSs(),
             _emptyTaxCfg(),
@@ -84,26 +84,26 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         );
 
         assertTrue(deployedToken != address(0));
-        assertTrue(deployedToken != address(livoToken));
+        assertTrue(deployedToken != address(realmToken));
     }
 
     function testCannotCreateTokenWithEmptyName() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidNameOrSymbol.selector));
         factoryV2.createToken("", "TEST", "0x12", _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
     }
 
     function testCannotCreateTokenWithEmptySymbol() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidNameOrSymbol.selector));
         factoryV2.createToken("TestToken", "", "0x0", _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
     }
 
     function testCannotCreateTokenWithWrongEnding() public {
-        bytes32 correctSalt = _nextValidSalt(address(factoryV2), address(livoToken));
+        bytes32 correctSalt = _nextValidSalt(address(factoryV2), address(realmToken));
 
         vm.startPrank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTokenAddress.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTokenAddress.selector));
         factoryV2.createToken(
             "TestToken1",
             "TEST",
@@ -126,7 +126,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         address token1 = factoryV2.createToken(
             "TestToken1",
             "TEST",
-            _nextValidSalt(address(factoryV2), address(livoToken)),
+            _nextValidSalt(address(factoryV2), address(realmToken)),
             _fs(creator),
             _noSs(),
             _emptyTaxCfg(),
@@ -137,7 +137,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         address token2 = factoryV2.createToken(
             "TestToken2",
             "TEST",
-            _nextValidSalt(address(factoryV2), address(livoToken)),
+            _nextValidSalt(address(factoryV2), address(realmToken)),
             _fs(creator),
             _noSs(),
             _emptyTaxCfg(),
@@ -148,10 +148,10 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertTrue(token2 != address(0));
         assertTrue(token1 != token2);
 
-        assertEq(LivoToken(token1).symbol(), "TEST");
-        assertEq(LivoToken(token2).symbol(), "TEST");
-        assertEq(LivoToken(token1).name(), "TestToken1");
-        assertEq(LivoToken(token2).name(), "TestToken2");
+        assertEq(RealmToken(token1).symbol(), "TEST");
+        assertEq(RealmToken(token2).symbol(), "TEST");
+        assertEq(RealmToken(token1).name(), "TestToken1");
+        assertEq(RealmToken(token2).name(), "TestToken2");
     }
 
     function testCanCreateTokensWithDifferentSymbols() public {
@@ -159,7 +159,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         address token1 = factoryV2.createToken(
             "TestToken1",
             "TEST1",
-            _nextValidSalt(address(factoryV2), address(livoToken)),
+            _nextValidSalt(address(factoryV2), address(realmToken)),
             _fs(creator),
             _noSs(),
             _emptyTaxCfg(),
@@ -170,7 +170,7 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         address token2 = factoryV2.createToken(
             "TestToken2",
             "TEST2",
-            _nextValidSalt(address(factoryV2), address(livoToken)),
+            _nextValidSalt(address(factoryV2), address(realmToken)),
             _fs(creator),
             _noSs(),
             _emptyTaxCfg(),
@@ -181,29 +181,29 @@ contract LivoTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         assertTrue(token2 != address(0));
         assertTrue(token1 != token2);
 
-        assertEq(LivoToken(token1).symbol(), "TEST1");
-        assertEq(LivoToken(token2).symbol(), "TEST2");
+        assertEq(RealmToken(token1).symbol(), "TEST1");
+        assertEq(RealmToken(token2).symbol(), "TEST2");
     }
 
     function test_cantCreateTokenWithTooLongSymbol() public {
         string memory longSymbol =
             "TESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTX";
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidNameOrSymbol.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidNameOrSymbol.selector));
         factoryV2.createToken(
             "TestToken", longSymbol, "0x12", _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
     }
 }
 
-contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
+contract RealmTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
     /// @dev when feeReceiver is zero address, then createToken reverts with InvalidFeeReceiver
     function test_createToken_v4_revertsOnZeroFeeReceiver() public {
-        ILivoFactory.FeeShare[] memory zeroFs = new ILivoFactory.FeeShare[](1);
-        zeroFs[0] = ILivoFactory.FeeShare({account: address(0), shares: 10_000, directFeesEnabled: false});
+        IRealmFactory.FeeShare[] memory zeroFs = new IRealmFactory.FeeShare[](1);
+        zeroFs[0] = IRealmFactory.FeeShare({account: address(0), shares: 10_000, directFeesEnabled: false});
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidFeeReceiver.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidFeeReceiver.selector));
         factoryV4.createToken(
             "TestToken", "TEST", "0x12", zeroFs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
         );
@@ -214,7 +214,7 @@ contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
         address deployedToken = factoryV4.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _nextValidSalt(address(factoryV4), address(realmToken)),
             _fs(creator),
             _noSs(),
             false,
@@ -224,7 +224,7 @@ contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
 
         assertTrue(deployedToken != address(0));
 
-        LivoToken token = LivoToken(deployedToken);
+        RealmToken token = RealmToken(deployedToken);
         assertEq(token.name(), "TestToken");
         assertEq(token.symbol(), "TEST");
         assertEq(token.totalSupply(), TOTAL_SUPPLY);
@@ -247,14 +247,14 @@ contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
         address deployedToken = factoryV4.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _nextValidSalt(address(factoryV4), address(realmToken)),
             _fs(creator),
             _noSs(),
             true,
             _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
-        assertEq(LivoToken(deployedToken).owner(), address(0));
+        assertEq(RealmToken(deployedToken).owner(), address(0));
     }
 
     /// @dev when renounceOwnership=false, then tokenOwner is msg.sender
@@ -263,21 +263,21 @@ contract LivoTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
         address deployedToken = factoryV4.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _nextValidSalt(address(factoryV4), address(realmToken)),
             _fs(creator),
             _noSs(),
             false,
             _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
-        assertEq(LivoToken(deployedToken).owner(), creator);
+        assertEq(RealmToken(deployedToken).owner(), creator);
     }
 }
 
-contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
+contract RealmTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
     function test_cannotCreateToken_sellTaxAboveMax() public {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",
@@ -293,7 +293,7 @@ contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4Graduator
     function test_cannotCreateToken_taxDurationAboveMax() public {
         // Duration above the 120-year overflow-prevention cap — must revert with InvalidTaxDuration.
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxDuration.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxDuration.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",
@@ -307,16 +307,16 @@ contract LivoTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4Graduator
     }
 }
 
-contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
-    function test_LivoTaxableTokenInitialized_emittedOnCreation() public {
+contract RealmTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
+    function test_RealmTaxableTokenInitialized_emittedOnCreation() public {
         vm.expectEmit(true, true, true, true);
-        emit LivoTaxableToken.LivoTaxableTokenInitialized(0, 400, 14 days, true, 0, 0, 0);
+        emit RealmTaxableToken.RealmTaxableTokenInitialized(0, 400, 14 days, true, 0, 0, 0);
 
         vm.prank(creator);
         address deployedToken = factoryTax.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             _fs(creator),
             _noSs(),
             false,
@@ -334,7 +334,7 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         address deployedToken = factoryTax.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             _fs(creator),
             _noSs(),
             false,
@@ -347,7 +347,7 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         assertTrue(logs.length > 0);
 
         bytes32 tokenCreatedSig = keccak256("TokenCreated(address,address,string,string,address,address,address)");
-        bytes32 taxInitSig = keccak256("LivoTaxableTokenInitialized(uint16,uint16,uint40,bool,uint16,uint16,uint40)");
+        bytes32 taxInitSig = keccak256("RealmTaxableTokenInitialized(uint16,uint16,uint40,bool,uint16,uint16,uint40)");
 
         uint256 tokenCreatedIndex = type(uint256).max;
         uint256 taxInitIndex = type(uint256).max;
@@ -361,7 +361,7 @@ contract LivoTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxab
         }
 
         assertTrue(tokenCreatedIndex == type(uint256).max, "TokenCreated should not be emitted by launchpad");
-        assertTrue(taxInitIndex != type(uint256).max, "LivoTaxableTokenInitialized event not found");
+        assertTrue(taxInitIndex != type(uint256).max, "RealmTaxableTokenInitialized event not found");
 
         assertTrue(deployedToken != address(0));
     }

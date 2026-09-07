@@ -8,21 +8,21 @@ import {
     LaunchpadBaseTestsWithUniv2Graduator,
     LaunchpadBaseTestsWithUniv4Graduator
 } from "test/launchpad/base.t.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
-import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
+import {IRealmClaims} from "src/interfaces/IRealmClaims.sol";
 
 /// @dev These tests should should pass regardless of the of graduator, so we test it with both
 abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     /// @dev Returns the fee handler for the current test token
-    function _tokenFeeHandler() internal view virtual returns (ILivoClaims);
+    function _tokenFeeHandler() internal view virtual returns (IRealmClaims);
 
     /// @dev Creator graduation compensation for the active graduator. Both V2 and V4 = 0.125 ether (50/50 split).
     function _creatorCompensation() internal pure virtual returns (uint256) {
@@ -47,14 +47,14 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         assertTrue(stateAfter.graduated, "Token should be graduated in launchpad");
     }
 
-    /// @notice Test that graduated boolean turns true in LivoToken
-    function test_graduatedBooleanTurnsTrueInLivoToken() public createTestToken {
-        LivoToken token = LivoToken(testToken);
+    /// @notice Test that graduated boolean turns true in RealmToken
+    function test_graduatedBooleanTurnsTrueInRealmToken() public createTestToken {
+        RealmToken token = RealmToken(testToken);
         assertFalse(token.graduated(), "Token should not be graduated initially");
 
         _graduateToken();
 
-        assertTrue(token.graduated(), "Token should be graduated in LivoToken contract");
+        assertTrue(token.graduated(), "Token should be graduated in RealmToken contract");
     }
 
     /// @notice Test that tokens cannot be bought from the launchpad after graduation
@@ -63,13 +63,13 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
 
         deal(buyer, 1 ether);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.AlreadyGraduated.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.AlreadyGraduated.selector));
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
     }
 
     /// @notice creator gets the CREATOR_GRADUATION_COMPENSATION at graduation
     function test_creatorGetsGraduationCompensation() public virtual createTestToken {
-        ILivoClaims tokenFeeHandler = _tokenFeeHandler();
+        IRealmClaims tokenFeeHandler = _tokenFeeHandler();
 
         address[] memory _tokens = new address[](1);
         _tokens[0] = testToken;
@@ -105,7 +105,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         uint256 tokenBalance = IERC20(testToken).balanceOf(buyer);
 
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.AlreadyGraduated.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.AlreadyGraduated.selector));
         launchpad.sellExactTokens(testToken, tokenBalance, 0, DEADLINE);
     }
 
@@ -183,7 +183,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
         uint256 effectiveReserves = (value * (10000 - BASE_BUY_FEE_BPS)) / 10000;
         uint256 triggerOfExcess = GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS - effectiveReserves;
         // now the next purchase needs to take the reserves beyond GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS
-        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: triggerOfExcess + 0.01 ether}(testToken, 0, DEADLINE);
     }
 
@@ -343,8 +343,8 @@ contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
     }
 
     /// @dev V2 tokens share the same fee handler as V4
-    function _tokenFeeHandler() internal view override returns (ILivoClaims) {
-        return ILivoClaims(ILivoToken(testToken).feeHandler());
+    function _tokenFeeHandler() internal view override returns (IRealmClaims) {
+        return IRealmClaims(IRealmToken(testToken).feeHandler());
     }
 
     /// @dev V2 graduator splits the graduation fee 50/50 between treasury and creator
@@ -364,7 +364,7 @@ contract UniswapV4AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
         super.setUp();
     }
 
-    function _tokenFeeHandler() internal view override returns (ILivoClaims) {
-        return ILivoClaims(ILivoToken(testToken).feeHandler());
+    function _tokenFeeHandler() internal view override returns (IRealmClaims) {
+        return IRealmClaims(IRealmToken(testToken).feeHandler());
     }
 }

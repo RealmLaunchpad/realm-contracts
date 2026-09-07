@@ -33,10 +33,10 @@ The vault addresses live as **compile-time `constant`s** in `manifest.<chain>.so
 
 ## Why a full token redeploy (step 3) is required
 
-This PR changed `LivoToken._initializeLivoToken` (the mint split) **and** the `ILivoToken.InitializeParams`
+This PR changed `RealmToken._initializeRealmToken` (the mint split) **and** the `IRealmToken.InitializeParams`
 struct (added `vaultAllocation`). Therefore:
 
-- All **6 token implementations** have new bytecode (every variant inherits `_initializeLivoToken`).
+- All **6 token implementations** have new bytecode (every variant inherits `_initializeRealmToken`).
 - A new factory passes the new `InitializeParams` layout, so it **cannot** call old token impls.
 - Both **factory implementations** changed (vault logic + new constructor args).
 
@@ -57,8 +57,8 @@ forge script DeployCreatorVaultSystem \
 ```
 
 - Has **no manifest dependency** — safe to run first.
-- Deploys: the 6 `ConstantProductBondingCurveConfigurable` curves (5%→30%, in order), the `LivoCreatorVault`
-  implementation, the `LivoCreatorVaultFactory` implementation, and its `ERC1967Proxy`.
+- Deploys: the 6 `ConstantProductBondingCurveConfigurable` curves (5%→30%, in order), the `RealmCreatorVault`
+  implementation, the `RealmCreatorVaultFactory` implementation, and its `ERC1967Proxy`.
 - The broadcaster (`livo.dev`) becomes the vault-factory owner.
 
 ## Step 2 — Fill the manifest (9 constants)
@@ -67,9 +67,9 @@ Edit `src/config/manifest.<chain>.sol` (all currently `address(0)`), copying fro
 
 | Constant | Source row in the log |
 | --- | --- |
-| `CREATOR_VAULT_IMPL` | `LivoCreatorVault (impl)` |
-| `CREATOR_VAULT_FACTORY` | `LivoCreatorVaultFactory (proxy)` |
-| `CREATOR_VAULT_FACTORY_IMPL` | `LivoCreatorVaultFactory (impl)` |
+| `CREATOR_VAULT_IMPL` | `RealmCreatorVault (impl)` |
+| `CREATOR_VAULT_FACTORY` | `RealmCreatorVaultFactory (proxy)` |
+| `CREATOR_VAULT_FACTORY_IMPL` | `RealmCreatorVaultFactory (impl)` |
 | `VAULT_CURVE_5` | `VAULT_CURVE bps 500 …` |
 | `VAULT_CURVE_10` | `VAULT_CURVE bps 1000 …` |
 | `VAULT_CURVE_15` | `VAULT_CURVE bps 1500 …` |
@@ -137,7 +137,7 @@ forge script RedeployAllTokensAndUpgradeFactories --rpc-url <mainnet|sepolia> --
 
 - **ABIs:** already regenerated and committed (all 3 `createToken` overloads present) — no `just abis` needed.
 - **Vault factory:** permissionless `createVault`; nothing to whitelist.
-- **Sepolia tax-token import:** `LivoTaxableTokenUniV2/V4` hardcode `DeploymentAddresses` for gas; `just
+- **Sepolia tax-token import:** `RealmTaxableTokenUniV2/V4` hardcode `DeploymentAddresses` for gas; `just
   chain-sepolia` flips the import to Sepolia. The redeploy scripts assert the import matches the target
   chain and revert otherwise.
 - **Verification:** `--verify` needs the explorer API key configured in `foundry.toml`/env; drop it and verify

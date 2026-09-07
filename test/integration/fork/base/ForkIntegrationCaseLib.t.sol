@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-/// @notice Chain-neutral data model for Livo fork integration happy-path cases.
+/// @notice Chain-neutral data model for Realm fork integration happy-path cases.
 library ForkIntegrationCaseLib {
     enum FactoryKind {
         UniV2,

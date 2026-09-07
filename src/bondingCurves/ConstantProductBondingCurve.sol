@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ILivoBondingCurve} from "../interfaces/ILivoBondingCurve.sol";
+import {IRealmBondingCurve} from "../interfaces/IRealmBondingCurve.sol";
 
-contract ConstantProductBondingCurve is ILivoBondingCurve {
+contract ConstantProductBondingCurve is IRealmBondingCurve {
     // the bonding curve follows the constant product formula:
     // K = (t + T0) * (e + E0)
     // `t` is the reserves of the token in the bonding curve (not sold yet )
@@ -37,7 +37,7 @@ contract ConstantProductBondingCurve is ILivoBondingCurve {
     uint256 internal constant _MAX_EXCESS_OVER_THRESHOLD = 0.05 ether;
 
     constructor() {
-        emit LivoBondingCurveDeployed(K, T0, E0, _GRADUATION_THRESHOLD, _MAX_EXCESS_OVER_THRESHOLD);
+        emit RealmBondingCurveDeployed(K, T0, E0, _GRADUATION_THRESHOLD, _MAX_EXCESS_OVER_THRESHOLD);
     }
 
     /// @notice Returns the ETH reserves threshold at which graduation can be triggered

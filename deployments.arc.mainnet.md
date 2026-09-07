@@ -2,38 +2,38 @@
 
 # ARC Chain Mainnet deployments
 
-## Livo
+## Realm
 
 | Contract                                     | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| LivoLaunchpad                                | _(not deployed)_                             |
+| RealmLaunchpad                                | _(not deployed)_                             |
 | ConstantProductBondingCurve                  | _(not deployed)_                             |
-| LivoGraduatorUniswapV2                       | _(not deployed)_                             |
-| LivoGraduatorUniswapV4                       | _(not deployed)_                             |
-| LivoMasterFeeHandler                         | _(not deployed)_                             |
-| LivoUniV4LiquidityAdder                      | _(not deployed)_                             |
+| RealmGraduatorUniswapV2                       | _(not deployed)_                             |
+| RealmGraduatorUniswapV4                       | _(not deployed)_                             |
+| RealmMasterFeeHandler                         | _(not deployed)_                             |
+| RealmUniV4LiquidityAdder                      | _(not deployed)_                             |
 | LivoSwapHook                                 | _(not deployed)_                             |
-| LivoLpFeeRouter (proxy)                      | _(not deployed)_                             |
-| LivoLpFeeRouter (impl)                       | _(not deployed)_                             |
-| LivoQuoter                                   | _(not deployed)_                             |
-| LivoToken (impl)                             | _(not deployed)_                             |
-| LivoTaxableTokenUniV4 (impl)                 | _(not deployed)_                             |
-| LivoTaxableTokenUniV2 (impl)                 | _(not deployed)_                             |
-| LivoFactoryUniV2Unified (proxy)              | _(not deployed)_                             |
-| LivoFactoryUniV2Unified (impl)               | _(not deployed)_                             |
-| LivoFactoryUniV4Unified (proxy)              | _(not deployed)_                             |
-| LivoFactoryUniV4Unified (impl)               | _(not deployed)_                             |
-| LivoCreatorVaultFactory (proxy)              | _(not deployed)_                             |
-| LivoCreatorVaultFactory (impl)               | _(not deployed)_                             |
-| LivoCreatorVault (impl)                      | _(not deployed)_                             |
+| RealmLpFeeRouter (proxy)                      | _(not deployed)_                             |
+| RealmLpFeeRouter (impl)                       | _(not deployed)_                             |
+| RealmQuoter                                   | _(not deployed)_                             |
+| RealmToken (impl)                             | _(not deployed)_                             |
+| RealmTaxableTokenUniV4 (impl)                 | _(not deployed)_                             |
+| RealmTaxableTokenUniV2 (impl)                 | _(not deployed)_                             |
+| RealmFactoryUniV2Unified (proxy)              | _(not deployed)_                             |
+| RealmFactoryUniV2Unified (impl)               | _(not deployed)_                             |
+| RealmFactoryUniV4Unified (proxy)              | _(not deployed)_                             |
+| RealmFactoryUniV4Unified (impl)               | _(not deployed)_                             |
+| RealmCreatorVaultFactory (proxy)              | _(not deployed)_                             |
+| RealmCreatorVaultFactory (impl)               | _(not deployed)_                             |
+| RealmCreatorVault (impl)                      | _(not deployed)_                             |
 | Creator-vault curve 5%                       | _(not deployed)_                             |
 | Creator-vault curve 10%                      | _(not deployed)_                             |
 | Creator-vault curve 15%                      | _(not deployed)_                             |
 | Creator-vault curve 20%                      | _(not deployed)_                             |
 | Creator-vault curve 25%                      | _(not deployed)_                             |
 | Creator-vault curve 30%                      | _(not deployed)_                             |
-| LivoGraduatorUniV4 THIN                      | _(not deployed)_                             |
-| LivoGraduatorUniV4 THICK                     | _(not deployed)_                             |
+| RealmGraduatorUniV4 THIN                      | _(not deployed)_                             |
+| RealmGraduatorUniV4 THICK                     | _(not deployed)_                             |
 | THIN-tier curve base                         | _(not deployed)_                             |
 | THIN-tier curve 5%                           | _(not deployed)_                             |
 | THIN-tier curve 10%                          | _(not deployed)_                             |
@@ -53,9 +53,9 @@
 
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| Livo Deployer                                | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |
-| Livo Treasury                                | `0x2F56CB340FeA590a2A801081118bF3143309329D` |
-| Livo Token Deployer                          | _(not deployed)_                             |
+| Realm Deployer                                | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |
+| Realm Treasury                                | `0x2F56CB340FeA590a2A801081118bF3143309329D` |
+| Realm Token Deployer                          | _(not deployed)_                             |
 
 ## Integrations
 

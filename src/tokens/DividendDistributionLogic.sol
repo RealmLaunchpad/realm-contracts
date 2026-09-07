@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {ILivoDividendSwapRegistry} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {IRealmDividendSwapRegistry} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
@@ -33,7 +33,7 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 /// @dev WHY THIS IS A SEPARATE CONTRACT. Taxable tokens are CLONES of a single implementation, and that
 ///      implementation has to fit in EIP-170's 24,576 bytes. The dividend engine did not fit alongside
 ///      the rest of the token, so this half — never on a hot path — lives behind a thin `delegatecall`
-///      stub per entry point (see `LivoTaxableToken._delegateToDividendLogic`), in a contract
+///      stub per entry point (see `RealmTaxableToken._delegateToDividendLogic`), in a contract
 ///      deployed ONCE per venue per chain by the token implementation's own constructor.
 ///
 /// @dev The delegatecall means every line below runs in the TOKEN's context: `address(this)` is the
@@ -42,7 +42,7 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 ///      Nothing is pooled and nothing is custodied here.
 ///
 /// @dev ⚠️ STORAGE LAYOUT. This contract writes the token's storage directly, so the two layouts must be
-///      byte-identical. The concrete extensions (`LivoDividendLogicUniV2` / `...UniV4`) inherit the same
+///      byte-identical. The concrete extensions (`RealmDividendLogicUniV2` / `...UniV4`) inherit the same
 ///      venue base the token does and add no state of their own, so the compiler derives the layout for
 ///      both — never hand-maintain it. `just check-dividend-layout` fails if they ever drift.
 ///      The same applies to TRANSIENT slots, which is why `dividendLocked` stays declared in
@@ -130,7 +130,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         require(routes.length <= n, InvalidDividendAssetSet());
         count = uint8(n);
 
-        ILivoDividendSwapRegistry registry = ILivoDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
+        IRealmDividendSwapRegistry registry = IRealmDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
         uint256 weightSum;
         for (uint256 i; i < count; ++i) {
             address token = tokens[i];
@@ -227,7 +227,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
 
         // KEEPER-GATED, with staleness as the escape hatch. The conversion below takes its slippage
         // floor from the caller, so a permissionless caller could manipulate the payout pool, call in
-        // with a zero floor and unwind, all in one transaction — see `LivoKeepersRegistry` for why no
+        // with a zero floor and unwind, all in one transaction — see `RealmKeepersRegistry` for why no
         // depth threshold bounds that. Holders never depend on a keeper to be PAID: `claimDividends()`
         // is open to everyone and pays in full. What a keeper is needed for is moving the buffer.
         // The stale branch is the backstop for a keeper set that has gone away for good: after
@@ -464,7 +464,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
             // KNOWN LIMIT, accepted: staleness reads "no distribution in a month", which a dead pool
             // guarantees but does not uniquely cause, and persistence proves only that the failure
             // outlived a block. Neither is proof the pool is dead — they make manufacturing one cost real
-            // money for a griefer who cannot profit (the native lands in Livo's own treasury, never
+            // money for a griefer who cannot profit (the native lands in Realm's own treasury, never
             // theirs) and holders are made whole off-chain. Do not read this gate as proof of anything
             // stronger.
             if (!stale) return (FundOutcome.ConversionFailed, 0, 0);
@@ -549,7 +549,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     function _swapNativeToDividendAsset(address asset, uint256 nativeIn, uint256 minOut) private returns (bool ok) {
         if (DIVIDEND_SWAP_REGISTRY.code.length == 0) return false;
         (ok,) = DIVIDEND_SWAP_REGISTRY.call{value: nativeIn}(
-            abi.encodeCall(ILivoDividendSwapRegistry.swapNativeToAsset, (asset, minOut, address(this)))
+            abi.encodeCall(IRealmDividendSwapRegistry.swapNativeToAsset, (asset, minOut, address(this)))
         );
     }
 

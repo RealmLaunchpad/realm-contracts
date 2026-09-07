@@ -3,8 +3,8 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {DeploymentsEthereumMainnet} from "src/config/manifest.ethereum.mainnet.sol";
@@ -35,7 +35,7 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 ///         before any proxy is touched. Post-broadcast it re-reads each proxy to confirm the flip
 ///         took effect against the simulated end state.
 ///
-///         Storage layout safety: the new implementations must keep `LivoFactoryAbstract`'s storage
+///         Storage layout safety: the new implementations must keep `RealmFactoryAbstract`'s storage
 ///         layout. Today that's "empty + 50-slot gap", so any change that adds storage must shrink
 ///         the gap and never reorder. Review the diff before broadcasting.
 ///
@@ -88,9 +88,9 @@ contract UpgradeUnifiedFactories is Script {
 
         // Sanity: confirm proxies are responsive and initialized. `owner()` reverts on uninitialized
         // proxies (returns 0 from storage), so an explicit nonzero check catches a wrong manifest
-        // address pointing at a non-Livo contract.
-        address ownerV2 = LivoFactoryUniV2Unified(d.factoryV2Proxy).owner();
-        address ownerV4 = LivoFactoryUniV4Unified(d.factoryV4Proxy).owner();
+        // address pointing at a non-Realm contract.
+        address ownerV2 = RealmFactoryUniV2Unified(d.factoryV2Proxy).owner();
+        address ownerV4 = RealmFactoryUniV4Unified(d.factoryV4Proxy).owner();
         require(ownerV2 != address(0), "V2 proxy not initialized");
         require(ownerV4 != address(0), "V4 proxy not initialized");
         require(ownerV2 == ownerV4, "V2/V4 proxies have diverged owners - verify the manifest");
@@ -99,15 +99,15 @@ contract UpgradeUnifiedFactories is Script {
         // involved) must already be wired to the v2 launchpad. A stale impl pointing elsewhere aborts
         // the run before any proxy is flipped — this is the v1->v2 switch, so wrong wiring is fatal.
         require(
-            address(LivoFactoryUniV2Unified(d.factoryV2Impl).LAUNCHPAD()) == d.launchpad,
+            address(RealmFactoryUniV2Unified(d.factoryV2Impl).LAUNCHPAD()) == d.launchpad,
             "V2 impl not wired to manifest launchpad"
         );
         require(
-            address(LivoFactoryUniV4Unified(d.factoryV4Impl).LAUNCHPAD()) == d.launchpad,
+            address(RealmFactoryUniV4Unified(d.factoryV4Impl).LAUNCHPAD()) == d.launchpad,
             "V4 impl not wired to manifest launchpad"
         );
 
-        console.log("=== Livo Unified Factories Flip (v1 -> v2 cutover) ===");
+        console.log("=== Realm Unified Factories Flip (v1 -> v2 cutover) ===");
         console.log("Chain ID:                ", block.chainid);
         console.log("Broadcaster:             ", msg.sender);
         console.log("Required owner (V2/V4):  ", ownerV2);
@@ -129,8 +129,8 @@ contract UpgradeUnifiedFactories is Script {
         vm.stopBroadcast();
 
         // Post-broadcast: both proxies now delegate to the v2 impls, so they report the v2 launchpad.
-        require(address(LivoFactoryUniV2Unified(d.factoryV2Proxy).LAUNCHPAD()) == d.launchpad, "V2 flip failed");
-        require(address(LivoFactoryUniV4Unified(d.factoryV4Proxy).LAUNCHPAD()) == d.launchpad, "V4 flip failed");
+        require(address(RealmFactoryUniV2Unified(d.factoryV2Proxy).LAUNCHPAD()) == d.launchpad, "V2 flip failed");
+        require(address(RealmFactoryUniV4Unified(d.factoryV4Proxy).LAUNCHPAD()) == d.launchpad, "V4 flip failed");
 
         console.log("");
         console.log("=== Cutover Complete: token creation now flows to the v2 launchpad ===");

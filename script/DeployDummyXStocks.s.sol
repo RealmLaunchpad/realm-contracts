@@ -16,8 +16,8 @@ import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {DeploymentAddressesEthereumSepolia as Sepolia} from "src/config/DeploymentAddresses.sol";
-import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
-import {Hop, SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {Hop, SwapRejection} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice Stand-in for a Robinhood xStock: a plain 18-decimal ERC20, whole supply to the deployer.
@@ -92,7 +92,7 @@ contract DeployDummyXStocks is Script {
         console.log("Stocks:       %d", stocks.length);
         console.log("ETH per pool: %d wei", ethPerPool);
 
-        LivoDividendSwapRegistry registry = LivoDividendSwapRegistry(Sepolia.DIVIDEND_SWAP_REGISTRY);
+        RealmDividendSwapRegistry registry = RealmDividendSwapRegistry(Sepolia.DIVIDEND_SWAP_REGISTRY);
 
         vm.startBroadcast();
         address deployer = _broadcaster();
@@ -195,7 +195,7 @@ contract DeployDummyXStocks is Script {
     /// @dev The validation is a dry read against the pool just seeded, and it is the point of doing it
     ///      here rather than trusting the encoding: it proves the pool is initialized and holds
     ///      liquidity, which is exactly what `registerRoute` will demand at creation time.
-    function _reportRoute(LivoDividendSwapRegistry registry, bool haveRegistry, address token, XStock memory stock)
+    function _reportRoute(RealmDividendSwapRegistry registry, bool haveRegistry, address token, XStock memory stock)
         internal
         view
     {

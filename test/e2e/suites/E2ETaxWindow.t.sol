@@ -2,13 +2,13 @@
 pragma solidity 0.8.28;
 
 import {Vm} from "forge-std/Vm.sol";
-import {LivoE2EBase} from "test/e2e/base/LivoE2EBase.t.sol";
+import {RealmE2EBase} from "test/e2e/base/RealmE2EBase.t.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice E2E suite for tax variants only. Confirms the V4 hook applies the configured tax during
 ///         the post-graduation tax window and stops after the window closes.
-abstract contract E2ETaxWindow is LivoE2EBase {
+abstract contract E2ETaxWindow is RealmE2EBase {
     function test_e2e_tax_emitsCreatorTaxesAccrued_duringWindow() public {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
         address token = _createTestToken(salt);

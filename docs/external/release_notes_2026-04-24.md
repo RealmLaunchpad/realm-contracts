@@ -1,9 +1,9 @@
-# Livo Release Notes — 2026-04-29
+# Realm Release Notes — 2026-04-29
 
 Integrator-facing changes shipping in this release. Two themes:
 
 1. A unified `createToken` ABI across every factory variant, plus a new sniper-protected family.
-2. A new `LivoQuoter` contract that replaces direct `LivoLaunchpad.quote*` calls as the recommended quoting path for the frontend.
+2. A new `RealmQuoter` contract that replaces direct `RealmLaunchpad.quote*` calls as the recommended quoting path for the frontend.
 
 ---
 
@@ -20,14 +20,14 @@ Integrator-facing changes shipping in this release. Two themes:
 ### Part B — Buy / Sell Quoting
 
 - [6. Sniper protection — what changes for quoting](#6-sniper-protection--what-changes-for-quoting)
-- [7. `LivoQuoter`](#7-livoquoter)
+- [7. `RealmQuoter`](#7-realmquoter)
 - [8. Migration checklist](#8-migration-checklist)
 
 ---
 
 # Part A — Create Token
 
-Summary of breaking changes for any integrator that calls a Livo factory or indexes its events.
+Summary of breaking changes for any integrator that calls a Realm factory or indexes its events.
 This branch unifies `createToken` across every factory variant, adds a sniper-protection family,
 and changes the deployer-buy / fee-split UX.
 
@@ -39,17 +39,17 @@ and changes the deployer-buy / fee-split UX.
 
 | Old                | New                  |
 | ------------------ | -------------------- |
-| `LivoFactoryBase`  | `LivoFactoryUniV4`   |
+| `RealmFactoryBase`  | `RealmFactoryUniV4`   |
 
 ### New factories
 
 | Factory                              | Token deployed                          | Notes                                                                  |
 | ------------------------------------ | --------------------------------------- | ---------------------------------------------------------------------- |
-| `LivoFactoryUniV2SniperProtected`    | `LivoTokenSniperProtected`              | V2 graduator, ownership renounced at creation                          |
-| `LivoFactoryUniV4SniperProtected`    | `LivoTokenSniperProtected`              | V4 graduator                                                           |
-| `LivoFactoryTaxTokenSniperProtected` | `LivoTaxableTokenUniV4SniperProtected`  | V4 graduator + buy/sell taxes + sniper caps                            |
+| `RealmFactoryUniV2SniperProtected`    | `RealmTokenSniperProtected`              | V2 graduator, ownership renounced at creation                          |
+| `RealmFactoryUniV4SniperProtected`    | `RealmTokenSniperProtected`              | V4 graduator                                                           |
+| `RealmFactoryTaxTokenSniperProtected` | `RealmTaxableTokenUniV4SniperProtected`  | V4 graduator + buy/sell taxes + sniper caps                            |
 
-`LivoFactoryUniV4`, `LivoFactoryTaxToken`, `LivoFactoryExtendedTax` and `LivoFactoryUniV2` keep
+`RealmFactoryUniV4`, `RealmFactoryTaxToken`, `RealmFactoryExtendedTax` and `RealmFactoryUniV2` keep
 their names but their `createToken` signatures changed (see §2).
 
 ---
@@ -60,7 +60,7 @@ The previous two-entry-point split (`createToken` + `createTokenWithFeeSplit`) i
 factory now exposes a single `createToken` that handles:
 
 - 1 fee receiver → no splitter is deployed (`FEE_HANDLER` is the routing target).
-- ≥ 2 fee receivers → a `LivoFeeSplitter` clone is deployed and used as both `feeHandler` and
+- ≥ 2 fee receivers → a `RealmFeeSplitter` clone is deployed and used as both `feeHandler` and
   `feeReceiver` on the token.
 - `msg.value > 0` → the factory buys supply on the bonding curve and distributes it across the
   `supplyShares` recipients in the same tx (formerly "deployer buy").
@@ -90,20 +90,20 @@ struct AntiSniperConfigs {   // sniper-protected variants only
 ### Per-factory signatures
 
 ```solidity
-// LivoFactoryUniV2 (ownership renounced — no `renounceOwnership` flag)
+// RealmFactoryUniV2 (ownership renounced — no `renounceOwnership` flag)
 createToken(
     string name, string symbol, bytes32 salt,
     FeeShare[] feeReceivers, SupplyShare[] supplyShares
 ) payable returns (address token, address feeSplitter)
 
-// LivoFactoryUniV4
+// RealmFactoryUniV4
 createToken(
     string name, string symbol, bytes32 salt,
     FeeShare[] feeReceivers, SupplyShare[] supplyShares,
     bool renounceOwnership
 ) payable returns (address token, address feeSplitter)
 
-// LivoFactoryTaxToken / LivoFactoryExtendedTax
+// RealmFactoryTaxToken / RealmFactoryExtendedTax
 createToken(
     string name, string symbol, bytes32 salt,
     FeeShare[] feeReceivers, SupplyShare[] supplyShares,
@@ -111,14 +111,14 @@ createToken(
     TaxConfigInit taxCfg
 ) payable returns (address token, address feeSplitter)
 
-// LivoFactoryUniV2SniperProtected (no `renounceOwnership` flag)
+// RealmFactoryUniV2SniperProtected (no `renounceOwnership` flag)
 createToken(
     string name, string symbol, bytes32 salt,
     FeeShare[] feeReceivers, SupplyShare[] supplyShares,
     AntiSniperConfigs antiSniperCfg
 ) payable returns (address token, address feeSplitter)
 
-// LivoFactoryUniV4SniperProtected
+// RealmFactoryUniV4SniperProtected
 createToken(
     string name, string symbol, bytes32 salt,
     FeeShare[] feeReceivers, SupplyShare[] supplyShares,
@@ -126,7 +126,7 @@ createToken(
     AntiSniperConfigs antiSniperCfg
 ) payable returns (address token, address feeSplitter)
 
-// LivoFactoryTaxTokenSniperProtected
+// RealmFactoryTaxTokenSniperProtected
 createToken(
     string name, string symbol, bytes32 salt,
     FeeShare[] feeReceivers, SupplyShare[] supplyShares,
@@ -141,13 +141,13 @@ createToken(
 `renounceOwnership = true` sets `tokenOwner = address(0)` at deploy; `false` sets it to
 `msg.sender`. The V2 factories always renounce.
 
-`LivoFactoryExtendedTax.createToken` is `onlyOwner`.
+`RealmFactoryExtendedTax.createToken` is `onlyOwner`.
 
 ---
 
 ## 3. Other ABI changes
 
-### Factories — `ILivoFactory`
+### Factories — `IRealmFactory`
 
 | Old                           | New                                                |
 | ----------------------------- | -------------------------------------------------- |
@@ -183,7 +183,7 @@ event SniperProtectionInitialized(
 ### Unchanged
 
 `TokenCreated`, `FeeSplitterCreated`, `TokenImplementationUpdated`, and every event emitted
-inside `LivoToken` / `LivoTaxableTokenUniV4` / launchpad / graduators / fee handler / fee
+inside `RealmToken` / `RealmTaxableTokenUniV4` / launchpad / graduators / fee handler / fee
 splitter keep their previous signatures.
 
 ### Event ordering (sniper-protected variants)
@@ -191,7 +191,7 @@ splitter keep their previous signatures.
 Identical to the corresponding non-protected factory, with **one extra event**
 `SniperProtectionInitialized` inserted from the token initializer (after the `1e27` mint, before
 OpenZeppelin's `Initialized`). For tax sniper-protected, it fires after
-`LivoTaxableTokenInitialized`. See `docs/events-per-entry-point.md` §14 for the exact sequence.
+`RealmTaxableTokenInitialized`. See `docs/events-per-entry-point.md` §14 for the exact sequence.
 
 ---
 
@@ -207,13 +207,13 @@ OpenZeppelin's `Initialized`). For tax sniper-protected, it fires after
 - [ ] Repack tax args into `TaxConfigInit`.
 - [ ] Index `BuyOnDeploy` (not `DeployerBuy`) events
 - [ ] If using sniper-protected factories, index `SniperProtectionInitialized` and call
-      `maxTokenPurchase(buyer)` — or the new `LivoQuoter` — when surfacing buy limits.
+      `maxTokenPurchase(buyer)` — or the new `RealmQuoter` — when surfacing buy limits.
 
 ---
 
 # Part B — Buy / Sell Quoting
 
-A new `LivoQuoter` contract replaces the previous "call `LivoLaunchpad.quote*` directly" flow as
+A new `RealmQuoter` contract replaces the previous "call `RealmLaunchpad.quote*` directly" flow as
 the recommended quoting path for the frontend. It exists because sniper-protected tokens add a
 **per-buyer** cap (per-tx + per-wallet) that the launchpad's own `quote*` functions don't know
 about, and because the bonding curve is not symmetrically invertible — feeding
@@ -223,17 +223,17 @@ about, and because the bonding curve is not symmetrically invertible — feeding
 
 ## 6. Sniper protection — what changes for quoting
 
-For tokens deployed via `LivoFactory*SniperProtected`, during the protection window
+For tokens deployed via `RealmFactory*SniperProtected`, during the protection window
 (`launchTimestamp + protectionWindowSeconds`):
 
 - Each non-whitelisted buyer can receive at most `maxBuyPerTxBps × 1e27 / 10_000` tokens per tx.
 - Their wallet balance after the buy must stay below `maxWalletBps × 1e27 / 10_000`.
 - The cap is **buyer-aware**: the same `quoteBuyExactTokens` call yields different ceilings for
   different buyers depending on their current balance.
-- `LivoLaunchpad.buyTokensWithExactEth` reverts with `MaxBuyPerTxExceeded` /
+- `RealmLaunchpad.buyTokensWithExactEth` reverts with `MaxBuyPerTxExceeded` /
   `MaxWalletExceeded` if either cap is breached.
 
-Token-side primitive (already exposed on every token via `ILivoToken`):
+Token-side primitive (already exposed on every token via `IRealmToken`):
 
 ```solidity
 function maxTokenPurchase(address buyer) external view returns (uint256);
@@ -243,25 +243,25 @@ Returns the largest token amount `buyer` may receive from the launchpad right no
 `type(uint256).max` when no cap applies (non-protected, graduated, window expired, or
 whitelisted).
 
-⚠️ **Do not feed this value directly into `LivoLaunchpad.quoteBuyExactTokens` followed by
+⚠️ **Do not feed this value directly into `RealmLaunchpad.quoteBuyExactTokens` followed by
 `buyTokensWithExactEth`.** The bonding curve uses ceiling rounding so
-`forward(inverse(T)) > T` by 1–2 wei, which still trips the cap. Use `LivoQuoter` (next section)
+`forward(inverse(T)) > T` by 1–2 wei, which still trips the cap. Use `RealmQuoter` (next section)
 which handles this with a 1–3 iteration decrement loop.
 
 ---
 
-## 7. `LivoQuoter`
+## 7. `RealmQuoter`
 
 A stateless, view-only contract bound to a single launchpad. It composes:
 
-- `LivoLaunchpad.getMaxEthToSpend(token)` — graduation excess cap.
-- `LivoLaunchpad.quoteBuy* / quoteSell*` — bonding-curve math.
-- `ILivoToken.maxTokenPurchase(buyer)` — per-buyer sniper cap (gracefully handles tokens that
+- `RealmLaunchpad.getMaxEthToSpend(token)` — graduation excess cap.
+- `RealmLaunchpad.quoteBuy* / quoteSell*` — bonding-curve math.
+- `IRealmToken.maxTokenPurchase(buyer)` — per-buyer sniper cap (gracefully handles tokens that
   don't expose it; legacy tokens are treated as "no cap").
 
 ### Non-revert guarantee
 
-Every `LivoQuoter` function **returns** rather than reverts. When the returned `reason` is
+Every `RealmQuoter` function **returns** rather than reverts. When the returned `reason` is
 `INVALID_TOKEN` or `GRADUATED`, all numeric fields are zero. For all other reasons, broadcasting
 the corresponding launchpad call with the returned amount is guaranteed not to revert with any
 cap-related error. Slippage / deadline / `msg.value` mismatch reverts remain the caller's
@@ -360,7 +360,7 @@ launchpad call; otherwise the sniper cap is computed against the wrong wallet.
 
 ## 8. Migration checklist
 
-- [ ] Replace direct calls to `LivoLaunchpad.quoteBuy*` with `LivoQuoter.quoteBuy*` and pass the
+- [ ] Replace direct calls to `RealmLaunchpad.quoteBuy*` with `RealmQuoter.quoteBuy*` and pass the
       eventual `msg.sender` as `buyer`.
 - [ ] Branch on `reason` for UX; treat any non-`NONE` value as a clamp (or a hard refuse for
       `INVALID_TOKEN` / `GRADUATED`).

@@ -11,9 +11,9 @@
 forge script Deployments --rpc-url sepolia --verify --account livo.dev --slow --broadcast
 ```
 
-If it fails with "UNIV4_POOL_MANAGER address. Wrong chain id", update the import in `LivoTaxableTokenUniV4.sol`.
+If it fails with "UNIV4_POOL_MANAGER address. Wrong chain id", update the import in `RealmTaxableTokenUniV4.sol`.
 
-### 2. Put back `LivoTaxableTokenUniV4.sol` imports to mainnet if run with sepolia (only after verification)
+### 2. Put back `RealmTaxableTokenUniV4.sol` imports to mainnet if run with sepolia (only after verification)
 
 ### 3. Update addresses in justfile (only for sepolia)
 
@@ -29,9 +29,9 @@ forge verify-contract {{address}} {{contractName}} --compiler-version 0.8.28+com
 
 # Transfer ownerships ?
 
-- livo launchpad owner -> multisig ?  functions: whitelist/blacklist factories. Set trading fees, Set trasury address, community takeover.
-- LivoGraduatorUniswapV4: leave deployer as owner, No critical functions. 
-- LivoFeeHandler -> leave deployer as owner. No critical functions
+- realm launchpad owner -> multisig ?  functions: whitelist/blacklist factories. Set trading fees, Set trasury address, community takeover.
+- RealmGraduatorUniswapV4: leave deployer as owner, No critical functions. 
+- RealmFeeHandler -> leave deployer as owner. No critical functions
 
 ---
 

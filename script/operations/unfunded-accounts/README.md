@@ -1,6 +1,6 @@
 # Unfunded creators check
 
-`check_unfunded_creators.py` queries the Livo indexer for mainnet reward creators with `accountedEth > 0`, then reads each creator's wallet balance via `eth_getBalance`. If any wallet holds **exactly 0 ETH**, the script raises so the wrapping process exits non-zero — these are accounts that have rewards owed but cannot pay gas to claim them.
+`check_unfunded_creators.py` queries the Realm indexer for mainnet reward creators with `accountedEth > 0`, then reads each creator's wallet balance via `eth_getBalance`. If any wallet holds **exactly 0 ETH**, the script raises so the wrapping process exits non-zero — these are accounts that have rewards owed but cannot pay gas to claim them.
 
 ## Run locally
 

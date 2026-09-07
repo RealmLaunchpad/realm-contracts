@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LivoE2EBase} from "test/e2e/base/LivoE2EBase.t.sol";
+import {RealmE2EBase} from "test/e2e/base/RealmE2EBase.t.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice E2E suite for sniper-protected variants only. Verifies that the protection window
@@ -11,7 +11,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 ///         bypass, that caps lift after the window, and that graduation succeeds during the window
 ///         (graduator is whitelisted by the variant's default config) and disables sniper checks
 ///         on subsequent post-graduation swaps.
-abstract contract E2ESniperWindow is LivoE2EBase {
+abstract contract E2ESniperWindow is RealmE2EBase {
     /// @dev Buy size that yields >3% of TOTAL_SUPPLY at curve start (~42M tokens vs 30M cap).
     uint256 internal constant OVERSIZED_BUY = 0.1 ether;
     /// @dev Buy size that yields ~22M tokens at curve start, comfortably under the 3% cap.
@@ -24,7 +24,7 @@ abstract contract E2ESniperWindow is LivoE2EBase {
         // Confirm we're inside the window
         SniperProtection sp = SniperProtection(token);
         assertGt(
-            uint256(ILivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp
+            uint256(IRealmToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp
         );
 
         vm.deal(buyer, OVERSIZED_BUY);
@@ -62,7 +62,7 @@ abstract contract E2ESniperWindow is LivoE2EBase {
         // Use many small buys to graduate without hitting the per-tx cap on any single buy.
         SniperProtection sp = SniperProtection(token);
         assertGt(
-            uint256(ILivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp
+            uint256(IRealmToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp
         );
 
         _graduateInSmallBuys(token);
@@ -70,7 +70,7 @@ abstract contract E2ESniperWindow is LivoE2EBase {
         assertTrue(launchpad.getTokenState(token).graduated);
         // Confirm we're still inside the window when graduation completes
         assertLt(
-            block.timestamp, uint256(ILivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds())
+            block.timestamp, uint256(IRealmToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds())
         );
     }
 
@@ -85,10 +85,10 @@ abstract contract E2ESniperWindow is LivoE2EBase {
 
         SniperProtection sp = SniperProtection(token);
         assertGt(
-            uint256(ILivoToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp
+            uint256(IRealmToken(address(sp)).launchTimestamp()) + uint256(sp.protectionWindowSeconds()), block.timestamp
         );
 
-        uint256 maxTokens = ILivoToken(token).maxTokenPurchase(buyer);
+        uint256 maxTokens = IRealmToken(token).maxTokenPurchase(buyer);
         assertGt(maxTokens, 0);
         assertLt(maxTokens, type(uint256).max);
 

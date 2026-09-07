@@ -29,7 +29,7 @@ contract ExportDeployments is Script {
     struct ChainDeployments {
         string title; // markdown heading, e.g. "Robinhood Chain Mainnet"
         string manifestFile; // for the "do not hand-edit" banner
-        // --- Livo core ---
+        // --- Realm core ---
         address launchpad;
         address bondingCurve;
         address graduatorUniV2;
@@ -58,9 +58,9 @@ contract ExportDeployments is Script {
         address thickCurveBase;
         address[6] thickVaultCurves;
         // --- Accounts ---
-        address livoDev;
-        address livoTreasury;
-        address livoTokenDeployer;
+        address realmDev;
+        address realmTreasury;
+        address realmTokenDeployer;
         // --- Integrations ---
         address weth;
         address univ2Router;
@@ -117,9 +117,9 @@ contract ExportDeployments is Script {
         d.thinVaultCurves = DeploymentsEthereumMainnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsEthereumMainnet.THICK_CURVE_BASE;
         d.thickVaultCurves = DeploymentsEthereumMainnet.thickVaultCurves();
-        d.livoDev = DeploymentsEthereumMainnet.LIVO_DEV;
-        d.livoTreasury = DeploymentAddressesEthereumMainnet.LIVO_TREASURY;
-        d.livoTokenDeployer = DeploymentsEthereumMainnet.LIVO_TOKEN_DEPLOYER;
+        d.realmDev = DeploymentsEthereumMainnet.REALM_DEV;
+        d.realmTreasury = DeploymentAddressesEthereumMainnet.REALM_TREASURY;
+        d.realmTokenDeployer = DeploymentsEthereumMainnet.REALM_TOKEN_DEPLOYER;
         d.weth = DeploymentAddressesEthereumMainnet.WETH;
         d.univ2Router = DeploymentAddressesEthereumMainnet.UNIV2_ROUTER;
         d.univ2Factory = DeploymentAddressesEthereumMainnet.UNIV2_FACTORY;
@@ -159,9 +159,9 @@ contract ExportDeployments is Script {
         d.thinVaultCurves = DeploymentsEthereumSepolia.thinVaultCurves();
         d.thickCurveBase = DeploymentsEthereumSepolia.THICK_CURVE_BASE;
         d.thickVaultCurves = DeploymentsEthereumSepolia.thickVaultCurves();
-        d.livoDev = DeploymentsEthereumSepolia.LIVO_DEV;
-        d.livoTreasury = DeploymentAddressesEthereumSepolia.LIVO_TREASURY;
-        d.livoTokenDeployer = DeploymentsEthereumSepolia.LIVO_TOKEN_DEPLOYER;
+        d.realmDev = DeploymentsEthereumSepolia.REALM_DEV;
+        d.realmTreasury = DeploymentAddressesEthereumSepolia.REALM_TREASURY;
+        d.realmTokenDeployer = DeploymentsEthereumSepolia.REALM_TOKEN_DEPLOYER;
         d.weth = DeploymentAddressesEthereumSepolia.WETH;
         d.univ2Router = DeploymentAddressesEthereumSepolia.UNIV2_ROUTER;
         d.univ2Factory = DeploymentAddressesEthereumSepolia.UNIV2_FACTORY;
@@ -201,9 +201,9 @@ contract ExportDeployments is Script {
         d.thinVaultCurves = DeploymentsRobinhoodMainnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsRobinhoodMainnet.THICK_CURVE_BASE;
         d.thickVaultCurves = DeploymentsRobinhoodMainnet.thickVaultCurves();
-        d.livoDev = DeploymentsRobinhoodMainnet.LIVO_DEV;
-        d.livoTreasury = DeploymentAddressesRobinhoodMainnet.LIVO_TREASURY;
-        d.livoTokenDeployer = DeploymentsRobinhoodMainnet.LIVO_TOKEN_DEPLOYER;
+        d.realmDev = DeploymentsRobinhoodMainnet.REALM_DEV;
+        d.realmTreasury = DeploymentAddressesRobinhoodMainnet.REALM_TREASURY;
+        d.realmTokenDeployer = DeploymentsRobinhoodMainnet.REALM_TOKEN_DEPLOYER;
         d.weth = DeploymentAddressesRobinhoodMainnet.WETH;
         d.univ2Router = DeploymentAddressesRobinhoodMainnet.UNIV2_ROUTER;
         d.univ2Factory = DeploymentAddressesRobinhoodMainnet.UNIV2_FACTORY;
@@ -243,9 +243,9 @@ contract ExportDeployments is Script {
         d.thinVaultCurves = DeploymentsRobinhoodTestnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsRobinhoodTestnet.THICK_CURVE_BASE;
         d.thickVaultCurves = DeploymentsRobinhoodTestnet.thickVaultCurves();
-        d.livoDev = DeploymentsRobinhoodTestnet.LIVO_DEV;
-        d.livoTreasury = DeploymentAddressesRobinhoodTestnet.LIVO_TREASURY;
-        d.livoTokenDeployer = DeploymentsRobinhoodTestnet.LIVO_TOKEN_DEPLOYER;
+        d.realmDev = DeploymentsRobinhoodTestnet.REALM_DEV;
+        d.realmTreasury = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
+        d.realmTokenDeployer = DeploymentsRobinhoodTestnet.REALM_TOKEN_DEPLOYER;
         d.weth = DeploymentAddressesRobinhoodTestnet.WETH;
         d.univ2Router = DeploymentAddressesRobinhoodTestnet.UNIV2_ROUTER;
         d.univ2Factory = DeploymentAddressesRobinhoodTestnet.UNIV2_FACTORY;
@@ -285,9 +285,9 @@ contract ExportDeployments is Script {
         d.thinVaultCurves = DeploymentsArcMainnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsArcMainnet.THICK_CURVE_BASE;
         d.thickVaultCurves = DeploymentsArcMainnet.thickVaultCurves();
-        d.livoDev = DeploymentsArcMainnet.LIVO_DEV;
-        d.livoTreasury = DeploymentAddressesArcMainnet.LIVO_TREASURY;
-        d.livoTokenDeployer = DeploymentsArcMainnet.LIVO_TOKEN_DEPLOYER;
+        d.realmDev = DeploymentsArcMainnet.REALM_DEV;
+        d.realmTreasury = DeploymentAddressesArcMainnet.REALM_TREASURY;
+        d.realmTokenDeployer = DeploymentsArcMainnet.REALM_TOKEN_DEPLOYER;
         d.weth = DeploymentAddressesArcMainnet.WETH;
         d.univ2Router = DeploymentAddressesArcMainnet.UNIV2_ROUTER;
         d.univ2Factory = DeploymentAddressesArcMainnet.UNIV2_FACTORY;
@@ -327,9 +327,9 @@ contract ExportDeployments is Script {
         d.thinVaultCurves = DeploymentsArcTestnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsArcTestnet.THICK_CURVE_BASE;
         d.thickVaultCurves = DeploymentsArcTestnet.thickVaultCurves();
-        d.livoDev = DeploymentsArcTestnet.LIVO_DEV;
-        d.livoTreasury = DeploymentAddressesArcTestnet.LIVO_TREASURY;
-        d.livoTokenDeployer = DeploymentsArcTestnet.LIVO_TOKEN_DEPLOYER;
+        d.realmDev = DeploymentsArcTestnet.REALM_DEV;
+        d.realmTreasury = DeploymentAddressesArcTestnet.REALM_TREASURY;
+        d.realmTokenDeployer = DeploymentsArcTestnet.REALM_TOKEN_DEPLOYER;
         d.weth = DeploymentAddressesArcTestnet.WETH;
         d.univ2Router = DeploymentAddressesArcTestnet.UNIV2_ROUTER;
         d.univ2Factory = DeploymentAddressesArcTestnet.UNIV2_FACTORY;
@@ -350,35 +350,35 @@ contract ExportDeployments is Script {
             " deployments\n\n"
         );
 
-        s = string.concat(s, "## Livo\n\n", _tableHeader("Contract"));
-        s = string.concat(s, _row("LivoLaunchpad", d.launchpad));
+        s = string.concat(s, "## Realm\n\n", _tableHeader("Contract"));
+        s = string.concat(s, _row("RealmLaunchpad", d.launchpad));
         s = string.concat(s, _row("ConstantProductBondingCurve", d.bondingCurve));
-        s = string.concat(s, _row("LivoGraduatorUniswapV2", d.graduatorUniV2));
-        s = string.concat(s, _row("LivoGraduatorUniswapV4", d.graduatorUniV4));
-        s = string.concat(s, _row("LivoMasterFeeHandler", d.masterFeeHandler));
-        s = string.concat(s, _row("LivoUniV4LiquidityAdder", d.univ4LiquidityAdder));
+        s = string.concat(s, _row("RealmGraduatorUniswapV2", d.graduatorUniV2));
+        s = string.concat(s, _row("RealmGraduatorUniswapV4", d.graduatorUniV4));
+        s = string.concat(s, _row("RealmMasterFeeHandler", d.masterFeeHandler));
+        s = string.concat(s, _row("RealmUniV4LiquidityAdder", d.univ4LiquidityAdder));
         s = string.concat(s, _row("LivoSwapHook", d.swapHook));
-        s = string.concat(s, _row("LivoLpFeeRouter (proxy)", d.lpFeeRouter));
-        s = string.concat(s, _row("LivoLpFeeRouter (impl)", d.lpFeeRouterImpl));
-        s = string.concat(s, _row("LivoQuoter", d.quoter));
-        s = string.concat(s, _row("LivoToken (impl)", d.tokenImpl));
-        s = string.concat(s, _row("LivoTaxableTokenUniV4 (impl)", d.taxableTokenImpl));
-        s = string.concat(s, _row("LivoTaxableTokenUniV2 (impl)", d.taxableTokenV2Impl));
-        s = string.concat(s, _row("LivoFactoryUniV2Unified (proxy)", d.factoryUniV2Unified));
-        s = string.concat(s, _row("LivoFactoryUniV2Unified (impl)", d.factoryUniV2UnifiedImpl));
-        s = string.concat(s, _row("LivoFactoryUniV4Unified (proxy)", d.factoryUniV4Unified));
-        s = string.concat(s, _row("LivoFactoryUniV4Unified (impl)", d.factoryUniV4UnifiedImpl));
-        s = string.concat(s, _row("LivoCreatorVaultFactory (proxy)", d.creatorVaultFactory));
-        s = string.concat(s, _row("LivoCreatorVaultFactory (impl)", d.creatorVaultFactoryImpl));
-        s = string.concat(s, _row("LivoCreatorVault (impl)", d.creatorVaultImpl));
+        s = string.concat(s, _row("RealmLpFeeRouter (proxy)", d.lpFeeRouter));
+        s = string.concat(s, _row("RealmLpFeeRouter (impl)", d.lpFeeRouterImpl));
+        s = string.concat(s, _row("RealmQuoter", d.quoter));
+        s = string.concat(s, _row("RealmToken (impl)", d.tokenImpl));
+        s = string.concat(s, _row("RealmTaxableTokenUniV4 (impl)", d.taxableTokenImpl));
+        s = string.concat(s, _row("RealmTaxableTokenUniV2 (impl)", d.taxableTokenV2Impl));
+        s = string.concat(s, _row("RealmFactoryUniV2Unified (proxy)", d.factoryUniV2Unified));
+        s = string.concat(s, _row("RealmFactoryUniV2Unified (impl)", d.factoryUniV2UnifiedImpl));
+        s = string.concat(s, _row("RealmFactoryUniV4Unified (proxy)", d.factoryUniV4Unified));
+        s = string.concat(s, _row("RealmFactoryUniV4Unified (impl)", d.factoryUniV4UnifiedImpl));
+        s = string.concat(s, _row("RealmCreatorVaultFactory (proxy)", d.creatorVaultFactory));
+        s = string.concat(s, _row("RealmCreatorVaultFactory (impl)", d.creatorVaultFactoryImpl));
+        s = string.concat(s, _row("RealmCreatorVault (impl)", d.creatorVaultImpl));
         s = string.concat(s, _row("Creator-vault curve 5%", d.vaultCurves[0]));
         s = string.concat(s, _row("Creator-vault curve 10%", d.vaultCurves[1]));
         s = string.concat(s, _row("Creator-vault curve 15%", d.vaultCurves[2]));
         s = string.concat(s, _row("Creator-vault curve 20%", d.vaultCurves[3]));
         s = string.concat(s, _row("Creator-vault curve 25%", d.vaultCurves[4]));
         s = string.concat(s, _row("Creator-vault curve 30%", d.vaultCurves[5]));
-        s = string.concat(s, _row("LivoGraduatorUniV4 THIN", d.graduatorThin));
-        s = string.concat(s, _row("LivoGraduatorUniV4 THICK", d.graduatorThick));
+        s = string.concat(s, _row("RealmGraduatorUniV4 THIN", d.graduatorThin));
+        s = string.concat(s, _row("RealmGraduatorUniV4 THICK", d.graduatorThick));
         s = string.concat(s, _row("THIN-tier curve base", d.thinCurveBase));
         s = string.concat(s, _row("THIN-tier curve 5%", d.thinVaultCurves[0]));
         s = string.concat(s, _row("THIN-tier curve 10%", d.thinVaultCurves[1]));
@@ -395,9 +395,9 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("THICK-tier curve 30%", d.thickVaultCurves[5]));
 
         s = string.concat(s, "\n## Accounts\n\n", _tableHeader("Name"));
-        s = string.concat(s, _row("Livo Deployer", d.livoDev));
-        s = string.concat(s, _row("Livo Treasury", d.livoTreasury));
-        s = string.concat(s, _row("Livo Token Deployer", d.livoTokenDeployer));
+        s = string.concat(s, _row("Realm Deployer", d.realmDev));
+        s = string.concat(s, _row("Realm Treasury", d.realmTreasury));
+        s = string.concat(s, _row("Realm Token Deployer", d.realmTokenDeployer));
 
         s = string.concat(s, "\n## Integrations\n\n", _tableHeader("Name"));
         s = string.concat(s, _row("WETH", d.weth));
@@ -412,7 +412,7 @@ contract ExportDeployments is Script {
     // ---------------------------------------------------------------- Helpers
 
     /// @dev Inner column widths (content + padding, excluding the surrounding `| ` and ` |`).
-    ///      Longest name today is `LivoGraduatorUniswapV4 (0.5% hook)` = 34 chars, so 44 leaves
+    ///      Longest name today is `RealmGraduatorUniswapV4 (0.5% hook)` = 34 chars, so 44 leaves
     ///      ample buffer. Backticked addresses are exactly 44 chars
     ///      (`0x` + 40 hex + 2 backticks), so the same width fits the address column too.
     uint256 private constant COL1_WIDTH = 44;

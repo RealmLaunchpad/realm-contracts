@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LivoE2EBase} from "test/e2e/base/LivoE2EBase.t.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmE2EBase} from "test/e2e/base/RealmE2EBase.t.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice E2E happy paths that apply to every factory variant. Exercises the launchpad
 ///         pre-graduation buy/sell paths, the deployer-buy path through the real launchpad,
 ///         and the multi-recipient fee (>=2 fee receivers) end-to-end.
-abstract contract E2EHappyPath is LivoE2EBase {
+abstract contract E2EHappyPath is RealmE2EBase {
     /// @dev Modest pre-graduation buy that stays under any sniper variant's 3% per-tx cap.
     uint256 internal constant SMALL_BUY = 0.05 ether;
 
@@ -42,9 +42,9 @@ abstract contract E2EHappyPath is LivoE2EBase {
     function test_e2e_deployerBuy_distributesAcrossSupplyShares() public {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
 
-        ILivoFactory.SupplyShare[] memory ss = new ILivoFactory.SupplyShare[](2);
-        ss[0] = ILivoFactory.SupplyShare({account: alice, shares: 7_000});
-        ss[1] = ILivoFactory.SupplyShare({account: bob, shares: 3_000});
+        IRealmFactory.SupplyShare[] memory ss = new IRealmFactory.SupplyShare[](2);
+        ss[0] = IRealmFactory.SupplyShare({account: alice, shares: 7_000});
+        ss[1] = IRealmFactory.SupplyShare({account: bob, shares: 3_000});
 
         // 0.1 ether keeps the deployer buy small (well below graduation).
         address token = _createTokenWithDeployerBuy(salt, 0.1 ether, ss);
@@ -60,7 +60,7 @@ abstract contract E2EHappyPath is LivoE2EBase {
 
     function test_e2e_multiRecipient_isWiredToMasterHandler() public {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
-        ILivoFactory.FeeShare[] memory fees = _fsTwo(alice, bob);
+        IRealmFactory.FeeShare[] memory fees = _fsTwo(alice, bob);
         address token = _createTestTokenWithSplit(salt, fees);
 
         assertNotEq(token, address(0));

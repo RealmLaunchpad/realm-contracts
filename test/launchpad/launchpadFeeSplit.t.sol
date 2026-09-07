@@ -2,12 +2,12 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 /// @title Launchpad pre-graduation fee routing — LP-fee split + creator tax
@@ -18,7 +18,7 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
     event LpFeesAccrued(address indexed token, uint256 creatorShare, uint256 treasuryShare);
     event CreatorTaxesAccrued(address indexed token, uint256 amount);
 
-    LivoToken internal feeToken;
+    RealmToken internal feeToken;
 
     /// @dev A tax window long enough to stay active for the duration of every trade in a test.
     uint32 internal constant LONG_TAX_WINDOW = uint32(3650 days);
@@ -29,19 +29,19 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
     ///      exercised; the tax rate flows through `TaxConfigInit`, the LP fee through `InitializeParams`.
     function _wireToken(uint16 lpFee, uint16 treasuryShare, uint16 taxBuy, uint16 taxSell)
         internal
-        returns (LivoToken t)
+        returns (RealmToken t)
     {
         return _wireTokenWindow(lpFee, treasuryShare, taxBuy, taxSell, LONG_TAX_WINDOW);
     }
 
     function _wireTokenWindow(uint16 lpFee, uint16 treasuryShare, uint16 taxBuy, uint16 taxSell, uint32 window)
         internal
-        returns (LivoToken t)
+        returns (RealmToken t)
     {
-        t = LivoToken(payable(Clones.clone(address(livoTaxTokenV2))));
-        LivoTaxableTokenUniV2(payable(address(t)))
+        t = RealmToken(payable(Clones.clone(address(realmTaxTokenV2))));
+        RealmTaxableTokenUniV2(payable(address(t)))
             .initialize(
-                ILivoToken.InitializeParams({
+                IRealmToken.InitializeParams({
                     name: "SplitToken",
                     symbol: "SPLIT",
                     tokenOwner: creator,
@@ -68,16 +68,16 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
         t.registerFees(_fs(creator));
 
         vm.prank(address(factoryV2Unified));
-        launchpad.launchToken(address(t), ILivoBondingCurve(address(bondingCurve)));
+        launchpad.launchToken(address(t), IRealmBondingCurve(address(bondingCurve)));
     }
 
-    function _buy(LivoToken t, uint256 value) internal returns (uint256) {
+    function _buy(RealmToken t, uint256 value) internal returns (uint256) {
         vm.deal(buyer, value);
         vm.prank(buyer);
         return launchpad.buyTokensWithExactEth{value: value}(address(t), 0, DEADLINE);
     }
 
-    function _creatorClaimable(LivoToken t) internal view returns (uint256) {
+    function _creatorClaimable(RealmToken t) internal view returns (uint256) {
         address[] memory tokens = new address[](1);
         tokens[0] = address(t);
         return feeHandler.getClaimable(tokens, creator)[0];
@@ -175,7 +175,7 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
         feeToken = _wireToken(2000, 10_000, 600, 0);
         vm.deal(buyer, 1 ether);
         vm.prank(buyer);
-        vm.expectRevert(LivoLaunchpad.InvalidLaunchpadFee.selector);
+        vm.expectRevert(RealmLaunchpad.InvalidLaunchpadFee.selector);
         launchpad.buyTokensWithExactEth{value: 1 ether}(address(feeToken), 0, DEADLINE);
     }
 }

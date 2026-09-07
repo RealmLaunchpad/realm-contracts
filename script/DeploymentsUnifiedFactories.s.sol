@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
+import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {CreatorVaultScriptConfig} from "script/CreatorVaultScriptConfig.sol";
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {DeploymentAddresses as AddressesFromLivoTaxableToken} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {DeploymentAddresses as AddressesFromRealmTaxableToken} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
 import {
     DeploymentAddressesEthereumMainnet,
@@ -23,8 +23,8 @@ import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 
 /// @title Deploy the unified factory implementations and their UUPS proxies
 /// @notice Deploys ONLY the four contracts that are net-new for this run:
-///         1. `LivoFactoryUniV2Unified` (implementation) + its `ERC1967Proxy`
-///         2. `LivoFactoryUniV4Unified` (implementation) + its `ERC1967Proxy`
+///         1. `RealmFactoryUniV2Unified` (implementation) + its `ERC1967Proxy`
+///         2. `RealmFactoryUniV4Unified` (implementation) + its `ERC1967Proxy`
 ///
 ///         Every other dependency — launchpad, bonding curve, graduators, master fee handler,
 ///         and every token implementation — is sourced from the per-chain manifest in
@@ -63,7 +63,7 @@ contract DeploymentsUnifiedFactories is Script {
     }
 
     /// @notice Resolves core dependency addresses for the active chain.
-    /// @dev Asserts that `LivoTaxableTokenUniV4`'s hardcoded chain import matches the active chain
+    /// @dev Asserts that `RealmTaxableTokenUniV4`'s hardcoded chain import matches the active chain
     ///      (run `just chain-sepolia` before deploying to sepolia).
     function _getDeps() internal view returns (Deps memory d) {
         if (block.chainid == DeploymentsEthereumMainnet.BLOCKCHAIN_ID) {
@@ -78,9 +78,9 @@ contract DeploymentsUnifiedFactories is Script {
                 taxTokenV2Impl: DeploymentsEthereumMainnet.TAXABLE_TOKEN_V2_IMPL
             });
             require(
-                AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableToken.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Mainnet"
+                "RealmTaxableTokenUniV4 import is not Mainnet"
             );
         } else if (block.chainid == DeploymentsEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
@@ -94,9 +94,9 @@ contract DeploymentsUnifiedFactories is Script {
                 taxTokenV2Impl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL
             });
             require(
-                AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER
+                AddressesFromRealmTaxableToken.UNIV4_POOL_MANAGER
                     == DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
+                "RealmTaxableTokenUniV4 import is not Sepolia (run `just chain-sepolia`)"
             );
         } else if (block.chainid == DeploymentsArcTestnet.BLOCKCHAIN_ID) {
             d = Deps({
@@ -110,8 +110,8 @@ contract DeploymentsUnifiedFactories is Script {
                 taxTokenV2Impl: DeploymentsArcTestnet.TAXABLE_TOKEN_V2_IMPL
             });
             require(
-                AddressesFromLivoTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
-                "LivoTaxableTokenUniV4 import is not ARC testnet (run `just chain-arc-testnet`)"
+                AddressesFromRealmTaxableToken.UNIV4_POOL_MANAGER == DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
+                "RealmTaxableTokenUniV4 import is not ARC testnet (run `just chain-arc-testnet`)"
             );
         } else {
             revert("Unsupported chain");
@@ -132,7 +132,7 @@ contract DeploymentsUnifiedFactories is Script {
         Deps memory d = _getDeps();
         FreshDeployments memory fresh;
 
-        console.log("=== Livo Unified Factories Deployment ===");
+        console.log("=== Realm Unified Factories Deployment ===");
         console.log("Chain ID:", block.chainid);
         console.log("Deployer:", msg.sender);
         console.log("Launchpad:", d.launchpad);
@@ -144,9 +144,9 @@ contract DeploymentsUnifiedFactories is Script {
         console.log("| -------------------------------------- | --- |");
 
         fresh.factoryV2Impl = address(
-            new LivoFactoryUniV2Unified(
+            new RealmFactoryUniV2Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenV2Impl}),
+                IRealmFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenV2Impl}),
                 d.bondingCurve,
                 d.graduatorV2,
                 d.masterFeeHandler,
@@ -155,16 +155,16 @@ contract DeploymentsUnifiedFactories is Script {
                 CreatorVaultScriptConfig.tierConfigFor()
             )
         );
-        console.log("| LivoFactoryUniV2Unified (impl)        |", fresh.factoryV2Impl);
+        console.log("| RealmFactoryUniV2Unified (impl)        |", fresh.factoryV2Impl);
 
         fresh.factoryV2 =
-            address(new ERC1967Proxy(fresh.factoryV2Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())));
-        console.log("| LivoFactoryUniV2Unified (proxy)       |", fresh.factoryV2);
+            address(new ERC1967Proxy(fresh.factoryV2Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())));
+        console.log("| RealmFactoryUniV2Unified (proxy)       |", fresh.factoryV2);
 
         fresh.factoryV4Impl = address(
-            new LivoFactoryUniV4Unified(
+            new RealmFactoryUniV4Unified(
                 d.launchpad,
-                ILivoFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenImpl}),
+                IRealmFactory.TokenImpls({base: d.tokenImpl, tax: d.taxTokenImpl}),
                 d.bondingCurve,
                 d.graduatorV4,
                 d.masterFeeHandler,
@@ -173,11 +173,11 @@ contract DeploymentsUnifiedFactories is Script {
                 CreatorVaultScriptConfig.v4TierConfigFor()
             )
         );
-        console.log("| LivoFactoryUniV4Unified (impl)        |", fresh.factoryV4Impl);
+        console.log("| RealmFactoryUniV4Unified (impl)        |", fresh.factoryV4Impl);
 
         fresh.factoryV4 =
-            address(new ERC1967Proxy(fresh.factoryV4Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())));
-        console.log("| LivoFactoryUniV4Unified (proxy)       |", fresh.factoryV4);
+            address(new ERC1967Proxy(fresh.factoryV4Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())));
+        console.log("| RealmFactoryUniV4Unified (proxy)       |", fresh.factoryV4);
 
         vm.stopBroadcast();
 

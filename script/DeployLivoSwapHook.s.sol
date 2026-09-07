@@ -42,8 +42,8 @@ contract DeployLivoSwapHook is Script {
 
     function run() external {
         (address poolManager, address router, address treasury) = _resolveAddresses();
-        require(router != address(0), "LP_FEE_ROUTER not set; deploy LivoLpFeeRouter first");
-        require(treasury != address(0), "LIVO_TREASURY not set");
+        require(router != address(0), "LP_FEE_ROUTER not set; deploy RealmLpFeeRouter first");
+        require(treasury != address(0), "REALM_TREASURY not set");
 
         console.log("=== Deploy LivoSwapHook ===");
         console.log("Chain ID:    %d", block.chainid);
@@ -91,23 +91,23 @@ contract DeployLivoSwapHook is Script {
         if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER;
             router = DeploymentsEthereumMainnet.LP_FEE_ROUTER;
-            treasury = DeploymentAddressesEthereumMainnet.LIVO_TREASURY;
+            treasury = DeploymentAddressesEthereumMainnet.REALM_TREASURY;
         } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER;
             router = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
-            treasury = DeploymentAddressesEthereumSepolia.LIVO_TREASURY;
+            treasury = DeploymentAddressesEthereumSepolia.REALM_TREASURY;
         } else if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER;
             router = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
-            treasury = DeploymentAddressesRobinhoodMainnet.LIVO_TREASURY;
+            treasury = DeploymentAddressesRobinhoodMainnet.REALM_TREASURY;
         } else if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER;
             router = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
-            treasury = DeploymentAddressesRobinhoodTestnet.LIVO_TREASURY;
+            treasury = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
         } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER;
             router = DeploymentsArcTestnet.LP_FEE_ROUTER;
-            treasury = DeploymentAddressesArcTestnet.LIVO_TREASURY;
+            treasury = DeploymentAddressesArcTestnet.REALM_TREASURY;
         } else {
             revert("Unsupported chain ID");
         }

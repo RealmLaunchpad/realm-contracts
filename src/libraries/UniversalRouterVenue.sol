@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 // The universal router is v4-periphery's client, so its `PoolKey` pin is the one `IV4Router` types
-// against — building the key from this import avoids the abi round-trip `LivoUniv4BuyBacks` needs for
+// against — building the key from this import avoids the abi round-trip `RealmUniv4BuyBacks` needs for
 // the canonical `lib/v4-core` key it gets from `UniswapV4PoolConstants`.
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -129,7 +129,7 @@ library UniversalRouterVenue {
     ///         `native -> USDG -> xSTOCK` is the same call shape as `native -> asset`.
     /// @dev The one venue that reaches an asset with no native pool of its own. Uniswap V4 pools are
     ///      keyed by `(fee, tickSpacing, hooks)`, which cannot be discovered from the two currencies —
-    ///      so unlike the V2 path, somebody has to SUPPLY the route. See `LivoDividendSwapRegistry`.
+    ///      so unlike the V2 path, somebody has to SUPPLY the route. See `RealmDividendSwapRegistry`.
     /// @param path each hop's destination currency and the pool key fields that identify its pool. Must
     ///        be non-empty; the last hop's `intermediateCurrency` is what the caller receives.
     /// @param minOut minimum output in the FINAL currency's own decimals.

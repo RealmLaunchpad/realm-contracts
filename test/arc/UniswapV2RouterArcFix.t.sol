@@ -15,7 +15,7 @@ contract MockToken is ERC20 {
 }
 
 /// @notice Proves the deployed arc-testnet V2 router (`Arc.UNIV2_ROUTER`, the vendored
-///         LivoUniswapV2Router02 with pair init-code-hash 0xb5a7f108…) is compatible with the factory
+///         RealmUniswapV2Router02 with pair init-code-hash 0xb5a7f108…) is compatible with the factory
 ///         — i.e. the fix for the original misdeployed Router02, whose stock 0x96e8ac42… hash made
 ///         every `pairFor` target a non-contract.
 ///

@@ -4,8 +4,8 @@ pragma solidity 0.8.28;
 import {Script} from "lib/forge-std/src/Script.sol";
 import {console} from "lib/forge-std/src/console.sol";
 
-import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
-import {Hop} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice Picks the Uniswap V4 route that actually buys the most of each payout asset, out of the
@@ -15,7 +15,7 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 ///
 /// @dev WRITES NOTHING ON-CHAIN. Routes belong to the token that converts through them and are
 ///      registered by that token, at its own creation, via `registerRoute`. There is no admin route
-///      table any more and no asset-level approval — Livo does not review payout assets. This script is
+///      table any more and no asset-level approval — Realm does not review payout assets. This script is
 ///      therefore a measurement, not an operation: it broadcasts nothing and needs no keys.
 ///
 /// @dev THE PROBE PICKS THE ROUTE, the discovery script only shortlists. `discover_xstock_routes.py`
@@ -49,7 +49,7 @@ contract PickDividendRoutes is Script {
     string internal constant DEFAULT_ROUTES_OUT = "script/operations/dividend-routes/catalogue.robinhood.mainnet.json";
 
     function run() external {
-        LivoDividendSwapRegistry registry = LivoDividendSwapRegistry(vm.envAddress("DIVIDEND_SWAP_REGISTRY"));
+        RealmDividendSwapRegistry registry = RealmDividendSwapRegistry(vm.envAddress("DIVIDEND_SWAP_REGISTRY"));
         string memory json = vm.readFile(vm.envOr("ROUTES_JSON", DEFAULT_ROUTES_JSON));
 
         address[] memory assets = vm.parseJsonAddressArray(json, ".assets");
@@ -87,7 +87,7 @@ contract PickDividendRoutes is Script {
     ///      then rolls the whole thing back. Nothing here is broadcast; the return value is the wire
     ///      format of the route that bought the most of each asset, empty for an asset no candidate
     ///      could buy at all.
-    function _probe(LivoDividendSwapRegistry registry, address[] memory assets, bytes[] memory encoded)
+    function _probe(RealmDividendSwapRegistry registry, address[] memory assets, bytes[] memory encoded)
         internal
         returns (bytes[] memory chosen)
     {
@@ -118,7 +118,7 @@ contract PickDividendRoutes is Script {
     ///      `registerRoute` is write-once, and `address(this)` stands in as the token every time.
     /// @dev `minOut` of 1: the probe asks whether the pools exist and hold anything, and compares
     ///      candidates against each other. Pricing a real floor is the keeper's job, per conversion.
-    function _bought(LivoDividendSwapRegistry registry, address asset, bytes memory route)
+    function _bought(RealmDividendSwapRegistry registry, address asset, bytes memory route)
         internal
         returns (uint256 out)
     {

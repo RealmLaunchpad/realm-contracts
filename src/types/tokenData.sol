@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 
 struct TokenConfig {
     /// @notice Bonding curve address. Cannot be altered once is set
-    ILivoBondingCurve bondingCurve;
+    IRealmBondingCurve bondingCurve;
 }
 
 struct TokenState {
     /// @notice Total ETH collected by the token purchases, which will be used mostly for liquidity
     uint256 ethCollected;
-    /// @notice Amount of tokens in circulation outside Livo Launchpad (that have been sold)
+    /// @notice Amount of tokens in circulation outside Realm Launchpad (that have been sold)
     uint256 releasedSupply;
     /// @notice This is set to true once graduated, meaning it is no longer tradable from the launchpad
     bool graduated;

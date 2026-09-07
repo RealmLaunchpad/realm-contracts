@@ -3,9 +3,9 @@ pragma solidity 0.8.28;
 
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
-import {ILivoTaxableToken} from "src/interfaces/ILivoTaxableToken.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {IRealmClaims} from "src/interfaces/IRealmClaims.sol";
+import {IRealmTaxableToken} from "src/interfaces/IRealmTaxableToken.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -17,7 +17,7 @@ import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 
 /// @notice Test-only router stub that reverts on every call. Used with `vm.etch` to exercise the
-///         hook's `try/catch` fallback to `ILivoToken.accrueFees`.
+///         hook's `try/catch` fallback to `IRealmToken.accrueFees`.
 contract RevertingRouter {
     fallback() external payable {
         revert("router down");
@@ -65,7 +65,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     function _pendingCreatorFees(address token) internal view returns (uint256) {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        return ILivoClaims(ILivoToken(token).feeHandler()).getClaimable(tokens, creator)[0];
+        return IRealmClaims(IRealmToken(token).feeHandler()).getClaimable(tokens, creator)[0];
     }
 
     /// @notice Buy charges 1% LP fee, split 40/60 treasury/creator at tier 0.
@@ -306,8 +306,8 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
     // ─── LivoSwapBuy / LivoSwapSell event tests ────────────────────────
 
-    bytes32 constant LIVO_SWAP_BUY_SIG = keccak256("LivoSwapBuy(address,address,uint256,uint256,uint256)");
-    bytes32 constant LIVO_SWAP_SELL_SIG = keccak256("LivoSwapSell(address,address,uint256,uint256,uint256)");
+    bytes32 constant HOOK_SWAP_BUY_SIG = keccak256("LivoSwapBuy(address,address,uint256,uint256,uint256)");
+    bytes32 constant HOOK_SWAP_SELL_SIG = keccak256("LivoSwapSell(address,address,uint256,uint256,uint256)");
 
     function _findLog(Vm.Log[] memory logs, bytes32 sig) internal pure returns (Vm.Log memory) {
         for (uint256 i = 0; i < logs.length; i++) {
@@ -327,7 +327,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         vm.recordLogs();
         _swapBuy(buyer, buyAmount, 0, true);
-        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), HOOK_SWAP_BUY_SIG);
 
         assertEq(address(uint160(uint256(log.topics[1]))), testToken, "token mismatch");
 
@@ -352,7 +352,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         vm.recordLogs();
         _swapSell(buyer, sellAmount, 0, true);
-        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_SELL_SIG);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), HOOK_SWAP_SELL_SIG);
 
         assertEq(address(uint160(uint256(log.topics[1]))), testToken, "token mismatch");
 
@@ -374,7 +374,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         vm.recordLogs();
         _swapBuy(buyer, buyAmount, 0, true);
-        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), HOOK_SWAP_BUY_SIG);
 
         (,, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
 
@@ -393,7 +393,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         vm.recordLogs();
         _swapSell(buyer, sellAmount, 0, true);
-        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_SELL_SIG);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), HOOK_SWAP_SELL_SIG);
 
         (, uint256 ethOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
 
@@ -486,7 +486,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         (, uint256 ethOut, uint256 ethFees) =
-            abi.decode(_findLog(logs, LIVO_SWAP_SELL_SIG).data, (uint256, uint256, uint256));
+            abi.decode(_findLog(logs, HOOK_SWAP_SELL_SIG).data, (uint256, uint256, uint256));
         (uint256 routedEth,, uint256 routedValue) =
             abi.decode(_findLog(logs, RECORDED_SIG).data, (uint256, uint256, uint256));
 
@@ -555,7 +555,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         vm.recordLogs();
         _swapExactOutputBuyV4(buyer, testToken, wantTokens, ethCap, true);
-        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), HOOK_SWAP_BUY_SIG);
         (uint256 ethIn, uint256 tokensOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
 
         assertEq(tokensOut, wantTokens, "exact-output must deliver requested tokens");
@@ -575,7 +575,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         vm.recordLogs();
         _swapExactOutputBuyV4(buyer, testToken, wantTokens, ethCap, true);
-        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), HOOK_SWAP_BUY_SIG);
         (uint256 ethIn, uint256 tokensOut, uint256 ethFees) = abi.decode(log.data, (uint256, uint256, uint256));
 
         assertEq(tokensOut, wantTokens, "exact-output must deliver requested tokens");
@@ -600,7 +600,7 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         vm.recordLogs();
         _swapExactOutputBuyV4(buyer, testToken, wantTokens, ethCap, true);
-        Vm.Log memory log = _findLog(vm.getRecordedLogs(), LIVO_SWAP_BUY_SIG);
+        Vm.Log memory log = _findLog(vm.getRecordedLogs(), HOOK_SWAP_BUY_SIG);
         // `ethIn` is the swapper's total ETH out (pool input + fee) = the grossed-up basis the hook
         // charges the fee on, so the canonical split derives directly from it.
         (uint256 ethIn,,) = abi.decode(log.data, (uint256, uint256, uint256));
@@ -669,8 +669,8 @@ contract LivoSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     function _mockBuyFeeBps(address token, uint16 lpFeeBps, uint16 buyTaxBps) internal {
         vm.mockCall(
             token,
-            abi.encodeWithSelector(ILivoToken.getSwapFees.selector),
-            abi.encode(ILivoToken.LivoTradeFees({taxBps: buyTaxBps, lpFeeBps: lpFeeBps}))
+            abi.encodeWithSelector(IRealmToken.getSwapFees.selector),
+            abi.encode(IRealmToken.RealmTradeFees({taxBps: buyTaxBps, lpFeeBps: lpFeeBps}))
         );
     }
 

@@ -3,11 +3,11 @@ pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
-import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -22,12 +22,12 @@ import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
-import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {IRealmClaims} from "src/interfaces/IRealmClaims.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
@@ -56,7 +56,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         address token = factoryV4.createToken(
             name,
             symbol,
-            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _nextValidSalt(address(factoryV4), address(realmToken)),
             _fs(creator),
             _noSs(),
             false,
@@ -89,9 +89,9 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
     modifier transferOwnership(address caller, address newOwner) virtual {
         vm.prank(caller);
-        ILivoToken(testToken).proposeNewOwner(newOwner);
+        IRealmToken(testToken).proposeNewOwner(newOwner);
         vm.prank(newOwner);
-        ILivoToken(testToken).acceptTokenOwnership();
+        IRealmToken(testToken).acceptTokenOwnership();
         _;
     }
 
@@ -102,9 +102,9 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 
     function _transferOwnership(address newOwner) internal {
         vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(newOwner);
+        IRealmToken(testToken).proposeNewOwner(newOwner);
         vm.prank(newOwner);
-        ILivoToken(testToken).acceptTokenOwnership();
+        IRealmToken(testToken).acceptTokenOwnership();
     }
 
     modifier twoGraduatedTokensWithBuys(uint256 buyAmount) virtual {
@@ -148,7 +148,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
     }
 
     function _claimable(address token, address account) internal view virtual returns (uint256) {
-        return ILivoClaims(ILivoToken(token).feeHandler()).getClaimable(_singleToken(token), account)[0];
+        return IRealmClaims(IRealmToken(token).feeHandler()).getClaimable(_singleToken(token), account)[0];
     }
 }
 
@@ -696,7 +696,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         _transferOwnership(alice);
 
-        assertEq(ILivoToken(testToken).owner(), alice, "owner should be updated after ownership transfer");
+        assertEq(IRealmToken(testToken).owner(), alice, "owner should be updated after ownership transfer");
         (address[] memory recipientsAfter,) = feeHandler.getRecipients(testToken);
         assertEq(recipientsAfter.length, recipientsBefore.length, "recipients length should not change");
         assertEq(recipientsAfter[0], recipientsBefore[0], "fee receiver should not change on ownership transfer");
@@ -1247,7 +1247,7 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 contract BaseUniswapV4ClaimFees_NormalToken is BaseUniswapV4ClaimFeesBase {
     function setUp() public override {
         super.setUp();
-        // Uses default implementation (livoToken) from base
+        // Uses default implementation (realmToken) from base
     }
 }
 
@@ -1256,7 +1256,7 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
     function setUp() public override(TaxTokenUniV4BaseTests, BaseUniswapV4FeesTests) {
         super.setUp();
         // Override implementation for this test suite to use tax tokens
-        implementation = ILivoToken(address(taxTokenImpl));
+        implementation = IRealmToken(address(taxTokenImpl));
         SELL_TAX_BPS = DEFAULT_SELL_TAX_BPS;
     }
 
@@ -1281,7 +1281,7 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         address token = factoryTax.createToken(
             name,
             symbol,
-            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             _fs(creator),
             _noSs(),
             false,

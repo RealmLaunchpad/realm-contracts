@@ -3,11 +3,11 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
@@ -17,10 +17,10 @@ import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 ///         reached, cooldown) does not end the run — the point is to reach as
 ///         many interleavings as possible, not to assert on any single one.
 contract DividendSolvencyHandler is Test {
-    LivoTaxableTokenUniV4 public immutable TOKEN;
+    RealmTaxableTokenUniV4 public immutable TOKEN;
     address[] public holders;
 
-    constructor(LivoTaxableTokenUniV4 token_, address[] memory holders_) {
+    constructor(RealmTaxableTokenUniV4 token_, address[] memory holders_) {
         TOKEN = token_;
         holders = holders_;
     }
@@ -94,7 +94,7 @@ contract DividendSolvencyHandler is Test {
 contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
     address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
 
-    LivoTaxableTokenUniV4 internal divToken;
+    RealmTaxableTokenUniV4 internal divToken;
     DividendSolvencyHandler internal handler;
 
     address internal holderA = makeAddr("holderA");
@@ -103,10 +103,10 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
     function setUp() public virtual override {
         super.setUp();
 
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DivInv",
             symbol: "DINV",
-            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -145,17 +145,17 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
         address token = factoryTax.createToken(
             setup,
             cfg,
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
         testToken = token;
         _launchpadBuy(token, 2 ether);
         _graduateToken();
 
-        divToken = LivoTaxableTokenUniV4(payable(token));
+        divToken = RealmTaxableTokenUniV4(payable(token));
 
         // Spread the float so transfers actually move minima and the denominator.
         uint256 float = IERC20(token).balanceOf(buyer);

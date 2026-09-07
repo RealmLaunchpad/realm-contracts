@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LivoE2EBase} from "test/e2e/base/LivoE2EBase.t.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {RealmE2EBase} from "test/e2e/base/RealmE2EBase.t.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 /// @notice E2E graduation flows. Drives a token from creation, through bonding curve buys, into
 ///         graduation, then exercises a post-graduation swap on the appropriate AMM (V2 pair or
 ///         V4 pool depending on the variant's graduator).
-abstract contract E2EGraduationFlows is LivoE2EBase {
+abstract contract E2EGraduationFlows is RealmE2EBase {
     function test_e2e_graduates_via_launchpad_buy() public {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
         address token = _createTestToken(salt);
@@ -19,7 +19,7 @@ abstract contract E2EGraduationFlows is LivoE2EBase {
         _graduateE2E(token);
 
         assertTrue(launchpad.getTokenState(token).graduated, "launchpad must mark token graduated");
-        assertTrue(ILivoToken(token).graduated(), "token must mark itself graduated");
+        assertTrue(IRealmToken(token).graduated(), "token must mark itself graduated");
     }
 
     function test_e2e_postGrad_swap_buy_returnsTokens() public {
@@ -75,7 +75,7 @@ abstract contract E2EGraduationFlows is LivoE2EBase {
 
     function test_e2e_multiRecipient_canClaim_afterGraduation() public {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
-        ILivoFactory.FeeShare[] memory fees = _fsTwo(alice, bob);
+        IRealmFactory.FeeShare[] memory fees = _fsTwo(alice, bob);
         address token = _createTestTokenWithSplit(salt, fees);
         _graduateE2E(token);
 

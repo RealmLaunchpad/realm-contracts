@@ -3,12 +3,12 @@
 This documents the **struct-based `createToken` overload with `referral`** — the current
 recommended entry point on both unified factories:
 
-- `LivoFactoryUniV2Unified` (graduates to Uniswap V2)
-- `LivoFactoryUniV4Unified` (graduates to Uniswap V4)
+- `RealmFactoryUniV2Unified` (graduates to Uniswap V2)
+- `RealmFactoryUniV4Unified` (graduates to Uniswap V4)
 
 > **Which overload is "the third one"?** ABI order ≠ source order. In
-> `src/factories/LivoFactoryUniV2Unified.sol` this `referral` overload is literally the 3rd
-> `createToken`. In `abis/LivoFactoryUniV4Unified.json` the same overload is listed **first**;
+> `src/factories/RealmFactoryUniV2Unified.sol` this `referral` overload is literally the 3rd
+> `createToken`. In `abis/RealmFactoryUniV4Unified.json` the same overload is listed **first**;
 > the ABI's 3rd entry is this signature **minus** the trailing `referral`. Documenting the
 > `referral` variant covers both — `referral` is just an optional trailing arg (pass
 > `address(0)` for "none", which behaves exactly like the non-referral overload).
@@ -16,7 +16,7 @@ recommended entry point on both unified factories:
 ## Signatures
 
 ```solidity
-// V2 — LivoFactoryUniV2Unified
+// V2 — RealmFactoryUniV2Unified
 function createToken(
     TokenSetupTiered   tokenSetup,
     TaxConfigs         taxConfigs,
@@ -26,7 +26,7 @@ function createToken(
     address            referral
 ) external payable returns (address token);
 
-// V4 — LivoFactoryUniV4Unified  (identical, plus `univ4Configs` in position 3)
+// V4 — RealmFactoryUniV4Unified  (identical, plus `univ4Configs` in position 3)
 function createToken(
     TokenSetupTiered   tokenSetup,
     TaxConfigs         taxConfigs,
