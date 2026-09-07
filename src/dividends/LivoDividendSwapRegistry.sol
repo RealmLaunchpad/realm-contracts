@@ -285,17 +285,27 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
         emit DividendRouteRegistered(msg.sender, asset, route);
     }
 
+    /// @dev The view-side entry: decodes the route, then defers to the shared gate below. The
+    ///      conversion path decodes ONCE for itself and calls that gate directly, so the same bytes are
+    ///      never stripped and `abi.decode`d twice in one transaction.
+    function _validate(address asset, bytes memory route) internal view returns (SwapRejection) {
+        return _validate(asset, nativeQuoteToken(), DividendRouteLib.decode(route));
+    }
+
     /// @dev The one gate, shared by registration and by every conversion. Ordered cheapest-first, and
     ///      the venue branch mirrors `_venueSwap` exactly — an asset judged eligible on one venue and
     ///      then swapped on another would convert through a pool nobody chose.
-    function _validate(address asset, bytes memory route) internal view returns (SwapRejection) {
-        address quote = nativeQuoteToken();
+    function _validate(address asset, address quote, DividendRouteLib.Decoded memory route)
+        internal
+        view
+        returns (SwapRejection)
+    {
         if (!isAllowedQuoteToken[quote]) return SwapRejection.QuoteNotAllowed;
         if (isBlacklisted[asset]) return SwapRejection.Blacklisted;
 
-        uint8 venue = DividendRouteLib.venue(route);
-        if (venue == DividendRouteLib.VENUE_V4) return _validateV4(asset, DividendRouteLib.toV4Hops(route));
-        if (venue == DividendRouteLib.VENUE_V3) return _validateV3(asset, quote, DividendRouteLib.toV3Path(route));
+        uint8 venue = route.venue;
+        if (venue == DividendRouteLib.VENUE_V4) return _validateV4(asset, route.hops);
+        if (venue == DividendRouteLib.VENUE_V3) return _validateV3(asset, quote, route.path);
         // Not a tag we know: refuse rather than fall through to V2, which would silently convert through
         // a pool the creator did not pick.
         if (venue != 0) return SwapRejection.MalformedRoute;
@@ -395,8 +405,12 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     {
         require(msg.value != 0, NothingToSwap());
 
-        bytes memory route = _routes[msg.sender][asset];
-        SwapRejection rejection = _validate(asset, route);
+        // Decoded once and handed to both legs: `_validate` and `_venueSwap` need the same body, and
+        // stripping plus `abi.decode`ing a 200-320 byte route twice is pure waste on a per-conversion
+        // path. `quote` is threaded for the same reason — it is a STATICCALL into the V2 router.
+        address quote = nativeQuoteToken();
+        DividendRouteLib.Decoded memory route = DividendRouteLib.decode(_routes[msg.sender][asset]);
+        SwapRejection rejection = _validate(asset, quote, route);
         require(rejection == SwapRejection.OK, SwapNotSupported(rejection));
 
         // The keeper's fee comes off the top, so what follows only ever spends what is left. `minOut` is
@@ -413,7 +427,7 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
         // Buy to THIS contract, not straight to `recipient`: the amount forwarded has to be a balance
         // delta measured here, because a fee-on-transfer asset delivers less than the router reports.
         uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
-        bool swapped = _venueSwap(asset, route, nativeIn, minOut);
+        bool swapped = _venueSwap(asset, quote, route, nativeIn, minOut);
         require(swapped, SwapFailed());
         out = IERC20(asset).balanceOf(address(this)) - balanceBefore;
 
@@ -440,11 +454,17 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
     /// @dev Spends `nativeIn` on the venue `route` names. Mirrors `_validate`'s branch order exactly.
     /// @return ok false if the venue reverted; the caller turns that into `SwapFailed` and keeps the
     ///         native it was sent.
-    function _venueSwap(address asset, bytes memory route, uint256 nativeIn, uint256 minOut) private returns (bool ok) {
-        uint8 venue = DividendRouteLib.venue(route);
+    function _venueSwap(
+        address asset,
+        address quote,
+        DividendRouteLib.Decoded memory route,
+        uint256 nativeIn,
+        uint256 minOut
+    ) private returns (bool ok) {
+        uint8 venue = route.venue;
 
         if (venue == DividendRouteLib.VENUE_V4) {
-            Hop[] memory hops = DividendRouteLib.toV4Hops(route);
+            Hop[] memory hops = route.hops;
             PathKey[] memory path = new PathKey[](hops.length);
             for (uint256 i; i < hops.length; ++i) {
                 path[i] = PathKey({
@@ -460,11 +480,11 @@ contract LivoDividendSwapRegistry is ILivoDividendSwapRegistry, Initializable, O
             return UniversalRouterVenue.swapNativeToAssetV4Path(UNIV4_UNIVERSAL_ROUTER, path, nativeIn, minOut);
         }
 
-        address quote = nativeQuoteToken();
         if (venue == DividendRouteLib.VENUE_V3) {
-            return UniversalRouterVenue.swapNativeToAssetV3Path(
-                UNIV4_UNIVERSAL_ROUTER, quote, DividendRouteLib.toV3Path(route), nativeIn, minOut
-            );
+            return
+                UniversalRouterVenue.swapNativeToAssetV3Path(
+                    UNIV4_UNIVERSAL_ROUTER, quote, route.path, nativeIn, minOut
+                );
         }
 
         address[] memory v2Path = new address[](2);

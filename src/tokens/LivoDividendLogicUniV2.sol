@@ -38,7 +38,8 @@ contract LivoDividendLogicUniV2 is LivoTaxableTokenUniV2Base, DividendDistributi
 
     /// @dev Names the winner between the venue base's override and the `DividendDistribution` default
     ///      that reaches this contract through the cold-half branch. The venue base is what the token
-    ///      uses; nothing here calls it, but a silently wrong answer is not worth leaving available.
+    ///      uses, and `processDividends` reads it here to decide whether this asset's funding actually
+    ///      SWAPS — which is what narrows the staleness bypass of the keeper gate.
     function _isTokenSpaceDividendAsset(address asset)
         internal
         view

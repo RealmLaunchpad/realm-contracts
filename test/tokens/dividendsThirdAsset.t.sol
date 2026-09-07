@@ -12,6 +12,7 @@ import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.s
 import {SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 import {installDividendSwapRegistry, DEFAULT_DIVIDEND_POOL_LIQUIDITY} from "test/helpers/DividendRegistryHelpers.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @notice A bare `DividendDistributionLogic` with the token's hooks stubbed out. It exists so the
 ///         third-asset payout shape — the only one that actually performs a swap — can be exercised
@@ -723,6 +724,45 @@ contract DividendsThirdAssetTests is Test {
 
         harness.processDividends(0, _noHolders());
         assertGt(harness.dividendsOwed(), 0, "the same buffer funds a DAI stream at a reachable floor");
+    }
+
+    //////////////////////// the keeper gate's staleness bypass //////////////////////
+
+    /// @dev Staleness is NOT on its own a licence to convert someone else's buffer. `dividendsStale`
+    ///      reads "no distribution in a month", which a quiet token reaches in its ordinary steady
+    ///      state — it just never buffers enough to be worth a conversion — and the conversion takes its
+    ///      slippage floor from whoever calls it. Opening that to everyone every month is a sandwich,
+    ///      not a rescue, so a SWAPPING asset also has to hold at least `DIVIDEND_THRESHOLD`.
+    function test_aStaleSubThresholdSwappingAssetStaysKeeperOnly() public {
+        harness.setBalance(holder, 1_000e18);
+        harness.activate();
+        // Deliberately under the threshold: a low-volume token's normal condition.
+        uint256 dust = harness.DIVIDEND_THRESHOLD() - 1;
+        vm.deal(address(this), dust);
+        harness.accrue{value: dust}();
+        _goStale(harness);
+
+        assertTrue(harness.dividendsStale(0), "precondition: the asset is stale");
+
+        vm.prank(makeAddr("randomCaller"));
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
+        harness.processDividends(0, _noHolders());
+
+        // The keeper itself is not blocked: staleness still lets IT fund below the threshold, which is
+        // what keeps a residual that can no longer grow from stranding.
+        harness.processDividends(0, _noHolders());
+        assertGt(harness.dividendsOwed(), 0, "a keeper still clears the stale residual");
+    }
+
+    /// @dev The escape hatch is intact where it was actually meant to apply: a buffer that HAS been worth
+    ///      converting all along and still was not converted is what evidences an absent keeper set.
+    function test_aStaleAboveThresholdSwappingAssetGoesPermissionless() public {
+        _fundAndActivate(harness); // 1 ether, well over the threshold
+        _goStale(harness);
+
+        vm.prank(makeAddr("randomCaller"));
+        harness.processDividends(0, _noHolders());
+        assertGt(harness.dividendsOwed(), 0, "anyone may convert a buffer no keeper came for");
     }
 
     /// @dev Makes every V2 swap revert, whatever the price — the on-chain shape of a pool that is gone.

@@ -6,6 +6,7 @@ import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/e
 import {ILivoDividendSwapRegistry} from "src/interfaces/ILivoDividendSwapRegistry.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
+import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 
 /// @title DividendDistributionLogic
 /// @notice The COLD half of `DividendDistribution`: the native -> payout-asset conversion, the stream
@@ -46,7 +47,7 @@ import {KeeperGated} from "src/tokens/KeeperGated.sol";
 ///      both — never hand-maintain it. `just check-dividend-layout` fails if they ever drift.
 ///      The same applies to TRANSIENT slots, which is why `dividendLocked` stays declared in
 ///      `DividendDistribution` rather than moving here with the modifier's users.
-abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated {
+abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated, ReentrancyGuardTransient {
     /// @notice Thrown by every TOKEN entry point on an extension. An extension is an execution body for
     ///         a token, not a token: deployed once, never cloned, holding no balance, and its own
     ///         storage never read. Anyone reaching one of those entry points here has the wrong address.
@@ -206,8 +207,18 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///        asset is native or the token itself, and by any call that does not convert.
     /// @param holders Addresses to push accrued payouts to. May be empty — a fund-only call is a normal
     ///        thing for a keeper to make.
+    /// @dev Takes the TOKEN's `nonReentrant` on top of `nonReentrantDividends`. The dividend lock alone
+    ///      leaves `sweepStrayEth()` — which holds only the token's lock — free to run inside the
+    ///      conversion, and the V4 self-token buy-back reconstructs what the pool took as
+    ///      `(balance drop) + (reserve growth)`. A sweep landing mid-call raises the reserved side
+    ///      without lowering the balance, so the spend is over-reported, the partial-fill refund is
+    ///      skipped, and the buffer loses native the pool never received. `processBurn` and
+    ///      `processLiquidity` already hold this lock; this was the one earnings entry point that did
+    ///      not. Costs no SSTORE (transient) and blocks nothing legitimate: `accrueFees`, which the V4
+    ///      hook calls back mid-swap, deliberately takes neither lock.
     function processDividends(uint8 assetIndex, uint256 minOut, address[] calldata holders)
         public
+        nonReentrant
         nonReentrantDividends
     {
         require(assetIndex < _dividendAssetCount(), DividendAssetOutOfRange());
@@ -222,7 +233,27 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // The stale branch is the backstop for a keeper set that has gone away for good: after
         // `STALE_DIVIDEND_WINDOW` with no distribution, anyone may fund, because a buffer nobody can
         // ever convert is a worse outcome than one someone can convert badly.
-        if (!dividendsStale(assetIndex)) _requireKeeper();
+        //
+        // ⚠️ STALENESS ALONE IS NOT THAT SIGNAL for an asset that SWAPS. `dividendsStale` reads "no
+        // distribution in a month", which a quiet token reaches in its ordinary steady state: a
+        // low-volume token may simply never buffer `DIVIDEND_THRESHOLD` inside one window, with every
+        // keeper present and working. Opening the gate there would hand any caller a zero-floor
+        // conversion of a real buffer, every month, on every quiet token — the exact sandwich the
+        // keeper set exists to prevent. So the bypass ALSO requires the buffer to have been convertible
+        // all along: keepers are paid per conversion and fire as soon as the threshold is crossed, so
+        // `DIVIDEND_THRESHOLD` left sitting for `STALE_DIVIDEND_WINDOW` is what actually evidences a
+        // keeper set that is gone. A sub-threshold residual stays keeper-only — the smaller loss.
+        // Assets whose funding does NOT swap keep the wide hatch (native, and the V2 self-token leg,
+        // which is carved in token space and merely moves a buffer into the stream): there is nothing
+        // for a caller to sandwich, so stranding is their only failure mode.
+        {
+            // Scoped: this function is already at the stack limit, so these must die before the loop.
+            address payout = asset.token;
+            bool swaps = payout != address(0) && !_isTokenSpaceDividendAsset(payout);
+            if (!dividendsStale(assetIndex) || (swaps && asset.pendingNative < DIVIDEND_THRESHOLD)) {
+                _requireKeeper();
+            }
+        }
 
         // Before anything else, for the reason the base spells out: the accumulator has to close the
         // interval that just ended at the supply that was actually in effect for it.
@@ -260,9 +291,9 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         }
 
         if (holders.length != 0) {
-            address payoutAsset = asset.token;
             // The asset leg gets its own, far larger stipend: `NATIVE_PAYOUT_GAS` is sized for a wallet's
             // `receive()` and would starve an ordinary ERC20 `transfer`.
+            address payoutAsset = asset.token;
             uint256 stipend = payoutAsset == address(0) ? NATIVE_PAYOUT_GAS : ASSET_PAYOUT_GAS;
             uint256 paid;
             for (uint256 i; i < holders.length; ++i) {
@@ -344,6 +375,17 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         if (rate > type(uint96).max) {
             rate = type(uint96).max;
             duration = total / rate;
+        }
+        // The same clamp at the OTHER end. A total under `duration` base units truncates the slope to 0,
+        // and `owed` would still grow by the whole `amount`: nothing would ever stream it to holders,
+        // and `committedDividends` reserves it against every sweep and rescue, so it would be locked in
+        // the contract forever. Only reachable for a payout asset with very few base units per unit of
+        // value (a 0- or 2-decimal token). Shortening the window instead delivers exactly the same
+        // total, one unit per second. `total != 0` here: `_fundDividends` only reports `Funded` with a
+        // non-zero `out`.
+        if (rate == 0) {
+            rate = 1;
+            duration = total;
         }
         // Now genuinely unreachable — `total` would have to exceed 8.7e40 units for the stretched window
         // to overflow the `uint40` clock — and a revert here leaves the buffer untouched.

@@ -201,13 +201,17 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
             UniswapV4PoolConstants.livoPoolKey(address(this), ILivoV4Graduator(graduator).HOOK_ADDRESS());
         address adder = ILivoV4Graduator(graduator).LIQUIDITY_ADDER();
 
-        // The adder needs the position manager's `onlyIfApproved` to top up a wall this token owns. Set
-        // unconditionally rather than once: it is a same-value SSTORE after the first call, and it
-        // self-heals if the graduator ever points at a different adder — where a one-shot grant would
-        // leave `processLiquidity` reverting on every reusable wall. The adder is already trusted with the
-        // ETH handed to it, cannot decrease, burn or transfer a position, and comes from the same
-        // graduator that names the hook mediating every swap.
-        IERC721(UNIV4_POSITION_MANAGER).setApprovalForAll(adder, true);
+        // The adder needs the position manager's `onlyIfApproved` to top up a wall this token owns.
+        // Granted on demand rather than once: it self-heals if the graduator ever points at a different
+        // adder — where a one-shot grant would leave `processLiquidity` reverting on every reusable
+        // wall. The adder is already trusted with the ETH handed to it, cannot decrease, burn or
+        // transfer a position, and comes from the same graduator that names the hook mediating every
+        // swap. Read-then-write rather than an unconditional `setApprovalForAll`: the SSTORE is
+        // same-value after the first call but the `ApprovalForAll` LOG is not free, and re-emitting it
+        // on every single `processLiquidity` is noise every indexer has to filter.
+        if (!IERC721(UNIV4_POSITION_MANAGER).isApprovedForAll(address(this), adder)) {
+            IERC721(UNIV4_POSITION_MANAGER).setApprovalForAll(adder, true);
+        }
 
         // NFT and leftover ETH both return to this token (permanent depth; the ETH stays earmarked). The
         // adder picks between topping up one of the remembered walls and minting a fresh one, and reports
@@ -225,9 +229,18 @@ contract LivoTaxableTokenUniV4 is LivoTaxableTokenUniV4Base {
         // `liquidityPendingEth` was debited by the full `ethIn` above, so without this the unplaced
         // remainder silently rejoins the stray-ETH pool and `sweepStrayEth` re-splits it into the burn /
         // dividend / fund buckets. Ways to get one: `ethIn` sized to zero liquidity and was never spent,
-        // or the add's `SWEEP` returned the rounding dust. Nothing can send ETH here mid-call — both paths
-        // are `modifyLiquidities`, not swaps, so no hook fee can land in between.
-        uint256 ethAdded = balanceBefore - address(this).balance;
+        // or the add's `SWEEP` returned the rounding dust.
+        // ⚠️ CLAMPED, not a plain subtraction. The balance can also come back HIGHER than it went out:
+        // the top-up path is `INCREASE_LIQUIDITY_FROM_DELTAS` + `TAKE_PAIR`, and v4 folds a position's
+        // `feesAccrued` into those deltas, so a reused wall whose accrued native fees exceed the
+        // principal being added returns more than `ethIn`. Unreachable while
+        // `UniswapV4PoolConstants.LP_FEE == 0` (the hook charges the fee instead, so these positions
+        // accrue nothing), but a non-zero or dynamic pool fee would turn a bare subtraction into a
+        // panic that bricks `processLiquidity` on the reuse path until the price moved far enough to
+        // force a fresh mint. Clamping degrades that into "nothing was placed": the full `ethIn` is
+        // re-earmarked and the surplus becomes stray native, which `sweepStrayEth` routes correctly.
+        uint256 balanceAfter = address(this).balance;
+        uint256 ethAdded = balanceBefore > balanceAfter ? balanceBefore - balanceAfter : 0;
         if (ethAdded < ethIn) liquidityPendingEth += ethIn - ethAdded;
 
         // Shared event signature; reports the ETH the pool ACTUALLY took, as the V2 processor does. The

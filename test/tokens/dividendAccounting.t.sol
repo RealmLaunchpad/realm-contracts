@@ -542,6 +542,35 @@ contract DividendAccountingTests is Test {
         assertEq(h.pendingNative(), 0, "buffer drained");
     }
 
+    /// @dev A distribution smaller than the drip window must still REACH holders. `rate = total /
+    ///      DIVIDEND_DRIP_DURATION` truncates to 0 under 900 base units, and `owed` grows by the whole
+    ///      amount regardless — so without the floor the money would be owed, unstreamable, and reserved
+    ///      against every sweep: locked in the contract forever. The window shortens instead.
+    function test_aDistributionSmallerThanTheDripWindowStillStreamsOut() public {
+        // A supply at the floor, so the accumulator's own truncation cannot be mistaken for the bug
+        // under test: this is about the SLOPE being zero, not about per-holder rounding.
+        h.seed(alice, h.minDividendSupply());
+        h.activate();
+
+        uint256 crumbs = h.DIVIDEND_DRIP_DURATION() / 2; // under 1 unit per second at the full window
+        _fund(crumbs);
+
+        skip(h.STALE_DIVIDEND_WINDOW() + 1); // the only way past the threshold for an amount this small
+        h.processDividends(0, _noHolders());
+
+        assertEq(h.dividendsOwed(), crumbs, "the whole crumb is owed to holders");
+        // THE assertion: the window shortened to carry a 1-unit-per-second slope. Spread over the full
+        // `DIVIDEND_DRIP_DURATION` the slope would have truncated to 0 and this amount could never have
+        // left the contract — not to holders, and not to a sweep, since `owed` reserves it.
+        assertEq(h.dividendPeriodFinish(), block.timestamp + crumbs, "the window shortened instead");
+
+        skip(crumbs);
+        uint256 before = alice.balance;
+        h.processDividends(0, _batch(alice));
+        assertEq(alice.balance - before, crumbs, "and it all streamed out");
+        assertEq(h.dividendsOwed(), 0, "nothing left stranded in `owed`");
+    }
+
     /// @dev The bypass must stay shut for a token that is merely QUIET. `dividendPeriodFinish` moves
     ///      forward on every distribution, so a token still distributing never ages into it however
     ///      small its buffer.

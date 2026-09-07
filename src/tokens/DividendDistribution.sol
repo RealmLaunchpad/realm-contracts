@@ -313,14 +313,20 @@ abstract contract DividendDistribution {
     /// @notice The configured payout assets. Entries at or beyond `_dividendAssetCount()` are unused
     ///         and must never be read — a zeroed entry is indistinguishable from a native payout that
     ///         has not graduated yet.
-    /// @dev `internal` with an explicit getter below: the compiler's getter for a public array of
-    ///      structs returns the ten fields as a flat tuple, which costs the CLONE a few hundred bytes of
-    ///      encoder it can no longer afford. See `dividendAsset`.
+    /// @dev `public`, and MEASURED to be the cheap option: the compiler's getter returns the ten fields
+    ///      as a flat tuple, and a hand-written `dividendAsset(uint256) returns (DivAsset memory)` costs
+    ///      the clone ~280 bytes MORE than it (the struct encodes to the same tuple either way, and the
+    ///      memory copy is extra). On a contract this close to EIP-170 that is worth stating: do not
+    ///      "optimise" this into an internal variable plus a wrapper.
     DivAsset[MAX_DIVIDEND_ASSETS] public dividendAssets;
 
     /// @notice Per-account accumulator checkpoint + banked payout, one entry per configured asset.
     ///         See `Acct`.
-    /// @dev `internal` for the same reason `dividendAssets` is. See `dividendAccount`.
+    /// @dev `internal` with NO getter, unlike `dividendAssets` above: the raw checkpoint is an
+    ///      implementation detail, and the only question anyone asks of it — what is this holder owed
+    ///      right now — is answered exactly by `previewDividend(holder, i)`, which also folds in the
+    ///      drip since the last sync. A getter for the two raw fields would cost the clone bytecode to
+    ///      return a number every reader would then have to correct.
     mapping(address account => Acct[MAX_DIVIDEND_ASSETS]) internal dividendAccounts;
 
     /// @notice How the dividends slice of earnings is split between the configured assets, in bps of
@@ -539,10 +545,12 @@ abstract contract DividendDistribution {
         // amount CONSUMED while buffering none of it, stranding it as stray native. Cheaper to close than
         // to reason about every future caller.
         if (n == 0) return amount;
-        // Token-space payouts are only ever configured alone (see `_initializeDividends`), so this is the
-        // whole of the check and it costs one warm read on every other token.
-        if (n == 1 && _isTokenSpaceDividendAsset(dividendAssets[0].token)) return amount;
-
+        // No token-space short-circuit here, deliberately: `EarningsAllocation._splitEthEarnings` already
+        // removes the token-space share from BOTH the numerator and the denominator
+        // (`_tokenSpaceDividendBps`), so a sole self-token payout arrives with `dividends == 0` and never
+        // reaches this function at all. A guard for it would be dead code paying a cold SLOAD
+        // (`dividendAssets[0].token` is in a slot nothing else here touches) on every earnings routing of
+        // every dividend token — including the V4 fee-router path, which runs under the hook's budget.
         uint256 remaining = amount;
         for (uint256 i; i < n; ++i) {
             uint256 share = i + 1 == n ? remaining : amount * dividendWeightsBps[i] / DIVIDEND_BPS_TOTAL;
@@ -608,8 +616,8 @@ abstract contract DividendDistribution {
     // verbatim and answering for asset 0.
     //
     // ⚠️ THIS SET IS SMALLER THAN IT WAS, and deliberately: `dividendRate`, `lastDividendUpdate`,
-    // `dividendPrecisionExp`, `failedConversionBlock`, `rewardPerTokenStored`, `lastDividendProcessBlock`,
-    // the no-argument `dividendRewardPerToken` / `dividendsStale`, and the `dividendAccounts` getter are
+    // `dividendPrecisionExp`, `failedConversionBlock`, `rewardPerTokenStored` and
+    // `lastDividendProcessBlock`, plus the no-argument `dividendRewardPerToken` / `dividendsStale`, are
     // gone. Every one of them is `dividendAssets(0).<field>` or the indexed view above, and the token
     // implementation is up against EIP-170 — a getter that only restates a field of a struct this
     // contract already returns is the first thing to spend. Nothing on chain read them (the only

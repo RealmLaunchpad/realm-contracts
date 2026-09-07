@@ -34,26 +34,47 @@ library DividendRouteLib {
         return uint8(route[0]);
     }
 
+    /// @notice Everything a route says, decoded ONCE. Only the field its `venue` names is populated.
+    /// @dev Exists so the conversion path does not decode the same immutable bytes twice: validation and
+    ///      the swap itself both need the body, and they run back to back on the keeper's hot path.
+    struct Decoded {
+        uint8 venue;
+        Hop[] hops;
+        bytes path;
+    }
+
+    /// @notice Reads a route into the form both the eligibility check and the swap consume.
+    function decode(bytes memory route) internal pure returns (Decoded memory d) {
+        d.venue = venue(route);
+        if (d.venue == VENUE_V4) d.hops = toV4Hops(route);
+        else if (d.venue == VENUE_V3) d.path = toV3Path(route);
+    }
+
     /// @notice The V4 hops a route carries. Reverts if the route is not a V4 route.
     /// @dev The body is `abi.encode(Hop[])` rather than a packed layout: `Hop` has an `int24` in the
     ///      middle, and hand-packing signed fields is exactly the kind of cleverness that produces a
     ///      route naming the wrong pool. The extra calldata is paid once, at creation.
     function toV4Hops(bytes memory route) internal pure returns (Hop[] memory hops) {
         // Strip the tag byte, then decode the rest as the array it was encoded as.
-        bytes memory body = new bytes(route.length - 1);
-        for (uint256 i; i < body.length; ++i) {
-            body[i] = route[i + 1];
-        }
-        hops = abi.decode(body, (Hop[]));
+        hops = abi.decode(_body(route), (Hop[]));
     }
 
     /// @notice The V3 path a route carries, as the router's own `token | fee | token…` encoding.
     /// @dev Returned as the exact bytes the universal router consumes, so there is no translation step
     ///      at the call site and one- and two-hop paths are the same shape.
     function toV3Path(bytes memory route) internal pure returns (bytes memory path) {
-        path = new bytes(route.length - 1);
-        for (uint256 i; i < path.length; ++i) {
-            path[i] = route[i + 1];
+        path = _body(route);
+    }
+
+    /// @dev The route minus its leading tag byte. `mcopy` rather than a per-byte Solidity loop: a route
+    ///      is 190-320 bytes, and copying it a byte at a time (bounds-checked mload + mstore8 each) is
+    ///      thousands of gas on a path that runs per conversion. Non-destructive on purpose — the caller
+    ///      still holds `route` and the registry re-reads its tag.
+    function _body(bytes memory route) private pure returns (bytes memory body) {
+        uint256 len = route.length - 1;
+        body = new bytes(len);
+        assembly ("memory-safe") {
+            mcopy(add(body, 0x20), add(route, 0x21), len)
         }
     }
 
