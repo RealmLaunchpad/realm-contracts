@@ -79,10 +79,11 @@ whose owner is now the `realm.dev` deployer.
 | Contract | Script / recipe | Difference |
 |---|---|---|
 | `RealmSwapHook` | `DeployRealmSwapHook` / `just deploy-swap-hook-<chain>` | Logic-for-logic the already-whitelisted hook — the conservative candidate |
-| `RealmHook` | `DeployRealmHook` / `just deploy-realm-hook-<chain>` | Same, plus a `RealmPoolState(token, sqrtPriceX96, liquidity)` log per swap |
+| `RealmHook` | `DeployRealmHook` / `just deploy-realm-hook-<chain>` | Same, plus a `RealmPoolState(token, poolId, sqrtPriceX96, liquidity)` log per swap |
 
 `RealmPoolState` carries the only two fields the indexer reads from the singleton
-`UniswapV4PoolManager.Swap` event, at the same log position relative to the hook's own events. On a
+`UniswapV4PoolManager.Swap` event (`sqrtPriceX96`, `liquidity`) plus the pool id as a join key, at the
+same log position relative to the hook's own events. On a
 `RealmHook` pool the indexer can therefore drop that subscription entirely, instead of filtering every
 V4 swap on the chain to find the ~0.4% that are Realm's. See §6.0 of `docs/events-per-entry-point.md`.
 

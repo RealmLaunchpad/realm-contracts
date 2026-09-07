@@ -12,7 +12,7 @@ import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 ///      address the base deployed `RealmSwapHook` to. The hook holds no persistent storage (only
 ///      transient), so re-etching it mid-setup is safe.
 contract RealmHookPoolStateTests is TaxTokenUniV4BaseTests {
-    bytes32 constant POOL_STATE_SIG = keccak256("RealmPoolState(address,uint160,uint128)");
+    bytes32 constant POOL_STATE_SIG = keccak256("RealmPoolState(address,bytes32,uint160,uint128)");
     bytes32 constant SWAP_BUY_SIG = keccak256("RealmSwapBuy(address,address,uint256,uint256,uint256)");
     bytes32 constant SWAP_SELL_SIG = keccak256("RealmSwapSell(address,address,uint256,uint256,uint256)");
     bytes32 constant V4_SWAP_SIG = keccak256("Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)");
@@ -62,7 +62,8 @@ contract RealmHookPoolStateTests is TaxTokenUniV4BaseTests {
         assertEq(address(uint160(uint256(logs[poolStateIdx].topics[1]))), testToken, "RealmPoolState token mismatch");
         assertLt(poolStateIdx, tradeIdx, "RealmPoolState must precede the trade event");
 
-        (uint160 hookSqrtPriceX96, uint128 hookLiquidity) = abi.decode(logs[poolStateIdx].data, (uint160, uint128));
+        (bytes32 hookPoolId, uint160 hookSqrtPriceX96, uint128 hookLiquidity) =
+            abi.decode(logs[poolStateIdx].data, (bytes32, uint160, uint128));
         (,, uint160 poolSqrtPriceX96, uint128 poolLiquidity,,) =
             abi.decode(logs[v4SwapIdx].data, (int128, int128, uint160, uint128, int24, uint24));
 
@@ -70,6 +71,9 @@ contract RealmHookPoolStateTests is TaxTokenUniV4BaseTests {
         assertGt(hookLiquidity, 0, "liquidity must be non-zero");
         assertEq(hookSqrtPriceX96, poolSqrtPriceX96, "sqrtPriceX96 must match PoolManager.Swap");
         assertEq(hookLiquidity, poolLiquidity, "liquidity must match PoolManager.Swap");
+        // `PoolManager.Swap` indexes the pool id as topic1. Comparing against it proves the hook's own
+        // `key.toId()` resolves to the same pool the manager just swapped.
+        assertEq(hookPoolId, logs[v4SwapIdx].topics[1], "poolId must match PoolManager.Swap's id topic");
     }
 
     function _indexOf(Vm.Log[] memory logs, bytes32 sig) internal pure returns (uint256) {

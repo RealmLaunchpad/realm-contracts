@@ -37,13 +37,20 @@ contract RealmHook is RealmSwapHook {
     using StateLibrary for IPoolManager;
 
     /// @notice Post-swap state of the token's V4 pool, emitted once per swap leg.
-    /// @dev Mirrors the two fields indexers consume from `PoolManager.Swap`. Virtual reserves at the
+    /// @dev Mirrors the fields indexers consume from `PoolManager.Swap`. Virtual reserves at the
     ///      active concentrated-liquidity point are `eth = L * 2**96 / sqrtPriceX96` and
     ///      `token = L * sqrtPriceX96 / 2**96`; spot price follows from their ratio.
-    /// @param token         The pool's `currency1` (ETH is always `currency0` on Realm pools).
+    /// @param token         The pool's `currency1` (ETH is always `currency0` on Realm pools). Indexed
+    ///                      because it is the only filter consumers need — they key state by token.
+    /// @param poolId        `PoolId` of the pool, i.e. the `id` topic of `PoolManager.Swap`. Nothing
+    ///                      reads it today (consumers already learn it from
+    ///                      `RealmGraduator.PoolIdRegistered`), but it is the universal V4 join key —
+    ///                      to `ModifyLiquidity`, to PoolManager state, to third-party V4 datasets.
+    ///                      Carried because this contract is immutable AND gated behind Uniswap's hook
+    ///                      whitelist: 256 gas now is cheaper than a redeploy to add it later.
     /// @param sqrtPriceX96  Post-swap `slot0.sqrtPriceX96`.
     /// @param liquidity     Active liquidity at the post-swap tick.
-    event RealmPoolState(address indexed token, uint160 sqrtPriceX96, uint128 liquidity);
+    event RealmPoolState(address indexed token, bytes32 poolId, uint160 sqrtPriceX96, uint128 liquidity);
 
     constructor(IPoolManager _poolManager, address _router, address _treasury)
         RealmSwapHook(_poolManager, _router, _treasury)
@@ -59,7 +66,9 @@ contract RealmHook is RealmSwapHook {
     ) internal override returns (bytes4, int128) {
         PoolId id = key.toId();
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(id);
-        emit RealmPoolState(Currency.unwrap(key.currency1), sqrtPriceX96, poolManager.getLiquidity(id));
+        emit RealmPoolState(
+            Currency.unwrap(key.currency1), PoolId.unwrap(id), sqrtPriceX96, poolManager.getLiquidity(id)
+        );
 
         return super._afterSwap(sender, key, params, delta, hookData);
     }

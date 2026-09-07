@@ -221,15 +221,19 @@ the tax are accrued in **separate** `accrueFees` calls, so the creator can see u
 
 ### 6.0 Pool state (`RealmHook` only)
 
-**`RealmHook.RealmPoolState`** (`token, sqrtPriceX96, liquidity`) — the post-swap price and active
-liquidity of the token's pool, emitted once per swap leg as the FIRST hook event, before any fee event and
-before the buy/sell event.
+**`RealmHook.RealmPoolState`** (`token, poolId, sqrtPriceX96, liquidity`) — the post-swap price and
+active liquidity of the token's pool, emitted once per swap leg as the FIRST hook event, before any fee
+event and before the buy/sell event.
 
-It carries the same two values the singleton `UniswapV4PoolManager.Swap` event reports, at the same log
-position relative to the hook's own events, so an indexer can derive virtual reserves
-(`eth = L * 2**96 / sqrtPriceX96`, `token = L * sqrtPriceX96 / 2**96`) from a Realm-only log instead of
-subscribing to every V4 swap on the chain. `RealmSwapHook` pools do not emit it and still need the
-`PoolManager.Swap` subscription.
+`sqrtPriceX96` and `liquidity` are the only two fields any consumer reads from the singleton
+`UniswapV4PoolManager.Swap` event, and they arrive at the same log position relative to the hook's own
+events, so an indexer can derive virtual reserves (`eth = L * 2**96 / sqrtPriceX96`,
+`token = L * sqrtPriceX96 / 2**96`) from a Realm-only log instead of subscribing to every V4 swap on the
+chain. `poolId` is the `id` topic of `PoolManager.Swap` — nothing consumes it today (`univ4poolId` is
+already known per token from `PoolIdRegistered`), it is carried as the universal V4 join key because the
+hook is immutable and behind Uniswap's whitelist.
+
+`RealmSwapHook` pools do not emit this and still need the `PoolManager.Swap` subscription.
 
 ### 6.1 Buy (`ETH -> token`)
 
@@ -238,7 +242,7 @@ routing and all events below are emitted in `afterSwap`.
 
 Realm event order (LP fee `> 0`, buy tax active, router healthy):
 
-0. `RealmHook` pools only: **`RealmPoolState`** (`token, sqrtPriceX96, liquidity`) — see §6.0.
+0. `RealmHook` pools only: **`RealmPoolState`** (`token, poolId, sqrtPriceX96, liquidity`) — see §6.0.
 1. **`RealmSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
 2. **`SwapLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
 3. Treasury LP share is sent to the router's treasury via native ETH call (no event).
@@ -260,7 +264,7 @@ the routing and all events below are emitted in `afterSwap`.
 
 Realm event order (LP fee `> 0`, sell tax active, router healthy):
 
-0. `RealmHook` pools only: **`RealmPoolState`** (`token, sqrtPriceX96, liquidity`) — see §6.0.
+0. `RealmHook` pools only: **`RealmPoolState`** (`token, poolId, sqrtPriceX96, liquidity`) — see §6.0.
 1. **`RealmSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
 2. **`SwapLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
 3. Treasury LP share is sent to the router's treasury via native ETH call (no event).
