@@ -83,7 +83,7 @@ contract LaunchpadInvariants is Test {
             UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
         // These invariants only exercise pre-graduation bonding-curve trades, so the hook never routes a
-        // fee and its LP-fee router is a dummy. Deploy a real `RealmLpFeeRouter` here if a handler ever
+        // fee and its LP-fee router is a dummy. Deploy a real `SwapLpFeeRouter` here if a handler ever
         // starts performing post-graduation V4 swaps.
         deployCodeTo(
             "LivoSwapHook.sol:LivoSwapHook",

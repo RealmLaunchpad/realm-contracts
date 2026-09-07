@@ -220,54 +220,9 @@ Anyone can call `RealmGraduatorUniswapV4.collectEthFees()` to:
 
 ### Deployment Steps
 
-1. **Deploy Token Implementation**
-
-   ```solidity
-   RealmToken tokenImplementation = new RealmToken();
-   ```
-
-2. **Deploy Launchpad**
-
-   ```solidity
-   RealmLaunchpad launchpad = new RealmLaunchpad(treasury, tokenImplementation);
-   ```
-
-3. **Deploy Bonding Curve**
-
-   ```solidity
-   ConstantProductBondingCurve bondingCurve = new ConstantProductBondingCurve();
-   ```
-
-4. **Deploy Graduators**
-
-   ```solidity
-   // Uniswap V2
-   RealmGraduatorUniswapV2 graduatorV2 = new RealmGraduatorUniswapV2(
-       UNISWAP_V2_ROUTER,
-       address(launchpad)
-   );
-
-   // Uniswap V4
-   LiquidityLockUniv4WithFees liquidityLock = new LiquidityLockUniv4WithFees(
-       UNIV4_NFT_POSITIONS,
-       UNIV4_POSITION_MANAGER
-   );
-
-   RealmGraduatorUniswapV4 graduatorV4 = new RealmGraduatorUniswapV4(
-       address(launchpad),
-       address(liquidityLock),
-       POOL_MANAGER,
-       POSITION_MANAGER,
-       PERMIT2,
-       UNIV4_NFT_POSITIONS
-   );
-   ```
-
-5. **Whitelist curves & graduators pairs**
-   ```solidity
-   launchpad.whitelistComponents(address(bondingCurve), address(graduatorV2), true);
-   launchpad.whitelistComponents(address(bondingCurve), address(graduatorV4), true);
-   ```
+See [`docs/deploymentPlan.md`](docs/deploymentPlan.md) — a fresh chain is brought up in two broadcasts
+(`just deploy-prereqs-<chain>` then `just deploy-stack-<chain>`), with a paste-and-rebuild step between
+them because the two registry addresses are compile-time constants in the taxable token bytecode.
 
 ## Security Considerations
 

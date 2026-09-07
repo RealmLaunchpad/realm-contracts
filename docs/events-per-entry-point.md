@@ -208,7 +208,7 @@ Realm event order:
 V4 swaps are mediated by `LivoSwapHook`. Swaps before graduation revert with `NoSwapsBeforeGraduation` and emit no Realm swap/fee events.
 
 The hook reads the per-token fees via `RealmToken.getSwapFees(isBuy)` (LP fee + currently-effective tax for
-that direction). The LP fee is forwarded whole to `RealmLpFeeRouter`, which splits it between treasury and
+that direction). The LP fee is forwarded whole to `SwapLpFeeRouter`, which splits it between treasury and
 creator by a marketcap tier; the tax (if any) is forwarded to the token's master fee handler. The LP fee and
 the tax are accrued in **separate** `accrueFees` calls, so the creator can see up to two
 `CreatorFeesDeposited`.
@@ -221,7 +221,7 @@ routing and all events below are emitted in `afterSwap`.
 Realm event order (LP fee `> 0`, buy tax active, router healthy):
 
 1. **`LivoSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
-2. **`RealmLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
+2. **`SwapLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
 3. Treasury LP share is sent to the router's treasury via native ETH call (no event).
 4. Creator LP share is routed through `RealmToken.accrueFees()` into `RealmMasterFeeHandler.depositFees(token)`:
    - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare`).
@@ -230,7 +230,7 @@ Realm event order (LP fee `> 0`, buy tax active, router healthy):
    tax is routed through `RealmToken.accrueFees()` (a second **`CreatorFeesDeposited`** / optional `CreatorClaimed`).
 6. **`LivoSwapHook.LivoSwapBuy`** (`token, txOrigin, ethIn, tokensOut, ethFees`).
 
-Router-failure fallback: if `RealmLpFeeRouter.depositLpFees` reverts, step 2 (`LpFeesRouted`) and step 4 are
+Router-failure fallback: if `SwapLpFeeRouter.depositLpFees` reverts, step 2 (`LpFeesRouted`) and step 4 are
 absent — the hook instead pushes the **entire** LP fee to the protocol treasury via a native ETH call (no
 event). Indexers detect the fallback by the presence of `LpFeesForwarded` without a matching `LpFeesRouted`.
 
@@ -242,7 +242,7 @@ the routing and all events below are emitted in `afterSwap`.
 Realm event order (LP fee `> 0`, sell tax active, router healthy):
 
 1. **`LivoSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
-2. **`RealmLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
+2. **`SwapLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
 3. Treasury LP share is sent to the router's treasury via native ETH call (no event).
 4. Creator LP share is routed through `RealmToken.accrueFees()` into `RealmMasterFeeHandler.depositFees(token)`:
    - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare`).

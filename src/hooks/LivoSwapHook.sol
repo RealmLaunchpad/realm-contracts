@@ -16,7 +16,7 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
-import {IRealmLpFeeRouter} from "src/interfaces/IRealmLpFeeRouter.sol";
+import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 
 /// @title LivoSwapHook V2
 /// @notice Uniswap V4 hook that collects LP fees and time-limited buy/sell taxes on swaps of
@@ -27,7 +27,7 @@ import {IRealmLpFeeRouter} from "src/interfaces/IRealmLpFeeRouter.sol";
 ///      the tax schedule. It places no cap
 ///      on either component individually; instead it reverts a swap whose combined
 ///      `lpFeeBps + taxBps` for the leg exceeds `MAX_OVERALL_FEE_BPS`, leaving each token free to
-///      split that budget as it likes. Collected LP fees are forwarded to `RealmLpFeeRouter` (which
+///      split that budget as it likes. Collected LP fees are forwarded to `SwapLpFeeRouter` (which
 ///      splits them between the treasury and the token's fee receivers); taxes are forwarded to the
 ///      token's master fee handler via `IRealmToken.accrueFees()`, which distributes them to the
 ///      token's configured fee receivers. The hook is unaware of either split and only forwards.
@@ -47,7 +47,7 @@ contract LivoSwapHook is BaseHook {
     /// @notice LP fee router that splits forwarded fees between treasury and creator.
     /// @dev Resolved at swap time; upgrade the router via its own UUPS proxy without redeploying
     ///      this hook.
-    IRealmLpFeeRouter public immutable FEE_ROUTER;
+    ISwapLpFeeRouter public immutable FEE_ROUTER;
 
     /// @notice Protocol treasury. Receives the LP fee on the router-failure fallback path so the
     ///         fee stays under protocol control.
@@ -98,7 +98,7 @@ contract LivoSwapHook is BaseHook {
     ///         distributes them to the token's configured fee receivers.
     event CreatorTaxesAccrued(address indexed token, uint256 amount);
     /// @notice Emitted when LP fees are forwarded out of the hook on a swap leg.
-    /// @dev The split is reported by the router in `RealmLpFeeRouter.LpFeesRouted`; on the fallback
+    /// @dev The split is reported by the router in `SwapLpFeeRouter.LpFeesRouted`; on the fallback
     ///      path (router reverts) that event is absent and the full amount goes to the treasury,
     ///      which is how indexers detect the fallback.
     event LpFeesForwarded(address indexed token, uint256 amount);
@@ -117,7 +117,7 @@ contract LivoSwapHook is BaseHook {
     /// @dev `_treasury` is the protocol address that receives the LP fee on the router-failure
     ///      fallback path.
     constructor(IPoolManager _poolManager, address _router, address _treasury) BaseHook(_poolManager) {
-        FEE_ROUTER = IRealmLpFeeRouter(_router);
+        FEE_ROUTER = ISwapLpFeeRouter(_router);
         TREASURY = _treasury;
     }
 
@@ -368,7 +368,7 @@ contract LivoSwapHook is BaseHook {
     /// @notice Forwards the LP fee through the router and the tax slice to the token's master fee
     ///         handler (which distributes it to the token's configured fee receivers).
     /// @dev The router call is the only place this contract trusts external code. It is hardened
-    ///      against every failure mode `RealmLpFeeRouter.depositLpFees` can return:
+    ///      against every failure mode `SwapLpFeeRouter.depositLpFees` can return:
     ///      - **Revert with data** (custom error, `require`, `revert(string)`): caught; the LP fee
     ///        falls through to the treasury.
     ///      - **Out-of-gas inside the router**: forwarded gas is capped at `ROUTER_GAS_LIMIT`, so

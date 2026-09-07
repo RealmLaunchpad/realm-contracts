@@ -5,10 +5,10 @@ import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/pr
 import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import {IRealmLpFeeRouter} from "src/interfaces/IRealmLpFeeRouter.sol";
+import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 
-/// @title RealmLpFeeRouter
+/// @title SwapLpFeeRouter
 /// @notice UUPS-upgradeable router that splits LP fees collected by `LivoSwapHook` between the
 ///         protocol treasury, the per-token creator share, and (future) a liquidity-reinvestment
 ///         slice, using a marketcap-tiered split.
@@ -19,7 +19,7 @@ import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 /// @dev    Marketcap is computed from the swap's avg price — derived directly from the
 ///         `(ethSwapAmount, tokenSwapAmount)` pair supplied by the hook — times the fixed 1B token
 ///         total supply. No oracle, no slot0 read, no external call, no launchpad coupling.
-contract RealmLpFeeRouter is IRealmLpFeeRouter, Initializable, OwnableUpgradeable, UUPSUpgradeable {
+contract SwapLpFeeRouter is ISwapLpFeeRouter, Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Basis points denominator (10000 = 100%).
     uint256 internal constant BASIS_POINTS = 10_000;
 
@@ -137,7 +137,7 @@ contract RealmLpFeeRouter is IRealmLpFeeRouter, Initializable, OwnableUpgradeabl
     /// @dev UUPS upgrade gate: only the owner can swap the implementation.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    /// @inheritdoc IRealmLpFeeRouter
+    /// @inheritdoc ISwapLpFeeRouter
     /// @dev Reverts on treasury transfer failure so the calling hook can apply its own fallback.
     /// @dev SECURITY NOTE: this entrypoint is intentionally permissionless. Any external caller
     ///      can route fees by sending ETH along with arbitrary

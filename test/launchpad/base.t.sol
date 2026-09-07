@@ -34,7 +34,7 @@ import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {RealmLpFeeRouter} from "src/feeRouters/RealmLpFeeRouter.sol";
+import {SwapLpFeeRouter} from "src/feeRouters/SwapLpFeeRouter.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
@@ -148,7 +148,7 @@ contract LaunchpadBaseTests is Test {
     RealmGraduatorUniswapV2 public graduatorV2;
     RealmGraduatorUniswapV4 public graduatorV4;
     LivoSwapHook public taxHook;
-    RealmLpFeeRouter public lpFeeRouter;
+    SwapLpFeeRouter public lpFeeRouter;
 
     // Default LP-fee-router tier thresholds used in tests (ETH wei). Tier 0 covers `[0, T1)`.
     uint256 public constant LP_TIER_THRESHOLD_1 = 30 ether;
@@ -182,9 +182,9 @@ contract LaunchpadBaseTests is Test {
         return totalLpFee - (totalLpFee * LP_TIER0_TREASURY_BPS) / 10_000;
     }
 
-    /// @dev Default `RealmLpFeeRouter.Config` used by the test fixtures. Mirrors the tier policy the
+    /// @dev Default `SwapLpFeeRouter.Config` used by the test fixtures. Mirrors the tier policy the
     ///      production deployment is expected to start with.
-    function _defaultLpRouterCfg() internal pure returns (RealmLpFeeRouter.Config memory) {
+    function _defaultLpRouterCfg() internal pure returns (SwapLpFeeRouter.Config memory) {
         uint256[6] memory thresholds = [
             LP_TIER_THRESHOLD_1,
             LP_TIER_THRESHOLD_2,
@@ -202,7 +202,7 @@ contract LaunchpadBaseTests is Test {
             LP_TIER5_TREASURY_BPS,
             LP_TIER6_TREASURY_BPS
         ];
-        return RealmLpFeeRouter.Config({thresholds: thresholds, treasuryBps: treasuryBps});
+        return SwapLpFeeRouter.Config({thresholds: thresholds, treasuryBps: treasuryBps});
     }
 
     uint256 internal _saltCounter;
@@ -456,9 +456,9 @@ contract LaunchpadBaseTests is Test {
 
         // Deploy the LP fee router behind a UUPS proxy with the default tier configuration. The hook
         // forwards every LP fee to this router, which performs the marketcap-tiered treasury/creator split.
-        address lpRouterImpl = address(new RealmLpFeeRouter(treasury, _defaultLpRouterCfg()));
-        lpFeeRouter = RealmLpFeeRouter(
-            payable(address(new ERC1967Proxy(lpRouterImpl, abi.encodeCall(RealmLpFeeRouter.initialize, ()))))
+        address lpRouterImpl = address(new SwapLpFeeRouter(treasury, _defaultLpRouterCfg()));
+        lpFeeRouter = SwapLpFeeRouter(
+            payable(address(new ERC1967Proxy(lpRouterImpl, abi.encodeCall(SwapLpFeeRouter.initialize, ()))))
         );
 
         deployCodeTo(

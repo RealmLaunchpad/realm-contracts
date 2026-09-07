@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-/// @title IRealmLpFeeRouter
+/// @title ISwapLpFeeRouter
 /// @notice Receives LP fee deposits from `LivoSwapHook` and splits them between the protocol
 ///         treasury, the token's creator (via the master fee handler), and a future
 ///         liquidity-reinvestment slice, using a marketcap-tiered split.
@@ -9,7 +9,7 @@ pragma solidity 0.8.28;
 ///      without forcing a corresponding hook redeploy. The hook only relies on `depositLpFees`.
 ///      Future implementations may compute the split from different inputs internally, but the
 ///      `(token, ethSwapAmount, tokenSwapAmount)` signature must remain stable.
-interface IRealmLpFeeRouter {
+interface ISwapLpFeeRouter {
     /// @notice Routes `msg.value` ETH as LP fees for `token`.
     /// @dev The router derives the swap's avg price from `(ethSwapAmount, tokenSwapAmount)`,
     ///      multiplies it by the token's total supply to obtain the marketcap, looks up the

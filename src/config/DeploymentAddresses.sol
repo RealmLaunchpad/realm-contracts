@@ -111,8 +111,9 @@ library DeploymentAddressesEthereumMainnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
-    /// @notice Realm Treasury
-    address public constant REALM_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
+    /// @notice Realm Treasury. TEMPORARY: the `realm.dev` EOA stands in until Realm has its own
+    ///         treasury — replace before production. Consumed by core contracts at deploy time.
+    address public constant REALM_TREASURY = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
 }
 
 /// @title Deployment Address Constants for Sepolia Testnet
@@ -215,8 +216,9 @@ library DeploymentAddressesEthereumSepolia {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
-    /// @notice Realm Treasury
-    address public constant REALM_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
+    /// @notice Realm Treasury. TEMPORARY: the `realm.dev` EOA stands in until Realm has its own
+    ///         treasury — replace before production. Consumed by core contracts at deploy time.
+    address public constant REALM_TREASURY = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
 }
 
 /// @title Deployment Address Constants for Robinhood Chain Mainnet (chain id 4663)
@@ -429,8 +431,9 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
-    /// @notice Realm Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
-    address public constant REALM_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
+    /// @notice Realm Treasury. TEMPORARY: the `realm.dev` EOA stands in until Realm has its own
+    ///         treasury — replace before production. Consumed by core contracts at deploy time.
+    address public constant REALM_TREASURY = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
 }
 
 /// @title Deployment Address Constants for ARC Chain Mainnet (chain id 5042)
@@ -546,8 +549,9 @@ library DeploymentAddressesArcMainnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
-    /// @notice Realm Treasury (shared with Ethereum mainnet + Robinhood mainnet).
-    address public constant REALM_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
+    /// @notice Realm Treasury. TEMPORARY: the `realm.dev` EOA stands in until Realm has its own
+    ///         treasury — replace before production. Consumed by core contracts at deploy time.
+    address public constant REALM_TREASURY = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
 }
 
 /// @title Deployment Address Constants for ARC Chain Testnet (chain id 5042002)
@@ -655,6 +659,7 @@ library DeploymentAddressesArcTestnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
-    /// @notice Realm Treasury (shared with Ethereum mainnet + Robinhood mainnet).
-    address public constant REALM_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
+    /// @notice Realm Treasury. TEMPORARY: the `realm.dev` EOA stands in until Realm has its own
+    ///         treasury — replace before production. Consumed by core contracts at deploy time.
+    address public constant REALM_TREASURY = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
 }

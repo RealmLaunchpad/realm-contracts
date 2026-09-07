@@ -12,8 +12,8 @@ import {DeploymentAddressesEthereumSepolia} from "src/config/DeploymentAddresses
 /// @notice Simple script to mine a hook address for testing purposes
 /// @dev Run this once to get a valid hook address and salt, then hardcode in tests
 contract MineHookAddressForTests is Script {
-    // this is the livo.dev address
-    address constant CREATE2_DEPLOYER = address(0xBa489180Ea6EEB25cA65f123a46F3115F388f181);
+    // this is the realm.dev address
+    address constant CREATE2_DEPLOYER = address(0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb);
 
     function run() public view {
         console.log("=== Mining Hook Address for Tests ===");

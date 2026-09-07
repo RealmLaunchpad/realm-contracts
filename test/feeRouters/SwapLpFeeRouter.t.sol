@@ -3,8 +3,8 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {RealmLpFeeRouter} from "src/feeRouters/RealmLpFeeRouter.sol";
-import {IRealmLpFeeRouter} from "src/interfaces/IRealmLpFeeRouter.sol";
+import {SwapLpFeeRouter} from "src/feeRouters/SwapLpFeeRouter.sol";
+import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 
 /// @notice Treasury sink that intentionally rejects ETH so we can exercise the router's revert path.
 contract RejectEth {
@@ -39,7 +39,7 @@ contract MockRealmToken {
 /// @notice Tests for the marketcap-tiered LP fee router. Verifies tier resolution, the deposit
 ///         split, transfer semantics, access control, upgrade authorization, and the new
 ///         `LpFeesRouted(token, creator, treasury, liquidity)` event signature.
-contract RealmLpFeeRouterTests is Test {
+contract SwapLpFeeRouterTests is Test {
     event LpFeesRouted(address indexed token, uint256 creatorShare, uint256 treasuryShare, uint256 liquidityShare);
 
     // Mirrors the production-default tier policy.
@@ -60,8 +60,8 @@ contract RealmLpFeeRouterTests is Test {
 
     uint256 constant TOTAL_SUPPLY = 1_000_000_000e18;
 
-    RealmLpFeeRouter router;
-    RealmLpFeeRouter impl;
+    SwapLpFeeRouter router;
+    SwapLpFeeRouter impl;
     MockRealmToken token;
     address treasury = makeAddr("treasury");
     address admin = makeAddr("admin");
@@ -70,17 +70,17 @@ contract RealmLpFeeRouterTests is Test {
     function setUp() public {
         token = new MockRealmToken(TOTAL_SUPPLY);
 
-        RealmLpFeeRouter.Config memory cfg = _defaultCfg();
+        SwapLpFeeRouter.Config memory cfg = _defaultCfg();
 
         vm.startPrank(admin);
-        impl = new RealmLpFeeRouter(treasury, cfg);
-        router = RealmLpFeeRouter(
-            payable(address(new ERC1967Proxy(address(impl), abi.encodeCall(RealmLpFeeRouter.initialize, ()))))
+        impl = new SwapLpFeeRouter(treasury, cfg);
+        router = SwapLpFeeRouter(
+            payable(address(new ERC1967Proxy(address(impl), abi.encodeCall(SwapLpFeeRouter.initialize, ()))))
         );
         vm.stopPrank();
     }
 
-    function _defaultCfg() internal pure returns (RealmLpFeeRouter.Config memory cfg) {
+    function _defaultCfg() internal pure returns (SwapLpFeeRouter.Config memory cfg) {
         cfg.thresholds = [T1, T2, T3, T4, T5, T6];
         cfg.treasuryBps = [
             TIER0_TREASURY_BPS,
@@ -175,14 +175,14 @@ contract RealmLpFeeRouterTests is Test {
     /// @notice Zero treasuryBps in a tier means the creator gets the full deposit and no transfer
     ///         is attempted to the treasury (the .call branch is skipped).
     function test_deposit_zeroTreasuryShare_skipsTreasuryCall() public {
-        RealmLpFeeRouter.Config memory cfg = _defaultCfg();
+        SwapLpFeeRouter.Config memory cfg = _defaultCfg();
         cfg.treasuryBps[6] = 0; // full creator share at top tier
 
         // Use a rejecting treasury to prove the treasury branch is entirely skipped.
         address rejectingTreasury = address(new RejectEth());
-        RealmLpFeeRouter implBad = new RealmLpFeeRouter(rejectingTreasury, cfg);
-        RealmLpFeeRouter routerBad = RealmLpFeeRouter(
-            payable(address(new ERC1967Proxy(address(implBad), abi.encodeCall(RealmLpFeeRouter.initialize, ()))))
+        SwapLpFeeRouter implBad = new SwapLpFeeRouter(rejectingTreasury, cfg);
+        SwapLpFeeRouter routerBad = SwapLpFeeRouter(
+            payable(address(new ERC1967Proxy(address(implBad), abi.encodeCall(SwapLpFeeRouter.initialize, ()))))
         );
 
         (uint256 e, uint256 t) = _swapVolumeFor(2000 ether); // tier 6
@@ -193,14 +193,14 @@ contract RealmLpFeeRouterTests is Test {
 
     function test_deposit_treasuryRejects_reverts() public {
         address rejectingTreasury = address(new RejectEth());
-        RealmLpFeeRouter implBad = new RealmLpFeeRouter(rejectingTreasury, _defaultCfg());
-        RealmLpFeeRouter routerBad = RealmLpFeeRouter(
-            payable(address(new ERC1967Proxy(address(implBad), abi.encodeCall(RealmLpFeeRouter.initialize, ()))))
+        SwapLpFeeRouter implBad = new SwapLpFeeRouter(rejectingTreasury, _defaultCfg());
+        SwapLpFeeRouter routerBad = SwapLpFeeRouter(
+            payable(address(new ERC1967Proxy(address(implBad), abi.encodeCall(SwapLpFeeRouter.initialize, ()))))
         );
 
         (uint256 e, uint256 t) = _swapVolumeFor(12 ether);
         deal(address(this), 1 ether);
-        vm.expectRevert(RealmLpFeeRouter.TreasuryTransferFailed.selector);
+        vm.expectRevert(SwapLpFeeRouter.TreasuryTransferFailed.selector);
         routerBad.depositLpFees{value: 1 ether}(address(token), e, t);
     }
 
@@ -224,14 +224,14 @@ contract RealmLpFeeRouterTests is Test {
     }
 
     function test_upgradeTo_revertsForNonOwner() public {
-        RealmLpFeeRouter newImpl = new RealmLpFeeRouter(treasury, _defaultCfg());
+        SwapLpFeeRouter newImpl = new SwapLpFeeRouter(treasury, _defaultCfg());
         vm.prank(attacker);
         vm.expectRevert();
         router.upgradeToAndCall(address(newImpl), "");
     }
 
     function test_upgradeTo_succeedsForOwner() public {
-        RealmLpFeeRouter newImpl = new RealmLpFeeRouter(treasury, _defaultCfg());
+        SwapLpFeeRouter newImpl = new SwapLpFeeRouter(treasury, _defaultCfg());
         vm.prank(admin);
         router.upgradeToAndCall(address(newImpl), "");
         // Sanity-check the immutable comes from the new impl.
@@ -241,37 +241,37 @@ contract RealmLpFeeRouterTests is Test {
     // ───────────────────────── constructor validation ─────────────────────────
 
     function test_constructor_revertsOnZeroTreasury() public {
-        vm.expectRevert(RealmLpFeeRouter.InvalidTreasury.selector);
-        new RealmLpFeeRouter(address(0), _defaultCfg());
+        vm.expectRevert(SwapLpFeeRouter.InvalidTreasury.selector);
+        new SwapLpFeeRouter(address(0), _defaultCfg());
     }
 
     function test_constructor_revertsOnNonAscendingThresholds() public {
-        RealmLpFeeRouter.Config memory cfg = _defaultCfg();
+        SwapLpFeeRouter.Config memory cfg = _defaultCfg();
         cfg.thresholds[3] = cfg.thresholds[2]; // break strict-ascending order
-        vm.expectRevert(RealmLpFeeRouter.InvalidThresholds.selector);
-        new RealmLpFeeRouter(treasury, cfg);
+        vm.expectRevert(SwapLpFeeRouter.InvalidThresholds.selector);
+        new SwapLpFeeRouter(treasury, cfg);
     }
 
     /// @notice Regression: `thresholds[0] == 0` would silently make tier 0 unreachable.
     function test_constructor_revertsOnZeroFirstThreshold() public {
-        RealmLpFeeRouter.Config memory cfg = _defaultCfg();
+        SwapLpFeeRouter.Config memory cfg = _defaultCfg();
         cfg.thresholds[0] = 0;
-        vm.expectRevert(RealmLpFeeRouter.InvalidThresholds.selector);
-        new RealmLpFeeRouter(treasury, cfg);
+        vm.expectRevert(SwapLpFeeRouter.InvalidThresholds.selector);
+        new SwapLpFeeRouter(treasury, cfg);
     }
 
     function test_constructor_revertsOnTreasuryBpsAbove100Pct() public {
-        RealmLpFeeRouter.Config memory cfg = _defaultCfg();
+        SwapLpFeeRouter.Config memory cfg = _defaultCfg();
         cfg.treasuryBps[2] = 10_001;
-        vm.expectRevert(RealmLpFeeRouter.InvalidTreasuryBps.selector);
-        new RealmLpFeeRouter(treasury, cfg);
+        vm.expectRevert(SwapLpFeeRouter.InvalidTreasuryBps.selector);
+        new SwapLpFeeRouter(treasury, cfg);
     }
 
-    // ───────────────────────── IRealmLpFeeRouter interface ─────────────────────────
+    // ───────────────────────── ISwapLpFeeRouter interface ─────────────────────────
 
     function test_interface_id_matchesSelector() public pure {
         // Smoke test: the canonical selector must remain stable across upgrades.
-        bytes4 sel = IRealmLpFeeRouter.depositLpFees.selector;
+        bytes4 sel = ISwapLpFeeRouter.depositLpFees.selector;
         assertEq(sel, bytes4(keccak256("depositLpFees(address,uint256,uint256)")));
     }
 

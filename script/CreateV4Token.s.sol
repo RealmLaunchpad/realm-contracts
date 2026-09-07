@@ -13,7 +13,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
 /// @title Create a plain (non-tax) V4 token through an arbitrary whitelisted factory
 /// @notice Throwaway/reusable script for creating a token through a freshly-deployed,
-///         not-yet-manifested V4 factory (e.g. a parallel factory from `DeploymentsUnifiedFactories`
+///         not-yet-manifested V4 factory (e.g. a parallel factory from `DeployRealmStack`
 ///         wired to a new graduator/hook) — the factory is NOT read from the manifest, since a
 ///         scratch factory deliberately isn't tracked there. The token itself is an ordinary V4
 ///         token; only the factory it's created through differs. Mines the required
@@ -40,7 +40,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///
 /// @dev    Run with (same command for sepolia and mainnet — just swap --rpc-url and the env vars):
 ///         FACTORY_ADDRESS=<factory> forge script CreateV4Token --rpc-url <sepolia|mainnet> \
-///             --account livo.dev --slow --broadcast
+///             --account realm.dev --slow --broadcast
 contract CreateV4Token is Script {
     function run() public {
         address factory = vm.envAddress("FACTORY_ADDRESS");

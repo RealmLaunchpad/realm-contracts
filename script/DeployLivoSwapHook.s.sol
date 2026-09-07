@@ -25,10 +25,10 @@ import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet
 ///      router has just been deployed but the manifest constant is still `address(0)` (both Robinhood
 ///      chains), so a one-off bring-up doesn't need a paste-and-rebuild round trip between the two steps.
 ///
-/// Usage (dry run):  forge script DeployLivoSwapHook --rpc-url sepolia --account livo.dev
-/// Usage (deploy):   forge script DeployLivoSwapHook --rpc-url sepolia --account livo.dev --slow --broadcast --verify
+/// Usage (dry run):  forge script DeployLivoSwapHook --rpc-url sepolia --account realm.dev
+/// Usage (deploy):   forge script DeployLivoSwapHook --rpc-url sepolia --account realm.dev --slow --broadcast --verify
 /// Usage (robinhood): ROUTER_ADDRESS=<router> forge script DeployLivoSwapHook --rpc-url robinhood-mainnet \
-///                        --account livo.dev --slow --broadcast --gas-estimate-multiplier 300
+///                        --account realm.dev --slow --broadcast --gas-estimate-multiplier 300
 contract DeployLivoSwapHook is Script {
     /// @notice Deterministic CREATE2 proxy used by `forge script` for `new X{salt:..}(..)` syntax.
     /// @dev Same address on every EVM chain. This is what HookMiner must use as the deployer.
@@ -36,7 +36,7 @@ contract DeployLivoSwapHook is Script {
 
     function run() external {
         (address poolManager, address router, address treasury) = _resolveAddresses();
-        require(router != address(0), "LP_FEE_ROUTER not set; deploy RealmLpFeeRouter first");
+        require(router != address(0), "LP_FEE_ROUTER not set; deploy SwapLpFeeRouter first");
         require(treasury != address(0), "REALM_TREASURY not set");
 
         console.log("=== Deploy LivoSwapHook ===");

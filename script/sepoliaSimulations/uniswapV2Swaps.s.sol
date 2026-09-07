@@ -10,10 +10,10 @@ import {IUniswapV2Router02} from "../../src/interfaces/IUniswapV2Router02.sol";
 
 /*
   Buy swap (ETH -> Token via WETH):
-  TOKEN_ADDRESS=0x... IS_BUY=true AMOUNT_IN=1000000000000000 forge script UniswapV2SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --broadcast
+  TOKEN_ADDRESS=0x... IS_BUY=true AMOUNT_IN=1000000000000000 forge script UniswapV2SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account realm.dev --broadcast
 
   Sell swap (Token -> WETH):
-  TOKEN_ADDRESS=0x... IS_BUY=false AMOUNT_IN=1000000000000000000 forge script UniswapV2SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account livo.dev --broadcast
+  TOKEN_ADDRESS=0x... IS_BUY=false AMOUNT_IN=1000000000000000000 forge script UniswapV2SwapSimulations --rpc-url $SEPOLIA_RPC_URL --account realm.dev --broadcast
 */
 
 /// @title Uniswap V2 Swap Simulations for Sepolia

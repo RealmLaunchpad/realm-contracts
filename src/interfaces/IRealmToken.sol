@@ -70,7 +70,7 @@ interface IRealmToken is IERC20 {
 
     /// @notice Fees `LivoSwapHook` charges on a single post-graduation V4 swap leg, for one direction.
     /// @dev Post-graduation analogue of `LaunchpadFees`, without `treasuryShareBps`: the LP-fee split is
-    ///      performed downstream by `RealmLpFeeRouter`'s marketcap tiers, not by the token.
+    ///      performed downstream by `SwapLpFeeRouter`'s marketcap tiers, not by the token.
     struct RealmTradeFees {
         uint16 taxBps; // currently-effective creator tax for this leg (bps of gross ETH); 0 outside the tax window
         uint16 lpFeeBps; // post-graduation LP fee (bps); always effective; 0 for V2 tokens

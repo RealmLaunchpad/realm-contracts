@@ -13,8 +13,8 @@
 | RealmMasterFeeHandler                        | _(not deployed)_                             |
 | RealmUniV4LiquidityAdder                     | _(not deployed)_                             |
 | LivoSwapHook                                 | `0x681F2EEf3F43CfC6Eea7BFdAa801135E04ff00cC` |
-| RealmLpFeeRouter (proxy)                     | _(not deployed)_                             |
-| RealmLpFeeRouter (impl)                      | _(not deployed)_                             |
+| SwapLpFeeRouter (proxy)                      | `0x0cEC114e1b8712EBd9d67a773381410F0F78985A` |
+| SwapLpFeeRouter (impl)                       | _(not deployed)_                             |
 | RealmQuoter                                  | _(not deployed)_                             |
 | RealmToken (impl)                            | _(not deployed)_                             |
 | RealmTaxableTokenUniV4 (impl)                | _(not deployed)_                             |
@@ -53,8 +53,8 @@
 
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| Realm Deployer                               | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |
-| Realm Treasury                               | `0xBa489180Ea6EEB25cA65f123a46F3115F388f181` |
+| Realm Deployer                               | `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb` |
+| Realm Treasury                               | `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb` |
 | Realm Token Deployer                         | `0x566CB296539672bB2419F403d292544E9Abf7815` |
 
 ## Integrations

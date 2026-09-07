@@ -10,7 +10,7 @@ import {GraduationFeeConstantsArc} from "src/libraries/GraduationFeeConstantsArc
 /// @notice ARC (Circle L1, native = USDC) Uniswap V2 graduator. Shared logic in the base; this fills
 ///         the venue hooks with the two-ERC20 `addLiquidity` path against the 6-dec USDC ERC-20 (ARC
 ///         has no wrappable WETH) plus the 18↔6-decimal conversion, and the ARC (×2000) fee amounts.
-/// @dev Selected at deploy time by chain id (see DeployLaunchpadCore) — NOT via source retargeting.
+/// @dev Selected at deploy time by chain id (see DeployRealmStack) — NOT via source retargeting.
 ///      Its ctor guard (`GraduationFeeConstantsArc.assertDeployableOn`) restricts it to ARC chains,
 ///      so it compiles on every target but only constructs on 5042002 / 5042.
 contract RealmGraduatorUniswapV2Arc is RealmGraduatorUniswapV2Base {

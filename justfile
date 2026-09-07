@@ -139,7 +139,7 @@ factoryV2SniperProtected := "0x0000000000000000000000000000000000000000"
 factoryTaxTokenSniperProtected := "0x0000000000000000000000000000000000000000"
 hookAddress := "0x681F2EEf3F43CfC6Eea7BFdAa801135E04ff00cC"
 
-realmdev := "0xBa489180Ea6EEB25cA65f123a46F3115F388f181"
+realmdev := "0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb"
 
 # ##################### Create tokens #######################
 #
@@ -160,42 +160,48 @@ realmdev := "0xBa489180Ea6EEB25cA65f123a46F3115F388f181"
 #   tiswallet1 = 0xd6fa895fABA3FE48410e9A00504BB556C89dd2E6
 #   tiswallet2 = 0xdbB91f98C5826C89CC2312AD0B5a377a77613884
 
-# From-scratch core bootstrap (fee handler, launchpad, quoter, V2/V4 graduators, liquidity adder).
-# Realm inherits SWAP_HOOK from Livo, so this is the FIRST script to run on a chain; paste the printed
-# addresses into src/config/manifest.<chain>.sol and run `just export-deployments`.
-deploy-core-sepolia: chain-sepolia
-    forge script DeployLaunchpadCore --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+# ============================ FRESH DEPLOY (two phases) ============================
+# Phase 0. Keepers registry + dividend swap registry + LP fee router. Their addresses are COMPILE-TIME
+# constants elsewhere, so they must exist before anything else is built. Paste the two printed
+# constants into src/config/DeploymentAddresses.sol, then rebuild.
+deploy-prereqs-sepolia: chain-sepolia
+    forge script DeployRealmPrereqs --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
-deploy-core-robinhood: chain-robinhood
-    forge script DeployLaunchpadCore --rpc-url robinhood-mainnet --account livo.dev --slow --broadcast \
+deploy-prereqs-robinhood: chain-robinhood
+    forge script DeployRealmPrereqs --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
-# Deploys the token implementations + the unified V2/V4 factories against the core above, then
-# whitelists them on the launchpad.
-deploy-sepolia-factories: chain-sepolia
-    forge script DeploymentsUnifiedFactories --rpc-url sepolia --verify --account livo.dev --slow --broadcast
-
-deploy-robinhood-factories: chain-robinhood
-    forge script DeploymentsUnifiedFactories --rpc-url robinhood-mainnet --account livo.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
-
-# Mines a valid hook salt and deploys LivoSwapHook with whatever fee the current build bakes
-# (`LP_FEE_BPS` constant in src/hooks/LivoSwapHook.sol: 100 = 1%, edit to 50 for the 0.5% variant and
-# rebuild). After broadcast, paste the deployed address into src/config/manifest.<chain>.sol and
+# Phase 1. Everything else in one broadcast: fee handler, launchpad, quoter, liquidity adder, the V2 +
+# three V4 graduators, 22 bonding curves, the creator-vault system, the three token impls and both
+# unified factories (impl + proxy), then whitelists the factories on the launchpad. Refuses to run
+# until phase 0 is pasted and the build is retargeted. Paste the printed manifest block afterwards and
 # run `just export-deployments`.
-# Only needed if the inherited hook is ever replaced — both manifests already carry a live SWAP_HOOK.
+deploy-stack-sepolia: chain-sepolia
+    forge script DeployRealmStack --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+deploy-stack-robinhood: chain-robinhood
+    forge script DeployRealmStack --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
+# Redeploys both unified factory implementations from the CURRENT manifest and repoints the live
+# proxies at them. The upgrade path for anything a factory holds as an immutable — token impls,
+# graduators, curves, vault factory. Update the manifest FIRST.
+upgrade-factories-sepolia: chain-sepolia
+    forge script UpgradeRealmFactories --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+upgrade-factories-robinhood: chain-robinhood
+    forge script UpgradeRealmFactories --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
+# Mines a valid hook salt and deploys a NEW LivoSwapHook against the manifest's LP_FEE_ROUTER
+# (override with ROUTER_ADDRESS=<addr> before the manifest is pasted). Only needed if the inherited,
+# Uniswap-whitelisted hook is ever replaced — both manifests already carry a live SWAP_HOOK, and
+# replacing it means re-doing the whitelisting with Uniswap.
 deploy-swap-hook-sepolia:
-    forge script DeployLivoSwapHook --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+    forge script DeployLivoSwapHook --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
-# Deploys the SMALL + LARGE liquidity-tier system (14 bonding curves + 4 V4 graduators).
-# After broadcast, paste the logged addresses into the {SMALL,LARGE}_* and GRADUATOR_UNIV4_{SMALL,LARGE}*
-# slots in src/config/manifest.{sepolia,mainnet}.sol, run `just export-deployments`, and only THEN
-# upgrade the unified factories (`RedeployUnifiedFactoriesOnly`) so they pick the tier config up.
-deploy-tiers-sepolia:
-    forge script DeployTierLiquiditySystem --rpc-url sepolia --verify --account livo.dev --slow --broadcast
-
-deploy-tiers-robinhood:
-    forge script DeployTierLiquiditySystem --rpc-url robinhood-mainnet --account livo.dev --slow --broadcast \
+deploy-swap-hook-robinhood:
+    forge script DeployLivoSwapHook --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
 # Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded
@@ -205,9 +211,9 @@ deploy-tiers-robinhood:
 # DIVIDEND_SWAP_REGISTRY is deployed on Sepolia and the broadcaster is one of its admins.
 # Costs ETH_PER_POOL (default 1) of testnet ETH per pool, so 5 ETH for the five. Dry-run it first —
 # the same command without --broadcast simulates it against live Sepolia state, and IS the check:
-#   forge script DeployDummyXStocks --rpc-url sepolia --account livo.dev
+#   forge script DeployDummyXStocks --rpc-url sepolia --account realm.dev
 deploy-dummy-xstocks-sepolia:
-    forge script DeployDummyXStocks --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+    forge script DeployDummyXStocks --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 # Regenerates deployments.{ethereum.sepolia,robinhood.mainnet}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
@@ -238,7 +244,7 @@ pick-dividend-routes:
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS
 # implementation — the 2nd-to-last on-chain `Upgraded` event, i.e. Etherscan's
-# "previous implementations". Broadcaster must be the proxy owner (livo.dev).
+# "previous implementations". Broadcaster must be the proxy owner (realm.dev).
 # Guards refuse a bogus/incompatible target before any tx is sent; mainnet asks to confirm.
 # NOTE: rolling the V4 factory back also reverts which graduators new tokens use (the old
 # graduators are baked into the previous V4 impl as immutables; they still live on-chain).
@@ -277,7 +283,7 @@ _rollback-unified rpc v2proxy v4proxy:
     fi
     for t in "${TARGETS[@]}"; do
         PROXY="${t%%=*}"; PREV="${t##*=}"
-        cast send --rpc-url "$RPC" --account livo.dev "$PROXY" 'upgradeToAndCall(address,bytes)' "$PREV" 0x
+        cast send --rpc-url "$RPC" --account realm.dev "$PROXY" 'upgradeToAndCall(address,bytes)' "$PREV" 0x
         echo "✔ $PROXY rolled back to $PREV"
     done
     echo "Done. Reminder: if keeping this, update FACTORY_UNIV{2,4}_UNIFIED_IMPL in src/config/manifest.<chain>.sol and run 'just export-deployments'."
@@ -285,7 +291,7 @@ _rollback-unified rpc v2proxy v4proxy:
 ##################### ROLLBACK — Robinhood (unified factory proxies) #######################
 # Same break-glass rollback as `rollback-sepolia`, but Robinhood is on Blockscout, not Etherscan,
 # so the previous impl is read from the node via `cast logs` (fresh L2 → full-range getLogs is cheap)
-# instead of the Etherscan API. Broadcaster must be the proxy owner (livo.dev). Same guards; mainnet
+# instead of the Etherscan API. Broadcaster must be the proxy owner (realm.dev). Same guards; mainnet
 # (chain 4663) asks to confirm. Manifest is NOT auto-edited — see the note under `rollback-sepolia`.
 # Fill the two proxy addresses in from src/config/manifest.robinhood.mainnet.sol once deployed.
 rollback-robinhood:
@@ -317,28 +323,28 @@ _rollback-unified-rpclogs rpc v2proxy v4proxy:
     fi
     for t in "${TARGETS[@]}"; do
         PROXY="${t%%=*}"; PREV="${t##*=}"
-        cast send --rpc-url "$RPC" --account livo.dev "$PROXY" 'upgradeToAndCall(address,bytes)' "$PREV" 0x
+        cast send --rpc-url "$RPC" --account realm.dev "$PROXY" 'upgradeToAndCall(address,bytes)' "$PREV" 0x
         echo "✔ $PROXY rolled back to $PREV"
     done
     echo "Done. Reminder: if keeping this, update FACTORY_UNIV{2,4}_UNIFIED_IMPL in src/config/manifest.robinhood.<net>.sol and run 'just export-deployments'."
 
 create-token-v2 tokenName value="0":
     SALT=$(just next-salt {{factoryV2}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2}} \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factoryV2}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[])" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[({{realmdev}},10000)]" "[]" --value {{value}}
 
 create-token-v4 tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryV4}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factoryV4}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool)" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} --value {{value}}
 
 create-tax-token tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryTaxToken}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factoryTaxToken}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint32))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} \
@@ -346,7 +352,7 @@ create-tax-token tokenName value="0" renounceOwnership="false":
 
 create-token-v4-feesplit tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryV4}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV4}} \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factoryV4}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool)" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[(0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,3000),(0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f,7000)]" \
@@ -354,7 +360,7 @@ create-token-v4-feesplit tokenName value="0" renounceOwnership="false":
 
 create-tax-token-feesplit tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryTaxToken}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxToken}} \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factoryTaxToken}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint32))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[(0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,3000),(0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f,7000)]" \
@@ -366,7 +372,7 @@ create-tax-token-feesplit tokenName value="0" renounceOwnership="false":
 
 create-token-v2-sniper tokenName value="0":
     SALT=$(just next-salt {{factoryV2SniperProtected}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryV2SniperProtected}} \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factoryV2SniperProtected}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],(uint16,uint16,uint40,address[]))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[({{realmdev}},10000)]" "[]" \
@@ -374,7 +380,7 @@ create-token-v2-sniper tokenName value="0":
 
 create-token-v4-sniper tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factorySniperProtected}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factorySniperProtected}} \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factorySniperProtected}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint40,address[]))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} \
@@ -382,7 +388,7 @@ create-token-v4-sniper tokenName value="0" renounceOwnership="false":
 
 create-tax-token-sniper tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryTaxTokenSniperProtected}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{factoryTaxTokenSniperProtected}} \
+        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factoryTaxTokenSniperProtected}} \
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint32),(uint16,uint16,uint40,address[]))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} \
@@ -392,32 +398,32 @@ create-tax-token-sniper tokenName value="0" renounceOwnership="false":
 ####################### Buys / sells #################################
 
 buy tokenAddress value:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "buyTokensWithExactEth(address,uint256,uint256)" {{tokenAddress}} 1 175542935100 --value {{value}}
+    cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{launchpad}} "buyTokensWithExactEth(address,uint256,uint256)" {{tokenAddress}} 1 175542935100 --value {{value}}
 
 sell tokenAddress amount:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{launchpad}} "sellExactTokens(address,uint256,uint256,uint256)" {{tokenAddress}} {{amount}} 1 340282366920938463463374607431768211455
+    cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{launchpad}} "sellExactTokens(address,uint256,uint256,uint256)" {{tokenAddress}} {{amount}} 1 340282366920938463463374607431768211455
 
 v2buy tokenAddress value:
-    TOKEN_ADDRESS={{tokenAddress}} IS_BUY=true AMOUNT_IN={{value}} forge script UniswapV2Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} IS_BUY=true AMOUNT_IN={{value}} forge script UniswapV2Swaps --rpc-url $SEPOLIA_RPC_URL --account realm.dev --slow --broadcast
 
 v2sell tokenAddress amount:
-    TOKEN_ADDRESS={{tokenAddress}} IS_BUY=false AMOUNT_IN={{amount}} forge script UniswapV2Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} IS_BUY=false AMOUNT_IN={{amount}} forge script UniswapV2Swaps --rpc-url $SEPOLIA_RPC_URL --account realm.dev --slow --broadcast
 
 ##########################################################
 
 v4approve tokenAddress:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=0 HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=0 HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account realm.dev --slow --broadcast
 
 v4buy tokenAddress value:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=1 AMOUNT_IN={{value}} HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=1 AMOUNT_IN={{value}} HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account realm.dev --slow --broadcast
 
 v4sell tokenAddress amount:
-    TOKEN_ADDRESS={{tokenAddress}} ACTION=2 AMOUNT_IN={{amount}} HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account livo.dev --slow --broadcast
+    TOKEN_ADDRESS={{tokenAddress}} ACTION=2 AMOUNT_IN={{amount}} HOOK_ADDRESS={{hookAddress}} forge script UniswapV4Swaps --rpc-url $SEPOLIA_RPC_URL --account realm.dev --slow --broadcast
 
 ##########################################################
 
 collectFees:
-    cast send --rpc-url $SEPOLIA_RPC_URL --account livo.dev {{graduatorV4}} "treasuryClaim()"
+    cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{graduatorV4}} "treasuryClaim()"
 
 
 ##########################################################

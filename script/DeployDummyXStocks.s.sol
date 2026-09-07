@@ -60,8 +60,8 @@ contract DummyXStock is ERC20 {
 ///      attempted. Sepolia's registry constant is still the placeholder at the time of writing, so the
 ///      first run of this script will only deploy tokens and pools.
 ///
-/// Usage (dry run):  forge script DeployDummyXStocks --rpc-url sepolia --account livo.dev
-/// Usage (deploy):   forge script DeployDummyXStocks --rpc-url sepolia --account livo.dev --slow --broadcast --verify
+/// Usage (dry run):  forge script DeployDummyXStocks --rpc-url sepolia --account realm.dev
+/// Usage (deploy):   forge script DeployDummyXStocks --rpc-url sepolia --account realm.dev --slow --broadcast --verify
 ///
 /// Env:
 ///   ETH_PER_POOL   (optional) native seeded into each pool, in wei. Default 1 ETH (5 ETH total).
