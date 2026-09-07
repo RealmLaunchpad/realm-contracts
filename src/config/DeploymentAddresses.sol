@@ -322,8 +322,8 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
-    /// @notice Realm Treasury (same address as Ethereum mainnet)
-    address public constant REALM_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
+    /// @notice Realm Treasury. Consumed by core contracts at deploy time.
+    address public constant REALM_TREASURY = 0x7826AaE926AfD2886257976770e93e0240D2426e;
 }
 
 /// @title Deployment Address Constants for Robinhood Chain Testnet (chain id 46630)
