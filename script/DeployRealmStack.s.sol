@@ -107,16 +107,20 @@ contract DeployRealmStack is Script {
         address hook = ChainConfig.swapHook();
         _preflight();
 
+        vm.startBroadcast();
+        // The launchpad owner must be the account that broadcasts (it whitelists the factories below).
+        // `msg.sender` is forge's DEFAULT_SENDER unless `--sender` is passed; `readCallers` reports the
+        // real `--account` broadcaster, and only inside an active broadcast.
+        (, address deployer,) = vm.readCallers();
+
         console.log("=== Deploy the Realm stack ===");
         console.log("Chain ID: ", block.chainid);
-        console.log("Deployer: ", msg.sender);
+        console.log("Deployer: ", deployer);
         console.log("Treasury: ", infra.treasury);
         console.log("Swap hook:", hook);
         console.log("");
 
-        vm.startBroadcast();
-
-        Core memory core = _deployCore(infra, hook);
+        Core memory core = _deployCore(infra, hook, deployer);
         address[7] memory def = _deployDefaultCurves();
         address[7] memory thin = _deployTierCurves(LiquidityTier.THIN);
         address[7] memory thick = _deployTierCurves(LiquidityTier.THICK);
@@ -134,9 +138,12 @@ contract DeployRealmStack is Script {
 
     /////////////////////////////// DEPLOY ///////////////////////////////
 
-    function _deployCore(ChainConfig.Infra memory infra, address hook) internal returns (Core memory c) {
+    function _deployCore(ChainConfig.Infra memory infra, address hook, address deployer)
+        internal
+        returns (Core memory c)
+    {
         c.feeHandler = address(new RealmMasterFeeHandler());
-        c.launchpad = address(new RealmLaunchpad(infra.treasury, msg.sender));
+        c.launchpad = address(new RealmLaunchpad(infra.treasury, deployer));
         c.quoter = address(new RealmQuoter(c.launchpad));
         // Chain-shared singleton: every V4 graduator's secondary position and taxable tokens'
         // `processLiquidity` both route through it.

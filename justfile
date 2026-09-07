@@ -170,6 +170,16 @@ deploy-prereqs-robinhood: chain-robinhood
     forge script DeployRealmPrereqs --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
+# Only the two registries (keepers + dividend swap), owned by realm.dev. Use to redeploy them without
+# touching the LP fee router or the hooks (whose Uniswap whitelisting must survive). Paste the two
+# printed constants into src/config/DeploymentAddresses.sol, then rebuild.
+deploy-registries-sepolia: chain-sepolia
+    forge script DeployRealmRegistries --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+deploy-registries-robinhood: chain-robinhood
+    forge script DeployRealmRegistries --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
 # Phase 1. Everything else in one broadcast: fee handler, launchpad, quoter, liquidity adder, the V2 +
 # three V4 graduators, 22 bonding curves, the creator-vault system, the three token impls and both
 # unified factories (impl + proxy), then whitelists the factories on the launchpad. Refuses to run

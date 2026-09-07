@@ -191,7 +191,7 @@ library DeploymentAddressesEthereumSepolia {
 
     /// @notice The `RealmDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
-    /// @dev Deployed by `DeployRealmPrereqs`; owner is `REALM_TREASURY`.
+    /// @dev Deployed by `DeployRealmRegistries` (also via `DeployRealmPrereqs`); owner is the `realm.dev` deployer.
     /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
     ///      script that deploys a taxable token implementation requires
     ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
@@ -205,7 +205,7 @@ library DeploymentAddressesEthereumSepolia {
 
     /// @notice The `RealmKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
     ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
-    /// @dev Deployed by `DeployRealmPrereqs`; owner is `REALM_TREASURY`.
+    /// @dev Deployed by `DeployRealmRegistries` (also via `DeployRealmPrereqs`); owner is the `realm.dev` deployer.
     /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
     ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
@@ -294,7 +294,7 @@ library DeploymentAddressesRobinhoodMainnet {
 
     /// @notice The `RealmDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
-    /// @dev Deployed by `DeployRealmPrereqs`; owner is `REALM_TREASURY`.
+    /// @dev Deployed by `DeployRealmRegistries` (also via `DeployRealmPrereqs`); owner is the `realm.dev` deployer.
     /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
     ///      script that deploys a taxable token implementation requires
     ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
@@ -304,16 +304,16 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
-    address public constant DIVIDEND_SWAP_REGISTRY = 0x9b3c560D86909B8116468536737a272Fe0cE327d;
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x5606c6EDF892FEd317c60C95a1BCcDA5c1c5f551;
 
     /// @notice The `RealmKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
     ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
-    /// @dev Deployed by `DeployRealmPrereqs`; owner is `REALM_TREASURY`.
+    /// @dev Deployed by `DeployRealmRegistries` (also via `DeployRealmPrereqs`); owner is the `realm.dev` deployer.
     /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
     ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
-    address public constant REALM_KEEPERS_REGISTRY = 0xCba49A6057256392cF480C17C81DF2170FB650CB;
+    address public constant REALM_KEEPERS_REGISTRY = 0x914e8A6fcA2af6E8Cf4434d1D50234fC89CdF2Ec;
     /// @notice Realm Treasury. Consumed by core contracts at deploy time.
     address public constant REALM_TREASURY = 0x7826AaE926AfD2886257976770e93e0240D2426e;
 }

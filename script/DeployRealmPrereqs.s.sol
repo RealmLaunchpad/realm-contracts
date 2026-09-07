@@ -1,17 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Script, console} from "forge-std/Script.sol";
+import {console} from "forge-std/Script.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {SwapLpFeeRouter} from "src/feeRouters/SwapLpFeeRouter.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
-import {
-    DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet
-} from "src/config/DeploymentAddresses.sol";
+import {DeployRealmRegistries} from "script/DeployRealmRegistries.s.sol";
 
 /// @title Phase 0 — the contracts whose addresses are COMPILE-TIME constants elsewhere
 /// @notice Deploys the three contracts that must exist before anything else is compiled, because their
@@ -24,6 +19,8 @@ import {
 ///         masters: an impl compiled against the placeholder fails closed FOREVER — every
 ///         `processDividends` / `processBurn` / `processLiquidity` reverts, and third-asset dividend
 ///         tokens cannot be created. So: run this, paste, rebuild, and only then run `DeployRealmStack`.
+///         Both are owned by the broadcaster (`realm.dev`) and come from `DeployRealmRegistries`, which
+///         also runs standalone to redeploy just them without touching the router or the hooks.
 ///
 ///         (3) is not a compile-time constant but must exist before the hook: `RealmSwapHook.FEE_ROUTER`
 ///         is an immutable, so the router proxy has to be deployed and its address passed at hook
@@ -33,26 +30,18 @@ import {
 ///
 /// @dev    Run: just chain-<sepolia|robinhood> && forge script DeployRealmPrereqs \
 ///                  --rpc-url <sepolia|robinhood-mainnet> --account realm.dev --slow --broadcast --verify
-contract DeployRealmPrereqs is Script {
-    function run() external {
+contract DeployRealmPrereqs is DeployRealmRegistries {
+    function run() external override {
         address treasury = ChainConfig.infra().treasury;
-        uint256 threshold = _dividendDepthThreshold();
 
         console.log("=== Phase 0: Realm prerequisites ===");
         console.log("Chain ID: ", block.chainid);
-        console.log("Deployer: ", msg.sender);
-        console.log("Owner:    ", treasury);
+        console.log("Treasury: ", treasury);
         console.log("");
 
         vm.startBroadcast();
 
-        // Owner is the treasury (cold key): it appoints admins and does nothing operational itself.
-        address keepers = address(new RealmKeepersRegistry(treasury));
-
-        address dividendImpl = address(new RealmDividendSwapRegistry());
-        address dividendProxy = address(
-            new ERC1967Proxy(dividendImpl, abi.encodeCall(RealmDividendSwapRegistry.initialize, (treasury, threshold)))
-        );
+        (address keepers, address dividendProxy, address dividendImpl) = _deployRegistries();
 
         // The hook takes this proxy as an immutable, so it must exist before `DeployRealmSwapHook`.
         // `initialize()` runs inside the proxy constructor so ownership cannot be front-run.
@@ -61,30 +50,18 @@ contract DeployRealmPrereqs is Script {
 
         vm.stopBroadcast();
 
-        console.log("=== Paste into src/config/DeploymentAddresses.sol (this chain's library) ===");
-        console.log("  REALM_KEEPERS_REGISTRY  =", keepers);
-        console.log("  DIVIDEND_SWAP_REGISTRY  =", dividendProxy);
+        _reportRegistries(keepers, dividendProxy, dividendImpl);
         console.log("");
         console.log("=== Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
         console.log("  LP_FEE_ROUTER           =", routerProxy);
         console.log("  LP_FEE_ROUTER_IMPL      =", routerImpl);
-        console.log("  (RealmDividendSwapRegistry impl, not in the manifest:", dividendImpl, ")");
         console.log("");
         console.log("Next:");
         console.log("  1. Paste the two DeploymentAddresses constants, then `forge build` (bytecode changes).");
         console.log("  2. Paste LP_FEE_ROUTER into the manifest, then `just export-deployments`.");
         console.log("  3. forge script DeployRealmSwapHook ...  (needs LP_FEE_ROUTER)");
         console.log("  4. forge script DeployRealmStack ...");
-        console.log("  5. Appoint admins/keepers: setAdmin + setKeeper, from the treasury account.");
-    }
-
-    /// @dev Depth an asset's V2 pair must hold to be an eligible dividend payout asset, in native
-    ///      18-dec. 10x the per-process cap, so the largest swap a token ever sends through the pool is
-    ///      ~10% of its quote side. NOT a sandwich defence (the keeper gate is) — it only keeps honest
-    ///      conversions out of dead pairs. Changed later with `setDefaultThreshold`.
-    function _dividendDepthThreshold() internal view returns (uint256) {
-        if (ChainConfig.isSepolia()) return 10 * DeploymentAddressesEthereumSepolia.MAX_EARNINGS_PER_PROCESS;
-        return 10 * DeploymentAddressesRobinhoodMainnet.MAX_EARNINGS_PER_PROCESS;
+        console.log("  5. Appoint admins/keepers: setAdmin + setKeeper, from realm.dev (the registries owner).");
     }
 
     /// @dev LP fee split by marketcap tier: 40/60 treasury/creator at graduation, sliding to 10/90 above
