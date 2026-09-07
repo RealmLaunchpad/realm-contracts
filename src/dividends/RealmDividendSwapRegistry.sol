@@ -16,7 +16,7 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
 /// or DeploymentAddressesArc{Mainnet,Testnet}.
-import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 // Aliased so the `chain-arc-*` recipe can import-swap it: on ARC the "native" leg is 18-dec native USDC
 // and the V2 quote token is its 6-dec ERC-20 alias, so the depth check needs a scale factor.
 import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";

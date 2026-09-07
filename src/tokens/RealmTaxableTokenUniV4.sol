@@ -18,7 +18,7 @@ import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
 /// or DeploymentAddressesArc{Mainnet,Testnet} (ARC native currency is USDC, 18-dec at msg.value).
-import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title RealmTaxableTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks.

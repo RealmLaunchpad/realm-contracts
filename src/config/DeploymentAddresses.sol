@@ -191,10 +191,7 @@ library DeploymentAddressesEthereumSepolia {
 
     /// @notice The `RealmDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
-    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The leading zeros and the `D1d3ADd5` tail
-    ///      are the tell; it is deliberately NOT `address(0)`, because tests have to `etch` a working
-    ///      registry AT this address and most ERC20s (USDC included) revert on a `transfer` to the zero
-    ///      address, which would make every third-asset payout untestable.
+    /// @dev Deployed by `DeployRealmPrereqs`; owner is `REALM_TREASURY`.
     /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
     ///      script that deploys a taxable token implementation requires
     ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
@@ -204,18 +201,16 @@ library DeploymentAddressesEthereumSepolia {
     ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
-    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x9b3c560D86909B8116468536737a272Fe0cE327d;
 
     /// @notice The `RealmKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
     ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
-    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
-    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
-    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Deployed by `DeployRealmPrereqs`; owner is `REALM_TREASURY`.
     /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
     ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
-    address public constant REALM_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
+    address public constant REALM_KEEPERS_REGISTRY = 0xCba49A6057256392cF480C17C81DF2170FB650CB;
     /// @notice Realm Treasury. TEMPORARY: the `realm.dev` EOA stands in until Realm has its own
     ///         treasury — replace before production. Consumed by core contracts at deploy time.
     address public constant REALM_TREASURY = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;

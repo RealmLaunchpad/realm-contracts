@@ -13,7 +13,7 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
 /// or DeploymentAddressesArc{Mainnet,Testnet} (ARC: `WETH` is the 6-decimal USDC ERC-20 V2 quote).
-import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 // Aliased so the `chain-arc-*` recipe can import-swap it for the ARC venue: swap-back sells tax tokens
 // for USDC (token→USDC) instead of ETH, since ARC has no wrappable WETH. See UniswapV2VenueArc.
 import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
