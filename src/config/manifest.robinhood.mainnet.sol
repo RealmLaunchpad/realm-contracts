@@ -34,10 +34,10 @@ library DeploymentsRobinhoodMainnet {
     ///         by marketcap tier.
     /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook
     ///      (`DeployRealmPrereqs`). Router policy changes ship by `upgradeToAndCall`ing this proxy.
-    address internal constant LP_FEE_ROUTER = address(0);
+    address internal constant LP_FEE_ROUTER = 0x823ca5B8041217Df052D9e64AC6E7c16A62FA957;
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
-    address internal constant LP_FEE_ROUTER_IMPL = address(0);
+    address internal constant LP_FEE_ROUTER_IMPL = 0xa2E3C9B3B33Cbad41ECCA283734c335490a09d4a;
     address internal constant QUOTER = address(0);
 
     // --- Token implementations (cloned by factories) ---

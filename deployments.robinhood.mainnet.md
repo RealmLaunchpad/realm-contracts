@@ -13,8 +13,8 @@
 | RealmMasterFeeHandler                        | _(not deployed)_                             |
 | RealmUniV4LiquidityAdder                     | _(not deployed)_                             |
 | RealmSwapHook                                | _(not deployed)_                             |
-| SwapLpFeeRouter (proxy)                      | _(not deployed)_                             |
-| SwapLpFeeRouter (impl)                       | _(not deployed)_                             |
+| SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
+| SwapLpFeeRouter (impl)                       | `0xa2E3C9B3B33Cbad41ECCA283734c335490a09d4a` |
 | RealmQuoter                                  | _(not deployed)_                             |
 | RealmToken (impl)                            | _(not deployed)_                             |
 | RealmTaxableTokenUniV4 (impl)                | _(not deployed)_                             |
