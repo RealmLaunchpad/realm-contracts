@@ -29,7 +29,7 @@ library DeploymentsEthereumSepolia {
     ///      `FEE_ROUTER` immutables are pinned to Livo addresses and cannot be repointed. Deploy with
     ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
     ///      variant Uniswap whitelists. `address(0)` until then.
-    address internal constant SWAP_HOOK = address(0);
+    address internal constant SWAP_HOOK = 0xE3246e5Ae48bA84e345D88b3e7473ae8DBB540cC;
     /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees treasury/creator
     ///         by marketcap tier.
     /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook

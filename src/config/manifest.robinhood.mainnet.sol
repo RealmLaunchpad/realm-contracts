@@ -29,7 +29,7 @@ library DeploymentsRobinhoodMainnet {
     ///      `FEE_ROUTER` immutables are pinned to Livo addresses and cannot be repointed. Deploy with
     ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
     ///      variant Uniswap whitelists. `address(0)` until then.
-    address internal constant SWAP_HOOK = address(0);
+    address internal constant SWAP_HOOK = 0xAE4c0Cf7C3Feb79e0c244EdBC6A3f8a3290940cC;
     /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees treasury/creator
     ///         by marketcap tier.
     /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook
