@@ -17,6 +17,11 @@ library DeploymentsEthereumMainnet {
     address internal constant GRADUATOR_UNIV4 = 0x1bB406cD19175FD707Bae63aA1410F7621fAc71D;
     address internal constant MASTER_FEE_HANDLER = 0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC;
 
+    /// @notice Shared, permissionless `LivoUniV4LiquidityAdder` singleton — one per chain, passed to every
+    ///         V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
+    ///         `DeployUniV4LiquidityAdder`; `address(0)` until first deployed on this chain.
+    address internal constant UNIV4_LIQUIDITY_ADDER = address(0);
+
     address internal constant SWAP_HOOK = 0x10392843021A1aF0abE3B1A21F14673DC05340cc;
     /// @notice LP fee router proxy (UUPS) consumed by `LivoSwapHook`; splits LP fees treasury/creator by marketcap tier.
     address internal constant LP_FEE_ROUTER = 0xe229557449f65e20368c40B3fb7471CB50dcB3eA;

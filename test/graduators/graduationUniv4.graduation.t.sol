@@ -285,10 +285,11 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     /// @notice Test that after graduation (exact eth) the eth worth of tokens dead is negligible
     function test_negligibleEthWorthOfTokensBurnedAtExactGraduation() public createTestToken {
         _graduateToken();
-        // tokens left in the graduator are considered burned
-        uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
+        // the graduator burns whatever it could not deposit, so the leftover lands on the dead address
+        uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
         // there is always some leftovers burned
         assertGt(burntSupply, 0);
+        assertEq(LivoToken(testToken).balanceOf(address(graduator)), 0, "graduator kept a residual balance");
 
         uint256 tokenPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
         // console.log("token price after graduation", tokenPrice);
@@ -316,8 +317,9 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
             TOTAL_SUPPLY,
             "some tokens have disappeared"
         );
-        assertLt(graduatorSupply, 5e18, "burned tokens exceeds 5 tokens");
-        assertLt(graduatorSupply, TOTAL_SUPPLY / 100_000_000, "more than 0.000001% of the supply is burned");
+        assertEq(graduatorSupply, 0, "graduator kept a residual balance");
+        assertLt(burnedSupply, 5e18, "burned tokens exceeds 5 tokens");
+        assertLt(burnedSupply, TOTAL_SUPPLY / 100_000_000, "more than 0.000001% of the supply is burned");
     }
 
     /// @notice Test that after graduation (exact eth) the eth worth of tokens dead is negligible
@@ -326,9 +328,11 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         _launchpadBuy(testToken, GRADUATION_THRESHOLD - 0.01 ether);
         _graduateToken();
 
-        uint256 burntSupply = LivoToken(testToken).balanceOf(address(graduator));
+        // the graduator burns whatever it could not deposit, so the leftover lands on the dead address
+        uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
         // there is always some leftovers burned
         assertGt(burntSupply, 0);
+        assertEq(LivoToken(testToken).balanceOf(address(graduator)), 0, "graduator kept a residual balance");
 
         uint256 tokenPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
         // console.log("token price after graduation", tokenPrice);

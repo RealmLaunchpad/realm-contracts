@@ -16,7 +16,13 @@ import {ILivoMasterFeeHandler} from "src/interfaces/ILivoMasterFeeHandler.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {ILivoCreatorVaultFactory} from "src/interfaces/ILivoCreatorVaultFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {ILivoTaxableToken, TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
+import {
+    ILivoTaxableToken,
+    TaxConfigInit,
+    TaxConfigs,
+    TaxConfigsWithAllocation,
+    TaxConfigsWithMultiAllocation
+} from "src/interfaces/ILivoTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {LivoToken} from "src/tokens/LivoToken.sol";
 
@@ -588,6 +594,31 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
         // buyTaxDecayStartBps / sellTaxDecayStartBps / taxDecayDuration stay 0 — no decay on the legacy path.
     }
 
+    /// @dev Strips the `earningsAllocation` split off a `TaxConfigsWithAllocation`, returning the plain
+    ///      `TaxConfigs` the shared creation pipeline consumes. The allocation bps are read separately by
+    ///      the allocation-aware overload and forwarded to `initializeEarningsAllocation`.
+    function _toTaxConfigs(TaxConfigsWithAllocation calldata c) internal pure returns (TaxConfigs memory cfg) {
+        cfg.buyTaxBps = c.buyTaxBps;
+        cfg.sellTaxBps = c.sellTaxBps;
+        cfg.taxDurationSeconds = c.taxDurationSeconds;
+        cfg.startTaxFromLaunch = c.startTaxFromLaunch;
+        cfg.buyTaxDecayStartBps = c.buyTaxDecayStartBps;
+        cfg.sellTaxDecayStartBps = c.sellTaxDecayStartBps;
+        cfg.taxDecayDuration = c.taxDecayDuration;
+    }
+
+    /// @dev Same, for the multi-asset allocation variant. The two structs share their leading fields by
+    ///      construction; only the nested allocation differs, and that is read by the overload itself.
+    function _toTaxConfigs(TaxConfigsWithMultiAllocation calldata c) internal pure returns (TaxConfigs memory cfg) {
+        cfg.buyTaxBps = c.buyTaxBps;
+        cfg.sellTaxBps = c.sellTaxBps;
+        cfg.taxDurationSeconds = c.taxDurationSeconds;
+        cfg.startTaxFromLaunch = c.startTaxFromLaunch;
+        cfg.buyTaxDecayStartBps = c.buyTaxDecayStartBps;
+        cfg.sellTaxDecayStartBps = c.sellTaxDecayStartBps;
+        cfg.taxDecayDuration = c.taxDecayDuration;
+    }
+
     /// @dev Validates a tax config. The static tax and the decay add-on are validated INDEPENDENTLY,
     ///      each with its own sentinel consistency (zero duration ⇒ zero bps, and vice-versa) so a token
     ///      may configure either, both, or neither — in particular a "decay-only" token sets just the
@@ -660,6 +691,14 @@ abstract contract LivoFactoryAbstract is ILivoFactory, Initializable, OwnableUpg
     ///      tax collection (V2 intrinsic swap-back / V4 hook plumbing) lives only there.
     function _isTaxConfigured(TaxConfigs memory t) internal pure returns (bool) {
         return t.taxDurationSeconds != 0 || t.taxDecayDuration != 0;
+    }
+
+    /// @dev Whether the token configures a LONG-TERM static tax (a decay-only token returns false).
+    ///      Gate for the earnings allocation: the decay window is capped at 20 minutes, so a decay-only
+    ///      token has no meaningful post-graduation tax stream to split — its allocation would only ever
+    ///      apply to the LP-fee creator share, which is not what the split is for.
+    function _hasStaticTax(TaxConfigs memory t) internal pure returns (bool) {
+        return t.taxDurationSeconds != 0;
     }
 
     /// @dev Buy tax (bps) the launchpad will charge on the deploy buy inside `createToken`. Only a

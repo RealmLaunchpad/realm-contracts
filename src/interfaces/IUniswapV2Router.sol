@@ -41,10 +41,21 @@ interface IUniswapV2Router {
         uint256 deadline
     ) external;
 
+    /// @notice Buys at least `amountOutMin` of `path[last]` with `msg.value` ETH, supporting
+    ///         fee-on-transfer output tokens. Used on ETH-family chains by the dividend module to
+    ///         convert an accrued native pot into a third payout asset.
+    // forge-lint: disable-next-line(mixed-case-function)
+    function swapExactETHForTokensSupportingFeeOnTransferTokens(
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline
+    ) external payable;
+
     /// @notice Sells `amountIn` of `path[0]` tokens for at least `amountOutMin` ETH, supporting
     ///         fee-on-transfer tokens (the FoT-aware variant skips the input-side amount check
     ///         and validates against the actual WETH received).
-    /// @dev Required by `LivoTaxableTokenUniV2._swapBack`: the token diverts a tax during the
+    /// @dev Required by `LivoTaxableTokenUniV2._processCollectedTokens`: the token diverts a tax during the
     ///      router's `transferFrom`, so the plain `swapExactTokensForETH` would revert.
     // forge-lint: disable-next-line(mixed-case-function)
     function swapExactTokensForETHSupportingFeeOnTransferTokens(

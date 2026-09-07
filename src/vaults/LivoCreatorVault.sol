@@ -56,6 +56,9 @@ contract LivoCreatorVault is Initializable {
     /// @notice Emitted on every successful claim.
     event Claimed(address indexed owner, uint256 amount);
 
+    /// @notice The native leg of `rescueTokens` could not be delivered; the ERC20 legs still completed.
+    event NativeRescueFailed(uint256 amount);
+
     //////////////////////// Errors //////////////////////
 
     error InvalidOwner();
@@ -103,6 +106,47 @@ contract LivoCreatorVault is Initializable {
         claimed = vested;
         IERC20(token).safeTransfer(owner, amount);
         emit Claimed(owner, amount);
+    }
+
+    /// @notice Accepts native transfers so the vault can receive dividends (and any other airdrop) on
+    ///         behalf of its owner. Without this a native dividend push to a vault would fail.
+    receive() external payable {}
+
+    /// @notice Sweeps everything the vault holds that is NOT the locked allocation to the `owner`: its
+    ///         native balance, plus the balance of each listed ERC20. Owner only.
+    /// @dev Vaults are ordinary dividend holders — the locked supply is a real team allocation, merely
+    ///      vested — so they get paid like anyone else, in native or in tokens. Sweeping is a separate
+    ///      call from `claim()` rather than folded into it, which also means it works during the cliff,
+    ///      when there is nothing vested to claim.
+    /// @dev ⚠️ The guard on the vested token is a PARTIAL CAP, not a refusal. The obvious rule — "revert
+    ///      if `tokens[i]` is the vested token" — strands a self-token dividend forever: it arrives AS
+    ///      the locked asset, and `_vestedAmount` is computed from the immutable `totalAllocation`, so
+    ///      the extra never vests out either. Only the excess above what is still locked is sweepable,
+    ///      which is both unstrandable and impossible to point at the vesting allocation.
+    /// @param tokens ERC20s to sweep. May be empty to sweep only the native balance. `address(0)`
+    ///        entries are skipped rather than treated as native, which the sweep already covers.
+    function rescueTokens(address[] calldata tokens) external {
+        require(msg.sender == owner, NotOwner());
+
+        for (uint256 i; i < tokens.length; ++i) {
+            address asset = tokens[i];
+            if (asset == address(0)) continue;
+            uint256 amount = IERC20(asset).balanceOf(address(this));
+            if (asset == token) {
+                uint256 locked = totalAllocation - claimed;
+                amount = amount > locked ? amount - locked : 0;
+            }
+            if (amount > 0) IERC20(asset).safeTransfer(owner, amount);
+        }
+
+        uint256 nativeAmount = address(this).balance;
+        if (nativeAmount > 0) {
+            // Best-effort, deliberately NOT `require`d: this leg runs AFTER the ERC20 loop, so an owner
+            // contract with no payable fallback would otherwise revert the whole call and could never
+            // rescue any ERC20 either. A failed send just leaves the native here for a later attempt.
+            (bool success,) = owner.call{value: nativeAmount}("");
+            if (!success) emit NativeRescueFailed(nativeAmount);
+        }
     }
 
     //////////////////////// view functions //////////////////////

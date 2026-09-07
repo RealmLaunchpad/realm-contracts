@@ -16,6 +16,11 @@ library DeploymentsRobinhoodTestnet {
     address internal constant BONDING_CURVE = 0xF3303E03aa58B1366652E883326675E67E20423f;
     address internal constant GRADUATOR_UNIV2 = 0x57aA990063b49cABf3EE9FeB49dca8DADc9511cD;
     address internal constant GRADUATOR_UNIV4 = 0x99Fe2360f8121b3CE92a67612AE13Af18B738533;
+
+    /// @notice Shared, permissionless `LivoUniV4LiquidityAdder` singleton — one per chain, passed to every
+    ///         V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
+    ///         `DeployUniV4LiquidityAdder`; `address(0)` until first deployed on this chain.
+    address internal constant UNIV4_LIQUIDITY_ADDER = address(0);
     address internal constant MASTER_FEE_HANDLER = 0xFF076a7110A404674Af27EC9749CB021699890EA;
 
     /// @notice Marketcap-tiered `LivoSwapHook`: fee-agnostic, reads each token's `swapLpFeeBps` via

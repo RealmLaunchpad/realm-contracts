@@ -7,6 +7,7 @@ import {LivoToken} from "src/tokens/LivoToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {LivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
@@ -91,6 +92,7 @@ contract LaunchpadInvariants is Test {
         );
         feeHandler = new LivoMasterFeeHandler();
 
+        address univ4LiquidityAdder = address(new LivoUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress));
         graduatorV4 = new LivoGraduatorUniswapV4(
             address(launchpad),
             poolManagerAddress,
@@ -98,7 +100,8 @@ contract LaunchpadInvariants is Test {
             permit2Address,
             TEST_HOOK_ADDRESS,
             715832709642994126662528799866880, // DEFAULT tier graduation sqrtPriceX96 (12.25 ETH mcap)
-            UniswapV4PoolConstants.TICK_UPPER
+            UniswapV4PoolConstants.TICK_UPPER,
+            univ4LiquidityAdder
         );
 
         // The unified factories take a base and a tax token impl. The invariant helper only ever uses

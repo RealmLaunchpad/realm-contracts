@@ -5,6 +5,7 @@ import {Script, console} from "forge-std/Script.sol";
 
 import {LivoToken} from "src/tokens/LivoToken.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {LivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
 import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
@@ -82,12 +83,18 @@ contract DeployHookGraduatorFactory is Script {
         // 1. Base token implementation (barebone V4 token clones this).
         address baseImpl = address(new LivoToken());
 
-        // 2. THIN no-vault base bonding curve. Params mirror `DeployTierLiquiditySystem`.
-        (uint256 threshold, uint256 maxExcess) = CreatorVaultCurveConstants.tierGraduation(LiquidityTier.THIN);
-        (uint256 k, uint256 t0, uint256 e0) = CreatorVaultCurveConstants.paramsFor(LiquidityTier.THIN, 0);
-        address thinCurve = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, threshold, maxExcess));
+        // 2. THIN no-vault base bonding curve. Params mirror `DeployTierLiquiditySystem`. Scoped in a
+        //    block so the five curve-param locals free up before the graduator/factory construction below
+        //    (keeps `run()` under the stack-too-deep limit without via-ir).
+        address thinCurve;
+        {
+            (uint256 threshold, uint256 maxExcess) = CreatorVaultCurveConstants.tierGraduation(LiquidityTier.THIN);
+            (uint256 k, uint256 t0, uint256 e0) = CreatorVaultCurveConstants.paramsFor(LiquidityTier.THIN, 0);
+            thinCurve = address(new ConstantProductBondingCurveConfigurable(k, t0, e0, threshold, maxExcess));
+        }
 
-        // 3. THIN graduator, pointing at the hook.
+        // 3. THIN graduator, pointing at the hook. This one-off barebone factory is self-contained, so
+        //    it deploys its OWN liquidity adder inline (the main-stack scripts share the manifest one).
         LivoGraduatorUniswapV4 graduator = new LivoGraduatorUniswapV4(
             infra.launchpad,
             infra.poolManager,
@@ -95,7 +102,8 @@ contract DeployHookGraduatorFactory is Script {
             infra.permit2,
             hook,
             THIN_GRAD_SQRT_PRICE_X96,
-            UniswapV4PoolConstants.TICK_UPPER_THIN
+            UniswapV4PoolConstants.TICK_UPPER_THIN,
+            address(new LivoUniV4LiquidityAdder(infra.positionManager, infra.poolManager))
         );
         require(graduator.HOOK_ADDRESS() == hook, "graduator hook mismatch");
 

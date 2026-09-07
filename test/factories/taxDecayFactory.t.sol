@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
 import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigs, TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
 import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
@@ -197,5 +197,53 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
         factoryV2Unified.createToken(
             setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
         );
+    }
+
+    // ───────────── Earnings allocation is gated on a long-term static tax ─────────────
+
+    /// @dev Builds a `TaxConfigsWithAllocation` from a plain `TaxConfigs` plus a burn share.
+    function _allocCfg(TaxConfigs memory t, uint16 burnBps) internal pure returns (TaxConfigsWithAllocation memory) {
+        return TaxConfigsWithAllocation({
+            buyTaxBps: t.buyTaxBps,
+            sellTaxBps: t.sellTaxBps,
+            taxDurationSeconds: t.taxDurationSeconds,
+            startTaxFromLaunch: t.startTaxFromLaunch,
+            buyTaxDecayStartBps: t.buyTaxDecayStartBps,
+            sellTaxDecayStartBps: t.sellTaxDecayStartBps,
+            taxDecayDuration: t.taxDecayDuration,
+            earningsAllocation: EarningsAllocationConfig({
+                burnBps: burnBps, dividendsBps: 0, liquidityBps: 0, dividendToken: address(0)
+            })
+        });
+    }
+
+    function _allocSetup() internal returns (ILivoFactory.TokenSetupTiered memory) {
+        return ILivoFactory.TokenSetupTiered({
+            name: "A",
+            symbol: "A",
+            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+    }
+
+    function test_createToken_revertsOnAllocationForDecayOnlyToken() public {
+        // decay-only: no long-term static tax, so no earnings stream worth splitting
+        TaxConfigsWithAllocation memory cfg = _allocCfg(_decayCfg(1000, 1000, MAX_DECAY_DURATION, true), 5000);
+        vm.prank(creator);
+        vm.expectRevert(ILivoFactory.EarningsAllocationRequiresTax.selector);
+        factoryV2Unified.createToken(
+            _allocSetup(), cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+        );
+    }
+
+    function test_createToken_allowsAllocationWhenStaticTaxAccompaniesDecay() public {
+        TaxConfigsWithAllocation memory cfg =
+            _allocCfg(_taxCfg(0, 400, uint32(14 days), true, 0, 1000, MAX_DECAY_DURATION), 5000);
+        vm.prank(creator);
+        address token = factoryV2Unified.createToken(
+            _allocSetup(), cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+        );
+        assertEq(uint256(LivoTaxableTokenUniV2(payable(token)).burnBps()), 5000, "allocation stored");
     }
 }

@@ -57,6 +57,7 @@ contract DeployTierLiquiditySystem is Script {
         address positionManager;
         address permit2;
         address hook; // fee-agnostic LivoSwapHook (reads the LP fee from the token)
+        address liquidityAdder; // shared LivoUniV4LiquidityAdder singleton
     }
 
     function run() public {
@@ -175,7 +176,14 @@ contract DeployTierLiquiditySystem is Script {
         returns (address)
     {
         LivoGraduatorUniswapV4 graduator = new LivoGraduatorUniswapV4(
-            d.launchpad, d.poolManager, d.positionManager, d.permit2, hook, sqrtPriceGraduation, tickUpper
+            d.launchpad,
+            d.poolManager,
+            d.positionManager,
+            d.permit2,
+            hook,
+            sqrtPriceGraduation,
+            tickUpper,
+            d.liquidityAdder
         );
         require(graduator.HOOK_ADDRESS() == hook, "graduator hook mismatch");
         return address(graduator);
@@ -218,7 +226,8 @@ contract DeployTierLiquiditySystem is Script {
                 poolManager: DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
                 positionManager: DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesEthereumMainnet.PERMIT2,
-                hook: DeploymentsEthereumMainnet.SWAP_HOOK
+                hook: DeploymentsEthereumMainnet.SWAP_HOOK,
+                liquidityAdder: DeploymentsEthereumMainnet.UNIV4_LIQUIDITY_ADDER
             });
         } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             d = Deps({
@@ -226,7 +235,8 @@ contract DeployTierLiquiditySystem is Script {
                 poolManager: DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
                 positionManager: DeploymentAddressesEthereumSepolia.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesEthereumSepolia.PERMIT2,
-                hook: DeploymentsEthereumSepolia.SWAP_HOOK
+                hook: DeploymentsEthereumSepolia.SWAP_HOOK,
+                liquidityAdder: DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER
             });
         } else if (block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID) {
             d = Deps({
@@ -234,7 +244,8 @@ contract DeployTierLiquiditySystem is Script {
                 poolManager: DeploymentAddressesArcTestnet.UNIV4_POOL_MANAGER,
                 positionManager: DeploymentAddressesArcTestnet.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesArcTestnet.PERMIT2,
-                hook: DeploymentsArcTestnet.SWAP_HOOK
+                hook: DeploymentsArcTestnet.SWAP_HOOK,
+                liquidityAdder: DeploymentsArcTestnet.UNIV4_LIQUIDITY_ADDER
             });
         } else {
             revert("Unsupported chain ID");
@@ -242,5 +253,6 @@ contract DeployTierLiquiditySystem is Script {
 
         require(d.launchpad != address(0), "manifest: LAUNCHPAD missing");
         require(d.hook != address(0), "manifest: SWAP_HOOK missing");
+        require(d.liquidityAdder != address(0), "manifest: UNIV4_LIQUIDITY_ADDER missing");
     }
 }

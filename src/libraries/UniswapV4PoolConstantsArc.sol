@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "lib/v4-core/src/types/Currency.sol";
+import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
+
 /// @title UniswapV4PoolConstantsArc
 /// @notice ARC (Circle L1, native currency = USDC) variant of `UniswapV4PoolConstants`.
 /// @dev ARC has no ETH: the native currency is USDC ($1), 18-dec at `msg.value` (identical wei math to
@@ -66,4 +70,18 @@ library UniswapV4PoolConstantsArc {
     /// @notice THICK graduation sqrtPriceX96. ETH wei/token 24500000000 → ARC 49000000000000
     ///         (24.5 ETH → 49000 USDC mcap, same $49,000). Tick 99200.
     uint160 internal constant SQRT_PRICEX96_GRADUATION_THICK = 11318308930609191406477680574464;
+
+    /// @notice The canonical PoolKey of a graduated Livo token's V4 pool: `(native USDC, token)` with
+    ///         this library's fee/spacing and the graduator's hook. THE single source of truth — the
+    ///         graduator, the buy-back mixin and the token's liquidity leg must all target the same
+    ///         pool, so none of them may hand-roll the key.
+    function livoPoolKey(address token, address hook) internal pure returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(address(0)), // native USDC
+            currency1: Currency.wrap(token),
+            fee: LP_FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(hook)
+        });
+    }
 }

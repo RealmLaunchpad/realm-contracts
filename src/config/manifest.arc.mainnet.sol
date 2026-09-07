@@ -17,6 +17,12 @@ library DeploymentsArcMainnet {
     address internal constant GRADUATOR_UNIV2 = address(0);
     address internal constant GRADUATOR_UNIV4 = address(0);
     address internal constant MASTER_FEE_HANDLER = address(0);
+
+    /// @notice Shared, permissionless `LivoUniV4LiquidityAdder` singleton — one per chain, passed to every
+    ///         V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
+    ///         `DeployUniV4LiquidityAdder`; `address(0)` until first deployed on this chain.
+    address internal constant UNIV4_LIQUIDITY_ADDER = address(0);
+
     address internal constant SWAP_HOOK = address(0);
     address internal constant LP_FEE_ROUTER = address(0);
     address internal constant LP_FEE_ROUTER_IMPL = address(0);

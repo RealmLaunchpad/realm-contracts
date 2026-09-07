@@ -47,6 +47,70 @@ library DeploymentAddressesEthereumMainnet {
     /// @dev Standard burn address that works on all chains
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev With the once-per-block cooldown, caps what a price-manipulation sandwich can extract from the
+    ///      earnings buffers PER BLOCK; the remainder stays buffered for later calls. It does not bound
+    ///      the fraction of a single call that can be taken — only the keeper gate does that. See
+    ///      `DividendDistribution.MAX_DIVIDEND_PER_CONVERSION`.
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
+
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processDividends` may convert it and stream it to holders. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         token has gone `STALE_DIVIDEND_WINDOW` without a distribution, so a sub-threshold residual
+    ///         on a dead token can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
+
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimDividends()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev ~300k gas at 20 gwei is ~0.006 ETH, so this is roughly break-even at that regime. NOT
+    ///      DEPLOYED HERE: dividends ship on Robinhood Chain only, and this value exists so the mainnet
+    ///      library stays a complete config, not because anything reads it today.
+    uint256 public constant KEEPER_FEE = 0.005 ether;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The leading zeros and the `D1d3ADd5` tail
+    ///      are the tell; it is deliberately NOT `address(0)`, because tests have to `etch` a working
+    ///      registry AT this address and most ERC20s (USDC included) revert on a `transfer` to the zero
+    ///      address, which would make every third-asset payout untestable.
+    /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
+    ///      script that deploys a taxable token implementation requires
+    ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
+    ///      first, paste it here, then deploy the impls — they bake this in as a constant and clones
+    ///      cannot be repointed.
+    /// @dev Left unset, everything fails closed: `_initializeDividends` reverts on the codeless registry
+    ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
+    ///      guard stops a conversion handing its native to an address that cannot give it back. Native
+    ///      and self-token payouts are unaffected either way.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -91,6 +155,66 @@ library DeploymentAddressesEthereumSepolia {
     /// @dev Standard burn address that works on all chains
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev See the mainnet library for the rationale (sandwich-extraction cap).
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
+
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processDividends` may convert it and stream it to holders. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         token has gone `STALE_DIVIDEND_WINDOW` without a distribution, so a sub-threshold residual
+    ///         on a dead token can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
+
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimDividends()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev Testnet gas is free-ish and the threshold here is 100x smaller than mainnet's; this is only
+    ///      large enough to prove the plumbing moves money.
+    uint256 public constant KEEPER_FEE = 0.0001 ether;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The leading zeros and the `D1d3ADd5` tail
+    ///      are the tell; it is deliberately NOT `address(0)`, because tests have to `etch` a working
+    ///      registry AT this address and most ERC20s (USDC included) revert on a `transfer` to the zero
+    ///      address, which would make every third-asset payout untestable.
+    /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
+    ///      script that deploys a taxable token implementation requires
+    ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
+    ///      first, paste it here, then deploy the impls — they bake this in as a constant and clones
+    ///      cannot be repointed.
+    /// @dev Left unset, everything fails closed: `_initializeDividends` reverts on the codeless registry
+    ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
+    ///      guard stops a conversion handing its native to an address that cannot give it back. Native
+    ///      and self-token payouts are unaffected either way.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
@@ -135,6 +259,69 @@ library DeploymentAddressesRobinhoodMainnet {
     /// @notice Dead address used for burning LP tokens
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev See the Ethereum mainnet library for the rationale (sandwich-extraction cap).
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
+
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processDividends` may convert it and stream it to holders. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         token has gone `STALE_DIVIDEND_WINDOW` without a distribution, so a sub-threshold residual
+    ///         on a dead token can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
+
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimDividends()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev THE ONE THAT MATTERS — dividends ship here. Deliberately over-provisioned: an Arbitrum L2
+    ///      conversion costs a tiny fraction of this even with the L1 data fee, so the fee survives an
+    ///      L1 fee spike, a stretch of conversions that revert on their floor, and a gas regime nobody
+    ///      forecast — the cost of being wrong the other way is every token's distributions stopping at
+    ///      once. It is ~2% of a threshold-sized conversion (0.1 ETH) and ~1% of a maximum one.
+    uint256 public constant KEEPER_FEE = 0.002 ether;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The leading zeros and the `D1d3ADd5` tail
+    ///      are the tell; it is deliberately NOT `address(0)`, because tests have to `etch` a working
+    ///      registry AT this address and most ERC20s (USDC included) revert on a `transfer` to the zero
+    ///      address, which would make every third-asset payout untestable.
+    /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
+    ///      script that deploys a taxable token implementation requires
+    ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
+    ///      first, paste it here, then deploy the impls — they bake this in as a constant and clones
+    ///      cannot be repointed.
+    /// @dev Left unset, everything fails closed: `_initializeDividends` reverts on the codeless registry
+    ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
+    ///      guard stops a conversion handing its native to an address that cannot give it back. Native
+    ///      and self-token payouts are unaffected either way.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury (same address as Ethereum mainnet)
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -183,6 +370,65 @@ library DeploymentAddressesRobinhoodTestnet {
     /// @notice Dead address used for burning LP tokens
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev See the Ethereum mainnet library for the rationale (sandwich-extraction cap).
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
+
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processDividends` may convert it and stream it to holders. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         token has gone `STALE_DIVIDEND_WINDOW` without a distribution, so a sub-threshold residual
+    ///         on a dead token can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
+
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimDividends()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev Scaled to this chain's 100x smaller `DIVIDEND_THRESHOLD`, same ratio as the mainnet pair.
+    uint256 public constant KEEPER_FEE = 0.0002 ether;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The leading zeros and the `D1d3ADd5` tail
+    ///      are the tell; it is deliberately NOT `address(0)`, because tests have to `etch` a working
+    ///      registry AT this address and most ERC20s (USDC included) revert on a `transfer` to the zero
+    ///      address, which would make every third-asset payout untestable.
+    /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
+    ///      script that deploys a taxable token implementation requires
+    ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
+    ///      first, paste it here, then deploy the impls — they bake this in as a constant and clones
+    ///      cannot be repointed.
+    /// @dev Left unset, everything fails closed: `_initializeDividends` reverts on the codeless registry
+    ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
+    ///      guard stops a conversion handing its native to an address that cannot give it back. Native
+    ///      and self-token payouts are unaffected either way.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury. TEMPORARY: set to livo.dev — REPLACE with the real Robinhood treasury before production.
     address public constant LIVO_TREASURY = 0xBa489180Ea6EEB25cA65f123a46F3115F388f181;
 }
@@ -239,6 +485,67 @@ library DeploymentAddressesArcMainnet {
     /// @notice Dead address used for burning LP tokens
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev 400 native USDC ≈ 0.2 ETH under the ×2000 ARC repricing assumption. See the Ethereum
+    ///      mainnet library for the rationale (sandwich-extraction cap).
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 400e18;
+
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processDividends` may convert it and stream it to holders. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         token has gone `STALE_DIVIDEND_WINDOW` without a distribution, so a sub-threshold residual
+    ///         on a dead token can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 250e18;
+
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimDividends()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev 2 native USDC ~ 0.001 ETH under the x2000 ARC repricing assumption the other values here
+    ///      use. Native is 18-dec USDC on ARC, so this is 2 USDC, not 2 ETH.
+    uint256 public constant KEEPER_FEE = 2e18;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The leading zeros and the `D1d3ADd5` tail
+    ///      are the tell; it is deliberately NOT `address(0)`, because tests have to `etch` a working
+    ///      registry AT this address and most ERC20s (USDC included) revert on a `transfer` to the zero
+    ///      address, which would make every third-asset payout untestable.
+    /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
+    ///      script that deploys a taxable token implementation requires
+    ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
+    ///      first, paste it here, then deploy the impls — they bake this in as a constant and clones
+    ///      cannot be repointed.
+    /// @dev Left unset, everything fails closed: `_initializeDividends` reverts on the codeless registry
+    ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
+    ///      guard stops a conversion handing its native to an address that cannot give it back. Native
+    ///      and self-token payouts are unaffected either way.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }
@@ -288,6 +595,66 @@ library DeploymentAddressesArcTestnet {
     /// @notice Dead address used for burning LP tokens
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
+    /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
+    /// @dev 400 native USDC ≈ 0.2 ETH under the ×2000 ARC repricing assumption. See the Ethereum
+    ///      mainnet library for the rationale (sandwich-extraction cap).
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 400e18;
+
+    /// @notice Minimum accrued native amount the dividend buffer must hold before
+    ///         `processDividends` may convert it and stream it to holders. Per-chain because a wei value
+    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
+    ///         token has gone `STALE_DIVIDEND_WINDOW` without a distribution, so a sub-threshold residual
+    ///         on a dead token can never strand.
+    uint256 public constant DIVIDEND_THRESHOLD = 250e18;
+
+    /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
+    /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
+    ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
+    ///      property of them, not of the protocol. It is NOT an eligibility gate: a holder who needs
+    ///      more can always call `claimDividends()`, which forwards all remaining gas.
+    uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
+
+    /// @notice Flat amount of native the `LivoDividendSwapRegistry` diverts to the keeper wallet on each
+    ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
+    /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
+    ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
+    ///      holders on a large one — and the conversion band is narrow anyway
+    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
+    ///      few basis points of one conversion.
+    /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
+    ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
+    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    /// @dev 2 native USDC, matching ARC mainnet (see there).
+    uint256 public constant KEEPER_FEE = 2e18;
+
+    /// @notice The `LivoDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    ///         payout and the venue its native -> asset conversion crosses.
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The leading zeros and the `D1d3ADd5` tail
+    ///      are the tell; it is deliberately NOT `address(0)`, because tests have to `etch` a working
+    ///      registry AT this address and most ERC20s (USDC included) revert on a `transfer` to the zero
+    ///      address, which would make every third-asset payout untestable.
+    /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
+    ///      script that deploys a taxable token implementation requires
+    ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
+    ///      first, paste it here, then deploy the impls — they bake this in as a constant and clones
+    ///      cannot be repointed.
+    /// @dev Left unset, everything fails closed: `_initializeDividends` reverts on the codeless registry
+    ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
+    ///      guard stops a conversion handing its native to an address that cannot give it back. Native
+    ///      and self-token payouts are unaffected either way.
+    address public constant DIVIDEND_SWAP_REGISTRY = 0x00000000000000000000000000000000D1d3ADd5;
+
+    /// @notice The `LivoKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
+    ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
+    /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
+    ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
+    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses.
+    /// @dev Baked into token implementations as a constant, so deploy the registry first and paste it
+    ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
+    ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
+    ///      all, which is the safe direction for a gate.
+    address public constant LIVO_KEEPERS_REGISTRY = 0x00000000000000000000000000000000CeEbEe95;
     /// @notice Livo Treasury (shared with Ethereum mainnet + Robinhood mainnet).
     address public constant LIVO_TREASURY = 0x2F56CB340FeA590a2A801081118bF3143309329D;
 }

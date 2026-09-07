@@ -9,6 +9,7 @@ import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
 import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
 import {LivoGraduatorUniswapV2Arc} from "src/graduators/LivoGraduatorUniswapV2Arc.sol";
 import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {LivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
 import {UniswapV4PoolConstantsArc} from "src/libraries/UniswapV4PoolConstantsArc.sol";
 import {DeploymentAddressesArcTestnet} from "src/config/DeploymentAddresses.sol";
 import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
@@ -21,7 +22,8 @@ import {DeploymentsArcTestnet} from "src/config/manifest.arc.testnet.sol";
 ///           2. `LivoLaunchpad` (owner = broadcaster, treasury from `DeploymentAddresses*`)
 ///           3. `LivoQuoter`
 ///           4. `LivoGraduatorUniswapV2` (DEFAULT tier / V2 venue)
-///           5. `LivoGraduatorUniswapV4` (DEFAULT tier / V4 venue)
+///           5. `LivoUniV4LiquidityAdder` (shared singleton consumed by the V4 graduator)
+///           6. `LivoGraduatorUniswapV4` (DEFAULT tier / V4 venue)
 ///
 ///         It does NOT deploy the DEFAULT `BONDING_CURVE`: `DeployTierLiquiditySystem` (re)deploys that
 ///         (and every tier curve) and is the source of truth for it — and on ARC the base curve is a
@@ -74,6 +76,8 @@ contract DeployLaunchpadCore is Script {
         address graduatorV2 = block.chainid == DeploymentAddressesArcTestnet.BLOCKCHAIN_ID
             ? address(new LivoGraduatorUniswapV2Arc(d.univ2Router, launchpad, d.univ2PairInitCodeHash))
             : address(new LivoGraduatorUniswapV2(d.univ2Router, launchpad, d.univ2PairInitCodeHash));
+        // Chain-shared singleton; the V4 graduator and taxable tokens' `processLiquidity` both need it.
+        address liquidityAdder = address(new LivoUniV4LiquidityAdder(d.univ4PositionManager, d.univ4PoolManager));
         address graduatorV4 = address(
             new LivoGraduatorUniswapV4(
                 launchpad,
@@ -82,7 +86,8 @@ contract DeployLaunchpadCore is Script {
                 d.permit2,
                 d.swapHook,
                 d.defaultGradSqrtPrice,
-                d.defaultTickUpper
+                d.defaultTickUpper,
+                liquidityAdder
             )
         );
 
@@ -94,6 +99,7 @@ contract DeployLaunchpadCore is Script {
         console.log("QUOTER              ", quoter);
         console.log("GRADUATOR_UNIV2     ", graduatorV2);
         console.log("GRADUATOR_UNIV4     ", graduatorV4);
+        console.log("UNIV4_LIQUIDITY_ADDER", liquidityAdder);
         console.log("");
         console.log("Next: update the manifest, `just export-deployments`, then the vault/tier/factory scripts.");
     }

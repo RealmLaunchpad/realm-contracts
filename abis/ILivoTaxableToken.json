@@ -418,6 +418,95 @@
   },
   {
     "type": "function",
+    "name": "initializeEarningsAllocation",
+    "inputs": [
+      {
+        "name": "burnBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "dividendsBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "liquidityBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "dividendTokens",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "dividendWeightsBps",
+        "type": "uint16[]",
+        "internalType": "uint16[]"
+      },
+      {
+        "name": "dividendRoutes",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "initializeEarningsAllocation",
+    "inputs": [
+      {
+        "name": "burnBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "dividendsBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "liquidityBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "dividendToken",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "initializeEarningsAllocation",
+    "inputs": [
+      {
+        "name": "burnBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "dividendsBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "liquidityBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "launchTimestamp",
     "inputs": [],
     "outputs": [

@@ -45,7 +45,7 @@ contract LivoCreatorVaultFactory is ILivoCreatorVaultFactory, Initializable, Own
         returns (address vault)
     {
         vault = Clones.clone(VAULT_IMPLEMENTATION);
-        LivoCreatorVault(vault).initialize(token, owner, amount, cliffSeconds, vestingSeconds);
+        LivoCreatorVault(payable(vault)).initialize(token, owner, amount, cliffSeconds, vestingSeconds);
         emit CreatorVaultDeployed(vault, token, owner, amount, cliffSeconds, vestingSeconds);
     }
 

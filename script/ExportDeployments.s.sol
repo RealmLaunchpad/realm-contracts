@@ -35,6 +35,7 @@ contract ExportDeployments is Script {
         address graduatorUniV2;
         address graduatorUniV4;
         address masterFeeHandler;
+        address univ4LiquidityAdder;
         address swapHook;
         address lpFeeRouter;
         address lpFeeRouterImpl;
@@ -94,6 +95,7 @@ contract ExportDeployments is Script {
         d.graduatorUniV2 = DeploymentsEthereumMainnet.GRADUATOR_UNIV2;
         d.graduatorUniV4 = DeploymentsEthereumMainnet.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsEthereumMainnet.MASTER_FEE_HANDLER;
+        d.univ4LiquidityAdder = DeploymentsEthereumMainnet.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsEthereumMainnet.SWAP_HOOK;
         d.lpFeeRouter = DeploymentsEthereumMainnet.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsEthereumMainnet.LP_FEE_ROUTER_IMPL;
@@ -135,6 +137,7 @@ contract ExportDeployments is Script {
         d.graduatorUniV2 = DeploymentsEthereumSepolia.GRADUATOR_UNIV2;
         d.graduatorUniV4 = DeploymentsEthereumSepolia.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsEthereumSepolia.MASTER_FEE_HANDLER;
+        d.univ4LiquidityAdder = DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsEthereumSepolia.SWAP_HOOK;
         d.lpFeeRouter = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsEthereumSepolia.LP_FEE_ROUTER_IMPL;
@@ -176,6 +179,7 @@ contract ExportDeployments is Script {
         d.graduatorUniV2 = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV2;
         d.graduatorUniV4 = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsRobinhoodMainnet.MASTER_FEE_HANDLER;
+        d.univ4LiquidityAdder = DeploymentsRobinhoodMainnet.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsRobinhoodMainnet.SWAP_HOOK;
         d.lpFeeRouter = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER_IMPL;
@@ -217,6 +221,7 @@ contract ExportDeployments is Script {
         d.graduatorUniV2 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2;
         d.graduatorUniV4 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER;
+        d.univ4LiquidityAdder = DeploymentsRobinhoodTestnet.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsRobinhoodTestnet.SWAP_HOOK;
         d.lpFeeRouter = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER_IMPL;
@@ -258,6 +263,7 @@ contract ExportDeployments is Script {
         d.graduatorUniV2 = DeploymentsArcMainnet.GRADUATOR_UNIV2;
         d.graduatorUniV4 = DeploymentsArcMainnet.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsArcMainnet.MASTER_FEE_HANDLER;
+        d.univ4LiquidityAdder = DeploymentsArcMainnet.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsArcMainnet.SWAP_HOOK;
         d.lpFeeRouter = DeploymentsArcMainnet.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsArcMainnet.LP_FEE_ROUTER_IMPL;
@@ -299,6 +305,7 @@ contract ExportDeployments is Script {
         d.graduatorUniV2 = DeploymentsArcTestnet.GRADUATOR_UNIV2;
         d.graduatorUniV4 = DeploymentsArcTestnet.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsArcTestnet.MASTER_FEE_HANDLER;
+        d.univ4LiquidityAdder = DeploymentsArcTestnet.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsArcTestnet.SWAP_HOOK;
         d.lpFeeRouter = DeploymentsArcTestnet.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsArcTestnet.LP_FEE_ROUTER_IMPL;
@@ -349,6 +356,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("LivoGraduatorUniswapV2", d.graduatorUniV2));
         s = string.concat(s, _row("LivoGraduatorUniswapV4", d.graduatorUniV4));
         s = string.concat(s, _row("LivoMasterFeeHandler", d.masterFeeHandler));
+        s = string.concat(s, _row("LivoUniV4LiquidityAdder", d.univ4LiquidityAdder));
         s = string.concat(s, _row("LivoSwapHook", d.swapHook));
         s = string.concat(s, _row("LivoLpFeeRouter (proxy)", d.lpFeeRouter));
         s = string.concat(s, _row("LivoLpFeeRouter (impl)", d.lpFeeRouterImpl));

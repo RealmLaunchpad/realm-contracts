@@ -21,7 +21,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 //   3. When anyone later triggers graduation, the V2 graduator calls
 //      `router.addLiquidityETH` which does `transferFrom(graduator, pair, ...)`.
 //      Inside the token's `_update(graduator, pair, ...)`: `_graduated=true`,
-//      `isSell=true`, `balanceOf(this) >= SWAP_THRESHOLD` → `_swapBack` fires
+//      `isSell=true`, `balanceOf(this) >= SWAP_THRESHOLD` → `_processCollectedTokens` fires
 //      against a pair whose reserves are still (0, 0). The router reverts with
 //      INSUFFICIENT_LIQUIDITY, taking the entire graduation tx down.
 //   4. The token is permanently stuck pre-graduation.
@@ -45,7 +45,7 @@ contract Finding01_V2GraduationDOS is LaunchpadBaseTestsWithUniv2Graduator {
     /// @notice Asserts that an attacker priming the token contract with
     ///         ≥ SWAP_THRESHOLD tokens MUST NOT prevent graduation. Fails on
     ///         the current (buggy) code because the graduator's first
-    ///         `addLiquidityETH` triggers an auto-`_swapBack` against an
+    ///         `addLiquidityETH` triggers an auto-`_processCollectedTokens` against an
     ///         unfunded pair; passes once `_update` skips the auto-swap
     ///         branch for `from == graduator` (or another equivalent guard).
     function test_graduationMustSucceedDespiteTokenContractPriming() public {

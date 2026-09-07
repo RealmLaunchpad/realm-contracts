@@ -16,6 +16,11 @@ library DeploymentsEthereumSepolia {
     address internal constant BONDING_CURVE = 0x523C474aB6C177B3A4eF9aeF226998eC3f35ae27;
     address internal constant GRADUATOR_UNIV2 = 0xdf2A4F12Af6Cce0588678FdA7ce69D5Edc7d0897;
     address internal constant GRADUATOR_UNIV4 = 0xa88eAEA0218F0c0E9cbeec17c3CF449379374Cc7;
+
+    /// @notice Shared, permissionless `LivoUniV4LiquidityAdder` singleton — one per chain, passed to every
+    ///         V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
+    ///         `DeployUniV4LiquidityAdder`; `address(0)` until first deployed on this chain.
+    address internal constant UNIV4_LIQUIDITY_ADDER = address(0);
     address internal constant MASTER_FEE_HANDLER = 0xcA5A02C3ADcEb4f37c2Bf6c6261EaD11166fb26f;
 
     address internal constant SWAP_HOOK = 0x681F2EEf3F43CfC6Eea7BFdAa801135E04ff00cC;

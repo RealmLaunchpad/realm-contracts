@@ -138,6 +138,7 @@ contract DeployLaunchpadV2Stack is Script {
         address factoryV2Proxy;
         address factoryV4Proxy;
         address swapHook;
+        address liquidityAdder; // shared LivoUniV4LiquidityAdder singleton (reused from the manifest)
         // reused (not redeployed) deps the fresh factory impls are wired to
         address bondingCurve;
         address masterFeeHandler;
@@ -172,6 +173,7 @@ contract DeployLaunchpadV2Stack is Script {
                 factoryV2Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV2_UNIFIED,
                 factoryV4Proxy: DeploymentsEthereumMainnet.FACTORY_UNIV4_UNIFIED,
                 swapHook: DeploymentsEthereumMainnet.SWAP_HOOK,
+                liquidityAdder: DeploymentsEthereumMainnet.UNIV4_LIQUIDITY_ADDER,
                 bondingCurve: DeploymentsEthereumMainnet.BONDING_CURVE,
                 masterFeeHandler: DeploymentsEthereumMainnet.MASTER_FEE_HANDLER,
                 univ2Router: DeploymentAddressesEthereumMainnet.UNIV2_ROUTER,
@@ -196,6 +198,7 @@ contract DeployLaunchpadV2Stack is Script {
                 factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
                 factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED,
                 swapHook: DeploymentsEthereumSepolia.SWAP_HOOK,
+                liquidityAdder: DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER,
                 bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
                 univ2Router: DeploymentAddressesEthereumSepolia.UNIV2_ROUTER,
@@ -218,11 +221,29 @@ contract DeployLaunchpadV2Stack is Script {
             revert("Unsupported chain");
         }
 
+        // The registry address is a compile-time constant baked into every taxable-token implementation,
+        // and clones are not upgradeable: an impl deployed while the constant still points at the
+        // placeholder (or at a chain where the proxy is not up yet) reverts EVERY third-asset dividend
+        // token creation, for good. Deploy the registry proxy first, retarget the constant, then this.
+        require(
+            AddressesFromLivoTaxableTokenV2.DIVIDEND_SWAP_REGISTRY.code.length != 0,
+            "DIVIDEND_SWAP_REGISTRY has no code on this chain: deploy the registry proxy first"
+        );
+
+        // Same reasoning, same failure mode: `processDividends`, `processBurn` and `processLiquidity`
+        // all fail closed against a codeless keeper registry, so an impl deployed before it exists can
+        // never run a conversion.
+        require(
+            AddressesFromLivoTaxableTokenV2.LIVO_KEEPERS_REGISTRY.code.length != 0,
+            "LIVO_KEEPERS_REGISTRY has no code on this chain: deploy the keepers registry first"
+        );
+
         // Belt-and-braces: catch a stale or zero address in the manifest before we waste a deploy.
         require(d.oldLaunchpad != address(0), "manifest: LAUNCHPAD missing");
         require(d.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
         require(d.factoryV4Proxy != address(0), "manifest: FACTORY_UNIV4_UNIFIED missing");
         require(d.swapHook != address(0), "manifest: SWAP_HOOK missing");
+        require(d.liquidityAdder != address(0), "manifest: UNIV4_LIQUIDITY_ADDER missing");
         require(d.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(d.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
     }
@@ -318,7 +339,8 @@ contract DeployLaunchpadV2Stack is Script {
                 d.permit2,
                 d.swapHook,
                 DEFAULT_GRAD_SQRT_PRICE_X96,
-                UniswapV4PoolConstants.TICK_UPPER
+                UniswapV4PoolConstants.TICK_UPPER,
+                d.liquidityAdder
             )
         );
         console.log("| LivoGraduatorUniswapV4                        |", fresh.graduatorV4);

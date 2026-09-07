@@ -289,13 +289,13 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 1000, 0, 30 days)));
         // schedule has progressed, but the token has not graduated yet
         vm.warp(block.timestamp + 15 days);
-        assertEq(LivoCreatorVault(vault).claimable(), 0, "nothing claimable before graduation");
+        assertEq(LivoCreatorVault(payable(vault)).claimable(), 0, "nothing claimable before graduation");
         vm.prank(vaultOwner);
         vm.expectRevert(LivoCreatorVault.NotGraduated.selector);
-        LivoCreatorVault(vault).claim();
+        LivoCreatorVault(payable(vault)).claim();
         // graduating then unlocks the already-vested portion
         _graduateAndCapture(token);
-        assertGt(LivoCreatorVault(vault).claimable(), 0, "claimable after graduation");
+        assertGt(LivoCreatorVault(payable(vault)).claimable(), 0, "claimable after graduation");
     }
 
     function test_vault_claimByNonOwner_reverts() public {
@@ -304,7 +304,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.warp(block.timestamp + 15 days);
         vm.prank(makeAddr("intruder"));
         vm.expectRevert(LivoCreatorVault.NotOwner.selector);
-        LivoCreatorVault(vault).claim();
+        LivoCreatorVault(payable(vault)).claim();
     }
 
     function test_vault_cliffBlocksClaim_thenLinearVesting() public {
@@ -314,42 +314,44 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 1000, cliff, vesting)));
 
         _graduateAndCapture(token);
-        uint256 start = LivoCreatorVault(vault).startTimestamp(); // creation time
+        uint256 start = LivoCreatorVault(payable(vault)).startTimestamp(); // creation time
 
         // during the cliff: nothing claimable
         vm.warp(start + cliff - 1);
-        assertEq(LivoCreatorVault(vault).claimable(), 0, "no claim during cliff");
+        assertEq(LivoCreatorVault(payable(vault)).claimable(), 0, "no claim during cliff");
         vm.prank(vaultOwner);
         vm.expectRevert(LivoCreatorVault.NothingToClaim.selector);
-        LivoCreatorVault(vault).claim();
+        LivoCreatorVault(payable(vault)).claim();
 
         // half-way through linear vesting: ~50%
         vm.warp(start + cliff + vesting / 2);
-        assertApproxEqRel(LivoCreatorVault(vault).claimable(), alloc / 2, 0.0001e18, "~50% vested at half");
+        assertApproxEqRel(LivoCreatorVault(payable(vault)).claimable(), alloc / 2, 0.0001e18, "~50% vested at half");
         vm.prank(vaultOwner);
-        LivoCreatorVault(vault).claim();
+        LivoCreatorVault(payable(vault)).claim();
         assertApproxEqRel(ILivoToken(token).balanceOf(vaultOwner), alloc / 2, 0.0001e18, "owner got ~50%");
 
         // past the end: remainder claimable, total == allocation
         vm.warp(start + cliff + vesting + 1);
-        assertEq(LivoCreatorVault(vault).claimable(), alloc - ILivoToken(token).balanceOf(vaultOwner), "remainder");
+        assertEq(
+            LivoCreatorVault(payable(vault)).claimable(), alloc - ILivoToken(token).balanceOf(vaultOwner), "remainder"
+        );
         vm.prank(vaultOwner);
-        LivoCreatorVault(vault).claim();
+        LivoCreatorVault(payable(vault)).claim();
         assertEq(ILivoToken(token).balanceOf(vaultOwner), alloc, "owner received full allocation");
         assertEq(ILivoToken(token).balanceOf(vault), 0, "vault emptied");
-        assertEq(LivoCreatorVault(vault).claimable(), 0, "nothing left to claim");
+        assertEq(LivoCreatorVault(payable(vault)).claimable(), 0, "nothing left to claim");
     }
 
     function test_vault_zeroCliffZeroVesting_fullUnlockAtGraduation() public {
         uint256 alloc = TOKEN_TOTAL_SUPPLY * 500 / 10_000; // 5%
         (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 500, 0, 0)));
         // zero cliff + zero vesting => schedule says fully vested immediately, but claim is gated
-        assertEq(LivoCreatorVault(vault).vestedAmount(), alloc, "schedule fully vested");
-        assertEq(LivoCreatorVault(vault).claimable(), 0, "but nothing claimable before graduation");
+        assertEq(LivoCreatorVault(payable(vault)).vestedAmount(), alloc, "schedule fully vested");
+        assertEq(LivoCreatorVault(payable(vault)).claimable(), 0, "but nothing claimable before graduation");
         _graduateAndCapture(token);
-        assertEq(LivoCreatorVault(vault).claimable(), alloc, "fully claimable at graduation");
+        assertEq(LivoCreatorVault(payable(vault)).claimable(), alloc, "fully claimable at graduation");
         vm.prank(vaultOwner);
-        LivoCreatorVault(vault).claim();
+        LivoCreatorVault(payable(vault)).claim();
         assertEq(ILivoToken(token).balanceOf(vaultOwner), alloc, "owner got everything");
     }
 

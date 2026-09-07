@@ -47,6 +47,21 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
     ///         `SniperProtection` caps so non-opted-in tokens skip the check entirely.
     bool public hasSniperProt;
 
+    /// @notice Whether holder dividends are enabled for this token. Set once at creation, by the taxable
+    ///         variant, when the earnings allocation routes a non-zero share to dividends. Lives HERE,
+    ///         rather than beside the rest of the dividend state, purely for gas: it packs into the
+    ///         `pair` slot that `_update` already loads, so a token WITHOUT dividends pays nothing at all
+    ///         for the feature — no extra SLOAD, no branch that costs a cold read.
+    bool public hasDividends;
+
+    /// @notice How many payout assets this token pays dividends in (0 when `hasDividends` is false,
+    ///         otherwise 1..`DividendDistribution.MAX_DIVIDEND_ASSETS`). Set once at creation, alongside
+    ///         `hasDividends`, and never changed — the set a token pays in is fixed for its life.
+    /// @dev Lives HERE, beside `hasDividends` and for the same reason: it packs into the `pair` slot that
+    ///      `_update` already loads, so the transfer hook learns how many assets to settle from a WARM
+    ///      slot instead of a cold one. A token without dividends never reads it at all.
+    uint8 public dividendAssetCount;
+
     /// @notice Launchpad address
     LivoLaunchpad public launchpad;
 
@@ -253,7 +268,9 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
     }
 
     /// @notice Routes ETH fees to the fee handler for this token
-    function accrueFees() external payable {
+    /// @dev `virtual` so taxable variants can override to split earnings across allocation buckets
+    ///      (see `EarningsAllocation`) before the fund-wallet deposit.
+    function accrueFees() external payable virtual {
         ILivoMasterFeeHandler(feeHandler).depositFees{value: msg.value}(address(this));
     }
 
@@ -313,10 +330,20 @@ contract LivoToken is ERC20, ILivoToken, Initializable, SniperProtection {
 
     //////////////////////// internal functions ////////////////////////
 
+    /// @dev Balance-change hook for gated per-account features that need to observe every transfer.
+    ///      A no-op here (and never even reached on a token without dividends, thanks to the warm-slot
+    ///      gate in `_update`); the taxable variant overrides it to maintain the dividend round minima.
+    ///      Runs BEFORE the balances move, so implementations read pre-transfer balances.
+    function _onBalanceChange(address from, address to, uint256 amount) internal virtual {}
+
     function _update(address from, address to, uint256 amount) internal virtual override {
-        // Load `pair`/`graduated`/`hasSniperProt` (one packed slot) with a single SLOAD, reused for
-        // both checks below instead of re-reading the slot up to three times.
-        (address _pair, bool _graduated, bool _hasSniperProt) = (pair, graduated, hasSniperProt);
+        // Load `pair`/`graduated`/`hasSniperProt`/`hasDividends` (one packed slot) with a single SLOAD,
+        // reused for every check below instead of re-reading the slot up to four times.
+        (address _pair, bool _graduated, bool _hasSniperProt, bool _hasDividends) =
+            (pair, graduated, hasSniperProt, hasDividends);
+
+        // Dividend round minima, gated by the warm-slot flag so a non-dividend token pays nothing.
+        if (_hasDividends) _onBalanceChange(from, to, amount);
 
         // Anti-sniper caps, gated by the warm-slot flag. Only enforced pre-graduation;
         // `_hasSniperProt && !_graduated` short-circuits for the common non-protected token AND for

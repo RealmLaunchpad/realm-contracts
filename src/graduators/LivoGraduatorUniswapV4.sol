@@ -19,6 +19,7 @@ import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 // Both imports are aliased so the `chain-arc-*` recipe can import-swap them at build time.
 import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {GraduationFeeConstants as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants.sol";
+import {ILivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
 
 contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     using SafeERC20 for ILivoToken;
@@ -30,6 +31,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     /// @notice ETH compensation paid to token creator at graduation (half of the fee)
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public constant CREATOR_GRADUATION_COMPENSATION = GRADUATION_ETH_FEE / 2;
+
+    /// @notice Sink for the token dust left over after the graduation liquidity deposit.
+    address internal constant DEAD_ADDRESS = address(0xdEaD);
 
     /// @notice Address of the LivoLaunchpad contract
     address public immutable LIVO_LAUNCHPAD;
@@ -70,22 +74,25 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     //////////////////////// SECOND LIQUIDITY POSITION (ONLY ETH) ////////////////////////////
 
-    /// @notice The lower tick of the secondary ETH-only position. Tier-specific (derived from the
-    ///         graduation price), so the minted position range matches `SQRT_LOWER_2` exactly.
+    /// @notice The lower tick of the secondary ETH-only position. Tier-specific (the first spacing
+    ///         boundary above the graduation tick), so the position sits just below the graduation price.
     int24 immutable TICK_LOWER_SECONDARY;
     /// @notice The upper tick of the secondary ETH-only position. Tier-specific (a fixed offset below
-    ///         `TICK_UPPER`), so the minted position range matches `SQRT_UPPER_2` exactly.
+    ///         `TICK_UPPER`).
     int24 immutable TICK_UPPER_SECONDARY;
-    /// @notice The sqrtX96 price at the lower tick of the secondary ETH-only liquidity position
-    uint160 immutable SQRT_LOWER_2;
-    /// @notice The sqrtX96 price at the upper tick of the secondary ETH-only liquidity position
-    uint160 immutable SQRT_UPPER_2;
+
+    /// @notice The shared, permissionless `LivoUniV4LiquidityAdder` singleton — deployed once, independent
+    ///         of any graduator, and passed in at construction. Used here for the secondary graduation
+    ///         position and reused by taxable tokens' `processLiquidity` (they resolve it via this getter).
+    address public immutable LIQUIDITY_ADDER;
 
     /////////////////////// Errors ///////////////////////
 
     error EtherTransferFailed();
     /// @notice Thrown if the graduation price passed at deploy is zero or falls outside the liquidity range.
     error InvalidGraduationPrice();
+    /// @notice Thrown if the shared liquidity adder passed at deploy is the zero address.
+    error InvalidLiquidityAdder();
 
     /////////////////////// Events ///////////////////////
 
@@ -107,6 +114,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
     ///        Thinner tiers graduate higher with a shallower pool and need a higher upper tick so a holder
     ///        can sell their full bag back into the pool. Use `UniswapV4PoolConstants.TICK_UPPER` for the
     ///        DEFAULT/THICK tiers and `TICK_UPPER_THIN` for the THIN tier.
+    /// @param _liquidityAdder The shared `LivoUniV4LiquidityAdder` singleton (deployed separately). All
+    ///        graduators point at the same one, and it is what taxable tokens use for `processLiquidity`.
     constructor(
         address _launchpad,
         address _poolManager,
@@ -114,7 +123,8 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         address _permit2,
         address _hook,
         uint160 _sqrtPriceGraduation,
-        int24 _tickUpper
+        int24 _tickUpper,
+        address _liquidityAdder
     ) Ownable(msg.sender) {
         // Refuse to deploy graduator bytecode built with the wrong chain's baked constants (fees + pool
         // geometry): the import-swapped fee lib knows which chain family it belongs to. Unforgettable —
@@ -126,6 +136,9 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         UNIV4_POSITION_MANAGER = _positionManager;
         PERMIT2 = _permit2;
         HOOK_ADDRESS = _hook;
+
+        require(_liquidityAdder != address(0), InvalidLiquidityAdder());
+        LIQUIDITY_ADDER = _liquidityAdder;
 
         require(_sqrtPriceGraduation > 0, InvalidGraduationPrice());
         int24 spacing = UniswapV4PoolConstants.TICK_SPACING;
@@ -150,12 +163,10 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         SQRT_PRICEX96_LOWER_TICK = uint160(TickMath.getSqrtPriceAtTick(UniswapV4PoolConstants.TICK_LOWER));
         SQRT_PRICEX96_UPPER_TICK = uint160(TickMath.getSqrtPriceAtTick(_tickUpper));
 
-        // secondary eth liquidity position, just above the (tier-specific) graduation tick. The minted
-        // tick range MUST match the sqrt prices used to size its liquidity, so the ticks are stored.
+        // Secondary eth liquidity position, just above the (tier-specific) graduation tick. The liquidity
+        // adder sizes and mints it from these ticks at graduation time.
         TICK_LOWER_SECONDARY = tickLower2;
         TICK_UPPER_SECONDARY = tickUpper2;
-        SQRT_LOWER_2 = uint160(TickMath.getSqrtPriceAtTick(tickLower2));
-        SQRT_UPPER_2 = uint160(TickMath.getSqrtPriceAtTick(tickUpper2));
     }
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
@@ -227,8 +238,14 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         // there may be a small leftover of tokens not deposited
         uint256 tokenBalanceAfterDeposit = token.balanceOf(address(this));
         // we attempt to deposit tokensForLiquidity, but this is the actual amount deposited
-        // any token not deposited is stuck here in this contract
         uint256 tokensDeposited = tokenBalanceBeforeDeposit - tokenBalanceAfterDeposit;
+
+        // Burn the leftover rather than hold it forever. A graduator balance is a CONTINUOUS holder of
+        // the token and the graduator is NOT in `LivoTaxableToken._dividendExcluded` (adding it would put
+        // a cold SLOAD on the hot transfer path), so the dust would accrue dividends nobody can ever
+        // claim and permanently understate the token's sweepable balances. `DEAD_ADDRESS` is already
+        // excluded, on both the tracking side and in `_dividendEligibleSupply`.
+        if (tokenBalanceAfterDeposit > 0) token.safeTransfer(DEAD_ADDRESS, tokenBalanceAfterDeposit);
 
         emit TokenGraduated(tokenAddress, tokensDeposited, ethForLiquidity, liquidity1 + liquidity2);
     }
@@ -255,13 +272,7 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
 
     /// @notice Constructs the Uniswap V4 PoolKey for a given token paired with native ETH
     function _getPoolKey(address tokenAddress) internal view virtual returns (PoolKey memory) {
-        return PoolKey({
-            currency0: Currency.wrap(address(0)), // native ETH
-            currency1: Currency.wrap(address(tokenAddress)),
-            fee: UniswapV4PoolConstants.LP_FEE,
-            tickSpacing: UniswapV4PoolConstants.TICK_SPACING,
-            hooks: IHooks(HOOK_ADDRESS)
-        });
+        return UniswapV4PoolConstants.livoPoolKey(tokenAddress, HOOK_ADDRESS);
     }
 
     /// @notice Adds primary and secondary liquidity positions
@@ -280,10 +291,12 @@ contract LivoGraduatorUniswapV4 is ILivoGraduator, Ownable {
         );
 
         uint256 remainingEth = ethForLiquidity - (ethBalanceBefore - address(this).balance);
-        liquidity2 = LiquidityAmounts.getLiquidityForAmount0(SQRT_LOWER_2, SQRT_UPPER_2, remainingEth);
-
-        if (liquidity2 > 0) {
-            _addLiquidity(pool, TICK_LOWER_SECONDARY, TICK_UPPER_SECONDARY, liquidity2, remainingEth, 0, treasury);
+        if (remainingEth > 0) {
+            // Single-sided ETH wall just below the graduation price. NFT stays here (permanently locked);
+            // rounding-dust ETH is swept to the treasury. Shares the mint path with tokens' liquidity leg.
+            liquidity2 = ILivoUniV4LiquidityAdder(LIQUIDITY_ADDER).addSingleSidedEth{value: remainingEth}(
+                pool, TICK_LOWER_SECONDARY, TICK_UPPER_SECONDARY, address(this), treasury
+            );
         }
     }
 

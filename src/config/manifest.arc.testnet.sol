@@ -18,6 +18,12 @@ library DeploymentsArcTestnet {
     address internal constant GRADUATOR_UNIV2 = 0x5235362Db85d8378E6f72150d2756E80860dB25b;
     address internal constant GRADUATOR_UNIV4 = 0x43F8BC6d25BE185711680987019d20543e6B53F6;
     address internal constant MASTER_FEE_HANDLER = 0x3175bB69cfeE26FC90ea0A33E45BbDe466053f43;
+
+    /// @notice Shared, permissionless `LivoUniV4LiquidityAdder` singleton — one per chain, passed to every
+    ///         V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
+    ///         `DeployUniV4LiquidityAdder`; `address(0)` until first deployed on this chain.
+    address internal constant UNIV4_LIQUIDITY_ADDER = address(0);
+
     address internal constant SWAP_HOOK = 0x432A7d3841F6dFe79F2CB34fb5F1225ba42F00CC;
     address internal constant LP_FEE_ROUTER = 0x522fD5758e5185Cc95e2D0A8CB30f4a4B70c9107;
     address internal constant LP_FEE_ROUTER_IMPL = 0xf69FC76AEdAA95C1EE0f466760290cE77f94885D;

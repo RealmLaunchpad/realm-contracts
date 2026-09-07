@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "lib/v4-core/src/types/Currency.sol";
+import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
+
 /// @title UniswapV4PoolConstants
 /// @notice Shared Uniswap V4 pool configuration constants used by the graduator and fee handler.
 library UniswapV4PoolConstants {
@@ -46,4 +50,18 @@ library UniswapV4PoolConstants {
     /// @dev The secondary position covers roughly a -67% drop from graduation price. After that, only the main position would be active
     /// @dev However, the second position has much less liquidity, so the impact would be barely noticeable.
     int24 internal constant TICK_UPPER_2_OFFSET = 51 * TICK_SPACING;
+
+    /// @notice The canonical PoolKey of a graduated Livo token's V4 pool: `(ETH, token)` with this
+    ///         library's fee/spacing and the graduator's hook. THE single source of truth — the
+    ///         graduator, the buy-back mixin and the token's liquidity leg must all target the same
+    ///         pool, so none of them may hand-roll the key.
+    function livoPoolKey(address token, address hook) internal pure returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(address(0)), // native ETH
+            currency1: Currency.wrap(token),
+            fee: LP_FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(hook)
+        });
+    }
 }

@@ -40,9 +40,102 @@ contract LivoCreatorVaultUnitTest is Test {
     }
 
     function _newVault(uint256 cliff, uint256 vesting) internal returns (LivoCreatorVault vault) {
-        vault = LivoCreatorVault(Clones.clone(address(impl)));
+        vault = LivoCreatorVault(payable(Clones.clone(address(impl))));
         vault.initialize(address(token), owner, ALLOC, cliff, vesting);
         token.transfer(address(vault), ALLOC);
+    }
+
+    /////////////////// dividends: receive + partial-cap sweep ///////////////////
+
+    /// @dev Creator vaults are ordinary dividend holders — a real team allocation, merely vested — so a
+    ///      native payout must land rather than revert (a failed send would silently skip them forever).
+    function test_vaultAcceptsNativeDividends() public {
+        LivoCreatorVault vault = _newVault(CLIFF, VESTING);
+        vm.deal(address(this), 1 ether);
+        (bool ok,) = address(vault).call{value: 1 ether}("");
+        assertTrue(ok, "vault accepts native");
+        assertEq(address(vault).balance, 1 ether, "native held for the owner");
+    }
+
+    function test_rescueTokens_sweepsNativeToTheOwner() public {
+        LivoCreatorVault vault = _newVault(CLIFF, VESTING);
+        vm.deal(address(vault), 1 ether);
+
+        vm.prank(owner);
+        vault.rescueTokens(new address[](0));
+
+        assertEq(owner.balance, 1 ether, "native swept");
+        assertEq(address(vault).balance, 0, "nothing left");
+    }
+
+    function test_rescueTokens_sweepsAnArbitraryErc20() public {
+        LivoCreatorVault vault = _newVault(CLIFF, VESTING);
+        MockGraduatableToken other = new MockGraduatableToken();
+        other.transfer(address(vault), 500e18);
+
+        address[] memory assets = new address[](1);
+        assets[0] = address(other);
+        vm.prank(owner);
+        vault.rescueTokens(assets);
+
+        assertEq(other.balanceOf(owner), 500e18, "airdrop swept to the owner");
+    }
+
+    /// @dev THE partial cap. A self-token dividend arrives AS the locked asset. A blanket "cannot rescue
+    ///      the vested token" rule would strand it forever — `_vestedAmount` is computed from the
+    ///      immutable `totalAllocation`, so the extra never vests out either.
+    function test_rescueTokens_sweepsSelfTokenDividendsButNotTheLockedAllocation() public {
+        LivoCreatorVault vault = _newVault(CLIFF, VESTING);
+        token.transfer(address(vault), 7e18); // a self-token dividend on top of the allocation
+
+        address[] memory assets = new address[](1);
+        assets[0] = address(token);
+        vm.prank(owner);
+        vault.rescueTokens(assets);
+
+        assertEq(token.balanceOf(owner), 7e18, "only the excess was swept");
+        assertEq(token.balanceOf(address(vault)), ALLOC, "the vesting allocation is untouched");
+    }
+
+    /// @dev And once some of the allocation has been claimed, the cap follows: only `total - claimed`
+    ///      stays locked.
+    function test_rescueTokens_capFollowsWhatHasBeenClaimed() public {
+        LivoCreatorVault vault = _newVault(CLIFF, 0); // full unlock at the cliff
+        token.setGraduated(true);
+        skip(CLIFF + 1);
+        vm.prank(owner);
+        vault.claim();
+        assertEq(token.balanceOf(address(vault)), 0, "allocation fully claimed");
+
+        token.transfer(address(vault), 3e18);
+        address[] memory assets = new address[](1);
+        assets[0] = address(token);
+        uint256 ownerBefore = token.balanceOf(owner);
+        vm.prank(owner);
+        vault.rescueTokens(assets);
+
+        assertEq(token.balanceOf(owner) - ownerBefore, 3e18, "nothing is locked any more, so all sweeps");
+    }
+
+    function test_rescueTokens_onlyOwner() public {
+        LivoCreatorVault vault = _newVault(CLIFF, VESTING);
+        vm.expectRevert(LivoCreatorVault.NotOwner.selector);
+        vault.rescueTokens(new address[](0));
+    }
+
+    /// @dev Sweeping is a separate call from `claim()` on purpose, so it works during the cliff when
+    ///      there is nothing vested to claim.
+    function test_rescueTokens_worksDuringTheCliff() public {
+        LivoCreatorVault vault = _newVault(CLIFF, VESTING);
+        vm.deal(address(vault), 1 ether);
+
+        vm.prank(owner);
+        vm.expectRevert(LivoCreatorVault.NotGraduated.selector);
+        vault.claim();
+
+        vm.prank(owner);
+        vault.rescueTokens(new address[](0));
+        assertEq(owner.balance, 1 ether, "dividends collectable before anything vests");
     }
 
     function test_implementation_cannotBeInitialized() public {
@@ -51,19 +144,19 @@ contract LivoCreatorVaultUnitTest is Test {
     }
 
     function test_initialize_rejectsZeroToken() public {
-        LivoCreatorVault vault = LivoCreatorVault(Clones.clone(address(impl)));
+        LivoCreatorVault vault = LivoCreatorVault(payable(Clones.clone(address(impl))));
         vm.expectRevert(LivoCreatorVault.InvalidToken.selector);
         vault.initialize(address(0), owner, ALLOC, CLIFF, VESTING);
     }
 
     function test_initialize_rejectsZeroOwner() public {
-        LivoCreatorVault vault = LivoCreatorVault(Clones.clone(address(impl)));
+        LivoCreatorVault vault = LivoCreatorVault(payable(Clones.clone(address(impl))));
         vm.expectRevert(LivoCreatorVault.InvalidOwner.selector);
         vault.initialize(address(token), address(0), ALLOC, CLIFF, VESTING);
     }
 
     function test_initialize_rejectsZeroAmount() public {
-        LivoCreatorVault vault = LivoCreatorVault(Clones.clone(address(impl)));
+        LivoCreatorVault vault = LivoCreatorVault(payable(Clones.clone(address(impl))));
         vm.expectRevert(LivoCreatorVault.InvalidAmount.selector);
         vault.initialize(address(token), owner, 0, CLIFF, VESTING);
     }
@@ -160,7 +253,7 @@ contract LivoCreatorVaultUnitTest is Test {
         );
 
         address vault = factory.createVault(address(token), owner, ALLOC, CLIFF, VESTING);
-        LivoCreatorVault v = LivoCreatorVault(vault);
+        LivoCreatorVault v = LivoCreatorVault(payable(vault));
         assertEq(v.token(), address(token));
         assertEq(v.owner(), owner);
         assertEq(v.totalAllocation(), ALLOC);

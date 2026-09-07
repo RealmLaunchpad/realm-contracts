@@ -28,8 +28,15 @@ abis:
     
 
 ##################### TESTING ################################
-fast-test:
+fast-test: check-dividend-layout
     forge test --no-match-contract Invariants --no-match-path "test/integration/**"
+
+# Fails if a taxable token and its dividend extension disagree on storage layout. The extension is
+# `delegatecall`ed with the token's storage, so this is the one property no Solidity test can assert
+# for itself. It builds under the `layout` profile (its own `out` dir, so enabling `extra_output` does
+# not thrash the default cache) and costs ~2s incrementally, hence running it before every `fast-test`.
+check-dividend-layout:
+    @python3 script/checks/dividend_layout.py
 
 gas-report:
     forge test --no-match-contract Invariants --no-match-path "test/integration/**" --gas-report
@@ -87,13 +94,19 @@ _retarget taxlib gradsuffix="":
     @just _taxtoken {{taxlib}} "{{gradsuffix}}"
     @just _graduators "{{gradsuffix}}"
 
-# (internal) Repoints the two taxable-token impls' `DeploymentAddresses` import, and the V2 taxable
-# token's venue lib (swap-back path), to the target chain. Use a `chain-*` recipe.
+# (internal) Repoints the taxable-token impls' (and their venue bases, the V4 buy-backs, the dividend
+# mixin and the dividend swap registry) `DeploymentAddresses` import, the venue lib used by the V2
+# swap-back AND the registry's third-asset conversion, and the V4 token-side pool-constants lib, to the
+# target chain. Use a `chain-*` recipe.
 _taxtoken lib suffix="":
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
-        src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol
+        src/tokens/LivoTaxableTokenUniV2.sol src/tokens/LivoTaxableTokenUniV4.sol src/tokens/LivoUniv4BuyBacks.sol \
+        src/tokens/LivoTaxableTokenUniV2Base.sol \
+        src/tokens/DividendDistribution.sol src/dividends/LivoDividendSwapRegistry.sol
     sed -i -E 's#\{UniswapV2Venue[A-Za-z]* as UniswapV2Venue\} from "src/libraries/UniswapV2Venue[A-Za-z]*\.sol"#{UniswapV2Venue{{suffix}} as UniswapV2Venue} from "src/libraries/UniswapV2Venue{{suffix}}.sol"#' \
-        src/tokens/LivoTaxableTokenUniV2.sol
+        src/tokens/LivoTaxableTokenUniV2.sol src/dividends/LivoDividendSwapRegistry.sol
+    sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
+        src/tokens/LivoTaxableTokenUniV4.sol src/tokens/LivoUniv4BuyBacks.sol
 
 # (internal) Repoints the V4 graduator's pool-geometry + fee libs to the `{{suffix}}` variant
 # ("" = ETH, "Arc" = ARC). The V2 graduators are separate contracts and are NOT touched here.
@@ -183,6 +196,17 @@ deploy-tiers-sepolia:
 deploy-tiers-mainnet:
     forge script DeployTierLiquiditySystem --rpc-url mainnet --verify --account livo.dev --slow --broadcast
 
+# Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded
+# with liquidity — replicating the symbols, fee tiers, tick spacings and prices of the real xStock pools
+# on Robinhood mainnet. Exists so third-asset dividends can be exercised on a chain the indexer runs on;
+# Robinhood testnet has the assets but no indexer. Writes the registry routes too when
+# DIVIDEND_SWAP_REGISTRY is deployed on Sepolia and the broadcaster is one of its admins.
+# Costs ETH_PER_POOL (default 1) of testnet ETH per pool, so 5 ETH for the five. Dry-run it first —
+# the same command without --broadcast simulates it against live Sepolia state, and IS the check:
+#   forge script DeployDummyXStocks --rpc-url sepolia --account livo.dev
+deploy-dummy-xstocks-sepolia:
+    forge script DeployDummyXStocks --rpc-url sepolia --verify --account livo.dev --slow --broadcast
+
 # The from-scratch two-part full-stack deploy (`DeployFullStack` + `DeployFullStackPart2`, and the
 # `deploy-robinhood-part1/part2` recipes) was removed: both Robinhood chains are already deployed, and the
 # two-pass flow only existed because the old swap hooks baked their LP fee in as a `constant`, needing one
@@ -230,6 +254,21 @@ export-deployments:
 # Needs MAINNET_RPC_URL exported (or a sibling .env); robinhood uses its public RPC by default.
 unfunded-creators:
     uv run script/operations/unfunded-accounts/check_unfunded_creators.py
+
+# Rebuild the Uniswap V4 route CANDIDATES for Robinhood Chain's xStocks by scanning the pool manager
+# on-chain. Writes script/operations/dividend-routes/routes.robinhood.mainnet.json.
+discover-dividend-routes:
+    uv run script/operations/dividend-routes/discover_xstock_routes.py
+
+# Probe those candidates against forked state and keep whichever actually buys the most of each asset,
+# writing the winners to catalogue.robinhood.mainnet.json in the wire format a token creation takes.
+# BROADCASTS NOTHING and needs no signer: routes belong to the token that converts through them and are
+# registered by that token at its own creation. The output feeds the frontend's suggested-asset list, so
+# a creator picking a listed asset ships its route and never has to search for pools. Re-running is also
+# the catalogue's health check — an asset whose pools have moved reports a different winner, or none.
+pick-dividend-routes:
+    just chain-robinhood
+    forge script PickDividendRoutes --rpc-url robinhood-mainnet
 
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS

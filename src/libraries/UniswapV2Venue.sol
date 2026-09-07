@@ -43,4 +43,28 @@ library UniswapV2Venue {
             amountIn, minOut, path, address(this), block.timestamp
         );
     }
+
+    /// @notice Spends `nativeValue` (18-dec native) buying the asset at the end of `path`, delivering it
+    ///         to `address(this)`. On ETH-family chains `path` must start at WETH, which
+    ///         `swapExactETHForTokens…` wraps implicitly.
+    /// @dev Low-level so a failed swap REPORTS rather than reverts: the only caller is a dividend
+    ///      freeze, and a dead pool must leave the buffer intact rather than reverting the round (see
+    ///      `DividendDistributionLogic._freezeDividends`). A reverted call keeps the native, so nothing
+    ///      is spent.
+    /// @param minOut minimum output in the ASSET's own decimals.
+    /// @return ok false if the swap reverted (dead pair, slippage floor missed).
+    function trySwapNativeToAsset(
+        IUniswapV2Router router,
+        address, /*quote*/
+        address[] memory path,
+        uint256 nativeValue,
+        uint256 minOut
+    ) internal returns (bool ok) {
+        (ok,) = address(router).call{value: nativeValue}(
+            abi.encodeCall(
+                IUniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens,
+                (minOut, path, address(this), block.timestamp)
+            )
+        );
+    }
 }

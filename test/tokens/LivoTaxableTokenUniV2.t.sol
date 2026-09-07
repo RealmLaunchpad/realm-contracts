@@ -455,7 +455,7 @@ contract LivoTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2S
 
     /// @dev Counts `CreatorTaxSwapback` event emissions in the most recent `vm.recordLogs()` window.
     function _countCreatorTaxSwapbackEvents() internal returns (uint256 count) {
-        bytes32 sig = keccak256("CreatorTaxSwapback(uint256,uint256)");
+        bytes32 sig = keccak256("CreatorTaxSwapback(uint256,uint256,uint256)");
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].emitter == address(taxToken) && logs[i].topics.length > 0 && logs[i].topics[0] == sig) {

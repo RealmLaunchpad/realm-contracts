@@ -11,6 +11,7 @@
 | LivoGraduatorUniswapV2                       | _(not deployed)_                             |
 | LivoGraduatorUniswapV4                       | _(not deployed)_                             |
 | LivoMasterFeeHandler                         | _(not deployed)_                             |
+| LivoUniV4LiquidityAdder                      | _(not deployed)_                             |
 | LivoSwapHook                                 | _(not deployed)_                             |
 | LivoLpFeeRouter (proxy)                      | _(not deployed)_                             |
 | LivoLpFeeRouter (impl)                       | _(not deployed)_                             |

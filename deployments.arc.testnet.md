@@ -11,6 +11,7 @@
 | LivoGraduatorUniswapV2                       | `0x5235362Db85d8378E6f72150d2756E80860dB25b` |
 | LivoGraduatorUniswapV4                       | `0x43F8BC6d25BE185711680987019d20543e6B53F6` |
 | LivoMasterFeeHandler                         | `0x3175bB69cfeE26FC90ea0A33E45BbDe466053f43` |
+| LivoUniV4LiquidityAdder                      | _(not deployed)_                             |
 | LivoSwapHook                                 | `0x432A7d3841F6dFe79F2CB34fb5F1225ba42F00CC` |
 | LivoLpFeeRouter (proxy)                      | `0x522fD5758e5185Cc95e2D0A8CB30f4a4B70c9107` |
 | LivoLpFeeRouter (impl)                       | `0xf69FC76AEdAA95C1EE0f466760290cE77f94885D` |
