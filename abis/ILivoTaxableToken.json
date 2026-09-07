@@ -437,40 +437,46 @@
       },
       {
         "name": "dividendTokens",
-        "type": "address[3]",
-        "internalType": "address[3]"
+        "type": "address[]",
+        "internalType": "address[]"
       },
       {
         "name": "dividendWeightsBps",
-        "type": "uint16[3]",
-        "internalType": "uint16[3]"
+        "type": "uint16[]",
+        "internalType": "uint16[]"
       },
       {
         "name": "dividendRoutes",
-        "type": "tuple[3]",
-        "internalType": "struct DividendRoute[3]",
-        "components": [
-          {
-            "name": "venue",
-            "type": "uint8",
-            "internalType": "enum DividendVenue"
-          },
-          {
-            "name": "fee",
-            "type": "uint24",
-            "internalType": "uint24"
-          },
-          {
-            "name": "tickSpacing",
-            "type": "int24",
-            "internalType": "int24"
-          },
-          {
-            "name": "aux",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
+        "type": "bytes[]",
+        "internalType": "bytes[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "initializeEarningsAllocation",
+    "inputs": [
+      {
+        "name": "burnBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "dividendsBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "liquidityBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "dividendToken",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
