@@ -9,7 +9,8 @@ import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry
 import {ChainConfig} from "script/ChainConfig.sol";
 import {
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet
+    DeploymentAddressesRobinhoodMainnet,
+    DeploymentAddressesRobinhoodTestnet
 } from "src/config/DeploymentAddresses.sol";
 
 /// @title The two keeper registries, owned by the broadcasting account
@@ -60,6 +61,7 @@ contract DeployRealmRegistries is Script {
     ///      conversions out of dead pairs. Changed later with `setDefaultThreshold`.
     function _dividendDepthThreshold() internal view returns (uint256) {
         if (ChainConfig.isSepolia()) return 10 * DeploymentAddressesEthereumSepolia.MAX_EARNINGS_PER_PROCESS;
+        if (ChainConfig.isRobinhoodTestnet()) return 10 * DeploymentAddressesRobinhoodTestnet.MAX_EARNINGS_PER_PROCESS;
         return 10 * DeploymentAddressesRobinhoodMainnet.MAX_EARNINGS_PER_PROCESS;
     }
 }

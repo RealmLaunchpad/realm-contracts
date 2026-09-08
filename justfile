@@ -79,6 +79,9 @@ chain-sepolia:
 chain-robinhood:
     @just _retarget DeploymentAddressesRobinhoodMainnet
 
+chain-robinhood-testnet:
+    @just _retarget DeploymentAddressesRobinhoodTestnet
+
 # Fans a target chain out to every per-contract import-swap. `gradsuffix` is the lib variant
 # ("" = the committed ETH-priced libs, "Arc" = the ARC variants). Add future per-chain swaps HERE.
 # NOTE: the V2 graduator is NOT retargeted — RealmGraduatorUniswapV2 / ...Arc are separate contracts
@@ -170,6 +173,10 @@ deploy-prereqs-robinhood: chain-robinhood
     forge script DeployRealmPrereqs --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
+deploy-prereqs-robinhood-testnet: chain-robinhood-testnet
+    forge script DeployRealmPrereqs --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
 # Only the two registries (keepers + dividend swap), owned by realm.dev. Use to redeploy them without
 # touching the LP fee router or the hooks (whose Uniswap whitelisting must survive). Paste the two
 # printed constants into src/config/DeploymentAddresses.sol, then rebuild.
@@ -178,6 +185,10 @@ deploy-registries-sepolia: chain-sepolia
 
 deploy-registries-robinhood: chain-robinhood
     forge script DeployRealmRegistries --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
+deploy-registries-robinhood-testnet: chain-robinhood-testnet
+    forge script DeployRealmRegistries --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
 # Phase 1. Everything else in one broadcast: fee handler, launchpad, quoter, liquidity adder, the V2 +
@@ -192,6 +203,10 @@ deploy-stack-robinhood: chain-robinhood
     forge script DeployRealmStack --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
+deploy-stack-robinhood-testnet: chain-robinhood-testnet
+    forge script DeployRealmStack --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
 # Redeploys both unified factory implementations from the CURRENT manifest and repoints the live
 # proxies at them. The upgrade path for anything a factory holds as an immutable — token impls,
 # graduators, curves, vault factory. Update the manifest FIRST.
@@ -200,6 +215,10 @@ upgrade-factories-sepolia: chain-sepolia
 
 upgrade-factories-robinhood: chain-robinhood
     forge script UpgradeRealmFactories --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
+upgrade-factories-robinhood-testnet: chain-robinhood-testnet
+    forge script UpgradeRealmFactories --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
 # Mines a valid hook salt (the permission bits live in the hook's own address) and deploys the hook
@@ -218,11 +237,19 @@ deploy-swap-hook-robinhood:
     forge script DeployRealmSwapHook --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
+deploy-swap-hook-robinhood-testnet:
+    forge script DeployRealmSwapHook --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
 deploy-realm-hook-sepolia:
     forge script DeployRealmHook --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 deploy-realm-hook-robinhood:
     forge script DeployRealmHook --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
+deploy-realm-hook-robinhood-testnet:
+    forge script DeployRealmHook --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
 # Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded
@@ -236,7 +263,7 @@ deploy-realm-hook-robinhood:
 deploy-dummy-xstocks-sepolia:
     forge script DeployDummyXStocks --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
-# Regenerates deployments.{ethereum.sepolia,robinhood.mainnet}.md from the matching .sol manifests.
+# Regenerates deployments.{ethereum.sepolia,robinhood.mainnet,robinhood.testnet}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
 export-deployments:
     forge script ExportDeployments

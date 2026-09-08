@@ -10,10 +10,12 @@ import {RealmHook} from "src/hooks/RealmHook.sol";
 import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet
+    DeploymentAddressesRobinhoodMainnet,
+    DeploymentAddressesRobinhoodTestnet
 } from "src/config/DeploymentAddresses.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
+import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
 /// @title Hook deployment via CREATE2 + salt mining
 /// @notice Shared machinery for Realm's two V4 swap hooks. A Uniswap V4 hook advertises its callbacks in
@@ -27,7 +29,7 @@ import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet
 ///      signature `(poolManager, lpFeeRouter, treasury)`; only the creation code differs, so the concrete
 ///      scripts below supply just that.
 ///
-/// @dev Runs against Sepolia (11155111) or Robinhood (4663). Pool manager and treasury come from
+/// @dev Runs against Sepolia (11155111), Robinhood mainnet (4663) or Robinhood testnet (46630). Pool manager and treasury come from
 ///      `DeploymentAddresses*`; the LP fee router proxy comes from `Deployments*` and must already exist —
 ///      run `DeployRealmPrereqs` first.
 ///
@@ -95,6 +97,7 @@ abstract contract DeployHookBase is Script {
     /// @dev Manifest file suffix for the current chain, for the "paste it here" hint.
     function _manifestName() internal view returns (string memory) {
         if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) return "ethereum.sepolia";
+        if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) return "robinhood.testnet";
         return "robinhood.mainnet";
     }
 
@@ -107,6 +110,10 @@ abstract contract DeployHookBase is Script {
             poolManager = DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER;
             router = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
             treasury = DeploymentAddressesRobinhoodMainnet.REALM_TREASURY;
+        } else if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) {
+            poolManager = DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER;
+            router = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
+            treasury = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
         } else {
             revert("Unsupported chain ID");
         }

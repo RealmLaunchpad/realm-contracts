@@ -1,6 +1,6 @@
 # Deployment plan
 
-Realm deploys on **Sepolia** (11155111) and **Robinhood Chain mainnet** (4663). Every manifest slot is
+Realm deploys on **Sepolia** (11155111), **Robinhood Chain mainnet** (4663) and **Robinhood Chain testnet** (46630, `*-robinhood-testnet` recipes). Every manifest slot is
 `address(0)` on both — Realm now deploys its own swap hook and LP fee router too, so nothing is inherited
 from the Livo deployment.
 

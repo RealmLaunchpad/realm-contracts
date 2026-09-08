@@ -5,9 +5,11 @@ import {Script, console} from "forge-std/Script.sol";
 
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
+import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 import {
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet
+    DeploymentAddressesRobinhoodMainnet,
+    DeploymentAddressesRobinhoodTestnet
 } from "src/config/DeploymentAddresses.sol";
 
 /// @title ExportDeployments
@@ -69,6 +71,7 @@ contract ExportDeployments is Script {
     function run() public {
         _write("deployments.ethereum.sepolia.md", _render(_ethereumSepolia()));
         _write("deployments.robinhood.mainnet.md", _render(_robinhoodMainnet()));
+        _write("deployments.robinhood.testnet.md", _render(_robinhoodTestnet()));
     }
 
     function _write(string memory path, string memory content) internal {
@@ -166,6 +169,51 @@ contract ExportDeployments is Script {
         d.univ4PositionManager = DeploymentAddressesRobinhoodMainnet.UNIV4_POSITION_MANAGER;
         d.univ4UniversalRouter = DeploymentAddressesRobinhoodMainnet.UNIV4_UNIVERSAL_ROUTER;
         d.permit2 = DeploymentAddressesRobinhoodMainnet.PERMIT2;
+    }
+
+    function _robinhoodTestnet() internal pure returns (ChainDeployments memory d) {
+        d.title = "Robinhood Chain Testnet";
+        d.manifestFile = "manifest.robinhood.testnet.sol";
+        d.launchpad = DeploymentsRobinhoodTestnet.LAUNCHPAD;
+        d.bondingCurve = DeploymentsRobinhoodTestnet.BONDING_CURVE;
+        d.graduatorUniV2 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2;
+        d.graduatorUniV4 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4;
+        d.masterFeeHandler = DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER;
+        d.univ4LiquidityAdder = DeploymentsRobinhoodTestnet.UNIV4_LIQUIDITY_ADDER;
+        d.swapHook = DeploymentsRobinhoodTestnet.SWAP_HOOK;
+        d.lpFeeRouter = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
+        d.lpFeeRouterImpl = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER_IMPL;
+        d.quoter = DeploymentsRobinhoodTestnet.QUOTER;
+        d.keepersRegistry = DeploymentAddressesRobinhoodTestnet.REALM_KEEPERS_REGISTRY;
+        d.dividendSwapRegistry = DeploymentAddressesRobinhoodTestnet.DIVIDEND_SWAP_REGISTRY;
+        d.tokenImpl = DeploymentsRobinhoodTestnet.TOKEN_IMPL;
+        d.taxableTokenImpl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL;
+        d.taxableTokenV2Impl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL;
+        d.factoryUniV2Unified = DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED;
+        d.factoryUniV2UnifiedImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED_IMPL;
+        d.factoryUniV4Unified = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED;
+        d.factoryUniV4UnifiedImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED_IMPL;
+        d.creatorVaultFactory = DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY;
+        d.creatorVaultFactoryImpl = DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY_IMPL;
+        d.creatorVaultImpl = DeploymentsRobinhoodTestnet.CREATOR_VAULT_IMPL;
+        d.vaultCurves = DeploymentsRobinhoodTestnet.vaultBondingCurves();
+        d.graduatorThin = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN;
+        d.graduatorThick = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK;
+        d.thinCurveBase = DeploymentsRobinhoodTestnet.THIN_CURVE_BASE;
+        d.thinVaultCurves = DeploymentsRobinhoodTestnet.thinVaultCurves();
+        d.thickCurveBase = DeploymentsRobinhoodTestnet.THICK_CURVE_BASE;
+        d.thickVaultCurves = DeploymentsRobinhoodTestnet.thickVaultCurves();
+        d.realmDev = DeploymentsRobinhoodTestnet.REALM_DEV;
+        d.realmTreasury = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
+        d.realmTokenDeployer = DeploymentsRobinhoodTestnet.REALM_TOKEN_DEPLOYER;
+        d.realmKeeper = DeploymentsRobinhoodTestnet.REALM_KEEPER;
+        d.weth = DeploymentAddressesRobinhoodTestnet.WETH;
+        d.univ2Router = DeploymentAddressesRobinhoodTestnet.UNIV2_ROUTER;
+        d.univ2Factory = DeploymentAddressesRobinhoodTestnet.UNIV2_FACTORY;
+        d.univ4PoolManager = DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER;
+        d.univ4PositionManager = DeploymentAddressesRobinhoodTestnet.UNIV4_POSITION_MANAGER;
+        d.univ4UniversalRouter = DeploymentAddressesRobinhoodTestnet.UNIV4_UNIVERSAL_ROUTER;
+        d.permit2 = DeploymentAddressesRobinhoodTestnet.PERMIT2;
     }
 
     // ---------------------------------------------------------------- Renderer

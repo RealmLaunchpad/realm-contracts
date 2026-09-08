@@ -5,16 +5,20 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {
     DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet
+    DeploymentAddressesRobinhoodMainnet,
+    DeploymentAddressesRobinhoodTestnet
 } from "src/config/DeploymentAddresses.sol";
 import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
+import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
 /// @title ChainConfig
-/// @notice Deploy-time-only resolver for the two supported chains (Sepolia, Robinhood mainnet). Keeps
-///         every `block.chainid` branch out of `src/`: external infra comes from `DeploymentAddresses`,
-///         Realm's own deployed addresses from `manifest.<chain>.sol`.
+/// @notice Deploy-time-only resolver for the three supported chains (Sepolia, Robinhood mainnet,
+///         Robinhood testnet). Keeps every `block.chainid` branch out of `src/`: external infra comes
+///         from `DeploymentAddresses`, Realm's own deployed addresses from `manifest.<chain>.sol`.
 library ChainConfig {
+    string internal constant UNSUPPORTED = "ChainConfig: unsupported chain (Sepolia, Robinhood mainnet/testnet only)";
+
     /// @notice External infrastructure + the protocol treasury for the active chain.
     struct Infra {
         address treasury;
@@ -48,11 +52,16 @@ library ChainConfig {
         return block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID;
     }
 
+    function isRobinhoodTestnet() internal view returns (bool) {
+        return block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID;
+    }
+
     /// @notice Manifest file suffix for the active chain, for the "paste it here" hints.
     function name() internal view returns (string memory) {
         if (isSepolia()) return "ethereum.sepolia";
         if (isRobinhood()) return "robinhood.mainnet";
-        revert("ChainConfig: unsupported chain (Sepolia and Robinhood mainnet only)");
+        if (isRobinhoodTestnet()) return "robinhood.testnet";
+        revert(UNSUPPORTED);
     }
 
     function infra() internal view returns (Infra memory i) {
@@ -74,8 +83,17 @@ library ChainConfig {
                 univ4PositionManager: DeploymentAddressesRobinhoodMainnet.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesRobinhoodMainnet.PERMIT2
             });
+        } else if (isRobinhoodTestnet()) {
+            i = Infra({
+                treasury: DeploymentAddressesRobinhoodTestnet.REALM_TREASURY,
+                univ2Router: DeploymentAddressesRobinhoodTestnet.UNIV2_ROUTER,
+                univ2PairInitCodeHash: DeploymentAddressesRobinhoodTestnet.UNIV2_PAIR_INIT_CODE_HASH,
+                univ4PoolManager: DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER,
+                univ4PositionManager: DeploymentAddressesRobinhoodTestnet.UNIV4_POSITION_MANAGER,
+                permit2: DeploymentAddressesRobinhoodTestnet.PERMIT2
+            });
         } else {
-            revert("ChainConfig: unsupported chain (Sepolia and Robinhood mainnet only)");
+            revert(UNSUPPORTED);
         }
         require(i.treasury != address(0), "REALM_TREASURY missing");
     }
@@ -86,7 +104,8 @@ library ChainConfig {
     function swapHook() internal view returns (address hook) {
         if (isSepolia()) hook = DeploymentsEthereumSepolia.SWAP_HOOK;
         else if (isRobinhood()) hook = DeploymentsRobinhoodMainnet.SWAP_HOOK;
-        else revert("ChainConfig: unsupported chain (Sepolia and Robinhood mainnet only)");
+        else if (isRobinhoodTestnet()) hook = DeploymentsRobinhoodTestnet.SWAP_HOOK;
+        else revert(UNSUPPORTED);
         require(hook != address(0), "manifest: SWAP_HOOK missing");
     }
 
@@ -96,7 +115,8 @@ library ChainConfig {
     function lpFeeRouter() internal view returns (address router) {
         if (isSepolia()) router = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
         else if (isRobinhood()) router = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
-        else revert("ChainConfig: unsupported chain (Sepolia and Robinhood mainnet only)");
+        else if (isRobinhoodTestnet()) router = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
+        else revert(UNSUPPORTED);
         require(router != address(0), "manifest: LP_FEE_ROUTER missing");
     }
 
@@ -127,8 +147,21 @@ library ChainConfig {
                 factoryV2Proxy: DeploymentsRobinhoodMainnet.FACTORY_UNIV2_UNIFIED,
                 factoryV4Proxy: DeploymentsRobinhoodMainnet.FACTORY_UNIV4_UNIFIED
             });
+        } else if (isRobinhoodTestnet()) {
+            m = Manifest({
+                launchpad: DeploymentsRobinhoodTestnet.LAUNCHPAD,
+                bondingCurve: DeploymentsRobinhoodTestnet.BONDING_CURVE,
+                graduatorV2: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2,
+                graduatorV4: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4,
+                masterFeeHandler: DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER,
+                tokenImpl: DeploymentsRobinhoodTestnet.TOKEN_IMPL,
+                taxTokenV2Impl: DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL,
+                taxTokenV4Impl: DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL,
+                factoryV2Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED,
+                factoryV4Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED
+            });
         } else {
-            revert("ChainConfig: unsupported chain (Sepolia and Robinhood mainnet only)");
+            revert(UNSUPPORTED);
         }
     }
 
@@ -136,14 +169,16 @@ library ChainConfig {
     function creatorVaultFactory() internal view returns (address) {
         if (isSepolia()) return DeploymentsEthereumSepolia.CREATOR_VAULT_FACTORY;
         if (isRobinhood()) return DeploymentsRobinhoodMainnet.CREATOR_VAULT_FACTORY;
-        revert("ChainConfig: unsupported chain (Sepolia and Robinhood mainnet only)");
+        if (isRobinhoodTestnet()) return DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY;
+        revert(UNSUPPORTED);
     }
 
     /// @notice The six DEFAULT-tier vault curves [5%..30%] from the manifest.
     function defaultVaultCurves() internal view returns (address[6] memory) {
         if (isSepolia()) return DeploymentsEthereumSepolia.vaultBondingCurves();
         if (isRobinhood()) return DeploymentsRobinhoodMainnet.vaultBondingCurves();
-        revert("ChainConfig: unsupported chain (Sepolia and Robinhood mainnet only)");
+        if (isRobinhoodTestnet()) return DeploymentsRobinhoodTestnet.vaultBondingCurves();
+        revert(UNSUPPORTED);
     }
 
     /// @notice THIN + THICK curve sets (no-vault base + six vault curves each) from the manifest.
@@ -163,8 +198,16 @@ library ChainConfig {
                 base: DeploymentsRobinhoodMainnet.THICK_CURVE_BASE,
                 vaults: DeploymentsRobinhoodMainnet.thickVaultCurves()
             });
+        } else if (isRobinhoodTestnet()) {
+            c.thin = IRealmFactory.TierCurves({
+                base: DeploymentsRobinhoodTestnet.THIN_CURVE_BASE, vaults: DeploymentsRobinhoodTestnet.thinVaultCurves()
+            });
+            c.thick = IRealmFactory.TierCurves({
+                base: DeploymentsRobinhoodTestnet.THICK_CURVE_BASE,
+                vaults: DeploymentsRobinhoodTestnet.thickVaultCurves()
+            });
         } else {
-            revert("ChainConfig: unsupported chain (Sepolia and Robinhood mainnet only)");
+            revert(UNSUPPORTED);
         }
     }
 
@@ -181,8 +224,13 @@ library ChainConfig {
                 thin: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN,
                 thick: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK
             });
+        } else if (isRobinhoodTestnet()) {
+            v4.graduators = RealmFactoryUniV4Unified.TierGraduators({
+                thin: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN,
+                thick: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK
+            });
         } else {
-            revert("ChainConfig: unsupported chain (Sepolia and Robinhood mainnet only)");
+            revert(UNSUPPORTED);
         }
     }
 }
