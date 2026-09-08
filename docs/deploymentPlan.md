@@ -60,8 +60,10 @@ cast send <DIVIDEND_SWAP_REGISTRY> 'setAdmin(address,bool)' <admin> true --accou
 FACTORY_ADDRESS=<factoryV4 proxy> forge script CreateV4Token --rpc-url sepolia --account realm.dev --slow --broadcast
 ```
 
-Verification on Robinhood uses Blockscout, not Etherscan — the `*-robinhood` recipes do not pass
-`--verify`; verify from the CLI with `--verifier blockscout --verifier-url <explorer>/api/`.
+Verification on Robinhood uses Blockscout, not Etherscan — the `*-robinhood*` recipes pass
+`--verify --verifier blockscout --verifier-url <explorer>/api/` (the `robinhood_verify` /
+`robinhood_testnet_verify` justfile variables). To verify a past broadcast after the fact, re-run its
+recipe's `forge script` with `--resume` and the same verify flags; it reads `broadcast/` and only verifies.
 
 ## The swap hook and the LP fee router
 

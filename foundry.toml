@@ -56,8 +56,8 @@ arc-testnet = "${ARC_TESTNET_RPC_URL}"
 
 # Etherscan verification. Robinhood is NOT in Foundry's chain registry (v1.5.1); adding it to this
 # `[etherscan]` table with `chain = 4663/46630` makes EVERY `forge script` run abort with
-# "Chain <id> not supported". Robinhood uses Blockscout, so verify it from the CLI instead — the
-# `deploy-robinhood*` recipes pass `--verifier blockscout --verifier-url <explorer>/api/`.
+# "Chain <id> not supported". Robinhood uses Blockscout, so the verifier is passed on the CLI instead:
+# the `*-robinhood*` recipes append `{{robinhood_verify}}` / `{{robinhood_testnet_verify}}` (justfile).
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}" }
 sepolia = { key = "${ETHERSCAN_API_KEY}" }

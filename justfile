@@ -60,6 +60,11 @@ lean-invariants:
 error-inspection errorhex:
     forge inspect RealmLaunchpad errors | grep {{errorhex}}
 
+# Robinhood explorers are Blockscout, not Etherscan, and the chain ids are not in Foundry's registry
+# (see foundry.toml), so every Robinhood deploy recipe passes the verifier explicitly.
+robinhood_verify := "--verify --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/"
+robinhood_testnet_verify := "--verify --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/"
+
 # --- Per-chain build retarget ------------------------------------------------
 # ONE rule per target chain repoints EVERY per-chain compile-time import across ALL contracts at once
 # (the taxable tokens' `DeploymentAddresses` + venue lib, and the V4 graduator's pool-geometry/fee
@@ -171,11 +176,11 @@ deploy-prereqs-sepolia: chain-sepolia
 
 deploy-prereqs-robinhood: chain-robinhood
     forge script DeployRealmPrereqs --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-prereqs-robinhood-testnet: chain-robinhood-testnet
     forge script DeployRealmPrereqs --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Only the two registries (keepers + dividend swap), owned by realm.dev. Use to redeploy them without
 # touching the LP fee router or the hooks (whose Uniswap whitelisting must survive). Paste the two
@@ -185,11 +190,11 @@ deploy-registries-sepolia: chain-sepolia
 
 deploy-registries-robinhood: chain-robinhood
     forge script DeployRealmRegistries --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-registries-robinhood-testnet: chain-robinhood-testnet
     forge script DeployRealmRegistries --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Phase 1. Everything else in one broadcast: fee handler, launchpad, quoter, liquidity adder, the V2 +
 # three V4 graduators, 22 bonding curves, the creator-vault system, the three token impls and both
@@ -201,11 +206,11 @@ deploy-stack-sepolia: chain-sepolia
 
 deploy-stack-robinhood: chain-robinhood
     forge script DeployRealmStack --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-stack-robinhood-testnet: chain-robinhood-testnet
     forge script DeployRealmStack --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Redeploys both unified factory implementations from the CURRENT manifest and repoints the live
 # proxies at them. The upgrade path for anything a factory holds as an immutable — token impls,
@@ -215,11 +220,11 @@ upgrade-factories-sepolia: chain-sepolia
 
 upgrade-factories-robinhood: chain-robinhood
     forge script UpgradeRealmFactories --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-factories-robinhood-testnet: chain-robinhood-testnet
     forge script UpgradeRealmFactories --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Mines a valid hook salt (the permission bits live in the hook's own address) and deploys the hook
 # against the manifest's LP_FEE_ROUTER — override with ROUTER_ADDRESS=<addr> before the manifest is
@@ -235,22 +240,22 @@ deploy-swap-hook-sepolia:
 
 deploy-swap-hook-robinhood:
     forge script DeployRealmSwapHook --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-swap-hook-robinhood-testnet:
     forge script DeployRealmSwapHook --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 deploy-realm-hook-sepolia:
     forge script DeployRealmHook --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 deploy-realm-hook-robinhood:
     forge script DeployRealmHook --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-realm-hook-robinhood-testnet:
     forge script DeployRealmHook --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded
 # with liquidity — replicating the symbols, fee tiers, tick spacings and prices of the real xStock pools
