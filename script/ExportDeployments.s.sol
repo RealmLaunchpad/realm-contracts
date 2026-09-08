@@ -32,6 +32,8 @@ contract ExportDeployments is Script {
         address lpFeeRouter;
         address lpFeeRouterImpl;
         address quoter;
+        address keepersRegistry;
+        address dividendSwapRegistry;
         address tokenImpl;
         address taxableTokenImpl;
         address taxableTokenV2Impl;
@@ -53,6 +55,7 @@ contract ExportDeployments is Script {
         address realmDev;
         address realmTreasury;
         address realmTokenDeployer;
+        address realmKeeper;
         // --- Integrations ---
         address weth;
         address univ2Router;
@@ -88,6 +91,8 @@ contract ExportDeployments is Script {
         d.lpFeeRouter = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsEthereumSepolia.LP_FEE_ROUTER_IMPL;
         d.quoter = DeploymentsEthereumSepolia.QUOTER;
+        d.keepersRegistry = DeploymentAddressesEthereumSepolia.REALM_KEEPERS_REGISTRY;
+        d.dividendSwapRegistry = DeploymentAddressesEthereumSepolia.DIVIDEND_SWAP_REGISTRY;
         d.tokenImpl = DeploymentsEthereumSepolia.TOKEN_IMPL;
         d.taxableTokenImpl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL;
@@ -108,6 +113,7 @@ contract ExportDeployments is Script {
         d.realmDev = DeploymentsEthereumSepolia.REALM_DEV;
         d.realmTreasury = DeploymentAddressesEthereumSepolia.REALM_TREASURY;
         d.realmTokenDeployer = DeploymentsEthereumSepolia.REALM_TOKEN_DEPLOYER;
+        d.realmKeeper = DeploymentsEthereumSepolia.REALM_KEEPER;
         d.weth = DeploymentAddressesEthereumSepolia.WETH;
         d.univ2Router = DeploymentAddressesEthereumSepolia.UNIV2_ROUTER;
         d.univ2Factory = DeploymentAddressesEthereumSepolia.UNIV2_FACTORY;
@@ -130,6 +136,8 @@ contract ExportDeployments is Script {
         d.lpFeeRouter = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER_IMPL;
         d.quoter = DeploymentsRobinhoodMainnet.QUOTER;
+        d.keepersRegistry = DeploymentAddressesRobinhoodMainnet.REALM_KEEPERS_REGISTRY;
+        d.dividendSwapRegistry = DeploymentAddressesRobinhoodMainnet.DIVIDEND_SWAP_REGISTRY;
         d.tokenImpl = DeploymentsRobinhoodMainnet.TOKEN_IMPL;
         d.taxableTokenImpl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL;
@@ -150,6 +158,7 @@ contract ExportDeployments is Script {
         d.realmDev = DeploymentsRobinhoodMainnet.REALM_DEV;
         d.realmTreasury = DeploymentAddressesRobinhoodMainnet.REALM_TREASURY;
         d.realmTokenDeployer = DeploymentsRobinhoodMainnet.REALM_TOKEN_DEPLOYER;
+        d.realmKeeper = DeploymentsRobinhoodMainnet.REALM_KEEPER;
         d.weth = DeploymentAddressesRobinhoodMainnet.WETH;
         d.univ2Router = DeploymentAddressesRobinhoodMainnet.UNIV2_ROUTER;
         d.univ2Factory = DeploymentAddressesRobinhoodMainnet.UNIV2_FACTORY;
@@ -181,6 +190,8 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("SwapLpFeeRouter (proxy)", d.lpFeeRouter));
         s = string.concat(s, _row("SwapLpFeeRouter (impl)", d.lpFeeRouterImpl));
         s = string.concat(s, _row("RealmQuoter", d.quoter));
+        s = string.concat(s, _row("RealmKeepersRegistry", d.keepersRegistry));
+        s = string.concat(s, _row("RealmDividendSwapRegistry (proxy)", d.dividendSwapRegistry));
         s = string.concat(s, _row("RealmToken (impl)", d.tokenImpl));
         s = string.concat(s, _row("RealmTaxableTokenUniV4 (impl)", d.taxableTokenImpl));
         s = string.concat(s, _row("RealmTaxableTokenUniV2 (impl)", d.taxableTokenV2Impl));
@@ -218,6 +229,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("Realm Deployer", d.realmDev));
         s = string.concat(s, _row("Realm Treasury", d.realmTreasury));
         s = string.concat(s, _row("Realm Token Deployer", d.realmTokenDeployer));
+        s = string.concat(s, _row("Realm Keeper", d.realmKeeper));
 
         s = string.concat(s, "\n## Integrations\n\n", _tableHeader("Name"));
         s = string.concat(s, _row("WETH", d.weth));

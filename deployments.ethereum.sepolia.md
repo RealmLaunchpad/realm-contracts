@@ -16,6 +16,8 @@
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
 | SwapLpFeeRouter (impl)                       | `0xa2E3C9B3B33Cbad41ECCA283734c335490a09d4a` |
 | RealmQuoter                                  | `0x5606c6EDF892FEd317c60C95a1BCcDA5c1c5f551` |
+| RealmKeepersRegistry                         | `0xCba49A6057256392cF480C17C81DF2170FB650CB` |
+| RealmDividendSwapRegistry (proxy)            | `0x9b3c560D86909B8116468536737a272Fe0cE327d` |
 | RealmToken (impl)                            | `0xa5498948245b1D3CDda08B9324e22c709CE9bDE7` |
 | RealmTaxableTokenUniV4 (impl)                | `0xa492a0edb9eE7412F061e26EF8Ec4b0594C9101c` |
 | RealmTaxableTokenUniV2 (impl)                | `0x32076B54e0504CF8EFCE26170f56EEAF2204DBe8` |
@@ -56,6 +58,7 @@
 | Realm Deployer                               | `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb` |
 | Realm Treasury                               | `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb` |
 | Realm Token Deployer                         | `0x566CB296539672bB2419F403d292544E9Abf7815` |
+| Realm Keeper                                 | `0x68ae8d23AeFde0454e1A391678e20e64E5ff034a` |
 
 ## Integrations
 

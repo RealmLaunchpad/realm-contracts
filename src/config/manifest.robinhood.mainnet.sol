@@ -135,4 +135,6 @@ library DeploymentsRobinhoodMainnet {
     // --- Accounts ---
     address internal constant REALM_DEV = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
     address internal constant REALM_TOKEN_DEPLOYER = address(0);
+    /// @notice The keeper lambda's EOA (see the Sepolia manifest). `address(0)` until configured here.
+    address internal constant REALM_KEEPER = address(0);
 }

@@ -135,4 +135,7 @@ library DeploymentsEthereumSepolia {
     // --- Accounts ---
     address internal constant REALM_DEV = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
     address internal constant REALM_TOKEN_DEPLOYER = 0x566CB296539672bB2419F403d292544E9Abf7815;
+    /// @notice The keeper lambda's EOA: `isKeeper` on `REALM_KEEPERS_REGISTRY` and the `keeper` that
+    ///         `DIVIDEND_SWAP_REGISTRY` refunds gas to. Set via `setKeeper` / `setKeeperFunding`.
+    address internal constant REALM_KEEPER = 0x68ae8d23AeFde0454e1A391678e20e64E5ff034a;
 }
