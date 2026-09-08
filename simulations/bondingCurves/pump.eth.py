@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 if __name__ == "__main__":
-    outputdir = Path("/home/jl/defi/livo-launchpad/livo-contracts/simulations/img/")
+    outputdir = Path("/home/jl/defi/realm-launchpad/realm-contracts/simulations/img/")
     outputdir.mkdir(parents=True, exist_ok=True)
 
     # y = circulating supply

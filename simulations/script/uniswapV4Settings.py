@@ -15,7 +15,7 @@ def positive_integer(raw: str) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compute Uniswap V4 tick/price constants for LivoGraduator",
+        description="Compute Uniswap V4 tick/price constants for RealmGraduator",
     )
     parser.add_argument(
         "graduation_wei_per_token",
@@ -67,7 +67,7 @@ def main() -> None:
     tick_lower_2 = tick_graduation + tick_spacing
     tick_upper_2 = tick_upper - (secondary_upper_offset_steps * tick_spacing)
 
-    print("// LivoGraduatorUniswapV4 price configuration")
+    print("// RealmGraduatorUniswapV4 price configuration")
     print(f"int24 constant TICK_LOWER = {tick_lower};")
     print(f"int24 constant TICK_UPPER = {tick_upper};")
     print(f"uint160 constant SQRT_PRICEX96_GRADUATION = {sqrt_pricex96_graduation};")

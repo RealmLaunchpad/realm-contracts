@@ -2,21 +2,21 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
-import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
-import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
+import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
 
 /// @dev Helper contract used to simulate `tx.origin` being a contract that cannot receive ETH.
 contract NonReceiver {}
@@ -35,7 +35,7 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
         testToken = factoryV2.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryV2), address(livoToken)),
+            _nextValidSalt(address(factoryV2), address(realmToken)),
             _fs(creator),
             _noSs(),
             _emptyTaxCfg(),
@@ -43,7 +43,7 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
         );
         // Pair contract is not deployed at token creation; only the CREATE2 address is reserved
         // and stored on the token. The actual contract is deployed lazily at graduation.
-        uniswapPair = LivoToken(testToken).pair();
+        uniswapPair = RealmToken(testToken).pair();
         _;
     }
 
@@ -123,7 +123,7 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         uint256 tokenBalance = IERC20(testToken).balanceOf(buyer);
 
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmToken.TransferToPairBeforeGraduationNotAllowed.selector));
         IERC20(testToken).transfer(uniswapPair, tokenBalance / 2);
     }
 
@@ -149,14 +149,14 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
         testToken = factoryV2.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryV2), address(livoToken)),
+            _nextValidSalt(address(factoryV2), address(realmToken)),
             _fs(creator),
             _noSs(),
             _emptyTaxCfg(),
             _emptyAntiSniperCfg()
         );
 
-        address precomputed = LivoToken(testToken).pair();
+        address precomputed = RealmToken(testToken).pair();
         assertTrue(precomputed != address(0), "Token should have a precomputed pair address");
         assertEq(precomputed.code.length, 0, "No code at precomputed address before graduation");
         assertEq(UNISWAP_FACTORY.getPair(testToken, address(WETH)), address(0), "Factory has no pair record yet");
@@ -289,7 +289,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         uint256 tokensBought = tokensAfter - tokensBefore;
         uint256 bondingCurvePrice = (secondBuy * 1e18) / tokensBought;
         vm.stopPrank();
-        assertTrue(LivoToken(testToken).graduated());
+        assertTrue(RealmToken(testToken).graduated());
 
         (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
         uint256 wethReserve;
@@ -360,7 +360,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
         uint256 tokensBought = tokensAfter - tokensBefore;
         uint256 bondingCurvePrice = (secondBuy * 1e18) / tokensBought;
         vm.stopPrank();
-        assertTrue(LivoToken(testToken).graduated());
+        assertTrue(RealmToken(testToken).graduated());
 
         (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
         uint256 wethReserve;
@@ -462,7 +462,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ2() public createTestToken {
         vm.skip(true);
         vm.expectEmit(true, false, false, true);
-        emit ILivoGraduator.TokenGraduated(
+        emit IRealmGraduator.TokenGraduated(
             testToken, 285714285714285714285714291, 3500000000000000000, 31622776601683793319682
         );
 
@@ -477,7 +477,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         vm.expectEmit(true, false, false, true);
         // Full ethCollected and tokenBalance (graduator handles fees/burning)
-        emit LivoLaunchpad.TokenGraduated(testToken, GRADUATION_THRESHOLD, expectedTokenBalance);
+        emit RealmLaunchpad.TokenGraduated(testToken, GRADUATION_THRESHOLD, expectedTokenBalance);
 
         _graduateToken();
     }
@@ -501,7 +501,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
 
         vm.deal(buyer, maxEth + 1 ether);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: maxEth + 1}(testToken, 0, DEADLINE);
     }
 
@@ -526,7 +526,7 @@ contract TestGraduationDosExploits is BaseUniswapV2GraduationTests {
     }
 
     /// @notice An attacker cannot seed the predicted pair via the UniV2 router before graduation.
-    ///         The router's `addLiquidityETH` calls `safeTransferFrom`, which hits LivoToken's
+    ///         The router's `addLiquidityETH` calls `safeTransferFrom`, which hits RealmToken's
     ///         `_update` gate and reverts with `TRANSFER_FROM_FAILED`.
     function test_cannotAddLiquidityToPredictedPairBeforeGraduation_viaRouter() public createTestTokenWithPair {
         // Attacker acquires tokens via the bonding curve so they have something to seed with.
@@ -576,7 +576,7 @@ contract TestDeferredPairDeployment is BaseUniswapV2GraduationTests {
 
         _graduateToken();
 
-        assertTrue(LivoToken(testToken).graduated(), "Token should graduate");
+        assertTrue(RealmToken(testToken).graduated(), "Token should graduate");
         assertEq(UNISWAP_FACTORY.getPair(testToken, address(WETH)), uniswapPair, "Factory still records the same pair");
         // Liquidity actually landed in the pre-existing pair
         assertGt(WETH.balanceOf(uniswapPair), 0, "Pair should have WETH reserves");
@@ -600,13 +600,13 @@ contract TestDeferredPairDeployment is BaseUniswapV2GraduationTests {
 
         // Gate still revs even though the pair contract now exists
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmToken.TransferToPairBeforeGraduationNotAllowed.selector));
         IERC20(testToken).transfer(uniswapPair, tokenBalance / 2);
     }
 
     /// @notice Attacker pre-creates pair AND donates WETH; graduation still succeeds and the resulting
     ///         pool price is strictly greater than the bonding-curve price right before graduation
-    ///         (the invariant from `LivoGraduatorUniswapV2._addLiquidityWithPriceMatching`).
+    ///         (the invariant from `RealmGraduatorUniswapV2._addLiquidityWithPriceMatching`).
     function test_dos_attackerPreCreatedPair_wethDonationCannotBlockGraduation() public createTestTokenWithPair {
         _deployPairPermissionlessly();
 
@@ -628,7 +628,7 @@ contract TestDeferredPairDeployment is BaseUniswapV2GraduationTests {
         uint256 tokensAfter = IERC20(testToken).balanceOf(buyer);
         vm.stopPrank();
 
-        assertTrue(LivoToken(testToken).graduated(), "Graduation must succeed despite WETH donation");
+        assertTrue(RealmToken(testToken).graduated(), "Graduation must succeed despite WETH donation");
 
         uint256 bondingCurvePrice = (secondBuy * 1e18) / (tokensAfter - tokensBefore);
 
@@ -651,7 +651,7 @@ contract TestDeferredPairDeployment is BaseUniswapV2GraduationTests {
 
         _graduateToken();
 
-        assertTrue(LivoToken(testToken).graduated(), "Token should be graduated");
+        assertTrue(RealmToken(testToken).graduated(), "Token should be graduated");
 
         IUniswapV2Pair pair = IUniswapV2Pair(uniswapPair);
         (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
@@ -672,10 +672,10 @@ contract TestGraduationWhileDecayActive is BaseUniswapV2GraduationTests {
     function test_v2_graduatesWhileTaxDecayActive() public {
         uint40 t0 = uint40(block.timestamp);
         // decay-only token: 10%/10% buy/sell decay over the full 20min window, creation-anchored.
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "Decay",
             symbol: "DCY",
-            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            salt: _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -685,10 +685,10 @@ contract TestGraduationWhileDecayActive is BaseUniswapV2GraduationTests {
             _decayCfg(1000, 1000, 20 minutes, true),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
-        uniswapPair = LivoToken(testToken).pair();
+        uniswapPair = RealmToken(testToken).pair();
 
         // seed the curve below graduation while decay is at its launch peak (10%)
         _launchpadBuy(testToken, 1 ether);
@@ -696,8 +696,8 @@ contract TestGraduationWhileDecayActive is BaseUniswapV2GraduationTests {
         // advance halfway into the decay window: the live launchpad buy tax is now 5% (decayed, nonzero)
         vm.warp(t0 + 10 minutes);
         assertEq(
-            ILivoToken(testToken)
-            .getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}))
+            IRealmToken(testToken)
+            .getLaunchpadFees(IRealmToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}))
             .taxBps,
             500,
             "decay must be live (5%) right before graduation"
@@ -711,7 +711,7 @@ contract TestGraduationWhileDecayActive is BaseUniswapV2GraduationTests {
         assertGt(WETH.balanceOf(uniswapPair), 0, "pair must hold WETH reserves");
         assertGt(IERC20(testToken).balanceOf(uniswapPair), 0, "pair must hold token reserves");
         // the decay window is still open immediately after graduation
-        assertGt(ILivoToken(testToken).getTaxConfig().buyTaxBps, 0, "decay still active just after graduation");
+        assertGt(IRealmToken(testToken).getTaxConfig().buyTaxBps, 0, "decay still active just after graduation");
     }
 }
 
@@ -785,7 +785,7 @@ contract TestTriggererCompensation is BaseUniswapV2GraduationTests {
 
     function test_triggerer_compensationConstantValue() public view {
         assertEq(
-            LivoGraduatorUniswapV2(address(graduator)).TRIGGERER_GRADUATION_COMPENSATION(),
+            RealmGraduatorUniswapV2(address(graduator)).TRIGGERER_GRADUATION_COMPENSATION(),
             0.005 ether,
             "constant should equal 0.005 ether"
         );

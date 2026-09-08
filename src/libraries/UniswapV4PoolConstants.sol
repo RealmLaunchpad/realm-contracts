@@ -9,7 +9,7 @@ import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 /// @notice Shared Uniswap V4 pool configuration constants used by the graduator and fee handler.
 library UniswapV4PoolConstants {
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
-    /// @dev Set to 0 because LP fees are now charged by the hook (LivoSwapHook)
+    /// @dev Set to 0 because LP fees are now charged by the hook (RealmSwapHook)
     uint24 internal constant LP_FEE = 0;
 
     /// @notice Tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
@@ -51,11 +51,11 @@ library UniswapV4PoolConstants {
     /// @dev However, the second position has much less liquidity, so the impact would be barely noticeable.
     int24 internal constant TICK_UPPER_2_OFFSET = 51 * TICK_SPACING;
 
-    /// @notice The canonical PoolKey of a graduated Livo token's V4 pool: `(ETH, token)` with this
+    /// @notice The canonical PoolKey of a graduated Realm token's V4 pool: `(ETH, token)` with this
     ///         library's fee/spacing and the graduator's hook. THE single source of truth — the
     ///         graduator, the buy-back mixin and the token's liquidity leg must all target the same
     ///         pool, so none of them may hand-roll the key.
-    function livoPoolKey(address token, address hook) internal pure returns (PoolKey memory) {
+    function realmPoolKey(address token, address hook) internal pure returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(token),

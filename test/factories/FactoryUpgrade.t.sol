@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
-import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
@@ -18,9 +18,9 @@ import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contrac
 contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
     function _deployV4ImplWithGraduator(address newGraduator) internal returns (address) {
         return address(
-            new LivoFactoryUniV4Unified(
+            new RealmFactoryUniV4Unified(
                 address(launchpad),
-                ILivoFactory.TokenImpls({base: address(livoToken), tax: address(livoTaxToken)}),
+                IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxToken)}),
                 address(bondingCurve),
                 newGraduator,
                 address(feeHandler),
@@ -101,7 +101,7 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
     function test_implementationInitializeReverts() public {
         address impl = _deployV4ImplSameArgs();
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        LivoFactoryUniV4Unified(impl).initialize();
+        RealmFactoryUniV4Unified(impl).initialize();
     }
 
     // ───────────── End-to-end after upgrade ─────────────
@@ -111,7 +111,7 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(admin);
         factoryV4Unified.upgradeToAndCall(newImpl, "");
 
-        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(livoToken));
+        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
             "Upgraded", "UPG", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()

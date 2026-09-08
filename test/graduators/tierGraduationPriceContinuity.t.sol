@@ -2,13 +2,13 @@
 pragma solidity 0.8.28;
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigInit} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -137,7 +137,7 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
         address token = _create(isV4, tier, vaultBps, flavor);
 
         // Last trade price BEFORE graduation: the curve's fee-free marginal price at the threshold.
-        ILivoBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
+        IRealmBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
         uint256 ethPerTokenBefore = _curveEthPerTokenAtGraduation(curve);
 
         _buyToGraduation(token);
@@ -178,7 +178,7 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
     function _swapNoDropScenario(LiquidityTier tier) internal {
         string memory ctx = _ctx(true, tier, 0, Flavor.BASE);
         address token = _create(true, tier, 0, Flavor.BASE);
-        ILivoBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
+        IRealmBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
         uint256 threshold = curve.ethGraduationThreshold();
         uint256 buyFeeBps = _currentBuyFeeBps(token);
 
@@ -300,7 +300,7 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
 
     /// @dev ETH-per-token the curve charges for the final sliver of ETH reaching the graduation
     ///      threshold. Pure view, so it carries no launchpad fee/tax — the clean "last trade" price.
-    function _curveEthPerTokenAtGraduation(ILivoBondingCurve curve) internal view returns (uint256) {
+    function _curveEthPerTokenAtGraduation(IRealmBondingCurve curve) internal view returns (uint256) {
         uint256 threshold = curve.ethGraduationThreshold();
         (uint256 tokensOut,) = curve.buyTokensWithExactEth(threshold - PRICE_PROBE_ETH, PRICE_PROBE_ETH);
         return PRICE_PROBE_ETH * 1e18 / tokensOut;
@@ -315,7 +315,7 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
 
     /// @dev The V2 pool's opening spot price (ETH per token), from the pair reserves ratio.
     function _v2PoolEthPerToken(address token) internal view returns (uint256) {
-        IUniswapV2Pair pair = IUniswapV2Pair(LivoToken(token).pair());
+        IUniswapV2Pair pair = IUniswapV2Pair(RealmToken(token).pair());
         (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
         (uint256 wethReserve, uint256 tokenReserve) =
             pair.token0() == address(WETH) ? (reserve0, reserve1) : (reserve1, reserve0);
@@ -328,16 +328,16 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
     ///      `vaultBps` of supply (no vault when `vaultBps == 0`). Sniper flavors whitelist `buyer` so the
     ///      graduation buys bypass the per-tx / per-wallet caps during the protection window.
     function _create(bool isV4, LiquidityTier tier, uint256 vaultBps, Flavor flavor) internal returns (address token) {
-        ILivoFactory.CreatorVault[] memory vaults;
+        IRealmFactory.CreatorVault[] memory vaults;
         if (vaultBps == 0) {
-            vaults = new ILivoFactory.CreatorVault[](0);
+            vaults = new IRealmFactory.CreatorVault[](0);
         } else {
-            vaults = new ILivoFactory.CreatorVault[](1);
+            vaults = new IRealmFactory.CreatorVault[](1);
             vaults[0] =
-                ILivoFactory.CreatorVault({owner: creator, supplyBps: vaultBps, cliffSeconds: 0, vestingSeconds: 1});
+                IRealmFactory.CreatorVault({owner: creator, supplyBps: vaultBps, cliffSeconds: 0, vestingSeconds: 1});
         }
         address factory = isV4 ? address(factoryV4Unified) : address(factoryV2Unified);
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "Tier",
             symbol: "TIER",
             salt: _nextValidSalt(factory, _implFor(isV4, flavor)),
@@ -356,7 +356,7 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
 
     /// @dev Buys from the launchpad exactly enough to reach the token's tier-specific graduation threshold.
     function _buyToGraduation(address token) internal {
-        ILivoBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
+        IRealmBondingCurve curve = launchpad.getTokenConfig(token).bondingCurve;
         uint256 threshold = curve.ethGraduationThreshold();
         uint256 ethReserves = launchpad.getTokenState(token).ethCollected;
         uint256 buyFeeBps = _currentBuyFeeBps(token);
@@ -391,14 +391,14 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
     function _implFor(bool isV4, Flavor f) internal view returns (address) {
         bool tax = _isTax(f);
         bool sniper = _isSniper(f);
-        if (tax && sniper) return isV4 ? address(livoTaxTokenSniper) : address(livoTaxTokenV2Sniper);
-        if (tax) return isV4 ? address(livoTaxToken) : address(livoTaxTokenV2);
-        if (sniper) return address(livoTokenSniper);
-        return address(livoToken);
+        if (tax && sniper) return isV4 ? address(realmTaxTokenSniper) : address(realmTaxTokenV2Sniper);
+        if (tax) return isV4 ? address(realmTaxToken) : address(realmTaxTokenV2);
+        if (sniper) return address(realmTokenSniper);
+        return address(realmToken);
     }
 
-    function _cfg() internal pure returns (LivoFactoryUniV4Unified.UniV4Configs memory) {
-        return LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
+    function _cfg() internal pure returns (RealmFactoryUniV4Unified.UniV4Configs memory) {
+        return RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
     }
 
     function _tierName(LiquidityTier tier) internal pure returns (string memory) {

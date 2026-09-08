@@ -6,10 +6,10 @@ Summary of all function signature and functionality changes that affect frontend
 
 ## 1. Token Creation
 
-- **Removed**: `LivoLaunchpad.createToken()` no longer exists on the launchpad.
+- **Removed**: `RealmLaunchpad.createToken()` no longer exists on the launchpad.
 - **New**: Token creation is now handled by factory contracts. Each factory may have different input arguments. There is no need to pass graduator, token implementation, bonding curve, etc. — they are hardcoded in each factory.
 
-### `LivoFactoryUniV4` (for UniV2 and UniV4 tokens)
+### `RealmFactoryUniV4` (for UniV2 and UniV4 tokens)
 
 ```solidity
 // Single fee receiver
@@ -30,7 +30,7 @@ function createTokenWithFeeSplit(
 ) external returns (address token, address feeSplitter)
 ```
 
-### `LivoFactoryTaxToken` (for UniV4 taxable tokens)
+### `RealmFactoryTaxToken` (for UniV4 taxable tokens)
 
 ```solidity
 // Single fee receiver + tax config
@@ -58,7 +58,7 @@ function createTokenWithFeeSplit(
 **Notes:**
 - `feeReceiver` is the address that accumulates fees in the fee handler. It can be an EOA or a fee splitter.
 - `salt` is used for deterministic clone deployment (combined with `msg.sender`, `block.timestamp`, and `symbol`).
-- `createTokenWithFeeSplit()` deploys a `LivoFeeSplitter` clone that acts as the `feeReceiver`, splitting fees among multiple recipients.
+- `createTokenWithFeeSplit()` deploys a `RealmFeeSplitter` clone that acts as the `feeReceiver`, splitting fees among multiple recipients.
 
 ---
 
@@ -69,7 +69,7 @@ Fee management is now handled by dedicated fee handler contracts instead of the 
 
 ### Which contract to call `claim()` on?
 
-Always ask for `ILivoToken.feeHandler()`, and that fee handler will expose:
+Always ask for `IRealmToken.feeHandler()`, and that fee handler will expose:
 - `feeHandler.getClaimable(address[] tokens, address account)`
 - `feeHandler.claim(address[] tokens)`
 
@@ -80,7 +80,7 @@ However, `getClaimable()` won't be necessary, as we read it directly from envio.
 
 ---
 
-## 4. Token Info (view functions on `ILivoToken`)
+## 4. Token Info (view functions on `IRealmToken`)
 
 New view functions available on each token contract:
 
@@ -103,7 +103,7 @@ function getTaxConfig() external view returns (TaxConfig memory config)
 // TaxConfig { buyTaxBps, sellTaxBps, taxDurationSeconds, graduationTimestamp }
 ```
 
-**Taxable token only** (`LivoTaxableTokenUniV4`):
+**Taxable token only** (`RealmTaxableTokenUniV4`):
 ```solidity
 function rescueTokens(address token) external  // owner only, pass address(0) for native ETH
 ```
@@ -127,7 +127,7 @@ function setFeeReceiver(address newFeeReceiver) external
 
 **`communityTakeOver()`** remains on the launchpad (admin only). It calls `proposeNewOwner()` on the token:
 ```solidity
-// LivoLaunchpad (onlyOwner):
+// RealmLaunchpad (onlyOwner):
 function communityTakeOver(address token, address newTokenOwner) external
 ```
 
@@ -135,7 +135,7 @@ function communityTakeOver(address token, address newTokenOwner) external
 
 ## 6. Key Events (for indexer/frontend)
 
-### Factory events (`ILivoFactory`)
+### Factory events (`IRealmFactory`)
 
 ```solidity
 event TokenCreated(
@@ -155,12 +155,12 @@ event FeeSplitterCreated(
 ```solidity
 event TokenLaunched(address indexed token, uint256 graduationThreshold, uint256 maxExcessOverThreshold)
 event TokenGraduated(address indexed token, uint256 ethCollected, uint256 tokensForGraduation)
-event LivoTokenBuy(address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 ethFee)
-event LivoTokenSell(address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 ethFee)
+event RealmTokenBuy(address indexed token, address indexed buyer, uint256 ethAmount, uint256 tokenAmount, uint256 ethFee)
+event RealmTokenSell(address indexed token, address indexed seller, uint256 tokenAmount, uint256 ethAmount, uint256 ethFee)
 event CommunityTakeOver(address indexed token, address newOwner)
 ```
 
-### Token events (`ILivoToken`)
+### Token events (`IRealmToken`)
 
 ```solidity
 event Graduated()
@@ -172,30 +172,30 @@ event FeeReceiverUpdated(address newFeeReceiver)
 ### Taxable token event
 
 ```solidity
-event LivoTaxableTokenInitialized(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds)
+event RealmTaxableTokenInitialized(uint16 buyTaxBps, uint16 sellTaxBps, uint40 taxDurationSeconds)
 ```
 
-### Fee handler events (`ILivoFeeHandler`)
+### Fee handler events (`IRealmFeeHandler`)
 
 ```solidity
 event CreatorFeesDeposited(address indexed token, address indexed account, uint256 amount)
 event TreasuryFeesDeposited(address token, uint256 amount)
 ```
 
-### Claims event (`ILivoClaims` — emitted by fee handlers and fee splitters)
+### Claims event (`IRealmClaims` — emitted by fee handlers and fee splitters)
 
 ```solidity
 event CreatorClaimed(address indexed token, address indexed account, uint256 amount)
 ```
 
-### Fee splitter events (`ILivoFeeSplitter`)
+### Fee splitter events (`IRealmFeeSplitter`)
 
 ```solidity
 event SharesUpdated(address[] recipients, uint256[] sharesBps)
 event FeesAccrued(uint256 amount)
 ```
 
-### Hook event (`LivoSwapHook`)
+### Hook event (`RealmSwapHook`)
 
 ```solidity
 event CreatorTaxesAccrued(address indexed token, uint256 amount)

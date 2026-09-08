@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import "forge-std/Test.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {CreatorVaultCurveConstants as C} from "src/config/CreatorVaultCurveConstants.sol";
 
 /// @notice Invariant tests for the six creator-vault bonding curves. The whole point of the feature

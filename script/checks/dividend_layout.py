@@ -20,8 +20,8 @@ import sys
 OUT = pathlib.Path("out-layout")
 
 PAIRS = [
-    ("LivoTaxableTokenUniV2", "LivoDividendLogicUniV2"),
-    ("LivoTaxableTokenUniV4", "LivoDividendLogicUniV4"),
+    ("RealmTaxableTokenUniV2", "RealmDividendLogicUniV2"),
+    ("RealmTaxableTokenUniV4", "RealmDividendLogicUniV4"),
 ]
 
 

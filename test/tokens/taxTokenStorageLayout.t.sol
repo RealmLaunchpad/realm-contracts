@@ -2,15 +2,15 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {
     TaxConfigsWithAllocation,
     EarningsAllocationConfig,
-    ILivoTaxableToken
-} from "src/interfaces/ILivoTaxableToken.sol";
+    IRealmTaxableToken
+} from "src/interfaces/IRealmTaxableToken.sol";
 
 /// @notice Pins the storage packing the taxable tokens depend on for gas, and the creation-time-only
 ///         nature of the earnings allocation.
@@ -27,7 +27,7 @@ import {
 contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev `pair` + `graduated` + `hasSniperProt` + `hasDividends` + `dividendAssetCount`. `_update`
     ///      loads this slot on every transfer, which is the entire reason `hasDividends` and the payout
-    ///      count live on `LivoToken` instead of beside the rest of the dividend state — the transfer
+    ///      count live on `RealmToken` instead of beside the rest of the dividend state — the transfer
     ///      hook learns how many assets to settle without a cold read.
     uint256 internal constant WARM_FLAGS_SLOT = 10;
 
@@ -49,7 +49,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     ///      clocks + the precision exponent), then `token` + `rate`, then the ledger + the buffer.
     uint256 internal constant DIVIDEND_ASSETS_SLOT = 15;
 
-    LivoTaxableTokenUniV2 internal tok;
+    RealmTaxableTokenUniV2 internal tok;
 
     /// @dev Built in `setUp` on purpose. Foundry runs `setUp` and each test as SEPARATE transactions, so
     ///      the transient `tokenFactory` set during the deploy is cleared by the time a test body runs —
@@ -63,11 +63,11 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     /// @dev A token with every packed field set to a DISTINCT non-zero value, so a field landing at the
     ///      wrong offset cannot coincidentally still match.
-    function _token() internal returns (LivoTaxableTokenUniV2 token) {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+    function _token() internal returns (RealmTaxableTokenUniV2 token) {
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "Layout",
             symbol: "LAY",
-            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            salt: _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -85,9 +85,9 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
         });
         vm.prank(creator);
         address addr = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
         );
-        return LivoTaxableTokenUniV2(payable(addr));
+        return RealmTaxableTokenUniV2(payable(addr));
     }
 
     function _slot(address token, uint256 index) internal view returns (uint256) {
@@ -99,7 +99,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev The tax fields and the allocation bps must occupy ONE slot, at the documented offsets. A
     ///      mismatch here means the inheritance order changed and every deployed clone's layout with it.
     function test_allocationBpsShareOneSlotWithTheTaxFields() public {
-        LivoTaxableTokenUniV2 token = tok;
+        RealmTaxableTokenUniV2 token = tok;
         uint256 word = _slot(address(token), TAX_AND_ALLOCATION_SLOT);
 
         assertEq(uint16(word), token.burnBps(), "burnBps at byte 0");
@@ -120,7 +120,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev `hasDividends` must ride in the slot `_update` already loads. If it slips into a slot of its
     ///      own, every transfer of every token — dividend-paying or not — pays for a cold SLOAD.
     function test_hasDividendsPacksIntoTheWarmFlagsSlot() public {
-        LivoTaxableTokenUniV2 token = tok;
+        RealmTaxableTokenUniV2 token = tok;
         uint256 word = _slot(address(token), WARM_FLAGS_SLOT);
 
         assertEq(address(uint160(word)), token.pair(), "pair at byte 0");
@@ -137,7 +137,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     ///      slot, and only reach `token`/`rate` in the next one when the accumulator actually advances.
     ///      A field slipping out of it would put a second SLOAD on every transfer of every dividend token.
     function test_dividendAssetHotSlotHoldsTheAccumulatorAndAllThreeClocks() public {
-        LivoTaxableTokenUniV2 token = tok;
+        RealmTaxableTokenUniV2 token = tok;
         // Graduation starts the clocks, which is what makes the packed fields observable at all.
         testToken = address(token);
         _launchpadBuy(address(token), 1 ether);
@@ -170,7 +170,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     ///      deliberate trade (one extra cold SLOAD on the swap-back path only) — pinned so the trade
     ///      stays the one that was actually reviewed.
     function test_swapbackCountersLiveInTheFollowingSlot() public {
-        LivoTaxableTokenUniV2 token = tok;
+        RealmTaxableTokenUniV2 token = tok;
         assertEq(_slot(address(token), SWAPBACK_COUNTERS_SLOT), 0, "counters start empty in their own slot");
 
         // Drive a swap-back so the counters are actually written, then confirm they landed here.
@@ -190,18 +190,18 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     ///      transient and therefore zero in every later transaction, so no caller — not the creator, not
     ///      the launchpad owner, nobody — can re-point a live token's earnings afterwards.
     function test_earningsAllocationCannotBeSetAfterCreation() public {
-        LivoTaxableTokenUniV2 token = tok;
+        RealmTaxableTokenUniV2 token = tok;
 
         vm.expectRevert();
-        ILivoTaxableToken(payable(address(token))).initializeEarningsAllocation(9_000, 0, 0);
+        IRealmTaxableToken(payable(address(token))).initializeEarningsAllocation(9_000, 0, 0);
 
         vm.prank(creator);
         vm.expectRevert();
-        ILivoTaxableToken(payable(address(token))).initializeEarningsAllocation(9_000, 0, 0);
+        IRealmTaxableToken(payable(address(token))).initializeEarningsAllocation(9_000, 0, 0);
 
         vm.prank(address(factoryV2Unified));
         vm.expectRevert();
-        ILivoTaxableToken(payable(address(token))).initializeEarningsAllocation(9_000, 0, 0);
+        IRealmTaxableToken(payable(address(token))).initializeEarningsAllocation(9_000, 0, 0);
 
         assertEq(token.burnBps(), 1_000, "the creation-time split is unchanged");
         assertEq(token.dividendsBps(), 2_000, "unchanged");
@@ -211,11 +211,11 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev Same for the dividend-config overload — it is the same guard, but it is a second entry point
     ///      and would be an easy one to add without the check.
     function test_dividendConfigCannotBeSetAfterCreation() public {
-        LivoTaxableTokenUniV2 token = tok;
+        RealmTaxableTokenUniV2 token = tok;
 
         vm.prank(creator);
         vm.expectRevert();
-        ILivoTaxableToken(payable(address(token))).initializeEarningsAllocation(0, 10_000, 0, address(0));
+        IRealmTaxableToken(payable(address(token))).initializeEarningsAllocation(0, 10_000, 0, address(0));
 
         assertEq(token.dividendsBps(), 2_000, "the creation-time dividend share is unchanged");
     }

@@ -3,16 +3,16 @@ pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {
     TaxConfigsWithAllocation,
     EarningsAllocationConfig,
     TaxConfigsWithMultiAllocation,
     EarningsAllocationMultiConfig
-} from "src/interfaces/ILivoTaxableToken.sol";
+} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice The hot-path gas measurement the dividends design hangs on.
@@ -28,11 +28,11 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
     address internal holderA = makeAddr("gasHolderA");
     address internal holderB = makeAddr("gasHolderB");
 
-    function _create(uint16 dividendsBps) internal returns (LivoTaxableTokenUniV4) {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+    function _create(uint16 dividendsBps) internal returns (RealmTaxableTokenUniV4) {
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "GasTok",
             symbol: "GAS",
-            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -52,10 +52,10 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         address token = factoryTax.createToken(
             setup,
             cfg,
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
         testToken = token;
@@ -65,8 +65,8 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         // Route one lot of earnings through both tokens, identically, so both set-ups are symmetric
         // and the dividend token has a buffer big enough to fund a stream when a measurement wants one.
         vm.deal(address(this), 1 ether);
-        LivoTaxableTokenUniV4(payable(token)).accrueFees{value: 1 ether}();
-        return LivoTaxableTokenUniV4(payable(token));
+        RealmTaxableTokenUniV4(payable(token)).accrueFees{value: 1 ether}();
+        return RealmTaxableTokenUniV4(payable(token));
     }
 
     receive() external payable {}
@@ -79,7 +79,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
     ///        a 15-minute drip fires only after a distribution — and it is the case where the feature
     ///        costs almost nothing, because `lastDividendUpdate == dividendPeriodFinish` short-circuits
     ///        the whole hook on one warm SLOAD.
-    function _measure(LivoTaxableTokenUniV4 token, bool streaming)
+    function _measure(RealmTaxableTokenUniV4 token, bool streaming)
         internal
         returns (uint256 firstEver, uint256 warm, uint256 sameBlock)
     {
@@ -111,13 +111,13 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
     }
 
     function test_gas_hotPathOverheadOfDividends() public {
-        LivoTaxableTokenUniV4 plainIdle = _create(0);
+        RealmTaxableTokenUniV4 plainIdle = _create(0);
         (uint256 pFirst, uint256 pWarm, uint256 pSame) = _measure(plainIdle, false);
 
-        LivoTaxableTokenUniV4 divIdle = _create(5_000);
+        RealmTaxableTokenUniV4 divIdle = _create(5_000);
         (uint256 iFirst, uint256 iWarm, uint256 iSame) = _measure(divIdle, false);
 
-        LivoTaxableTokenUniV4 divLive = _create(5_000);
+        RealmTaxableTokenUniV4 divLive = _create(5_000);
         (uint256 sFirst, uint256 sWarm, uint256 sSame) = _measure(divLive, true);
 
         console.log("--- wallet-to-wallet transfer, execution gas ---");
@@ -151,10 +151,10 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
     ///      plain wallet-to-wallet transfer, both including the 21k intrinsic cost, and both in steady
     ///      state (every account slot already touched once).
     function test_gas_wholeOperationOverhead() public {
-        LivoTaxableTokenUniV4 plain = _create(0);
+        RealmTaxableTokenUniV4 plain = _create(0);
         (uint256 pTransfer, uint256 pBuy, uint256 pSell) = _measureOperations(plain);
 
-        LivoTaxableTokenUniV4 div = _create(5_000);
+        RealmTaxableTokenUniV4 div = _create(5_000);
         (uint256 dTransfer, uint256 dBuy, uint256 dSell) = _measureOperations(div);
 
         console.log("--- whole user operation, incl. 21k intrinsic, steady state ---");
@@ -177,7 +177,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
     /// @dev Measured with a LIVE STREAM and a second of elapsed time before each measured call, i.e.
     ///      the worst case rather than the common one: between distributions the accumulator cannot
     ///      move and the hook writes nothing at all.
-    function _measureOperations(LivoTaxableTokenUniV4 token)
+    function _measureOperations(RealmTaxableTokenUniV4 token)
         internal
         returns (uint256 transferGas, uint256 buyGas, uint256 sellGas)
     {
@@ -233,11 +233,11 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
 
     /// @dev The same token as `_create`, paying in a SET of assets. Everything else is identical, so the
     ///      only difference between the measurements is how many assets the transfer hook settles.
-    function _createMulti(address[] memory assets, uint16[] memory weights) internal returns (LivoTaxableTokenUniV4) {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+    function _createMulti(address[] memory assets, uint16[] memory weights) internal returns (RealmTaxableTokenUniV4) {
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "GasTok",
             symbol: "GAS",
-            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -262,23 +262,23 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         address token = factoryTax.createToken(
             setup,
             cfg,
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
         testToken = token;
         _launchpadBuy(token, 2 ether);
         _graduateToken();
         vm.deal(address(this), 3 ether);
-        LivoTaxableTokenUniV4(payable(token)).accrueFees{value: 3 ether}();
-        return LivoTaxableTokenUniV4(payable(token));
+        RealmTaxableTokenUniV4(payable(token)).accrueFees{value: 3 ether}();
+        return RealmTaxableTokenUniV4(payable(token));
     }
 
     /// @dev Puts EVERY configured asset into a live stream, so the measurement below is the worst case:
     ///      every leg has to be settled on every transfer.
-    function _fundEveryAsset(LivoTaxableTokenUniV4 token) internal {
+    function _fundEveryAsset(RealmTaxableTokenUniV4 token) internal {
         uint256 n = token.dividendAssetCount();
         for (uint256 i; i < n; ++i) {
             token.processDividends(uint8(i), 0, new address[](0));
@@ -324,7 +324,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
     }
 
     /// @dev One steady-state transfer with every stream running and every account slot already warm.
-    function _measureMulti(LivoTaxableTokenUniV4 token) internal returns (uint256 used) {
+    function _measureMulti(RealmTaxableTokenUniV4 token) internal returns (uint256 used) {
         IERC20 erc = IERC20(address(token));
         _fundEveryAsset(token);
 
@@ -339,9 +339,9 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         vm.stopPrank();
     }
 
-    /// @dev The gate has to be free, not merely cheap: every non-dividend Livo token pays it forever.
+    /// @dev The gate has to be free, not merely cheap: every non-dividend Realm token pays it forever.
     function test_gas_nonDividendTokenPaysNothingMeasurable() public {
-        LivoTaxableTokenUniV4 plain = _create(0);
+        RealmTaxableTokenUniV4 plain = _create(0);
         IERC20 erc = IERC20(address(plain));
         uint256 unit = erc.balanceOf(buyer) / 100;
 

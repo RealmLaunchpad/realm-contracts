@@ -1,4 +1,4 @@
-# Livo — Release Notes (2026-04-29)
+# Realm — Release Notes (2026-04-29)
 
 ## For token creators
 
@@ -12,7 +12,7 @@
 ## For traders
 
 - **Sniper-protected tokens enforce per-buyer caps** during the launch window — buys exceeding the per-tx or per-wallet limit are rejected on-chain.
-- **`LivoQuoter` is the new quoting source** for the webapp: a single view returns the actual fillable amount plus a reason code (`SNIPER_CAP`, `GRADUATION_EXCESS`, `NOT_ENOUGH_SUPPLY`, `INSUFFICIENT_RESERVES`, `GRADUATED`, `INVALID_TOKEN`, or `NONE`), so the UI can show clear "you can buy at most X" hints instead of failing txs.
+- **`RealmQuoter` is the new quoting source** for the webapp: a single view returns the actual fillable amount plus a reason code (`SNIPER_CAP`, `GRADUATION_EXCESS`, `NOT_ENOUGH_SUPPLY`, `INSUFFICIENT_RESERVES`, `GRADUATED`, `INVALID_TOKEN`, or `NONE`), so the UI can show clear "you can buy at most X" hints instead of failing txs.
 - **`maxTokenPurchase(buyer)`** view function exposed on every token — returns the largest amount a specific wallet can currently buy from the launchpad (max uint when no cap applies).
 
 ## Other

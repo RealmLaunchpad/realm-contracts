@@ -6,7 +6,7 @@ import {
     LaunchpadBaseTestsWithUniv2Graduator,
     LaunchpadBaseTestsWithUniv4Graduator
 } from "./base.t.sol";
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 
 abstract contract QuoteInverseTests is LaunchpadBaseTests {
     // Buy round-trip tolerance: fee floor/ceil can cause ±1 wei in ETH terms
@@ -129,7 +129,7 @@ contract QuoteInverseTests_Univ2 is QuoteInverseTests, LaunchpadBaseTestsWithUni
         testToken = factoryV2.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryV2), address(livoToken)),
+            _nextValidSalt(address(factoryV2), address(realmToken)),
             _fs(creator),
             _noSs(),
             _emptyTaxCfg(),
@@ -149,7 +149,7 @@ contract QuoteInverseTests_Univ4 is QuoteInverseTests, LaunchpadBaseTestsWithUni
         testToken = factoryV4.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _nextValidSalt(address(factoryV4), address(realmToken)),
             _fs(creator),
             _noSs(),
             false,

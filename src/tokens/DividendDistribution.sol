@@ -4,10 +4,10 @@ pragma solidity 0.8.28;
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
 /// or DeploymentAddressesArc{Mainnet,Testnet}.
-import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title DividendDistribution
-/// @notice Trustless holder dividends for a Livo token: UP TO THREE payout assets, paid out of
+/// @notice Trustless holder dividends for a Realm token: UP TO THREE payout assets, paid out of
 ///         post-graduation earnings, streamed continuously so no caller can time their way into a share.
 ///
 /// @dev THE RULE, and the reason everything else is small:
@@ -56,7 +56,7 @@ import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/con
 ///      pool dies, the buffered native cannot be converted and would otherwise sit owed to holders
 ///      forever. Rather than rewrite the asset and write off what holders had already accrued — paying
 ///      an old-asset debt out of a new-asset balance at a 1:1 unit ratio between two assets that may
-///      not even share decimals — the unconvertible buffer goes to `DIVIDEND_TREASURY`, and Livo makes
+///      not even share decimals — the unconvertible buffer goes to `DIVIDEND_TREASURY`, and Realm makes
 ///      holders whole off-chain if it is ever worth doing. Nothing on-chain is written off: the stream,
 ///      the accumulator and every accrual survive untouched. This is a backstop for a case that should
 ///      not occur — a token whose payout asset has no liquidity has, by then, no activity either.
@@ -114,7 +114,7 @@ abstract contract DividendDistribution {
     ///      the pool's native reserve — and that cost does not grow with how far the price is pushed,
     ///      while the prize is the whole spend. Against any pool short of very deep, a caller who picks
     ///      their own zero floor keeps almost all of it. That is why `processDividends` is keeper-gated
-    ///      (see `LivoKeepersRegistry`) and why this cap is a second line, not the first.
+    ///      (see `RealmKeepersRegistry`) and why this cap is a second line, not the first.
     /// @dev ⚠️ ACCEPTED: a token's AGGREGATE per-block conversion exposure is this times the number of
     ///      configured assets, because the cooldown is per asset (three different pools, three different
     ///      manipulations, no shared cost). Keeper-gating is what actually bounds it.
@@ -219,7 +219,7 @@ abstract contract DividendDistribution {
     /// @dev A PROXY, deliberately reached through a compile-time constant rather than a stored address:
     ///      tokens are unpatchable clones, so this is the only seam through which an eligibility rule or
     ///      a swap route can be fixed for tokens that are ALREADY live. Nothing about the asset choice
-    ///      is curated behind it for the V2 path — see `ILivoDividendSwapRegistry`.
+    ///      is curated behind it for the V2 path — see `IRealmDividendSwapRegistry`.
     /// @dev Exposed so an off-chain keeper can price its slippage floor against the exact pools the swap
     ///      will cross (`registry.pairFor`, or `registry.routeOf` when the asset has a V4 route), which
     ///      is what `minOut` has to be computed from.
@@ -230,7 +230,7 @@ abstract contract DividendDistribution {
     ///         reaching it requires a zero-floor swap to have failed outright.
     /// @dev A compile-time constant for the same reason the registry is one — a clone cannot be patched,
     ///      so the escape hatch cannot be a stored address someone could repoint.
-    address public constant DIVIDEND_TREASURY = DeploymentAddresses.LIVO_TREASURY;
+    address public constant DIVIDEND_TREASURY = DeploymentAddresses.REALM_TREASURY;
 
     /// @notice One payout asset's entire machine. THREE SLOTS, packed so the transfer hot path reads
     ///         the first one alone unless that asset's stream is actually running.

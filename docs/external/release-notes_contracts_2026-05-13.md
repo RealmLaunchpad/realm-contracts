@@ -1,4 +1,4 @@
-# Livo Contracts — Release Notes (2026-05-13)
+# Realm Contracts — Release Notes (2026-05-13)
 
 Changes shipped to mainnet on 2026-05-13. This release consolidates the factory
 surface into two unified factories, replaces the per-token fee handlers with a
@@ -9,11 +9,11 @@ singleton, and ships a new Uniswap V2 taxable-token family.
 ## TL;DR
 
 - **Two factories instead of seven.** Every token variant (base, sniper-protected,
-  taxable, taxable + sniper-protected) now ships from a single `LivoFactoryUniV2Unified`
-  and a single `LivoFactoryUniV4Unified`. Old factory addresses are retired.
-- **One fee handler, not many.** `LivoMasterFeeHandler` is now the single fee router
-  for every Livo token (V2 + V4, taxable or not, single or multi-receiver). The old
-  `LivoFeeHandler` and the per-token `LivoFeeSplitter` clones are gone.
+  taxable, taxable + sniper-protected) now ships from a single `RealmFactoryUniV2Unified`
+  and a single `RealmFactoryUniV4Unified`. Old factory addresses are retired.
+- **One fee handler, not many.** `RealmMasterFeeHandler` is now the single fee router
+  for every Realm token (V2 + V4, taxable or not, single or multi-receiver). The old
+  `RealmFeeHandler` and the per-token `RealmFeeSplitter` clones are gone.
 - **Direct fees.** Up to one fee receiver per token can opt into synchronous ETH
   forwarding instead of pull-based claims.
 - **V2 taxable tokens.** Tokens that graduate to a Uniswap V2 pair can now carry
@@ -38,19 +38,19 @@ singleton, and ships a new Uniswap V2 taxable-token family.
 
 ### 1.1 Unified factories
 
-`LivoFactoryUniV2Unified` and `LivoFactoryUniV4Unified` replace the previous fleet
-(`LivoFactoryUniV2`, `LivoFactoryUniV2SniperProtected`, `LivoFactoryUniV4`,
-`LivoFactoryTaxToken`, `LivoFactoryUniV4SniperProtected`,
-`LivoFactoryTaxTokenSniperProtected`, `LivoFactoryExtendedTax`).
+`RealmFactoryUniV2Unified` and `RealmFactoryUniV4Unified` replace the previous fleet
+(`RealmFactoryUniV2`, `RealmFactoryUniV2SniperProtected`, `RealmFactoryUniV4`,
+`RealmFactoryTaxToken`, `RealmFactoryUniV4SniperProtected`,
+`RealmFactoryTaxTokenSniperProtected`, `RealmFactoryExtendedTax`).
 
 Each unified factory dispatches between **four** token implementations at create
 time based on whether `TaxConfigInit` and/or `AntiSniperConfigs` are configured:
 
-- base → `LivoToken`
-- anti-sniper only → `LivoTokenSniperProtected`
-- tax only → `LivoTaxableTokenUniV2` / `LivoTaxableTokenUniV4`
-- tax + anti-sniper → `LivoTaxableTokenUniV2SniperProtected` /
-  `LivoTaxableTokenUniV4SniperProtected`
+- base → `RealmToken`
+- anti-sniper only → `RealmTokenSniperProtected`
+- tax only → `RealmTaxableTokenUniV2` / `RealmTaxableTokenUniV4`
+- tax + anti-sniper → `RealmTaxableTokenUniV2SniperProtected` /
+  `RealmTaxableTokenUniV4SniperProtected`
 
 A new view `previewTokenImplementation(feeReceivers, supplyShares, taxCfg, antiSniperCfg)`
 returns the implementation that will be cloned, so the off-chain salt mining step
@@ -59,9 +59,9 @@ keeps working unchanged.
 See [`docs/external/factory-createToken-integration.md`](./factory-createToken-integration.md)
 for the full integrator guide.
 
-### 1.2 `LivoMasterFeeHandler` singleton
+### 1.2 `RealmMasterFeeHandler` singleton
 
-A single fee handler now routes ETH for every Livo token:
+A single fee handler now routes ETH for every Realm token:
 
 - **Multi-receiver** per token, configured at deploy via `FeeShare[]` (sum of `shares`
   in bps must equal `10_000`). Up to **32 receivers** per token, of which up to **4**
@@ -88,13 +88,13 @@ A new taxable-token family for tokens that graduate to a V2 pair:
 
 | Implementation                              | Anti-sniper | Tax cap |
 | ------------------------------------------- | ----------- | ------- |
-| `LivoTaxableTokenUniV2`                     | no          | 5%      |
-| `LivoTaxableTokenUniV2SniperProtected`      | yes         | 5%      |
+| `RealmTaxableTokenUniV2`                     | no          | 5%      |
+| `RealmTaxableTokenUniV2SniperProtected`      | yes         | 5%      |
 
 V2 has no swap callbacks, so taxes are taken **intrinsically**: every pair-touching
 transfer in the post-graduation window diverts `amount * bps / 10_000` to the token
 contract. The contract auto-swaps the accumulated balance back to ETH on the V2
-router and routes it through `LivoMasterFeeHandler.depositFees`:
+router and routes it through `RealmMasterFeeHandler.depositFees`:
 
 - Auto-trigger fires on sells when the contract balance crosses `SWAP_THRESHOLD`
   (0.05% of total supply) and caps each back-swap at `2 * SWAP_THRESHOLD` so a
@@ -127,7 +127,7 @@ off-chain UI / curation owns the social trust signal.
 
 ### 1.5 V2 graduator: lazy pair deployment + triggerer compensation
 
-`LivoGraduatorUniswapV2` no longer pre-deploys the Uniswap V2 pair at token
+`RealmGraduatorUniswapV2` no longer pre-deploys the Uniswap V2 pair at token
 creation. The pair address is predicted from `CREATE2` (init code hash baked
 into the graduator per chain via `DeploymentAddresses`) and the pair contract is
 deployed lazily inside `graduateToken()`. Token-creation gas drops accordingly;
@@ -148,12 +148,12 @@ gas.
 
 | Event                                                            | Source                       |
 | ---------------------------------------------------------------- | ---------------------------- |
-| `CreatorFeesDeposited(token, amount)`                            | `LivoMasterFeeHandler`       |
-| `SharesUpdated(token, recipients, sharesBps)`                    | `LivoMasterFeeHandler`       |
-| `DirectReceiverRegistered(token, receiver)`                      | `LivoMasterFeeHandler`       |
-| `DirectReceiverRemoved(token, receiver)`                         | `LivoMasterFeeHandler`       |
-| `LivoTaxableTokenInitialized(buyTaxBps, sellTaxBps, duration)`   | `LivoTaxableToken` (V2 + V4) |
-| `CreatorTaxSwapback(tokenAmountIn, ethAmount)`                   | `LivoTaxableTokenUniV2`      |
+| `CreatorFeesDeposited(token, amount)`                            | `RealmMasterFeeHandler`       |
+| `SharesUpdated(token, recipients, sharesBps)`                    | `RealmMasterFeeHandler`       |
+| `DirectReceiverRegistered(token, receiver)`                      | `RealmMasterFeeHandler`       |
+| `DirectReceiverRemoved(token, receiver)`                         | `RealmMasterFeeHandler`       |
+| `RealmTaxableTokenInitialized(buyTaxBps, sellTaxBps, duration)`   | `RealmTaxableToken` (V2 + V4) |
+| `CreatorTaxSwapback(tokenAmountIn, ethAmount)`                   | `RealmTaxableTokenUniV2`      |
 | `CreatorTaxesAccrued(token, amount)`                             | `LivoSwapHook` (V4)          |
 
 ---
@@ -198,7 +198,7 @@ gas.
 - **Post-window residual drain on V2 taxable tokens.** Sub-threshold tax balances
   stuck at window expiry now get drained on the next sell instead of stranding,
   since no fresh tax can flow in to push them across the threshold.
-- **`LivoMasterFeeHandler` hardened post-review.** Ownable2Step, gas-capped
+- **`RealmMasterFeeHandler` hardened post-review.** Ownable2Step, gas-capped
   forwards, `ReentrancyGuardTransient` shared between `depositFees`, `setShares`,
   and `claim`, and explicit duplicate / direct-receiver caps.
 - **Factory rejects inconsistent token configs.** A non-zero `taxDurationSeconds`
@@ -221,29 +221,29 @@ gas.
 The following contracts no longer exist on mainnet and their addresses are
 removed from `deployments.mainnet.md`:
 
-- `LivoFeeHandler` — replaced by `LivoMasterFeeHandler`.
-- `LivoFeeSplitter` (impl + per-token clones) — replaced by per-token configs
-  inside `LivoMasterFeeHandler`.
-- `LivoFactoryUniV2`, `LivoFactoryUniV2SniperProtected`, `LivoFactoryUniV4`,
-  `LivoFactoryTaxToken`, `LivoFactoryUniV4SniperProtected`,
-  `LivoFactoryTaxTokenSniperProtected`, `LivoFactoryExtendedTax` — replaced by
+- `RealmFeeHandler` — replaced by `RealmMasterFeeHandler`.
+- `RealmFeeSplitter` (impl + per-token clones) — replaced by per-token configs
+  inside `RealmMasterFeeHandler`.
+- `RealmFactoryUniV2`, `RealmFactoryUniV2SniperProtected`, `RealmFactoryUniV4`,
+  `RealmFactoryTaxToken`, `RealmFactoryUniV4SniperProtected`,
+  `RealmFactoryTaxTokenSniperProtected`, `RealmFactoryExtendedTax` — replaced by
   the two unified factories.
 - `DeployersWhitelist` — the extended-tax-duration deployer whitelist is gone,
   superseded by charity mode (no whitelist gating; structural rules only).
-- `ILivoTaxableTokenUniV4` interface — replaced by the venue-agnostic
-  `ILivoTaxableToken` / `ILivoTaxableTokenSniperProtected`.
+- `IRealmTaxableTokenUniV4` interface — replaced by the venue-agnostic
+  `IRealmTaxableToken` / `IRealmTaxableTokenSniperProtected`.
 
-### ABI / function removals on `ILivoToken`
+### ABI / function removals on `IRealmToken`
 
 - `feeReceiver()` view — fee receivers are now sourced from the master fee handler;
   use `getFeeReceivers()` which returns the full `(recipients, sharesBps)` list.
 - `setFeeReceiver(address)` — replaced by
-  `LivoMasterFeeHandler.setShares(token, FeeShare[])` (admin- or owner-gated).
+  `RealmMasterFeeHandler.setShares(token, FeeShare[])` (admin- or owner-gated).
 - `FeeReceiverUpdated` event — replaced by `SharesUpdated`.
 - `InitializeParams.feeReceiver` — removed; fee receivers are passed through
   `registerFees(FeeShare[])` instead.
 
-### ABI changes on `ILivoFactory.FeeShare`
+### ABI changes on `IRealmFactory.FeeShare`
 
 The `FeeShare` struct now carries a third field:
 
@@ -269,38 +269,38 @@ Generated from `deployments.mainnet.sol`. Full list and Sepolia equivalents live
 
 | Contract                                     | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| `LivoFactoryUniV2Unified`                    | `0x97BF1fC5Ee72Dd8c9686386ff00c99b6e3b9C00D` |
-| `LivoFactoryUniV4Unified`                    | `0xD8Ccee63514E8B0862f9E0fF82223b2DCa943936` |
-| `LivoMasterFeeHandler`                       | `0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC` |
-| `LivoToken` (impl)                           | `0x79E3a3473ad2d9285A7C87ACfb4A5C871396240d` |
-| `LivoTokenSniperProtected` (impl)            | `0xb9f3c1dB897F24385eEE4feD03C5cd732E9dd087` |
-| `LivoTaxableTokenUniV4` (impl)               | `0xF232d7D7B552B3B981FE91B13F715B3c1F075A13` |
-| `LivoTaxableTokenUniV4SniperProtected` (impl)| `0x9b8541B251a3ABCE6BbC5419baa478Bbc6B11E00` |
-| `LivoTaxableTokenUniV2` (impl)               | `0x56c80E0db3ACD50F1C3a51af2a64C63AfbDf50dF` |
-| `LivoTaxableTokenUniV2SniperProtected` (impl)| `0x8CF57ab48D49C9D5d7736459cc291aD0C960BEC2` |
+| `RealmFactoryUniV2Unified`                    | `0x97BF1fC5Ee72Dd8c9686386ff00c99b6e3b9C00D` |
+| `RealmFactoryUniV4Unified`                    | `0xD8Ccee63514E8B0862f9E0fF82223b2DCa943936` |
+| `RealmMasterFeeHandler`                       | `0x6F0f4F70a403B9191D6adf2C10750Ab8436345cC` |
+| `RealmToken` (impl)                           | `0x79E3a3473ad2d9285A7C87ACfb4A5C871396240d` |
+| `RealmTokenSniperProtected` (impl)            | `0xb9f3c1dB897F24385eEE4feD03C5cd732E9dd087` |
+| `RealmTaxableTokenUniV4` (impl)               | `0xF232d7D7B552B3B981FE91B13F715B3c1F075A13` |
+| `RealmTaxableTokenUniV4SniperProtected` (impl)| `0x9b8541B251a3ABCE6BbC5419baa478Bbc6B11E00` |
+| `RealmTaxableTokenUniV2` (impl)               | `0x56c80E0db3ACD50F1C3a51af2a64C63AfbDf50dF` |
+| `RealmTaxableTokenUniV2SniperProtected` (impl)| `0x8CF57ab48D49C9D5d7736459cc291aD0C960BEC2` |
 
-`LivoLaunchpad`, `LivoQuoter`, `LivoSwapHook`, `LivoGraduatorUniswapV2`, and
-`LivoGraduatorUniswapV4` addresses are unchanged from the previous release.
+`RealmLaunchpad`, `RealmQuoter`, `LivoSwapHook`, `RealmGraduatorUniswapV2`, and
+`RealmGraduatorUniswapV4` addresses are unchanged from the previous release.
 
 ---
 
 ## 6. Integrator migration checklist
 
-- [ ] Repoint factory calls to `LivoFactoryUniV2Unified` /
-      `LivoFactoryUniV4Unified` and update the `createToken` signature to include
+- [ ] Repoint factory calls to `RealmFactoryUniV2Unified` /
+      `RealmFactoryUniV4Unified` and update the `createToken` signature to include
       `taxCfg` + `antiSniperCfg` (pass zeroed structs to disable).
 - [ ] Add the `directFeesEnabled` boolean to every `FeeShare` entry. Leave
       `false` for the old pull-claim behaviour. At most one entry per token may
       set it to `true`.
-- [ ] Index the new `LivoMasterFeeHandler` events (`CreatorFeesDeposited`,
+- [ ] Index the new `RealmMasterFeeHandler` events (`CreatorFeesDeposited`,
       `SharesUpdated`, `DirectReceiverRegistered`, `DirectReceiverRemoved`)
-      keyed by `token`. The old per-clone `LivoFeeSplitter` events are gone.
+      keyed by `token`. The old per-clone `RealmFeeSplitter` events are gone.
 - [ ] Update fee-receiver UIs to read from
-      `LivoMasterFeeHandler.getRecipients(token)` /
-      `getDirectReceivers(token)` (or `ILivoToken.getFeeReceivers()`, which now
+      `RealmMasterFeeHandler.getRecipients(token)` /
+      `getDirectReceivers(token)` (or `IRealmToken.getFeeReceivers()`, which now
       delegates to the master handler).
 - [ ] Drop any code that reads `token.feeReceiver()` or calls
-      `token.setFeeReceiver(...)`. Use `LivoMasterFeeHandler.setShares(token,
+      `token.setFeeReceiver(...)`. Use `RealmMasterFeeHandler.setShares(token,
       FeeShare[])` for rebalances.
 - [ ] If exposing a V2 tax-token deploy flow, surface the 5% per-side cap (V4
       stays at 4%) and the auto swap-back behaviour to creators.

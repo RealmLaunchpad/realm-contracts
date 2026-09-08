@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Hop} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 
 /// @title DividendRouteLib
 /// @notice The one wire format for a dividend payout asset's swap route, and the only place it is

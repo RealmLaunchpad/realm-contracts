@@ -2,16 +2,16 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
-/// @dev Minimal token double for standalone LivoMasterFeeHandler tests.
+/// @dev Minimal token double for standalone RealmMasterFeeHandler tests.
 ///      The handler only needs `feeHandler()` during registration and `owner()` during setShares.
 contract MockMasterFeeToken {
-    LivoMasterFeeHandler public feeHandler;
+    RealmMasterFeeHandler public feeHandler;
     address public owner;
 
-    constructor(LivoMasterFeeHandler handler_, address owner_) {
+    constructor(RealmMasterFeeHandler handler_, address owner_) {
         feeHandler = handler_;
         owner = owner_;
     }
@@ -20,7 +20,7 @@ contract MockMasterFeeToken {
         owner = owner_;
     }
 
-    function registerFees(ILivoFactory.FeeShare[] calldata feeShares) external {
+    function registerFees(IRealmFactory.FeeShare[] calldata feeShares) external {
         feeHandler.registerToken(feeShares);
     }
 
@@ -37,7 +37,7 @@ contract MasterFeeEthRejecter {
 }
 
 abstract contract MasterFeeHandlerTestHelpers is Test {
-    LivoMasterFeeHandler internal handler;
+    RealmMasterFeeHandler internal handler;
 
     address internal owner = makeAddr("owner");
     address internal creator = makeAddr("creator");
@@ -47,7 +47,7 @@ abstract contract MasterFeeHandlerTestHelpers is Test {
 
     function setUp() public virtual {
         vm.prank(owner);
-        handler = new LivoMasterFeeHandler();
+        handler = new RealmMasterFeeHandler();
         vm.deal(address(this), 1_000 ether);
     }
 
@@ -55,11 +55,11 @@ abstract contract MasterFeeHandlerTestHelpers is Test {
         return new MockMasterFeeToken(handler, tokenOwner);
     }
 
-    function _register(MockMasterFeeToken token, ILivoFactory.FeeShare[] memory shares) internal {
+    function _register(MockMasterFeeToken token, IRealmFactory.FeeShare[] memory shares) internal {
         token.registerFees(shares);
     }
 
-    function _newRegisteredToken(address tokenOwner, ILivoFactory.FeeShare[] memory shares)
+    function _newRegisteredToken(address tokenOwner, IRealmFactory.FeeShare[] memory shares)
         internal
         returns (MockMasterFeeToken token)
     {
@@ -98,24 +98,24 @@ abstract contract MasterFeeHandlerTestHelpers is Test {
         return handler.getClaimable(_single(token), account)[0];
     }
 
-    function _fs(address account) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
-        arr = new ILivoFactory.FeeShare[](1);
-        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: false});
+    function _fs(address account) internal pure returns (IRealmFactory.FeeShare[] memory arr) {
+        arr = new IRealmFactory.FeeShare[](1);
+        arr[0] = IRealmFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: false});
     }
 
-    function _fsDirect(address account) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
-        arr = new ILivoFactory.FeeShare[](1);
-        arr[0] = ILivoFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: true});
+    function _fsDirect(address account) internal pure returns (IRealmFactory.FeeShare[] memory arr) {
+        arr = new IRealmFactory.FeeShare[](1);
+        arr[0] = IRealmFactory.FeeShare({account: account, shares: 10_000, directFeesEnabled: true});
     }
 
     function _fs2(address a, uint256 aShare, bool aDirect, address b, uint256 bShare, bool bDirect)
         internal
         pure
-        returns (ILivoFactory.FeeShare[] memory arr)
+        returns (IRealmFactory.FeeShare[] memory arr)
     {
-        arr = new ILivoFactory.FeeShare[](2);
-        arr[0] = ILivoFactory.FeeShare({account: a, shares: aShare, directFeesEnabled: aDirect});
-        arr[1] = ILivoFactory.FeeShare({account: b, shares: bShare, directFeesEnabled: bDirect});
+        arr = new IRealmFactory.FeeShare[](2);
+        arr[0] = IRealmFactory.FeeShare({account: a, shares: aShare, directFeesEnabled: aDirect});
+        arr[1] = IRealmFactory.FeeShare({account: b, shares: bShare, directFeesEnabled: bDirect});
     }
 
     function _fs3(
@@ -128,10 +128,10 @@ abstract contract MasterFeeHandlerTestHelpers is Test {
         address c,
         uint256 cShare,
         bool cDirect
-    ) internal pure returns (ILivoFactory.FeeShare[] memory arr) {
-        arr = new ILivoFactory.FeeShare[](3);
-        arr[0] = ILivoFactory.FeeShare({account: a, shares: aShare, directFeesEnabled: aDirect});
-        arr[1] = ILivoFactory.FeeShare({account: b, shares: bShare, directFeesEnabled: bDirect});
-        arr[2] = ILivoFactory.FeeShare({account: c, shares: cShare, directFeesEnabled: cDirect});
+    ) internal pure returns (IRealmFactory.FeeShare[] memory arr) {
+        arr = new IRealmFactory.FeeShare[](3);
+        arr[0] = IRealmFactory.FeeShare({account: a, shares: aShare, directFeesEnabled: aDirect});
+        arr[1] = IRealmFactory.FeeShare({account: b, shares: bShare, directFeesEnabled: bDirect});
+        arr[2] = IRealmFactory.FeeShare({account: c, shares: cShare, directFeesEnabled: cDirect});
     }
 }

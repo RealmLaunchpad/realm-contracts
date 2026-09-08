@@ -2,29 +2,29 @@
 pragma solidity 0.8.28;
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
+import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 
-/// @notice Base test class for LivoTaxableTokenUniV4 with LivoTaxSwapHook functionality
+/// @notice Base test class for RealmTaxableTokenUniV4 with RealmSwapHook functionality
 /// @dev Extends BaseUniswapV4GraduationTests and sets up tax-specific components
 contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     // Tax system components
-    LivoTaxableTokenUniV4 public taxTokenImpl;
+    RealmTaxableTokenUniV4 public taxTokenImpl;
 
     // Default tax configuration
     uint16 public constant DEFAULT_SELL_TAX_BPS = 400; // 4%
@@ -35,7 +35,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
 
     function setUp() public virtual override {
         super.setUp();
-        taxTokenImpl = new LivoTaxableTokenUniV4();
+        taxTokenImpl = new RealmTaxableTokenUniV4();
 
         // Set graduator to tax-enabled version for tests
         graduator = graduatorV4;
@@ -53,7 +53,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         tokenAddress = factoryTax.createToken(
             "TaxToken",
             "TAX",
-            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             _fs(creator),
             _noSs(),
             false,
@@ -75,7 +75,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         tokenAddress = factoryTax.createToken(
             "TaxToken",
             "TAX",
-            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             _fs(creator),
             _noSs(),
             false,
@@ -93,10 +93,10 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         internal
         returns (address tokenAddress)
     {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DecayToken",
             symbol: "DCY",
-            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -104,10 +104,10 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         tokenAddress = factoryTax.createToken(
             setup,
             _decayCfg(buyDecayStartBps, sellDecayStartBps, decayDuration, true),
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
     }
@@ -132,7 +132,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     }
 
     /// @notice Override _swap to use the tax hook address in the pool key
-    /// @dev Both taxable and non-tax tokens use the same LivoSwapHook
+    /// @dev Both taxable and non-tax tokens use the same RealmSwapHook
     function _swap(
         address caller,
         address token,

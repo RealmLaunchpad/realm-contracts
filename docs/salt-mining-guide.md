@@ -2,15 +2,15 @@
 
 ## Overview
 
-The Livo factories deploy tokens using `Clones.cloneDeterministic()` (CREATE2 under the hood). The factory enforces that every token address must end in `0x1110` (last 2 bytes). The frontend/backend must pre-compute a valid `salt` before calling `createToken()`.
+The Realm factories deploy tokens using `Clones.cloneDeterministic()` (CREATE2 under the hood). The factory enforces that every token address must end in `0x1110` (last 2 bytes). The frontend/backend must pre-compute a valid `salt` before calling `createToken()`.
 
 Since the consolidation, the launchpad whitelists **two unified factories** instead of six:
 
-- `LivoFactoryUniV2Unified` — V2 family. Dispatches between four token implementations
+- `RealmFactoryUniV2Unified` — V2 family. Dispatches between four token implementations
   (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`)
   based on whether `TaxConfigInit` and/or `AntiSniperConfigs` are configured. V2 creation is
   always ownerless and has no `renounceOwnership` argument.
-- `LivoFactoryUniV4Unified` — V4 family. Dispatches between four token implementations
+- `RealmFactoryUniV4Unified` — V4 family. Dispatches between four token implementations
   (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`)
   based on whether `TaxConfigInit` and/or `AntiSniperConfigs` are configured.
 
@@ -136,6 +136,6 @@ function findValidSalt(): { salt: string; tokenAddress: string } {
 ## Important Notes
 
 - **`INITCODE_HASH` is constant** for a given `(factory, dispatch path)` pair — compute it once per dispatch path at startup, not per call. If your UI lets users toggle anti-sniper / tax options, recompute the hash whenever the toggles change.
-- **Each unified factory has multiple token implementations**. `LivoFactoryUniV2Unified` and `LivoFactoryUniV4Unified` each have 4 (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`). The dispatch is fully determined by the `taxCfg` / `antiSniperCfg` you pass — always call `previewTokenImplementation(...)` with the **same dispatch inputs** you intend to submit, and use its return value as `TOKEN_IMPLEMENTATION`.
+- **Each unified factory has multiple token implementations**. `RealmFactoryUniV2Unified` and `RealmFactoryUniV4Unified` each have 4 (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`). The dispatch is fully determined by the `taxCfg` / `antiSniperCfg` you pass — always call `previewTokenImplementation(...)` with the **same dispatch inputs** you intend to submit, and use its return value as `TOKEN_IMPLEMENTATION`.
 - **Salt uniqueness**: each salt can only be used once per `(factory, implementation)` pair. If a salt has already been used (token deployed), `create2` will revert. If you need to handle retries, start iterating from a random offset.
 - **On-chain verification**: you can call `Clones.predictDeterministicAddress(implementation, salt, factory)` via a static call to double-check your off-chain computation before submitting.

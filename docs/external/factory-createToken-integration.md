@@ -1,6 +1,6 @@
 # Unified Factory `createToken` — Integrator Guide
 
-How to deploy a Livo token by calling `LivoFactoryUniV2Unified` or `LivoFactoryUniV4Unified`. This doc is the contract surface only — for the off-chain CREATE2 mining step see [`salt-mining-guide.md`](../salt-mining-guide.md), and for the full per-tx event trace see [`events-per-entry-point.md`](../events-per-entry-point.md).
+How to deploy a Realm token by calling `RealmFactoryUniV2Unified` or `RealmFactoryUniV4Unified`. This doc is the contract surface only — for the off-chain CREATE2 mining step see [`salt-mining-guide.md`](../salt-mining-guide.md), and for the full per-tx event trace see [`events-per-entry-point.md`](../events-per-entry-point.md).
 
 ---
 
@@ -10,8 +10,8 @@ Two factories are whitelisted on the launchpad. Pick by graduation venue:
 
 | Factory | Venue | Tax cap (`MAX_TAX_BPS`) | Ownership |
 |---|---|---|---|
-| `LivoFactoryUniV2Unified` | Uniswap V2 | 5% (500 bps) | Always renounced by default (`tokenOwner = address(0)`) |
-| `LivoFactoryUniV4Unified` | Uniswap V4 | 4% (400 bps) | Caller chooses via `renounceOwnership_` |
+| `RealmFactoryUniV2Unified` | Uniswap V2 | 5% (500 bps) | Always renounced by default (`tokenOwner = address(0)`) |
+| `RealmFactoryUniV4Unified` | Uniswap V4 | 4% (400 bps) | Caller chooses via `renounceOwnership_` |
 
 Each factory dispatches between four token implementations at create time, based on whether you populate `taxCfg` and/or `antiSniperCfg`:
 
@@ -82,7 +82,7 @@ struct AntiSniperConfigs {
 }
 ```
 
-`TOTAL_SUPPLY` is `1_000_000_000e18` for every Livo token.
+`TOTAL_SUPPLY` is `1_000_000_000e18` for every Realm token.
 
 ---
 
@@ -107,8 +107,8 @@ In order, every successful call performs:
 3. **Emit `TokenCreated`** *before* `initialize()` — the indexer creates the entity off this event, so events emitted during initialization depend on it.
 4. **Initialize** the cloned token (mints `TOTAL_SUPPLY` to the launchpad, sets graduator/launchpad/feeHandler immutables, applies tax/anti-sniper configs).
 5. **`LAUNCHPAD.launchToken(token, BONDING_CURVE)`** — registers the token in the launchpad and emits `TokenLaunched`. The factory **must be whitelisted** on the launchpad or this reverts with `UnauthorizedFactory`.
-6. **`ILivoToken.registerFees(feeReceivers)`** — the token self-registers its fee config with `LivoMasterFeeHandler`. Emits one `DirectReceiverRegistered` per direct entry, then `SharesUpdated`.
-7. **If `msg.value > 0`**, the factory routes the ETH through `LAUNCHPAD.buyTokensWithExactEth` to buy supply (bounded only by graduation; a buy reaching the threshold graduates the token in the same tx) and distributes the bought tokens proportionally across `supplyShares` (rounding dust goes to the last recipient). Emits `LivoTokenBuy` (launchpad) then `BuyOnDeploy` (factory).
+6. **`IRealmToken.registerFees(feeReceivers)`** — the token self-registers its fee config with `RealmMasterFeeHandler`. Emits one `DirectReceiverRegistered` per direct entry, then `SharesUpdated`.
+7. **If `msg.value > 0`**, the factory routes the ETH through `LAUNCHPAD.buyTokensWithExactEth` to buy supply (bounded only by graduation; a buy reaching the threshold graduates the token in the same tx) and distributes the bought tokens proportionally across `supplyShares` (rounding dust goes to the last recipient). Emits `RealmTokenBuy` (launchpad) then `BuyOnDeploy` (factory).
 
 Returns the deployed token address.
 
@@ -201,20 +201,20 @@ V2 tokens always deploy with `owner == address(0)`, so the renounced-ownership r
 
 ## 6. Events emitted
 
-In order, for a successful call (Livo-owned events only — ERC20 `Transfer`, OZ `Initialized`, and Uniswap V2/V4 events also appear):
+In order, for a successful call (Realm-owned events only — ERC20 `Transfer`, OZ `Initialized`, and Uniswap V2/V4 events also appear):
 
-1. `LivoFactory.TokenCreated(token, name, symbol, tokenOwner, launchpad, graduator, feeHandler)`
+1. `RealmFactory.TokenCreated(token, name, symbol, tokenOwner, launchpad, graduator, feeHandler)`
 2. Graduator init events (`PairInitialized`, plus `PoolIdRegistered` on V4)
-3. `LivoTaxableTokenInitialized(buyTaxBps, sellTaxBps, taxDurationSeconds, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps, taxDecayDuration)` — only if `taxCfg` is configured. The three `*Decay*` fields are reserved for a future linear tax-decay feature and are always 0 today.
+3. `RealmTaxableTokenInitialized(buyTaxBps, sellTaxBps, taxDurationSeconds, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps, taxDecayDuration)` — only if `taxCfg` is configured. The three `*Decay*` fields are reserved for a future linear tax-decay feature and are always 0 today.
 4. `SniperProtectionInitialized(maxBuyPerTxBps, maxWalletBps, protectionWindowSeconds, whitelist)` — only if `antiSniperCfg` is configured
-5. `LivoLaunchpad.TokenLaunched(token, graduationThreshold, maxExcessOverThreshold)`
-6. `LivoMasterFeeHandler.DirectReceiverRegistered(token, receiver)` — zero or one (max one direct receiver)
-7. `LivoMasterFeeHandler.SharesUpdated(token, recipients, sharesBps)`
+5. `RealmLaunchpad.TokenLaunched(token, graduationThreshold, maxExcessOverThreshold)`
+6. `RealmMasterFeeHandler.DirectReceiverRegistered(token, receiver)` — zero or one (max one direct receiver)
+7. `RealmMasterFeeHandler.SharesUpdated(token, recipients, sharesBps)`
 
 If `msg.value > 0`, then additionally at the end:
 
-8. `LivoLaunchpad.LivoTokenBuy(token, buyer=factory, ethAmount=msg.value, tokenAmount, ethFee)`
-9. `LivoFactory.BuyOnDeploy(token, buyer=msg.sender, ethSpent, tokensBought, recipients, amounts)`
+8. `RealmLaunchpad.RealmTokenBuy(token, buyer=factory, ethAmount=msg.value, tokenAmount, ethFee)`
+9. `RealmFactory.BuyOnDeploy(token, buyer=msg.sender, ethSpent, tokensBought, recipients, amounts)`
 
 The order is load-bearing for the subgraph: `TokenCreated` must precede everything else; `SharesUpdated` must come after `TokenLaunched`; `BuyOnDeploy` is always last. Don't reorder.
 

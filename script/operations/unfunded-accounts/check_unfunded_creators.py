@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["requests", "python-dotenv", "rich"]
 # ///
-"""Daily alert: fail if any Livo reward creator has pending ETH claims but a 0 ETH wallet.
+"""Daily alert: fail if any Realm reward creator has pending ETH claims but a 0 ETH wallet.
 
 Checks both Ethereum mainnet and Robinhood Chain mainnet. Runs in CI via
 .github/workflows/check-unfunded-creators.yml. On match, exits 1 so GitHub fires the
@@ -127,7 +127,7 @@ def main() -> int:
             console.print(f"[red]{name}: {chain['rpc_env']} not set — skipping[/red]")
             continue
         try:
-            console.print(f"[dim]{name}: querying Livo indexer…[/dim]")
+            console.print(f"[dim]{name}: querying Realm indexer…[/dim]")
             totals = unique_creators(fetch_creators(chain["chain_id"]))
             # Rules 1 & 2: enough accrued and never claimed on this chain.
             candidates = {

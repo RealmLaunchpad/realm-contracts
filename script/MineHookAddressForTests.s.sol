@@ -6,15 +6,14 @@ import {console} from "lib/forge-std/src/console.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {DeploymentAddressesEthereumSepolia} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Simple script to mine a hook address for testing purposes
 /// @dev Run this once to get a valid hook address and salt, then hardcode in tests
 contract MineHookAddressForTests is Script {
-    // this is the livo.dev address
-    address constant CREATE2_DEPLOYER = address(0xBa489180Ea6EEB25cA65f123a46F3115F388f181);
+    // this is the realm.dev address
+    address constant CREATE2_DEPLOYER = address(0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb);
 
     function run() public view {
         console.log("=== Mining Hook Address for Tests ===");
@@ -30,7 +29,7 @@ contract MineHookAddressForTests is Script {
         uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_SWAP_FLAG);
 
         bytes memory constructorArgs = abi.encode(IPoolManager(poolManager));
-        bytes memory creationCode = type(LivoSwapHook).creationCode;
+        bytes memory creationCode = type(RealmSwapHook).creationCode;
 
         console.log("Mining... (this may take 30-60 seconds)");
         (address hookAddress, bytes32 salt) = HookMiner.find(CREATE2_DEPLOYER, flags, creationCode, constructorArgs);
@@ -54,9 +53,7 @@ contract MineHookAddressForTests is Script {
     /// @notice Get deployment addresses based on chain ID
     /// @return poolManager The Uniswap V4 Pool Manager address
     function _getPoolManager() internal view returns (address poolManager) {
-        if (block.chainid == DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID) {
-            poolManager = DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER;
-        } else if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER;
         } else {
             revert("Unsupported chain ID");

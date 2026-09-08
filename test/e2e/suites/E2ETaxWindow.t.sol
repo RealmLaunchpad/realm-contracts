@@ -2,13 +2,13 @@
 pragma solidity 0.8.28;
 
 import {Vm} from "forge-std/Vm.sol";
-import {LivoE2EBase} from "test/e2e/base/LivoE2EBase.t.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {RealmE2EBase} from "test/e2e/base/RealmE2EBase.t.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice E2E suite for tax variants only. Confirms the V4 hook applies the configured tax during
 ///         the post-graduation tax window and stops after the window closes.
-abstract contract E2ETaxWindow is LivoE2EBase {
+abstract contract E2ETaxWindow is RealmE2EBase {
     function test_e2e_tax_emitsCreatorTaxesAccrued_duringWindow() public {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
         address token = _createTestToken(salt);
@@ -22,7 +22,7 @@ abstract contract E2ETaxWindow is LivoE2EBase {
         vm.recordLogs();
         _swapSellAuto(alice, token, tokenBal / 2, 0);
 
-        bytes32 want = LivoSwapHook.CreatorTaxesAccrued.selector;
+        bytes32 want = RealmSwapHook.CreatorTaxesAccrued.selector;
         Vm.Log[] memory entries = vm.getRecordedLogs();
         bool found;
         for (uint256 i; i < entries.length; ++i) {
@@ -48,7 +48,7 @@ abstract contract E2ETaxWindow is LivoE2EBase {
         vm.recordLogs();
         _swapSellAuto(alice, token, tokenBal / 2, 0);
 
-        bytes32 unwanted = LivoSwapHook.CreatorTaxesAccrued.selector;
+        bytes32 unwanted = RealmSwapHook.CreatorTaxesAccrued.selector;
         Vm.Log[] memory entries = vm.getRecordedLogs();
         bool found;
         for (uint256 i; i < entries.length; ++i) {

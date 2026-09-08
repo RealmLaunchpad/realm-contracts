@@ -55,7 +55,7 @@ interface IUniswapV2Router {
     /// @notice Sells `amountIn` of `path[0]` tokens for at least `amountOutMin` ETH, supporting
     ///         fee-on-transfer tokens (the FoT-aware variant skips the input-side amount check
     ///         and validates against the actual WETH received).
-    /// @dev Required by `LivoTaxableTokenUniV2._processCollectedTokens`: the token diverts a tax during the
+    /// @dev Required by `RealmTaxableTokenUniV2._processCollectedTokens`: the token diverts a tax during the
     ///      router's `transferFrom`, so the plain `swapExactTokensForETH` would revert.
     // forge-lint: disable-next-line(mixed-case-function)
     function swapExactTokensForETHSupportingFeeOnTransferTokens(

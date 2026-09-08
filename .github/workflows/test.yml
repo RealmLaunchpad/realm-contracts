@@ -11,6 +11,8 @@ on:
 env:
   FOUNDRY_PROFILE: ci
   MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
+  # Archive endpoint: the Robinhood fork suites pin a block.
+  ROBINHOOD_RPC_URL: ${{ secrets.ROBINHOOD_RPC_URL }}
 
 jobs:
   check:
@@ -34,20 +36,26 @@ jobs:
         run: |
           forge --version
 
+      - name: Install just
+        uses: extractions/setup-just@v2
+
       - name: Forge fmt
         run: |
           forge fmt --check
         id: fmt
 
+      # The token impls bake one chain's addresses; the committed tree may be left retargeted at a
+      # deploy chain, so pin the build (and the mainnet-forked tests below) to the test default.
       - name: Forge build
         run: |
+          just chain-mainnet
           forge build --sizes
         id: build
 
       - name: Deployment manifest drift check
         run: |
           forge script ExportDeployments
-          if ! git diff --exit-code deployments.ethereum.mainnet.md deployments.ethereum.sepolia.md deployments.robinhood.mainnet.md deployments.robinhood.testnet.md deployments.arc.mainnet.md deployments.arc.testnet.md; then
+          if ! git diff --exit-code deployments.ethereum.sepolia.md deployments.robinhood.mainnet.md deployments.robinhood.testnet.md; then
             echo "::error::deployments.{ethereum,robinhood,arc}.*.md is out of sync with the .sol manifest. Run 'just export-deployments' and commit the result."
             exit 1
           fi
@@ -64,3 +72,9 @@ jobs:
           sed -i 's/depth = [0-9]*/depth = 5/' foundry.toml
           forge test --match-contract Invariants
         id: invariants
+
+      # Retargets the impls to Robinhood and runs the suites that fork it (real xStock dividends).
+      - name: Robinhood mainnet fork tests
+        run: |
+          just test-robinhood-fork
+        id: robinhood_fork_tests

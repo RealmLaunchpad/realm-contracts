@@ -5,15 +5,15 @@ import {Script, console} from "forge-std/Script.sol";
 import {VmSafe} from "forge-std/Vm.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
 /// @title Create a plain (non-tax) V4 token through an arbitrary whitelisted factory
 /// @notice Throwaway/reusable script for creating a token through a freshly-deployed,
-///         not-yet-manifested V4 factory (e.g. a parallel factory from `DeploymentsUnifiedFactories`
+///         not-yet-manifested V4 factory (e.g. a parallel factory from `DeployRealmStack`
 ///         wired to a new graduator/hook) — the factory is NOT read from the manifest, since a
 ///         scratch factory deliberately isn't tracked there. The token itself is an ordinary V4
 ///         token; only the factory it's created through differs. Mines the required
@@ -40,7 +40,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///
 /// @dev    Run with (same command for sepolia and mainnet — just swap --rpc-url and the env vars):
 ///         FACTORY_ADDRESS=<factory> forge script CreateV4Token --rpc-url <sepolia|mainnet> \
-///             --account livo.dev --slow --broadcast
+///             --account realm.dev --slow --broadcast
 contract CreateV4Token is Script {
     function run() public {
         address factory = vm.envAddress("FACTORY_ADDRESS");
@@ -52,7 +52,7 @@ contract CreateV4Token is Script {
         LiquidityTier tier = LiquidityTier(uint8(vm.envOr("LIQUIDITY_TIER", uint256(uint8(LiquidityTier.THIN)))));
         uint16 lpFeeBps = uint16(vm.envOr("LP_FEE_BPS", uint256(100)));
 
-        address tokenImplBase = LivoFactoryUniV4Unified(factory).TOKEN_IMPL_BASE();
+        address tokenImplBase = RealmFactoryUniV4Unified(factory).TOKEN_IMPL_BASE();
 
         // Open the broadcast BEFORE mining: the salt namespace is the account that sends the tx, which
         // `readCallers` only reports once the broadcast is active. Reading `msg.sender` out here would
@@ -75,12 +75,12 @@ contract CreateV4Token is Script {
         console.log("Predicted token: ", predicted);
         console.log("");
 
-        ILivoFactory.FeeShare[] memory feeShares = new ILivoFactory.FeeShare[](1);
-        feeShares[0] = ILivoFactory.FeeShare({account: feeReceiver, shares: 10_000, directFeesEnabled: false});
+        IRealmFactory.FeeShare[] memory feeShares = new IRealmFactory.FeeShare[](1);
+        feeShares[0] = IRealmFactory.FeeShare({account: feeReceiver, shares: 10_000, directFeesEnabled: false});
 
-        address token = LivoFactoryUniV4Unified(factory)
+        address token = RealmFactoryUniV4Unified(factory)
             .createToken(
-                ILivoFactory.TokenSetupTiered({
+                IRealmFactory.TokenSetupTiered({
                     name: name, symbol: symbol, salt: salt, feeShares: feeShares, liquidityTier: tier
                 }),
                 TaxConfigs({
@@ -92,12 +92,12 @@ contract CreateV4Token is Script {
                     sellTaxDecayStartBps: 0,
                     taxDecayDuration: 0
                 }),
-                LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: lpFeeBps}),
-                new ILivoFactory.SupplyShare[](0),
+                RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: lpFeeBps}),
+                new IRealmFactory.SupplyShare[](0),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)
                 }),
-                new ILivoFactory.CreatorVault[](0)
+                new IRealmFactory.CreatorVault[](0)
             );
         vm.stopBroadcast();
 
@@ -147,7 +147,7 @@ contract CreateV4Token is Script {
         }
     }
 
-    /// @dev Mirrors `LivoFactoryAbstract._cloneAndCreateToken`: the factory namespaces the CREATE2 salt
+    /// @dev Mirrors `RealmFactoryAbstract._cloneAndCreateToken`: the factory namespaces the CREATE2 salt
     ///      by `msg.sender`, so the address is a function of `(factory, impl, deployer, salt)`.
     function _predictToken(address factory, address impl, address deployer, bytes32 salt)
         internal

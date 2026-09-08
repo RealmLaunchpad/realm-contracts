@@ -3,11 +3,11 @@ pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
 import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
-import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
+import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -21,12 +21,12 @@ import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
-import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
+import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {IRealmClaims} from "src/interfaces/IRealmClaims.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
@@ -89,7 +89,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
     /// @notice Test that tokens cannot be transferred to the pool manager before graduation
     function test_tokensCannotBeTransferredToPoolManagerBeforeGraduation() public createTestToken {
-        LivoToken token = LivoToken(testToken);
+        RealmToken token = RealmToken(testToken);
 
         // Buy some tokens first
         vm.prank(buyer);
@@ -100,13 +100,13 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         // Try to transfer to pool manager
         vm.prank(buyer);
-        vm.expectRevert(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector);
+        vm.expectRevert(RealmToken.TransferToPairBeforeGraduationNotAllowed.selector);
         token.transfer(address(poolManager), buyerBalance / 2);
     }
 
     /// @notice Test that tokens can be transferred to other addresses before graduation
     function test_tokensCanBeTransferredToOtherAddressesBeforeGraduation() public createTestToken {
-        LivoToken token = LivoToken(testToken);
+        RealmToken token = RealmToken(testToken);
 
         // Buy some tokens first
         vm.prank(buyer);
@@ -208,12 +208,12 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         _graduateToken();
 
         assertEq(
-            LivoToken(testToken).balanceOf(address(launchpad)),
+            RealmToken(testToken).balanceOf(address(launchpad)),
             0,
             "there should be no tokens in the launchpad after graduation"
         );
         assertLt(
-            LivoToken(testToken).balanceOf(address(graduator)),
+            RealmToken(testToken).balanceOf(address(graduator)),
             0.000000000001e18,
             "there should be no tokens in the graduator after graduation"
         );
@@ -225,12 +225,12 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         _graduateToken();
 
         assertEq(
-            LivoToken(testToken).balanceOf(address(launchpad)),
+            RealmToken(testToken).balanceOf(address(launchpad)),
             0,
             "there should be no tokens in the launchpad after graduation"
         );
         assertLt(
-            LivoToken(testToken).balanceOf(address(graduator)),
+            RealmToken(testToken).balanceOf(address(graduator)),
             0.000000000001e18,
             "there should be no tokens in the graduator after graduation"
         );
@@ -253,25 +253,27 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
     /// @notice Test that after graduation the creator has received exactly 0% of the supply, and 1% has been burned to the dead address
     function test_creatorTokenBalanceAfterExactGraduation() public createTestToken {
-        assertEq(LivoToken(testToken).balanceOf(creator), 0, "creator should start with 0 tokens");
+        assertEq(RealmToken(testToken).balanceOf(creator), 0, "creator should start with 0 tokens");
 
         _launchpadBuy(testToken, 0.1 ether);
         _graduateToken();
 
-        assertEq(LivoToken(testToken).balanceOf(creator), 0, "creator should have 0% supply");
+        assertEq(RealmToken(testToken).balanceOf(creator), 0, "creator should have 0% supply");
     }
 
     /// @notice Test that after graduation (exact eth) all the token supply is in the buyer's balance and the pool manager
     function test_poolManagerTokenBalanceAfterExactGraduation() public createTestToken {
-        assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
+        assertEq(
+            RealmToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens"
+        );
 
         _graduateToken();
 
-        uint256 buyerBalance = LivoToken(testToken).balanceOf(buyer);
-        uint256 poolManagerBalance = LivoToken(testToken).balanceOf(poolManagerAddress);
-        uint256 creatorBalance = LivoToken(testToken).balanceOf(creator);
-        uint256 graduatorBalance = LivoToken(testToken).balanceOf(address(graduator));
-        uint256 burnedBalance = LivoToken(testToken).balanceOf(address(0xdead));
+        uint256 buyerBalance = RealmToken(testToken).balanceOf(buyer);
+        uint256 poolManagerBalance = RealmToken(testToken).balanceOf(poolManagerAddress);
+        uint256 creatorBalance = RealmToken(testToken).balanceOf(creator);
+        uint256 graduatorBalance = RealmToken(testToken).balanceOf(address(graduator));
+        uint256 burnedBalance = RealmToken(testToken).balanceOf(address(0xdead));
 
         assertEq(
             buyerBalance + poolManagerBalance + creatorBalance + graduatorBalance + burnedBalance,
@@ -286,10 +288,10 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     function test_negligibleEthWorthOfTokensBurnedAtExactGraduation() public createTestToken {
         _graduateToken();
         // the graduator burns whatever it could not deposit, so the leftover lands on the dead address
-        uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
+        uint256 burntSupply = RealmToken(testToken).balanceOf(address(0xdead));
         // there is always some leftovers burned
         assertGt(burntSupply, 0);
-        assertEq(LivoToken(testToken).balanceOf(address(graduator)), 0, "graduator kept a residual balance");
+        assertEq(RealmToken(testToken).balanceOf(address(graduator)), 0, "graduator kept a residual balance");
 
         uint256 tokenPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
         // console.log("token price after graduation", tokenPrice);
@@ -302,15 +304,17 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
     /// @notice Test that after graduation (exact eth) all the token supply is in the buyer's balance and the pool manager
     function test_poolManagerTokenBalanceAfterExcessGraduation() public createTestToken {
-        assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
+        assertEq(
+            RealmToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens"
+        );
         _launchpadBuy(testToken, GRADUATION_THRESHOLD - 0.01 ether);
         _graduateToken();
 
-        uint256 buyerBalance = LivoToken(testToken).balanceOf(buyer);
-        uint256 poolManagerBalance = LivoToken(testToken).balanceOf(poolManagerAddress);
-        uint256 creatorBalance = LivoToken(testToken).balanceOf(creator);
-        uint256 graduatorSupply = LivoToken(testToken).balanceOf(address(graduator));
-        uint256 burnedSupply = LivoToken(testToken).balanceOf(address(0xdead));
+        uint256 buyerBalance = RealmToken(testToken).balanceOf(buyer);
+        uint256 poolManagerBalance = RealmToken(testToken).balanceOf(poolManagerAddress);
+        uint256 creatorBalance = RealmToken(testToken).balanceOf(creator);
+        uint256 graduatorSupply = RealmToken(testToken).balanceOf(address(graduator));
+        uint256 burnedSupply = RealmToken(testToken).balanceOf(address(0xdead));
 
         assertEq(
             buyerBalance + poolManagerBalance + creatorBalance + graduatorSupply + burnedSupply,
@@ -324,15 +328,17 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
     /// @notice Test that after graduation (exact eth) the eth worth of tokens dead is negligible
     function test_negligibleEthWorthOfTokensBurnedAtExcessGraduation() public createTestToken {
-        assertEq(LivoToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens");
+        assertEq(
+            RealmToken(testToken).balanceOf(address(launchpad)), TOTAL_SUPPLY, "creator should start with 0 tokens"
+        );
         _launchpadBuy(testToken, GRADUATION_THRESHOLD - 0.01 ether);
         _graduateToken();
 
         // the graduator burns whatever it could not deposit, so the leftover lands on the dead address
-        uint256 burntSupply = LivoToken(testToken).balanceOf(address(0xdead));
+        uint256 burntSupply = RealmToken(testToken).balanceOf(address(0xdead));
         // there is always some leftovers burned
         assertGt(burntSupply, 0);
-        assertEq(LivoToken(testToken).balanceOf(address(graduator)), 0, "graduator kept a residual balance");
+        assertEq(RealmToken(testToken).balanceOf(address(graduator)), 0, "graduator kept a residual balance");
 
         uint256 tokenPrice = _convertSqrtX96ToTokenPrice(_readSqrtX96TokenPrice());
         // console.log("token price after graduation", tokenPrice);
@@ -348,12 +354,12 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         deal(buyer, 1 ether);
 
         uint256 ethBalanceBefore = buyer.balance;
-        uint256 tokenBalanceBefore = LivoToken(testToken).balanceOf(buyer);
+        uint256 tokenBalanceBefore = RealmToken(testToken).balanceOf(buyer);
 
         _swapBuy(buyer, 0.001 ether, 1, true);
 
         uint256 ethDelta = ethBalanceBefore - buyer.balance;
-        uint256 tokenDelta = LivoToken(testToken).balanceOf(buyer) - tokenBalanceBefore;
+        uint256 tokenDelta = RealmToken(testToken).balanceOf(buyer) - tokenBalanceBefore;
 
         uint256 swapPrice = 1e18 * ethDelta / tokenDelta;
         uint256 swapPriceExcludingFees = 1e18 * (ethDelta * (10000 - BASE_BUY_FEE_BPS) / 10000) / tokenDelta;
@@ -377,7 +383,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         deal(buyer, 10 ether);
         uint256 buyerEthBalance = buyer.balance;
-        uint256 buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
+        uint256 buyerTokenBalance = RealmToken(testToken).balanceOf(buyer);
         console.log("Buyer eth balance before last tx", buyerEthBalance);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 0.00001 ether}(testToken, 0, DEADLINE);
@@ -385,7 +391,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated now");
 
         uint256 ethSpent = buyerEthBalance - buyer.balance;
-        uint256 tokensBought = LivoToken(testToken).balanceOf(buyer) - buyerTokenBalance;
+        uint256 tokensBought = RealmToken(testToken).balanceOf(buyer) - buyerTokenBalance;
         uint256 effectiveEth = ethSpent - ((ethSpent * BASE_BUY_FEE_BPS) / 10000);
         uint256 effectivePrice = (effectiveEth * 1e18) / tokensBought;
         console.log("Eth spent in last tx", ethSpent);
@@ -421,7 +427,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         deal(buyer, 10 ether);
         uint256 buyerEthBalance = buyer.balance;
-        uint256 buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
+        uint256 buyerTokenBalance = RealmToken(testToken).balanceOf(buyer);
         console.log("Buyer eth balance before last tx", buyerEthBalance);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: referenceBuyAmount}(testToken, 0, DEADLINE);
@@ -429,17 +435,17 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated now");
 
         uint256 ethSpent = buyerEthBalance - buyer.balance;
-        uint256 tokensBought = LivoToken(testToken).balanceOf(buyer) - buyerTokenBalance;
+        uint256 tokensBought = RealmToken(testToken).balanceOf(buyer) - buyerTokenBalance;
         uint256 effectivePrice = (ethSpent * 1e18) / tokensBought;
         console.log("Eth spent in last tx", ethSpent);
         console.log("Tokens bought in last tx", tokensBought);
         console.log("Effective price at graduation (eth/token)", effectivePrice);
 
         buyerEthBalance = buyer.balance;
-        buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
+        buyerTokenBalance = RealmToken(testToken).balanceOf(buyer);
         _swapBuy(buyer, referenceBuyAmount, 0, true);
         uint256 ethSpentInSwap = buyerEthBalance - buyer.balance;
-        uint256 tokensBoughtInSwap = LivoToken(testToken).balanceOf(buyer) - buyerTokenBalance;
+        uint256 tokensBoughtInSwap = RealmToken(testToken).balanceOf(buyer) - buyerTokenBalance;
         uint256 swapPrice = (ethSpentInSwap * 1e18) / tokensBoughtInSwap;
         console.log("Eth spent in swap", ethSpentInSwap);
         console.log("Tokens bought in swap", tokensBoughtInSwap);
@@ -456,13 +462,13 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         // if a crazy user buys the remaining tokens, will get a hell of a price impact ...
         uint256 buyerEthBalance = buyer.balance;
-        uint256 buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
+        uint256 buyerTokenBalance = RealmToken(testToken).balanceOf(buyer);
         console.log("Buyer eth balance before last tx", buyerEthBalance);
         _graduateToken();
         assertTrue(launchpad.getTokenState(testToken).graduated, "Token should be graduated now");
 
         uint256 ethSpent = buyerEthBalance - buyer.balance;
-        uint256 tokensBought = LivoToken(testToken).balanceOf(buyer) - buyerTokenBalance;
+        uint256 tokensBought = RealmToken(testToken).balanceOf(buyer) - buyerTokenBalance;
         uint256 effectivePrice = (ethSpent * 1e18) / tokensBought;
         console.log("Eth spent in last tx", ethSpent);
         console.log("Tokens bought in last tx", tokensBought);
@@ -471,10 +477,10 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         // now we do a similar purchase in uniswapv4, to account for the price impact
         deal(buyer, 2 ether);
         buyerEthBalance = buyer.balance;
-        buyerTokenBalance = LivoToken(testToken).balanceOf(buyer);
+        buyerTokenBalance = RealmToken(testToken).balanceOf(buyer);
         _swapBuy(buyer, 1 ether, 0, true);
         uint256 ethSpentInSwap = buyerEthBalance - buyer.balance;
-        uint256 tokensBoughtInSwap = LivoToken(testToken).balanceOf(buyer) - buyerTokenBalance;
+        uint256 tokensBoughtInSwap = RealmToken(testToken).balanceOf(buyer) - buyerTokenBalance;
         uint256 swapPrice = (ethSpentInSwap * 1e18) / tokensBoughtInSwap;
         console.log("Eth spent in swap", ethSpentInSwap);
         console.log("Tokens bought in swap", tokensBoughtInSwap);
@@ -499,7 +505,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         vm.prank(griefer);
         launchpad.buyTokensWithExactEth{value: 0.625 ether}(testToken, 0, DEADLINE);
 
-        uint256 grieferTokenBalance = LivoToken(testToken).balanceOf(griefer);
+        uint256 grieferTokenBalance = RealmToken(testToken).balanceOf(griefer);
         assertGt(grieferTokenBalance, 180_000_000e18, "Griefer should have bought tokens");
         assertLt(grieferTokenBalance, 260_000_000e18, "Griefer should have bought around 225M tokens");
 
@@ -517,9 +523,9 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         // Step 3: Griefer transfers tokens to the graduator contract
         // This is the key griefing action - tokens sent directly to graduator
         vm.prank(griefer);
-        LivoToken(testToken).transfer(address(graduator), grieferTokenBalance);
+        RealmToken(testToken).transfer(address(graduator), grieferTokenBalance);
 
-        uint256 graduatorTokenBalance = LivoToken(testToken).balanceOf(address(graduator));
+        uint256 graduatorTokenBalance = RealmToken(testToken).balanceOf(address(graduator));
         assertEq(graduatorTokenBalance, grieferTokenBalance, "Graduator should have received griefer's tokens");
 
         // Step 4: Attempt to graduate - this should revert due to underflow
@@ -567,7 +573,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
     /// @notice Test that a liquidity position involving tokens cannot be set before graduation
     function test_liquidityPositionWithTokensCannotBeSetBeforeGraduation() public createTestToken {
-        assertEq(LivoToken(testToken).balanceOf(address(poolManager)), 0, "no tokens in the manager");
+        assertEq(RealmToken(testToken).balanceOf(address(poolManager)), 0, "no tokens in the manager");
         // even adding 1 wei of tokens should revert
         _addMixedLiquidity(buyer, 1 ether, 1000 ether, false);
     }
@@ -583,7 +589,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
     function test_sellingFromUniv4BeforeGraduation_reverts() public createTestToken {
         _launchpadBuy(testToken, 0.31 ether);
-        uint256 sellAmount = LivoToken(testToken).balanceOf(buyer) / 3;
+        uint256 sellAmount = RealmToken(testToken).balanceOf(buyer) / 3;
         // a purchase accepting minimum 1 wei of tokens should revert
         // the "false" below indicates that we expect it shouldn't succeed. The expectRevert has to be right before the router.execute() call
         _swapSell(buyer, sellAmount, 1, false);
@@ -597,14 +603,14 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         deal(buyer, 1 ether);
 
-        uint256 tokenBalanceBefore = LivoToken(testToken).balanceOf(buyer);
+        uint256 tokenBalanceBefore = RealmToken(testToken).balanceOf(buyer);
         uint256 etherBalanceBefore = buyer.balance;
 
         _swapBuy(buyer, 0.1 ether, 1, true);
 
         assertLt(buyer.balance, etherBalanceBefore, "Buyer eth balance should decrease after successful swap");
         assertGt(
-            LivoToken(testToken).balanceOf(buyer),
+            RealmToken(testToken).balanceOf(buyer),
             tokenBalanceBefore,
             "Buyer token balance should increase after successful swap"
         );
@@ -612,17 +618,17 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
     function test_sellingFromUniv4AfterGraduation_succeeds() public createTestToken {
         _launchpadBuy(testToken, 0.31 ether);
-        uint256 sellAmount = LivoToken(testToken).balanceOf(buyer) / 3;
+        uint256 sellAmount = RealmToken(testToken).balanceOf(buyer) / 3;
 
         // after graduation, the same swap should succeed
         _graduateToken();
 
-        uint256 tokenBalanceBefore = LivoToken(testToken).balanceOf(buyer);
+        uint256 tokenBalanceBefore = RealmToken(testToken).balanceOf(buyer);
         uint256 etherBalanceBefore = buyer.balance;
 
         _swapSell(buyer, sellAmount, 0.1 ether, true);
 
-        uint256 tokenBalanceAfter = LivoToken(testToken).balanceOf(buyer);
+        uint256 tokenBalanceAfter = RealmToken(testToken).balanceOf(buyer);
         uint256 etherBalanceAfter = buyer.balance;
 
         assertGt(etherBalanceAfter, etherBalanceBefore, "Buyer eth balance should increase after successful swap");
@@ -639,12 +645,12 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         _graduateToken();
 
         // the buyer has now a huge part of the supply
-        uint256 tokenBalanceBefore = LivoToken(testToken).balanceOf(buyer);
+        uint256 tokenBalanceBefore = RealmToken(testToken).balanceOf(buyer);
         uint256 etherBalanceBefore = buyer.balance;
 
         _swapSell(buyer, tokenBalanceBefore, 2.5 ether, true);
 
-        uint256 tokenBalanceAfter = LivoToken(testToken).balanceOf(buyer);
+        uint256 tokenBalanceAfter = RealmToken(testToken).balanceOf(buyer);
         uint256 etherBalanceAfter = buyer.balance;
 
         assertGt(etherBalanceAfter, etherBalanceBefore, "Buyer eth balance should increase after successful swap");
@@ -658,16 +664,16 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         // after graduation, the same swap should succeed
         _graduateToken();
 
-        uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
+        uint256 buyerBalanceBefore = RealmToken(testToken).balanceOf(buyer);
 
         _swapSell(buyer, buyerBalanceBefore, 2.5 ether, true);
 
-        assertEq(LivoToken(testToken).balanceOf(buyer), 0, "Buyer should have sold all tokens");
-        assertEq(LivoToken(testToken).balanceOf(creator), 0, "Creator should have sold all tokens");
+        assertEq(RealmToken(testToken).balanceOf(buyer), 0, "Buyer should have sold all tokens");
+        assertEq(RealmToken(testToken).balanceOf(creator), 0, "Creator should have sold all tokens");
 
-        uint256 poolManagerBalance = LivoToken(testToken).balanceOf(address(poolManager));
-        uint256 graduatorBalance = LivoToken(testToken).balanceOf(address(graduator));
-        uint256 deadAddressBalance = LivoToken(testToken).balanceOf(address(0xdead));
+        uint256 poolManagerBalance = RealmToken(testToken).balanceOf(address(poolManager));
+        uint256 graduatorBalance = RealmToken(testToken).balanceOf(address(graduator));
+        uint256 deadAddressBalance = RealmToken(testToken).balanceOf(address(0xdead));
 
         assertEq(
             poolManagerBalance + graduatorBalance + deadAddressBalance,
@@ -681,14 +687,14 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         _graduateToken();
 
         // the buyer has now a huge part of the supply
-        uint256 tokenBalanceBefore = LivoToken(testToken).balanceOf(buyer);
+        uint256 tokenBalanceBefore = RealmToken(testToken).balanceOf(buyer);
         uint256 etherBalanceBefore = buyer.balance;
 
         uint256 sellAmount = (tokenBalanceBefore * 9) / 10;
 
         _swapSell(buyer, sellAmount, 1 ether, true);
 
-        uint256 tokenBalanceAfter = LivoToken(testToken).balanceOf(buyer);
+        uint256 tokenBalanceAfter = RealmToken(testToken).balanceOf(buyer);
         uint256 etherBalanceAfter = buyer.balance;
 
         assertGt(etherBalanceAfter, etherBalanceBefore, "Buyer eth balance should increase after successful swap");
@@ -702,7 +708,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     function test_tokenGraduatedEventEmittedAtGraduation_byGraduator_univ4() public createTestToken {
         vm.skip(true);
         vm.expectEmit(true, false, false, true);
-        emit ILivoGraduator.TokenGraduated(
+        emit IRealmGraduator.TokenGraduated(
             testToken, 191123250949901652977521310, 7456000000000052224, 55296381402046003400649
         );
 
@@ -716,7 +722,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 
         vm.expectEmit(true, false, false, true);
         // After refactoring, launchpad emits full amounts (before fees/burning handled by graduator)
-        emit LivoLaunchpad.TokenGraduated(testToken, GRADUATION_THRESHOLD, expectedTokenBalance);
+        emit RealmLaunchpad.TokenGraduated(testToken, GRADUATION_THRESHOLD, expectedTokenBalance);
 
         _graduateToken();
     }
@@ -726,9 +732,9 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         uint256 poolBalanceBefore = address(poolManager).balance;
         _graduateToken();
 
-        uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
-        uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
-        uint256 poolTokenBalanceBefore = LivoToken(testToken).balanceOf(address(poolManager));
+        uint256 buyerBalanceBefore = RealmToken(testToken).balanceOf(buyer);
+        uint256 creatorBalanceBefore = RealmToken(testToken).balanceOf(creator);
+        uint256 poolTokenBalanceBefore = RealmToken(testToken).balanceOf(address(poolManager));
 
         assertApproxEqAbs(
             buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore,
@@ -796,9 +802,9 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         launchpad.buyTokensWithExactEth{value: missingForGraduation}(testToken, 0, DEADLINE);
         vm.stopPrank();
 
-        assertTrue(LivoToken(testToken).graduated(), "graduation should have been triggered already");
+        assertTrue(RealmToken(testToken).graduated(), "graduation should have been triggered already");
 
-        uint256 tokenBalance = LivoToken(testToken).balanceOf(seller);
+        uint256 tokenBalance = RealmToken(testToken).balanceOf(seller);
         _swapSell(seller, tokenBalance, 0, true);
         vm.stopPrank();
 
@@ -812,7 +818,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
     /// @notice test that if a swapBuy happens on a token pregraduation, this doesn't alter the graduation transaction
     function test_swapBuyBeforeGraduation_doesntAffectGraduation() public createTestToken {
         // Token is created but not graduated
-        assertFalse(ILivoToken(testToken).graduated(), "Token should not be graduated");
+        assertFalse(IRealmToken(testToken).graduated(), "Token should not be graduated");
 
         // Perform a large swap buy before graduation
         deal(buyer, 10 ether);
@@ -823,27 +829,27 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
         _graduateToken();
 
         // Verify that graduation was successful and pool is initialized correctly
-        assertTrue(ILivoToken(testToken).graduated(), "Token should be graduated successfully");
+        assertTrue(IRealmToken(testToken).graduated(), "Token should be graduated successfully");
 
         // Further checks can be added to verify pool state if needed
     }
 
     function test_graduateToken_reverts_whenCallerIsNotLaunchpad() public createTestToken {
-        vm.expectRevert(ILivoGraduator.OnlyLaunchpadAllowed.selector);
-        LivoGraduatorUniswapV4(payable(address(graduator))).graduateToken(testToken, 1);
+        vm.expectRevert(IRealmGraduator.OnlyLaunchpadAllowed.selector);
+        RealmGraduatorUniswapV4(payable(address(graduator))).graduateToken(testToken, 1);
     }
 
     function test_graduateToken_reverts_whenTokenAmountIsZero() public createTestToken {
         vm.deal(address(launchpad), 1);
         vm.prank(address(launchpad));
-        vm.expectRevert(ILivoGraduator.NoTokensToGraduate.selector);
-        LivoGraduatorUniswapV4(payable(address(graduator))).graduateToken{value: 1}(testToken, 0);
+        vm.expectRevert(IRealmGraduator.NoTokensToGraduate.selector);
+        RealmGraduatorUniswapV4(payable(address(graduator))).graduateToken{value: 1}(testToken, 0);
     }
 
     function test_graduateToken_reverts_whenMsgValueIsZero() public createTestToken {
         vm.prank(address(launchpad));
-        vm.expectRevert(ILivoGraduator.NoETHToGraduate.selector);
-        LivoGraduatorUniswapV4(payable(address(graduator))).graduateToken(testToken, 1);
+        vm.expectRevert(IRealmGraduator.NoETHToGraduate.selector);
+        RealmGraduatorUniswapV4(payable(address(graduator))).graduateToken(testToken, 1);
     }
 }
 
@@ -851,7 +857,7 @@ abstract contract UniswapV4GraduationTestsBase is BaseUniswapV4GraduationTests {
 contract UniswapV4GraduationTests_NormalToken is UniswapV4GraduationTestsBase {
     function setUp() public override {
         super.setUp();
-        // Uses default implementation (livoToken) from base
+        // Uses default implementation (realmToken) from base
     }
 }
 
@@ -860,7 +866,7 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
     function setUp() public override(TaxTokenUniV4BaseTests, BaseUniswapV4GraduationTests) {
         super.setUp();
         // Override implementation for this test suite to use tax tokens
-        implementation = ILivoToken(address(taxTokenImpl));
+        implementation = IRealmToken(address(taxTokenImpl));
     }
 
     // Use TaxTokenUniV4BaseTests implementation of _swap
@@ -881,7 +887,7 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         testToken = factoryTax.createToken(
             "TestToken",
             "TEST",
-            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             _fs(creator),
             _noSs(),
             false,
@@ -900,11 +906,11 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
         // so we capture it here to exclude from pool-balance accounting.
         address[] memory _tokens = new address[](1);
         _tokens[0] = testToken;
-        uint256 graduationDeposit = ILivoClaims(ILivoToken(testToken).feeHandler()).getClaimable(_tokens, creator)[0];
+        uint256 graduationDeposit = IRealmClaims(IRealmToken(testToken).feeHandler()).getClaimable(_tokens, creator)[0];
 
-        uint256 buyerBalanceBefore = LivoToken(testToken).balanceOf(buyer);
-        uint256 creatorBalanceBefore = LivoToken(testToken).balanceOf(creator);
-        uint256 poolTokenBalanceBefore = LivoToken(testToken).balanceOf(address(poolManager));
+        uint256 buyerBalanceBefore = RealmToken(testToken).balanceOf(buyer);
+        uint256 creatorBalanceBefore = RealmToken(testToken).balanceOf(creator);
+        uint256 poolTokenBalanceBefore = RealmToken(testToken).balanceOf(address(poolManager));
 
         assertApproxEqAbs(
             buyerBalanceBefore + creatorBalanceBefore + poolTokenBalanceBefore,

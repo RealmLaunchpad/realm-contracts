@@ -6,7 +6,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {ForkIntegrationSwapHelpers} from "test/integration/fork/base/ForkIntegrationSwapHelpers.t.sol";
 import {ForkIntegrationCaseLib} from "test/integration/fork/base/ForkIntegrationCaseLib.t.sol";
 
-/// @notice Full happy-path matrix for deployed Livo fork integrations.
+/// @notice Full happy-path matrix for deployed Realm fork integrations.
 /// @dev Chain-specific contracts only need to override `_chainConfig()`.
 abstract contract FullHappyPathMatrix is ForkIntegrationSwapHelpers {
     uint256 internal constant UNI_V2_CASE_COUNT = 2 * 3 * 4;

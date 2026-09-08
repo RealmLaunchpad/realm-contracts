@@ -14,7 +14,7 @@ import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
 /// @notice Reusable V4 swap helpers for end-to-end tests. Mirrors the swap logic from
 ///         test/graduators/graduationUniv4.base.t.sol and test/graduators/taxToken.base.t.sol so
-///         the E2E suite can swap on any Livo-graduated V4 pool regardless of token variant.
+///         the E2E suite can swap on any Realm-graduated V4 pool regardless of token variant.
 abstract contract V4SwapHelpers is LaunchpadBaseTests {
     uint24 internal constant E2E_LP_FEE = UniswapV4PoolConstants.LP_FEE;
     int24 internal constant E2E_TICK_SPACING = UniswapV4PoolConstants.TICK_SPACING;

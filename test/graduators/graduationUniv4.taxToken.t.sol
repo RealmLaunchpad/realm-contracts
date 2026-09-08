@@ -3,17 +3,17 @@ pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {ILivoTaxableToken} from "src/interfaces/ILivoTaxableToken.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {IRealmTaxableToken} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ILivoClaims} from "src/interfaces/ILivoClaims.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {IRealmClaims} from "src/interfaces/IRealmClaims.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
-/// @notice Comprehensive tests for LivoTaxableTokenUniV4 and LivoTaxSwapHook functionality
+/// @notice Comprehensive tests for RealmTaxableTokenUniV4 and RealmSwapHook functionality
 contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function setUp() public override {
         super.setUp();
@@ -30,7 +30,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function _pendingTaxes(address token, address tokenOwner) internal view returns (uint256) {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
-        return ILivoClaims(ILivoToken(token).feeHandler()).getClaimable(tokens, tokenOwner)[0];
+        return IRealmClaims(IRealmToken(token).feeHandler()).getClaimable(tokens, tokenOwner)[0];
     }
 
     /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////
@@ -74,7 +74,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertGt(IERC20(testToken).balanceOf(alice), 0, "Alice should have received tokens");
 
         // Token is not graduated yet
-        assertFalse(ILivoToken(testToken).graduated(), "Token should not be graduated yet");
+        assertFalse(IRealmToken(testToken).graduated(), "Token should not be graduated yet");
     }
 
     /////////////////////////////////// CATEGORY 2: TAX COLLECTION (ACTIVE PERIOD) ///////////////////////////////////
@@ -137,10 +137,10 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         /////////// now update token owner by transferring ownership
 
         vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
+        IRealmToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
-        assertEq(ILivoToken(testToken).owner(), alice, "New token owner should be Alice");
+        IRealmToken(testToken).acceptTokenOwnership();
+        assertEq(IRealmToken(testToken).owner(), alice, "New token owner should be Alice");
 
         // By default, fee receiver is unchanged after ownership transfer
         uint256 aliceTaxesBefore = _pendingTaxes(testToken, alice);
@@ -238,7 +238,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // elapsed 600 of 1200 ⇒ decayed buy rate = 500 bps
         vm.warp(t0 + 600);
-        uint16 rate = ILivoToken(testToken).getTaxConfig().buyTaxBps;
+        uint16 rate = IRealmToken(testToken).getTaxConfig().buyTaxBps;
         assertEq(rate, 500, "hook sees the decayed buy rate at elapsed 600");
 
         uint256 creatorBefore = _pendingTaxes(testToken, creator);
@@ -268,8 +268,8 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // advance halfway into the decay window: the live launchpad buy tax is now 5% (decayed, nonzero)
         vm.warp(t0 + 10 minutes);
         assertEq(
-            ILivoToken(testToken)
-            .getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}))
+            IRealmToken(testToken)
+            .getLaunchpadFees(IRealmToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}))
             .taxBps,
             500,
             "decay must be live (5%) right before graduation"
@@ -280,7 +280,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // graduation succeeded and the decay window is still open just after graduation
         assertTrue(launchpad.getTokenState(testToken).graduated, "token must graduate with an active decay");
-        assertGt(ILivoToken(testToken).getTaxConfig().buyTaxBps, 0, "decay still active just after graduation");
+        assertGt(IRealmToken(testToken).getTaxConfig().buyTaxBps, 0, "decay still active just after graduation");
     }
 
     /// @notice Test that zero sell tax rate results in no sell-tax collection on the sell leg.
@@ -447,7 +447,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         _graduateToken();
 
-        uint40 launchTs = ILivoToken(testToken).launchTimestamp();
+        uint40 launchTs = IRealmToken(testToken).launchTimestamp();
         uint256 creatorTaxBalance;
         uint256 buyerTokenBalance;
 
@@ -498,20 +498,20 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     ///         including `launchTimestamp + duration`, then a fully-zeroed tax (rates AND duration) afterwards.
     ///         This is what drives the (unchanged) graduation-anchored hook to stop taxing on time.
     function test_getTaxConfig_dynamicallyZeroesAtCreationAnchoredExpiry() public createDefaultTaxToken {
-        uint40 launchTs = ILivoToken(testToken).launchTimestamp();
+        uint40 launchTs = IRealmToken(testToken).launchTimestamp();
 
         // within the window: real config
-        ILivoToken.TaxConfig memory active = ILivoToken(testToken).getTaxConfig();
+        IRealmToken.TaxConfig memory active = IRealmToken(testToken).getTaxConfig();
         assertEq(active.sellTaxBps, DEFAULT_SELL_TAX_BPS, "sell tax active within window");
         assertEq(active.taxDurationSeconds, DEFAULT_TAX_DURATION, "duration reported within window");
 
         // exactly at expiry: still active (inclusive)
         vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION);
-        assertEq(ILivoToken(testToken).getTaxConfig().sellTaxBps, DEFAULT_SELL_TAX_BPS, "active at inclusive expiry");
+        assertEq(IRealmToken(testToken).getTaxConfig().sellTaxBps, DEFAULT_SELL_TAX_BPS, "active at inclusive expiry");
 
         // one second past: fully zeroed
         vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION + 1);
-        ILivoToken.TaxConfig memory expired = ILivoToken(testToken).getTaxConfig();
+        IRealmToken.TaxConfig memory expired = IRealmToken(testToken).getTaxConfig();
         assertEq(expired.buyTaxBps, 0, "buy tax zeroed after window");
         assertEq(expired.sellTaxBps, 0, "sell tax zeroed after window");
         assertEq(expired.taxDurationSeconds, 0, "duration zeroed after window");
@@ -522,7 +522,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     ///         and proves the tax ends at launchTimestamp + duration even though that is strictly before the
     ///         (old) graduation-anchored expiry.
     function test_taxWindowSpansGraduation_anchoredAtCreation() public createDefaultTaxToken {
-        uint40 launchTs = ILivoToken(testToken).launchTimestamp();
+        uint40 launchTs = IRealmToken(testToken).launchTimestamp();
 
         // advance halfway through the window BEFORE graduating, so launch != graduation
         vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION / 2);
@@ -532,12 +532,12 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
         _graduateToken();
 
-        uint40 graduationTimestamp = ILivoTaxableToken(testToken).graduationTimestamp();
+        uint40 graduationTimestamp = IRealmTaxableToken(testToken).graduationTimestamp();
         assertGt(graduationTimestamp, launchTs, "graduation strictly after creation");
 
         // still inside the creation-anchored window, now post-graduation: tax active
         assertEq(
-            ILivoToken(testToken).getTaxConfig().sellTaxBps, DEFAULT_SELL_TAX_BPS, "active post-grad, within window"
+            IRealmToken(testToken).getTaxConfig().sellTaxBps, DEFAULT_SELL_TAX_BPS, "active post-grad, within window"
         );
 
         // past the creation-anchored expiry, but BEFORE the graduation-anchored expiry: tax is OVER.
@@ -547,7 +547,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
             uint256(graduationTimestamp) + DEFAULT_TAX_DURATION,
             "still inside the OLD graduation-anchored window"
         );
-        ILivoToken.TaxConfig memory cfg = ILivoToken(testToken).getTaxConfig();
+        IRealmToken.TaxConfig memory cfg = IRealmToken(testToken).getTaxConfig();
         assertEq(cfg.sellTaxBps, 0, "tax ends at creation-anchored expiry, not graduation-anchored");
         assertEq(cfg.taxDurationSeconds, 0, "duration zeroed at creation-anchored expiry");
     }
@@ -596,7 +596,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
     /// @notice Test that token creation with invalid tax rate reverts
     function test_tokenCreation_invalidTaxRate_reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));
         vm.prank(creator);
         factoryTax.createToken(
             "InvalidToken",
@@ -614,7 +614,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Pool is initialized but has no liquidity until graduation adds it
     function test_notGraduated_swapHasNoLiquidity() public createDefaultTaxToken {
         // Token is created but not graduated
-        assertFalse(ILivoToken(testToken).graduated(), "Token should not be graduated");
+        assertFalse(IRealmToken(testToken).graduated(), "Token should not be graduated");
 
         // Before graduation, the pool exists but has no liquidity
         // A buy swap will fail due to lack of liquidity or token transfer restrictions
@@ -634,7 +634,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     /// @notice test that a large swapBuy before graduation doesn't alter the gratuation conditions / set point
     function test_largeSwapBuyBeforeGraduation_doesntAffectGraduation() public createDefaultTaxToken {
         // Token is created but not graduated
-        assertFalse(ILivoToken(testToken).graduated(), "Token should not be graduated");
+        assertFalse(IRealmToken(testToken).graduated(), "Token should not be graduated");
 
         // Perform a large buy swap before graduation
         deal(buyer, 10 ether);
@@ -652,7 +652,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         _graduateToken();
 
         // Verify that graduation was successful and pool is initialized correctly
-        assertTrue(ILivoToken(testToken).graduated(), "Token should be graduated successfully");
+        assertTrue(IRealmToken(testToken).graduated(), "Token should be graduated successfully");
 
         // Further checks can be added to verify pool state if needed
     }
@@ -701,7 +701,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_cannotTransferToPoolManagerBeforeGraduation() public createDefaultTaxToken {
         // Attempt to transfer tokens to the pool manager before graduation
         vm.prank(buyer);
-        vm.expectRevert(LivoToken.TransferToPairBeforeGraduationNotAllowed.selector);
+        vm.expectRevert(RealmToken.TransferToPairBeforeGraduationNotAllowed.selector);
         IERC20(testToken).transfer(address(poolManagerAddress), 1 ether);
     }
 
@@ -878,10 +878,10 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Transfer ownership to alice
         vm.prank(creator);
-        ILivoToken(testToken).proposeNewOwner(alice);
+        IRealmToken(testToken).proposeNewOwner(alice);
         vm.prank(alice);
-        ILivoToken(testToken).acceptTokenOwnership();
-        assertEq(ILivoToken(testToken).owner(), alice, "Alice should be the new token owner");
+        IRealmToken(testToken).acceptTokenOwnership();
+        assertEq(IRealmToken(testToken).owner(), alice, "Alice should be the new token owner");
 
         // Generate fresh LP fees after ownership transfer so they belong to the new owner path
         _swapBuy(buyer, buyAmount, 0, true);
@@ -946,7 +946,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function test_deployTaxTokenWithTooHighSellTaxes() public {
-        vm.expectRevert(abi.encodeWithSelector(ILivoFactory.InvalidTaxBps.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));
         factoryTax.createToken(
             "TestToken",
             "TEST",
@@ -1274,25 +1274,25 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // The flag is surfaced via the public getter.
         assertFalse(
-            LivoTaxableTokenUniV4(payable(testToken)).startTaxFromLaunch(), "token should be graduation-anchored"
+            RealmTaxableTokenUniV4(payable(testToken)).startTaxFromLaunch(), "token should be graduation-anchored"
         );
 
         // Not graduated yet → window has not started.
-        assertEq(ILivoTaxableToken(testToken).graduationTimestamp(), 0, "not graduated yet");
+        assertEq(IRealmTaxableToken(testToken).graduationTimestamp(), 0, "not graduated yet");
 
         // getTaxConfig(): fully zeroed before graduation.
-        ILivoToken.TaxConfig memory cfg = ILivoToken(testToken).getTaxConfig();
+        IRealmToken.TaxConfig memory cfg = IRealmToken(testToken).getTaxConfig();
         assertEq(cfg.buyTaxBps, 0, "buy tax inactive pre-graduation");
         assertEq(cfg.sellTaxBps, 0, "sell tax inactive pre-graduation");
         assertEq(cfg.taxDurationSeconds, 0, "duration zeroed pre-graduation");
 
         // getLaunchpadFees(): LP fee still applies, but tax is 0 on both sides.
-        ILivoToken.LaunchpadFees memory buyFees = ILivoToken(testToken)
-            .getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}));
+        IRealmToken.LaunchpadFees memory buyFees = IRealmToken(testToken)
+            .getLaunchpadFees(IRealmToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}));
         assertGt(buyFees.lpFeeBps, 0, "LP fee still charged pre-graduation");
         assertEq(buyFees.taxBps, 0, "no buy tax pre-graduation for graduation-anchored token");
-        ILivoToken.LaunchpadFees memory sellFees = ILivoToken(testToken)
-            .getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: false, ethReserves: 0, releasedSupply: 0}));
+        IRealmToken.LaunchpadFees memory sellFees = IRealmToken(testToken)
+            .getLaunchpadFees(IRealmToken.LaunchpadTrade({isBuy: false, ethReserves: 0, releasedSupply: 0}));
         assertEq(sellFees.taxBps, 0, "no sell tax pre-graduation for graduation-anchored token");
     }
 
@@ -1306,11 +1306,11 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
 
         _graduateToken();
-        uint40 graduationTs = ILivoTaxableToken(testToken).graduationTimestamp();
+        uint40 graduationTs = IRealmTaxableToken(testToken).graduationTimestamp();
         assertGt(graduationTs, 0, "graduated");
 
         // Within the window: config reports the configured rate.
-        ILivoToken.TaxConfig memory active = ILivoToken(testToken).getTaxConfig();
+        IRealmToken.TaxConfig memory active = IRealmToken(testToken).getTaxConfig();
         assertEq(active.sellTaxBps, DEFAULT_SELL_TAX_BPS, "sell tax active just after graduation");
         assertEq(active.taxDurationSeconds, DEFAULT_TAX_DURATION, "duration reported within window");
 
@@ -1322,7 +1322,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Past graduation + duration: window closed, config zeroed.
         vm.warp(uint256(graduationTs) + DEFAULT_TAX_DURATION + 1);
-        ILivoToken.TaxConfig memory expired = ILivoToken(testToken).getTaxConfig();
+        IRealmToken.TaxConfig memory expired = IRealmToken(testToken).getTaxConfig();
         assertEq(expired.sellTaxBps, 0, "sell tax zeroed after graduation window");
         assertEq(expired.taxDurationSeconds, 0, "duration zeroed after graduation window");
 
@@ -1345,7 +1345,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     ///         only starts at graduation.
     function test_graduationAnchored_windowAnchoredAtGraduationNotLaunch() public {
         testToken = _createTaxTokenFromGraduation(0, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
-        uint40 launchTs = ILivoToken(testToken).launchTimestamp();
+        uint40 launchTs = IRealmToken(testToken).launchTimestamp();
 
         // Sit on the curve far past where a creation-anchored window would have closed.
         vm.warp(uint256(launchTs) + 2 * DEFAULT_TAX_DURATION);
@@ -1355,7 +1355,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
         _graduateToken();
 
-        uint40 graduationTs = ILivoTaxableToken(testToken).graduationTimestamp();
+        uint40 graduationTs = IRealmTaxableToken(testToken).graduationTimestamp();
         assertGt(
             graduationTs,
             launchTs + DEFAULT_TAX_DURATION,
@@ -1364,7 +1364,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Tax is ACTIVE post-graduation, proving the window is anchored at graduation.
         assertEq(
-            ILivoToken(testToken).getTaxConfig().sellTaxBps,
+            IRealmToken(testToken).getTaxConfig().sellTaxBps,
             DEFAULT_SELL_TAX_BPS,
             "tax active post-graduation despite being long past the launch-anchored expiry"
         );
@@ -1376,7 +1376,9 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // It still ends `duration` after graduation.
         vm.warp(uint256(graduationTs) + DEFAULT_TAX_DURATION + 1);
         assertEq(
-            ILivoToken(testToken).getTaxConfig().sellTaxBps, 0, "tax ends `duration` after graduation, not after launch"
+            IRealmToken(testToken).getTaxConfig().sellTaxBps,
+            0,
+            "tax ends `duration` after graduation, not after launch"
         );
     }
 }

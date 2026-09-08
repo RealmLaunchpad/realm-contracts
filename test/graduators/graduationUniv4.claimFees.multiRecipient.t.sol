@@ -4,8 +4,8 @@ pragma solidity 0.8.28;
 import {BaseUniswapV4FeesTests, BaseUniswapV4ClaimFeesBase} from "test/graduators/graduationUniv4.claimFees.t.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Base for multi-recipient V4 fee tests — creates tokens with a multi-recipient `feeReceivers`
@@ -23,10 +23,10 @@ abstract contract MultiRecipientV4BaseTests is BaseUniswapV4FeesTests {
         shareholder2 = makeAddr("shareholder2");
     }
 
-    function _feeShares() internal view returns (ILivoFactory.FeeShare[] memory arr) {
-        arr = new ILivoFactory.FeeShare[](2);
-        arr[0] = ILivoFactory.FeeShare({account: shareholder1, shares: SHARE_1, directFeesEnabled: false});
-        arr[1] = ILivoFactory.FeeShare({account: shareholder2, shares: SHARE_2, directFeesEnabled: false});
+    function _feeShares() internal view returns (IRealmFactory.FeeShare[] memory arr) {
+        arr = new IRealmFactory.FeeShare[](2);
+        arr[0] = IRealmFactory.FeeShare({account: shareholder1, shares: SHARE_1, directFeesEnabled: false});
+        arr[1] = IRealmFactory.FeeShare({account: shareholder2, shares: SHARE_2, directFeesEnabled: false});
     }
 
     function _createTokenForCreator(string memory name, string memory symbol, bytes32)
@@ -39,7 +39,7 @@ abstract contract MultiRecipientV4BaseTests is BaseUniswapV4FeesTests {
         address token = factoryV4.createToken(
             name,
             symbol,
-            _nextValidSalt(address(factoryV4), address(livoToken)),
+            _nextValidSalt(address(factoryV4), address(realmToken)),
             _feeShares(),
             _noSs(),
             false,
@@ -68,7 +68,7 @@ abstract contract MultiRecipientV4BaseTests is BaseUniswapV4FeesTests {
 }
 
 // ============================================
-// V4 + multi-recipient master fee handler + LivoToken (normal)
+// V4 + multi-recipient master fee handler + RealmToken (normal)
 // ============================================
 
 contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTests {
@@ -153,7 +153,7 @@ contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTe
 contract UniswapV4ClaimFees_MultiRecipient_TaxToken is TaxTokenUniV4BaseTests, MultiRecipientV4BaseTests {
     function setUp() public override(TaxTokenUniV4BaseTests, MultiRecipientV4BaseTests) {
         super.setUp();
-        implementation = ILivoToken(address(taxTokenImpl));
+        implementation = IRealmToken(address(taxTokenImpl));
         SELL_TAX_BPS = DEFAULT_SELL_TAX_BPS;
     }
 
@@ -177,7 +177,7 @@ contract UniswapV4ClaimFees_MultiRecipient_TaxToken is TaxTokenUniV4BaseTests, M
         address token = factoryTax.createToken(
             name,
             symbol,
-            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             _feeShares(),
             _noSs(),
             false,

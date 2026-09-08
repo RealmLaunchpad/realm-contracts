@@ -3,12 +3,12 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {stdStorage, StdStorage} from "forge-std/Test.sol";
@@ -26,10 +26,10 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     /// @dev Creates an ownerless V2 tax token with a `liquidityBps` allocation via the allocation-aware
     ///      `createToken` overload. 4%-configurable sell tax, creation-anchored 14-day window.
     function _createLiquidityV2Token(uint16 sellTaxBps, uint16 liquidityBps) internal returns (address token) {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "LiqV2",
             symbol: "LV2",
-            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            salt: _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -47,19 +47,19 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         });
         vm.prank(creator);
         token = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
         );
     }
 
     function test_liquidityBps_storedAtCreation() public {
         address token = _createLiquidityV2Token(400, 5000);
-        assertEq(LivoTaxableTokenUniV2(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
+        assertEq(RealmTaxableTokenUniV2(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
     }
 
     function test_v2Liquidity_swapBackBuffersThenProcessAddsLp() public {
         address token = _createLiquidityV2Token(400, 5000); // 4% sell tax; 50% of earnings → liquidity
         testToken = token;
-        LivoTaxableTokenUniV2 liqToken = LivoTaxableTokenUniV2(payable(token));
+        RealmTaxableTokenUniV2 liqToken = RealmTaxableTokenUniV2(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -95,7 +95,7 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         assertEq(liqToken.liquidityPendingTokens(), pendingTokens - cap / 2 - tokensAdded, "remainder stays buffered");
         assertGt(IERC20(pair).balanceOf(DEAD_ADDRESS), deadLpBefore, "LP minted and locked at the dead address");
 
-        vm.expectRevert(LivoTaxableTokenUniV2.ProcessCooldown.selector);
+        vm.expectRevert(RealmTaxableTokenUniV2.ProcessCooldown.selector);
         liqToken.processLiquidity(0);
 
         vm.roll(block.number + 1);
@@ -114,7 +114,7 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     function test_v2ProcessLiquidity_eventReportsAmountsThatReachedThePair() public {
         address token = _createLiquidityV2Token(400, 5000);
         testToken = token;
-        LivoTaxableTokenUniV2 liqToken = LivoTaxableTokenUniV2(payable(token));
+        RealmTaxableTokenUniV2 liqToken = RealmTaxableTokenUniV2(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -184,13 +184,13 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         launchpad.buyTokensWithExactEth{value: 1 ether}(token, 0, DEADLINE);
         _graduateToken();
 
-        vm.expectRevert(LivoTaxableTokenUniV2.NothingToAdd.selector);
-        LivoTaxableTokenUniV2(payable(token)).processLiquidity(0);
+        vm.expectRevert(RealmTaxableTokenUniV2.NothingToAdd.selector);
+        RealmTaxableTokenUniV2(payable(token)).processLiquidity(0);
     }
 
     /// @dev The caller supplies the floor for the half-sell, so a permissionless caller could set it to
     ///      zero around their own price manipulation and keep almost the whole sell. See
-    ///      `LivoKeepersRegistry`.
+    ///      `RealmKeepersRegistry`.
     function test_v2ProcessLiquidity_refusesANonKeeper() public {
         address token = _createLiquidityV2Token(400, 5000);
         testToken = token;
@@ -201,13 +201,13 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
         vm.prank(makeAddr("randomCaller"));
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
-        LivoTaxableTokenUniV2(payable(token)).processLiquidity(0);
+        RealmTaxableTokenUniV2(payable(token)).processLiquidity(0);
     }
 
     function test_v2ProcessLiquidity_revertsBeforeGraduation() public {
         address token = _createLiquidityV2Token(400, 5000);
-        vm.expectRevert(LivoTaxableTokenUniV2.NotGraduated.selector);
-        LivoTaxableTokenUniV2(payable(token)).processLiquidity(0);
+        vm.expectRevert(RealmTaxableTokenUniV2.NotGraduated.selector);
+        RealmTaxableTokenUniV2(payable(token)).processLiquidity(0);
     }
 
     /// @dev A buffer so small the half-sell rounds to zero tokens yields no native, so no LP is added —
@@ -226,10 +226,10 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         // One wei of token: `tokensToSell = 1 / 2 = 0`, so nothing is sold and nothing can be paired.
         stdstore.target(token).sig("liquidityPendingTokens()").checked_write(uint256(1));
 
-        LivoTaxableTokenUniV2(payable(token)).processLiquidity(0);
+        RealmTaxableTokenUniV2(payable(token)).processLiquidity(0);
 
         assertEq(
-            LivoTaxableTokenUniV2(payable(token)).liquidityPendingTokens(),
+            RealmTaxableTokenUniV2(payable(token)).liquidityPendingTokens(),
             1,
             "the unpaired token stays earmarked for liquidity instead of leaking into the tax pool"
         );

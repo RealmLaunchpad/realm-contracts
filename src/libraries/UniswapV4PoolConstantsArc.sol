@@ -22,7 +22,7 @@ import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 ///      the range bounds preserve the exact ETH tick DISTANCES (same distance ⇒ same price ratio ⇒ same
 ///      pool geometry). Validated in `test/graduators/uniswapV4ConstantsArc.t.sol`.
 library UniswapV4PoolConstantsArc {
-    /// @notice LP fees in pips. 0 because LP fees are charged by the hook (LivoSwapHook). Chain-invariant.
+    /// @notice LP fees in pips. 0 because LP fees are charged by the hook (RealmSwapHook). Chain-invariant.
     uint24 internal constant LP_FEE = 0;
 
     /// @notice Tick spacing. Chain-invariant (pool granularity, not a price).
@@ -71,11 +71,11 @@ library UniswapV4PoolConstantsArc {
     ///         (24.5 ETH → 49000 USDC mcap, same $49,000). Tick 99200.
     uint160 internal constant SQRT_PRICEX96_GRADUATION_THICK = 11318308930609191406477680574464;
 
-    /// @notice The canonical PoolKey of a graduated Livo token's V4 pool: `(native USDC, token)` with
+    /// @notice The canonical PoolKey of a graduated Realm token's V4 pool: `(native USDC, token)` with
     ///         this library's fee/spacing and the graduator's hook. THE single source of truth — the
     ///         graduator, the buy-back mixin and the token's liquidity leg must all target the same
     ///         pool, so none of them may hand-roll the key.
-    function livoPoolKey(address token, address hook) internal pure returns (PoolKey memory) {
+    function realmPoolKey(address token, address hook) internal pure returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native USDC
             currency1: Currency.wrap(token),

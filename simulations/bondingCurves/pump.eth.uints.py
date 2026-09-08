@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 if __name__ == "__main__":
-    outputdir = Path("/home/jl/defi/livo-launchpad/livo-contracts/simulations/img/")
+    outputdir = Path("/home/jl/defi/realm-launchpad/realm-contracts/simulations/img/")
     outputdir.mkdir(parents=True, exist_ok=True)
 
     # y = circulating supply
@@ -119,7 +119,7 @@ if __name__ == "__main__":
     plt.plot(ethReserves/1e18, bondingCurvePrices, label="Bonding Curve")
     plt.plot(ethReserves/1e18, uniswapPrices, label="Uniswap")
     plt.scatter([graduationEth/1e18], [0.0000000390113284], color='red')
-    plt.title('Livo Graduation transition')
+    plt.title('Realm Graduation transition')
     plt.xlabel("ETH Reserves")
     plt.ylabel("Price (ETH/Token)")
     plt.grid()

@@ -7,12 +7,12 @@ import {
 } from "test/graduators/graduationUniv4.claimFees.t.sol";
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 
 contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, UniswapV4ClaimFeesViewFunctionsBase {
     function setUp() public override(TaxTokenUniV4BaseTests, BaseUniswapV4FeesTests) {
         super.setUp();
-        implementation = ILivoToken(address(taxTokenImpl));
+        implementation = IRealmToken(address(taxTokenImpl));
     }
 
     function _expectsSellTaxes() internal pure override returns (bool) {
@@ -39,7 +39,7 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         address token = factoryTax.createToken(
             name,
             symbol,
-            _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             _fs(creator),
             _noSs(),
             false,

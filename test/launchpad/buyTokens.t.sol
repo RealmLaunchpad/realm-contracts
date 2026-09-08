@@ -6,11 +6,11 @@ import {
     LaunchpadBaseTestsWithUniv2Graduator,
     LaunchpadBaseTestsWithUniv4Graduator
 } from "./base.t.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {ILivoBondingCurve} from "src/interfaces/ILivoBondingCurve.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 import {console} from "forge-std/console.sol";
 
 abstract contract BuyTokensTest is LaunchpadBaseTests {
@@ -27,7 +27,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         vm.prank(buyer);
         vm.expectEmit(true, true, false, true);
-        emit LivoLaunchpad.LivoTokenBuy(testToken, buyer, ethAmount, expectedTokensToReceive, expectedEthFee);
+        emit RealmLaunchpad.RealmTokenBuy(testToken, buyer, ethAmount, expectedTokensToReceive, expectedEthFee);
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, minTokenAmount, DEADLINE);
 
         assertEq(buyer.balance, buyerEthBalanceBefore - ethAmount);
@@ -117,21 +117,21 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         uint256 minTokenAmount = expectedTokens + 1;
 
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.SlippageExceeded.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.SlippageExceeded.selector));
         launchpad.buyTokensWithExactEth{value: ethAmount}(testToken, minTokenAmount, DEADLINE);
     }
 
     function testBuyTokensWithExactEth_revertZeroEth() public createTestToken {
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidAmount.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.InvalidAmount.selector));
         launchpad.buyTokensWithExactEth{value: 0}(testToken, 0, DEADLINE);
     }
 
     function testBuyTokensWithExactEth_revertInvalidToken() public {
-        LivoToken invalidToken = new LivoToken();
+        RealmToken invalidToken = new RealmToken();
 
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidToken.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.InvalidToken.selector));
         launchpad.buyTokensWithExactEth{value: 1 ether}(address(invalidToken), 0, DEADLINE);
     }
 
@@ -141,7 +141,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         skip(2 minutes);
 
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.DeadlineExceeded.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.DeadlineExceeded.selector));
         launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, deadline);
     }
 
@@ -173,7 +173,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         vm.deal(buyer, excessiveAmount);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: excessiveAmount}(testToken, 0, DEADLINE);
     }
 
@@ -201,7 +201,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 
         vm.deal(buyer, excessiveAmount);
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.buyTokensWithExactEth{value: excessiveAmount}(testToken, 0, DEADLINE);
     }
 
@@ -298,7 +298,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
             testToken2 = factoryV2.createToken(
                 "Test Token 2",
                 "TT2",
-                _nextValidSalt(address(factoryV2), address(livoToken)),
+                _nextValidSalt(address(factoryV2), address(realmToken)),
                 _fs(creator),
                 _noSs(),
                 _emptyTaxCfg(),
@@ -308,7 +308,7 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
             testToken2 = factoryV4.createToken(
                 "Test Token 2",
                 "TT2",
-                _nextValidSalt(address(factoryV4), address(livoToken)),
+                _nextValidSalt(address(factoryV4), address(realmToken)),
                 _fs(creator),
                 _noSs(),
                 false,
@@ -390,19 +390,19 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
     }
 
     function test_quoteBuyTokens_invalidToken() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidToken.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.InvalidToken.selector));
         launchpad.quoteBuyTokensWithExactEth(address(0), 1 ether);
     }
 
     function test_quoteSellTokens_invalidToken() public {
-        vm.expectRevert(abi.encodeWithSelector(LivoLaunchpad.InvalidToken.selector));
+        vm.expectRevert(abi.encodeWithSelector(RealmLaunchpad.InvalidToken.selector));
         launchpad.quoteSellExactTokens(address(0), 1 ether);
     }
 
     function test_quoteBuyTokens_rightBelowHittingExcessLimit() public createTestToken {
         uint256 maxValue = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS + 1);
 
-        vm.expectRevert(abi.encodeWithSelector(ILivoBondingCurve.MaxEthReservesExceeded.selector));
+        vm.expectRevert(abi.encodeWithSelector(IRealmBondingCurve.MaxEthReservesExceeded.selector));
         launchpad.quoteBuyTokensWithExactEth(testToken, maxValue);
 
         // however, one wei less should be fine

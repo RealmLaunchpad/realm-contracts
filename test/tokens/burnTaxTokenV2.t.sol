@@ -3,11 +3,11 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Integration tests for the V2 token-space burn earnings-allocation leg (no ETH→token round
@@ -20,10 +20,10 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
     /// @dev Creates an ownerless V2 tax token with a `burnBps` allocation via the allocation-aware
     ///      `createToken` overload. 4%-configurable sell tax, creation-anchored 14-day window.
     function _createBurnV2Token(uint16 sellTaxBps, uint16 burnBps) internal returns (address token) {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "BurnV2",
             symbol: "BV2",
-            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            salt: _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -41,19 +41,19 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
         });
         vm.prank(creator);
         token = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
         );
     }
 
     function test_burnBps_storedAtCreation() public {
         address token = _createBurnV2Token(400, 5000);
-        assertEq(LivoTaxableTokenUniV2(payable(token)).burnBps(), 5000, "burnBps stored via new overload");
+        assertEq(RealmTaxableTokenUniV2(payable(token)).burnBps(), 5000, "burnBps stored via new overload");
     }
 
     function test_v2Burn_swapBackBurnsTokenShareInPlace() public {
         address token = _createBurnV2Token(400, 5000); // 4% sell tax; 50% of earnings → burn
         testToken = token;
-        LivoTaxableTokenUniV2 burnToken = LivoTaxableTokenUniV2(payable(token));
+        RealmTaxableTokenUniV2 burnToken = RealmTaxableTokenUniV2(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -75,7 +75,7 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
         // tokens in-place (no ETH→token round trip), then swaps the rest.
         // Shared two-field signature; V2 spends no ETH to burn (token-space burn), so `ethSpent` is 0.
         vm.expectEmit(true, true, true, true, address(burnToken));
-        emit LivoTaxableToken.CreatorTaxBurn(0, expectedBurn);
+        emit RealmTaxableToken.CreatorTaxBurn(0, expectedBurn);
         vm.prank(admin);
         burnToken.swapBack(accrued, 0);
 
@@ -85,9 +85,9 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
 
     function test_v2SwapBack_revertsBeforeGraduation() public {
         address token = _createBurnV2Token(400, 5000);
-        LivoTaxableTokenUniV2 burnToken = LivoTaxableTokenUniV2(payable(token));
+        RealmTaxableTokenUniV2 burnToken = RealmTaxableTokenUniV2(payable(token));
         vm.prank(admin);
-        vm.expectRevert(LivoTaxableTokenUniV2.NotGraduated.selector);
+        vm.expectRevert(RealmTaxableTokenUniV2.NotGraduated.selector);
         burnToken.swapBack(1, 0);
     }
 }

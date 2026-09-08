@@ -6,7 +6,7 @@ import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.so
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
+import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 
@@ -96,7 +96,7 @@ contract DividendsMultiAssetTests is Test {
     uint16 internal constant W_BIG = 8_000;
 
     MultiAssetHarness internal h;
-    LivoDividendSwapRegistry internal registry;
+    RealmDividendSwapRegistry internal registry;
 
     address internal holder = makeAddr("holder");
     address internal other = makeAddr("other");

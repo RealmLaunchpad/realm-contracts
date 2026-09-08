@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4GraduatorTaxableToken} from "test/launchpad/base.t.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {E2EHappyPath} from "test/e2e/suites/E2EHappyPath.t.sol";
 import {E2EGraduationFlows} from "test/e2e/suites/E2EGraduationFlows.t.sol";
 import {E2ESniperWindow} from "test/e2e/suites/E2ESniperWindow.t.sol";
@@ -17,9 +17,9 @@ contract E2E_FactoryTaxTokenSniperProtected is
 {
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4GraduatorTaxableToken) {
         super.setUp();
-        // The base sets `implementation = livoTaxToken`; sniper-protected tax tokens use a
+        // The base sets `implementation = realmTaxToken`; sniper-protected tax tokens use a
         // different implementation. Override here so `_nextValidSalt` predicts the right address.
-        implementation = livoTaxTokenSniper;
+        implementation = realmTaxTokenSniper;
     }
 
     function _factory() internal view override returns (address) {
@@ -27,7 +27,7 @@ contract E2E_FactoryTaxTokenSniperProtected is
     }
 
     function _tokenImpl() internal view override returns (address) {
-        return address(livoTaxTokenSniper);
+        return address(realmTaxTokenSniper);
     }
 
     function _createTestToken(bytes32 salt) internal override returns (address token) {
@@ -44,7 +44,7 @@ contract E2E_FactoryTaxTokenSniperProtected is
         );
     }
 
-    function _createTestTokenWithSplit(bytes32 salt, ILivoFactory.FeeShare[] memory feeReceivers)
+    function _createTestTokenWithSplit(bytes32 salt, IRealmFactory.FeeShare[] memory feeReceivers)
         internal
         override
         returns (address token)
@@ -62,11 +62,11 @@ contract E2E_FactoryTaxTokenSniperProtected is
         );
     }
 
-    function _createTokenWithDeployerBuy(bytes32 salt, uint256 ethValue, ILivoFactory.SupplyShare[] memory supplyShares)
-        internal
-        override
-        returns (address token)
-    {
+    function _createTokenWithDeployerBuy(
+        bytes32 salt,
+        uint256 ethValue,
+        IRealmFactory.SupplyShare[] memory supplyShares
+    ) internal override returns (address token) {
         vm.deal(creator, ethValue);
         vm.prank(creator);
         token = factoryTaxSniper.createToken{value: ethValue}(

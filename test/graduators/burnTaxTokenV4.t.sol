@@ -2,11 +2,11 @@
 pragma solidity 0.8.28;
 
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
@@ -24,10 +24,10 @@ contract RefundingUniversalRouterStub {
 ///         already sent the payout at that point but has not yet reduced `dividendsOwed`, so the
 ///         contract reads as fully reserved from the inside.
 contract ReentrantDividendClaimer {
-    LivoTaxableTokenUniV4 public token;
+    RealmTaxableTokenUniV4 public token;
     bool public reentered;
 
-    function setToken(LivoTaxableTokenUniV4 t) external {
+    function setToken(RealmTaxableTokenUniV4 t) external {
         token = t;
     }
 
@@ -47,10 +47,10 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Creates a taxable V4 token with a `burnBps` earnings allocation via the allocation-aware
     ///      `createToken` overload. 4%-configurable sell tax, creation-anchored 14-day window.
     function _createBurnTaxToken(uint16 sellTaxBps, uint16 burnBps) internal returns (address token) {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "BurnToken",
             symbol: "BURN",
-            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -70,23 +70,23 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         token = factoryTax.createToken(
             setup,
             cfg,
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
     }
 
     function test_burnBps_storedAtCreation() public {
         address token = _createBurnTaxToken(400, 5000);
-        assertEq(LivoTaxableTokenUniV4(payable(token)).burnBps(), 5000, "burnBps stored via new overload");
+        assertEq(RealmTaxableTokenUniV4(payable(token)).burnBps(), 5000, "burnBps stored via new overload");
     }
 
     function test_v4Burn_accruesThenProcessBurnReducesSupply() public {
         address token = _createBurnTaxToken(400, 5000); // 4% sell tax; 50% of earnings → burn
         testToken = token;
-        LivoTaxableTokenUniV4 burnToken = LivoTaxableTokenUniV4(payable(token));
+        RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -118,7 +118,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_v4ProcessBurn_unspentEthStaysEarmarked() public {
         address token = _createBurnTaxToken(400, 5000);
         testToken = token;
-        LivoTaxableTokenUniV4 burnToken = LivoTaxableTokenUniV4(payable(token));
+        RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -141,10 +141,10 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev Same as `_createBurnTaxToken`, plus a NATIVE dividends leg, so the token holds both a burn
     ///      buffer and a payout that hands control to a holder.
     function _createBurnAndDividendToken(uint16 burnBps, uint16 dividendsBps) internal returns (address token) {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "BurnDivToken",
             symbol: "BDIV",
-            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -164,10 +164,10 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         token = factoryTax.createToken(
             setup,
             cfg,
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
     }
@@ -181,7 +181,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_v4ProcessBurn_reenteredFromADividendPayout_doesNotRefillTheBuffer() public {
         address token = _createBurnAndDividendToken(2500, 5000);
         testToken = token;
-        LivoTaxableTokenUniV4 burnToken = LivoTaxableTokenUniV4(payable(token));
+        RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -222,25 +222,25 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     /// @dev The caller picks `minTokensOut`, so a permissionless caller could set it to zero around
     ///      their own price manipulation and keep almost the whole spend. The cap and the cooldown bound
-    ///      that per block; only the gate bounds the fraction. See `LivoKeepersRegistry`.
+    ///      that per block; only the gate bounds the fraction. See `RealmKeepersRegistry`.
     function test_v4ProcessBurn_refusesANonKeeper() public {
         address token = _createBurnTaxToken(400, 5000);
         vm.prank(makeAddr("randomCaller"));
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
-        LivoTaxableTokenUniV4(payable(token)).processBurn(0);
+        RealmTaxableTokenUniV4(payable(token)).processBurn(0);
     }
 
     function test_v4ProcessBurn_revertsWhenNothingPending() public {
         address token = _createBurnTaxToken(400, 5000);
-        vm.expectRevert(LivoTaxableTokenUniV4.NothingToBurn.selector);
-        LivoTaxableTokenUniV4(payable(token)).processBurn(0);
+        vm.expectRevert(RealmTaxableTokenUniV4.NothingToBurn.selector);
+        RealmTaxableTokenUniV4(payable(token)).processBurn(0);
     }
 
     /// @dev Sandwich-extraction bound: at most `MAX_EARNINGS_PER_PROCESS` spent per call, once per block.
     function test_v4ProcessBurn_cappedPerCallAndOncePerBlock() public {
         address token = _createBurnTaxToken(400, 5000);
         testToken = token;
-        LivoTaxableTokenUniV4 burnToken = LivoTaxableTokenUniV4(payable(token));
+        RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -258,7 +258,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         // At most `cap` spent; the remainder (plus any re-accrual from the buy-back's own fees) stays.
         assertGe(burnToken.burnPendingEth(), pending - cap, "spend capped per call");
 
-        vm.expectRevert(LivoTaxableTokenUniV4.ProcessCooldown.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4.ProcessCooldown.selector);
         burnToken.processBurn(0);
 
         vm.roll(block.number + 1);
@@ -272,7 +272,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_v4ProcessBurn_unrepresentableMinOutFailsInsteadOfTruncating() public {
         address token = _createBurnTaxToken(400, 5000);
         testToken = token;
-        LivoTaxableTokenUniV4 burnToken = LivoTaxableTokenUniV4(payable(token));
+        RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -283,7 +283,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         uint256 pending = burnToken.burnPendingEth();
         assertGt(pending, 0, "burn ETH should accrue from the sell tax");
 
-        vm.expectRevert(LivoTaxableTokenUniV4.BuyBackFailed.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4.BuyBackFailed.selector);
         burnToken.processBurn(uint256(type(uint128).max) + 1);
 
         assertEq(burnToken.burnPendingEth(), pending, "the buffer is untouched by the rejected call");
@@ -292,7 +292,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_v4SweepStrayEth_routesStrayToBurnBuffer() public {
         address token = _createBurnTaxToken(400, 5000);
         testToken = token;
-        LivoTaxableTokenUniV4 burnToken = LivoTaxableTokenUniV4(payable(token));
+        RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -311,10 +311,10 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_createToken_revertsOnAllocationForDecayOnlyToken() public {
         // The V4 factory carries its own copy of the gate: decay-only tokens (no long-term static tax)
         // cannot configure an earnings allocation.
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DecayOnly",
             symbol: "DEC",
-            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -331,14 +331,14 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             })
         });
         vm.prank(creator);
-        vm.expectRevert(ILivoFactory.EarningsAllocationRequiresTax.selector);
+        vm.expectRevert(IRealmFactory.EarningsAllocationRequiresTax.selector);
         factoryTax.createToken(
             setup,
             cfg,
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
     }

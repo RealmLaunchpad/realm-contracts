@@ -8,18 +8,18 @@ import {Vm} from "forge-std/Vm.sol";
 import {ForkIntegrationConfig} from "test/integration/fork/config/ForkIntegrationConfig.t.sol";
 import {ForkIntegrationCaseLib} from "test/integration/fork/base/ForkIntegrationCaseLib.t.sol";
 
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoQuoter} from "src/LivoQuoter.sol";
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {ILivoQuoter2} from "src/interfaces/ILivoQuoter2.sol";
-import {LimitReason} from "src/interfaces/ILivoQuoter.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {RealmQuoter} from "src/RealmQuoter.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {IRealmQuoter2} from "src/interfaces/IRealmQuoter2.sol";
+import {LimitReason} from "src/interfaces/IRealmQuoter.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
-import {TaxConfigInit, TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigInit, TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 interface ISniperProtectionRead {
@@ -29,7 +29,7 @@ interface ISniperProtectionRead {
     function launchTimestamp() external view returns (uint40);
 }
 
-/// @notice Common setup and lifecycle helpers for chain-neutral Livo fork integration tests.
+/// @notice Common setup and lifecycle helpers for chain-neutral Realm fork integration tests.
 abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     using ForkIntegrationCaseLib for *;
 
@@ -51,15 +51,15 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
 
     ForkIntegrationCaseLib.ForkChainConfig internal forkCfg;
 
-    LivoLaunchpad internal launchpad;
-    LivoQuoter internal quoter;
-    LivoFactoryUniV2Unified internal factoryV2;
-    LivoFactoryUniV4Unified internal factoryV4;
-    LivoMasterFeeHandler internal feeHandler;
+    RealmLaunchpad internal launchpad;
+    RealmQuoter internal quoter;
+    RealmFactoryUniV2Unified internal factoryV2;
+    RealmFactoryUniV4Unified internal factoryV4;
+    RealmMasterFeeHandler internal feeHandler;
 
     struct CreateInputs {
-        ILivoFactory.FeeShare[] fees;
-        ILivoFactory.SupplyShare[] supply;
+        IRealmFactory.FeeShare[] fees;
+        IRealmFactory.SupplyShare[] supply;
         uint256 ethValue;
         address impl;
         bytes32 salt;
@@ -82,11 +82,11 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
 
         _assertCoreConfigPresent();
 
-        launchpad = LivoLaunchpad(payable(forkCfg.launchpad));
-        quoter = LivoQuoter(forkCfg.quoter);
-        factoryV2 = LivoFactoryUniV2Unified(forkCfg.factoryV2Unified);
-        factoryV4 = LivoFactoryUniV4Unified(forkCfg.factoryV4Unified);
-        feeHandler = LivoMasterFeeHandler(forkCfg.masterFeeHandler);
+        launchpad = RealmLaunchpad(payable(forkCfg.launchpad));
+        quoter = RealmQuoter(forkCfg.quoter);
+        factoryV2 = RealmFactoryUniV2Unified(forkCfg.factoryV2Unified);
+        factoryV4 = RealmFactoryUniV4Unified(forkCfg.factoryV4Unified);
+        feeHandler = RealmMasterFeeHandler(forkCfg.masterFeeHandler);
 
         _assertDeployedAddressConfig();
     }
@@ -161,11 +161,11 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     }
 
     function _caseAddress(uint256 caseIndex, uint256 role) internal pure returns (address) {
-        return address(uint160(uint256(keccak256(abi.encode("LIVO_FORK_INTEGRATION", caseIndex, role)))));
+        return address(uint160(uint256(keccak256(abi.encode("REALM_FORK_INTEGRATION", caseIndex, role)))));
     }
 
     function _graduationBuyer(uint256 caseIndex, uint256 i) internal pure returns (address) {
-        return address(uint160(uint256(keccak256(abi.encode("LIVO_FORK_INTEGRATION_GRAD", caseIndex, i)))));
+        return address(uint160(uint256(keccak256(abi.encode("REALM_FORK_INTEGRATION_GRAD", caseIndex, i)))));
     }
 
     function _isV4(ForkIntegrationCaseLib.IntegrationCase memory c) internal pure returns (bool) {
@@ -236,50 +236,50 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     function _feeShares(ForkIntegrationCaseLib.CaseActors memory a, ForkIntegrationCaseLib.FeeMode mode)
         internal
         pure
-        returns (ILivoFactory.FeeShare[] memory fs)
+        returns (IRealmFactory.FeeShare[] memory fs)
     {
         if (mode == ForkIntegrationCaseLib.FeeMode.SingleClaimable) {
-            fs = new ILivoFactory.FeeShare[](1);
-            fs[0] = ILivoFactory.FeeShare({account: a.feeA, shares: 10_000, directFeesEnabled: false});
+            fs = new IRealmFactory.FeeShare[](1);
+            fs[0] = IRealmFactory.FeeShare({account: a.feeA, shares: 10_000, directFeesEnabled: false});
         } else if (mode == ForkIntegrationCaseLib.FeeMode.SingleDirect) {
-            fs = new ILivoFactory.FeeShare[](1);
-            fs[0] = ILivoFactory.FeeShare({account: a.feeDirect, shares: 10_000, directFeesEnabled: true});
+            fs = new IRealmFactory.FeeShare[](1);
+            fs[0] = IRealmFactory.FeeShare({account: a.feeDirect, shares: 10_000, directFeesEnabled: true});
         } else if (mode == ForkIntegrationCaseLib.FeeMode.MultipleClaimable) {
-            fs = new ILivoFactory.FeeShare[](2);
-            fs[0] = ILivoFactory.FeeShare({account: a.feeA, shares: 6_000, directFeesEnabled: false});
-            fs[1] = ILivoFactory.FeeShare({account: a.feeB, shares: 4_000, directFeesEnabled: false});
+            fs = new IRealmFactory.FeeShare[](2);
+            fs[0] = IRealmFactory.FeeShare({account: a.feeA, shares: 6_000, directFeesEnabled: false});
+            fs[1] = IRealmFactory.FeeShare({account: a.feeB, shares: 4_000, directFeesEnabled: false});
         } else {
-            fs = new ILivoFactory.FeeShare[](3);
-            fs[0] = ILivoFactory.FeeShare({account: a.feeDirect, shares: 2_000, directFeesEnabled: true});
-            fs[1] = ILivoFactory.FeeShare({account: a.feeA, shares: 5_000, directFeesEnabled: false});
-            fs[2] = ILivoFactory.FeeShare({account: a.feeB, shares: 3_000, directFeesEnabled: false});
+            fs = new IRealmFactory.FeeShare[](3);
+            fs[0] = IRealmFactory.FeeShare({account: a.feeDirect, shares: 2_000, directFeesEnabled: true});
+            fs[1] = IRealmFactory.FeeShare({account: a.feeA, shares: 5_000, directFeesEnabled: false});
+            fs[2] = IRealmFactory.FeeShare({account: a.feeB, shares: 3_000, directFeesEnabled: false});
         }
     }
 
     function _supplyShares(ForkIntegrationCaseLib.CaseActors memory a, ForkIntegrationCaseLib.CreatorBuyMode mode)
         internal
         pure
-        returns (ILivoFactory.SupplyShare[] memory ss, uint256 ethValue)
+        returns (IRealmFactory.SupplyShare[] memory ss, uint256 ethValue)
     {
         if (mode == ForkIntegrationCaseLib.CreatorBuyMode.None) {
-            return (new ILivoFactory.SupplyShare[](0), 0);
+            return (new IRealmFactory.SupplyShare[](0), 0);
         }
 
         ethValue = DEPLOYER_BUY_ETH;
         if (mode == ForkIntegrationCaseLib.CreatorBuyMode.SingleSupplyReceiver) {
-            ss = new ILivoFactory.SupplyShare[](1);
-            ss[0] = ILivoFactory.SupplyShare({account: a.creator, shares: 10_000});
+            ss = new IRealmFactory.SupplyShare[](1);
+            ss[0] = IRealmFactory.SupplyShare({account: a.creator, shares: 10_000});
         } else {
-            ss = new ILivoFactory.SupplyShare[](2);
-            ss[0] = ILivoFactory.SupplyShare({account: a.creator, shares: 7_000});
-            ss[1] = ILivoFactory.SupplyShare({account: a.supplyReceiver, shares: 3_000});
+            ss = new IRealmFactory.SupplyShare[](2);
+            ss[0] = IRealmFactory.SupplyShare({account: a.creator, shares: 7_000});
+            ss[1] = IRealmFactory.SupplyShare({account: a.supplyReceiver, shares: 3_000});
         }
     }
 
     function _previewImplementation(
         ForkIntegrationCaseLib.IntegrationCase memory c,
-        ILivoFactory.FeeShare[] memory fees,
-        ILivoFactory.SupplyShare[] memory supply
+        IRealmFactory.FeeShare[] memory fees,
+        IRealmFactory.SupplyShare[] memory supply
     ) internal view returns (address impl) {
         AntiSniperConfigs memory sniper = _antiSniperCfg(c);
         if (_isV4(c)) {
@@ -350,8 +350,8 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         vm.prank(creator);
         if (_isV4(c)) {
             token = factoryV4.createToken{value: input.ethValue}(
-                "Livo Integration",
-                "LIVOI",
+                "Realm Integration",
+                "REALMI",
                 input.salt,
                 input.fees,
                 input.supply,
@@ -361,8 +361,8 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
             );
         } else {
             token = factoryV2.createToken{value: input.ethValue}(
-                "Livo Integration",
-                "LIVOI",
+                "Realm Integration",
+                "REALMI",
                 input.salt,
                 input.fees,
                 input.supply,
@@ -381,13 +381,13 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     ) internal view {
         assertEq(impl, _expectedImplFromConfig(c), "expected impl mismatch");
         assertEq(address(launchpad.getTokenConfig(token).bondingCurve), forkCfg.bondingCurve, "token curve mismatch");
-        assertEq(ILivoToken(token).feeHandler(), forkCfg.masterFeeHandler, "token handler mismatch");
-        assertEq(ILivoToken(token).graduator(), _isV4(c) ? forkCfg.graduatorV4 : forkCfg.graduatorV2, "graduator");
+        assertEq(IRealmToken(token).feeHandler(), forkCfg.masterFeeHandler, "token handler mismatch");
+        assertEq(IRealmToken(token).graduator(), _isV4(c) ? forkCfg.graduatorV4 : forkCfg.graduatorV2, "graduator");
 
         if (!_isV4(c) || _renouncesOwnership(c)) {
-            assertEq(ILivoToken(token).owner(), address(0), "owner should be renounced");
+            assertEq(IRealmToken(token).owner(), address(0), "owner should be renounced");
         } else {
-            assertEq(ILivoToken(token).owner(), a.creator, "owner should be creator");
+            assertEq(IRealmToken(token).owner(), a.creator, "owner should be creator");
         }
 
         _assertTaxConfig(c, token);
@@ -404,7 +404,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     }
 
     function _assertTaxConfig(ForkIntegrationCaseLib.IntegrationCase memory c, address token) internal view {
-        ILivoToken.TaxConfig memory tax = ILivoToken(token).getTaxConfig();
+        IRealmToken.TaxConfig memory tax = IRealmToken(token).getTaxConfig();
         if (_hasTax(c)) {
             assertEq(tax.buyTaxBps, TAX_BUY_BPS, "buy tax mismatch");
             assertEq(tax.sellTaxBps, TAX_SELL_BPS, "sell tax mismatch");
@@ -424,7 +424,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
             assertEq(sniper.protectionWindowSeconds(), SNIPER_WINDOW_SECONDS, "sniper window mismatch");
             assertGt(sniper.launchTimestamp(), 0, "missing launch timestamp");
         } else {
-            assertEq(ILivoToken(token).maxTokenPurchase(address(0xBEEF)), type(uint256).max, "unexpected sniper cap");
+            assertEq(IRealmToken(token).maxTokenPurchase(address(0xBEEF)), type(uint256).max, "unexpected sniper cap");
         }
     }
 
@@ -503,7 +503,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         internal
         returns (uint256 receivedTokens)
     {
-        ILivoQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer, requestedEth);
+        IRealmQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer, requestedEth);
         assertTrue(
             q.reason == LimitReason.NONE || q.reason == LimitReason.GRADUATION_EXCESS
                 || q.reason == LimitReason.SNIPER_CAP,
@@ -524,7 +524,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         internal
         returns (uint256 receivedEth)
     {
-        ILivoQuoter2.SellExactTokensQuote memory q = quoter.quoteSellExactTokens(token, requestedTokens);
+        IRealmQuoter2.SellExactTokensQuote memory q = quoter.quoteSellExactTokens(token, requestedTokens);
         assertEq(uint256(q.reason), uint256(LimitReason.NONE), "unexpected sell quote reason");
         assertGt(q.tokensSold, 0, "empty sell quote");
         assertGt(q.ethForSeller, 0, "empty ETH sell quote");
@@ -555,7 +555,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         }
 
         assertTrue(launchpad.getTokenState(token).graduated, "launchpad did not graduate token");
-        assertTrue(ILivoToken(token).graduated(), "token did not mark graduated");
+        assertTrue(IRealmToken(token).graduated(), "token did not mark graduated");
     }
 
     function _singleToken(address token) internal pure returns (address[] memory tokens) {
@@ -618,7 +618,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
 
     function _assertTaxLogSeen() internal {
         Vm.Log[] memory entries = vm.getRecordedLogs();
-        bytes32 want = LivoSwapHook.CreatorTaxesAccrued.selector;
+        bytes32 want = RealmSwapHook.CreatorTaxesAccrued.selector;
         bool found;
         for (uint256 i; i < entries.length; ++i) {
             if (entries[i].topics.length > 0 && entries[i].topics[0] == want) {

@@ -2,12 +2,12 @@
 pragma solidity 0.8.28;
 
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -16,17 +16,17 @@ import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
-import {ILivoUniV4LiquidityAdder, LivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
-import {ILivoV4Graduator} from "src/tokens/LivoTaxableTokenUniV4Base.sol";
+import {IRealmUniV4LiquidityAdder, RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
+import {IRealmV4Graduator} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 interface IERC721Minimal {
     function balanceOf(address owner) external view returns (uint256);
 }
 
-/// @notice Stand-in for `LivoUniV4LiquidityAdder` on its zero-liquidity branch: an amount that sizes to
+/// @notice Stand-in for `RealmUniV4LiquidityAdder` on its zero-liquidity branch: an amount that sizes to
 ///         no liquidity is handed straight back to the caller. Real pools only reach this with an amount
-///         far below anything a Livo pool's tick range can produce, so the branch is mocked rather than
+///         far below anything a Realm pool's tick range can produce, so the branch is mocked rather than
 ///         contrived.
 contract RefundingLiquidityAdderStub {
     function addOrTopUpSingleSidedEth(
@@ -55,10 +55,10 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         internal
         returns (address token)
     {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "LiqToken",
             symbol: "LIQ",
-            salt: _nextValidSalt(address(factoryTax), address(livoTaxToken)),
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -78,23 +78,23 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         token = factoryTax.createToken(
             setup,
             cfg,
-            LivoFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),
-            new ILivoFactory.CreatorVault[](0),
+            new IRealmFactory.CreatorVault[](0),
             address(0)
         );
     }
 
     function test_liquidityBps_storedAtCreation() public {
         address token = _createLiquidityTaxToken(0, 400, 5000);
-        assertEq(LivoTaxableTokenUniV4(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
+        assertEq(RealmTaxableTokenUniV4(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
     }
 
     function test_v4Liquidity_accruesThenProcessMintsPosition() public {
         address token = _createLiquidityTaxToken(0, 400, 5000); // 4% sell tax; 50% of earnings → liquidity
         testToken = token;
-        LivoTaxableTokenUniV4 liqToken = LivoTaxableTokenUniV4(payable(token));
+        RealmTaxableTokenUniV4 liqToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -131,7 +131,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_v4ProcessLiquidity_unplacedEthStaysEarmarked() public {
         address token = _createLiquidityTaxToken(0, 400, 5000);
         testToken = token;
-        LivoTaxableTokenUniV4 liqToken = LivoTaxableTokenUniV4(payable(token));
+        RealmTaxableTokenUniV4 liqToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
         vm.prank(buyer);
@@ -160,21 +160,21 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         address token = _createLiquidityTaxToken(0, 400, 5000);
         vm.prank(makeAddr("randomCaller"));
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
-        LivoTaxableTokenUniV4(payable(token)).processLiquidity();
+        RealmTaxableTokenUniV4(payable(token)).processLiquidity();
     }
 
     function test_v4ProcessLiquidity_revertsWhenNothingPending() public {
         address token = _createLiquidityTaxToken(0, 400, 5000);
-        vm.expectRevert(LivoTaxableTokenUniV4.NothingToAdd.selector);
-        LivoTaxableTokenUniV4(payable(token)).processLiquidity();
+        vm.expectRevert(RealmTaxableTokenUniV4.NothingToAdd.selector);
+        RealmTaxableTokenUniV4(payable(token)).processLiquidity();
     }
 
     /// @dev Sets up a graduated token with a buy AND sell tax, so either swap direction both moves the
     ///      price and refills the liquidity buffer. Returns the token, already assigned to `testToken`.
-    function _graduatedLiquidityToken() internal returns (LivoTaxableTokenUniV4 liqToken) {
+    function _graduatedLiquidityToken() internal returns (RealmTaxableTokenUniV4 liqToken) {
         address token = _createLiquidityTaxToken(400, 400, 5000);
         testToken = token;
-        liqToken = LivoTaxableTokenUniV4(payable(token));
+        liqToken = RealmTaxableTokenUniV4(payable(token));
         vm.deal(buyer, 100 ether);
         vm.prank(buyer);
         launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
@@ -191,7 +191,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     }
 
     /// @dev Rolls a block (the once-per-block cooldown) and processes, returning the wall memory after.
-    function _rollAndProcess(LivoTaxableTokenUniV4 liqToken)
+    function _rollAndProcess(RealmTaxableTokenUniV4 liqToken)
         internal
         returns (uint256[2] memory ids, int24[2] memory tickLowers)
     {
@@ -203,7 +203,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev The point of the whole reuse path: a second `processLiquidity` while the price is still just
     ///      below the wall thickens the SAME position instead of minting a second NFT.
     function test_v4ProcessLiquidity_topsUpTheWallWhilePriceStaysNear() public {
-        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+        RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
         (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
@@ -241,7 +241,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev A price DROP puts the current tick inside the old wall, which then holds token rather than
     ///      pure ETH. An ETH-only top-up cannot settle there, so the call must mint a fresh wall.
     function test_v4ProcessLiquidity_mintsAgainWhenPriceFallsIntoTheWall() public {
-        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+        RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
         (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
@@ -262,7 +262,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      market. Topping it up would park the ETH as deep depth instead of a protective bid, so the
     ///      call mints at the live tick instead.
     function test_v4ProcessLiquidity_mintsAgainWhenPriceRanFarAboveTheWall() public {
-        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+        RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
         (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
@@ -285,7 +285,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      falls back to between them: wall 2 is now in-range and unusable, but wall 1 is once again just
     ///      below the price. A one-entry memory would mint a third position here.
     function test_v4ProcessLiquidity_reusesTheOlderWallAfterAZigzag() public {
-        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+        RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
         (uint256[2] memory first,) = _rollAndProcess(liqToken);
@@ -322,7 +322,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      price had entered, the position would demand token1 — and the token would be spending the
     ///      supply it holds for other buckets.
     function test_v4ProcessLiquidity_topUpSpendsNoTokens() public {
-        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+        RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
         (uint256[2] memory ids,) = _rollAndProcess(liqToken);
@@ -342,7 +342,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     /// @dev The once-per-block cap bounds what a manipulated wall placement can extract per block. It must
     ///      hold on the top-up path too, which no longer goes through the mint.
     function test_v4ProcessLiquidity_cooldownAppliesToTopUps() public {
-        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+        RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
         _rollAndProcess(liqToken);
@@ -352,14 +352,14 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         liqToken.processLiquidity(); // top-up
 
         _swapBuy(buyer, 0.05 ether, 0, true);
-        vm.expectRevert(LivoTaxableTokenUniV4.ProcessCooldown.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4.ProcessCooldown.selector);
         liqToken.processLiquidity();
     }
 
     /// @dev The per-call spend cap must bind on the top-up path as well; the remainder stays on the
     ///      liquidity ledger rather than becoming stray ETH the sweep would re-split into other buckets.
     function test_v4ProcessLiquidity_topUpHonoursThePerCallCap() public {
-        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+        RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
         (uint256[2] memory ids,) = _rollAndProcess(liqToken);
@@ -384,13 +384,13 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      a way for a passer-by to route the position's payouts to themselves: minting stays open to
     ///      anyone, but topping up someone else's wall does not.
     function test_v4LiquidityAdder_topUpIsOwnerOnly() public {
-        LivoTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
+        RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
         (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
         assertGt(ids[0], 0, "precondition: the token owns a wall");
 
-        address adder = ILivoV4Graduator(liqToken.graduator()).LIQUIDITY_ADDER();
+        address adder = IRealmV4Graduator(liqToken.graduator()).LIQUIDITY_ADDER();
         assertTrue(
             IERC721(positionManagerAddress).isApprovedForAll(testToken, adder), "the adder is approved to top up"
         );
@@ -398,9 +398,9 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         address attacker = makeAddr("attacker");
         vm.deal(attacker, 1 ether);
         vm.prank(attacker);
-        vm.expectRevert(LivoUniV4LiquidityAdder.NotPositionOwner.selector);
-        ILivoUniV4LiquidityAdder(adder).addOrTopUpSingleSidedEth{value: 1 ether}(
-            UniswapV4PoolConstants.livoPoolKey(testToken, address(taxHook)),
+        vm.expectRevert(RealmUniV4LiquidityAdder.NotPositionOwner.selector);
+        IRealmUniV4LiquidityAdder(adder).addOrTopUpSingleSidedEth{value: 1 ether}(
+            UniswapV4PoolConstants.realmPoolKey(testToken, address(taxHook)),
             14000,
             2000,
             ids,

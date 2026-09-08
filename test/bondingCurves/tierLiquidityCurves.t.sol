@@ -8,7 +8,7 @@ import {CreatorVaultCurveConstants as C} from "src/config/CreatorVaultCurveConst
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
 /// @dev Minimal view surface common to both `ConstantProductBondingCurve` (base) and
-///      `ConstantProductBondingCurveConfigurable`. `getTokenReserves` is not on `ILivoBondingCurve`,
+///      `ConstantProductBondingCurveConfigurable`. `getTokenReserves` is not on `IRealmBondingCurve`,
 ///      so this local interface lets the matrix treat both concrete curves uniformly.
 interface ICurveView {
     function getTokenReserves(uint256 ethReserves) external view returns (uint256);

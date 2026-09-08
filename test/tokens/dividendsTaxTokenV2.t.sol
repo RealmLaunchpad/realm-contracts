@@ -3,16 +3,16 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {LivoTaxableToken} from "src/tokens/LivoTaxableToken.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
-import {LivoDividendLogicUniV2} from "src/tokens/LivoDividendLogicUniV2.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {RealmDividendLogicUniV2} from "src/tokens/RealmDividendLogicUniV2.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
 /// @notice Integration tests for holder dividends on Uniswap V2. Two things are V2-specific and get the
@@ -30,10 +30,10 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
 
     function _createDividendToken(uint16 dividendsBps, address asset) internal returns (address token) {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DivV2",
             symbol: "DV2",
-            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            salt: _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -51,29 +51,29 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         });
         vm.prank(creator);
         token = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
         );
     }
 
     /// @dev A graduated dividend token with `buyer` holding the whole float.
-    function _graduated(address asset) internal returns (LivoTaxableTokenUniV2 token) {
+    function _graduated(address asset) internal returns (RealmTaxableTokenUniV2 token) {
         address addr = _createDividendToken(5_000, asset);
         testToken = addr;
         _launchpadBuy(addr, 1 ether);
         _graduateToken();
-        return LivoTaxableTokenUniV2(payable(addr));
+        return RealmTaxableTokenUniV2(payable(addr));
     }
 
-    function _nativeToken() internal returns (LivoTaxableTokenUniV2) {
+    function _nativeToken() internal returns (RealmTaxableTokenUniV2) {
         return _graduated(address(0));
     }
 
-    function _selfToken() internal returns (LivoTaxableTokenUniV2) {
+    function _selfToken() internal returns (RealmTaxableTokenUniV2) {
         return _graduated(address(type(uint160).max));
     }
 
     /// @dev A token paying a third ERC20, bought on the direct WETH/DAI Uniswap-V2 pair.
-    function _thirdAssetToken() internal returns (LivoTaxableTokenUniV2) {
+    function _thirdAssetToken() internal returns (RealmTaxableTokenUniV2) {
         return _graduated(DAI);
     }
 
@@ -81,7 +81,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         list = new address[](0);
     }
 
-    function _accrue(LivoTaxableTokenUniV2 token, uint256 amount) internal {
+    function _accrue(RealmTaxableTokenUniV2 token, uint256 amount) internal {
         vm.deal(address(this), amount);
         token.accrueFees{value: amount}();
     }
@@ -95,7 +95,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///      tokens to run. Past the tax window, with the tax pool drained, anything sitting here was
     ///      stuck forever. `sweepStrayEth` is that exit, and it is shared with V4 rather than V4-only.
     function test_sweepStrayEth_recoversStrayNativeOnV2() public {
-        LivoTaxableTokenUniV2 token = _nativeToken();
+        RealmTaxableTokenUniV2 token = _nativeToken();
 
         // Past the tax window: no fresh tax can ever accrue, so no swap-back will ever fire again.
         skip(uint256(token.taxDurationSeconds()) + 1);
@@ -114,7 +114,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///      own split renormalizes them over a denominator that already excludes those buckets — paying
     ///      the dividend pot a share earmarked for burning. They belong to `sweepStrayEth` instead.
     function test_swapBackRoutesOnlyItsOwnProceeds() public {
-        LivoTaxableTokenUniV2 token = _nativeToken();
+        RealmTaxableTokenUniV2 token = _nativeToken();
 
         // Accrue some sell tax as tokens, so there is a swap-back to run.
         uint256 sellAmount = IERC20(address(token)).balanceOf(buyer) / 10;
@@ -139,7 +139,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///////////////////////// native leg /////////////////////////
 
     function test_nativeDividends_accrueFundAndPay() public {
-        LivoTaxableTokenUniV2 token = _nativeToken();
+        RealmTaxableTokenUniV2 token = _nativeToken();
         _accrue(token, 1 ether);
         assertEq(token.pendingNative(), 0.5 ether, "half the earnings buffered for holders");
 
@@ -158,7 +158,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///      threshold and used to route `address(this).balance` through the split — which would re-split
     ///      the dividend buffer into fund/burn/liquidity on every trade, forever, with nobody attacking.
     function test_autoSwapBackDoesNotRecycleTheDividendBuffer() public {
-        LivoTaxableTokenUniV2 token = _nativeToken();
+        RealmTaxableTokenUniV2 token = _nativeToken();
         _accrue(token, 1 ether);
         uint256 buffered = token.pendingNative();
         assertGt(buffered, 0, "buffer funded");
@@ -175,7 +175,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     /// @dev Undelivered dividends are holders' money sitting in the token's balance. The swap-back's
     ///      ETH sweep must not see them either.
     function test_undeliveredDividendsSurviveTheSwapBack() public {
-        LivoTaxableTokenUniV2 token = _nativeToken();
+        RealmTaxableTokenUniV2 token = _nativeToken();
         _accrue(token, 1 ether);
         token.processDividends(0, _noHolders());
         assertEq(token.dividendsOwed(), 0.5 ether, "the stream is funded");
@@ -190,7 +190,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///////////////////////// self-token leg (token space) /////////////////////////
 
     function test_selfTokenLeg_carvedInTokenSpaceDuringTheSwapBack() public {
-        LivoTaxableTokenUniV2 token = _selfToken();
+        RealmTaxableTokenUniV2 token = _selfToken();
         assertEq(token.dividendToken(), address(token), "self-token payout configured");
 
         uint256 sellAmount = IERC20(address(token)).balanceOf(buyer) / 10;
@@ -211,7 +211,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     /// @dev The committed token buffer must be invisible to the tax pool, or the next swap-back sells the
     ///      holders' dividend out from under them.
     function test_selfTokenBuffer_isNotReprocessedAsTax() public {
-        LivoTaxableTokenUniV2 token = _selfToken();
+        RealmTaxableTokenUniV2 token = _selfToken();
 
         uint256 sellAmount = IERC20(address(token)).balanceOf(buyer) / 10;
         _swapSellV2(buyer, address(token), sellAmount, 0, true);
@@ -231,7 +231,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     }
 
     function test_selfTokenLeg_fundsAndPaysInTokens() public {
-        LivoTaxableTokenUniV2 token = _selfToken();
+        RealmTaxableTokenUniV2 token = _selfToken();
 
         // Sell repeatedly so the token-space buffer crosses SWAP_THRESHOLD.
         for (uint256 i; i < 4; ++i) {
@@ -263,9 +263,9 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     /// @dev The token's own balance is never rescuable, which already covers the self-token pot; this
     ///      pins the behaviour so a future relaxation has to think about the dividend money too.
     function test_rescueTokens_cannotTakeTheSelfTokenPot() public {
-        LivoTaxableTokenUniV2 token = _selfToken();
+        RealmTaxableTokenUniV2 token = _selfToken();
         vm.prank(admin); // the launchpad owner; factory-deployed tokens have no token owner
-        vm.expectRevert(LivoTaxableToken.CannotRescueSelfToken.selector);
+        vm.expectRevert(RealmTaxableToken.CannotRescueSelfToken.selector);
         token.rescueTokens(address(token));
     }
 
@@ -275,7 +275,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///      `committedDividends` subtraction. The stray balance dealt on top is what proves the
     ///      subtraction is exact rather than the rescue being a blanket no-op.
     function test_rescueTokens_cannotTakeUndeliveredThirdAssetDividends() public {
-        LivoTaxableTokenUniV2 token = _thirdAssetToken();
+        RealmTaxableTokenUniV2 token = _thirdAssetToken();
         _accrue(token, 1 ether);
         token.processDividends(0, _noHolders());
 
@@ -300,8 +300,8 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///      What has to hold for that to be safe is that the extension writes the TOKEN's storage and
     ///      keeps none of its own — which is exactly what a funded stream lets us observe.
     function test_extension_streamStateLandsOnTheTokenNotTheExtension() public {
-        LivoTaxableTokenUniV2 token = _nativeToken();
-        LivoDividendLogicUniV2 extension = LivoDividendLogicUniV2(payable(token.dividendLogic()));
+        RealmTaxableTokenUniV2 token = _nativeToken();
+        RealmDividendLogicUniV2 extension = RealmDividendLogicUniV2(payable(token.dividendLogic()));
 
         _accrue(token, 1 ether);
         token.processDividends(0, _noHolders());
@@ -316,10 +316,10 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     /// @dev Every clone of one implementation shares that implementation's extension: it is an
     ///      `immutable` on the implementation, so a clone reads it out of the implementation's code.
     function test_extension_isSharedByEveryCloneOfAnImplementation() public {
-        LivoTaxableTokenUniV2 a = _nativeToken();
-        LivoTaxableTokenUniV2 b = _nativeToken();
+        RealmTaxableTokenUniV2 a = _nativeToken();
+        RealmTaxableTokenUniV2 b = _nativeToken();
 
-        address logic = livoTaxTokenV2.DIVIDEND_LOGIC();
+        address logic = realmTaxTokenV2.DIVIDEND_LOGIC();
         assertGt(logic.code.length, 0, "the implementation deployed its extension");
         assertEq(a.dividendLogic(), logic, "first clone");
         assertEq(b.dividendLogic(), logic, "second clone");
@@ -329,7 +329,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///      makes the machinery behind them unreachable — the saving that buys the cold half its room —
     ///      and it is also the honest answer to anyone who arrives at the wrong address.
     function test_extension_disownsTheTokenEntryPoints() public {
-        LivoDividendLogicUniV2 extension = LivoDividendLogicUniV2(payable(livoTaxTokenV2.DIVIDEND_LOGIC()));
+        RealmDividendLogicUniV2 extension = RealmDividendLogicUniV2(payable(realmTaxTokenV2.DIVIDEND_LOGIC()));
 
         vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
         extension.transfer(buyer, 1);
@@ -357,7 +357,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///      it would just set a dust slope. The threshold is a gas floor now, not a safety one; this
     ///      pins that it still holds.
     function test_aWeiPushedInAfterTheTaxWindowCannotForceADistribution() public {
-        LivoTaxableTokenUniV2 token = _nativeToken();
+        RealmTaxableTokenUniV2 token = _nativeToken();
         skip(uint256(token.taxDurationSeconds()) + 1); // no fresh tax can ever accrue
 
         vm.deal(address(token), address(token).balance + 2 wei);
@@ -374,7 +374,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///      the contract and the post-window drain in `_update` carves a dividend slice out of them.
     ///      Staleness is the only bypass here too.
     function test_dustDonatedAfterTheTaxWindowCannotForceASelfTokenDistribution() public {
-        LivoTaxableTokenUniV2 token = _selfToken();
+        RealmTaxableTokenUniV2 token = _selfToken();
         skip(uint256(token.taxDurationSeconds()) + 1); // no fresh tax can ever accrue
 
         // The griefer's dust, donated straight to the contract...
@@ -398,10 +398,10 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     ///      three bps only, so `initializeEarningsAllocation` never ran and the clone could never pay
     ///      dividends — silently, and with no way back, since that initializer only runs at creation.
     function test_createToken_rejectsAPayoutAssetWithNoDividendShare() public {
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DivV2",
             symbol: "DV2",
-            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            salt: _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -418,9 +418,9 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
             })
         });
         vm.prank(creator);
-        vm.expectRevert(ILivoFactory.DividendAssetWithoutShare.selector);
+        vm.expectRevert(IRealmFactory.DividendAssetWithoutShare.selector);
         factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
         );
     }
 }

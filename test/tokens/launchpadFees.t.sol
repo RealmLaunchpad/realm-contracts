@@ -2,24 +2,24 @@
 pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {Vm} from "forge-std/Vm.sol";
 
-/// @title LivoToken launchpad-phase fee config — base-token unit tests
+/// @title RealmToken launchpad-phase fee config — base-token unit tests
 /// @notice Pre-graduation LP/trading fee policy carried by the base token: a single LP fee split
 ///         treasury/creator by `treasuryShareBps`. The base token carries NO tax — taxable variants
 ///         add the creation-anchored tax (see the taxable-token tests). The LP fee is fixed at launch
 ///         (there is no setter; the owner cannot change LP fees).
 contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
-    LivoToken internal token;
+    RealmToken internal token;
 
-    /// @dev Clones the base LivoToken impl and initializes it with a launchpad-phase LP-fee config.
-    function _cloneAndInit(uint16 lpFee, uint16 treasuryShare, address tokenOwner_) internal returns (LivoToken t) {
-        t = LivoToken(Clones.clone(address(livoToken)));
+    /// @dev Clones the base RealmToken impl and initializes it with a launchpad-phase LP-fee config.
+    function _cloneAndInit(uint16 lpFee, uint16 treasuryShare, address tokenOwner_) internal returns (RealmToken t) {
+        t = RealmToken(Clones.clone(address(realmToken)));
         t.initialize(
-            ILivoToken.InitializeParams({
+            IRealmToken.InitializeParams({
                 name: "FeeToken",
                 symbol: "FEE",
                 tokenOwner: tokenOwner_,
@@ -40,8 +40,8 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
         _;
     }
 
-    function _fees(bool isBuy) internal view returns (ILivoToken.LaunchpadFees memory) {
-        return token.getLaunchpadFees(ILivoToken.LaunchpadTrade({isBuy: isBuy, ethReserves: 0, releasedSupply: 0}));
+    function _fees(bool isBuy) internal view returns (IRealmToken.LaunchpadFees memory) {
+        return token.getLaunchpadFees(IRealmToken.LaunchpadTrade({isBuy: isBuy, ethReserves: 0, releasedSupply: 0}));
     }
 
     /// @dev when a token is initialized, then the LP-fee fields are stored and launchTimestamp is set
@@ -53,11 +53,11 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     /// @dev when a token is initialized, then it emits LaunchpadFeesInitialized(lpFee, treasuryShare)
     function test_init_assertEmitsLaunchpadFeesInitialized() public {
-        LivoToken t = LivoToken(Clones.clone(address(livoToken)));
+        RealmToken t = RealmToken(Clones.clone(address(realmToken)));
 
         vm.recordLogs();
         t.initialize(
-            ILivoToken.InitializeParams({
+            IRealmToken.InitializeParams({
                 name: "FeeToken",
                 symbol: "FEE",
                 tokenOwner: creator,
@@ -88,7 +88,7 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     /// @dev when getLaunchpadFees is queried on the base token for a buy, then it returns the LP fee and no tax
     function test_getLaunchpadFees_buy() public initToken(150, 4000) {
-        ILivoToken.LaunchpadFees memory f = _fees(true);
+        IRealmToken.LaunchpadFees memory f = _fees(true);
         assertEq(f.lpFeeBps, 150, "lpFeeBps");
         assertEq(f.treasuryShareBps, 4000, "treasuryShareBps");
         assertEq(f.taxBps, 0, "taxBps");
@@ -96,7 +96,7 @@ contract LaunchpadFeesUnitTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     /// @dev when getLaunchpadFees is queried on the base token for a sell, then it returns the LP fee and no tax
     function test_getLaunchpadFees_sell() public initToken(150, 4000) {
-        ILivoToken.LaunchpadFees memory f = _fees(false);
+        IRealmToken.LaunchpadFees memory f = _fees(false);
         assertEq(f.lpFeeBps, 150, "lpFeeBps");
         assertEq(f.treasuryShareBps, 4000, "treasuryShareBps");
         assertEq(f.taxBps, 0, "taxBps");

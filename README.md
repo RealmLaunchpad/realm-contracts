@@ -25,9 +25,9 @@ This displays also coverage for the /script/ files, which are out of scope (and 
 
 ---------------
 
-# Livo Launchpad
+# Realm Launchpad
 
-Livo Launchpad is a decentralized token launch platform that enables fair token distribution through a bonding curve mechanism, with automatic liquidity provision to either Uniswap V2 or Uniswap V4 upon reaching graduation criteria.
+Realm Launchpad is a decentralized token launch platform that enables fair token distribution through a bonding curve mechanism, with automatic liquidity provision to either Uniswap V2 or Uniswap V4 upon reaching graduation criteria.
 
 ## Meta info
 
@@ -38,7 +38,7 @@ Livo Launchpad is a decentralized token launch platform that enables fair token 
 
 ## Protocol Overview
 
-The Livo Launchpad protocol is a token factory and trading system that enables fair token distribution through a bonding curve mechanism, with the following features:
+The Realm Launchpad protocol is a token factory and trading system that enables fair token distribution through a bonding curve mechanism, with the following features:
 
 1. **Token Creation**: Anyone can create an ERC20 token with a fixed supply of 1 billion tokens using a minimal proxy pattern for gas-efficient deployment
 2. **Bonding Curve Trading**: Users buy/sell tokens from the launchpad through a constant product bonding curve until graduation
@@ -48,17 +48,17 @@ The Livo Launchpad protocol is a token factory and trading system that enables f
    - Uniswap V4: NFT liquidity position locked in a Liquidity Lock contract
 5. **Creator Rewards**: Token creators receive 1% of supply (10M tokens) at graduation
 6. **Fair Launch**: No pre-mines or pre-allocations. All supply is minted to the launchpad where it can be purchased.
-7. **Pre-Graduation Trading Fees**: 1% fee on buys/sells, allocated to Livo treasury.
+7. **Pre-Graduation Trading Fees**: 1% fee on buys/sells, allocated to Realm treasury.
 8. **Post-Graduation Trading Fees**:
    - Uniswap V2: No additional fees
-   - Uniswap V4: 1% LP fees with ETH fees split 50/50 between creator and Livo treasury; token fees locked
+   - Uniswap V4: 1% LP fees with ETH fees split 50/50 between creator and Realm treasury; token fees locked
 9. **Graduation Fee**: 0.5 ETH paid to treasury at graduation (configurable by admin)
 
 ## Architecture
 
 ### Core Contracts
 
-#### `LivoLaunchpad.sol`
+#### `RealmLaunchpad.sol`
 
 The main entry point and orchestrator contract that:
 
@@ -69,7 +69,7 @@ The main entry point and orchestrator contract that:
 - Collects and distributes fees
 - Any re-configuration of graduation or fees dynamics only affects future token creations
 
-#### `LivoToken.sol`
+#### `RealmToken.sol`
 
 Minimal ERC20 implementation with graduation controls:
 
@@ -87,7 +87,7 @@ Implements the pricing formula for token purchases/sales:
   - Note: out of those ~200M tokens, 10M are allocated to token creator, so only ~190M are used for liquidity.
 - Total curve capacity: ~37.5 ETH if all tokens were sold through the bonding curve. Beyond that point the curve breaks. This point should never be reached, so graduation threshold should be far away from that limit (8.5 ETH currently).
 
-#### `LivoGraduatorUniswapV2.sol`
+#### `RealmGraduatorUniswapV2.sol`
 
 Handles graduation to Uniswap V2:
 
@@ -97,7 +97,7 @@ Handles graduation to Uniswap V2:
 - Handles edge case of ETH donations to pair before graduation preventing graduation DOS
 - **No creator fees** - all LP fees go to LP token holders (which are locked in the `0xdEaD` address)
 
-#### `LivoGraduatorUniswapV4.sol`
+#### `RealmGraduatorUniswapV4.sol`
 
 Handles graduation to Uniswap V4:
 
@@ -106,7 +106,7 @@ Handles graduation to Uniswap V4:
 - Locks liquidity NFT in `LiquidityLockUniv4WithFees` contract
 - **Creator ETH fees enabled**
   - LP Fees collected as tokens are left locked in the univ4 graduator
-  - LP Fees collected as ETH are split 50/50% between the token creator and Livo treasury
+  - LP Fees collected as ETH are split 50/50% between the token creator and Realm treasury
 - Collects and distributes fees via `collectEthFees()`
 
 #### `LiquidityLockUniv4WithFees.sol`
@@ -137,8 +137,8 @@ Custody contract for Uniswap V4 liquidity positions:
 
 ### For Token Traders (Pre-Graduation)
 
-- **`buyTokensWithExactEth()`**: Buy tokens on Livo Launchpad
-- **`sellExactTokens()`**: Sell tokens on Livo Launchpad
+- **`buyTokensWithExactEth()`**: Buy tokens on Realm Launchpad
+- **`sellExactTokens()`**: Sell tokens on Realm Launchpad
 
 ### For Uniswap Trading (Post-Graduation)
 
@@ -203,10 +203,10 @@ Tokens to liquidity: ~191,000,000 tokens
 - **Starting price**: ~39,011,306,440 tokens per ETH
 
 **Fee Collection:**
-Anyone can call `LivoGraduatorUniswapV4.collectEthFees()` to:
+Anyone can call `RealmGraduatorUniswapV4.collectEthFees()` to:
 
 1. Claim accumulated fees from Uniswap V4 positions of an array of graduated tokens
-2. Split ETH fees 50/50 between creator and Livo treasury
+2. Split ETH fees 50/50 between creator and Realm treasury
 3. Token fees remain in graduator contract (effectively burned)
 
 ## Deployment & Setup
@@ -220,54 +220,9 @@ Anyone can call `LivoGraduatorUniswapV4.collectEthFees()` to:
 
 ### Deployment Steps
 
-1. **Deploy Token Implementation**
-
-   ```solidity
-   LivoToken tokenImplementation = new LivoToken();
-   ```
-
-2. **Deploy Launchpad**
-
-   ```solidity
-   LivoLaunchpad launchpad = new LivoLaunchpad(treasury, tokenImplementation);
-   ```
-
-3. **Deploy Bonding Curve**
-
-   ```solidity
-   ConstantProductBondingCurve bondingCurve = new ConstantProductBondingCurve();
-   ```
-
-4. **Deploy Graduators**
-
-   ```solidity
-   // Uniswap V2
-   LivoGraduatorUniswapV2 graduatorV2 = new LivoGraduatorUniswapV2(
-       UNISWAP_V2_ROUTER,
-       address(launchpad)
-   );
-
-   // Uniswap V4
-   LiquidityLockUniv4WithFees liquidityLock = new LiquidityLockUniv4WithFees(
-       UNIV4_NFT_POSITIONS,
-       UNIV4_POSITION_MANAGER
-   );
-
-   LivoGraduatorUniswapV4 graduatorV4 = new LivoGraduatorUniswapV4(
-       address(launchpad),
-       address(liquidityLock),
-       POOL_MANAGER,
-       POSITION_MANAGER,
-       PERMIT2,
-       UNIV4_NFT_POSITIONS
-   );
-   ```
-
-5. **Whitelist curves & graduators pairs**
-   ```solidity
-   launchpad.whitelistComponents(address(bondingCurve), address(graduatorV2), true);
-   launchpad.whitelistComponents(address(bondingCurve), address(graduatorV4), true);
-   ```
+See [`docs/deploymentPlan.md`](docs/deploymentPlan.md) — a fresh chain is brought up in two broadcasts
+(`just deploy-prereqs-<chain>` then `just deploy-stack-<chain>`), with a paste-and-rebuild step between
+them because the two registry addresses are compile-time constants in the taxable token bytecode.
 
 ## Security Considerations
 
@@ -312,7 +267,7 @@ Note that the prices here are the effective prices making a swap, (ethSpent/toke
 
 Malicious actors could send ETH directly to the pair to manipulate the price at graduation.
 
-**Mitigation**: `LivoGraduatorUniswapV2` includes:
+**Mitigation**: `RealmGraduatorUniswapV2` includes:
 
 - `sync()` call before reading reserves
 - Price matching algorithm that transfers tokens directly to pair first
@@ -328,7 +283,7 @@ Malicious actors could send ETH directly to the pair to manipulate the price at 
 
 Tokens cannot be transferred to the liquidity pool before graduation to avoid DOS of the graduation transaction.
 
-- `LivoToken._update()` blocks transfers to `pair` address before `graduated == true`.
+- `RealmToken._update()` blocks transfers to `pair` address before `graduated == true`.
 
 #### 6. **Minimal Dust Tokens Burned at Graduation**
 

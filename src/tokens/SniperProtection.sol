@@ -35,7 +35,7 @@ abstract contract SniperProtection {
     /// @notice Max whitelist entries (includes the deployer if the dev opts to add it).
     uint256 public constant MAX_WHITELISTED = 50;
 
-    /// @dev Mirrors `LivoToken.TOTAL_SUPPLY`; renamed to avoid a multiple-inheritance collision.
+    /// @dev Mirrors `RealmToken.TOTAL_SUPPLY`; renamed to avoid a multiple-inheritance collision.
     /// @dev Caps are intentionally measured against the fixed total supply, NOT a token's
     ///      circulating float. Creator-vault tokens lock part of the supply, so a given bps is a
     ///      slightly larger share of their (smaller) tradable float — by design, not a bug.
@@ -76,7 +76,7 @@ abstract contract SniperProtection {
     );
 
     /// @dev Validates configs and records the whitelist. `launchTimestamp` is the host token's
-    ///      creation timestamp (set by `LivoToken._initializeLivoToken`, which runs first); it is
+    ///      creation timestamp (set by `RealmToken._initializeRealmToken`, which runs first); it is
     ///      cached here as the absolute `protectionWindowEnd` so the check functions below read a
     ///      single slot instead of also touching the base `launchTimestamp` slot.
     function _initializeSniperProtection(AntiSniperConfigs memory cfg, uint40 launchTimestamp) internal {
@@ -118,7 +118,7 @@ abstract contract SniperProtection {
     ///        - `sniperBypass[to]`: dev-supplied whitelist.
     ///      `from == graduatorAddr` is intentionally NOT exempt: graduator outgoing transfers
     ///      happen post-`markGraduated()`, which the caller's `!graduated` gate already skips.
-    /// @dev Mints (`from == 0`) only happen during `_initializeLivoToken`, before
+    /// @dev Mints (`from == 0`) only happen during `_initializeRealmToken`, before
     ///      `_initializeSniperProtection` runs, so `protectionWindowEnd == 0` and the window
     ///      early-return covers them. Burns (`to == 0`) are rejected by OZ ERC20 v5 before `_update`.
     ///      Launchpad fees are ignored in the cap math.
@@ -158,7 +158,7 @@ abstract contract SniperProtection {
     ///         tripping the sniper caps. Returns `type(uint256).max` when no cap applies
     ///         (window closed, graduated, or whitelisted).
     /// @dev Doesn't model launchpad-side limits; callers should `min()` with
-    ///      `LivoLaunchpad.getMaxEthToSpend` converted via the bonding curve.
+    ///      `RealmLaunchpad.getMaxEthToSpend` converted via the bonding curve.
     /// @dev Factory/graduator/launchpad bypasses from `_checkSniperProtection` are NOT mirrored
     ///      here: none of those addresses ever buys via `buyTokensWithExactEth`.
     function _maxTokenPurchase(address buyer, uint256 buyerBalance, bool graduated) internal view returns (uint256) {

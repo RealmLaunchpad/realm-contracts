@@ -3,18 +3,18 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
-import {ILivoToken} from "src/interfaces/ILivoToken.sol";
-import {ILivoGraduator} from "src/interfaces/ILivoGraduator.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
-import {LivoTaxableTokenUniV4} from "src/tokens/LivoTaxableTokenUniV4.sol";
+import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
-import {TaxConfigs} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 
 /// @dev Minimal graduator mock — returns a caller-chosen `pair` address from `initialize()`
 ///      and lets the test drive `markGraduated` on the token.
-contract MockGraduator is ILivoGraduator {
+contract MockGraduator is IRealmGraduator {
     address public immutable PAIR;
 
     constructor(address pair_) {
@@ -64,7 +64,7 @@ abstract contract SniperProtectionBaseTest is Test {
     uint256 internal constant MAX_BUY_PER_TX = 30_000_000e18; // 3% of 1B
     uint256 internal constant MAX_WALLET = 30_000_000e18; // 3% of 1B
 
-    function _token() internal view virtual returns (LivoToken);
+    function _token() internal view virtual returns (RealmToken);
 
     /// @dev Passed to the token's initializer by subclass setUp(). Single hook so individual tests
     ///      can override by re-deploying before their own setUp.
@@ -99,7 +99,7 @@ abstract contract SniperProtectionBaseTest is Test {
     }
 
     function test_launchTimestampRecorded() public view {
-        uint40 ts = ILivoToken(address(_token())).launchTimestamp();
+        uint40 ts = IRealmToken(address(_token())).launchTimestamp();
         assertGt(ts, 0);
         assertEq(ts, uint40(block.timestamp));
     }
@@ -153,7 +153,7 @@ abstract contract SniperProtectionBaseTest is Test {
     /// curve buys. A transfer that keeps the recipient under both caps is allowed.
     function test_walletToWallet_underCap_succeeds_withinWindow() public {
         _curveBuy(buyer, MAX_BUY_PER_TX);
-        assertLt(block.timestamp, ILivoToken(address(_token())).launchTimestamp() + DEFAULT_WINDOW);
+        assertLt(block.timestamp, IRealmToken(address(_token())).launchTimestamp() + DEFAULT_WINDOW);
 
         vm.prank(buyer);
         _token().transfer(buyer2, MAX_BUY_PER_TX);
@@ -170,7 +170,7 @@ abstract contract SniperProtectionBaseTest is Test {
         uint16 tightWalletBps = 300; // 3% → 30_000_000e18
         address[] memory wl = new address[](1);
         wl[0] = whitelisted1;
-        LivoToken t = _deployCustom(tightBuyBps, tightWalletBps, DEFAULT_WINDOW, wl);
+        RealmToken t = _deployCustom(tightBuyBps, tightWalletBps, DEFAULT_WINDOW, wl);
 
         uint256 tightMaxBuy = (TOTAL_SUPPLY * tightBuyBps) / 10_000;
         uint256 tightMaxWallet = (TOTAL_SUPPLY * tightWalletBps) / 10_000;
@@ -224,7 +224,7 @@ abstract contract SniperProtectionBaseTest is Test {
         _curveBuy(buyer, MAX_WALLET);
         _curveBuy(buyer2, MAX_WALLET);
 
-        uint40 launchTs = ILivoToken(address(_token())).launchTimestamp();
+        uint40 launchTs = IRealmToken(address(_token())).launchTimestamp();
         vm.warp(launchTs + DEFAULT_WINDOW + 1);
 
         vm.prank(buyer);
@@ -246,7 +246,7 @@ abstract contract SniperProtectionBaseTest is Test {
     }
 
     function test_windowExpiry_capsLift() public {
-        uint40 launchTs = ILivoToken(address(_token())).launchTimestamp();
+        uint40 launchTs = IRealmToken(address(_token())).launchTimestamp();
         vm.warp(launchTs + DEFAULT_WINDOW + 1);
 
         _curveBuy(buyer, MAX_BUY_PER_TX + 1);
@@ -294,7 +294,7 @@ abstract contract SniperProtectionBaseTest is Test {
     function test_deployerBuyViaDeployingFactory_bypassesCaps() public {
         uint256 deployerBuyAmount = TOTAL_SUPPLY / 10; // 10%
 
-        LivoToken freshToken =
+        RealmToken freshToken =
             _deployCustom(DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, new address[](0));
         address deployingFactory = address(this);
 
@@ -321,7 +321,7 @@ abstract contract SniperProtectionBaseTest is Test {
         // the launchpad without tripping the per-tx cap on the inbound transfer.
         address[] memory wl = new address[](1);
         wl[0] = deployer;
-        LivoToken t = _deployCustom(DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, wl);
+        RealmToken t = _deployCustom(DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, wl);
 
         vm.prank(launchpad);
         t.transfer(deployer, TOTAL_SUPPLY / 10);
@@ -376,7 +376,7 @@ abstract contract SniperProtectionBaseTest is Test {
         uint16 tightWalletBps = 300; // 3% → 30_000_000e18
         uint40 shortWindow = 10 minutes;
 
-        LivoToken t = _deployCustom(tightBuyBps, tightWalletBps, shortWindow, new address[](0));
+        RealmToken t = _deployCustom(tightBuyBps, tightWalletBps, shortWindow, new address[](0));
 
         uint256 tightMaxBuy = (TOTAL_SUPPLY * tightBuyBps) / 10_000;
         uint256 tightMaxWallet = (TOTAL_SUPPLY * tightWalletBps) / 10_000;
@@ -478,7 +478,7 @@ abstract contract SniperProtectionBaseTest is Test {
         for (uint256 i; i < max; ++i) {
             wl[i] = address(uint160(0x2000 + i));
         }
-        LivoToken t = _deployCustom(DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, wl);
+        RealmToken t = _deployCustom(DEFAULT_MAX_BUY_BPS, DEFAULT_MAX_WALLET_BPS, DEFAULT_WINDOW, wl);
 
         SniperProtection sp = SniperProtection(address(t));
         for (uint256 i; i < max; ++i) {
@@ -498,11 +498,11 @@ abstract contract SniperProtectionBaseTest is Test {
     /// @dev Convenience: clone + init in one step, returning the typed token.
     function _deployCustom(uint16 maxBuyBps, uint16 maxWalletBps, uint40 window, address[] memory whitelist)
         internal
-        returns (LivoToken)
+        returns (RealmToken)
     {
         address clone = _cloneImpl();
         _initClone(clone, maxBuyBps, maxWalletBps, window, whitelist);
-        return LivoToken(payable(clone));
+        return RealmToken(payable(clone));
     }
 
     /// @dev Generic accessor for `maxTokenPurchase` against the variant under test.
@@ -535,7 +535,7 @@ abstract contract SniperProtectionBaseTest is Test {
     }
 
     function test_maxTokenPurchase_afterWindowReturnsMax() public {
-        uint40 launchTs = ILivoToken(address(_token())).launchTimestamp();
+        uint40 launchTs = IRealmToken(address(_token())).launchTimestamp();
         vm.warp(launchTs + DEFAULT_WINDOW);
         assertEq(_maxBuy(buyer), type(uint256).max);
     }
@@ -551,7 +551,7 @@ abstract contract SniperProtectionBaseTest is Test {
     function test_maxTokenPurchase_txCapBindsForFreshBuyerWithAsymmetricConfigs() public {
         uint16 buyBps = 100; // 1%
         uint16 walletBps = 300; // 3%
-        LivoToken t = _deployCustom(buyBps, walletBps, DEFAULT_WINDOW, new address[](0));
+        RealmToken t = _deployCustom(buyBps, walletBps, DEFAULT_WINDOW, new address[](0));
 
         uint256 expectedMaxTx = (TOTAL_SUPPLY * buyBps) / 10_000;
         assertEq(t.maxTokenPurchase(buyer), expectedMaxTx);
@@ -578,19 +578,19 @@ abstract contract SniperProtectionBaseTest is Test {
 
 /// -------------------- Plain variant --------------------
 
-contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
-    LivoToken internal token;
-    LivoToken internal impl;
+contract RealmTokenSniperProtectedTest is SniperProtectionBaseTest {
+    RealmToken internal token;
+    RealmToken internal impl;
 
     function setUp() public {
         launchpadMock = new MockLaunchpad();
         launchpad = address(launchpadMock);
 
         graduator = new MockGraduator(makeAddr("pair"));
-        impl = new LivoToken();
-        token = LivoToken(Clones.clone(address(impl)));
+        impl = new RealmToken();
+        token = RealmToken(Clones.clone(address(impl)));
         token.initialize(
-            ILivoToken.InitializeParams({
+            IRealmToken.InitializeParams({
                 name: "TestSniper",
                 symbol: "TSNP",
                 tokenOwner: tokenOwner,
@@ -606,8 +606,8 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
         );
     }
 
-    function _token() internal view override returns (LivoToken) {
-        return LivoToken(address(token));
+    function _token() internal view override returns (RealmToken) {
+        return RealmToken(address(token));
     }
 
     function _cloneImpl() internal override returns (address) {
@@ -618,9 +618,9 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
         internal
         override
     {
-        LivoToken(clone)
+        RealmToken(clone)
             .initialize(
-                ILivoToken.InitializeParams({
+                IRealmToken.InitializeParams({
                     name: "CustomSniper",
                     symbol: "CSNP",
                     tokenOwner: tokenOwner,
@@ -644,9 +644,9 @@ contract LivoTokenSniperProtectedTest is SniperProtectionBaseTest {
 
 /// -------------------- Taxable variant --------------------
 
-contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
-    LivoTaxableTokenUniV4 internal token;
-    LivoTaxableTokenUniV4 internal impl;
+contract RealmTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
+    RealmTaxableTokenUniV4 internal token;
+    RealmTaxableTokenUniV4 internal impl;
 
     function setUp() public {
         vm.chainId(DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID);
@@ -655,10 +655,10 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
         launchpad = address(launchpadMock);
 
         graduator = new MockGraduator(DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER);
-        impl = new LivoTaxableTokenUniV4();
-        token = LivoTaxableTokenUniV4(payable(Clones.clone(address(impl))));
+        impl = new RealmTaxableTokenUniV4();
+        token = RealmTaxableTokenUniV4(payable(Clones.clone(address(impl))));
         token.initialize(
-            ILivoToken.InitializeParams({
+            IRealmToken.InitializeParams({
                 name: "TestSniperTax",
                 symbol: "TSNT",
                 tokenOwner: tokenOwner,
@@ -683,8 +683,8 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
         );
     }
 
-    function _token() internal view override returns (LivoToken) {
-        return LivoToken(payable(address(token)));
+    function _token() internal view override returns (RealmToken) {
+        return RealmToken(payable(address(token)));
     }
 
     function _cloneImpl() internal override returns (address) {
@@ -695,9 +695,9 @@ contract LivoTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
         internal
         override
     {
-        LivoTaxableTokenUniV4(payable(clone))
+        RealmTaxableTokenUniV4(payable(clone))
             .initialize(
-                ILivoToken.InitializeParams({
+                IRealmToken.InitializeParams({
                     name: "CustomSniperTax",
                     symbol: "CSNT",
                     tokenOwner: tokenOwner,

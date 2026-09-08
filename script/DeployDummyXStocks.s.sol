@@ -15,9 +15,13 @@ import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {DeploymentAddressesEthereumSepolia as Sepolia} from "src/config/DeploymentAddresses.sol";
-import {LivoDividendSwapRegistry} from "src/dividends/LivoDividendSwapRegistry.sol";
-import {Hop, SwapRejection} from "src/interfaces/ILivoDividendSwapRegistry.sol";
+import {
+    DeploymentAddressesEthereumSepolia as Sepolia,
+    DeploymentAddressesRobinhoodTestnet as RobinhoodTestnet
+} from "src/config/DeploymentAddresses.sol";
+import {ChainConfig} from "script/ChainConfig.sol";
+import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {Hop, SwapRejection} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice Stand-in for a Robinhood xStock: a plain 18-decimal ERC20, whole supply to the deployer.
@@ -30,14 +34,17 @@ contract DummyXStock is ERC20 {
     }
 }
 
-/// @notice Deploys a handful of dummy xStocks on Sepolia, each with a Uniswap V4 pool against native
-///         ETH, so the dividend feature can be exercised on a chain the indexer actually runs on.
+/// @notice Deploys a handful of dummy xStocks on a testnet, each with a Uniswap V4 pool against native
+///         ETH, so the dividend feature can be exercised where the real payout assets cannot be.
 ///
-/// @dev WHY THIS EXISTS. Third-asset dividends are built for Robinhood Chain's xStocks, and only there
-///      do those assets exist. The indexer is not running against Robinhood testnet (RPC limits), so the
-///      end-to-end test — create a token paid in an xStock, convert, drip, watch the events land — has
-///      nowhere to happen. This puts the ASSET SIDE of that setup on Sepolia: tokens that look like
-///      xStocks, in pools shaped like the real ones, routable by the same registry.
+/// @dev WHY THIS EXISTS. Third-asset dividends are built for Robinhood Chain's xStocks, and NEITHER
+///      testnet has a usable one. Sepolia has no xStocks at all. Robinhood testnet does — five official
+///      ones (TSLA, AMZN, PLTR, NFLX, AMD) from Robinhood's `StockFactory` — but they cannot be bought:
+///      there is no V2 pair, nothing in the V4 pool manager, and the only real depth sits on a
+///      third-party V3 DEX quoted in USDC and in a non-canonical WETH, so no native-ETH route to them
+///      exists. A payout asset that cannot be swapped for is not a payout asset. This puts the ASSET
+///      SIDE of the setup on both chains instead: tokens that look like xStocks, in pools shaped like
+///      the real ones, routable by the same registry.
 ///
 /// @dev THE POOLS MIRROR THE LIVE ROBINHOOD ONES. Symbols, fee tier, tick spacing and the initial price
 ///      were read off the Robinhood mainnet pool manager (`AAPL` at fee 50000 / spacing 1000 / ~7.6
@@ -47,21 +54,30 @@ contract DummyXStock is ERC20 {
 /// @dev LIQUIDITY IS FULL-RANGE, which is the one deliberate departure. It is capital-inefficient — a
 ///      swap of `x` ETH against a pool seeded with `e` ETH moves the price by roughly `(1 + x/e)^2` — but
 ///      it can never fall out of range, whatever the price does afterwards. The default is sized off the
-///      conversions the pool has to absorb rather than off what a pool costs: Sepolia's dividend buffer
-///      converts between `DIVIDEND_THRESHOLD` (0.001 ETH) and `MAX_EARNINGS_PER_PROCESS` (0.2 ETH) at a
-///      time, so 1 ETH keeps even a max-size conversion inside ~44% impact and an ordinary one inside a
-///      few percent. Raise `ETH_PER_POOL` further if the max-size case needs to price realistically.
+///      conversions the pool has to absorb rather than off what a pool costs: both testnets' dividend
+///      buffers convert between `DIVIDEND_THRESHOLD` (0.001 ETH) and `MAX_EARNINGS_PER_PROCESS` (0.2
+///      ETH) at a time, so 1 ETH keeps even a max-size conversion inside ~44% impact and an ordinary one
+///      inside a few percent. Raise `ETH_PER_POOL` further if the max-size case needs to price
+///      realistically.
 ///
 /// @dev The position NFT goes to the BROADCASTER, not to a locked contract like graduation does, so the
 ///      testnet ETH can be pulled back out when the experiment is over.
 ///
-/// @dev Routes are written only if the chain's `DIVIDEND_SWAP_REGISTRY` is deployed AND the broadcaster
-///      is one of its admins; otherwise the tokens are printed with the route they need and nothing is
-///      attempted. Sepolia's registry constant is still the placeholder at the time of writing, so the
-///      first run of this script will only deploy tokens and pools.
+/// @dev Routes are only VALIDATED here, against the chain's `DIVIDEND_SWAP_REGISTRY` when it is
+///      deployed; nothing is written on-chain either way (see `_reportRoute`). A chain whose registry
+///      constant is still a placeholder prints the routes unvalidated.
 ///
-/// Usage (dry run):  forge script DeployDummyXStocks --rpc-url sepolia --account livo.dev
-/// Usage (deploy):   forge script DeployDummyXStocks --rpc-url sepolia --account livo.dev --slow --broadcast --verify
+/// @dev DEPLOYED SO FAR. The consumer of these is the frontend's payout catalogue
+///      (`dividendAssets.<chain>.mjs`), which carries the matching route bytes; they are recorded here
+///      too so the set can be found without digging through broadcast logs.
+///      Sepolia:           AAPL 0xCCA257A1Cc2Ad0095C00F45b3B1F66F1D69D918C, TSLA 0x9A73B68D68765a9B91960F02e14C1476f6b9fB0B,
+///                         AMZN 0xBdBE7787dC565843d4a447Ba7326f2d01C60ACAB, GOOGL 0x3cc238b3A058CE4BE7867C93DeaB113065EA2abc,
+///                         MSFT 0x0be29D6B7CA6eB7a779Ac01a7d0D784626d4E998
+///      Robinhood testnet: AAPL 0x1a86eAa7645a7FC846D5F9629719D499B3b0625f, GOOGL 0x08054EBb21056959317cA59da4B2063fA386253d,
+///                         MSFT 0x0a4d26B99a124Bb08bc335764b6C2A1ee4C3E85c
+///
+/// Usage (dry run):  forge script DeployDummyXStocks --rpc-url <sepolia|robinhood-testnet> --account realm.dev
+/// Usage (deploy):   just deploy-dummy-xstocks-sepolia   /   just deploy-dummy-xstocks-robinhood-testnet
 ///
 /// Env:
 ///   ETH_PER_POOL   (optional) native seeded into each pool, in wei. Default 1 ETH (5 ETH total).
@@ -84,15 +100,16 @@ contract DeployDummyXStocks is Script {
     uint256 internal constant DEFAULT_ETH_PER_POOL = 1 ether;
 
     function run() external {
-        require(block.chainid == Sepolia.BLOCKCHAIN_ID, "Sepolia only");
+        require(ChainConfig.isSepolia() || ChainConfig.isRobinhoodTestnet(), "Sepolia or Robinhood testnet only");
         uint256 ethPerPool = vm.envOr("ETH_PER_POOL", DEFAULT_ETH_PER_POOL);
         XStock[] memory stocks = _stocks();
 
-        console.log("=== Deploy dummy xStocks (Sepolia) ===");
+        console.log("=== Deploy dummy xStocks (%s) ===", ChainConfig.name());
         console.log("Stocks:       %d", stocks.length);
         console.log("ETH per pool: %d wei", ethPerPool);
 
-        LivoDividendSwapRegistry registry = LivoDividendSwapRegistry(Sepolia.DIVIDEND_SWAP_REGISTRY);
+        RealmDividendSwapRegistry registry = RealmDividendSwapRegistry(_registry());
+        address poolManager = ChainConfig.infra().univ4PoolManager;
 
         vm.startBroadcast();
         address deployer = _broadcaster();
@@ -110,7 +127,7 @@ contract DeployDummyXStocks is Script {
                 hooks: IHooks(address(0))
             });
             uint160 sqrtPriceX96 = _sqrtPriceX96(stocks[i].tokensPerEth);
-            IPoolManager(Sepolia.UNIV4_POOL_MANAGER).initialize(pool, sqrtPriceX96);
+            IPoolManager(poolManager).initialize(pool, sqrtPriceX96);
             uint128 liquidity = _seedLiquidity(pool, sqrtPriceX96, ethPerPool, deployer);
 
             console.log("%s: %s", stocks[i].symbol, token);
@@ -129,17 +146,36 @@ contract DeployDummyXStocks is Script {
     }
 
     /// @notice The stocks to replicate, mirroring live Robinhood Chain pools.
-    /// @dev Fee, tick spacing and price were read off the Robinhood mainnet pool manager. All five are
+    /// @dev Fee, tick spacing and price were read off the Robinhood mainnet pool manager. All of them are
     ///      hookless static-fee pools, which is the majority shape there — the dynamic-fee, hooked pools
     ///      some xStocks use (NVDA, SPY) are deliberately left out: a dynamic fee needs the hook deployed
     ///      too, and it changes nothing about the dividend path being tested.
-    function _stocks() internal pure returns (XStock[] memory stocks) {
+    /// @dev ROBINHOOD TESTNET GETS THREE, and deliberately not tickers that already exist there: that
+    ///      chain carries Robinhood's own official TSLA, AMZN, PLTR, NFLX and AMD, and a dummy sharing
+    ///      one of those symbols would sit next to the real asset in the payout picker and trip its
+    ///      ticker-impersonation warning. Its prices are a fresher read of the same mainnet pools than
+    ///      the Sepolia set below, which is why they differ slightly.
+    function _stocks() internal view returns (XStock[] memory stocks) {
+        if (ChainConfig.isRobinhoodTestnet()) {
+            stocks = new XStock[](3);
+            stocks[0] = XStock("Apple xStock", "AAPL", 7.621e18, 50000, 1000);
+            stocks[1] = XStock("Alphabet xStock", "GOOGL", 7.3333e18, 10000, 200);
+            stocks[2] = XStock("Microsoft xStock", "MSFT", 5.052e18, 10000, 200);
+            return stocks;
+        }
+
         stocks = new XStock[](5);
         stocks[0] = XStock("Apple xStock", "AAPL", 7.6166e18, 50000, 1000);
         stocks[1] = XStock("Tesla xStock", "TSLA", 6.7662e18, 50000, 1000);
         stocks[2] = XStock("Amazon xStock", "AMZN", 9.5949e18, 50950, 1000);
         stocks[3] = XStock("Alphabet xStock", "GOOGL", 7.3282e18, 10000, 200);
         stocks[4] = XStock("Microsoft xStock", "MSFT", 4.9626e18, 10000, 200);
+    }
+
+    /// @dev The active chain's `RealmDividendSwapRegistry` proxy. Read from each chain's own constant
+    ///      rather than assumed shared, even though the two testnets happen to agree today.
+    function _registry() internal view returns (address) {
+        return ChainConfig.isSepolia() ? Sepolia.DIVIDEND_SWAP_REGISTRY : RobinhoodTestnet.DIVIDEND_SWAP_REGISTRY;
     }
 
     /// @dev `sqrt(price) * 2^96` with the price given as a WAD. `mulDiv` carries the 512-bit intermediate,
@@ -157,9 +193,10 @@ contract DeployDummyXStocks is Script {
         returns (uint128 liquidity)
     {
         address token = Currency.unwrap(pool.currency1);
-        ERC20(token).approve(Sepolia.PERMIT2, type(uint256).max);
-        IAllowanceTransfer(Sepolia.PERMIT2)
-            .approve(token, Sepolia.UNIV4_POSITION_MANAGER, type(uint160).max, type(uint48).max);
+        ChainConfig.Infra memory infra = ChainConfig.infra();
+        ERC20(token).approve(infra.permit2, type(uint256).max);
+        IAllowanceTransfer(infra.permit2)
+            .approve(token, infra.univ4PositionManager, type(uint160).max, type(uint48).max);
 
         // Widest range the spacing allows. Truncation toward zero keeps both ticks inside the usable band.
         int24 tickLower = (TickMath.MIN_TICK / pool.tickSpacing) * pool.tickSpacing;
@@ -181,7 +218,7 @@ contract DeployDummyXStocks is Script {
         // encodes this inside the transaction that executes it; a script encodes it during simulation and
         // broadcasts seconds or minutes later, by which point `block.timestamp` is in the past and the
         // position manager rejects every mint.
-        IPositionManager(Sepolia.UNIV4_POSITION_MANAGER).modifyLiquidities{value: ethIn}(
+        IPositionManager(infra.univ4PositionManager).modifyLiquidities{value: ethIn}(
             abi.encode(actions, params), block.timestamp + 1 hours
         );
     }
@@ -195,7 +232,7 @@ contract DeployDummyXStocks is Script {
     /// @dev The validation is a dry read against the pool just seeded, and it is the point of doing it
     ///      here rather than trusting the encoding: it proves the pool is initialized and holds
     ///      liquidity, which is exactly what `registerRoute` will demand at creation time.
-    function _reportRoute(LivoDividendSwapRegistry registry, bool haveRegistry, address token, XStock memory stock)
+    function _reportRoute(RealmDividendSwapRegistry registry, bool haveRegistry, address token, XStock memory stock)
         internal
         view
     {

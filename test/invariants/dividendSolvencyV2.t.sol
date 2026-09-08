@@ -4,10 +4,10 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
-import {LivoTaxableTokenUniV2} from "src/tokens/LivoTaxableTokenUniV2.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/ILivoTaxableToken.sol";
+import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
@@ -16,10 +16,10 @@ import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 ///         the self-token dividend buffer and an undelivered self-token pot ALL live in it, and the
 ///         automatic swap-back fires on ordinary sells with no attacker involved.
 contract DividendSolvencyV2Handler is Test, V2SwapHelpers {
-    LivoTaxableTokenUniV2 public immutable TOKEN;
+    RealmTaxableTokenUniV2 public immutable TOKEN;
     address[] public holders;
 
-    constructor(LivoTaxableTokenUniV2 token_, address[] memory holders_) {
+    constructor(RealmTaxableTokenUniV2 token_, address[] memory holders_) {
         TOKEN = token_;
         holders = holders_;
     }
@@ -97,7 +97,7 @@ contract DividendSolvencyV2Handler is Test, V2SwapHelpers {
 ///         reprocessing committed money as tax. The failure mode is not a stuck balance — it is holders'
 ///         money silently converted into creator fees on every trade.
 contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelpers {
-    LivoTaxableTokenUniV2 internal divToken;
+    RealmTaxableTokenUniV2 internal divToken;
     DividendSolvencyV2Handler internal handler;
 
     address internal holderA = makeAddr("holderA");
@@ -106,10 +106,10 @@ contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
         super.setUp();
 
-        ILivoFactory.TokenSetupTiered memory setup = ILivoFactory.TokenSetupTiered({
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DivInvV2",
             symbol: "DIV2",
-            salt: _nextValidSalt(address(factoryV2Unified), address(livoTaxTokenV2)),
+            salt: _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -129,13 +129,13 @@ contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V
         });
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new ILivoFactory.CreatorVault[](0), address(0)
+            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
         );
 
         testToken = token;
         _launchpadBuy(token, 1 ether);
         _graduateToken();
-        divToken = LivoTaxableTokenUniV2(payable(token));
+        divToken = RealmTaxableTokenUniV2(payable(token));
 
         uint256 float = IERC20(token).balanceOf(buyer);
         vm.startPrank(buyer);

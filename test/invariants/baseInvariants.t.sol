@@ -2,34 +2,34 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoToken} from "src/tokens/LivoToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
-import {LivoGraduatorUniswapV2} from "src/graduators/LivoGraduatorUniswapV2.sol";
-import {LivoGraduatorUniswapV4} from "src/graduators/LivoGraduatorUniswapV4.sol";
-import {LivoUniV4LiquidityAdder} from "src/liquidity/LivoUniV4LiquidityAdder.sol";
+import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
+import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
+import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
-import {LivoFactoryAbstract} from "src/factories/LivoFactoryAbstract.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
+import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {LivoSwapHook} from "src/hooks/LivoSwapHook.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
-import {LivoMasterFeeHandler} from "src/feeHandlers/LivoMasterFeeHandler.sol";
+import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 contract LaunchpadInvariants is Test {
-    LivoLaunchpad public launchpad;
-    LivoToken public tokenImplementation;
+    RealmLaunchpad public launchpad;
+    RealmToken public tokenImplementation;
     ConstantProductBondingCurve public bondingCurve;
-    LivoGraduatorUniswapV2 public graduatorV2;
-    LivoGraduatorUniswapV4 public graduatorV4;
-    LivoFactoryUniV2Unified public factoryV2;
-    LivoFactoryUniV4Unified public factoryV4;
-    LivoMasterFeeHandler public feeHandler;
+    RealmGraduatorUniswapV2 public graduatorV2;
+    RealmGraduatorUniswapV4 public graduatorV4;
+    RealmFactoryUniV2Unified public factoryV2;
+    RealmFactoryUniV4Unified public factoryV4;
+    RealmMasterFeeHandler public feeHandler;
 
     InvariantsHelperLaunchpad public helper;
 
@@ -74,26 +74,26 @@ contract LaunchpadInvariants is Test {
         vm.startPrank(admin);
 
         // the actual deployments
-        tokenImplementation = new LivoToken();
-        launchpad = new LivoLaunchpad(treasury, admin);
+        tokenImplementation = new RealmToken();
+        launchpad = new RealmLaunchpad(treasury, admin);
 
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
-        graduatorV2 = new LivoGraduatorUniswapV2(
+        graduatorV2 = new RealmGraduatorUniswapV2(
             UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
         // These invariants only exercise pre-graduation bonding-curve trades, so the hook never routes a
-        // fee and its LP-fee router is a dummy. Deploy a real `LivoLpFeeRouter` here if a handler ever
+        // fee and its LP-fee router is a dummy. Deploy a real `SwapLpFeeRouter` here if a handler ever
         // starts performing post-graduation V4 swaps.
         deployCodeTo(
-            "LivoSwapHook.sol:LivoSwapHook",
+            "RealmSwapHook.sol:RealmSwapHook",
             abi.encode(poolManagerAddress, makeAddr("lpFeeRouterDummy"), treasury),
             TEST_HOOK_ADDRESS
         );
-        feeHandler = new LivoMasterFeeHandler();
+        feeHandler = new RealmMasterFeeHandler();
 
-        address univ4LiquidityAdder = address(new LivoUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress));
-        graduatorV4 = new LivoGraduatorUniswapV4(
+        address univ4LiquidityAdder = address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress));
+        graduatorV4 = new RealmGraduatorUniswapV4(
             address(launchpad),
             poolManagerAddress,
             positionManagerAddress,
@@ -110,11 +110,11 @@ contract LaunchpadInvariants is Test {
         // Creator-vault + non-default-tier curves are unused in this suite (only the DEFAULT base path
         // is exercised), so they are left zero.
         address[6] memory emptyVaultCurves;
-        ILivoFactory.LiquidityTierConfig memory emptyTierConfig;
+        IRealmFactory.LiquidityTierConfig memory emptyTierConfig;
         address factoryV2Impl = address(
-            new LivoFactoryUniV2Unified(
+            new RealmFactoryUniV2Unified(
                 address(launchpad),
-                ILivoFactory.TokenImpls({base: address(tokenImplementation), tax: address(tokenImplementation)}),
+                IRealmFactory.TokenImpls({base: address(tokenImplementation), tax: address(tokenImplementation)}),
                 address(bondingCurve),
                 address(graduatorV2),
                 address(feeHandler),
@@ -123,15 +123,15 @@ contract LaunchpadInvariants is Test {
                 emptyTierConfig
             )
         );
-        factoryV2 = LivoFactoryUniV2Unified(
-            address(new ERC1967Proxy(factoryV2Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())))
+        factoryV2 = RealmFactoryUniV2Unified(
+            address(new ERC1967Proxy(factoryV2Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
         );
 
-        LivoFactoryUniV4Unified.V4TierConfig memory emptyV4Tier;
+        RealmFactoryUniV4Unified.V4TierConfig memory emptyV4Tier;
         address factoryV4Impl = address(
-            new LivoFactoryUniV4Unified(
+            new RealmFactoryUniV4Unified(
                 address(launchpad),
-                ILivoFactory.TokenImpls({base: address(tokenImplementation), tax: address(tokenImplementation)}),
+                IRealmFactory.TokenImpls({base: address(tokenImplementation), tax: address(tokenImplementation)}),
                 address(bondingCurve),
                 address(graduatorV4),
                 address(feeHandler),
@@ -140,8 +140,8 @@ contract LaunchpadInvariants is Test {
                 emptyV4Tier
             )
         );
-        factoryV4 = LivoFactoryUniV4Unified(
-            address(new ERC1967Proxy(factoryV4Impl, abi.encodeCall(LivoFactoryAbstract.initialize, ())))
+        factoryV4 = RealmFactoryUniV4Unified(
+            address(new ERC1967Proxy(factoryV4Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
         );
 
         launchpad.whitelistFactory(address(factoryV2));

@@ -3,11 +3,11 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
-import {LivoLaunchpad} from "src/LivoLaunchpad.sol";
-import {LivoFactoryUniV4Unified} from "src/factories/LivoFactoryUniV4Unified.sol";
-import {LivoFactoryUniV2Unified} from "src/factories/LivoFactoryUniV2Unified.sol";
-import {ILivoFactory} from "src/interfaces/ILivoFactory.sol";
-import {TaxConfigInit} from "src/interfaces/ILivoTaxableToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
+import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
+import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {TaxConfigInit} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {EnumerableSet} from "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
@@ -35,10 +35,10 @@ contract InvariantsHelperLaunchpad is Test {
     uint256 MAX_TIME_JUMP = 1 days;
     uint256 MIN_TIME_JUMP = 1; // seconds
 
-    LivoLaunchpad public launchpad;
+    RealmLaunchpad public launchpad;
 
-    LivoFactoryUniV2Unified public factoryV2;
-    LivoFactoryUniV4Unified public factoryV4;
+    RealmFactoryUniV2Unified public factoryV2;
+    RealmFactoryUniV4Unified public factoryV4;
     address public tokenImpl;
 
     mapping(address => uint256) public aggregatedEthForBuys;
@@ -81,9 +81,9 @@ contract InvariantsHelperLaunchpad is Test {
 
     /////////////////////////////////////////////////////
     constructor(
-        LivoLaunchpad _launchpad,
-        LivoFactoryUniV2Unified _factoryV2,
-        LivoFactoryUniV4Unified _factoryV4,
+        RealmLaunchpad _launchpad,
+        RealmFactoryUniV2Unified _factoryV2,
+        RealmFactoryUniV4Unified _factoryV4,
         address _tokenImpl
     ) {
         launchpad = _launchpad;
@@ -137,9 +137,9 @@ contract InvariantsHelperLaunchpad is Test {
 
     function createToken(uint256 seed) public passTime(seed) choseActor(seed) {
         address token;
-        ILivoFactory.SupplyShare[] memory noSs = new ILivoFactory.SupplyShare[](0);
-        ILivoFactory.FeeShare[] memory creatorFs = new ILivoFactory.FeeShare[](1);
-        creatorFs[0] = ILivoFactory.FeeShare({account: currentActor, shares: 10_000, directFeesEnabled: false});
+        IRealmFactory.SupplyShare[] memory noSs = new IRealmFactory.SupplyShare[](0);
+        IRealmFactory.FeeShare[] memory creatorFs = new IRealmFactory.FeeShare[](1);
+        creatorFs[0] = IRealmFactory.FeeShare({account: currentActor, shares: 10_000, directFeesEnabled: false});
         if (seed % 2 == 0) {
             bytes32 salt = _nextValidSalt(address(factoryV2), tokenImpl, currentActor);
             vm.prank(currentActor);
