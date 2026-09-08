@@ -259,14 +259,22 @@ deploy-realm-hook-robinhood-testnet:
 
 # Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded
 # with liquidity — replicating the symbols, fee tiers, tick spacings and prices of the real xStock pools
-# on Robinhood mainnet. Exists so third-asset dividends can be exercised on a chain the indexer runs on;
-# Robinhood testnet has the assets but no indexer. Writes the registry routes too when
-# DIVIDEND_SWAP_REGISTRY is deployed on Sepolia and the broadcaster is one of its admins.
+# on Robinhood mainnet. Exists so third-asset dividends can be exercised on a chain the indexer runs on.
 # Costs ETH_PER_POOL (default 1) of testnet ETH per pool, so 5 ETH for the five. Dry-run it first —
 # the same command without --broadcast simulates it against live Sepolia state, and IS the check:
 #   forge script DeployDummyXStocks --rpc-url sepolia --account realm.dev
 deploy-dummy-xstocks-sepolia:
     forge script DeployDummyXStocks --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+# The same three-stock set on Robinhood testnet (AAPL, GOOGL, MSFT), 3 ETH of pool liquidity by default.
+# That chain DOES carry Robinhood's own official stock tokens (TSLA, AMZN, PLTR, NFLX, AMD), but none of
+# them can be bought with native ETH — no V2 pair, nothing in the V4 pool manager, and the only depth is a
+# third-party V3 DEX quoted in USDC — so they are unusable as dividend payout assets. These dummies stand
+# in, with the tickers the real ones do NOT use so the payout picker cannot confuse the two. Dry run:
+#   forge script DeployDummyXStocks --rpc-url robinhood-testnet --account realm.dev
+deploy-dummy-xstocks-robinhood-testnet:
+    forge script DeployDummyXStocks --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Regenerates deployments.{ethereum.sepolia,robinhood.mainnet,robinhood.testnet}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
