@@ -58,7 +58,7 @@
 | Realm Deployer                               | `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb` |
 | Realm Treasury                               | `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb` |
 | Realm Token Deployer                         | _(not deployed)_                             |
-| Realm Keeper                                 | _(not deployed)_                             |
+| Realm Keeper                                 | `0x68ae8d23AeFde0454e1A391678e20e64E5ff034a` |
 
 ## Integrations
 
