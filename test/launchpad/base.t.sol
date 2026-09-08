@@ -129,16 +129,46 @@ contract LaunchpadBaseTests is Test {
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
-    // uniswapv4 addresses in mainnet
-    address constant poolManagerAddress = DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER;
-    address constant positionManagerAddress = DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER;
-    address constant permit2Address = DeploymentAddressesEthereumMainnet.PERMIT2;
-    address constant universalRouter = DeploymentAddressesEthereumMainnet.UNIV4_UNIVERSAL_ROUTER;
+    /// @dev The chain a suite forks and the external infrastructure the stack is wired to. Ethereum
+    ///      mainnet unless a suite overrides `_forkInfra()`. The token implementations bake their chain's
+    ///      addresses in and refuse a mismatched `block.chainid`, so an override needs the matching
+    ///      `just chain-<name>` retarget first.
+    struct ForkInfra {
+        string rpcUrlEnv;
+        uint256 blockNumber;
+        address poolManager;
+        address positionManager;
+        address permit2;
+        address universalRouter;
+        address uniV2Router;
+        address uniV2Factory;
+        bytes32 uniV2PairInitCodeHash;
+        address weth;
+    }
 
-    // Uniswap V2 router address on mainnet
-    address constant UNISWAP_V2_ROUTER = DeploymentAddressesEthereumMainnet.UNIV2_ROUTER;
-    IUniswapV2Factory constant UNISWAP_FACTORY = IUniswapV2Factory(DeploymentAddressesEthereumMainnet.UNIV2_FACTORY);
-    IWETH constant WETH = IWETH(DeploymentAddressesEthereumMainnet.WETH);
+    function _forkInfra() internal view virtual returns (ForkInfra memory) {
+        return ForkInfra({
+            rpcUrlEnv: "MAINNET_RPC_URL",
+            blockNumber: BLOCKNUMBER,
+            poolManager: DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
+            positionManager: DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
+            permit2: DeploymentAddressesEthereumMainnet.PERMIT2,
+            universalRouter: DeploymentAddressesEthereumMainnet.UNIV4_UNIVERSAL_ROUTER,
+            uniV2Router: DeploymentAddressesEthereumMainnet.UNIV2_ROUTER,
+            uniV2Factory: DeploymentAddressesEthereumMainnet.UNIV2_FACTORY,
+            uniV2PairInitCodeHash: DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH,
+            weth: DeploymentAddressesEthereumMainnet.WETH
+        });
+    }
+
+    // Filled from `_forkInfra()` in `setUp`.
+    address internal poolManagerAddress;
+    address internal positionManagerAddress;
+    address internal permit2Address;
+    address internal universalRouter;
+    address internal UNISWAP_V2_ROUTER;
+    IUniswapV2Factory internal UNISWAP_FACTORY;
+    IWETH internal WETH;
 
     // This is the effective price when buying at graduation (from bonding curve slope)
     uint256 constant GRADUATION_PRICE = 12373924040; // ETH/token (eth per token, expressed in wei)
@@ -427,8 +457,15 @@ contract LaunchpadBaseTests is Test {
     }
 
     function setUp() public virtual {
-        string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
-        vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
+        ForkInfra memory infra = _forkInfra();
+        vm.createSelectFork(vm.envString(infra.rpcUrlEnv), infra.blockNumber);
+        poolManagerAddress = infra.poolManager;
+        positionManagerAddress = infra.positionManager;
+        permit2Address = infra.permit2;
+        universalRouter = infra.universalRouter;
+        UNISWAP_V2_ROUTER = infra.uniV2Router;
+        UNISWAP_FACTORY = IUniswapV2Factory(infra.uniV2Factory);
+        WETH = IWETH(infra.weth);
 
         // Must precede the token implementations: they bake the registry's address in as a constant,
         // and a third-asset dividend configuration calls it at creation.
@@ -450,9 +487,7 @@ contract LaunchpadBaseTests is Test {
         implementation = realmToken;
         launchpad = new RealmLaunchpad(treasury, admin);
         bondingCurve = new ConstantProductBondingCurve();
-        graduatorV2 = new RealmGraduatorUniswapV2(
-            UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH
-        );
+        graduatorV2 = new RealmGraduatorUniswapV2(UNISWAP_V2_ROUTER, address(launchpad), infra.uniV2PairInitCodeHash);
 
         // Deploy the LP fee router behind a UUPS proxy with the default tier configuration. The hook
         // forwards every LP fee to this router, which performs the marketcap-tiered treasury/creator split.

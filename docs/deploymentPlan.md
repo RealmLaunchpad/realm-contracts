@@ -103,6 +103,17 @@ graduators, curves or the vault factory means a new factory implementation:
 just upgrade-factories-sepolia       # or: just upgrade-factories-robinhood
 ```
 
+When it is the **taxable token masters** that change (they bake per-chain constants, see
+`script/BuildTarget.sol`), one recipe deploys the fresh masters AND rewires the factories to them, with
+nothing to paste in between; the four printed slots go into the manifest afterwards:
+
+```bash
+just redeploy-tax-impls-sepolia      # or: just redeploy-tax-impls-robinhood-testnet
+just export-deployments
+```
+
+Tokens already created keep their old master (clones are not upgradeable).
+
 The factory proxy addresses never move, so integrators need no changes.
 
 ## Ownership handover

@@ -3,7 +3,9 @@ pragma solidity 0.8.28;
 
 import {Vm} from "forge-std/Vm.sol";
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
-import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+// Swapped per target chain by `just chain-<name>`, together with the token implementations that bake
+// the same constant in.
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 Vm constant KEEPERS_VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
@@ -21,11 +23,12 @@ bytes32 constant OWNABLE_OWNER_SLOT = bytes32(uint256(0));
 ///      constructor and `etch` does not run constructors. The `require` below is what turns a wrong slot
 ///      into an immediate, obvious failure instead of a confusing `OwnableUnauthorizedAccount` later.
 function installKeepersRegistry(address owner, address keeper) returns (RealmKeepersRegistry registry) {
+    address at = DeploymentAddresses.REALM_KEEPERS_REGISTRY;
     RealmKeepersRegistry deployed = new RealmKeepersRegistry(owner);
-    KEEPERS_VM.etch(DeploymentAddresses.REALM_KEEPERS_REGISTRY, address(deployed).code);
-    KEEPERS_VM.label(DeploymentAddresses.REALM_KEEPERS_REGISTRY, "KeepersRegistry");
+    KEEPERS_VM.etch(at, address(deployed).code);
+    KEEPERS_VM.label(at, "KeepersRegistry");
 
-    registry = RealmKeepersRegistry(DeploymentAddresses.REALM_KEEPERS_REGISTRY);
+    registry = RealmKeepersRegistry(at);
     KEEPERS_VM.store(address(registry), OWNABLE_OWNER_SLOT, bytes32(uint256(uint160(owner))));
     require(registry.owner() == owner, "KeepersRegistryHelpers: Ownable owner slot moved");
 

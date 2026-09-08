@@ -3,7 +3,9 @@ pragma solidity 0.8.28;
 
 import {Vm} from "forge-std/Vm.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+// Swapped per target chain by `just chain-<name>`, together with the token implementations that bake
+// the same constant in.
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 Vm constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
@@ -13,6 +15,9 @@ Vm constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 // the liquidity; higher would exclude perfectly usable long-tail assets for no safety gain, since the
 // keeper's `minOut` is what protects each individual swap. The value a real deployment initializes the
 // registry proxy with, so tests share it rather than pick one.
+/// @dev OpenZeppelin v5 `Initializable`'s ERC-7201 slot (`openzeppelin.storage.Initializable`).
+bytes32 constant INITIALIZABLE_STORAGE = 0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00;
+
 uint256 constant DEFAULT_DIVIDEND_POOL_LIQUIDITY = 10 * DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;
 
 /// @notice Puts a working `RealmDividendSwapRegistry` at the address the token implementations bake in.
@@ -23,10 +28,14 @@ uint256 constant DEFAULT_DIVIDEND_POOL_LIQUIDITY = 10 * DeploymentAddresses.MAX_
 /// @dev The etched copy is the implementation itself, not a proxy. Tests exercise the registry's
 ///      behaviour, not its upgradeability, and a proxy would only add a hop to every call.
 function installDividendSwapRegistry(address owner) returns (RealmDividendSwapRegistry registry) {
+    address at = DeploymentAddresses.DIVIDEND_SWAP_REGISTRY;
     RealmDividendSwapRegistry deployed = new RealmDividendSwapRegistry();
-    VM.etch(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY, address(deployed).code);
-    VM.label(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY, "DividendSwapRegistry");
+    VM.etch(at, address(deployed).code);
+    VM.label(at, "DividendSwapRegistry");
 
-    registry = RealmDividendSwapRegistry(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY);
+    registry = RealmDividendSwapRegistry(at);
+    // On a chain where the registry proxy is already live (Robinhood), the address carries the proxy's
+    // storage, initialized flag included; clear it so the fresh copy can be initialized like the rest.
+    VM.store(at, INITIALIZABLE_STORAGE, bytes32(0));
     registry.initialize(owner, DEFAULT_DIVIDEND_POOL_LIQUIDITY);
 }

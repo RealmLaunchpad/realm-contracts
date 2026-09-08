@@ -29,6 +29,13 @@ fs_permissions = [
 extra_output = ["storageLayout", "transientStorageLayout"]
 out = "out-layout"
 
+# Second build target for `just test-robinhood-fork`: the Robinhood-forked suites need the token impls
+# retargeted (`just chain-robinhood`), and a separate out/cache keeps both targets' builds warm so
+# `fast-test` does not recompile on every switch.
+[profile.robinhood]
+out = "out-robinhood"
+cache_path = "cache-robinhood"
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
 [invariant]

@@ -26,7 +26,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 /// @dev    Run: just chain-<sepolia|robinhood> && forge script UpgradeRealmFactories \
 ///                  --rpc-url <sepolia|robinhood-mainnet> --account realm.dev --slow --broadcast --verify
 contract UpgradeRealmFactories is Script {
-    function run() public {
+    function run() public virtual {
         ChainConfig.Manifest memory m = ChainConfig.manifest();
         _require(m);
 
@@ -36,8 +36,21 @@ contract UpgradeRealmFactories is Script {
         console.log("");
 
         vm.startBroadcast();
+        (address v2Impl, address v4Impl) = _upgradeFactories(m);
+        vm.stopBroadcast();
 
-        address v2Impl = address(
+        console.log("=== Upgraded. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
+        console.log("  FACTORY_UNIV2_UNIFIED_IMPL =", v2Impl);
+        console.log("  FACTORY_UNIV4_UNIFIED_IMPL =", v4Impl);
+        console.log("");
+        console.log("Then: just export-deployments");
+    }
+
+    /// @dev Deploys both factory implementations from `m` and repoints the proxies. Inside a broadcast.
+    ///      Takes the manifest as a parameter so a caller can substitute freshly deployed dependencies
+    ///      (see `RedeployTaxTokenImpls`) without a paste-and-rerun in between.
+    function _upgradeFactories(ChainConfig.Manifest memory m) internal returns (address v2Impl, address v4Impl) {
+        v2Impl = address(
             new RealmFactoryUniV2Unified(
                 m.launchpad,
                 IRealmFactory.TokenImpls({base: m.tokenImpl, tax: m.taxTokenV2Impl}),
@@ -49,7 +62,7 @@ contract UpgradeRealmFactories is Script {
                 ChainConfig.tierCurves()
             )
         );
-        address v4Impl = address(
+        v4Impl = address(
             new RealmFactoryUniV4Unified(
                 m.launchpad,
                 IRealmFactory.TokenImpls({base: m.tokenImpl, tax: m.taxTokenV4Impl}),
@@ -64,14 +77,6 @@ contract UpgradeRealmFactories is Script {
 
         UUPSUpgradeable(m.factoryV2Proxy).upgradeToAndCall(v2Impl, "");
         UUPSUpgradeable(m.factoryV4Proxy).upgradeToAndCall(v4Impl, "");
-
-        vm.stopBroadcast();
-
-        console.log("=== Upgraded. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
-        console.log("  FACTORY_UNIV2_UNIFIED_IMPL =", v2Impl);
-        console.log("  FACTORY_UNIV4_UNIFIED_IMPL =", v4Impl);
-        console.log("");
-        console.log("Then: just export-deployments");
     }
 
     /// @dev A zero in any of these means the manifest was not refreshed after the last deploy; the

@@ -28,8 +28,23 @@ abis:
     
 
 ##################### TESTING ################################
+# Two builds, one command: the Ethereum-mainnet-forked suites need the token impls targeted at mainnet,
+# the Robinhood-forked ones (test/integration/fork/robinhood/) at Robinhood, and one build cannot be
+# both (the impls bake the chain's addresses and refuse a mismatched chain id). Each target keeps its
+# own build cache (`[profile.robinhood]` in foundry.toml), so the retargets do not recompile. Leaves
+# the tree on mainnet, the committed test default.
 fast-test: check-dividend-layout
+    just chain-mainnet
     forge test --no-match-contract Invariants --no-match-path "test/integration/**"
+    just test-robinhood-fork
+    just chain-mainnet
+
+# Robinhood-mainnet fork suites (test/integration/fork/robinhood/): a Realm stack deployed on a Robinhood
+# fork, trading on Robinhood's Uniswap V4 and paying dividends in real xStocks. Needs ROBINHOOD_RPC_URL
+# (archive: the suites pin a block). Retargets the token impls to Robinhood and leaves them there, like
+# the deploy recipes do — `fast-test` switches back for you, a bare `forge test` does not.
+test-robinhood-fork: chain-robinhood
+    FOUNDRY_PROFILE=robinhood forge test --match-path "test/integration/fork/robinhood/**"
 
 # Fails if a taxable token and its dividend extension disagree on storage layout. The extension is
 # `delegatecall`ed with the token's storage, so this is the one property no Solidity test can assert
@@ -96,14 +111,16 @@ _retarget taxlib gradsuffix="":
     @just _graduators "{{gradsuffix}}"
 
 # (internal) Repoints the taxable-token impls' (and their venue bases, the V4 buy-backs, the dividend
-# mixin and the dividend swap registry) `DeploymentAddresses` import, the venue lib used by the V2
+# mixin, the keeper gate, the dividend swap registry and the two test helpers that etch the registries
+# at the address those bake in) `DeploymentAddresses` import, the venue lib used by the V2
 # swap-back AND the registry's third-asset conversion, and the V4 token-side pool-constants lib, to the
 # target chain. Use a `chain-*` recipe.
 _taxtoken lib suffix="":
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
         src/tokens/RealmTaxableTokenUniV2.sol src/tokens/RealmTaxableTokenUniV4.sol src/tokens/RealmUniv4BuyBacks.sol \
         src/tokens/RealmTaxableTokenUniV2Base.sol \
-        src/tokens/DividendDistribution.sol src/dividends/RealmDividendSwapRegistry.sol
+        src/tokens/DividendDistribution.sol src/dividends/RealmDividendSwapRegistry.sol src/tokens/KeeperGated.sol \
+        test/helpers/DividendRegistryHelpers.sol test/helpers/KeepersRegistryHelpers.sol
     sed -i -E 's#\{UniswapV2Venue[A-Za-z]* as UniswapV2Venue\} from "src/libraries/UniswapV2Venue[A-Za-z]*\.sol"#{UniswapV2Venue{{suffix}} as UniswapV2Venue} from "src/libraries/UniswapV2Venue{{suffix}}.sol"#' \
         src/tokens/RealmTaxableTokenUniV2.sol src/dividends/RealmDividendSwapRegistry.sol
     sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
@@ -224,6 +241,18 @@ upgrade-factories-robinhood: chain-robinhood
 
 upgrade-factories-robinhood-testnet: chain-robinhood-testnet
     forge script UpgradeRealmFactories --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
+# Redeploys the two taxable token masters from the current build and rewires the live factories to
+# them (new factory impls, proxies repointed) in ONE run — for a master that has to change on a chain
+# whose stack is already live. Tokens already created keep the old master. Paste the four printed
+# slots into the manifest and `just export-deployments` afterwards. Dry-run first: the same command
+# without --broadcast, plus --sender <realm.dev address> so the proxy-owner checks pass in simulation.
+redeploy-tax-impls-sepolia: chain-sepolia
+    forge script RedeployTaxTokenImpls --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+redeploy-tax-impls-robinhood-testnet: chain-robinhood-testnet
+    forge script RedeployTaxTokenImpls --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Mines a valid hook salt (the permission bits live in the hook's own address) and deploys the hook

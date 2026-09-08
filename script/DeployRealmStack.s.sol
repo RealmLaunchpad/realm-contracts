@@ -27,8 +27,7 @@ import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 
-import {DeploymentAddresses as TaxV2Build} from "src/tokens/RealmTaxableTokenUniV2.sol";
-import {DeploymentAddresses as TaxV4Build} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {BuildTarget} from "script/BuildTarget.sol";
 
 /// @title Phase 1 — deploy the whole Realm stack on a fresh chain, in one broadcast
 /// @notice Everything Realm owns except the phase-0 prerequisites and the `RealmSwapHook`:
@@ -287,20 +286,11 @@ contract DeployRealmStack is Script {
 
     ////////////////////////////// PRE-FLIGHT //////////////////////////////
 
-    /// @dev The taxable token impls are non-upgradeable clone masters that bake three compile-time
-    ///      constants into their bytecode. Getting any of them wrong is unrecoverable for every clone
-    ///      the factory ever mints, so all three are checked before a single tx is broadcast.
+    /// @dev The taxable token impls are non-upgradeable clone masters that bake per-chain constants into
+    ///      their bytecode. Getting any of them wrong is unrecoverable for every clone the factory ever
+    ///      mints, so every one is checked before a single tx is broadcast.
     function _preflight() internal view {
-        require(TaxV2Build.BLOCKCHAIN_ID == block.chainid, "RealmTaxableTokenUniV2 built for another chain");
-        require(TaxV4Build.BLOCKCHAIN_ID == block.chainid, "RealmTaxableTokenUniV4 built for another chain");
-        require(
-            TaxV2Build.REALM_KEEPERS_REGISTRY.code.length != 0,
-            "REALM_KEEPERS_REGISTRY has no code: run DeployRealmPrereqs, paste it, rebuild"
-        );
-        require(
-            TaxV2Build.DIVIDEND_SWAP_REGISTRY.code.length != 0,
-            "DIVIDEND_SWAP_REGISTRY has no code: run DeployRealmPrereqs, paste the PROXY, rebuild"
-        );
+        BuildTarget.assertBuiltFor(block.chainid);
     }
 
     //////////////////////////////// REPORT ////////////////////////////////
