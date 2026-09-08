@@ -12,7 +12,7 @@
 | RealmGraduatorUniswapV4                      | `0x53b659806b6DDF83D4a14f607A8d28487b140cF3` |
 | RealmMasterFeeHandler                        | `0x914e8A6fcA2af6E8Cf4434d1D50234fC89CdF2Ec` |
 | RealmUniV4LiquidityAdder                     | `0xE8168F37CdaAdB08818469De191eD2461EEcc229` |
-| RealmSwapHook                                | `0xE3246e5Ae48bA84e345D88b3e7473ae8DBB540cC` |
+| RealmHook                                    | `0xE3246e5Ae48bA84e345D88b3e7473ae8DBB540cC` |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
 | SwapLpFeeRouter (impl)                       | `0xa2E3C9B3B33Cbad41ECCA283734c335490a09d4a` |
 | RealmQuoter                                  | `0x5606c6EDF892FEd317c60C95a1BCcDA5c1c5f551` |

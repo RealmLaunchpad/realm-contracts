@@ -177,7 +177,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmGraduatorUniswapV4", d.graduatorUniV4));
         s = string.concat(s, _row("RealmMasterFeeHandler", d.masterFeeHandler));
         s = string.concat(s, _row("RealmUniV4LiquidityAdder", d.univ4LiquidityAdder));
-        s = string.concat(s, _row("RealmSwapHook", d.swapHook));
+        s = string.concat(s, _row("RealmHook", d.swapHook));
         s = string.concat(s, _row("SwapLpFeeRouter (proxy)", d.lpFeeRouter));
         s = string.concat(s, _row("SwapLpFeeRouter (impl)", d.lpFeeRouterImpl));
         s = string.concat(s, _row("RealmQuoter", d.quoter));
