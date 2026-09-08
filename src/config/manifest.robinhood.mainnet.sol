@@ -132,6 +132,25 @@ library DeploymentsRobinhoodMainnet {
         c[5] = THICK_VAULT_CURVE_30;
     }
 
+    // --- Dividends ---
+    /// @dev NOTHING IS WHITELISTED PER ASSET, and there is no route table to fill in. A payout asset is
+    ///      permissionless: the token registers its own route at creation
+    ///      (`RealmDividendSwapRegistry.registerRoute`, `DIVIDEND_SWAP_REGISTRY` in
+    ///      `DeploymentAddresses.sol`) and the registry only proves the pools that route names are
+    ///      initialized and hold in-range liquidity. So the ~190 xStock routes need no transaction here:
+    ///      the only thing a V4 route reads from registry state is the quote-token allowlist, and mainnet
+    ///      already has it — quote = WETH `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`, allowed, with
+    ///      `defaultThreshold` 2e18 (that threshold only gates the empty V2 route anyway).
+    /// @dev WHAT IS STILL MISSING on the mainnet registry, both admin-tier, both harmless until
+    ///      dividends actually launch here:
+    ///        1. `setAdmin(REALM_DEV, true)` — `REALM_DEV` is the OWNER but is not an admin, and every
+    ///           operational lever (`setBlacklisted`, `setAllowedQuoteToken`, the thresholds) is
+    ///           admin-only. Until then a payout asset that turns hostile cannot be vetoed.
+    ///        2. `setKeeperFunding(REALM_KEEPER)` — unset, so a conversion hands the keeper no gas money.
+    ///      Only a V3 route's MIDDLE hops are allowlisted against `isAllowedQuoteToken` (USDG is not in
+    ///      it today); every route the picker generates for an xStock is V4, whose hops are not checked
+    ///      against that set, so this matters only if a V3 venue is ever used.
+
     // --- Accounts ---
     address internal constant REALM_DEV = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
     address internal constant REALM_TOKEN_DEPLOYER = address(0);
