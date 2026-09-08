@@ -48,17 +48,9 @@ abstract contract GraduationPricesTests is LaunchpadBaseTests {
         _launchpadBuy(testToken, ethAmountToGraduate + MAX_THRESHOLD_EXCESS - 1);
     }
 
-    function _uniswapBuy(address account, uint256 ethAmount) public virtual {
-        account;
-        ethAmount;
-        revert("must be overriden");
-    }
+    function _uniswapBuy(address account, uint256 ethAmount) public virtual;
 
-    function _uniswapSell(address account, uint256 tokenAmount) public virtual {
-        account;
-        tokenAmount;
-        revert("must be overriden");
-    }
+    function _uniswapSell(address account, uint256 tokenAmount) public virtual;
 
     /////////////////////////////// BASIC TESTS //////////////////////////////////
 

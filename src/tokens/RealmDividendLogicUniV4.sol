@@ -6,6 +6,7 @@ import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.so
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
+import {ERC20, IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 /// @title RealmDividendLogicUniV4
 /// @notice The dividend extension `RealmTaxableTokenUniV4` `delegatecall`s its out-of-band entry
@@ -114,18 +115,27 @@ contract RealmDividendLogicUniV4 is RealmTaxableTokenUniV4Base, DividendDistribu
     // which is what buys the cold half its room. The reverts are also the honest answer — none of these
     // has anything to act on here.
 
-    /// @dev Kills the transfer hook, and with it `SniperProtection` and the dividend share tracking —
-    ///      the single largest saving. An extension's own balances are never moved.
-    function _update(address, address, uint256) internal pure override {
-        revert NotAToken();
-    }
-
     /// @dev Only here because `IRealmTaxableToken` declares it. The storage every entry point touches
     ///      belongs to the token that `delegatecall`s in, so there is nothing here to initialize.
     function initialize(IRealmToken.InitializeParams memory, TaxConfigs memory, AntiSniperConfigs memory)
         external
         pure
     {
+        revert NotAToken();
+    }
+
+    /// @dev The base token's own entry point; same reasoning as the 3-arg one above.
+    function initialize(IRealmToken.InitializeParams memory, AntiSniperConfigs memory) external pure override {
+        revert NotAToken();
+    }
+
+    /// @dev With every mint/transfer entry point stubbed, nothing reaches `_update` and the compiler drops
+    ///      the whole transfer hook (`SniperProtection`, dividend share tracking) — the single largest saving.
+    function transfer(address, uint256) public pure override(ERC20, IERC20) returns (bool) {
+        revert NotAToken();
+    }
+
+    function transferFrom(address, address, uint256) public pure override(ERC20, IERC20) returns (bool) {
         revert NotAToken();
     }
 
