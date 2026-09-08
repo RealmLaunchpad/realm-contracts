@@ -42,10 +42,10 @@ library DeploymentsEthereumSepolia {
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0xa5498948245b1D3CDda08B9324e22c709CE9bDE7;
-    address internal constant TAXABLE_TOKEN_V4_IMPL = 0xa492a0edb9eE7412F061e26EF8Ec4b0594C9101c;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x0B82AE41cA05c1BB2075b47bE3CF29D5CFBe1c31;
 
     /// @notice V2 taxable token implementation (cloned by `RealmFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x32076B54e0504CF8EFCE26170f56EEAF2204DBe8;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xA321AdE62f0aed2Fe13384FE5Ec7ff5d7573885F;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -55,8 +55,8 @@ library DeploymentsEthereumSepolia {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xfe9Db30e48b56eD34785643A6e9e01176Dd16386;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x9686177008dda7D6d0AEEA5063530bF552e893Bd;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x08054EBb21056959317cA59da4B2063fA386253d;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x8bcdCd2fE0F049961ec8513821CB445f698b2266;
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.

@@ -19,12 +19,12 @@
 | RealmKeepersRegistry                         | `0xCba49A6057256392cF480C17C81DF2170FB650CB` |
 | RealmDividendSwapRegistry (proxy)            | `0x9b3c560D86909B8116468536737a272Fe0cE327d` |
 | RealmToken (impl)                            | `0x284A47F94624037Cca0f7b0c13734F6C684B9F6C` |
-| RealmTaxableTokenUniV4 (impl)                | `0x32076B54e0504CF8EFCE26170f56EEAF2204DBe8` |
-| RealmTaxableTokenUniV2 (impl)                | `0xa5498948245b1D3CDda08B9324e22c709CE9bDE7` |
+| RealmTaxableTokenUniV4 (impl)                | `0x74c1f905153051c679DF8cFf422246faF2E7e563` |
+| RealmTaxableTokenUniV2 (impl)                | `0xB487E1420ce89aD2979ae46de85102D351Fc2BC7` |
 | RealmFactoryUniV2Unified (proxy)             | `0xfe9Db30e48b56eD34785643A6e9e01176Dd16386` |
-| RealmFactoryUniV2Unified (impl)              | `0xa492a0edb9eE7412F061e26EF8Ec4b0594C9101c` |
+| RealmFactoryUniV2Unified (impl)              | `0x54D0517bFdB4De1DbbAa4A9086b79028cA42fBD1` |
 | RealmFactoryUniV4Unified (proxy)             | `0x9686177008dda7D6d0AEEA5063530bF552e893Bd` |
-| RealmFactoryUniV4Unified (impl)              | `0xC2793d815BA81AaDC5ae5c8b6de5f14365f8743B` |
+| RealmFactoryUniV4Unified (impl)              | `0x161B853ed072c5bb9A361AE9859ACAfDbb0c9e70` |
 | RealmCreatorVaultFactory (proxy)             | `0xd346ECc082B5db7D7fb787aB7c14f4222e2dd042` |
 | RealmCreatorVaultFactory (impl)              | `0x64dDAe54fb7c1f2b6E1a76645422D8cd26B23ceF` |
 | RealmCreatorVault (impl)                     | `0x6fd7765a8b08E45ff7F1816d3688784675ecd6A5` |
