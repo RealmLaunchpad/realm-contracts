@@ -205,7 +205,6 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         burnToken.accrueFees{value: 4 ether}();
 
         burnToken.processDividends(0, new address[](0));
-        skip(burnToken.DIVIDEND_DRIP_DURATION());
         vm.roll(block.number + 1);
 
         uint256 burnPending = burnToken.burnPendingEth();

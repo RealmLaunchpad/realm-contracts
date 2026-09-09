@@ -380,17 +380,18 @@ removes one, or re-weights the split, so an indexer reads the whole configuratio
 event below identifies WHICH member of that set the event is about, and is always one of them.
 
 The assets are independent machines sharing only the token's eligible supply. Each has its own native
-buffer, its own `DIVIDEND_THRESHOLD` to cross, its own conversion, its own stream and slope, its own
-accumulator, its own per-block funding cooldown and its own staleness clock. So the events below
-interleave freely ACROSS assets, and nothing may be inferred about asset `j` from an event carrying
-asset `i` — a 20/80 split converts the 20% leg roughly four times less often, and one leg can go stale
-and be swept while the other is streaming normally.
+buffer, its own `DIVIDEND_THRESHOLD` to cross, its own conversion, its own accumulator, its own
+per-block funding cooldown and its own staleness clock. So the events below interleave freely ACROSS
+assets, and nothing may be inferred about asset `j` from an event carrying asset `i` — a 20/80 split
+converts the 20% leg roughly four times less often, and one leg can go stale and be swept while the
+other is distributing normally.
 
-Dividends are STREAMED, not dropped. Each distribution funds a linear stream over
-`DIVIDEND_DRIP_DURATION` (15 minutes) and every holder accrues against a `balance x time` accumulator.
-There are no rounds, no phases and no snapshots, so there is no round id on any event and nothing for
-an indexer to reconstruct a denominator from: a holder's entitlement is `previewDividend(holder)`, read
-from the chain.
+Each distribution is credited INSTANTLY, pro rata to the balances held when it lands, against a global
+`rewardPerToken` accumulator that moves only then. (It used to drip over a 15-minute stream; that is
+gone. What keeps a distribution out of a caller's own transaction is the keeper gate below, and the
+keeper firing at unpredictable times.) There are no rounds, no phases and no snapshots, so there is no
+round id on any event and nothing for an indexer to reconstruct a denominator from: a holder's
+entitlement is `previewDividend(holder)`, read from the chain.
 
 **At graduation**, immediately after `Graduated` and from `markGraduated()` itself:
 **`DividendsActivated`** (no args) — the accumulator starts here rather than at creation, so a holder
@@ -418,9 +419,12 @@ keeper. Assets whose funding does not swap (native, and the Uniswap-V2 self-toke
 bypass — there is nothing there for a caller to extract, so stranding is their only failure mode. A
 sub-threshold residual on a swapping asset stays keeper-only. Holders
 are never gated — `claimDividends()` stays open to everyone. Nothing about the gate changes the EVENT
-sequence; it only adds a revert path. It converts the buffer, folds the proceeds into the running stream, and pushes payouts, doing
-whichever of the three there is anything to do. A keeper whose holder list does not fit in one block
-just calls it again; there is no phase to sequence and no state that a second call could disturb.
+sequence; it only adds a revert path. Once stale, the bypass also makes a distribution an ATOMIC
+flash-buy capture (buy, fund, claim, sell in one transaction) — accepted, because a token nobody has
+distributed for a month is most likely dead. It converts the buffer, credits the proceeds to holders,
+and pushes payouts, doing whichever of the three there is anything to do. A keeper whose holder list
+does not fit in one block just calls it again; there is no phase to sequence and no state that a
+second call could disturb.
 
 The FUNDING leg — steps 1 and 1b — runs at most once per block PER ASSET; servicing all three assets in
 one block is normal and expected. A second call in the same block that
@@ -428,22 +432,22 @@ actually moved the buffer skips straight to the payouts, and reverts `DividendPr
 was given no holders either. Pushing payouts is never rate-limited, so splitting a large holder set
 across several transactions in one block works exactly as before.
 
-1. Only if the buffer cleared `DIVIDEND_THRESHOLD`: **`DividendsFunded`**
-   (`asset, nativeIn, assetOut, rate, periodFinish`). `rate` and `periodFinish` describe the stream
-   AFTER the fold-in — a distribution landing mid-stream adds the undelivered remainder to the new
-   money and re-spreads the sum over a fresh full window, so the SLOPE changes and `periodFinish`
-   always moves to `block.timestamp + DIVIDEND_DRIP_DURATION`. The threshold stops applying in exactly
-   one case, so a residual that can no longer grow is never stranded: the token has gone
-   `STALE_DIVIDEND_WINDOW` (30 days) without a distribution.
+1. Only if the buffer cleared `DIVIDEND_THRESHOLD`: **`DividendsFunded`** (`asset, nativeIn, assetOut`).
+   `assetOut` was split across the eligible supply at this instant; there is no stream to describe, so
+   the former `rate` and `periodFinish` arguments are gone (NEW SIGNATURE — tokens deployed before this
+   change keep emitting the five-argument form, so an indexer needs both). Reverts `NoDividendSupply`
+   instead, leaving the buffer untouched, if the eligible supply is under one whole token. The
+   threshold stops applying in exactly one case, so a residual that can no longer grow is never
+   stranded: the token has gone `STALE_DIVIDEND_WINDOW` (30 days) without a distribution.
 1b. Instead of `DividendsFunded`, when a zero-floor conversion came back empty AND the token has gone
    `STALE_DIVIDEND_WINDOW` without a distribution: **`DividendBufferSweptToTreasury`**
    (`asset, nativeAmount`). The pool cannot produce a single wei at any price and has been unable to for
    a month — staleness is what makes that a persistent reading rather than a snapshot anyone could
-   manufacture inside one transaction, since every successful distribution pushes the staleness anchor
-   forward. That slice of the native buffer went to `DIVIDEND_TREASURY` rather than sitting owed to
+   manufacture inside one transaction, since every successful distribution resets the staleness anchor.
+   That slice of the native buffer went to `DIVIDEND_TREASURY` rather than sitting owed to
    holders forever, and the call returned successfully instead of reverting. It is bounded by
    `MAX_DIVIDEND_PER_CONVERSION` per call, so a dead pool's whole buffer takes several calls to clear.
-   Nothing else changes: the payout asset, the stream, the accumulator and every unclaimed accrual are
+   Nothing else changes: the payout asset, the accumulator and every unclaimed accrual are
    untouched, so an indexer needs only to stop expecting that native to become a distribution. A caller
    whose own `minOut` was simply unreachable gets `DividendConversionFailed` and no sweep.
 2. V4 self-token only, immediately BEFORE its buy-back swap: **`DividendBuyBackInitiated`**
@@ -470,7 +474,7 @@ set, so a holder never has to know how many assets there are. It differs from a 
 is gas-capped, so one expensive holder cannot starve the batch — at the chain's `NATIVE_PAYOUT_GAS` for
 a native payout, and at the far larger `ASSET_PAYOUT_GAS` for an ERC20 one, whose `transfer` is a
 contract the registry only ever vetted for liquidity. `claimDividends` forwards all remaining gas for
-both shapes, so a holder skipped by a batch can always be paid by claiming. It never funds a stream.
+both shapes, so a holder skipped by a batch can always be paid by claiming. It never distributes.
 
 
 ### `RealmCreatorVault` (one clone per creator vault)
@@ -515,7 +519,7 @@ events are not attributable to a token by their emitter — index them on their 
 token's own `DividendsFunded`:
 
 - **`DividendAssetPurchased`** (`asset`, `recipient`, `nativeIn`, `assetOut`) — `recipient` IS the token
-  whose stream is being funded, which is the only link back to it. Absent when the payout asset is native or
+  whose holders are being credited, which is the only link back to it. Absent when the payout asset is native or
   the token itself (no conversion happens), and absent when the conversion failed (the whole call
   reverted and the token reports `DividendConversionFailed`).
 - **`KeeperFunded`** (`keeper`, `amount`) — immediately after the one above, when a keeper wallet is
