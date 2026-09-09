@@ -43,10 +43,6 @@ contract MultiAssetHarness is DividendDistributionLogic {
         return dividendAssets[i].owed;
     }
 
-    function rateOf(uint256 i) external view returns (uint96) {
-        return dividendAssets[i].rate;
-    }
-
     function tokenOf(uint256 i) external view returns (address) {
         return dividendAssets[i].token;
     }
@@ -223,8 +219,8 @@ contract DividendsMultiAssetTests is Test {
         h.processDividends(0, 0, _noHolders());
 
         h.processDividends(1, 0, _noHolders());
-        assertGt(h.rateOf(1), 0, "the big leg is streaming");
-        assertEq(h.rateOf(0), 0, "the small leg is untouched");
+        assertGt(h.owedOf(1), 0, "the big leg distributed");
+        assertEq(h.owedOf(0), 0, "the small leg is untouched");
     }
 
     /// @dev The per-block funding cooldown is per asset because the manipulation it bounds is of ONE
@@ -237,32 +233,30 @@ contract DividendsMultiAssetTests is Test {
         h.processDividends(0, 0, _noHolders());
         // Same block, different asset: allowed.
         h.processDividends(1, 0, _noHolders());
-        assertGt(h.rateOf(0), 0, "asset 0 funded");
-        assertGt(h.rateOf(1), 0, "asset 1 funded");
+        assertGt(h.owedOf(0), 0, "asset 0 funded");
+        assertGt(h.owedOf(1), 0, "asset 1 funded");
 
         // Same block, same asset: refused.
         vm.expectRevert(DividendDistribution.DividendProcessCooldown.selector);
         h.processDividends(1, 0, _noHolders());
     }
 
-    /// @dev Each asset accrues against its OWN accumulator at its own slope, so a holder's two claims are
-    ///      independent amounts in independent units.
-    function test_multiAsset_streamsAccrueIndependently() public {
+    /// @dev Each asset accrues against its OWN accumulator, so a holder's two claims are independent
+    ///      amounts in independent units.
+    function test_multiAsset_assetsAccrueIndependently() public {
         _activateWith(1_000e18);
         _accrue(10 ether);
 
         h.processDividends(0, 0, _noHolders()); // native leg: no conversion
-        skip(h.DIVIDEND_DRIP_DURATION());
 
-        assertGt(h.previewDividend(holder, 0), 0, "the native leg has streamed to the holder");
-        assertEq(h.previewDividend(holder, 1), 0, "the DAI leg never started");
+        assertGt(h.previewDividend(holder, 0), 0, "the native leg credited the holder");
+        assertEq(h.previewDividend(holder, 1), 0, "the DAI leg never distributed");
 
         h.processDividends(1, 0, _noHolders()); // DAI leg: converts
-        skip(h.DIVIDEND_DRIP_DURATION());
         assertGt(h.previewDividend(holder, 1), 0, "and now it has");
     }
 
-    /// @dev A conversion failure on one asset must not touch another's buffer, ledger or stream.
+    /// @dev A conversion failure on one asset must not touch another's buffer, ledger or accumulator.
     function test_multiAsset_conversionFailureIsContained() public {
         _activateWith(1_000e18);
         _accrue(10 ether);
@@ -286,7 +280,6 @@ contract DividendsMultiAssetTests is Test {
         _accrue(10 ether);
         h.processDividends(0, 0, _noHolders());
         h.processDividends(1, 0, _noHolders());
-        skip(h.DIVIDEND_DRIP_DURATION());
 
         uint256 ethBefore = holder.balance;
         vm.prank(holder);
@@ -304,7 +297,6 @@ contract DividendsMultiAssetTests is Test {
         _accrue(10 ether);
         h.processDividends(0, 0, _noHolders());
         h.processDividends(1, 0, _noHolders());
-        skip(h.DIVIDEND_DRIP_DURATION());
 
         uint256 daiPending = h.previewDividend(holder, 1);
         h.processDividends(0, 0, _holders());

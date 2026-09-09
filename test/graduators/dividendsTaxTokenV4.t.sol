@@ -19,10 +19,9 @@ import {Vm} from "forge-std/Vm.sol";
 import {SwapRejection} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
-import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
 /// @notice Integration tests for the holder-dividends earnings-allocation leg on Uniswap V4: the
-///         continuous accumulator, threshold-gated funding, the drip that makes a flash loan worthless,
+///         continuous accumulator, threshold-gated funding, the keeper gate that makes a flash loan worthless,
 ///         the push payout, and the committed-funds guards that keep undelivered dividends away from
 ///         every sweep path.
 /// @notice Stand-in for the universal router on a PARTIAL fill: the pool takes half the native, the rest
@@ -180,8 +179,8 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         assertEq(token.dividendAssetCount(), 2, "two payout assets");
         assertTrue(token.hasDividends(), "and the warm flag is on");
-        (,,,,, address first,,,,) = token.dividendAssets(0);
-        (,,,,, address second,,,,) = token.dividendAssets(1);
+        (,,,, address first,,,) = token.dividendAssets(0);
+        (,,,, address second,,,) = token.dividendAssets(1);
         assertEq(first, address(0), "asset 0 is native");
         assertEq(second, DAI, "asset 1 is DAI");
         assertEq(token.dividendWeightsBps(0), 2_000, "20% to the native leg");
@@ -193,10 +192,10 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_multiAsset_graduationActivatesEveryAsset() public {
         RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
 
-        (, uint40 finish0,,,,,,,,) = token.dividendAssets(0);
-        (, uint40 finish1,,,,,,,,) = token.dividendAssets(1);
-        assertGt(finish0, 0, "asset 0 is live");
-        assertEq(finish1, finish0, "and asset 1 went live in the same instant");
+        (, uint40 live0,,,,,,) = token.dividendAssets(0);
+        (, uint40 live1,,,,,,) = token.dividendAssets(1);
+        assertGt(live0, 0, "asset 0 is live");
+        assertEq(live1, live0, "and asset 1 went live in the same instant");
     }
 
     /// @dev End to end, through the real earnings split: one accrual, two buffers, two conversions, two
@@ -205,13 +204,12 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
         _accrue(token, 1 ether);
 
-        (,,,,,,,, uint88 buffer0,) = token.dividendAssets(0);
-        (,,,,,,,, uint88 buffer1,) = token.dividendAssets(1);
+        (,,,,,, uint88 buffer0,) = token.dividendAssets(0);
+        (,,,,,, uint88 buffer1,) = token.dividendAssets(1);
         assertEq(uint256(buffer0) * 4, uint256(buffer1), "the 20/80 split reached the buffers");
 
         token.processDividends(0, 0, _noHolders());
         token.processDividends(1, 0, _noHolders());
-        skip(token.DIVIDEND_DRIP_DURATION());
 
         uint256 ethBefore = buyer.balance;
         vm.prank(buyer);
@@ -229,15 +227,15 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
         _accrue(token, 1 ether);
 
-        (,,,,,,,, uint88 buffer0,) = token.dividendAssets(0);
-        (,,,,,,,, uint88 buffer1,) = token.dividendAssets(1);
+        (,,,,,, uint88 buffer0,) = token.dividendAssets(0);
+        (,,,,,, uint88 buffer1,) = token.dividendAssets(1);
         uint256 balanceBefore = address(token).balance;
 
         token.sweepStrayEth();
 
         assertEq(address(token).balance, balanceBefore, "nothing was stray, so nothing moved");
-        (,,,,,,,, uint88 after0,) = token.dividendAssets(0);
-        (,,,,,,,, uint88 after1,) = token.dividendAssets(1);
+        (,,,,,, uint88 after0,) = token.dividendAssets(0);
+        (,,,,,, uint88 after1,) = token.dividendAssets(1);
         assertEq(after0, buffer0, "asset 0's buffer is intact");
         assertEq(after1, buffer1, "asset 1's buffer is intact");
     }
@@ -284,7 +282,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         vm.prank(keeper);
         token.processDividends(0, new address[](0));
 
-        assertGt(divRate(address(token), 0), 0, "the appointed keeper funded the stream");
+        assertGt(token.dividendsOwed(), 0, "the appointed keeper distributed");
     }
 
     /// @dev Revocation is immediate: a rotated-out key stops working in the next transaction.
@@ -313,7 +311,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         vm.prank(makeAddr("randomCaller"));
         token.processDividends(0, new address[](0));
 
-        assertGt(divRate(address(token), 0), 0, "a stale token can be funded by anyone");
+        assertGt(token.dividendsOwed(), 0, "a stale token can be funded by anyone");
     }
 
     /// @dev The gate never stands between a holder and their own money. `claimDividends()` is open to
@@ -321,7 +319,6 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_claimDividends_staysOpenToNonKeepers() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, new address[](0));
-        skip(token.DIVIDEND_DRIP_DURATION());
 
         uint256 owed = token.previewDividend(buyer);
         assertGt(owed, 0, "precondition: the holder has accrued");
@@ -341,7 +338,8 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertEq(token.dividendsBps(), 5_000, "dividendsBps stored");
         assertTrue(token.hasDividends(), "warm-slot gate flipped on");
         assertEq(token.dividendToken(), address(0), "paid in native");
-        assertEq(token.dividendPeriodFinish(), 0, "the accumulator is dormant before graduation");
+        (, uint40 live,,,,,,) = token.dividendAssets(0);
+        assertEq(live, 0, "the accumulator is dormant before graduation");
     }
 
     /// @dev The self-token sentinel exists because a creator cannot name an address that does not exist
@@ -377,12 +375,13 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      token is live — not from whenever the first earnings happen to arrive.
     /// @dev The graduator still holds the WHOLE supply at that instant and moves it into the pool later
     ///      in the same transaction. Under the old round machinery that would have poisoned an opening
-    ///      denominator; here there is none to poison, because no stream is running yet and eligible
-    ///      supply is read live on every advance.
+    ///      denominator; here there is none to poison, because eligible supply is only read when a
+    ///      distribution lands, and none can before the pool is funded.
     function test_dividendsActivateAtGraduation() public {
         RealmTaxableTokenUniV4 token = _graduatedDividendToken();
-        assertGt(token.dividendPeriodFinish(), 0, "activated by graduation itself");
-        assertEq(divRate(address(token), 0), 0, "but nothing is streaming yet");
+        (, uint40 live,,,,,,) = token.dividendAssets(0);
+        assertGt(live, 0, "activated by graduation itself");
+        assertEq(token.dividendsOwed(), 0, "but nothing has been distributed yet");
         assertEq(token.previewDividend(buyer), 0, "so nobody has accrued anything");
     }
 
@@ -414,91 +413,74 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         // Nothing happens to the token for a month — no trades, no distributions.
         skip(token.STALE_DIVIDEND_WINDOW() + 1);
         token.processDividends(0, _noHolders());
-        assertEq(token.dividendsOwed(), residual, "the stranded residual finally funded a stream");
+        assertEq(token.dividendsOwed(), residual, "the stranded residual was finally distributed");
 
-        skip(token.DIVIDEND_DRIP_DURATION());
         uint256 before = buyer.balance;
         token.processDividends(0, _batch(buyer));
         assertApproxEqAbs(buyer.balance - before, residual, residual / 1000, "and reached the holder");
     }
 
-    /// @dev A distribution landing while the previous one is still dripping must never revert. It folds
-    ///      the undelivered remainder in and re-spreads the sum over a fresh window: the slope changes,
-    ///      nothing is deferred, and no phase has to be waited out.
-    function test_fundingMidStreamJustChangesTheSlope() public {
-        RealmTaxableTokenUniV4 token = _liveDividendToken();
-        token.processDividends(0, _noHolders());
-        uint256 firstRate = divRate(address(token), 0);
+    ///////////////////////// the keeper gate, and what it makes worthless /////////////////////////
 
-        skip(token.DIVIDEND_DRIP_DURATION() / 2);
-        vm.roll(block.number + 1); // the funding leg is once per block
-        _accrue(token, 1 ether);
-        token.processDividends(0, _noHolders()); // no revert, no wait
-
-        assertEq(
-            token.dividendPeriodFinish(),
-            block.timestamp + token.DIVIDEND_DRIP_DURATION(),
-            "a full fresh window from now"
-        );
-        assertApproxEqRel(divRate(address(token), 0), firstRate * 3 / 2, 1e14, "slope is (remainder + new) / duration");
-        assertEq(token.dividendsOwed(), 1 ether, "and both distributions are owed in full");
-    }
-
-    ///////////////////////// the drip, and what it makes worthless /////////////////////////
-
-    /// @dev THE property the design exists for: a balance that exists for zero seconds integrates to
-    ///      zero. `holder2` receives half the float and gives it straight back in the same block, with a
-    ///      distribution funded in between — and is owed nothing.
-    function test_aZeroDurationBalanceEarnsNothing() public {
+    /// @dev THE property the gate exists for: a balance held across no distribution is worth nothing,
+    ///      and a holder cannot make one land while they hold it. `holder2` receives half the float,
+    ///      tries to distribute and take, and gives the tokens straight back in the same block — and is
+    ///      owed nothing.
+    function test_aBorrowedBalanceCannotLandItsOwnDistribution() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         IERC20 erc = IERC20(address(token));
         uint256 half = erc.balanceOf(buyer) / 2;
 
-        skip(token.DIVIDEND_DRIP_DURATION()); // real time on the clock before the attack
-
         vm.prank(buyer);
         erc.transfer(holder2, half); // "borrow"
-        token.processDividends(0, _noHolders()); // fund, in the same block
-        token.processDividends(0, _batch(holder2)); // and try to take it
+        vm.prank(holder2);
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
+        token.processDividends(0, _batch(holder2)); // fund and take, in the same transaction: refused
         vm.prank(holder2);
         erc.transfer(buyer, half); // repay
 
-        assertEq(holder2.balance, 0, "a zero-duration holder is paid nothing");
-        assertEq(token.previewDividend(holder2), 0, "and is owed nothing");
+        assertEq(token.previewDividend(holder2), 0, "a balance that spanned no distribution is owed nothing");
     }
 
-    /// @dev Accrual is `balance x time`. Two holders splitting the float evenly for the second half of a
-    ///      stream split that half evenly, and the one who held through the first half keeps all of it.
-    function test_accrualIsProportionalToBalanceAndTime() public {
+    /// @dev Accrual is the balance held at the instant a distribution lands. A holder that arrives after
+    ///      one gets nothing from it, and the next one is split by the balances held then.
+    function test_accrualIsProportionalToBalanceAtTheDistribution() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         IERC20 erc = IERC20(address(token));
         token.processDividends(0, _noHolders());
         uint256 pot = token.dividendsOwed();
 
-        skip(token.DIVIDEND_DRIP_DURATION() / 2);
         // Read the balance BEFORE the prank: `vm.prank` applies to the next call, view calls included.
         uint256 half = erc.balanceOf(buyer) / 2;
         vm.prank(buyer);
         erc.transfer(holder2, half);
-        skip(token.DIVIDEND_DRIP_DURATION() / 2);
+        assertEq(token.previewDividend(holder2), 0, "nothing from before holder2 held");
+        assertApproxEqRel(token.previewDividend(buyer), pot, 1e14, "the buyer keeps the whole first one");
 
-        assertApproxEqRel(token.previewDividend(holder2), pot / 4, 1e14, "half of the second half");
-        assertApproxEqRel(token.previewDividend(buyer), pot * 3 / 4, 1e14, "the rest");
+        _accrue(token, 1 ether);
+        vm.roll(block.number + 1); // the funding leg is once per block
+        token.processDividends(0, _noHolders());
+        uint256 second = token.dividendsOwed() - pot;
+
+        assertApproxEqRel(token.previewDividend(holder2), second / 2, 1e14, "half of the second");
+        assertApproxEqRel(token.previewDividend(buyer), pot + second / 2, 1e14, "the rest");
     }
 
     ///////////////////////// payout /////////////////////////
 
-    function test_singleHolder_receivesTheWholeStream() public {
+    function test_singleHolder_receivesTheWholeDistribution() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
-        assertApproxEqAbs(token.dividendsOwed(), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "the stream is funded");
-        skip(token.DIVIDEND_DRIP_DURATION());
+        assertApproxEqAbs(token.dividendsOwed(), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "the buffer was distributed");
 
         uint256 balanceBefore = buyer.balance;
         token.processDividends(0, _batch(buyer));
 
         assertApproxEqAbs(
-            buyer.balance - balanceBefore, 0.5 ether, GRADUATOR_DUST_TOLERANCE, "sole holder takes the whole stream"
+            buyer.balance - balanceBefore,
+            0.5 ether,
+            GRADUATOR_DUST_TOLERANCE,
+            "sole holder takes the whole distribution"
         );
         assertLt(token.dividendsOwed(), GRADUATOR_DUST_TOLERANCE, "nothing meaningful left owed");
     }
@@ -508,7 +490,6 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_payingTwiceIsANoOp() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
-        skip(token.DIVIDEND_DRIP_DURATION());
 
         address[] memory holders = new address[](2);
         holders[0] = buyer;
@@ -531,7 +512,6 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_aPushOnlyCallWorksWithNothingToFund() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
-        skip(token.DIVIDEND_DRIP_DURATION());
 
         uint256 before = buyer.balance;
         token.processDividends(0, _batch(buyer)); // buffer is empty: must still pay
@@ -549,17 +529,15 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         erc.transfer(holder2, half);
 
         token.processDividends(0, _noHolders());
-        skip(token.DIVIDEND_DRIP_DURATION());
         vm.roll(block.number + 1); // the funding leg is once per block
         token.processDividends(0, _batch(buyer)); // holder2 omitted
 
         _accrue(token, 1 ether);
         vm.roll(block.number + 1);
         token.processDividends(0, _noHolders());
-        skip(token.DIVIDEND_DRIP_DURATION());
         vm.roll(block.number + 1);
 
-        assertApproxEqRel(token.previewDividend(holder2), 0.5 ether, 1e14, "two streams' worth, still owed");
+        assertApproxEqRel(token.previewDividend(holder2), 0.5 ether, 1e14, "two distributions' worth, still owed");
         token.processDividends(0, _batch(holder2));
         assertApproxEqRel(holder2.balance, 0.5 ether, 1e14, "and paid in full whenever the keeper gets to it");
     }
@@ -567,7 +545,6 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_claimDividends_isABackstopForAMissedHolder() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
-        skip(token.DIVIDEND_DRIP_DURATION());
 
         uint256 balanceBefore = buyer.balance;
         vm.prank(buyer);
@@ -619,7 +596,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      balance that can never be paid, and every stream under-distributes by that much, forever.
     /// @dev Asserted from outside via the only two things the pair is observable through: a zero
     ///      `previewDividend` per excluded address (the predicate), and the size of a real holder's
-    ///      share of a fully-dripped stream (the subtraction).
+    ///      share of a distribution (the subtraction).
     function test_theTwoExclusionListsAgree() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         IERC20 erc = IERC20(address(token));
@@ -633,7 +610,6 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         token.processDividends(0, _noHolders());
         uint256 pot = token.dividendsOwed();
-        skip(token.DIVIDEND_DRIP_DURATION());
 
         for (uint256 i; i < excluded.length; ++i) {
             assertEq(token.previewDividend(excluded[i]), 0, "an excluded address must accrue nothing");
@@ -646,7 +622,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         );
     }
 
-    /// @dev The graduator is deliberately NOT excluded — by the time any stream runs, graduation is over
+    /// @dev The graduator is deliberately NOT excluded — by the time any distribution lands, graduation is over
     ///      and it holds only dust, whose accrual rounds to zero. Pinning that here so the decision (and
     ///      the per-transfer SLOAD it avoids) is not quietly reversed: given a real balance it earns like
     ///      any other address.
@@ -663,7 +639,6 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         erc.transfer(graduator, half);
 
         token.processDividends(0, _noHolders());
-        skip(token.DIVIDEND_DRIP_DURATION());
         assertGt(token.previewDividend(graduator), 0, "with a real balance it accrues like any holder");
     }
 
@@ -681,7 +656,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     }
 
     /// @dev The whole V4 self-token path end to end: accrue ETH, buy the token back on its own pool
-    ///      when the stream is funded, and pay holders in tokens. Nothing else exercises
+    ///      when a distribution lands, and pay holders in tokens. Nothing else exercises
     ///      `_acquireDividendAsset`'s V4 override, so without this the leg is configurable but never
     ///      executed.
     function test_selfTokenLeg_boughtBackOnFundingAndPaidInTokens() public {
@@ -694,7 +669,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         uint256 pot = token.dividendsOwed();
         assertGt(pot, 0, "ETH was converted into the token itself");
-        assertEq(token.dividendToken(), address(token), "the stream is denominated in the token");
+        assertEq(token.dividendToken(), address(token), "the payout is denominated in the token");
         // A self-token leg swaps, so one call converts at most `MAX_DIVIDEND_PER_CONVERSION`. What is
         // left is the uncapped remainder plus the buy-back's own tax, which loops back in as fresh
         // earnings.
@@ -705,7 +680,6 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             "the conversion took the cap, the remainder stayed buffered"
         );
 
-        skip(token.DIVIDEND_DRIP_DURATION());
         address[] memory holders = new address[](1);
         holders[0] = buyer;
         token.processDividends(0, holders);
@@ -715,7 +689,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             IERC20(address(token)).balanceOf(buyer) - holderBefore,
             pot,
             GRADUATOR_DUST_TOLERANCE,
-            "paid the whole stream"
+            "paid the whole distribution"
         );
     }
 

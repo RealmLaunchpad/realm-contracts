@@ -133,10 +133,11 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     /// @dev The hot slot of a `DivAsset` is what makes a single-asset token cost what it always did: the
-    ///      "has anything accrued since the last sync?" test and the settle arithmetic both read this ONE
-    ///      slot, and only reach `token`/`rate` in the next one when the accumulator actually advances.
-    ///      A field slipping out of it would put a second SLOAD on every transfer of every dividend token.
-    function test_dividendAssetHotSlotHoldsTheAccumulatorAndAllThreeClocks() public {
+    ///      "has anything been distributed since this account last moved?" test and the settle
+    ///      arithmetic both read this ONE slot, and only reach `token` in the next one when a payout is
+    ///      made. A field slipping out of it would put a second SLOAD on every transfer of every
+    ///      dividend token.
+    function test_dividendAssetHotSlotHoldsTheAccumulatorAndBothClocks() public {
         RealmTaxableTokenUniV2 token = tok;
         // Graduation starts the clocks, which is what makes the packed fields observable at all.
         testToken = address(token);
@@ -146,24 +147,20 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
         uint256 hot = _slot(address(token), DIVIDEND_ASSETS_SLOT);
         (
             uint128 rewardPerTokenStored,
-            uint40 periodFinish,
-            uint40 lastUpdate,
+            uint40 lastDistribution,
             uint40 lastProcessBlock,
             uint8 precisionExp,
-            address asset,
-            uint96 rate,,,
+            address asset,,,
         ) = token.dividendAssets(0);
 
         assertEq(uint128(hot), rewardPerTokenStored, "rewardPerTokenStored at byte 0");
-        assertEq(uint40(hot >> 128), periodFinish, "periodFinish at byte 16");
-        assertEq(uint40(hot >> 168), lastUpdate, "lastUpdate at byte 21");
-        assertEq(uint40(hot >> 208), lastProcessBlock, "lastProcessBlock at byte 26");
-        assertEq(uint8(hot >> 248), precisionExp, "precisionExp at byte 31");
-        assertGt(periodFinish, 0, "graduation started the clocks, so the slot is actually populated");
+        assertEq(uint40(hot >> 128), lastDistribution, "lastDistribution at byte 16");
+        assertEq(uint40(hot >> 168), lastProcessBlock, "lastProcessBlock at byte 21");
+        assertEq(uint8(hot >> 208), precisionExp, "precisionExp at byte 26");
+        assertGt(lastDistribution, 0, "graduation started the clocks, so the slot is actually populated");
 
         uint256 second = _slot(address(token), DIVIDEND_ASSETS_SLOT + 1);
         assertEq(address(uint160(second)), asset, "the payout asset is in the SECOND slot");
-        assertEq(uint96(second >> 160), rate, "and so is the slope");
     }
 
     /// @dev The counters were pushed out of the tax slot by the allocation bps. Documented as a

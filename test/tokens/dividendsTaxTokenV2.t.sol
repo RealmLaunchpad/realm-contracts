@@ -13,7 +13,6 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {RealmDividendLogicUniV2} from "src/tokens/RealmDividendLogicUniV2.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
-import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
 /// @notice Integration tests for holder dividends on Uniswap V2. Two things are V2-specific and get the
 ///         attention here: a leg paying the TOKEN ITSELF must be carved in token space (a V2 pair reverts
@@ -144,14 +143,13 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         assertEq(token.pendingNative(), 0.5 ether, "half the earnings buffered for holders");
 
         token.processDividends(0, _noHolders());
-        assertEq(token.dividendsOwed(), 0.5 ether, "the whole buffer funded the stream");
-        skip(token.DIVIDEND_DRIP_DURATION());
+        assertEq(token.dividendsOwed(), 0.5 ether, "the whole buffer was distributed");
 
         uint256 before = buyer.balance;
         address[] memory holders = new address[](1);
         holders[0] = buyer;
         token.processDividends(0, holders);
-        assertApproxEqRel(buyer.balance - before, 0.5 ether, 1e12, "sole holder takes the whole stream");
+        assertApproxEqRel(buyer.balance - before, 0.5 ether, 1e12, "sole holder takes the whole distribution");
     }
 
     /// @dev THE automatic leak. `_processCollectedTokens` fires on every sell that crosses the swap-back
@@ -247,9 +245,8 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         vm.assume(buffered >= token.SWAP_THRESHOLD());
 
         token.processDividends(0, _noHolders());
-        assertEq(token.dividendsOwed(), buffered, "the token buffer funded the stream, with no conversion");
+        assertEq(token.dividendsOwed(), buffered, "the token buffer was distributed, with no conversion");
         assertEq(token.dividendPendingTokens(), 0, "buffer consumed");
-        skip(token.DIVIDEND_DRIP_DURATION());
 
         uint256 before = IERC20(address(token)).balanceOf(buyer);
         address[] memory holders = new address[](1);
@@ -298,18 +295,18 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     /// @dev The dividend entry points are stubs that `delegatecall` into a separate contract,
     ///      because their bodies do not fit in the clone's implementation alongside everything else.
     ///      What has to hold for that to be safe is that the extension writes the TOKEN's storage and
-    ///      keeps none of its own — which is exactly what a funded stream lets us observe.
-    function test_extension_streamStateLandsOnTheTokenNotTheExtension() public {
+    ///      keeps none of its own — which is exactly what a distribution lets us observe.
+    function test_extension_dividendStateLandsOnTheTokenNotTheExtension() public {
         RealmTaxableTokenUniV2 token = _nativeToken();
         RealmDividendLogicUniV2 extension = RealmDividendLogicUniV2(payable(token.dividendLogic()));
 
         _accrue(token, 1 ether);
         token.processDividends(0, _noHolders());
 
-        assertGt(token.dividendsOwed(), 0, "the token's stream was funded through the delegatecall");
-        assertGt(divRate(address(token), 0), 0, "and its slope is set");
+        assertGt(token.dividendsOwed(), 0, "the token distributed through the delegatecall");
+        assertGt(token.dividendRewardPerToken(0), 0, "and its accumulator moved");
         assertEq(extension.dividendsOwed(), 0, "the extension kept nothing of its own");
-        assertEq(divRate(address(extension), 0), 0, "and never ran a stream of its own");
+        assertEq(extension.dividendRewardPerToken(0), 0, "and its accumulator never moved");
         assertEq(address(extension).balance, 0, "the extension holds no money");
     }
 

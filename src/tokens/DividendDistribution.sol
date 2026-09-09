@@ -8,33 +8,47 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 
 /// @title DividendDistribution
 /// @notice Trustless holder dividends for a Realm token: UP TO THREE payout assets, paid out of
-///         post-graduation earnings, streamed continuously so no caller can time their way into a share.
+///         post-graduation earnings, each distribution credited pro rata to the balances held at the
+///         instant it lands.
 ///
 /// @dev THE RULE, and the reason everything else is small:
 ///
-///          You earn in proportion to `balance x time`, from a stream that never stops.
+///          A distribution is split across the balances held AT THAT INSTANT.
 ///
-///      Every distribution funds a linear stream over `DIVIDEND_DRIP_DURATION` and each holder accrues
-///      against a global `rewardPerTokenStored` accumulator that only advances with the clock. A flash
-///      loan spans zero seconds, so it accrues exactly zero — not by an age gate, a snapshot, a minimum
-///      or a trusted ticker, but because its integrand is zero. There is no distribution INSTANT left to
-///      sandwich: money arrives as a slope, not as a drop.
+///      Funding adds `amount / eligibleSupply` to a global `rewardPerTokenStored` accumulator, and each
+///      holder banks `balance x (accumulator - own checkpoint)` right before their balance moves. Nothing
+///      accrues between distributions, so between them a transfer reads one warm slot per asset and
+///      writes nothing.
+///
+/// @dev WHAT STOPS A CALLER TIMING THEIR WAY INTO A SHARE. Not a drip — there used to be a 15-minute
+///      stream here and it is gone. Three things replace it, and only together:
+///        1. `processDividends` is KEEPER-GATED, so nobody can land a distribution inside their own
+///           transaction. A flash-borrowed balance spans no distribution and earns nothing.
+///        2. The keeper fires at UNPREDICTABLE times, so a hold that brackets a distribution is held
+///           blind, paying two taxes and two pool fees for a share of ONE distribution, whose size
+///           `MAX_DIVIDEND_PER_CONVERSION` and the per-block funding cooldown cap.
+///        3. Settle-before-mutate (next paragraph) makes the balance the accumulator credits the one
+///           that was actually held when the distribution landed.
+/// @dev ⚠️ ACCEPTED, both:
+///        - On a chain with a public mempool a searcher can bracket the keeper's own transaction. The
+///          prize is their share of one capped distribution against a taxed round trip; the keeper's
+///          cadence, not this contract, is what keeps that unattractive.
+///        - After `STALE_DIVIDEND_WINDOW` the gate opens to everyone and a distribution becomes an
+///          ATOMIC flash-buy capture: buy, fund, claim, sell. A token nobody has distributed for a
+///          month is most likely dead by then, and what is exposed is a buffer that sat that long.
 ///
 /// @dev ⚠️ THE ONE ORDERING RULE THE WHOLE DESIGN RESTS ON. `_onDividendTransfer` must run BEFORE the
-///      balances move, and it must advance the accumulator BEFORE it settles either account. The
-///      accumulator divides the elapsed interval by the eligible supply read at that moment; settle
-///      after the mutation and an attacker can shrink the denominator inside their own transaction and
-///      harvest a real elapsed interval at an inflated rate — atomically, with no time exposure. Settle
-///      first and both halves are worthless: their buy books at a zero balance, and their
-///      denominator-shrinking transfer books the pending interval at the full supply before shrinking
-///      anything.
+///      balances move. Settling banks `balance x (accumulator - checkpoint)` and moves the checkpoint
+///      up; done after the mutation, a fresh account would bank the accumulator's whole history against
+///      a balance it has held for zero seconds — a phantom claim, paid out of other holders' money — and
+///      a seller would hand their unclaimed accrual to the buyer. Settle first and a fresh account books
+///      at a zero balance, and every account carries exactly what it held through each distribution.
 ///      With several payout assets that rule applies to EVERY one of them on every transfer: the hook
 ///      loops the whole configured set, so no asset is ever left un-settled across a balance change.
 ///
-/// @dev NO ROUNDS, NO PHASES, NO WINDOWS. Funding is idempotent in the only sense that matters — a
-///      distribution arriving mid-stream folds the undelivered remainder into a fresh full-length
-///      window and changes the SLOPE. It never reverts for being early, never has to wait for a
-///      previous stream to drain, and never leaves money in a state that has to be rolled over.
+/// @dev NO ROUNDS, NO PHASES, NO WINDOWS. A distribution can land at any moment: it never reverts for
+///      being early, never waits for anything, and folds into the same accumulator as everything before
+///      it. There is no state that has to be rolled over.
 ///
 /// @dev ONE TO THREE ASSETS PER TOKEN, chosen at creation and permanent — never rewritten, by anyone,
 ///      for any reason. Each is native (`address(0)`), the token itself (`DIVIDEND_SELF_TOKEN`, and only
@@ -44,9 +58,9 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 ///
 /// @dev EACH ASSET IS ITS OWN, INDEPENDENT MACHINE. `dividendWeightsBps` splits the dividends slice of
 ///      earnings between them at accrual time, and from that point on nothing is shared: each has its
-///      own native buffer, its own `DIVIDEND_THRESHOLD` to cross, its own conversion, its own stream and
-///      slope, its own accumulator, its own per-account checkpoint, its own per-block funding cooldown
-///      and its own treasury-sweep proof. A 20/80 split therefore converts the 20% asset roughly four
+///      own native buffer, its own `DIVIDEND_THRESHOLD` to cross, its own conversion, its own
+///      accumulator, its own per-account checkpoint, its own per-block funding cooldown and its own
+///      treasury-sweep proof. A 20/80 split therefore converts the 20% asset roughly four
 ///      times less often, in roughly the same-sized distributions — which is the point: the threshold
 ///      exists so a conversion is worth its gas, and a weight is not a reason to relax it.
 ///      The ONLY things the assets share are the eligible supply (a property of the token, not of a
@@ -57,8 +71,8 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 ///      forever. Rather than rewrite the asset and write off what holders had already accrued — paying
 ///      an old-asset debt out of a new-asset balance at a 1:1 unit ratio between two assets that may
 ///      not even share decimals — the unconvertible buffer goes to `DIVIDEND_TREASURY`, and Realm makes
-///      holders whole off-chain if it is ever worth doing. Nothing on-chain is written off: the stream,
-///      the accumulator and every accrual survive untouched. This is a backstop for a case that should
+///      holders whole off-chain if it is ever worth doing. Nothing on-chain is written off: the
+///      accumulator and every accrual survive untouched. This is a backstop for a case that should
 ///      not occur — a token whose payout asset has no liquidity has, by then, no activity either.
 ///
 /// @dev ⚠️ ACCEPTED, AND THE ONE GAP THE SWEEP DOES NOT COVER: it moves UNCONVERTED native only. Once
@@ -82,14 +96,13 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 ///      batch, or until they call `claimDividends()` themselves. That is what lets a keeper push only
 ///      to holders above whatever threshold it likes.
 ///
-/// @dev THE HOT PATH IS THE WHOLE COST, and it is zero per asset while that asset is not streaming.
-///      Between an asset's streams `lastUpdate == periodFinish`, so its accumulator cannot move, and an
-///      account whose `rewardPerTokenPaid` already equals it is skipped without a write. A transfer only
-///      pays for storage on the assets whose accumulator has actually advanced since that account last
-///      moved. Excluded addresses — crucially the `pair`, counterparty of every trade — are never
-///      settled at all, so a buy or a sell touches ONE account slot per asset, not two. The eligible
-///      supply is computed at most ONCE per transfer however many assets advance, and only if one does.
-///      A single-asset token therefore pays what it always did, plus the loop.
+/// @dev THE HOT PATH IS THE WHOLE COST, and it is one warm read per asset between distributions. The
+///      accumulator only moves when a distribution lands, so an account whose `rewardPerTokenPaid`
+///      already equals it is skipped without a write: a transfer only pays for storage on the assets
+///      that have distributed since that account last moved. Excluded addresses — crucially the `pair`,
+///      counterparty of every trade — are never settled at all, so a buy or a sell touches ONE account
+///      slot per asset, not two. The eligible supply is never read on this path: it is a funding-time
+///      denominator (see `DividendDistributionLogic._creditDividends`).
 ///
 /// @dev Asset-agnostic: a payout may be native, the token itself, or a third ERC20, and the accounting
 ///      never knows the difference.
@@ -99,8 +112,8 @@ abstract contract DividendDistribution {
     ///         and impossible to grow after creation. Three is what the product asked for.
     uint256 public constant MAX_DIVIDEND_ASSETS = 3;
 
-    /// @notice Minimum accrued native amount an asset's buffer must hold before it may fund that asset's
-    ///         stream. Per asset, never aggregate — see the independence note on the contract docstring.
+    /// @notice Minimum accrued native amount an asset's buffer must hold before it may be distributed.
+    ///         Per asset, never aggregate — see the independence note on the contract docstring.
     ///         Bypassed only once the asset has gone `STALE_DIVIDEND_WINDOW` without a distribution, so
     ///         a sub-threshold residual on a dead token is not stranded in the buffer forever.
     uint256 public constant DIVIDEND_THRESHOLD = DeploymentAddresses.DIVIDEND_THRESHOLD;
@@ -120,32 +133,17 @@ abstract contract DividendDistribution {
     ///      manipulations, no shared cost). Keeper-gating is what actually bounds it.
     /// @dev Necessarily >= `DIVIDEND_THRESHOLD`: a cap below the floor would leave an asset that
     ///      qualifies to distribute unable to convert what qualified it. The remainder above the cap
-    ///      stays buffered and funds a later stream, so nothing is stranded.
+    ///      stays buffered for a later distribution, so nothing is stranded.
     uint256 public constant MAX_DIVIDEND_PER_CONVERSION = DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;
 
-    /// @notice How long each distribution takes to stream out. Every funding restarts a full window of
-    ///         this length for THAT asset, folding whatever the previous one had left to deliver into
-    ///         the new slope.
-    /// @dev NOT the anti-flash-loan mechanism, and deliberately SMALL. A borrowed balance exists for
-    ///      zero seconds and therefore integrates to zero regardless of the length — what rules the
-    ///      flash loan out is the accumulator and the settle-before-mutate ordering, not this constant.
-    ///      What the length actually buys is dilution of a ONE-BLOCK hold: 15 minutes prices a 12-second
-    ///      block at ~1.3% of whatever the stream still has to deliver, against a round-trip cost of two
-    ///      taxes plus two pool fees. The ABSOLUTE size of that capture is bounded by
-    ///      `MAX_DIVIDEND_PER_CONVERSION` and the per-block funding cooldown, which cap how large a
-    ///      slope can be built, and that bound is what makes the timed hold uneconomic — not the window.
-    ///      Sizing it in days would rule out fast payout cadences for a proportionally small gain.
-    /// @dev It is a smoothing window, not an eligibility gate: nothing about it can make a call revert,
-    ///      and a holder is never "too new" for it. Arriving mid-stream simply earns from the moment of
-    ///      arrival.
-    uint256 public constant DIVIDEND_DRIP_DURATION = 15 minutes;
-
-    /// @notice Time without a distribution after which an ASSET is treated as DEAD. Two things unlock
-    ///         there, both last resorts: funding below `DIVIDEND_THRESHOLD`, so a residual that can no
-    ///         longer grow is not stranded in the buffer forever, and the treasury sweep of a buffer no
-    ///         swap can convert (see `DividendDistributionLogic._fundDividends`, which also records what
-    ///         that second use does and does not prove).
-    /// @dev Anchored on that asset's own `periodFinish`, which every distribution pushes forward, so an
+    /// @notice Time without a distribution after which an ASSET is treated as DEAD. Three things unlock
+    ///         there, all last resorts: funding below `DIVIDEND_THRESHOLD`, so a residual that can no
+    ///         longer grow is not stranded in the buffer forever; funding by ANYONE, so a keeper set that
+    ///         is gone cannot strand it either (accepting the atomic capture the contract docstring
+    ///         records); and the treasury sweep of a buffer no swap can convert (see
+    ///         `DividendDistributionLogic._fundDividends`, which also records what that last use does and
+    ///         does not prove).
+    /// @dev Anchored on that asset's own `lastDistribution`, which every distribution resets, so an
     ///      asset that is merely quiet never comes near this and the threshold keeps behaving exactly as
     ///      it does today. Only an asset nobody is converting ages into it — which, with weights, one
     ///      asset of a set can do while its siblings stay healthy.
@@ -184,8 +182,8 @@ abstract contract DividendDistribution {
     ///      the payout asset whatever its decimals are, which is what the design always assumed.
     uint256 internal constant DIVIDEND_PRECISION_DECIMALS = 36;
 
-    /// @notice Eligible supply below which a stream PAUSES. One whole token, against a fixed total
-    ///         supply of 1e27.
+    /// @notice Eligible supply below which a distribution REFUSES to fund. One whole token, against a
+    ///         fixed total supply of 1e27.
     /// @dev Two jobs, one line. It is the division guard — eligible supply reaches zero on a token whose
     ///      holders have all sold back into the pool — and it is the bound that keeps
     ///      `rewardPerTokenStored` inside its `uint128`: the accumulator's growth is
@@ -193,12 +191,9 @@ abstract contract DividendDistribution {
     ///      With `exp = 36 - decimals` that ceiling is `total distributed, in WHOLE units, times 1e18`,
     ///      i.e. 3.4e20 whole units of the payout asset over the token's life — the same bound for a
     ///      6-decimal asset as for an 18-decimal one, and out of reach for both.
-    /// @dev The paused interval's clock still advances (see `_syncDividend`), and the stream's finish
-    ///      line moves out by the same span. Freezing the clock instead would bank the skipped seconds
-    ///      and hand the whole lot to whoever bought in first once supply recovered — a just-in-time
-    ///      capture window, which is the one thing this design exists to not have. Advancing the clock
-    ///      WITHOUT extending the window was the other wrong answer: `owed` already counted the whole
-    ///      distribution, so the skipped value would stay reserved and reach nobody, ever.
+    /// @dev Below it there is nobody to credit, so `processDividends` reverts `NoDividendSupply` and the
+    ///      buffer keeps waiting for a holder. Crediting an empty supply would reserve the amount in
+    ///      `owed` for nobody, forever.
     uint256 internal constant MIN_DIVIDEND_SUPPLY = 1e18;
 
     /// @dev Denominator for `dividendWeightsBps`. Declared here rather than reached for from
@@ -214,7 +209,7 @@ abstract contract DividendDistribution {
     address public constant DIVIDEND_SELF_TOKEN = address(type(uint160).max);
 
     /// @notice The registry that decides whether a third payout asset is eligible, and that performs
-    ///         the native -> asset conversion when a distribution funds a stream. Uniswap V2 by
+    ///         the native -> asset conversion when a distribution lands. Uniswap V2 by
     ///         default, plus the curated Uniswap V4 routes it holds for assets that only exist there.
     /// @dev A PROXY, deliberately reached through a compile-time constant rather than a stored address:
     ///      tokens are unpatchable clones, so this is the only seam through which an eligibility rule or
@@ -233,31 +228,28 @@ abstract contract DividendDistribution {
     address public constant DIVIDEND_TREASURY = DeploymentAddresses.REALM_TREASURY;
 
     /// @notice One payout asset's entire machine. THREE SLOTS, packed so the transfer hot path reads
-    ///         the first one alone unless that asset's stream is actually running.
-    /// @dev Slot 0 (`rewardPerTokenStored` + the three clocks + `precisionExp` = 256 bits exactly) is
-    ///      the hot slot: the "has anything accrued since the last sync?" test and the settle arithmetic
-    ///      both live entirely inside it. Slot 1 (`token` + `rate`) is only touched when the accumulator
-    ///      actually advances or a payout is made, and slot 2 (the ledger and the buffer) only
-    ///      out-of-band. That is what keeps a single-asset token at the cost it had before this struct
-    ///      existed: one SLOAD when idle, two when advancing.
+    ///         the first one alone.
+    /// @dev Slot 0 (`rewardPerTokenStored` + the two clocks + `precisionExp`) is the hot slot: the
+    ///      "has anything been distributed since this account last moved?" test and the settle
+    ///      arithmetic both live entirely inside it. Slot 1 (`token`) is only touched when a payout is
+    ///      made, and slot 2 (the ledger and the buffer) only out-of-band. That is what keeps a
+    ///      single-asset token at the cost it had before this struct existed: one SLOAD per transfer.
     /// @dev `failedConversionBlock` is a `uint40` here where it used to need a full word of its own: the
     ///      old reason was that the compiler would otherwise pack it into the head of the tax slot that
     ///      followed and evict `graduationTimestamp` from it. Inside a struct array it cannot leak into
     ///      a neighbouring variable's slot, so that reason is gone.
     /// @dev `owed` is `uint128` (3.4e38 units) rather than the old `uint160`: it counts payout-asset
-    ///      units this token still has to deliver, which is bounded by everything it has ever streamed,
-    ///      and the accumulator's own documented ceiling is orders of magnitude below this.
+    ///      units this token still has to deliver, which is bounded by everything it has ever
+    ///      distributed, and the accumulator's own documented ceiling is orders of magnitude below this.
     struct DivAsset {
         // --- slot 0: the hot slot ---
         /// @dev Payout per unit of eligible supply, accumulated over this asset's life, scaled by
-        ///      `10 ** precisionExp`. Monotonic: it only ever advances with the clock.
+        ///      `10 ** precisionExp`. Monotonic: it only ever advances, and only when a distribution
+        ///      lands.
         uint128 rewardPerTokenStored;
-        /// @dev When this asset's current stream runs dry. Also its staleness anchor, and its "dividends
-        ///      are active" flag: 0 until the token graduates.
-        uint40 periodFinish;
-        /// @dev When `rewardPerTokenStored` was last advanced, clamped to `periodFinish` (a stream
-        ///      cannot accrue past its own end).
-        uint40 lastUpdate;
+        /// @dev When this asset last distributed. Its staleness anchor, and its "dividends are active"
+        ///      flag: 0 until the token graduates, which sets it without distributing anything.
+        uint40 lastDistribution;
         /// @dev Block of the last call that actually moved this asset's buffer — a funded conversion or
         ///      a treasury sweep. Gates the FUNDING leg of `processDividends` to once per block, per
         ///      asset.
@@ -273,10 +265,8 @@ abstract contract DividendDistribution {
         ///      and never again — a pool that dies is handled by sweeping the unconvertible buffer to
         ///      `DIVIDEND_TREASURY`, not by repointing the payout.
         address token;
-        /// @dev Current stream slope, in payout-asset units per second.
-        uint96 rate;
         // --- slot 2: out-of-band only ---
-        /// @dev Payout-asset units this token owes holders for this asset: everything streamed into the
+        /// @dev Payout-asset units this token owes holders for this asset: everything credited to the
         ///      accumulator, minus everything actually delivered. THE single source of truth for "how
         ///      much of this balance is not ours", read through `committedDividends`.
         uint128 owed;
@@ -324,9 +314,9 @@ abstract contract DividendDistribution {
     ///         See `Acct`.
     /// @dev `internal` with NO getter, unlike `dividendAssets` above: the raw checkpoint is an
     ///      implementation detail, and the only question anyone asks of it — what is this holder owed
-    ///      right now — is answered exactly by `previewDividend(holder, i)`, which also folds in the
-    ///      drip since the last sync. A getter for the two raw fields would cost the clone bytecode to
-    ///      return a number every reader would then have to correct.
+    ///      right now — is answered exactly by `previewDividend(holder, i)`, which also folds in every
+    ///      distribution since the account last moved. A getter for the two raw fields would cost the
+    ///      clone bytecode to return a number every reader would then have to correct.
     mapping(address account => Acct[MAX_DIVIDEND_ASSETS]) internal dividendAccounts;
 
     /// @notice How the dividends slice of earnings is split between the configured assets, in bps of
@@ -339,7 +329,7 @@ abstract contract DividendDistribution {
     /// @dev Reentrancy guard for every dividend entry point that makes an external call: the payouts,
     ///      which send to arbitrary addresses, and the funding, which swaps through the venue. One lock
     ///      covers all assets because they are not independent HERE — they share this contract's balance,
-    ///      and a funding reentered mid-swap would fund a second stream off a buffer the outer call is
+    ///      and a funding reentered mid-swap would credit a second distribution off a buffer the outer call is
     ///      about to spend. Transient, so it costs no SSTORE and is independent of any guard the concrete
     ///      token already uses.
     bool private transient dividendLocked;
@@ -369,12 +359,10 @@ abstract contract DividendDistribution {
     ///         Emitted once, at graduation, for all configured assets at once.
     event DividendsActivated();
 
-    /// @notice A distribution funded one asset's stream. `nativeIn` is the native buffer consumed (0 for
-    ///         the V2 token-space payout), `assetOut` what it bought. `rate` and `periodFinish` describe
-    ///         that asset's stream AFTER the fold-in, which is the authoritative slope from this block on.
-    event DividendsFunded(
-        address indexed asset, uint256 nativeIn, uint256 assetOut, uint256 rate, uint256 periodFinish
-    );
+    /// @notice A distribution credited one asset's holders. `nativeIn` is the native buffer consumed (0
+    ///         for the V2 token-space payout), `assetOut` what it bought — split pro rata across the
+    ///         eligible supply at this instant.
+    event DividendsFunded(address indexed asset, uint256 nativeIn, uint256 assetOut);
 
     /// @notice One holder, one asset, one payout of everything they had accrued in it at that moment.
     event DividendPaid(address indexed holder, address indexed asset, uint256 amount);
@@ -395,7 +383,7 @@ abstract contract DividendDistribution {
     ///      holder list pushes those payouts and returns quietly, because a keeper batching payouts
     ///      must not be punished for the buffer happening to be short.
     error BelowDividendThreshold();
-    /// @notice The buffer was fundable and the conversion failed, so nothing was streamed.
+    /// @notice The buffer was fundable and the conversion failed, so nothing was credited.
     error DividendConversionFailed();
     /// @notice This asset's buffer already moved in this block. Only the funding leg is gated — a call
     ///         carrying holders still pays them.
@@ -422,69 +410,19 @@ abstract contract DividendDistribution {
     ///      this function is the whole of the enforcement of.
     /// @dev The transferred AMOUNT is deliberately not a parameter: settling reads each account's
     ///      pre-transfer balance, and the accumulator does not care where the tokens are going.
-    /// @dev The eligible supply is computed at most once for the whole loop, and only if some asset has
-    ///      actually accrued — the same denominator applies to all of them, and it is the single most
-    ///      expensive read on this path.
+    /// @dev Reads nothing but each asset's accumulator. The eligible supply is a funding-time
+    ///      denominator (`DividendDistributionLogic._creditDividends`) and never touches this path.
     function _onDividendTransfer(address from, address to) internal {
         uint256 n = _dividendAssetCount();
 
         bool settleFrom = from != address(0) && !_dividendExcluded(from);
         bool settleTo = to != address(0) && !_dividendExcluded(to);
 
-        // 0 is the "not loaded" sentinel. A genuinely zero eligible supply falls into the paused branch
-        // of `_syncDividend`, which does not use the value, so re-reading it there costs a degenerate
-        // token a few SLOADs and nobody else anything.
-        uint256 supply;
         for (uint256 i; i < n; ++i) {
-            uint256 rpt;
-            (rpt, supply) = _syncDividend(i, supply);
+            uint256 rpt = dividendAssets[i].rewardPerTokenStored;
             if (settleFrom) _settleDividends(from, i, rpt);
             if (settleTo) _settleDividends(to, i, rpt);
         }
-    }
-
-    /// @dev Advances one asset's accumulator to now and returns it, alongside the eligible supply it
-    ///      ended up using so a caller looping several assets can reuse it.
-    ///
-    ///      | case                                            | writes                              |
-    ///      |-------------------------------------------------|-------------------------------------|
-    ///      | not activated, or no time since the last sync    | none                                |
-    ///      | time passed, eligible supply above the floor     | the hot slot                        |
-    ///      | time passed, eligible supply below the floor     | the clock + the finish line          |
-    ///
-    /// @dev Between an asset's streams `lastUpdate == periodFinish`, so this is a single warm SLOAD and
-    ///      a comparison. That is the whole hot-path cost of that asset while nothing is dripping — and
-    ///      it is why the struct puts both clocks and the accumulator in one slot.
-    /// @param supplyCache The eligible supply already read in this call, or 0 if none has been.
-    function _syncDividend(uint256 i, uint256 supplyCache) internal returns (uint256 rpt, uint256 supply) {
-        supply = supplyCache;
-        DivAsset storage a = dividendAssets[i];
-
-        rpt = a.rewardPerTokenStored;
-        uint256 last = a.lastUpdate;
-        uint256 finish = a.periodFinish;
-        // `finish == 0` is pre-graduation: nothing can have accrued, and `applicable` is 0 <= `last`.
-        uint256 applicable = block.timestamp < finish ? block.timestamp : finish;
-        if (applicable <= last) return (rpt, supply);
-
-        if (supply == 0) supply = _dividendEligibleSupply();
-        if (supply >= MIN_DIVIDEND_SUPPLY) {
-            rpt += (applicable - last) * a.rate * _dividendPrecision(i) / supply;
-            // Bounded by `MIN_DIVIDEND_SUPPLY`: the accumulator's lifetime growth cannot exceed the
-            // total ever distributed times `1e18 / MIN_DIVIDEND_SUPPLY`, which is 1.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            a.rewardPerTokenStored = uint128(rpt);
-        } else if (a.rate != 0) {
-            // PAUSED: credit nobody for this interval, but do not write it off either. Pushing the finish
-            // line out by exactly the paused span leaves `rate` untouched and the same total still to
-            // deliver, so the value arrives late instead of never — `owed` already counted it, and
-            // nothing else can ever release it. Same slot as the clock below, so this costs nothing.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            a.periodFinish = uint40(finish + (applicable - last));
-        }
-        // Advances even when the accrual was skipped. See `MIN_DIVIDEND_SUPPLY`.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        a.lastUpdate = uint40(applicable);
     }
 
     /// @dev Banks everything `account` has accrued in asset `i` since it was last settled, at the
@@ -493,8 +431,8 @@ abstract contract DividendDistribution {
         Acct storage acct = dividendAccounts[account][i];
 
         uint256 paid = acct.rewardPerTokenPaid;
-        // Nothing has accrued since this account last moved — the common case for an active trader while
-        // this asset is not streaming, and the reason a transfer can cost zero account writes.
+        // Nothing has been distributed since this account last moved — the common case for an active
+        // trader, and the reason a transfer can cost zero account writes.
         if (paid == rpt) return;
 
         // `rpt` is read straight out of `uint128 rewardPerTokenStored`.
@@ -517,12 +455,6 @@ abstract contract DividendDistribution {
         unchecked {
             return 10 ** dividendAssets[i].precisionExp;
         }
-    }
-
-    /// @dev The instant one asset's stream has accrued up to: now, or its end, whichever came first.
-    function _dividendTimeApplicable(uint256 i) private view returns (uint256) {
-        uint256 finish = dividendAssets[i].periodFinish;
-        return block.timestamp < finish ? block.timestamp : finish;
     }
 
     //////////////////////// accrual //////////////////////
@@ -567,22 +499,14 @@ abstract contract DividendDistribution {
 
     //////////////////////// views //////////////////////
 
-    /// @notice One asset's accumulator as of RIGHT NOW, including whatever its running stream has
-    ///         dripped since the last on-chain sync.
-    function dividendRewardPerToken(uint256 i) public view returns (uint256 rpt) {
-        DivAsset storage a = dividendAssets[i];
-        rpt = a.rewardPerTokenStored;
-        uint256 last = a.lastUpdate;
-        uint256 applicable = _dividendTimeApplicable(i);
-        if (applicable <= last) return rpt;
-
-        uint256 supply = _dividendEligibleSupply();
-        if (supply < MIN_DIVIDEND_SUPPLY) return rpt;
-        return rpt + (applicable - last) * a.rate * _dividendPrecision(i) / supply;
+    /// @notice One asset's accumulator: payout per unit of eligible supply over its life, scaled by
+    ///         `10 ** precisionExp`. Moves only when a distribution lands.
+    function dividendRewardPerToken(uint256 i) public view returns (uint256) {
+        return dividendAssets[i].rewardPerTokenStored;
     }
 
     /// @notice What `holder` would receive in asset `i` if they claimed right now: banked accruals plus
-    ///         whatever the running stream has dripped to them since they last moved.
+    ///         their share of every distribution since they last moved.
     function previewDividend(address holder, uint256 i) public view returns (uint256) {
         if (_dividendExcluded(holder)) return 0;
         Acct storage acct = dividendAccounts[holder][i];
@@ -590,7 +514,7 @@ abstract contract DividendDistribution {
             / _dividendPrecision(i);
     }
 
-    /// @notice Dividend money already streamed to holders in `asset` but not yet delivered.
+    /// @notice Dividend money already credited to holders in `asset` but not yet delivered.
     /// @dev THE single source of truth for "how much of this balance is not ours". Every sweep, swap-back
     ///      and rescue path subtracts this rather than open-coding its own subtraction, so a future
     ///      bucket is added in one place and every call site inherits it.
@@ -605,20 +529,22 @@ abstract contract DividendDistribution {
     }
 
     /// @notice Whether asset `i` has gone `STALE_DIVIDEND_WINDOW` without a distribution, i.e. it is
-    ///         treated as dead. Unlocks funding below `DIVIDEND_THRESHOLD` and the treasury sweep.
+    ///         treated as dead. Unlocks funding below `DIVIDEND_THRESHOLD`, funding by anyone, and the
+    ///         treasury sweep.
     function dividendsStale(uint256 i) public view returns (bool) {
-        uint256 finish = dividendAssets[i].periodFinish;
-        return finish != 0 && block.timestamp >= finish + STALE_DIVIDEND_WINDOW;
+        uint256 last = dividendAssets[i].lastDistribution;
+        return last != 0 && block.timestamp >= last + STALE_DIVIDEND_WINDOW;
     }
 
     //////////////////////// single-asset views //////////////////////
     // The most-read part of the surface a single-asset token had before several were possible, kept
     // verbatim and answering for asset 0.
     //
-    // ⚠️ THIS SET IS SMALLER THAN IT WAS, and deliberately: `dividendRate`, `lastDividendUpdate`,
-    // `dividendPrecisionExp`, `failedConversionBlock`, `rewardPerTokenStored` and
-    // `lastDividendProcessBlock`, plus the no-argument `dividendRewardPerToken` / `dividendsStale`, are
-    // gone. Every one of them is `dividendAssets(0).<field>` or the indexed view above, and the token
+    // ⚠️ THIS SET IS SMALLER THAN IT WAS, and deliberately: `dividendPrecisionExp`,
+    // `failedConversionBlock`, `rewardPerTokenStored` and `lastDividendProcessBlock`, plus the
+    // no-argument `dividendRewardPerToken` / `dividendsStale`, are gone (and so are `dividendRate`,
+    // `lastDividendUpdate` and `dividendPeriodFinish`, which went with the drip). Every one of them is
+    // `dividendAssets(0).<field>` or the indexed view above, and the token
     // implementation is up against EIP-170 — a getter that only restates a field of a struct this
     // contract already returns is the first thing to spend. Nothing on chain read them (the only
     // in-protocol reader is `committedDividends`, which stays); this is an ABI change for OFF-chain
@@ -628,12 +554,6 @@ abstract contract DividendDistribution {
     /// @notice Asset 0's payout token. See `DivAsset.token`.
     function dividendToken() public view returns (address) {
         return dividendAssets[0].token;
-    }
-
-    /// @notice Asset 0's stream end. Also the token-wide "dividends are active" flag: every configured
-    ///         asset is activated in the same call, so index 0 answers for all of them.
-    function dividendPeriodFinish() public view returns (uint40) {
-        return dividendAssets[0].periodFinish;
     }
 
     /// @notice Asset 0's undelivered ledger. See `DivAsset.owed`.
@@ -653,16 +573,15 @@ abstract contract DividendDistribution {
 
     //////////////////////// internal //////////////////////
 
-    /// @dev Starts every configured asset's accumulator running. Before this, `periodFinish == 0`
-    ///      short-circuits the transfer hook and anchors nothing; after it, the staleness clocks are live.
+    /// @dev Turns every configured asset on. Before this, `lastDistribution == 0` makes every dividend
+    ///      entry point revert `DividendsNotActive` and anchors nothing; after it, the staleness clocks
+    ///      are live.
     function _activateDividends() internal {
         uint256 n = _dividendAssetCount();
         // forge-lint: disable-next-line(unsafe-typecast)
         uint40 nowTs = uint40(block.timestamp);
         for (uint256 i; i < n; ++i) {
-            DivAsset storage a = dividendAssets[i];
-            a.periodFinish = nowTs;
-            a.lastUpdate = nowTs;
+            dividendAssets[i].lastDistribution = nowTs;
         }
         emit DividendsActivated();
     }
@@ -679,9 +598,10 @@ abstract contract DividendDistribution {
     /// @dev Addresses that never earn: they hold a balance continuously but are not holders.
     function _dividendExcluded(address account) internal view virtual returns (bool);
 
-    /// @dev `totalSupply` minus the balances of every excluded address. Read on every accumulator
-    ///      advance, so it is the denominator in effect for the interval being settled — which is exact,
-    ///      because every path that can change it goes through `_update` and therefore syncs first.
+    /// @dev `totalSupply` minus the balances of every excluded address. Read once per distribution, at
+    ///      funding, so it is the denominator in effect for the balances being credited — which is
+    ///      exact, because every path that can change it goes through `_update` and therefore settles
+    ///      first.
     function _dividendEligibleSupply() internal view virtual returns (uint256);
 
     /// @dev Whether the payout asset must be buffered in TOKEN space rather than as native. Only the

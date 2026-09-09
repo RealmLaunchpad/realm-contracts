@@ -9,7 +9,6 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {divRate, divLastUpdate} from "test/helpers/DividendViewHelpers.sol";
 
 /// @notice Drives every path that can move a dividend-paying token's native balance: fresh earnings, the
 ///         permissionless stray-ETH sweep, the distribution, the payout push, and ordinary transfers
@@ -186,7 +185,7 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
         // a buffer this sum forgot is one `sweepStrayEth` away from the creator's fee receivers.
         uint256 n = divToken.dividendAssetCount();
         for (uint256 i; i < n; ++i) {
-            (,,,,,,,, uint88 buffered,) = divToken.dividendAssets(i);
+            (,,,,,, uint88 buffered,) = divToken.dividendAssets(i);
             committed += buffered;
         }
         assertGe(address(divToken).balance, committed, "native balance must cover every committed bucket");
@@ -201,18 +200,8 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
         for (uint256 i; i < n; ++i) {
             uint256 promised = divToken.previewDividend(buyer, i) + divToken.previewDividend(holderA, i)
                 + divToken.previewDividend(holderB, i);
-            (,,,,,,, uint128 owed,,) = divToken.dividendAssets(i);
+            (,,,,, uint128 owed,,) = divToken.dividendAssets(i);
             assertLe(promised, owed, "more promised to holders than was ever funded");
-        }
-    }
-
-    /// @dev The stream can never run past its own end, so the accumulator's clock is always clamped to
-    ///      `dividendPeriodFinish`. A `lastDividendUpdate` beyond it would double-count the tail.
-    function invariant_accumulatorClockNeverOutrunsTheStream() public view {
-        uint256 n = divToken.dividendAssetCount();
-        for (uint256 i; i < n; ++i) {
-            (, uint40 finish, uint40 lastUpdate,,,,,,,) = divToken.dividendAssets(i);
-            assertLe(lastUpdate, finish, "clock outran the stream");
         }
     }
 }

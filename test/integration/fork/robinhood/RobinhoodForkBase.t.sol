@@ -180,6 +180,6 @@ abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
     }
 
     function _buffered(RealmTaxableTokenUniV4 token, uint256 i) internal view returns (uint256 pendingNative) {
-        (,,,,,,,, pendingNative,) = token.dividendAssets(i);
+        (,,,,,, pendingNative,) = token.dividendAssets(i);
     }
 }

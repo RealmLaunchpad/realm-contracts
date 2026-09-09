@@ -9,26 +9,26 @@ import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 
 /// @title DividendDistributionLogic
-/// @notice The COLD half of `DividendDistribution`: the native -> payout-asset conversion, the stream
-///         funding, and the per-holder push. Everything here runs out-of-band, driven by a keeper or a
+/// @notice The COLD half of `DividendDistribution`: the native -> payout-asset conversion, the
+///         crediting, and the per-holder push. Everything here runs out-of-band, driven by a keeper or a
 ///         holder — never from a transfer or a swap.
 ///
 /// @dev ONE ENTRY POINT PER ASSET for the keeper. `processDividends(index, ...)` converts that asset's
-///      buffer, folds the proceeds into its running stream and pushes its payouts, doing whichever of
-///      the three there is anything to do. They were three separate transactions and a round state
-///      machine once, and there was never a reason for it: the anti-flash-loan property comes from the
-///      DRIP, not from a transaction boundary or a phase, so the three collapse into one call that can
-///      be made at any moment.
+///      buffer, credits the proceeds to its accumulator and pushes its payouts, doing whichever of the
+///      three there is anything to do. They were three separate transactions and a round state machine
+///      once, and there was never a reason for it: the anti-flash-loan property comes from the keeper
+///      gate and the settle-before-mutate rule, not from a transaction boundary or a phase, so the three
+///      collapse into one call that can be made at any moment.
 ///
 /// @dev ONE ASSET PER CALL, deliberately. Each asset crosses its threshold on its own schedule, prices
 ///      its slippage floor against its own pool and holds its own per-block cooldown, so a call that
 ///      tried to serve the whole set would need a floor per asset and would pay a transfer per asset per
 ///      holder. A keeper batches per asset instead, and the assets never contend.
 ///
-/// @dev NOTHING HERE REVERTS FOR BEING EARLY. A distribution landing mid-stream is the normal case: it
-///      folds the undelivered remainder into a fresh window and changes the slope. The only reverts are
-///      for a call that could accomplish NOTHING — an empty push list against an unfundable buffer —
-///      and they are there so a keeper's simulation gets a reason rather than a silent success.
+/// @dev NOTHING HERE REVERTS FOR BEING EARLY. A distribution can land at any moment and simply credits
+///      the accumulator. The only reverts are for a call that could accomplish NOTHING — an empty push
+///      list against an unfundable buffer — and they are there so a keeper's simulation gets a reason
+///      rather than a silent success.
 ///
 /// @dev WHY THIS IS A SEPARATE CONTRACT. Taxable tokens are CLONES of a single implementation, and that
 ///      implementation has to fit in EIP-170's 24,576 bytes. The dividend engine did not fit alongside
@@ -53,16 +53,16 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///         storage never read. Anyone reaching one of those entry points here has the wrong address.
     error NotAToken();
 
-    /// @notice A distribution would have set a stream slope wider than `DivAsset.rate` can hold. Not
-    ///         reachable with any asset the registry accepts — see `_fundDividendStream`.
-    error DividendRateOverflow();
+    /// @notice The eligible supply is under `MIN_DIVIDEND_SUPPLY`: there is nobody to credit, so the
+    ///         buffer stays where it is until a holder shows up.
+    error NoDividendSupply();
 
     /// @notice What `_fundDividends` found. A return value rather than a flag because the caller has to
     ///         distinguish "wait for earnings" from "the earnings are here and the swap is broken".
     enum FundOutcome {
         /// @dev Nothing buffered, or not enough of it yet. The quiet, normal answer.
         NotReady,
-        /// @dev The stream is funded with `out` of the payout asset.
+        /// @dev Holders are credited with `out` of the payout asset.
         Funded,
         /// @dev Enough was buffered and the conversion did not happen. The buffer is untouched.
         ConversionFailed,
@@ -71,7 +71,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         ///      revert it away.
         FailureRecorded,
         /// @dev The conversion could not happen at ANY price, so that slice of the buffer went to
-        ///      `DIVIDEND_TREASURY`. Nothing was streamed, and nothing accrued was written off.
+        ///      `DIVIDEND_TREASURY`. Nothing was credited, and nothing accrued was written off.
         SweptToTreasury
     }
 
@@ -188,9 +188,9 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
 
     //////////////////////// the distribution //////////////////////
 
-    /// @notice Converts whatever has accrued to ONE payout asset, folds it into that asset's running
-    ///         stream, and pushes its payouts to `holders`. The only entry point a keeper needs, called
-    ///         once per asset.
+    /// @notice Converts whatever has accrued to ONE payout asset, credits it to that asset's holders,
+    ///         and pushes its payouts to `holders`. The only entry point a keeper needs, called once per
+    ///         asset.
     ///
     /// @dev Idempotent and unforgeable in the part that matters: the amounts are read from each holder's
     ///      own accrued balance, so a duplicate pays 0, an unknown address pays 0, and an omitted holder
@@ -223,7 +223,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     {
         require(assetIndex < _dividendAssetCount(), DividendAssetOutOfRange());
         DivAsset storage asset = dividendAssets[assetIndex];
-        require(asset.periodFinish != 0, DividendsNotActive());
+        require(asset.lastDistribution != 0, DividendsNotActive());
 
         // KEEPER-GATED, with staleness as the escape hatch. The conversion below takes its slippage
         // floor from the caller, so a permissionless caller could manipulate the payout pool, call in
@@ -232,7 +232,9 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // is open to everyone and pays in full. What a keeper is needed for is moving the buffer.
         // The stale branch is the backstop for a keeper set that has gone away for good: after
         // `STALE_DIVIDEND_WINDOW` with no distribution, anyone may fund, because a buffer nobody can
-        // ever convert is a worse outcome than one someone can convert badly.
+        // ever convert is a worse outcome than one someone can convert badly. That also opens the
+        // ATOMIC capture the base's docstring accepts — buy, fund, claim, sell in one transaction — on
+        // a token that has, by then, most likely died.
         //
         // ⚠️ STALENESS ALONE IS NOT THAT SIGNAL for an asset that SWAPS. `dividendsStale` reads "no
         // distribution in a month", which a quiet token reaches in its ordinary steady state: a
@@ -244,7 +246,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // `DIVIDEND_THRESHOLD` left sitting for `STALE_DIVIDEND_WINDOW` is what actually evidences a
         // keeper set that is gone. A sub-threshold residual stays keeper-only — the smaller loss.
         // Assets whose funding does NOT swap keep the wide hatch (native, and the V2 self-token leg,
-        // which is carved in token space and merely moves a buffer into the stream): there is nothing
+        // which is carved in token space and merely credits a buffer): there is nothing
         // for a caller to sandwich, so stranding is their only failure mode.
         {
             // Scoped: this function is already at the stack limit, so these must die before the loop.
@@ -254,10 +256,6 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
                 _requireKeeper();
             }
         }
-
-        // Before anything else, for the reason the base spells out: the accumulator has to close the
-        // interval that just ended at the supply that was actually in effect for it.
-        (uint256 rpt,) = _syncDividend(assetIndex, 0);
 
         // Once per block PER ASSET, for exactly the reason `processBurn` and `processLiquidity` are: the
         // per-call cap only bounds what a manipulated block can yield if the block allows ONE conversion.
@@ -283,11 +281,8 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         }
 
         if (outcome == FundOutcome.Funded) {
-            _fundDividendStream(assetIndex, out);
-            // `rate` and `periodFinish` are read AFTER the fold-in, which is what makes them the
-            // authoritative slope from this block on. `rpt` needs no re-read: funding moves the slope,
-            // never the accumulator, so the value `_syncDividend` returned is still current.
-            emit DividendsFunded(asset.token, nativeIn, out, asset.rate, asset.periodFinish);
+            _creditDividends(assetIndex, out);
+            emit DividendsFunded(asset.token, nativeIn, out);
         }
 
         if (holders.length != 0) {
@@ -295,6 +290,8 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
             // `receive()` and would starve an ordinary ERC20 `transfer`.
             address payoutAsset = asset.token;
             uint256 stipend = payoutAsset == address(0) ? NATIVE_PAYOUT_GAS : ASSET_PAYOUT_GAS;
+            // Read AFTER the credit above, so the push includes the distribution this call just made.
+            uint256 rpt = asset.rewardPerTokenStored;
             uint256 paid;
             for (uint256 i; i < holders.length; ++i) {
                 paid += _payHolder(holders[i], assetIndex, payoutAsset, rpt, stipend);
@@ -312,7 +309,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         } else if (outcome == FundOutcome.ConversionFailed) {
             revert DividendConversionFailed();
         }
-        // `SweptToTreasury` and `FailureRecorded` fall through: neither could stream anything, but both
+        // `SweptToTreasury` and `FailureRecorded` fall through: neither could credit anything, but both
         // CHANGED something — the buffer in one case, the sweep's persistence marker in the other — and
         // reverting would undo the very write the call was made to perform.
         // A call carrying holders never reverts for the buffer being short or the swap being broken: it
@@ -336,75 +333,37 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      claimer's own later legs, and they can re-claim.
     function claimDividends() external nonReentrantDividends {
         uint256 n = _dividendAssetCount();
-        require(n != 0 && dividendAssets[0].periodFinish != 0, DividendsNotActive());
+        require(n != 0 && dividendAssets[0].lastDistribution != 0, DividendsNotActive());
 
-        uint256 supply;
         for (uint256 i; i < n; ++i) {
-            uint256 rpt;
-            (rpt, supply) = _syncDividend(i, supply);
-            _reduceDividendsOwed(i, _payHolder(msg.sender, i, dividendAssets[i].token, rpt, gasleft()));
+            DivAsset storage a = dividendAssets[i];
+            _reduceDividendsOwed(i, _payHolder(msg.sender, i, a.token, a.rewardPerTokenStored, gasleft()));
         }
     }
 
     //////////////////////// internal //////////////////////
 
-    /// @dev Folds `amount` into asset `i`'s stream: whatever the running one still had to deliver is
-    ///      added to it, and the sum is re-spread over a fresh full `DIVIDEND_DRIP_DURATION`. The slope
-    ///      changes; nothing is ever rejected, delayed or carried over.
-    ///
-    /// @dev THE WHOLE POINT of re-spreading rather than appending: a stream that merely extended would
-    ///      let a large distribution land at the old (small) slope, and the money would take
-    ///      proportionally longer to reach holders the more of it there was. Re-spreading keeps the
-    ///      delivery time constant and puts the size into the slope, which is the only variable a
-    ///      flash-loan attacker cannot integrate against.
-    function _fundDividendStream(uint256 i, uint256 amount) private {
+    /// @dev Credits `amount` of asset `i` to the balances held right now: the accumulator grows by
+    ///      `amount / eligibleSupply` and every holder's next settle banks their share of it.
+    /// @dev The supply is read HERE and nowhere else — every balance change settles before it moves, so
+    ///      the supply at this instant is exactly the one the credited balances sum to.
+    /// @dev Integer division leaves a residue the accumulator cannot carry, which stays in `owed` and
+    ///      simply never leaves the balance — dust (under `supply / 10**precisionExp` units, i.e. under a
+    ///      gwei for an 18-decimal asset), and dust that errs towards holders rather than towards a sweep.
+    function _creditDividends(uint256 i, uint256 amount) private {
         DivAsset storage a = dividendAssets[i];
-        uint256 finish = a.periodFinish;
-        uint256 remaining = finish > block.timestamp ? (finish - block.timestamp) * a.rate : 0;
+        uint256 supply = _dividendEligibleSupply();
+        require(supply >= MIN_DIVIDEND_SUPPLY, NoDividendSupply());
 
-        uint256 total = amount + remaining;
-        uint256 duration = DIVIDEND_DRIP_DURATION;
-        uint256 rate = total / duration;
-        // A `uint96` holds 7.9e28 units per second, i.e. 7.1e31 units inside one 15-minute window. That
-        // is 71 trillion whole tokens of an 18-decimal asset — but the payout asset is the CREATOR's
-        // choice, and a quadrillion-supply memecoin with a barely-eligible pair can put a single 0.2 ETH
-        // conversion over it. Reverting there would brick `processDividends` permanently on a token that
-        // is otherwise fine, so the rate is CLAMPED and the window stretched to carry the same total
-        // instead: everything is still delivered, just more slowly, which errs the safe way (a slower
-        // slope is strictly harder to time into than a faster one).
-        if (rate > type(uint96).max) {
-            rate = type(uint96).max;
-            duration = total / rate;
-        }
-        // The same clamp at the OTHER end. A total under `duration` base units truncates the slope to 0,
-        // and `owed` would still grow by the whole `amount`: nothing would ever stream it to holders,
-        // and `committedDividends` reserves it against every sweep and rescue, so it would be locked in
-        // the contract forever. Only reachable for a payout asset with very few base units per unit of
-        // value (a 0- or 2-decimal token). Shortening the window instead delivers exactly the same
-        // total, one unit per second. `total != 0` here: `_fundDividends` only reports `Funded` with a
-        // non-zero `out`.
-        if (rate == 0) {
-            rate = 1;
-            duration = total;
-        }
-        // Now genuinely unreachable — `total` would have to exceed 8.7e40 units for the stretched window
-        // to overflow the `uint40` clock — and a revert here leaves the buffer untouched.
-        require(block.timestamp + duration <= type(uint40).max, DividendRateOverflow());
-
-        // Owed grows by the whole distribution. Integer division leaves a sub-`duration` residue the
-        // stream cannot deliver, which stays owed and simply never leaves the balance — dust, and dust
-        // that errs towards holders rather than towards a sweep.
+        // Bounded by `MIN_DIVIDEND_SUPPLY`: the accumulator's lifetime growth cannot exceed the total
+        // ever distributed times `1e18 / MIN_DIVIDEND_SUPPLY`, which is 1.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        a.rewardPerTokenStored = uint128(uint256(a.rewardPerTokenStored) + amount * _dividendPrecision(i) / supply);
         // `uint128` holds 3.4e38 payout-asset units; `amount` is bounded by the conversion cap.
         // forge-lint: disable-next-line(unsafe-typecast)
         a.owed = uint128(uint256(a.owed) + amount);
         // forge-lint: disable-next-line(unsafe-typecast)
-        a.rate = uint96(rate);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        a.periodFinish = uint40(block.timestamp + duration);
-        // The caller synced first, so this only ever moves the clock FORWARD across a gap between
-        // streams — seconds in which the rate was zero and nothing could have accrued.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        a.lastUpdate = uint40(block.timestamp);
+        a.lastDistribution = uint40(block.timestamp);
     }
 
     /// @dev Saturating on purpose. The accumulator truncates in the holders' favour at every step, so
@@ -433,7 +392,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // The threshold exists so a distribution only fires when it is worth its gas, and staleness is
         // its ONLY bypass: a residual below the threshold on an asset nobody has converted for
         // `STALE_DIVIDEND_WINDOW` would otherwise strand forever. There is nothing to grief here any
-        // more — a dust distribution just sets a dust slope, it cannot stall anything.
+        // more — a dust distribution just credits dust, it cannot stall anything.
         bool stale = dividendsStale(i);
         if (buffered < DIVIDEND_THRESHOLD && !stale) return (FundOutcome.NotReady, 0, 0);
 
@@ -455,9 +414,9 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
             // registry refuses whenever the pair's quote depth merely dips under its threshold, so one
             // sell causes the failure and one buy undoes it. TWO gates stand between that and a sweep,
             // and both have to hold:
-            //   1. staleness — this asset's `periodFinish` only moves when a distribution SUCCEEDS, so a
-            //      genuinely dead pool reaches it on its own a `STALE_DIVIDEND_WINDOW` after the last
-            //      distribution, and an actively distributing asset never does;
+            //   1. staleness — this asset's `lastDistribution` only moves when a distribution SUCCEEDS,
+            //      so a genuinely dead pool reaches it on its own a `STALE_DIVIDEND_WINDOW` after the
+            //      last distribution, and an actively distributing asset never does;
             //   2. persistence — the same failure has to be on record from an EARLIER block, which costs
             //      a griefer a second round trip held across a block boundary, per slice.
             //
@@ -506,7 +465,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      conversion was an external call, so earnings that arrived during it must survive this write.
     /// @dev Deliberately NOT a write-off of anything holders hold. The asset, its `owed`, its
     ///      accumulator and every `Acct` are untouched — this moves native that had not been converted
-    ///      yet and therefore was never streamed to anyone.
+    ///      yet and therefore was never credited to anyone.
     function _sweepFailedConversion(uint256 i, address asset, uint256 amount) private {
         // forge-lint: disable-next-line(unsafe-typecast)
         dividendAssets[i].pendingNative = uint88(dividendAssets[i].pendingNative - amount);
@@ -557,8 +516,8 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     /// @dev The banked accrual is zeroed AFTER the send succeeds, never before. A failed send therefore
     ///      costs the holder nothing — the amount stays accrued and the next batch (or their own claim)
     ///      pays it. This is what a reverting `receive()` or a payout-asset blacklist degrades into.
-    /// @dev Settling before reading is not optional: the caller has already advanced the accumulator, so
-    ///      this holder's share of the interval that just closed is only in `Acct.rewards` after this.
+    /// @dev Settling before reading is not optional: this holder's share of every distribution since
+    ///      they last moved is only in `Acct.rewards` after this.
     /// @param gasStipend Gas forwarded to the payout call: `NATIVE_PAYOUT_GAS` or `ASSET_PAYOUT_GAS` from
     ///        a keeper batch, `gasleft()` from `claimDividends` (which, under EIP-150's 63/64 rule, is an
     ///        uncapped call).

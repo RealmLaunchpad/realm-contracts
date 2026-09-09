@@ -154,9 +154,9 @@ abstract contract RealmTaxableToken is
     ///
     ///      The graduator still holds the whole graduating supply at this instant, which under the old
     ///      round machinery would have poisoned an opening denominator. It cannot here: there is no
-    ///      opening denominator. The accumulator reads eligible supply live on every advance, and no
-    ///      stream is running yet (`dividendRate` is 0), so the seconds between this call and the
-    ///      graduator moving its supply into the pool accrue exactly nothing to anyone.
+    ///      opening denominator. The eligible supply is read only when a distribution lands, and none
+    ///      can before the graduator has moved its supply into the pool — the buffer is empty — so its
+    ///      balance never dilutes anyone.
     ///
     ///      `_onGraduatedEarnings` stays as the fallback and is NOT redundant: a deploy buy large enough
     ///      to graduate the token inside `createToken` runs this before the factory has called
@@ -226,7 +226,7 @@ abstract contract RealmTaxableToken is
     ///         `tokenFactory`, which is zero outside that tx (same pattern as `registerFees`).
     /// @dev A non-zero `_dividendsBps` is REFUSED here: this overload configures no payout asset and
     ///      never sets `hasDividends`, so the slice would be carved out of every post-graduation earning
-    ///      and buffered into `pendingNative` with no stream to fund and no `processDividends` that
+    ///      and buffered into `pendingNative` with nothing to credit it and no `processDividends` that
     ///      does not revert `DividendsNotActive`. Worse, `_reservedNative()` returns 0 without
     ///      `hasDividends`, so the permissionless `sweepStrayEth()` would keep recycling that buffer
     ///      through the split. A dividends allocation must come in through the 5-argument overload.
@@ -331,7 +331,7 @@ abstract contract RealmTaxableToken is
     ///      budget. If it ever ran out of gas the fee falls through to the treasury and the next accrual
     ///      activates instead — self-healing, not a one-shot.
     function _onGraduatedEarnings() internal override {
-        if (hasDividends && dividendAssets[0].periodFinish == 0) _activateDividends();
+        if (hasDividends && dividendAssets[0].lastDistribution == 0) _activateDividends();
     }
 
     //////////////////////// DIVIDEND LOGIC EXTENSION //////////////////////

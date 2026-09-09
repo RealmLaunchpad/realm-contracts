@@ -60,7 +60,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         address token = _createXStockToken(_sole(AAPL), _w(10_000));
 
         assertEq(dividendSwapRegistry.routeOf(token, AAPL), _xstockRoute(AAPL), "the AAPL route is on record");
-        (,,,,, address payout,,,,) = RealmTaxableTokenUniV4(payable(token)).dividendAssets(0);
+        (,,,, address payout,,,) = RealmTaxableTokenUniV4(payable(token)).dividendAssets(0);
         assertEq(payout, AAPL, "and AAPL is the payout asset");
         assertTrue(RealmTaxableTokenUniV4(payable(token)).hasDividends(), "dividends are on");
     }
@@ -121,7 +121,8 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
     //////////////////////// the keeper, and the holders //////////////////////
 
     /// @dev THE flow: the keeper converts the buffered ETH into AAPL through Robinhood's pool, the pot
-    ///      drips for `DIVIDEND_DRIP_DURATION`, and a push pays every holder pro rata in AAPL.
+    ///      is credited to the balances held at that instant, and a push pays every holder pro rata in
+    ///      AAPL.
     function test_keeper_convertsTheTaxIntoAppleAndHoldersReceiveIt() public {
         RealmTaxableTokenUniV4 token = _liveAppleToken();
         uint256 buffered = token.pendingNative();
@@ -136,7 +137,6 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         assertEq(token.committedDividends(AAPL), pot, "and none of it is rescuable");
         assertEq(token.pendingNative(), buffered - spend, "what the per-conversion cap left stays buffered");
 
-        skip(token.DIVIDEND_DRIP_DURATION());
         token.processDividends(0, 0, _holders(buyer, holder2));
 
         uint256 paidBuyer = IERC20(AAPL).balanceOf(buyer);
@@ -163,7 +163,6 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         assertEq(token.committedDividends(AAPL), IERC20(AAPL).balanceOf(address(token)), "AAPL pot committed");
         assertEq(token.committedDividends(TSLA), IERC20(TSLA).balanceOf(address(token)), "TSLA pot committed");
 
-        skip(token.DIVIDEND_DRIP_DURATION());
         token.processDividends(0, 0, _holders(buyer));
         token.processDividends(1, 0, _holders(buyer));
 
@@ -180,7 +179,6 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
 
         token.processDividends(0, 0, _noHolders());
         token.processDividends(1, 1, _noHolders());
-        skip(token.DIVIDEND_DRIP_DURATION());
 
         uint256 ethBefore = buyer.balance;
         token.processDividends(0, 0, _holders(buyer));
@@ -190,12 +188,11 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         assertGt(IERC20(MSFT).balanceOf(buyer), 0, "and in MSFT");
     }
 
-    /// @dev Holders never depend on the keeper to be PAID. Once the pot has dripped, a holder claims
+    /// @dev Holders never depend on the keeper to be PAID. Once the pot is credited, a holder claims
     ///      their AAPL themselves, and gets exactly what the accumulator says they are owed.
     function test_holder_claimsTheirAppleWithoutAKeeper() public {
         RealmTaxableTokenUniV4 token = _liveAppleToken();
         token.processDividends(0, 1, _noHolders());
-        skip(token.DIVIDEND_DRIP_DURATION());
 
         uint256 owed = token.previewDividend(holder2);
         assertGt(owed, 0, "precondition: holder2 accrued a share");
