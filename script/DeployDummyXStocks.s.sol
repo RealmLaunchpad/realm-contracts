@@ -77,7 +77,7 @@ contract DummyXStock is ERC20 {
 ///                         MSFT 0x0a4d26B99a124Bb08bc335764b6C2A1ee4C3E85c
 ///
 /// Usage (dry run):  forge script DeployDummyXStocks --rpc-url <sepolia|rh-testnet> --account realm.dev
-/// Usage (deploy):   just deploy-dummy-xstocks-sepolia   /   just deploy-dummy-xstocks-robinhood-testnet
+/// Usage (deploy):   just deploy-dummy-xstocks-sepolia   /   just deploy-dummy-xstocks-rh-testnet
 ///
 /// Env:
 ///   ETH_PER_POOL   (optional) native seeded into each pool, in wei. Default 1 ETH (5 ETH total).

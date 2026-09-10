@@ -76,5 +76,5 @@ jobs:
       # Retargets the impls to Robinhood and runs the suites that fork it (real xStock dividends).
       - name: Robinhood mainnet fork tests
         run: |
-          just test-robinhood-fork
+          just test-rh-fork
         id: robinhood_fork_tests

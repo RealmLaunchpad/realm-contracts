@@ -54,7 +54,7 @@ import {BuildTarget} from "script/BuildTarget.sol";
 ///         owner of both factory proxies and the vault factory proxy. Hand those over afterwards.
 ///
 /// @dev    PRE-FLIGHT, in order — the script refuses to broadcast otherwise:
-///           1. `just chain-sepolia` / `just chain-robinhood`, then `forge build`.
+///           1. `just chain-sepolia` / `just chain-rh`, then `forge build`.
 ///           2. `DeployRealmPrereqs` must have run and its two addresses pasted into
 ///              `src/config/DeploymentAddresses.sol` (they are baked into the taxable token bytecode).
 ///           3. `SWAP_HOOK` must be set in the manifest for this chain.

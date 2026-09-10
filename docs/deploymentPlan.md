@@ -36,7 +36,7 @@ Not deployed by `DeployRealmStack`: the hook (its own script, above) and the div
 
 ```bash
 # 0. Retarget the build to the chain, then phase 0.
-just deploy-prereqs-sepolia          # or: just deploy-prereqs-robinhood
+just deploy-prereqs-sepolia          # or: just deploy-prereqs-rh
 
 # 1. Paste REALM_KEEPERS_REGISTRY + DIVIDEND_SWAP_REGISTRY into that chain's library in
 #    src/config/DeploymentAddresses.sol. They are baked into the taxable token bytecode and clones
@@ -45,7 +45,7 @@ just deploy-prereqs-sepolia          # or: just deploy-prereqs-robinhood
 forge build
 
 # 2. Phase 1 — the whole stack in one broadcast. Refuses to run if step 1 was skipped.
-just deploy-stack-sepolia            # or: just deploy-stack-robinhood
+just deploy-stack-sepolia            # or: just deploy-stack-rh
 
 # 3. Paste the printed manifest block into src/config/manifest.<chain>.sol, then:
 just export-deployments
@@ -54,7 +54,7 @@ just export-deployments
 
 # 5. Appoint the admin + keeper on both registries (they ship empty). Admin defaults to the
 #    broadcasting account; REALM_KEEPER comes from the manifest. Idempotent.
-just configure-registries-sepolia     # or: just configure-registries-robinhood[-testnet]
+just configure-registries-sepolia     # or: just configure-registries-rh[-testnet]
 
 # 6. Smoke test: create a token through the V4 factory.
 FACTORY_ADDRESS=<factoryV4 proxy> forge script CreateV4Token --rpc-url sepolia --account realm.dev --slow --broadcast
@@ -99,7 +99,7 @@ graduators, curves or the vault factory means a new factory implementation:
 
 ```bash
 # after updating src/config/manifest.<chain>.sol with the new addresses
-just upgrade-factories-sepolia       # or: just upgrade-factories-robinhood
+just upgrade-factories-sepolia       # or: just upgrade-factories-rh
 ```
 
 When it is the **taxable token masters** that change (they bake per-chain constants, see
@@ -107,7 +107,7 @@ When it is the **taxable token masters** that change (they bake per-chain consta
 nothing to paste in between; the four printed slots go into the manifest afterwards:
 
 ```bash
-just redeploy-tax-impls-sepolia      # or: just redeploy-tax-impls-robinhood-testnet
+just redeploy-tax-impls-sepolia      # or: just redeploy-tax-impls-rh-testnet
 just export-deployments
 ```
 
