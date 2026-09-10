@@ -37,7 +37,7 @@ library DeploymentsRobinhoodMainnet {
     address internal constant LP_FEE_ROUTER = 0x823ca5B8041217Df052D9e64AC6E7c16A62FA957;
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
-    address internal constant LP_FEE_ROUTER_IMPL = 0xa2E3C9B3B33Cbad41ECCA283734c335490a09d4a;
+    address internal constant LP_FEE_ROUTER_IMPL = 0x7480e46B8f6B3a8d9137F72b3006f7FBfA088ECf;
     address internal constant QUOTER = address(0);
 
     // --- Token implementations (cloned by factories) ---
