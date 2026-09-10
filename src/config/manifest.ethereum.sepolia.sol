@@ -23,15 +23,15 @@ library DeploymentsEthereumSepolia {
     address internal constant UNIV4_LIQUIDITY_ADDER = 0xE8168F37CdaAdB08818469De191eD2461EEcc229;
     address internal constant MASTER_FEE_HANDLER = 0x914e8A6fcA2af6E8Cf4434d1D50234fC89CdF2Ec;
 
-    /// @notice Marketcap-tiered swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
+    /// @notice Swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
     ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. The V4 graduators point here.
     /// @dev Realm deploys its OWN hook rather than reusing the Livo one, whose `TREASURY` and
     ///      `FEE_ROUTER` immutables are pinned to Livo addresses and cannot be repointed. Deploy with
     ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
     ///      variant Uniswap whitelists. `address(0)` until then.
     address internal constant SWAP_HOOK = 0xE3246e5Ae48bA84e345D88b3e7473ae8DBB540cC;
-    /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees treasury/creator
-    ///         by marketcap tier.
+    /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees 30/70
+    ///         treasury/creator.
     /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook
     ///      (`DeployRealmPrereqs`). Router policy changes ship by `upgradeToAndCall`ing this proxy.
     address internal constant LP_FEE_ROUTER = 0x823ca5B8041217Df052D9e64AC6E7c16A62FA957;

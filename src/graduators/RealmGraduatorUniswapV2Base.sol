@@ -24,7 +24,7 @@ abstract contract RealmGraduatorUniswapV2Base is IRealmGraduator {
     /// @notice Graduation native fee (creator compensation + treasury fee). Value from `_graduationFee()`.
     uint256 public immutable GRADUATION_ETH_FEE;
 
-    /// @notice Native compensation paid to token creator at graduation (half of the fee)
+    /// @notice Native compensation paid to token creator at graduation (70% of the fee)
     /// @dev this is part of the GRADUATION_ETH_FEE
     uint256 public immutable CREATOR_GRADUATION_COMPENSATION;
 
@@ -110,7 +110,7 @@ abstract contract RealmGraduatorUniswapV2Base is IRealmGraduator {
 
         uint256 fee = _graduationFee();
         GRADUATION_ETH_FEE = fee;
-        CREATOR_GRADUATION_COMPENSATION = fee / 2;
+        CREATOR_GRADUATION_COMPENSATION = (fee * 7) / 10;
         TRIGGERER_GRADUATION_COMPENSATION = _triggererCompensation();
     }
 

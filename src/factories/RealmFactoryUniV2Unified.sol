@@ -40,8 +40,8 @@ contract RealmFactoryUniV2Unified is RealmFactoryAbstract {
     ///         `MAX_TOTAL_FEE_BPS` (5%) regardless of the pre-graduation launchpad fee.
     uint16 internal constant V2_POST_GRADUATION_LP_FEE_BPS = 0;
 
-    /// @notice Treasury share of the V2 pre-graduation LP fee (bps): 50/50 treasury/creator.
-    uint16 internal constant V2_LAUNCHPAD_TREASURY_SHARE_BPS = 5_000;
+    /// @notice Treasury share of the V2 pre-graduation LP fee (bps): 30 treasury / 70 creator.
+    uint16 internal constant V2_LAUNCHPAD_TREASURY_SHARE_BPS = 3_000;
 
     constructor(
         address launchpad,

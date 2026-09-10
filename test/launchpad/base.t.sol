@@ -110,7 +110,7 @@ contract LaunchpadBaseTests is Test {
 
     uint256 public constant INITIAL_ETH_BALANCE = 100 ether;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.125 ether;
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = 0.175 ether; // 70% of GRADUATION_FEE
     uint256 public constant TRIGGERER_GRADUATION_COMPENSATION = 0.005 ether;
     uint256 constant GRADUATION_FEE = 0.25 ether;
     uint16 public constant BASE_BUY_FEE_BPS = 100;
@@ -180,59 +180,21 @@ contract LaunchpadBaseTests is Test {
     RealmSwapHook public taxHook;
     SwapLpFeeRouter public lpFeeRouter;
 
-    // Default LP-fee-router tier thresholds used in tests (ETH wei). Tier 0 covers `[0, T1)`.
-    uint256 public constant LP_TIER_THRESHOLD_1 = 30 ether;
-    uint256 public constant LP_TIER_THRESHOLD_2 = 150 ether;
-    uint256 public constant LP_TIER_THRESHOLD_3 = 300 ether;
-    uint256 public constant LP_TIER_THRESHOLD_4 = 600 ether;
-    uint256 public constant LP_TIER_THRESHOLD_5 = 900 ether;
-    uint256 public constant LP_TIER_THRESHOLD_6 = 1500 ether;
-
-    // Treasury share per tier (BPS). Creator share is the complement to 10_000.
-    uint16 public constant LP_TIER0_TREASURY_BPS = 4000; // post-grad: 40/60
-    uint16 public constant LP_TIER1_TREASURY_BPS = 3500;
-    uint16 public constant LP_TIER2_TREASURY_BPS = 3000;
-    uint16 public constant LP_TIER3_TREASURY_BPS = 2500;
-    uint16 public constant LP_TIER4_TREASURY_BPS = 2000;
-    uint16 public constant LP_TIER5_TREASURY_BPS = 1500;
-    uint16 public constant LP_TIER6_TREASURY_BPS = 1000;
+    /// @dev Treasury share of every post-graduation LP fee routed by `SwapLpFeeRouter` (flat 30/70).
+    uint16 public constant LP_TREASURY_BPS = 3000;
 
     uint256 public constant LP_FEE_BPS_DEFAULT = 100; // 1%
 
-    /// @dev Expected treasury share of the LP fee at tier 0 (marketcap below the first threshold), for a
-    ///      gross ETH swap amount. Most graduation tests trade tiny amounts, so they stay in tier 0.
-    function _lpTreasuryShareTier0(uint256 grossEth) internal pure returns (uint256) {
+    /// @dev Expected treasury share of the LP fee for a gross ETH swap amount.
+    function _lpTreasuryShare(uint256 grossEth) internal pure returns (uint256) {
         uint256 totalLpFee = (grossEth * LP_FEE_BPS_DEFAULT) / 10_000;
-        return (totalLpFee * LP_TIER0_TREASURY_BPS) / 10_000;
+        return (totalLpFee * LP_TREASURY_BPS) / 10_000;
     }
 
-    /// @dev Expected creator share of the LP fee at tier 0 (complement of `_lpTreasuryShareTier0`).
-    function _lpCreatorShareTier0(uint256 grossEth) internal pure returns (uint256) {
+    /// @dev Expected creator share of the LP fee (complement of `_lpTreasuryShare`).
+    function _lpCreatorShare(uint256 grossEth) internal pure returns (uint256) {
         uint256 totalLpFee = (grossEth * LP_FEE_BPS_DEFAULT) / 10_000;
-        return totalLpFee - (totalLpFee * LP_TIER0_TREASURY_BPS) / 10_000;
-    }
-
-    /// @dev Default `SwapLpFeeRouter.Config` used by the test fixtures. Mirrors the tier policy the
-    ///      production deployment is expected to start with.
-    function _defaultLpRouterCfg() internal pure returns (SwapLpFeeRouter.Config memory) {
-        uint256[6] memory thresholds = [
-            LP_TIER_THRESHOLD_1,
-            LP_TIER_THRESHOLD_2,
-            LP_TIER_THRESHOLD_3,
-            LP_TIER_THRESHOLD_4,
-            LP_TIER_THRESHOLD_5,
-            LP_TIER_THRESHOLD_6
-        ];
-        uint16[7] memory treasuryBps = [
-            LP_TIER0_TREASURY_BPS,
-            LP_TIER1_TREASURY_BPS,
-            LP_TIER2_TREASURY_BPS,
-            LP_TIER3_TREASURY_BPS,
-            LP_TIER4_TREASURY_BPS,
-            LP_TIER5_TREASURY_BPS,
-            LP_TIER6_TREASURY_BPS
-        ];
-        return SwapLpFeeRouter.Config({thresholds: thresholds, treasuryBps: treasuryBps});
+        return totalLpFee - (totalLpFee * LP_TREASURY_BPS) / 10_000;
     }
 
     uint256 internal _saltCounter;
@@ -491,7 +453,7 @@ contract LaunchpadBaseTests is Test {
 
         // Deploy the LP fee router behind a UUPS proxy with the default tier configuration. The hook
         // forwards every LP fee to this router, which performs the marketcap-tiered treasury/creator split.
-        address lpRouterImpl = address(new SwapLpFeeRouter(treasury, _defaultLpRouterCfg()));
+        address lpRouterImpl = address(new SwapLpFeeRouter(treasury));
         lpFeeRouter = SwapLpFeeRouter(
             payable(address(new ERC1967Proxy(lpRouterImpl, abi.encodeCall(SwapLpFeeRouter.initialize, ()))))
         );
@@ -676,7 +638,7 @@ contract LaunchpadBaseTests is Test {
 
     /// @dev Treasury's share of a pre-graduation LP fee on `testToken`; the remainder accrues to the
     ///      creator. The launchpad splits the LP fee by the token's `treasuryShareBps` (a per-venue
-    ///      constant: 5000 for V2, 6000 for V4). Assumes a non-tax token, where the whole trading fee
+    ///      constant, 3000 for both V2 and V4). Assumes a non-tax token, where the whole trading fee
     ///      is LP fee.
     function _treasuryShareOf(uint256 lpFee) internal view returns (uint256) {
         return lpFee * RealmToken(testToken).treasuryShareBps() / 10_000;

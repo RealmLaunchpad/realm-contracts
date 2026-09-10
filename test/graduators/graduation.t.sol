@@ -24,7 +24,7 @@ abstract contract ProtocolAgnosticGraduationTests is LaunchpadBaseTests {
     /// @dev Returns the fee handler for the current test token
     function _tokenFeeHandler() internal view virtual returns (IRealmClaims);
 
-    /// @dev Creator graduation compensation for the active graduator. Both V2 and V4 = 0.125 ether (50/50 split).
+    /// @dev Creator graduation compensation for the active graduator. Both V2 and V4 = 0.175 ether (70/30 split).
     function _creatorCompensation() internal pure virtual returns (uint256) {
         return CREATOR_GRADUATION_COMPENSATION;
     }
@@ -347,9 +347,9 @@ contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
         return IRealmClaims(IRealmToken(testToken).feeHandler());
     }
 
-    /// @dev V2 graduator splits the graduation fee 50/50 between treasury and creator
+    /// @dev V2 graduator splits the graduation fee 70/30 between creator and treasury
     function _creatorCompensation() internal pure override returns (uint256) {
-        return GRADUATION_FEE / 2;
+        return (GRADUATION_FEE * 7) / 10;
     }
 
     /// @dev V2 graduator pays out 0.005 ether to the graduation triggerer (`tx.origin`)
