@@ -51,6 +51,19 @@ library UniswapV4PoolConstants {
     /// @dev However, the second position has much less liquidity, so the impact would be barely noticeable.
     int24 internal constant TICK_UPPER_2_OFFSET = 51 * TICK_SPACING;
 
+    ////////////////////// per-tier graduation prices (deploy-time constructor args) //////////////////////
+    // From `simulations/script/uniswapV4Settings.py`. Shared by `DeployRealmStack` and `RedeployGraduators`
+    // so a redeploy cannot drift from the original stack.
+
+    /// @notice DEFAULT graduation sqrtPriceX96: 12.25 ETH mcap (12250000000 wei/token).
+    uint160 internal constant SQRT_PRICEX96_GRADUATION_DEFAULT = 715832709642994126662528799866880;
+
+    /// @notice THIN graduation sqrtPriceX96: 6.125 ETH mcap. Uses TICK_UPPER_THIN.
+    uint160 internal constant SQRT_PRICEX96_GRADUATION_THIN = 1012340326367404053977557838594048;
+
+    /// @notice THICK graduation sqrtPriceX96: 24.5 ETH mcap.
+    uint160 internal constant SQRT_PRICEX96_GRADUATION_THICK = 506170163183702026988778919297024;
+
     /// @notice The canonical PoolKey of a graduated Realm token's V4 pool: `(ETH, token)` with this
     ///         library's fee/spacing and the graduator's hook. THE single source of truth — the
     ///         graduator, the buy-back mixin and the token's liquidity leg must all target the same

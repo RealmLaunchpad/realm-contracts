@@ -62,12 +62,6 @@ import {BuildTarget} from "script/BuildTarget.sol";
 ///         Run: forge script DeployRealmStack --rpc-url <sepolia|robinhood-mainnet> \
 ///                  --account realm.dev --slow --broadcast --verify
 contract DeployRealmStack is Script {
-    /// @dev Graduation prices per tier, from `simulations/script/uniswapV4Settings.py`:
-    ///      DEFAULT 12.25 ETH mcap, THIN 6.125 ETH, THICK 24.5 ETH.
-    uint160 internal constant DEFAULT_GRAD_SQRT_PRICE_X96 = 715832709642994126662528799866880;
-    uint160 internal constant THIN_GRAD_SQRT_PRICE_X96 = 1012340326367404053977557838594048;
-    uint160 internal constant THICK_GRAD_SQRT_PRICE_X96 = 506170163183702026988778919297024;
-
     /// @dev Index 0 is each tier's no-vault base curve; 1..6 are the 5%..30% vault curves.
     uint256[7] internal VAULT_BPS = [uint256(0), 500, 1000, 1500, 2000, 2500, 3000];
 
@@ -151,12 +145,15 @@ contract DeployRealmStack is Script {
             address(new RealmGraduatorUniswapV2(infra.univ2Router, c.launchpad, infra.univ2PairInitCodeHash));
         // One graduator per tier; the hook is fee-agnostic (it reads the LP fee off the token), so the
         // only per-tier difference is the graduation price and the primary range's upper tick.
-        c.graduatorV4 =
-            _deployGraduatorV4(infra, c, hook, DEFAULT_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER);
-        c.graduatorV4Thin =
-            _deployGraduatorV4(infra, c, hook, THIN_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER_THIN);
-        c.graduatorV4Thick =
-            _deployGraduatorV4(infra, c, hook, THICK_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER);
+        c.graduatorV4 = _deployGraduatorV4(
+            infra, c, hook, UniswapV4PoolConstants.SQRT_PRICEX96_GRADUATION_DEFAULT, UniswapV4PoolConstants.TICK_UPPER
+        );
+        c.graduatorV4Thin = _deployGraduatorV4(
+            infra, c, hook, UniswapV4PoolConstants.SQRT_PRICEX96_GRADUATION_THIN, UniswapV4PoolConstants.TICK_UPPER_THIN
+        );
+        c.graduatorV4Thick = _deployGraduatorV4(
+            infra, c, hook, UniswapV4PoolConstants.SQRT_PRICEX96_GRADUATION_THICK, UniswapV4PoolConstants.TICK_UPPER
+        );
     }
 
     function _deployGraduatorV4(

@@ -88,7 +88,7 @@ library DeploymentsEthereumSepolia {
     // --- Liquidity tiers (THIN + THICK) ---
     /// @notice THIN/THICK V4 graduators, one per tier (the fee-agnostic hook reads the swap fee from the
     ///         token). The DEFAULT tier reuses `GRADUATOR_UNIV4`. Update after deploying with
-    ///         `DeployRealmStack`. Both point at `SWAP_HOOK` above.
+    ///         `DeployRealmStack` or `RedeployGraduators`. Both point at `SWAP_HOOK` above.
     address internal constant GRADUATOR_UNIV4_THIN = 0x6B29469d3E5D5861E6a5C449863a0566E163272C;
     address internal constant GRADUATOR_UNIV4_THICK = 0xd0b4476f2044574CA498A5AdD5DFB26516E2526d;
 

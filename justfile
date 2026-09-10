@@ -243,6 +243,36 @@ upgrade-factories-robinhood-testnet: chain-robinhood-testnet
     forge script UpgradeRealmFactories --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Deploys a new SwapLpFeeRouter implementation (treasury from DeploymentAddresses, split baked in) and
+# repoints the manifest's LP_FEE_ROUTER proxy at it. The proxy — and so the hook's whitelisting — never
+# moves. Paste the printed LP_FEE_ROUTER_IMPL into the manifest and `just export-deployments`. Dry-run
+# first: the same command without --broadcast, plus --sender <realm.dev address>.
+upgrade-lp-fee-router-sepolia: chain-sepolia
+    forge script UpgradeSwapLpFeeRouter --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+upgrade-lp-fee-router-robinhood: chain-robinhood
+    forge script UpgradeSwapLpFeeRouter --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+upgrade-lp-fee-router-robinhood-testnet: chain-robinhood-testnet
+    forge script UpgradeSwapLpFeeRouter --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
+# Redeploys the V2 graduator and the three per-tier V4 graduators from the current build and rewires
+# the live factories to them (new factory impls, proxies repointed) in ONE run — for a graduation policy
+# change on a chain whose stack is already live. Paste the six printed slots into the manifest and
+# `just export-deployments`. Dry-run first: the same command without --broadcast, plus --sender.
+redeploy-graduators-sepolia: chain-sepolia
+    forge script RedeployGraduators --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+redeploy-graduators-robinhood: chain-robinhood
+    forge script RedeployGraduators --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+redeploy-graduators-robinhood-testnet: chain-robinhood-testnet
+    forge script RedeployGraduators --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
 # Redeploys the two taxable token masters from the current build and rewires the live factories to
 # them (new factory impls, proxies repointed) in ONE run — for a master that has to change on a chain
 # whose stack is already live. Tokens already created keep the old master. Paste the four printed
