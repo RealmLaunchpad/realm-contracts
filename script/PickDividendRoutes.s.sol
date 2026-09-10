@@ -34,7 +34,7 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 ///      a different winner, or none at all. A route in the shipped catalogue that can no longer buy its
 ///      asset is worse than no entry: it hands a creator a permanent, unfixable configuration.
 ///
-/// Usage:  forge script PickDividendRoutes --rpc-url robinhood-mainnet
+/// Usage:  forge script PickDividendRoutes --rpc-url rh-mainnet
 ///
 /// Env:
 ///   DIVIDEND_SWAP_REGISTRY  the registry proxy on this chain

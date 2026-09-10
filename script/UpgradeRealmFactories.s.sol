@@ -24,7 +24,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         must own both proxies.
 ///
 /// @dev    Run: just chain-<sepolia|robinhood> && forge script UpgradeRealmFactories \
-///                  --rpc-url <sepolia|robinhood-mainnet> --account realm.dev --slow --broadcast --verify
+///                  --rpc-url <sepolia|rh-mainnet> --account realm.dev --slow --broadcast --verify
 contract UpgradeRealmFactories is Script {
     function run() public virtual {
         ChainConfig.Manifest memory m = ChainConfig.manifest();

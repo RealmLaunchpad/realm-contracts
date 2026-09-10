@@ -192,11 +192,11 @@ deploy-prereqs-sepolia: chain-sepolia
     forge script DeployRealmPrereqs --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 deploy-prereqs-robinhood: chain-robinhood
-    forge script DeployRealmPrereqs --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmPrereqs --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-prereqs-robinhood-testnet: chain-robinhood-testnet
-    forge script DeployRealmPrereqs --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmPrereqs --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Only the two registries (keepers + dividend swap), owned by realm.dev. Use to redeploy them without
@@ -206,11 +206,11 @@ deploy-registries-sepolia: chain-sepolia
     forge script DeployRealmRegistries --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 deploy-registries-robinhood: chain-robinhood
-    forge script DeployRealmRegistries --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmRegistries --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-registries-robinhood-testnet: chain-robinhood-testnet
-    forge script DeployRealmRegistries --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmRegistries --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Phase 1. Everything else in one broadcast: fee handler, launchpad, quoter, liquidity adder, the V2 +
@@ -222,11 +222,11 @@ deploy-stack-sepolia: chain-sepolia
     forge script DeployRealmStack --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 deploy-stack-robinhood: chain-robinhood
-    forge script DeployRealmStack --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmStack --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-stack-robinhood-testnet: chain-robinhood-testnet
-    forge script DeployRealmStack --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmStack --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Redeploys both unified factory implementations from the CURRENT manifest and repoints the live
@@ -236,11 +236,11 @@ upgrade-factories-sepolia: chain-sepolia
     forge script UpgradeRealmFactories --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 upgrade-factories-robinhood: chain-robinhood
-    forge script UpgradeRealmFactories --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+    forge script UpgradeRealmFactories --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-factories-robinhood-testnet: chain-robinhood-testnet
-    forge script UpgradeRealmFactories --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+    forge script UpgradeRealmFactories --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Deploys a new SwapLpFeeRouter implementation (treasury from DeploymentAddresses, split baked in) and
@@ -251,11 +251,11 @@ upgrade-lp-fee-router-sepolia: chain-sepolia
     forge script UpgradeSwapLpFeeRouter --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 upgrade-lp-fee-router-robinhood: chain-robinhood
-    forge script UpgradeSwapLpFeeRouter --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+    forge script UpgradeSwapLpFeeRouter --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-lp-fee-router-robinhood-testnet: chain-robinhood-testnet
-    forge script UpgradeSwapLpFeeRouter --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+    forge script UpgradeSwapLpFeeRouter --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Redeploys the V2 graduator and the three per-tier V4 graduators from the current build and rewires
@@ -266,11 +266,11 @@ redeploy-graduators-sepolia: chain-sepolia
     forge script RedeployGraduators --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 redeploy-graduators-robinhood: chain-robinhood
-    forge script RedeployGraduators --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+    forge script RedeployGraduators --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 redeploy-graduators-robinhood-testnet: chain-robinhood-testnet
-    forge script RedeployGraduators --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+    forge script RedeployGraduators --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Redeploys the two taxable token masters from the current build and rewires the live factories to
@@ -282,7 +282,7 @@ redeploy-tax-impls-sepolia: chain-sepolia
     forge script RedeployTaxTokenImpls --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 redeploy-tax-impls-robinhood-testnet: chain-robinhood-testnet
-    forge script RedeployTaxTokenImpls --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+    forge script RedeployTaxTokenImpls --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Mines a valid hook salt (the permission bits live in the hook's own address) and deploys RealmHook
@@ -296,11 +296,11 @@ deploy-realm-hook-sepolia:
     forge script DeployRealmHook --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
 deploy-realm-hook-robinhood:
-    forge script DeployRealmHook --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmHook --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-realm-hook-robinhood-testnet:
-    forge script DeployRealmHook --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmHook --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded
@@ -317,9 +317,9 @@ deploy-dummy-xstocks-sepolia:
 # them can be bought with native ETH — no V2 pair, nothing in the V4 pool manager, and the only depth is a
 # third-party V3 DEX quoted in USDC — so they are unusable as dividend payout assets. These dummies stand
 # in, with the tickers the real ones do NOT use so the payout picker cannot confuse the two. Dry run:
-#   forge script DeployDummyXStocks --rpc-url robinhood-testnet --account realm.dev
+#   forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev
 deploy-dummy-xstocks-robinhood-testnet:
-    forge script DeployDummyXStocks --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
+    forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Regenerates deployments.{ethereum.sepolia,robinhood.mainnet,robinhood.testnet}.md from the matching .sol manifests.
@@ -346,7 +346,7 @@ discover-dividend-routes:
 # the catalogue's health check — an asset whose pools have moved reports a different winner, or none.
 pick-dividend-routes:
     just chain-robinhood
-    forge script PickDividendRoutes --rpc-url robinhood-mainnet
+    forge script PickDividendRoutes --rpc-url rh-mainnet
 
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS

@@ -29,7 +29,7 @@ import {DeployRealmRegistries} from "script/DeployRealmRegistries.s.sol";
 ///         `upgradeToAndCall`ing this proxy, whose owner is the `realm.dev` deployer.
 ///
 /// @dev    Run: just chain-<sepolia|robinhood> && forge script DeployRealmPrereqs \
-///                  --rpc-url <sepolia|robinhood-mainnet> --account realm.dev --slow --broadcast --verify
+///                  --rpc-url <sepolia|rh-mainnet> --account realm.dev --slow --broadcast --verify
 contract DeployRealmPrereqs is DeployRealmRegistries {
     function run() external override {
         address treasury = ChainConfig.infra().treasury;

@@ -129,7 +129,7 @@ abstract contract DeployHookBase is Script {
 ///
 /// Usage (dry run):   forge script DeployRealmHook --rpc-url sepolia --account realm.dev
 /// Usage (deploy):    forge script DeployRealmHook --rpc-url sepolia --account realm.dev --slow --broadcast --verify
-/// Usage (robinhood): ROUTER_ADDRESS=<router> forge script DeployRealmHook --rpc-url robinhood-mainnet \
+/// Usage (robinhood): ROUTER_ADDRESS=<router> forge script DeployRealmHook --rpc-url rh-mainnet \
 ///                        --account realm.dev --slow --broadcast --gas-estimate-multiplier 300
 contract DeployRealmHook is DeployHookBase {
     function hookName() internal pure override returns (string memory) {

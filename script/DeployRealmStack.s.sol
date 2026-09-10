@@ -59,7 +59,7 @@ import {BuildTarget} from "script/BuildTarget.sol";
 ///              `src/config/DeploymentAddresses.sol` (they are baked into the taxable token bytecode).
 ///           3. `SWAP_HOOK` must be set in the manifest for this chain.
 ///
-///         Run: forge script DeployRealmStack --rpc-url <sepolia|robinhood-mainnet> \
+///         Run: forge script DeployRealmStack --rpc-url <sepolia|rh-mainnet> \
 ///                  --account realm.dev --slow --broadcast --verify
 contract DeployRealmStack is Script {
     /// @dev Index 0 is each tier's no-vault base curve; 1..6 are the 5%..30% vault curves.
