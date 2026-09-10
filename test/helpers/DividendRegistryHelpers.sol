@@ -5,7 +5,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 // Swapped per target chain by `just chain-<name>`, together with the token implementations that bake
 // the same constant in.
-import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 Vm constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
