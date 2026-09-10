@@ -22,9 +22,9 @@
 | RealmTaxableTokenUniV4 (impl)                | `0xa594E5E25f7F2d4E71336cDB755f96811b5ee3F5` |
 | RealmTaxableTokenUniV2 (impl)                | `0x2cD2Df598ABb096A85d5f1E5fA02A0b5Be85dfD2` |
 | RealmFactoryUniV2Unified (proxy)             | `0xe3159990B4DaE3Ae812F2591921988d0093056aB` |
-| RealmFactoryUniV2Unified (impl)              | `0xEF010E0154574ecbA99299695Dd02F7E2712Fb53` |
+| RealmFactoryUniV2Unified (impl)              | `0x918c750C3d2Bea026454253d54a76b1888cE360d` |
 | RealmFactoryUniV4Unified (proxy)             | `0x3B6bbE80f2e6138e7a612d11bA2A69d25e7Be320` |
-| RealmFactoryUniV4Unified (impl)              | `0x4952dB62Cfb42959001bC2602fdaeF54806DCD1c` |
+| RealmFactoryUniV4Unified (impl)              | `0x78336f032d9140a7b0946E717f2b80cA07618C6C` |
 | RealmCreatorVaultFactory (proxy)             | `0xDC6b4aec62B24aE8582d9393Bf0288C531033df5` |
 | RealmCreatorVaultFactory (impl)              | `0xE2893aEaa4c88CF4197796bcb6C1930683D76981` |
 | RealmCreatorVault (impl)                     | `0x24451106759727997e7b3455f9Ff4266d60402F7` |

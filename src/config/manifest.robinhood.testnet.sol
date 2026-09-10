@@ -55,8 +55,8 @@ library DeploymentsRobinhoodTestnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xEF010E0154574ecbA99299695Dd02F7E2712Fb53;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x4952dB62Cfb42959001bC2602fdaeF54806DCD1c;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x918c750C3d2Bea026454253d54a76b1888cE360d;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x78336f032d9140a7b0946E717f2b80cA07618C6C;
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.
