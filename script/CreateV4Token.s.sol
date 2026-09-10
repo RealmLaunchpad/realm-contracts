@@ -17,7 +17,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///         wired to a new graduator/hook) — the factory is NOT read from the manifest, since a
 ///         scratch factory deliberately isn't tracked there. The token itself is an ordinary V4
 ///         token; only the factory it's created through differs. Mines the required
-///         `0x1110`-suffixed salt off-chain, then calls the tiered `createToken` overload with the
+///         `0xeeaa`-suffixed salt off-chain, then calls the tiered `createToken` overload with the
 ///         selected liquidity tier (THIN by default), empty tax/anti-sniper config, no creator vaults
 ///         and no deployer buy.
 ///
@@ -25,7 +25,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///         the account that actually broadcasts. That account is read back from `vm.readCallers()` inside
 ///         the broadcast rather than from the script frame's `msg.sender` — outside a broadcast the latter
 ///         is forge's `DEFAULT_SENDER` (`0x1804c8AB...`), NOT the `--account` being used, so mining
-///         against it silently produces a salt for the wrong namespace and the on-chain `0x1110` check
+///         against it silently produces a salt for the wrong namespace and the on-chain `0xeeaa` check
 ///         reverts with `InvalidTokenAddress()`.
 ///
 ///         Env vars:
@@ -124,7 +124,7 @@ contract CreateV4Token is Script {
 
         // `--account <keystore>` alone does NOT set the script's sender: forge still reports its
         // DEFAULT_SENDER here, so the salt would be mined for an account that never signs the tx and the
-        // factory's `0x1110` check would revert with a bare `InvalidTokenAddress()`. Fail with something
+        // factory's `0xeeaa` check would revert with a bare `InvalidTokenAddress()`. Fail with something
         // actionable instead. Pass `--sender <addr>` alongside `--account` (as the repo's other deploy
         // recipes do), or set `DEPLOYER` explicitly.
         require(
@@ -134,7 +134,7 @@ contract CreateV4Token is Script {
     }
 
     /// @dev Mirrors `test/launchpad/base.t.sol::_nextValidSalt` — searches for a salt whose
-    ///      NAMESPACED clone address ends in `0x1110`, starting from `start` (bump `SALT_START` if a
+    ///      NAMESPACED clone address ends in `0xeeaa`, starting from `start` (bump `SALT_START` if a
     ///      lower salt was already consumed against this factory+impl+deployer triple).
     function _mineSalt(address factory, address impl, address deployer, uint256 start)
         internal
@@ -143,7 +143,7 @@ contract CreateV4Token is Script {
     {
         for (uint256 i = start;; i++) {
             salt = bytes32(i);
-            if (uint16(uint160(_predictToken(factory, impl, deployer, salt))) == 0x1110) return salt;
+            if (uint16(uint160(_predictToken(factory, impl, deployer, salt))) == 0xeeaa) return salt;
         }
     }
 

@@ -224,7 +224,7 @@ contract LaunchpadBaseTests is Test {
         return Clones.predictDeterministicAddress(impl, _namespacedSalt(deployer, salt), factory);
     }
 
-    /// @dev Mines the next salt whose namespaced address has the `0x1110` vanity suffix, for the
+    /// @dev Mines the next salt whose namespaced address has the `0xeeaa` vanity suffix, for the
     ///      default `creator` deployer. Use the 3-arg overload when deploying as a different account.
     function _nextValidSalt(address factory, address impl) internal returns (bytes32 salt) {
         return _nextValidSalt(factory, impl, creator);
@@ -233,7 +233,7 @@ contract LaunchpadBaseTests is Test {
     function _nextValidSalt(address factory, address impl, address deployer) internal returns (bytes32 salt) {
         for (uint256 i = _saltCounter;; i++) {
             salt = bytes32(i);
-            if (uint16(uint160(_predictToken(factory, impl, deployer, salt))) == 0x1110) {
+            if (uint16(uint160(_predictToken(factory, impl, deployer, salt))) == 0xeeaa) {
                 _saltCounter = i + 1;
                 return salt;
             }

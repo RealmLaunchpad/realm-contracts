@@ -453,12 +453,12 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
     // ───────────── InvalidTokenAddress on tax dispatch path ─────────────
 
     function test_createToken_revertsOnInvalidTokenAddress_taxVariant() public {
-        // Find a salt that does NOT yield a 0x1110-suffixed address for the tax impl.
+        // Find a salt that does NOT yield a 0xeeaa-suffixed address for the tax impl.
         bytes32 badSalt;
         for (uint256 i = 0;; i++) {
             bytes32 s = bytes32(i);
             address predicted = _predictToken(address(factoryV4Unified), address(realmTaxToken), creator, s);
-            if (uint16(uint160(predicted)) != 0x1110) {
+            if (uint16(uint160(predicted)) != 0xeeaa) {
                 badSalt = s;
                 break;
             }

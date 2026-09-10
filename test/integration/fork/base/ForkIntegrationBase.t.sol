@@ -300,7 +300,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         for (uint256 i = _saltCounter;; ++i) {
             salt = bytes32(i);
             address predicted = Clones.predictDeterministicAddress(impl, _namespacedSalt(deployer, salt), factory);
-            if (uint16(uint160(predicted)) == 0x1110 && predicted.code.length == 0) {
+            if (uint16(uint160(predicted)) == 0xeeaa && predicted.code.length == 0) {
                 _saltCounter = i + 1;
                 return salt;
             }
@@ -327,7 +327,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         token = _createToken(c, a.creator, input);
 
         assertEq(token, input.expected, "deployed token address mismatch");
-        assertEq(uint16(uint160(token)), 0x1110, "token suffix mismatch");
+        assertEq(uint16(uint160(token)), 0xeeaa, "token suffix mismatch");
         _assertTokenDeployment(c, token, a, input.impl, input.ethValue);
     }
 

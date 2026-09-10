@@ -91,7 +91,7 @@ struct AntiSniperConfigs {
 1. Build the exact `(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` you intend to submit. For V4 also decide `renounceOwnership_`.
 2. Call `factory.previewTokenImplementation(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` (view). This runs the same validation as `createToken` for the tax and anti-sniper sentinels, and returns the implementation that will be cloned. The V4 `renounceOwnership_` flag is **not** an input — preview always assumes the renounced path. If you intend to keep ownership, the charity-mode owner check in `createToken` will fire only at submit time.
 3. (Optional) If `msg.value > 0`, call `factory.quoteBuyOnDeploy(tokenAmount)` to get the ETH amount that yields exactly `tokenAmount` tokens after the launchpad buy fee. The deploy buy is uncapped except by graduation — call `factory.maxBuyOnDeploy(liquidityTier, totalLockedInVaultsBps)` for the max token amount that reaches graduation without reverting `MaxEthReservesExceeded`.
-4. Mine `salt` so that `Clones.predictDeterministicAddress(implementation, salt, factory)` ends in `0x1110` (see [`salt-mining-guide.md`](../salt-mining-guide.md)). Statistically ~65k iterations.
+4. Mine `salt` so that `Clones.predictDeterministicAddress(implementation, salt, factory)` ends in `0xeeaa` (see [`salt-mining-guide.md`](../salt-mining-guide.md)). Statistically ~65k iterations.
 5. Submit `factory.createToken(name, symbol, salt, … same args …)` with `value: ethToSpend`.
 
 If the dispatch-relevant inputs differ between preview and submit, the cloned address will not match what you mined and the call reverts with `InvalidTokenAddress`.
@@ -103,7 +103,7 @@ If the dispatch-relevant inputs differ between preview and submit, the cloned ad
 In order, every successful call performs:
 
 1. **Validation** of `name`/`symbol`, `feeReceivers`, `supplyShares` vs `msg.value`, `antiSniperCfg` sentinel consistency, `taxCfg` (caps + charity-mode rules).
-2. **Clone** the dispatched implementation via `Clones.cloneDeterministic` and assert the `0x1110` suffix.
+2. **Clone** the dispatched implementation via `Clones.cloneDeterministic` and assert the `0xeeaa` suffix.
 3. **Emit `TokenCreated`** *before* `initialize()` — the indexer creates the entity off this event, so events emitted during initialization depend on it.
 4. **Initialize** the cloned token (mints `TOTAL_SUPPLY` to the launchpad, sets graduator/launchpad/feeHandler immutables, applies tax/anti-sniper configs).
 5. **`LAUNCHPAD.launchToken(token, BONDING_CURVE)`** — registers the token in the launchpad and emits `TokenLaunched`. The factory **must be whitelisted** on the launchpad or this reverts with `UnauthorizedFactory`.
@@ -124,7 +124,7 @@ All errors are `error Foo()` (4-byte selectors).
 |---|---|
 | `bytes(name).length == 0` or `bytes(symbol).length == 0` | `InvalidNameOrSymbol` |
 | `bytes(symbol).length > 96` | `InvalidNameOrSymbol` |
-| Cloned address does not end in `0x1110` (wrong salt for dispatched impl) | `InvalidTokenAddress` |
+| Cloned address does not end in `0xeeaa` (wrong salt for dispatched impl) | `InvalidTokenAddress` |
 
 ### Fee receivers (`feeReceivers`)
 
@@ -254,7 +254,7 @@ const impl = await factoryV4.read.previewTokenImplementation(
   [feeReceivers, supplyShares, taxCfg, antiSniperCfg],
 );
 
-// 2. Mine a 0x1110-suffixed salt against (factory, impl). See salt-mining-guide.md.
+// 2. Mine a 0xeeaa-suffixed salt against (factory, impl). See salt-mining-guide.md.
 const salt = findValidSalt(factoryAddress, impl);
 
 // 3. Quote ETH for the deployer buy (optional).

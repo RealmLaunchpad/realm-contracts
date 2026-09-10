@@ -529,7 +529,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ///         the creator. Venue-specific protocol policy fixed at the factory level, not deployer-set.
     function _launchpadTreasuryShareBps() internal pure virtual returns (uint16);
 
-    /// @dev Clones the resolved token implementation deterministically, enforces the `0x1110` vanity
+    /// @dev Clones the resolved token implementation deterministically, enforces the `0xeeaa` vanity
     ///      suffix, emits `TokenCreated`, and returns the freshly-deployed token plus a fully-populated
     ///      `InitializeParams` for the caller to pass to the impl-specific `initialize()` overload.
     ///      `TokenCreated` is emitted BEFORE `initialize()` because the indexer creates the TokenData
@@ -542,7 +542,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ///      pre-announced address with their own fee receivers. Namespacing lets the rest of the config
     ///      (fee receivers, anti-sniper, tax, …) stay deferred to reveal time with no front-running
     ///      window. Frontends MUST apply the same `keccak256(deployer, salt)` derivation when predicting
-    ///      the address and mining the `0x1110` vanity suffix.
+    ///      the address and mining the `0xeeaa` vanity suffix.
     function _cloneAndCreateToken(
         address impl,
         string memory name,
@@ -555,7 +555,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ) internal returns (address token, IRealmToken.InitializeParams memory params) {
         token = Clones.cloneDeterministic(impl, keccak256(abi.encodePacked(msg.sender, salt)));
         // forge-lint: disable-next-line(unsafe-typecast)
-        require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
+        require(uint16(uint160(token)) == 0xeeaa, InvalidTokenAddress());
 
         emit TokenCreated(token, name, symbol, tokenOwner, address(LAUNCHPAD), graduator, address(MASTER_FEE_HANDLER));
 
@@ -719,7 +719,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
 
     /// @dev Single source of truth for which implementation `createToken` will clone for a given
     ///      `taxCfg`. Both the public `previewTokenImplementation` (used by frontends to mine a
-    ///      `0x1110`-suffixed salt) and `_dispatchAndInitialize` (the path that actually clones the
+    ///      `0xeeaa`-suffixed salt) and `_dispatchAndInitialize` (the path that actually clones the
     ///      impl) read from this function — so a salt that previews to a vanity-suffixed address is
     ///      guaranteed to also produce one at create time.
     /// @dev Anti-sniper is deliberately NOT a dispatch input: it is a gated feature of both impls, so
@@ -742,7 +742,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ///      both impls take the `AntiSniperConfigs` and enable protection internally iff it opts in
     ///      (`protectionWindowSeconds != 0`), so the factory always forwards it and never branches on
     ///      anti-sniper. Impl resolution shares `_previewTokenImplementation` with the public preview,
-    ///      so a salt that previews to a `0x1110` address also clones to one. Callers (`createToken` on
+    ///      so a salt that previews to a `0xeeaa` address also clones to one. Callers (`createToken` on
     ///      the derived factory) invoke `LAUNCHPAD.launchToken` and `_finalizeCreation` (which registers
     ///      the token's fee config with the master handler) after this returns.
     function _dispatchAndInitialize(

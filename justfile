@@ -135,14 +135,14 @@ _graduators suffix:
     sed -i -E 's#\{GraduationFeeConstants[A-Za-z]* as GraduationFeeConstants\} from "src/libraries/GraduationFeeConstants[A-Za-z]*\.sol"#{GraduationFeeConstants{{suffix}} as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants{{suffix}}.sol"#' \
         src/graduators/RealmGraduatorUniswapV4.sol
 
-# Prints a valid salt (produces a token address ending in 0x1110) for the given factory.
+# Prints a valid salt (produces a token address ending in 0xeeaa) for the given factory.
 # Usage: just next-salt <factoryAddress>
 next-salt factory:
     #!/usr/bin/env bash
     set -euo pipefail
     IMPL=$(cast call --rpc-url $SEPOLIA_RPC_URL {{factory}} "TOKEN_IMPLEMENTATION()(address)")
     INIT_CODE="0x3d602d80600a3d3981f3363d3d373d3d3d363d73${IMPL:2}5af43d82803e903d91602b57fd5bf3"
-    cast create2 --ends-with 1110 --deployer {{factory}} --init-code "$INIT_CODE" \
+    cast create2 --ends-with eeaa --deployer {{factory}} --init-code "$INIT_CODE" \
         | awk '/^Salt:/ {print $2}'
 
 ##################### Deployed addresses (sepolia) #######################

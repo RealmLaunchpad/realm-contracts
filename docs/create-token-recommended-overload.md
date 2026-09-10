@@ -50,7 +50,7 @@ function createToken(
 |---|---|---|
 | `name` | `string` | Token name. Non-empty. |
 | `symbol` | `string` | Token symbol. Non-empty, **≤ 96 bytes**. |
-| `salt` | `bytes32` | Mined so the token address ends in `0x1110` — see [Salt mining](#salt-mining). |
+| `salt` | `bytes32` | Mined so the token address ends in `0xeeaa` — see [Salt mining](#salt-mining). |
 | `feeShares` | `FeeShare[]` | Fee recipients (see below). |
 | `liquidityTier` | `uint8` enum | `LiquidityTier`: `0 = THIN`, `1 = DEFAULT`, `2 = THICK`. **Set it explicitly** — a zero-initialised field resolves to `THIN`, not `DEFAULT`. Controls post-graduation pool depth / graduation mcap (THIN 1.75 ETH / DEFAULT 3.5 ETH / THICK 7.0 ETH). |
 
@@ -154,7 +154,7 @@ All errors are 4-byte custom errors.
 | revert | when |
 |---|---|
 | `InvalidNameOrSymbol` | empty `name`; empty `symbol`; or `symbol` > 96 bytes. |
-| `InvalidTokenAddress` | cloned address doesn't end in `0x1110` (salt not mined against the dispatched impl / wrong deployer). |
+| `InvalidTokenAddress` | cloned address doesn't end in `0xeeaa` (salt not mined against the dispatched impl / wrong deployer). |
 | `InvalidFeeReceiver` | `feeShares` empty, contains `address(0)`, or has duplicate accounts. |
 | `InvalidShares` | any `shares == 0`, or `feeShares` / `buyOnDeployShares` sum ≠ `10_000`. |
 | `MultipleDirectFeeReceivers` | more than one `feeShares` entry with `directFeesEnabled == true`. |
@@ -182,7 +182,7 @@ All errors are 4-byte custom errors.
 ## Salt mining
 
 The token is a `Clones.cloneDeterministic` proxy; its address is a function of
-`(factory, impl, msg.sender, salt)`. The address **must end in `0x1110`** (else `InvalidTokenAddress`).
+`(factory, impl, msg.sender, salt)`. The address **must end in `0xeeaa`** (else `InvalidTokenAddress`).
 
 Two things to get right:
 
@@ -211,7 +211,7 @@ function findValidSalt(factory, impl, deployer) {
     const salt = pad(toHex(i), { size: 32 });
     const effectiveSalt = keccak256(encodePacked(["address", "bytes32"], [deployer, salt]));
     const addr = getCreate2Address({ from: factory, salt: effectiveSalt, bytecodeHash: initcodeHash });
-    if (addr.toLowerCase().endsWith("1110")) return { salt, tokenAddress: addr };
+    if (addr.toLowerCase().endsWith("eeaa")) return { salt, tokenAddress: addr };
   }
 }
 ```
@@ -226,6 +226,6 @@ address won't match and the call reverts with `InvalidTokenAddress`.
 
 1. Build `(tokenSetup, taxConfigs[, univ4Configs], buyOnDeployShares, antiSniperConfigs, creatorVaults, referral)`.
 2. `impl = previewTokenImplementation(feeShares, buyOnDeployShares, taxConfigs, antiSniperConfigs)`.
-3. Mine `salt` against `(factory, impl, deployer)` → address ending in `0x1110`.
+3. Mine `salt` against `(factory, impl, deployer)` → address ending in `0xeeaa`.
 4. *(optional)* `value = quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg[, univ4Configs])`.
 5. `createToken(...)` with `value` (`0` if not buying on deploy).

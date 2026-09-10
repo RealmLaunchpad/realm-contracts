@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Realm factories deploy tokens using `Clones.cloneDeterministic()` (CREATE2 under the hood). The factory enforces that every token address must end in `0x1110` (last 2 bytes). The frontend/backend must pre-compute a valid `salt` before calling `createToken()`.
+The Realm factories deploy tokens using `Clones.cloneDeterministic()` (CREATE2 under the hood). The factory enforces that every token address must end in `0xeeaa` (last 2 bytes). The frontend/backend must pre-compute a valid `salt` before calling `createToken()`.
 
 Since the consolidation, the launchpad whitelists **two unified factories** instead of six:
 
@@ -53,7 +53,7 @@ This is the bytecode that CREATE2 hashes. It comes directly from [OpenZeppelin's
    - V4: `feeReceivers`, `supplyShares`, `renounceOwnership`, `taxCfg`, `antiSniperCfg`.
 2. Call `factory.previewTokenImplementation(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` — returns the implementation address. The V4 `renounceOwnership` flag does not affect dispatch and is not part of preview.
 3. Compute `initcode = 0x3d…73 ++ <impl> ++ 0x5af4…5bf3` and `initcodeHash = keccak256(initcode)`.
-4. Mine `salt` against `(factory, initcodeHash)` until `last 2 bytes == 0x1110`.
+4. Mine `salt` against `(factory, initcodeHash)` until `last 2 bytes == 0xeeaa`.
 5. Submit `factory.createToken(name, symbol, salt, ...)` with the same arguments.
 
 If steps 2 and 5 use the same dispatch inputs, the deployed address is guaranteed to match the predicted one. If you change `taxCfg` or `antiSniperCfg` between preview and submit, the dispatched implementation may differ and the salt becomes invalid (the call reverts with `InvalidTokenAddress`).
@@ -63,10 +63,10 @@ If steps 2 and 5 use the same dispatch inputs, the deployed address is guarantee
 The unified factories enforce:
 
 ```solidity
-require(uint16(uint160(token)) == 0x1110, InvalidTokenAddress());
+require(uint16(uint160(token)) == 0xeeaa, InvalidTokenAddress());
 ```
 
-This means the last 2 bytes of the token address must be `0x1110`. Statistically, **1 in 65,536 salts** will produce a valid address, so brute-forcing is near-instant.
+This means the last 2 bytes of the token address must be `0xeeaa`. Statistically, **1 in 65,536 salts** will produce a valid address, so brute-forcing is near-instant.
 
 ## Implementation (TypeScript with viem)
 
@@ -86,7 +86,7 @@ const initcode = concat([
 const INITCODE_HASH = keccak256(initcode);
 
 /**
- * Finds a salt that produces a token address ending in 0x1110.
+ * Finds a salt that produces a token address ending in 0xeeaa.
  * Typically completes in < 100ms (brute-forces ~65k iterations on average).
  */
 function findValidSalt(): { salt: `0x${string}`; tokenAddress: string } {
@@ -99,7 +99,7 @@ function findValidSalt(): { salt: `0x${string}`; tokenAddress: string } {
       bytecodeHash: INITCODE_HASH,
     });
 
-    if (addr.toLowerCase().endsWith("1110")) {
+    if (addr.toLowerCase().endsWith("eeaa")) {
       return { salt, tokenAddress: addr };
     }
   }
@@ -126,7 +126,7 @@ function findValidSalt(): { salt: string; tokenAddress: string } {
     const salt = ethers.zeroPadValue(ethers.toBeHex(i), 32);
     const addr = ethers.getCreate2Address(FACTORY_ADDRESS, salt, INITCODE_HASH);
 
-    if (addr.toLowerCase().endsWith("1110")) {
+    if (addr.toLowerCase().endsWith("eeaa")) {
       return { salt, tokenAddress: addr };
     }
   }
