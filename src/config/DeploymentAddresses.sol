@@ -406,7 +406,7 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
-    address public constant DIVIDEND_SWAP_REGISTRY = 0x9b3c560D86909B8116468536737a272Fe0cE327d;
+    address public constant DIVIDEND_SWAP_REGISTRY = 0xA53a42561D85255C0dbDc73a27626FCb71bA48EA;
 
     /// @notice The `RealmKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
     ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
@@ -415,7 +415,7 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
-    address public constant REALM_KEEPERS_REGISTRY = 0xCba49A6057256392cF480C17C81DF2170FB650CB;
+    address public constant REALM_KEEPERS_REGISTRY = 0x7480e46B8f6B3a8d9137F72b3006f7FBfA088ECf;
     /// @notice Realm Treasury. TEMPORARY: the `realm.dev` EOA stands in until Realm has its own
     ///         treasury — replace before production. Consumed by core contracts at deploy time.
     address public constant REALM_TREASURY = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;

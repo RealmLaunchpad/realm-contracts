@@ -52,9 +52,9 @@ just export-deployments
 
 # 4. Mirror the new addresses in ../indexer config.yaml + config.dev.yaml + config.prod.yaml.
 
-# 5. Appoint operational admins/keepers from the treasury account:
-cast send <KEEPERS_REGISTRY> 'setAdmin(address,bool)' <admin> true --account realm.admin
-cast send <DIVIDEND_SWAP_REGISTRY> 'setAdmin(address,bool)' <admin> true --account realm.admin
+# 5. Appoint the admin + keeper on both registries (they ship empty). Admin defaults to the
+#    broadcasting account; REALM_KEEPER comes from the manifest. Idempotent.
+just configure-registries-sepolia     # or: just configure-registries-robinhood[-testnet]
 
 # 6. Smoke test: create a token through the V4 factory.
 FACTORY_ADDRESS=<factoryV4 proxy> forge script CreateV4Token --rpc-url sepolia --account realm.dev --slow --broadcast

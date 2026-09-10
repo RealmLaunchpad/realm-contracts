@@ -32,17 +32,17 @@ abis:
 # the Robinhood-forked ones (test/integration/fork/robinhood/) at Robinhood, and one build cannot be
 # both (the impls bake the chain's addresses and refuse a mismatched chain id). Each target keeps its
 # own build cache (`[profile.robinhood]` in foundry.toml), so the retargets do not recompile. Leaves
-# the tree on mainnet, the committed test default.
+# the tree on ROBINHOOD, not the committed mainnet default — run `just chain-mainnet` before
+# committing, or the retarget diff rides along.
 fast-test: check-dividend-layout
     just chain-mainnet
     forge test --no-match-contract Invariants --no-match-path "test/integration/**"
     just test-robinhood-fork
-    just chain-mainnet
 
 # Robinhood-mainnet fork suites (test/integration/fork/robinhood/): a Realm stack deployed on a Robinhood
 # fork, trading on Robinhood's Uniswap V4 and paying dividends in real xStocks. Needs ROBINHOOD_RPC_URL
 # (archive: the suites pin a block). Retargets the token impls to Robinhood and leaves them there, like
-# the deploy recipes do — `fast-test` switches back for you, a bare `forge test` does not.
+# the deploy recipes do — and so does `fast-test`, which ends on this recipe.
 test-robinhood-fork: chain-robinhood
     FOUNDRY_PROFILE=robinhood forge test --match-path "test/integration/fork/robinhood/**"
 
@@ -284,6 +284,22 @@ redeploy-tax-impls-sepolia: chain-sepolia
 redeploy-tax-impls-robinhood-testnet: chain-robinhood-testnet
     forge script RedeployTaxTokenImpls --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
+# Appoints the admin and the keeper on BOTH registries (keepers + dividend swap), which ship empty from
+# DeployRealmPrereqs. Admin defaults to the broadcasting account (the registries' owner) — override with
+# REALMDEVADDRESS=<addr>; the keeper is REALM_KEEPER in the chain's manifest. Idempotent, so it is also
+# how you re-point the registries after rotating REALM_KEEPER. Dry-run first: the same command without
+# --broadcast, plus --sender <realm.dev address> so the owner checks pass in simulation.
+configure-registries-sepolia: chain-sepolia
+    forge script ConfigureRegistries --rpc-url sepolia --account realm.dev --slow --broadcast
+
+configure-registries-robinhood: chain-robinhood
+    forge script ConfigureRegistries --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
+configure-registries-robinhood-testnet: chain-robinhood-testnet
+    forge script ConfigureRegistries --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
 
 # Mines a valid hook salt (the permission bits live in the hook's own address) and deploys RealmHook
 # against the manifest's LP_FEE_ROUTER — override with ROUTER_ADDRESS=<addr> before the manifest is

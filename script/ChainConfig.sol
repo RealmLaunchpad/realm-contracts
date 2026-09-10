@@ -123,6 +123,16 @@ library ChainConfig {
         require(router != address(0), "manifest: LP_FEE_ROUTER missing");
     }
 
+    /// @notice The keeper lambda's EOA from the manifest: appointed on `RealmKeepersRegistry` and set as
+    ///         the `RealmDividendSwapRegistry`'s keeper-funding wallet by `ConfigureRegistries`.
+    function realmKeeper() internal view returns (address keeper) {
+        if (isSepolia()) keeper = DeploymentsEthereumSepolia.REALM_KEEPER;
+        else if (isRobinhood()) keeper = DeploymentsRobinhoodMainnet.REALM_KEEPER;
+        else if (isRobinhoodTestnet()) keeper = DeploymentsRobinhoodTestnet.REALM_KEEPER;
+        else revert(UNSUPPORTED);
+        require(keeper != address(0), "manifest: REALM_KEEPER missing");
+    }
+
     function manifest() internal view returns (Manifest memory m) {
         if (isSepolia()) {
             m = Manifest({
