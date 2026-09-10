@@ -255,26 +255,13 @@ redeploy-tax-impls-robinhood-testnet: chain-robinhood-testnet
     forge script RedeployTaxTokenImpls --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Mines a valid hook salt (the permission bits live in the hook's own address) and deploys the hook
+# Mines a valid hook salt (the permission bits live in the hook's own address) and deploys RealmHook
 # against the manifest's LP_FEE_ROUTER — override with ROUTER_ADDRESS=<addr> before the manifest is
 # pasted. Run DeployRealmPrereqs first: it deploys the router proxy the hook takes as an immutable.
+# Paste the mined address into the manifest's SWAP_HOOK.
 #
-# Two variants, both deployed and both submitted to Uniswap for whitelisting; whichever is approved goes
-# into the manifest's SWAP_HOOK:
-#   *-swap-hook-*  -> RealmSwapHook: logic-for-logic the already-whitelisted hook.
-#   *-realm-hook-* -> RealmHook: same, plus a RealmPoolState log per swap so the indexer can drop its
-#                     PoolManager.Swap subscription.
-deploy-swap-hook-sepolia:
-    forge script DeployRealmSwapHook --rpc-url sepolia --verify --account realm.dev --slow --broadcast
-
-deploy-swap-hook-robinhood:
-    forge script DeployRealmSwapHook --rpc-url robinhood-mainnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300 {{robinhood_verify}}
-
-deploy-swap-hook-robinhood-testnet:
-    forge script DeployRealmSwapHook --rpc-url robinhood-testnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
-
+# RealmHook is the variant Uniswap whitelisted; its base RealmSwapHook was the other candidate and is
+# never deployed on its own (see the deprecation note on that contract).
 deploy-realm-hook-sepolia:
     forge script DeployRealmHook --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 

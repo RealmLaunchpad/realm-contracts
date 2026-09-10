@@ -29,8 +29,8 @@ from the Livo deployment.
 | 17 | `RealmFactoryUniV2Unified` | impl + UUPS proxy, whitelisted on the launchpad by the script |
 | 18 | `RealmFactoryUniV4Unified` | impl + UUPS proxy, whitelisted on the launchpad by the script |
 
-Not deployed: `RealmSwapHook` (inherited), and the dividend-logic extensions (self-deployed by the
-taxable token constructors).
+Not deployed by `DeployRealmStack`: the hook (its own script, above) and the dividend-logic extensions
+(self-deployed by the taxable token constructors).
 
 ## Sequence
 
@@ -76,12 +76,11 @@ Order matters: `DeployRealmPrereqs` deploys the `SwapLpFeeRouter` proxy first, b
 as a constructor immutable. Later router policy changes ship as an `upgradeToAndCall` on that proxy,
 whose owner is now the `realm.dev` deployer.
 
-**Two hook variants are deployed, and both are submitted to Uniswap for whitelisting:**
-
-| Contract | Script / recipe | Difference |
-|---|---|---|
-| `RealmSwapHook` | `DeployRealmSwapHook` / `just deploy-swap-hook-<chain>` | Logic-for-logic the already-whitelisted hook — the conservative candidate |
-| `RealmHook` | `DeployRealmHook` / `just deploy-realm-hook-<chain>` | Same, plus a `RealmPoolState(token, poolId, sqrtPriceX96, liquidity)` log per swap |
+**`RealmHook` is the deployed hook** (`DeployRealmHook` / `just deploy-realm-hook-<chain>`). Two variants
+were originally submitted to Uniswap for whitelisting — `RealmSwapHook`, logic-for-logic the previously
+whitelisted hook, and `RealmHook`, the same plus a `RealmPoolState(token, poolId, sqrtPriceX96, liquidity)`
+log per swap. Uniswap approved `RealmHook`, so `RealmSwapHook` is now deprecated as a deployment target: it
+stays in the tree only as `RealmHook`'s base contract, and has no deploy script or recipe of its own.
 
 `RealmPoolState` carries the only two fields the indexer reads from the singleton
 `UniswapV4PoolManager.Swap` event (`sqrtPriceX96`, `liquidity`) plus the pool id as a join key, at the
@@ -89,9 +88,9 @@ same log position relative to the hook's own events. On a
 `RealmHook` pool the indexer can therefore drop that subscription entirely, instead of filtering every
 V4 swap on the chain to find the ~0.4% that are Realm's. See §6.0 of `docs/events-per-entry-point.md`.
 
-Both hook addresses must be **mined**: a V4 hook advertises its callbacks in the low 14 bits of its own
-address (mask `0xCC` here), so the scripts brute-force a CREATE2 salt via `HookMiner.find`. Paste
-whichever variant Uniswap approves into the manifest's `SWAP_HOOK`, then `just export-deployments`.
+The hook address must be **mined**: a V4 hook advertises its callbacks in the low 14 bits of its own
+address (mask `0xCC` here), so the script brute-forces a CREATE2 salt via `HookMiner.find`. Paste the
+mined address into the manifest's `SWAP_HOOK`, then `just export-deployments`.
 
 ## Upgrades
 
