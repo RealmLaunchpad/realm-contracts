@@ -94,6 +94,28 @@ abstract contract SniperProtectionBaseTest is Test {
 
     /// -------------------- TESTS --------------------
 
+    function test_burnFrom_needsAllowance() public {
+        _curveBuy(buyer, 1e18);
+        vm.prank(seller);
+        vm.expectRevert();
+        _token().burnFrom(buyer, 1e18);
+    }
+
+    /// @dev Burns are exempt from the per-wallet cap: a bypassed holder above the cap can be burned from
+    ///      inside the window (the REALM vote burns arbitrary amounts).
+    function test_burnFrom_insideWindow_aboveWalletCap_succeeds() public {
+        uint256 amount = 2 * MAX_WALLET;
+        _curveBuy(whitelisted1, amount);
+        vm.prank(whitelisted1);
+        _token().approve(seller, amount);
+        uint256 supplyBefore = _token().totalSupply();
+        vm.prank(seller);
+        _token().burnFrom(whitelisted1, amount);
+        assertEq(_token().balanceOf(whitelisted1), 0);
+        assertEq(_token().totalSupply(), supplyBefore - amount);
+        assertEq(_token().allowance(whitelisted1, seller), 0);
+    }
+
     function test_initialMintNotBlocked() public view {
         assertEq(_token().balanceOf(launchpad), TOTAL_SUPPLY);
     }
