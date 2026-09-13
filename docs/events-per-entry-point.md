@@ -38,6 +38,7 @@ Unified factories register fee config automatically during token creation:
 - `RealmMasterFeeHandler`
 - `RealmSwapHook`
 - `RealmDividendSwapRegistry` — one shared upgradeable proxy per chain, not a per-token contract
+- `RealmTreasuryRouter` / `RealmVoting` — one upgradeable proxy each per chain; the router IS the treasury address every push below lands on (§11)
 
 External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this file focuses on Realm-owned events and notes the main external-operation points.
 
@@ -53,6 +54,9 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 8. [`RealmMasterFeeHandler.setShares`](#8-realmmasterfeehandlersetsharesaddress-token-feeshare-feeshares)
 9. [Direct-fee behavior](#9-direct-fee-behavior)
 10. [`RealmTaxableToken.setTaxBps`](#10-realmtaxabletokensettaxbpsuint16-newbuytaxbps-uint16-newselltaxbps)
+11. [Treasury pushes — `RealmTreasuryRouter` / `RealmVoting`](#11-treasury-pushes--realmtreasuryrouter--realmvoting)
+12. [`RealmVoting` entry points](#12-realmvoting-entry-points)
+13. [`RealmToken.burn` / `burnFrom`](#13-realmtokenburn--burnfrom)
 
 ---
 
@@ -126,7 +130,7 @@ When the buy does not graduate the token:
 4. Creator total (LP creator share + tax), when non-zero, routed through `RealmToken.accrueFees` → `RealmMasterFeeHandler.depositFees(token)`:
    - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount`).
    - Optional **`RealmMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) on a successful direct forward.
-5. Treasury share sent via a native ETH call (no Realm event for the ETH transfer).
+5. Treasury share pushed to the treasury address → the §11 router/voting events.
 6. **`RealmLaunchpad.RealmTokenBuy`** (`token, buyer, ethAmount=msg.value, tokenAmount, ethFee`) — `ethFee` is the total (LP fee + tax).
 
 A token with `treasuryShareBps = 100%` and no tax (the launchpad's legacy-equivalent default) has
@@ -149,7 +153,7 @@ Realm event order:
 4. Creator compensation is routed through `RealmToken.accrueFees()` into `RealmMasterFeeHandler.depositFees(token)`:
    - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorCompensation`).
    - Optional **`RealmMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) if the configured receiver is direct and the forward succeeds.
-5. **`RealmGraduator.TreasuryGraduationFeeCollected`** (`token, amount=treasuryShare`).
+5. **`RealmGraduator.TreasuryGraduationFeeCollected`** (`token, amount=treasuryShare`), the push itself landing on the treasury address → the §11 router/voting events.
 6. **`RealmToken.Graduated`**.
 7. External Uniswap V2 pair creation / liquidity / LP-token events may occur.
 8. **`RealmGraduator.TokenGraduated`** (`token, tokenAmount, ethAmount, liquidity`).
@@ -170,7 +174,7 @@ Realm event order:
 4. Creator compensation is routed through `RealmToken.accrueFees()` into `RealmMasterFeeHandler.depositFees(token)`:
    - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorCompensation`).
    - Optional **`RealmMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) if the configured receiver is direct and the forward succeeds.
-5. **`RealmGraduator.TreasuryGraduationFeeCollected`** (`token, amount=treasuryShare`).
+5. **`RealmGraduator.TreasuryGraduationFeeCollected`** (`token, amount=treasuryShare`), the push itself landing on the treasury address → the §11 router/voting events.
 6. **`RealmToken.Graduated`**.
    - Tax tokens emit this same event from the override and also record `graduationTimestamp`.
 7. External Uniswap V4 PoolManager / PositionManager / Permit2 events occur while liquidity positions are minted.
@@ -198,7 +202,7 @@ Realm event order:
    - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount`).
    - Optional **`RealmMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) on a successful direct forward.
 5. **`RealmLaunchpad.RealmTokenSell`** (`token, seller, tokenAmount, ethAmount, ethFee`) — `ethFee` is the total (LP fee + tax).
-6. Treasury share sent via native ETH call (no Realm event for the ETH transfer).
+6. Treasury share pushed to the treasury address → the §11 router/voting events.
 7. Seller receives ETH via native ETH call (no Realm event for the ETH transfer).
 
 ---
@@ -245,7 +249,7 @@ Realm event order (LP fee `> 0`, buy tax active, router healthy):
 0. `RealmHook` pools only: **`RealmPoolState`** (`token, poolId, sqrtPriceX96, liquidity`) — see §6.0.
 1. **`RealmSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
 2. **`SwapLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
-3. Treasury LP share is sent to the router's treasury via native ETH call (no event).
+3. Treasury LP share pushed to the router's treasury address → the §11 router/voting events.
 4. Creator LP share is routed through `RealmToken.accrueFees()` into `RealmMasterFeeHandler.depositFees(token)`:
    - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare`).
    - Optional **`RealmMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) per successful direct forward.
@@ -254,7 +258,7 @@ Realm event order (LP fee `> 0`, buy tax active, router healthy):
 6. **`RealmSwapHook.RealmSwapBuy`** (`token, txOrigin, ethIn, tokensOut, ethFees`).
 
 Router-failure fallback: if `SwapLpFeeRouter.depositLpFees` reverts, step 2 (`LpFeesRouted`) and step 4 are
-absent — the hook instead pushes the **entire** LP fee to the protocol treasury via a native ETH call (no
+absent — the hook instead pushes the **entire** LP fee to the hook's own `TREASURY` immutable via a native ETH call (the multisig directly on today's deployments, so NO §11 events; no
 event). Indexers detect the fallback by the presence of `LpFeesForwarded` without a matching `LpFeesRouted`.
 
 ### 6.2 Sell (`token -> ETH`)
@@ -267,7 +271,7 @@ Realm event order (LP fee `> 0`, sell tax active, router healthy):
 0. `RealmHook` pools only: **`RealmPoolState`** (`token, poolId, sqrtPriceX96, liquidity`) — see §6.0.
 1. **`RealmSwapHook.LpFeesForwarded`** (`token, amount`) — the whole LP fee handed to the router.
 2. **`SwapLpFeeRouter.LpFeesRouted`** (`token, creatorShare, treasuryShare, liquidityShare=0`) — the tier split.
-3. Treasury LP share is sent to the router's treasury via native ETH call (no event).
+3. Treasury LP share pushed to the router's treasury address → the §11 router/voting events.
 4. Creator LP share is routed through `RealmToken.accrueFees()` into `RealmMasterFeeHandler.depositFees(token)`:
    - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorShare`).
    - Optional **`RealmMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) per successful direct forward.
@@ -358,6 +362,78 @@ The function is decrease-only: `newBuyTaxBps` and `newSellTaxBps` must both be `
 On success:
 
 1. **`RealmTaxableToken.TaxBpsUpdated`** (`newBuyTaxBps, newSellTaxBps`) — emitted before the storage write. Old values can be reconstructed from the preceding `RealmTaxableTokenInitialized` event at creation time and the chain of any prior `TaxBpsUpdated` events.
+
+---
+
+## 11. Treasury pushes — `RealmTreasuryRouter` / `RealmVoting`
+
+Every "treasury share pushed" step above is a plain native call to the treasury address the payer holds:
+`RealmLaunchpad.treasury()` (launchpad trades, both graduators via the launchpad) and the `TREASURY`
+immutable of `SwapLpFeeRouter`. Once those point at the `RealmTreasuryRouter` proxy, each such push
+nests the following inside the paying entry point, at the point of the push:
+
+1. `RealmVoting`, inside the router's forward of 1/3:
+   - **`RealmVoting.RoundStarted`** (`roundId, startTime, endTime`) — zero or more, only when the live round is
+     ahead of storage: one per round skipped since the last touch (empty rounds, announced late with their
+     true times), then one for the live round. See §12 for the round model.
+   - **`RealmVoting.EthAllocated`** (`roundId, from=router, amount`) — the 1/3 slice, earmarked for the live round.
+2. **`RealmTreasuryRouter.TreasuryEthRouted`** (`from, votingShare, treasuryShare`) — `from` is the payer
+   (launchpad / graduator / LP fee router). `votingShare == 0` and no step-1 events when the voting call
+   reverted: the whole amount then went to the multisig (fail-safe so a voting bug cannot brick trading),
+   or when `msg.value < 3`.
+
+The multisig transfer emits nothing. `DividendBufferSweptToTreasury` (dividends section) pushes to the
+token impl's compile-time `DIVIDEND_TREASURY`, which follows `DeploymentAddresses.REALM_TREASURY` at
+the impl's deploy; whether it produces §11 events depends on what that constant was set to.
+
+---
+
+## 12. `RealmVoting` entry points
+
+Rounds are derived from the clock, not a counter: contiguous, `roundDuration` long, anchored at
+(`anchorId`, `anchorTime`). The live round id is `currentRound()`; storage (`lastSyncedRound`,
+`rounds(id)`) only catches up on the first `vote` / native / `nextRound()` after a boundary, so an
+indexer must treat a `RoundStarted` for id `n` as also closing every round `< n`, and a round with no
+`RoundStarted` at all as empty. Round `1` starts at `initialize`. Winner = most votes; strictly greater
+replaces, so the leader is replayable from `Voted` alone (first to reach the max wins a tie).
+
+### `vote(address token, uint256 amount)` — permissionless
+
+1. Optional **`RealmVoting.RoundStarted`** ×N (§11 step 1).
+2. ERC20 `Transfer(voter, 0x0, amount)` on REALM — the burn (`burnFrom`, needs allowance).
+3. **`RealmVoting.Voted`** (`roundId, token, voter, amount`) — `amount` burned = votes added. `token` is
+   guaranteed registered in the launchpad.
+
+### `receive()` — native from the treasury router (or anyone)
+
+§11 step 1: optional `RoundStarted` ×N, then **`EthAllocated`** (`roundId, from, amount`).
+
+### `nextRound()` — permissionless, keeper convenience
+
+**`RoundStarted`** ×N (§11 step 1). Reverts `RoundNotEnded` when storage is already at the live round.
+
+### `processWinner(uint256 roundId, uint256 amount)` — admin
+
+Only for `roundId < currentRound()`. **`WinnerProcessed`** (`roundId, winner, amount, to=admin`) then the
+native transfer to the admin. Callable repeatedly until `ethCollected` is drained; `winner` is `0x0` for a
+round without votes. Purchases of the winner are NOT reported on-chain: the admin wallet in `to` is the
+one that buys, so attribute its buys of `winner` after this event.
+
+### Admin
+
+- **`RoundDurationSet`** (`duration, fromRoundId`) — at `initialize` (`fromRoundId = 1`) and on
+  `setRoundDuration`, which applies from the round AFTER the live one: the live round keeps the end it
+  was announced with, and the schedule re-anchors at that end. Emits `RoundStarted` ×N first if storage
+  was behind.
+- **`AdminSet`** (`account, allowed`).
+
+---
+
+## 13. `RealmToken.burn` / `burnFrom`
+
+`RealmToken` (and so every clone, taxable variants included) is `ERC20Burnable`: `burn(amount)` and
+`burnFrom(account, amount)` (allowance-gated) emit only the ERC20 `Transfer(account, 0x0, amount)`.
+Burns are exempt from the anti-sniper wallet cap and are never taxed. Added for the REALM vote (§12).
 
 ---
 

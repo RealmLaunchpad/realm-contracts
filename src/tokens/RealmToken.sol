@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
@@ -16,7 +17,7 @@ import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.s
 ///      `pair`/`graduated` slot the hot path already loads) gates it. Tokens that don't opt in pay
 ///      no extra SLOAD and behave identically to a plain token — the caps code is present but never
 ///      reached. Tax variants (`RealmTaxableToken*`) inherit this same gated feature.
-contract RealmToken is ERC20, IRealmToken, Initializable, SniperProtection {
+contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperProtection {
     /// @notice Version of the Realm stack this token belongs to
     string public constant override VERSION = "2.0";
 

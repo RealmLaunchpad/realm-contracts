@@ -120,7 +120,7 @@ abstract contract SniperProtection {
     ///      happen post-`markGraduated()`, which the caller's `!graduated` gate already skips.
     /// @dev Mints (`from == 0`) only happen during `_initializeRealmToken`, before
     ///      `_initializeSniperProtection` runs, so `protectionWindowEnd == 0` and the window
-    ///      early-return covers them. Burns (`to == 0`) are rejected by OZ ERC20 v5 before `_update`.
+    ///      early-return covers them. Burns (`to == 0`, `burn`/`burnFrom`) are exempt: nothing to snipe.
     ///      Launchpad fees are ignored in the cap math.
     function _checkSniperProtection(
         address from,
@@ -132,6 +132,8 @@ abstract contract SniperProtection {
         uint256 toBalance
     ) internal view {
         if (block.timestamp >= protectionWindowEnd) return;
+
+        if (to == address(0)) return;
 
         // sells back to the curve
         if (to == launchpadAddr) return;
