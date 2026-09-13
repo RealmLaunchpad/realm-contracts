@@ -15,6 +15,11 @@
 | RealmHook                                    | `0xE3246e5Ae48bA84e345D88b3e7473ae8DBB540cC` |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
 | SwapLpFeeRouter (impl)                       | `0xa2E3C9B3B33Cbad41ECCA283734c335490a09d4a` |
+| RealmTreasuryRouter (proxy)                  | _(not deployed)_                             |
+| RealmTreasuryRouter (impl)                   | _(not deployed)_                             |
+| REALM token                                  | _(not deployed)_                             |
+| RealmVoting (proxy)                          | _(not deployed)_                             |
+| RealmVoting (impl)                           | _(not deployed)_                             |
 | RealmQuoter                                  | `0x5606c6EDF892FEd317c60C95a1BCcDA5c1c5f551` |
 | RealmKeepersRegistry                         | `0xCba49A6057256392cF480C17C81DF2170FB650CB` |
 | RealmDividendSwapRegistry (proxy)            | `0x9b3c560D86909B8116468536737a272Fe0cE327d` |
@@ -57,6 +62,9 @@
 | -------------------------------------------- | -------------------------------------------- |
 | Realm Deployer                               | `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb` |
 | Realm Treasury                               | `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb` |
+| Team Treasury (2/3 leg)                      | _(not deployed)_                             |
+| Vote Buyback Wallet (1/3 leg)                | _(not deployed)_                             |
+| Legacy Treasury (pre-router)                 | _(not deployed)_                             |
 | Realm Token Deployer                         | `0x566CB296539672bB2419F403d292544E9Abf7815` |
 | Realm Keeper                                 | `0xE092CB5868e1Ca091Ea975069bf2Afc9CDD1732C` |
 

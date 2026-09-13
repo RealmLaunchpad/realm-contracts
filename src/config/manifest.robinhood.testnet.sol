@@ -37,15 +37,30 @@ library DeploymentsRobinhoodTestnet {
     address internal constant LP_FEE_ROUTER = 0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0;
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
-    address internal constant LP_FEE_ROUTER_IMPL = 0x1B1c5E3766f52C136bc747CB29eE8a9b5042B632;
+    address internal constant LP_FEE_ROUTER_IMPL = 0x05FC54F41E240A7620d8e76A868E4e1EB064d0Cd;
+    /// @notice `RealmTreasuryRouter` proxy (UUPS): the treasury address every push lands on once live —
+    ///         `LAUNCHPAD.treasury()` and the `SwapLpFeeRouter` impl's `TREASURY` point here. Forwards 1/3
+    ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryRouter`, which also
+    ///         does that repointing; `address(0)` until then.
+    address internal constant TREASURY_ROUTER = 0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B;
+    /// @notice Implementation behind `TREASURY_ROUTER`. Tracked for verification and audit trails only.
+    address internal constant TREASURY_ROUTER_IMPL = 0x89d1ac70eF1D58C5F0a3aA0d461445A6A66F75D7;
+    /// @notice The REALM token (a launchpad token like any other; the one `VOTING` burns). `address(0)`
+    ///         until it is launched on this chain.
+    address internal constant REALM_TOKEN = 0x6DE743Cc3CC7b283C4Dc80A35160fD07a937EeAa;
+    /// @notice `RealmVoting` proxy (UUPS): REALM burn-to-vote rounds. Needs the REALM token, so it is
+    ///         deployed after the first token; `TREASURY_ROUTER` bakes it in, so it comes BEFORE that.
+    address internal constant VOTING = 0x18398f02fFB990B62A2371fD67f40cE24cDeCB38;
+    /// @notice Implementation behind `VOTING`. Tracked for verification and audit trails only.
+    address internal constant VOTING_IMPL = 0x51c98aD61B155399E18540aAaCcB7421b808f45b;
     address internal constant QUOTER = 0x99a41E696e39c45eAB006978D9Ad7F188039147a;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0x76631b1398e4f71027044780F2d781AFf41B407C;
-    address internal constant TAXABLE_TOKEN_V4_IMPL = 0xa594E5E25f7F2d4E71336cDB755f96811b5ee3F5;
+    address internal constant TOKEN_IMPL = 0xEB6cc7E55cd1DAbdD30bFfd9745c3fB93Be4b0D1;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x25d70Dfab5447E80bE771a609AB5F92B3C894202;
 
     /// @notice V2 taxable token implementation (cloned by `RealmFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x2cD2Df598ABb096A85d5f1E5fA02A0b5Be85dfD2;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x9Bb8dC03D767d7CA25424d183A1f18CdFE9344dd;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -55,8 +70,8 @@ library DeploymentsRobinhoodTestnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x918c750C3d2Bea026454253d54a76b1888cE360d;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x78336f032d9140a7b0946E717f2b80cA07618C6C;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xe73C45ec0a1c1389C842dF2E7CB59D53D73fEaf5;
+    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0xF143d1CA1cFcAb18A6B81609FFcE9B874D569Cc9;
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.

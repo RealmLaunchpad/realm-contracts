@@ -33,6 +33,11 @@ contract ExportDeployments is Script {
         address swapHook;
         address lpFeeRouter;
         address lpFeeRouterImpl;
+        address treasuryRouter;
+        address treasuryRouterImpl;
+        address realmToken;
+        address voting;
+        address votingImpl;
         address quoter;
         address keepersRegistry;
         address dividendSwapRegistry;
@@ -56,6 +61,9 @@ contract ExportDeployments is Script {
         // --- Accounts ---
         address realmDev;
         address realmTreasury;
+        address teamTreasury;
+        address voteBuybackWallet;
+        address legacyTreasury;
         address realmTokenDeployer;
         address realmKeeper;
         // --- Integrations ---
@@ -93,6 +101,11 @@ contract ExportDeployments is Script {
         d.swapHook = DeploymentsEthereumSepolia.SWAP_HOOK;
         d.lpFeeRouter = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsEthereumSepolia.LP_FEE_ROUTER_IMPL;
+        d.treasuryRouter = DeploymentsEthereumSepolia.TREASURY_ROUTER;
+        d.treasuryRouterImpl = DeploymentsEthereumSepolia.TREASURY_ROUTER_IMPL;
+        d.realmToken = DeploymentsEthereumSepolia.REALM_TOKEN;
+        d.voting = DeploymentsEthereumSepolia.VOTING;
+        d.votingImpl = DeploymentsEthereumSepolia.VOTING_IMPL;
         d.quoter = DeploymentsEthereumSepolia.QUOTER;
         d.keepersRegistry = DeploymentAddressesEthereumSepolia.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesEthereumSepolia.DIVIDEND_SWAP_REGISTRY;
@@ -138,6 +151,11 @@ contract ExportDeployments is Script {
         d.swapHook = DeploymentsRobinhoodMainnet.SWAP_HOOK;
         d.lpFeeRouter = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER_IMPL;
+        d.treasuryRouter = DeploymentsRobinhoodMainnet.TREASURY_ROUTER;
+        d.treasuryRouterImpl = DeploymentsRobinhoodMainnet.TREASURY_ROUTER_IMPL;
+        d.realmToken = DeploymentsRobinhoodMainnet.REALM_TOKEN;
+        d.voting = DeploymentsRobinhoodMainnet.VOTING;
+        d.votingImpl = DeploymentsRobinhoodMainnet.VOTING_IMPL;
         d.quoter = DeploymentsRobinhoodMainnet.QUOTER;
         d.keepersRegistry = DeploymentAddressesRobinhoodMainnet.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesRobinhoodMainnet.DIVIDEND_SWAP_REGISTRY;
@@ -160,6 +178,9 @@ contract ExportDeployments is Script {
         d.thickVaultCurves = DeploymentsRobinhoodMainnet.thickVaultCurves();
         d.realmDev = DeploymentsRobinhoodMainnet.REALM_DEV;
         d.realmTreasury = DeploymentAddressesRobinhoodMainnet.REALM_TREASURY;
+        d.teamTreasury = DeploymentAddressesRobinhoodMainnet.TEAM_TREASURY;
+        d.voteBuybackWallet = DeploymentAddressesRobinhoodMainnet.VOTE_BUYBACK_WALLET;
+        d.legacyTreasury = DeploymentAddressesRobinhoodMainnet.LEGACY_TREASURY;
         d.realmTokenDeployer = DeploymentsRobinhoodMainnet.REALM_TOKEN_DEPLOYER;
         d.realmKeeper = DeploymentsRobinhoodMainnet.REALM_KEEPER;
         d.weth = DeploymentAddressesRobinhoodMainnet.WETH;
@@ -183,6 +204,11 @@ contract ExportDeployments is Script {
         d.swapHook = DeploymentsRobinhoodTestnet.SWAP_HOOK;
         d.lpFeeRouter = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER_IMPL;
+        d.treasuryRouter = DeploymentsRobinhoodTestnet.TREASURY_ROUTER;
+        d.treasuryRouterImpl = DeploymentsRobinhoodTestnet.TREASURY_ROUTER_IMPL;
+        d.realmToken = DeploymentsRobinhoodTestnet.REALM_TOKEN;
+        d.voting = DeploymentsRobinhoodTestnet.VOTING;
+        d.votingImpl = DeploymentsRobinhoodTestnet.VOTING_IMPL;
         d.quoter = DeploymentsRobinhoodTestnet.QUOTER;
         d.keepersRegistry = DeploymentAddressesRobinhoodTestnet.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesRobinhoodTestnet.DIVIDEND_SWAP_REGISTRY;
@@ -237,6 +263,11 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmHook", d.swapHook));
         s = string.concat(s, _row("SwapLpFeeRouter (proxy)", d.lpFeeRouter));
         s = string.concat(s, _row("SwapLpFeeRouter (impl)", d.lpFeeRouterImpl));
+        s = string.concat(s, _row("RealmTreasuryRouter (proxy)", d.treasuryRouter));
+        s = string.concat(s, _row("RealmTreasuryRouter (impl)", d.treasuryRouterImpl));
+        s = string.concat(s, _row("REALM token", d.realmToken));
+        s = string.concat(s, _row("RealmVoting (proxy)", d.voting));
+        s = string.concat(s, _row("RealmVoting (impl)", d.votingImpl));
         s = string.concat(s, _row("RealmQuoter", d.quoter));
         s = string.concat(s, _row("RealmKeepersRegistry", d.keepersRegistry));
         s = string.concat(s, _row("RealmDividendSwapRegistry (proxy)", d.dividendSwapRegistry));
@@ -276,6 +307,9 @@ contract ExportDeployments is Script {
         s = string.concat(s, "\n## Accounts\n\n", _tableHeader("Name"));
         s = string.concat(s, _row("Realm Deployer", d.realmDev));
         s = string.concat(s, _row("Realm Treasury", d.realmTreasury));
+        s = string.concat(s, _row("Team Treasury (2/3 leg)", d.teamTreasury));
+        s = string.concat(s, _row("Vote Buyback Wallet (1/3 leg)", d.voteBuybackWallet));
+        s = string.concat(s, _row("Legacy Treasury (pre-router)", d.legacyTreasury));
         s = string.concat(s, _row("Realm Token Deployer", d.realmTokenDeployer));
         s = string.concat(s, _row("Realm Keeper", d.realmKeeper));
 

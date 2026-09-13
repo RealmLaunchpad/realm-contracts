@@ -15,6 +15,11 @@
 | RealmHook                                    | `0xAE4c0Cf7C3Feb79e0c244EdBC6A3f8a3290940cC` |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
 | SwapLpFeeRouter (impl)                       | `0x7480e46B8f6B3a8d9137F72b3006f7FBfA088ECf` |
+| RealmTreasuryRouter (proxy)                  | _(not deployed)_                             |
+| RealmTreasuryRouter (impl)                   | _(not deployed)_                             |
+| REALM token                                  | _(not deployed)_                             |
+| RealmVoting (proxy)                          | _(not deployed)_                             |
+| RealmVoting (impl)                           | _(not deployed)_                             |
 | RealmQuoter                                  | _(not deployed)_                             |
 | RealmKeepersRegistry                         | `0x914e8A6fcA2af6E8Cf4434d1D50234fC89CdF2Ec` |
 | RealmDividendSwapRegistry (proxy)            | `0x5606c6EDF892FEd317c60C95a1BCcDA5c1c5f551` |
@@ -56,7 +61,10 @@
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
 | Realm Deployer                               | `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb` |
-| Realm Treasury                               | `0x7826AaE926AfD2886257976770e93e0240D2426e` |
+| Realm Treasury                               | `0x24CF0733F2b6F9407ab34E2BE9059C16A33cFE8D` |
+| Team Treasury (2/3 leg)                      | `0x24CF0733F2b6F9407ab34E2BE9059C16A33cFE8D` |
+| Vote Buyback Wallet (1/3 leg)                | `0x636A44e110a79d2a799BFe2F79ABdF9D6C2CE0A6` |
+| Legacy Treasury (pre-router)                 | `0x7826AaE926AfD2886257976770e93e0240D2426e` |
 | Realm Token Deployer                         | _(not deployed)_                             |
 | Realm Keeper                                 | _(not deployed)_                             |
 

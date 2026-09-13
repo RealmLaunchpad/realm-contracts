@@ -426,9 +426,10 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0x7480e46B8f6B3a8d9137F72b3006f7FBfA088ECf;
-    /// @notice Realm Treasury. TEMPORARY: the `realm.dev` EOA stands in until Realm has its own
-    ///         treasury — replace before production. Consumed by core contracts at deploy time.
-    address public constant REALM_TREASURY = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
+    /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
+    ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
+    ///         2026-09-14; the `realm.dev` EOA before that.
+    address public constant REALM_TREASURY = 0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B;
 }
 
 /// @title Deployment Address Constants for ARC Chain Mainnet (chain id 5042)

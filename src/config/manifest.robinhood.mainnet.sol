@@ -38,6 +38,21 @@ library DeploymentsRobinhoodMainnet {
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
     address internal constant LP_FEE_ROUTER_IMPL = 0x7480e46B8f6B3a8d9137F72b3006f7FBfA088ECf;
+    /// @notice `RealmTreasuryRouter` proxy (UUPS): the treasury address every push lands on once live —
+    ///         `LAUNCHPAD.treasury()` and the `SwapLpFeeRouter` impl's `TREASURY` point here. Forwards 1/3
+    ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryRouter`, which also
+    ///         does that repointing; `address(0)` until then.
+    address internal constant TREASURY_ROUTER = address(0);
+    /// @notice Implementation behind `TREASURY_ROUTER`. Tracked for verification and audit trails only.
+    address internal constant TREASURY_ROUTER_IMPL = address(0);
+    /// @notice The REALM token (a launchpad token like any other; the one `VOTING` burns). `address(0)`
+    ///         until it is launched on this chain.
+    address internal constant REALM_TOKEN = address(0);
+    /// @notice `RealmVoting` proxy (UUPS): REALM burn-to-vote rounds. Needs the REALM token, so it is
+    ///         deployed after the first token; `TREASURY_ROUTER` bakes it in, so it comes BEFORE that.
+    address internal constant VOTING = address(0);
+    /// @notice Implementation behind `VOTING`. Tracked for verification and audit trails only.
+    address internal constant VOTING_IMPL = address(0);
     address internal constant QUOTER = address(0);
 
     // --- Token implementations (cloned by factories) ---
