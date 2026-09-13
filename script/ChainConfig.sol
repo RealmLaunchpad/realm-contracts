@@ -36,6 +36,9 @@ library ChainConfig {
         address bondingCurve;
         address graduatorV2;
         address graduatorV4;
+        address graduatorV4Thin;
+        address graduatorV4Thick;
+        address liquidityAdder;
         address masterFeeHandler;
         address tokenImpl;
         address taxTokenV2Impl;
@@ -120,6 +123,16 @@ library ChainConfig {
         require(router != address(0), "manifest: LP_FEE_ROUTER missing");
     }
 
+    /// @notice The keeper lambda's EOA from the manifest: appointed on `RealmKeepersRegistry` and set as
+    ///         the `RealmDividendSwapRegistry`'s keeper-funding wallet by `ConfigureRegistries`.
+    function realmKeeper() internal view returns (address keeper) {
+        if (isSepolia()) keeper = DeploymentsEthereumSepolia.REALM_KEEPER;
+        else if (isRobinhood()) keeper = DeploymentsRobinhoodMainnet.REALM_KEEPER;
+        else if (isRobinhoodTestnet()) keeper = DeploymentsRobinhoodTestnet.REALM_KEEPER;
+        else revert(UNSUPPORTED);
+        require(keeper != address(0), "manifest: REALM_KEEPER missing");
+    }
+
     function manifest() internal view returns (Manifest memory m) {
         if (isSepolia()) {
             m = Manifest({
@@ -127,6 +140,9 @@ library ChainConfig {
                 bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsEthereumSepolia.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsEthereumSepolia.GRADUATOR_UNIV4,
+                graduatorV4Thin: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN,
+                graduatorV4Thick: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK,
+                liquidityAdder: DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL,
                 taxTokenV2Impl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL,
@@ -140,6 +156,9 @@ library ChainConfig {
                 bondingCurve: DeploymentsRobinhoodMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4,
+                graduatorV4Thin: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN,
+                graduatorV4Thick: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK,
+                liquidityAdder: DeploymentsRobinhoodMainnet.UNIV4_LIQUIDITY_ADDER,
                 masterFeeHandler: DeploymentsRobinhoodMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsRobinhoodMainnet.TOKEN_IMPL,
                 taxTokenV2Impl: DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL,
@@ -153,6 +172,9 @@ library ChainConfig {
                 bondingCurve: DeploymentsRobinhoodTestnet.BONDING_CURVE,
                 graduatorV2: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2,
                 graduatorV4: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4,
+                graduatorV4Thin: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN,
+                graduatorV4Thick: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK,
+                liquidityAdder: DeploymentsRobinhoodTestnet.UNIV4_LIQUIDITY_ADDER,
                 masterFeeHandler: DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsRobinhoodTestnet.TOKEN_IMPL,
                 taxTokenV2Impl: DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL,

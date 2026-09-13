@@ -7,7 +7,6 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
 import {RealmHook} from "src/hooks/RealmHook.sol";
-import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {
     DeploymentAddressesEthereumSepolia,
     DeploymentAddressesRobinhoodMainnet,
@@ -18,16 +17,15 @@ import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet
 import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
 /// @title Hook deployment via CREATE2 + salt mining
-/// @notice Shared machinery for Realm's two V4 swap hooks. A Uniswap V4 hook advertises its callbacks in
+/// @notice Deployment machinery for Realm's V4 swap hook. A Uniswap V4 hook advertises its callbacks in
 ///         the low 14 bits of its own address, so the address cannot be chosen freely: the deployer must
 ///         brute-force a CREATE2 salt whose resulting address carries exactly the permission bits the
 ///         hook's `getHookPermissions()` declares. `HookMiner.find` does that search, and the PoolManager
 ///         rejects the hook at pool initialization if the bits are wrong — hence the post-deploy asserts.
 ///
-/// @dev Realm's hooks declare BEFORE_SWAP, AFTER_SWAP, BEFORE_SWAP_RETURNS_DELTA and
-///      AFTER_SWAP_RETURNS_DELTA → mask `0xCC`. Both hooks share that permission set and the constructor
-///      signature `(poolManager, lpFeeRouter, treasury)`; only the creation code differs, so the concrete
-///      scripts below supply just that.
+/// @dev `RealmHook` declares BEFORE_SWAP, AFTER_SWAP, BEFORE_SWAP_RETURNS_DELTA and
+///      AFTER_SWAP_RETURNS_DELTA → mask `0xCC`. The base is abstract over the creation code and the
+///      `new` call so a future hook variant only has to supply those two.
 ///
 /// @dev Runs against Sepolia (11155111), Robinhood mainnet (4663) or Robinhood testnet (46630). Pool manager and treasury come from
 ///      `DeploymentAddresses*`; the LP fee router proxy comes from `Deployments*` and must already exist —
@@ -124,39 +122,14 @@ abstract contract DeployHookBase is Script {
     }
 }
 
-/// @notice Deploys `RealmSwapHook` — the conservative whitelist candidate, logic-for-logic the hook
-///         Uniswap already whitelisted for Livo, rebuilt against Realm's own treasury and fee router.
-///
-/// Usage (dry run):   forge script DeployRealmSwapHook --rpc-url sepolia --account realm.dev
-/// Usage (deploy):    forge script DeployRealmSwapHook --rpc-url sepolia --account realm.dev --slow --broadcast --verify
-/// Usage (robinhood): ROUTER_ADDRESS=<router> forge script DeployRealmSwapHook --rpc-url robinhood-mainnet \
-///                        --account realm.dev --slow --broadcast --gas-estimate-multiplier 300
-contract DeployRealmSwapHook is DeployHookBase {
-    function hookName() internal pure override returns (string memory) {
-        return "RealmSwapHook";
-    }
-
-    function creationCode() internal pure override returns (bytes memory) {
-        return type(RealmSwapHook).creationCode;
-    }
-
-    function _deploy(bytes32 salt, address poolManager, address router, address treasury)
-        internal
-        override
-        returns (address)
-    {
-        return address(new RealmSwapHook{salt: salt}(IPoolManager(poolManager), router, treasury));
-    }
-}
-
 /// @notice Deploys `RealmHook` — the same hook plus a per-swap `RealmPoolState` log, which is what lets
 ///         the indexer stop subscribing to the singleton V4 `PoolManager.Swap`.
-/// @dev Deployed alongside `RealmSwapHook`: both go to Uniswap for whitelisting, and whichever is
-///      approved becomes the manifest's `SWAP_HOOK`.
+/// @dev The whitelisted variant, and the only hook Realm deploys; its address becomes the manifest's
+///      `SWAP_HOOK`.
 ///
 /// Usage (dry run):   forge script DeployRealmHook --rpc-url sepolia --account realm.dev
 /// Usage (deploy):    forge script DeployRealmHook --rpc-url sepolia --account realm.dev --slow --broadcast --verify
-/// Usage (robinhood): ROUTER_ADDRESS=<router> forge script DeployRealmHook --rpc-url robinhood-mainnet \
+/// Usage (robinhood): ROUTER_ADDRESS=<router> forge script DeployRealmHook --rpc-url rh-mainnet \
 ///                        --account realm.dev --slow --broadcast --gas-estimate-multiplier 300
 contract DeployRealmHook is DeployHookBase {
     function hookName() internal pure override returns (string memory) {

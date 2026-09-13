@@ -61,8 +61,8 @@ contract RealmFactoryUniV4Unified is RealmFactoryAbstract {
     ///         hook charges after graduation.
     uint16 internal constant V4_LAUNCHPAD_LP_FEE_BPS = 100;
 
-    /// @notice Treasury share of the V4 pre-graduation LP fee (bps): 60 treasury / 40 creator.
-    uint16 internal constant V4_LAUNCHPAD_TREASURY_SHARE_BPS = 6_000;
+    /// @notice Treasury share of the V4 pre-graduation LP fee (bps): 30 treasury / 70 creator.
+    uint16 internal constant V4_LAUNCHPAD_TREASURY_SHARE_BPS = 3_000;
 
     error InvalidLpFeeBps();
 

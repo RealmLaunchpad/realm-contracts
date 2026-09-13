@@ -15,8 +15,8 @@ import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 /// @notice `RealmSwapHook` plus a per-swap `RealmPoolState` log carrying the post-swap pool price and
 ///         active liquidity, so indexers no longer have to subscribe to the V4 `PoolManager`.
 /// @dev Identical fee behaviour to `RealmSwapHook` — this contract adds one event and changes nothing
-///      else. Deployed as a separate hook because the base contract is the conservative candidate for
-///      Uniswap's hook whitelist; whichever gets approved becomes the manifest's `SWAP_HOOK`.
+///      else. It is the variant Uniswap whitelisted, and therefore the only hook Realm deploys and the
+///      manifest's `SWAP_HOOK`; `RealmSwapHook` survives only as its base.
 ///
 /// @dev WHY: indexing V4 spot price today means subscribing to the singleton `PoolManager.Swap`, which
 ///      fires for EVERY pool on the chain — Realm's pools are a fraction of a percent of them, so the

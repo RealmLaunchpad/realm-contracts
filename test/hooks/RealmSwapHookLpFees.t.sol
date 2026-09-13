@@ -49,13 +49,11 @@ contract RecordingRouter {
 }
 
 /// @notice Tests for hook-based LP fees (1% charged by RealmSwapHook).
-/// @dev    All these tests run with marketcap below tier 1 (30 ETH), so the active split is
-///         tier 0: 40% treasury / 60% creator.
+/// @dev    The router splits every LP fee 30% treasury / 70% creator.
 contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
-    /// @dev Tier-0 treasury BPS — keep tests symbolic so a future tier rebalance only touches one place.
-    uint16 constant TIER0_TREASURY_BPS = 4000;
-    /// @dev Tier-0 creator BPS = 10_000 - TIER0_TREASURY_BPS.
-    uint16 constant TIER0_CREATOR_BPS = 10_000 - TIER0_TREASURY_BPS;
+    /// @dev Router treasury BPS — keep tests symbolic so a rebalance only touches one place.
+    uint16 constant TREASURY_BPS = 3000;
+    uint16 constant CREATOR_BPS = 10_000 - TREASURY_BPS;
     uint16 constant LP_FEE_BPS = 100; // 1%
 
     function setUp() public override {
@@ -68,7 +66,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         return IRealmClaims(IRealmToken(token).feeHandler()).getClaimable(tokens, creator)[0];
     }
 
-    /// @notice Buy charges 1% LP fee, split 40/60 treasury/creator at tier 0.
+    /// @notice Buy charges 1% LP fee, split 30/70 treasury/creator.
     function test_buyChargesLpFee_splitCreatorTreasury() public createDefaultTaxToken {
         _graduateToken();
 
@@ -86,15 +84,15 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 treasuryLpFee = treasuryAfter - treasuryBefore;
 
         uint256 totalLpFee = (buyAmount * LP_FEE_BPS) / 10_000;
-        uint256 expectedTreasury = (totalLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedTreasury = (totalLpFee * TREASURY_BPS) / 10_000;
         uint256 expectedCreator = totalLpFee - expectedTreasury;
 
-        assertApproxEqAbs(creatorLpFee, expectedCreator, 1, "Creator should receive tier-0 LP fee share");
-        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 1, "Treasury should receive tier-0 LP fee share");
+        assertApproxEqAbs(creatorLpFee, expectedCreator, 1, "Creator should receive LP fee share");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 1, "Treasury should receive LP fee share");
         assertApproxEqAbs(creatorLpFee + treasuryLpFee, totalLpFee, 1, "Total LP fee should be ~1%");
     }
 
-    /// @notice Sell charges 1% LP fee split per tier-0.
+    /// @notice Sell charges 1% LP fee split.
     function test_sellChargesLpFee() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
         vm.prank(buyer);
@@ -121,8 +119,8 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 expectedLpFee = (grossEth * LP_FEE_BPS) / 10_000;
 
         assertApproxEqAbs(totalLpFee, expectedLpFee, 2, "Total LP fee should be ~1% of gross ETH");
-        uint256 expectedTreasury = (expectedLpFee * TIER0_TREASURY_BPS) / 10_000;
-        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 2, "Treasury share should match tier-0");
+        uint256 expectedTreasury = (expectedLpFee * TREASURY_BPS) / 10_000;
+        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 2, "Treasury share should match the 30/70 split");
     }
 
     /// @notice Sell stacks LP fee + sell tax during active tax period.
@@ -143,21 +141,18 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 creatorFeesAccrued = _pendingCreatorFees(testToken) - creatorFeesBefore;
         uint256 treasuryLpFee = treasury.balance - treasuryBefore;
 
-        // Creator fees = tier-0 LP creator share + 100% of sell tax.
-        // Treasury gets only tier-0 LP treasury share.
+        // Creator fees = LP creator share + 100% of sell tax.
+        // Treasury gets only LP treasury share.
         uint256 grossEth = ethReceived + creatorFeesAccrued + treasuryLpFee;
 
         uint256 totalLpFee = (grossEth * LP_FEE_BPS) / 10_000;
-        uint256 expectedTreasuryLpFee = (totalLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedTreasuryLpFee = (totalLpFee * TREASURY_BPS) / 10_000;
         uint256 expectedCreatorLpFee = totalLpFee - expectedTreasuryLpFee;
         uint256 expectedSellTax = (grossEth * DEFAULT_SELL_TAX_BPS) / 10_000;
 
-        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 2, "Treasury should get tier-0 LP fee share");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 2, "Treasury should get LP fee share");
         assertApproxEqAbs(
-            creatorFeesAccrued,
-            expectedCreatorLpFee + expectedSellTax,
-            2,
-            "Creator should get tier-0 LP fee share + sell tax"
+            creatorFeesAccrued, expectedCreatorLpFee + expectedSellTax, 2, "Creator should get LP fee share + sell tax"
         );
     }
 
@@ -184,10 +179,10 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 grossEth = ethReceived + totalLpFee;
 
         uint256 expectedLpFee = (grossEth * LP_FEE_BPS) / 10_000;
-        uint256 expectedTreasury = (expectedLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedTreasury = (expectedLpFee * TREASURY_BPS) / 10_000;
 
         assertApproxEqAbs(totalLpFee, expectedLpFee, 2, "Only LP fee (~1%) should be charged after tax expires");
-        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 2, "LP fee split should follow tier-0");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 2, "LP fee split should follow the 30/70 split");
     }
 
     /// @notice Swaps revert before graduation.
@@ -196,7 +191,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         _swapBuy(buyer, 1 ether, 0, false);
     }
 
-    /// @notice Buy charges tier-0 LP fee split + buy tax (100% creator) during active tax period.
+    /// @notice Buy charges LP fee split + buy tax (100% creator) during active tax period.
     function test_buyChargesBuyTaxAndLpFee() public {
         uint16 buyTax = 300; // 3%
         testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
@@ -213,11 +208,11 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 treasuryLpFee = treasury.balance - treasuryBefore;
 
         uint256 totalLpFee = (buyAmount * LP_FEE_BPS) / 10_000;
-        uint256 expectedTreasuryLpFee = (totalLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedTreasuryLpFee = (totalLpFee * TREASURY_BPS) / 10_000;
         uint256 expectedCreatorLpFee = totalLpFee - expectedTreasuryLpFee;
         uint256 expectedBuyTax = (buyAmount * buyTax) / 10_000;
 
-        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 1, "Treasury should get tier-0 LP fee share");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 1, "Treasury should get LP fee share");
         assertApproxEqAbs(
             creatorFeesAccrued, expectedCreatorLpFee + expectedBuyTax, 1, "Creator should get LP share + buy tax"
         );
@@ -243,10 +238,10 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 totalLpFee = creatorLpFee + treasuryLpFee;
 
         uint256 expectedLpFee = (buyAmount * LP_FEE_BPS) / 10_000;
-        uint256 expectedTreasury = (expectedLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedTreasury = (expectedLpFee * TREASURY_BPS) / 10_000;
 
         assertApproxEqAbs(totalLpFee, expectedLpFee, 1, "Only LP fee (~1%) should be charged after tax expires");
-        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 1, "LP fee split should follow tier-0");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasury, 1, "LP fee split should follow the 30/70 split");
     }
 
     /// @notice Both buy and sell are taxed during active tax period.
@@ -271,7 +266,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 treasuryFromBuy = treasury.balance - treasuryBefore;
 
         uint256 totalLpFeeBuy = (buyAmount * LP_FEE_BPS) / 10_000;
-        uint256 expectedTreasuryLpBuy = (totalLpFeeBuy * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedTreasuryLpBuy = (totalLpFeeBuy * TREASURY_BPS) / 10_000;
         uint256 expectedCreatorLpBuy = totalLpFeeBuy - expectedTreasuryLpBuy;
         uint256 expectedBuyTax = (buyAmount * buyTax) / 10_000;
 
@@ -294,7 +289,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         uint256 grossEth = ethReceived + creatorFeesFromSell + treasuryFromSell;
         uint256 totalLpFeeSell = (grossEth * LP_FEE_BPS) / 10_000;
-        uint256 expectedTreasuryLpSell = (totalLpFeeSell * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedTreasuryLpSell = (totalLpFeeSell * TREASURY_BPS) / 10_000;
         uint256 expectedCreatorLpSell = totalLpFeeSell - expectedTreasuryLpSell;
         uint256 expectedSellTax = (grossEth * DEFAULT_SELL_TAX_BPS) / 10_000;
 
@@ -584,7 +579,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     }
 
     /// @notice An exact-output buy must actually deliver the fee to its recipients, not merely emit a
-    ///         correct total: the treasury gets its tier-0 LP share and the creator gets its tier-0 LP
+    ///         correct total: the treasury gets its LP share and the creator gets its LP
     ///         share plus the full buy tax. Runs in the active tax window so both components are non-zero.
     function test_exactOutputBuy_distributesLpFeeAndBuyTax() public {
         uint16 buyTax = 300; // 3%
@@ -609,18 +604,17 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 treasuryLpFee = treasury.balance - treasuryBefore;
 
         uint256 totalLpFee = (ethIn * LP_FEE_BPS) / 10_000;
-        uint256 expectedTreasuryLpFee = (totalLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedTreasuryLpFee = (totalLpFee * TREASURY_BPS) / 10_000;
         uint256 expectedCreatorLpFee = totalLpFee - expectedTreasuryLpFee;
         uint256 expectedBuyTax = (ethIn * buyTax) / 10_000;
 
-        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 2, "treasury should get tier-0 LP fee share");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 2, "treasury should get LP fee share");
         assertApproxEqAbs(
-            creatorFees, expectedCreatorLpFee + expectedBuyTax, 3, "creator should get tier-0 LP share + buy tax"
+            creatorFees, expectedCreatorLpFee + expectedBuyTax, 3, "creator should get LP share + buy tax"
         );
     }
 
-    /// @notice Accurate fee amounts: buy 1 ETH (small enough that the post-swap marketcap stays
-    ///         below tier 1 = 30 ETH), verify tier-0 split on the 0.01 ETH LP fee.
+    /// @notice Accurate fee amounts: buy 1 ETH, verify the 30/70 split on the 0.01 ETH LP fee.
     function test_accurateFeeAmounts() public createDefaultTaxToken {
         _graduateToken();
 
@@ -635,11 +629,11 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         uint256 treasuryLpFee = treasury.balance - treasuryBefore;
 
         uint256 totalLpFee = (buyAmount * LP_FEE_BPS) / 10_000; // 0.01 ETH
-        uint256 expectedTreasury = (totalLpFee * TIER0_TREASURY_BPS) / 10_000; // 0.004 ETH
+        uint256 expectedTreasury = (totalLpFee * TREASURY_BPS) / 10_000; // 0.004 ETH
         uint256 expectedCreator = totalLpFee - expectedTreasury; // 0.006 ETH
 
-        assertEq(creatorLpFee, expectedCreator, "Creator should receive tier-0 creator share");
-        assertEq(treasuryLpFee, expectedTreasury, "Treasury should receive tier-0 treasury share");
+        assertEq(creatorLpFee, expectedCreator, "Creator should receive creator share");
+        assertEq(treasuryLpFee, expectedTreasury, "Treasury should receive treasury share");
     }
 
     // ───────────────────────── overall fee cap ──────────────────────────────
@@ -755,7 +749,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     }
 
     /// @notice An exact-output sell must split the fee correctly between recipients, not just charge the
-    ///         right total: the treasury gets its tier-0 LP share and the creator gets its tier-0 LP
+    ///         right total: the treasury gets its LP share and the creator gets its LP
     ///         share plus the full sell tax. Runs in the active tax window so both components are non-zero.
     function test_exactOutputSell_distributesLpFeeAndSellTax() public createDefaultTaxToken {
         vm.deal(buyer, 5 ether);
@@ -776,13 +770,13 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         // Fee is charged on the grossed-up pool output (= requested ETH + total fee withheld in beforeSwap).
         uint256 grossEth = uint256(wantEth) + treasuryLpFee + creatorFees;
         uint256 totalLpFee = (grossEth * LP_FEE_BPS) / 10_000;
-        uint256 expectedTreasuryLpFee = (totalLpFee * TIER0_TREASURY_BPS) / 10_000;
+        uint256 expectedTreasuryLpFee = (totalLpFee * TREASURY_BPS) / 10_000;
         uint256 expectedCreatorLpFee = totalLpFee - expectedTreasuryLpFee;
         uint256 expectedSellTax = (grossEth * DEFAULT_SELL_TAX_BPS) / 10_000;
 
-        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 2, "treasury should get tier-0 LP fee share");
+        assertApproxEqAbs(treasuryLpFee, expectedTreasuryLpFee, 2, "treasury should get LP fee share");
         assertApproxEqAbs(
-            creatorFees, expectedCreatorLpFee + expectedSellTax, 3, "creator should get tier-0 LP share + sell tax"
+            creatorFees, expectedCreatorLpFee + expectedSellTax, 3, "creator should get LP share + sell tax"
         );
     }
 }

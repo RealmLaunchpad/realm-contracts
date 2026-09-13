@@ -24,7 +24,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         must own both proxies.
 ///
 /// @dev    Run: just chain-<sepolia|robinhood> && forge script UpgradeRealmFactories \
-///                  --rpc-url <sepolia|robinhood-mainnet> --account realm.dev --slow --broadcast --verify
+///                  --rpc-url <sepolia|rh-mainnet> --account realm.dev --slow --broadcast --verify
 contract UpgradeRealmFactories is Script {
     function run() public virtual {
         ChainConfig.Manifest memory m = ChainConfig.manifest();
@@ -50,6 +50,10 @@ contract UpgradeRealmFactories is Script {
     ///      Takes the manifest as a parameter so a caller can substitute freshly deployed dependencies
     ///      (see `RedeployTaxTokenImpls`) without a paste-and-rerun in between.
     function _upgradeFactories(ChainConfig.Manifest memory m) internal returns (address v2Impl, address v4Impl) {
+        RealmFactoryUniV4Unified.V4TierConfig memory v4Tier = ChainConfig.v4TierConfig();
+        v4Tier.graduators =
+            RealmFactoryUniV4Unified.TierGraduators({thin: m.graduatorV4Thin, thick: m.graduatorV4Thick});
+
         v2Impl = address(
             new RealmFactoryUniV2Unified(
                 m.launchpad,
@@ -71,7 +75,7 @@ contract UpgradeRealmFactories is Script {
                 m.masterFeeHandler,
                 ChainConfig.creatorVaultFactory(),
                 ChainConfig.defaultVaultCurves(),
-                ChainConfig.v4TierConfig()
+                v4Tier
             )
         );
 
@@ -86,6 +90,8 @@ contract UpgradeRealmFactories is Script {
         require(m.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(m.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
         require(m.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
+        require(m.graduatorV4Thin != address(0), "manifest: GRADUATOR_UNIV4_THIN missing");
+        require(m.graduatorV4Thick != address(0), "manifest: GRADUATOR_UNIV4_THICK missing");
         require(m.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(m.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
         require(m.taxTokenV2Impl != address(0), "manifest: TAXABLE_TOKEN_V2_IMPL missing");

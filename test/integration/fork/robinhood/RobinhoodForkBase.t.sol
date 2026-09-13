@@ -15,7 +15,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 /// @notice Forks Robinhood Chain mainnet and deploys the Realm stack on it, for suites that need what
 ///         only that chain has: Robinhood's own Uniswap V4 and its xStocks — the tokenized stocks Realm
 ///         tokens pay dividends in. Needs `ROBINHOOD_RPC_URL`, and the token implementations retargeted
-///         to Robinhood (`just chain-robinhood`, or `just test-robinhood-fork`): they bake the chain's
+///         to Robinhood (`just chain-rh`, or `just test-rh-fork`): they bake the chain's
 ///         addresses in and refuse to construct on any other chain id.
 /// @dev Pinned to a block, like every fork suite: the xStock pools below were probed at exactly this
 ///      block, and a token's route is permanent, so a moving fork would turn a pool drying up into a

@@ -41,6 +41,9 @@ import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 ///                           still receives the exact ETH they requested.
 ///      - exact-output buy:  ETH is the input, size unknown until the swap → settled in `afterSwap`.
 ///      - exact-input sell:  ETH is the output, size unknown until the swap → settled in `afterSwap`.
+/// @custom:deprecated Never deployed standalone. This contract exists only as the base of `RealmHook`,
+///      the variant Uniswap whitelisted and the only hook Realm deploys — the live bytecode is compiled
+///      from here, so a change to it is a production change, not an edit to a spare variant.
 contract RealmSwapHook is BaseHook {
     uint256 public constant VERSION = 2;
 

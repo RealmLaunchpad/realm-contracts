@@ -23,21 +23,21 @@ library DeploymentsRobinhoodMainnet {
     address internal constant UNIV4_LIQUIDITY_ADDER = address(0);
     address internal constant MASTER_FEE_HANDLER = address(0);
 
-    /// @notice Marketcap-tiered swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
+    /// @notice Swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
     ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. The V4 graduators point here.
     /// @dev Realm deploys its OWN hook rather than reusing the Livo one, whose `TREASURY` and
     ///      `FEE_ROUTER` immutables are pinned to Livo addresses and cannot be repointed. Deploy with
     ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
     ///      variant Uniswap whitelists. `address(0)` until then.
     address internal constant SWAP_HOOK = 0xAE4c0Cf7C3Feb79e0c244EdBC6A3f8a3290940cC;
-    /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees treasury/creator
-    ///         by marketcap tier.
+    /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees 30/70
+    ///         treasury/creator.
     /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook
     ///      (`DeployRealmPrereqs`). Router policy changes ship by `upgradeToAndCall`ing this proxy.
     address internal constant LP_FEE_ROUTER = 0x823ca5B8041217Df052D9e64AC6E7c16A62FA957;
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
-    address internal constant LP_FEE_ROUTER_IMPL = 0xa2E3C9B3B33Cbad41ECCA283734c335490a09d4a;
+    address internal constant LP_FEE_ROUTER_IMPL = 0x7480e46B8f6B3a8d9137F72b3006f7FBfA088ECf;
     address internal constant QUOTER = address(0);
 
     // --- Token implementations (cloned by factories) ---
@@ -88,7 +88,7 @@ library DeploymentsRobinhoodMainnet {
     // --- Liquidity tiers (THIN + THICK) ---
     /// @notice THIN/THICK V4 graduators, one per tier (the fee-agnostic hook reads the swap fee from the
     ///         token). The DEFAULT tier reuses `GRADUATOR_UNIV4`. Update after deploying with
-    ///         `DeployRealmStack`. Both point at `SWAP_HOOK` above.
+    ///         `DeployRealmStack` or `RedeployGraduators`. Both point at `SWAP_HOOK` above.
     address internal constant GRADUATOR_UNIV4_THIN = address(0);
     address internal constant GRADUATOR_UNIV4_THICK = address(0);
 

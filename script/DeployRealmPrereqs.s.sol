@@ -29,7 +29,7 @@ import {DeployRealmRegistries} from "script/DeployRealmRegistries.s.sol";
 ///         `upgradeToAndCall`ing this proxy, whose owner is the `realm.dev` deployer.
 ///
 /// @dev    Run: just chain-<sepolia|robinhood> && forge script DeployRealmPrereqs \
-///                  --rpc-url <sepolia|robinhood-mainnet> --account realm.dev --slow --broadcast --verify
+///                  --rpc-url <sepolia|rh-mainnet> --account realm.dev --slow --broadcast --verify
 contract DeployRealmPrereqs is DeployRealmRegistries {
     function run() external override {
         address treasury = ChainConfig.infra().treasury;
@@ -45,7 +45,7 @@ contract DeployRealmPrereqs is DeployRealmRegistries {
 
         // The hook takes this proxy as an immutable, so it must exist before `DeployRealmSwapHook`.
         // `initialize()` runs inside the proxy constructor so ownership cannot be front-run.
-        address routerImpl = address(new SwapLpFeeRouter(treasury, _lpFeeRouterConfig()));
+        address routerImpl = address(new SwapLpFeeRouter(treasury));
         address routerProxy = address(new ERC1967Proxy(routerImpl, abi.encodeCall(SwapLpFeeRouter.initialize, ())));
 
         vm.stopBroadcast();
@@ -62,20 +62,5 @@ contract DeployRealmPrereqs is DeployRealmRegistries {
         console.log("  3. forge script DeployRealmSwapHook ...  (needs LP_FEE_ROUTER)");
         console.log("  4. forge script DeployRealmStack ...");
         console.log("  5. Appoint admins/keepers: setAdmin + setKeeper, from realm.dev (the registries owner).");
-    }
-
-    /// @dev LP fee split by marketcap tier: 40/60 treasury/creator at graduation, sliding to 10/90 above
-    ///      1500 ETH of marketcap. Thresholds are native-denominated, so their USD meaning drifts with
-    ///      the ETH price — repriced by deploying a new implementation and `upgradeTo`ing the proxy.
-    function _lpFeeRouterConfig() internal pure returns (SwapLpFeeRouter.Config memory cfg) {
-        cfg.thresholds = [
-            uint256(30 ether),
-            uint256(150 ether),
-            uint256(300 ether),
-            uint256(600 ether),
-            uint256(900 ether),
-            uint256(1500 ether)
-        ];
-        cfg.treasuryBps = [uint16(4000), 3500, 3000, 2500, 2000, 1500, 1000];
     }
 }

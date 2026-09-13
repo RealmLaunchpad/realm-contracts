@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 /// @title ISwapLpFeeRouter
 /// @notice Receives LP fee deposits from `RealmSwapHook` and splits them between the protocol
 ///         treasury, the token's creator (via the master fee handler), and a future
-///         liquidity-reinvestment slice, using a marketcap-tiered split.
+///         liquidity-reinvestment slice, using a flat 30/70 treasury/creator split.
 /// @dev This interface is intentionally minimal so the router implementation can be upgraded
 ///      without forcing a corresponding hook redeploy. The hook only relies on `depositLpFees`.
 ///      Future implementations may compute the split from different inputs internally, but the

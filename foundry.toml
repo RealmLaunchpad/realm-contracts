@@ -29,8 +29,8 @@ fs_permissions = [
 extra_output = ["storageLayout", "transientStorageLayout"]
 out = "out-layout"
 
-# Second build target for `just test-robinhood-fork`: the Robinhood-forked suites need the token impls
-# retargeted (`just chain-robinhood`), and a separate out/cache keeps both targets' builds warm so
+# Second build target for `just test-rh-fork`: the Robinhood-forked suites need the token impls
+# retargeted (`just chain-rh`), and a separate out/cache keeps both targets' builds warm so
 # `fast-test` does not recompile on every switch.
 [profile.robinhood]
 out = "out-robinhood"
@@ -55,8 +55,8 @@ fail_on_revert = false
 [rpc_endpoints]
 mainnet = "${ETH_RPC_URL}"
 sepolia = "${SEPOLIA_RPC_URL}"
-robinhood-mainnet = "${ROBINHOOD_RPC_URL}"
-robinhood-testnet = "${ROBINHOOD_TESTNET_RPC_URL}"
+rh-mainnet = "${ROBINHOOD_RPC_URL}"
+rh-testnet = "${ROBINHOOD_TESTNET_RPC_URL}"
 # ARC (Circle L1, native = USDC). Testnet: https://rpc.testnet.arc.io. Mainnet not live yet. TODO(arc)
 arc-mainnet = "${ARC_RPC_URL}"
 arc-testnet = "${ARC_TESTNET_RPC_URL}"

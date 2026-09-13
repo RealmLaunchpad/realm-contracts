@@ -54,22 +54,24 @@ import {BuildTarget} from "script/BuildTarget.sol";
 ///         owner of both factory proxies and the vault factory proxy. Hand those over afterwards.
 ///
 /// @dev    PRE-FLIGHT, in order — the script refuses to broadcast otherwise:
-///           1. `just chain-sepolia` / `just chain-robinhood`, then `forge build`.
+///           1. `just chain-sepolia` / `just chain-rh`, then `forge build`.
 ///           2. `DeployRealmPrereqs` must have run and its two addresses pasted into
 ///              `src/config/DeploymentAddresses.sol` (they are baked into the taxable token bytecode).
 ///           3. `SWAP_HOOK` must be set in the manifest for this chain.
 ///
-///         Run: forge script DeployRealmStack --rpc-url <sepolia|robinhood-mainnet> \
+///         Run: forge script DeployRealmStack --rpc-url <sepolia|rh-mainnet> \
 ///                  --account realm.dev --slow --broadcast --verify
 contract DeployRealmStack is Script {
-    /// @dev Graduation prices per tier, from `simulations/script/uniswapV4Settings.py`:
-    ///      DEFAULT 12.25 ETH mcap, THIN 6.125 ETH, THICK 24.5 ETH.
-    uint160 internal constant DEFAULT_GRAD_SQRT_PRICE_X96 = 715832709642994126662528799866880;
-    uint160 internal constant THIN_GRAD_SQRT_PRICE_X96 = 1012340326367404053977557838594048;
-    uint160 internal constant THICK_GRAD_SQRT_PRICE_X96 = 506170163183702026988778919297024;
-
     /// @dev Index 0 is each tier's no-vault base curve; 1..6 are the 5%..30% vault curves.
     uint256[7] internal VAULT_BPS = [uint256(0), 500, 1000, 1500, 2000, 2500, 3000];
+
+    /// @notice Deterministic CREATE2 proxy `forge script` routes `new X{salt:..}` through while
+    ///         broadcasting. Same address on every EVM chain; the mined salt is only valid against it.
+    address internal constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+
+    /// @notice Vanity suffix (last 2 bytes) carried by the launchpad, matching the one the factories
+    ///         enforce on every token address.
+    uint16 internal constant VANITY_SUFFIX = 0xeeaa;
 
     struct Core {
         address feeHandler;
@@ -142,7 +144,12 @@ contract DeployRealmStack is Script {
         returns (Core memory c)
     {
         c.feeHandler = address(new RealmMasterFeeHandler());
-        c.launchpad = address(new RealmLaunchpad(infra.treasury, deployer));
+        // CREATE2 so the launchpad address carries the same `0xeeaa` suffix the tokens do.
+        bytes32 salt =
+            _mineSalt(abi.encodePacked(type(RealmLaunchpad).creationCode, abi.encode(infra.treasury, deployer)));
+        c.launchpad = address(new RealmLaunchpad{salt: salt}(infra.treasury, deployer));
+        // Only holds while broadcasting, when forge routes the salted `new` through CREATE2_DEPLOYER.
+        require(uint16(uint160(c.launchpad)) == VANITY_SUFFIX, "launchpad vanity suffix mismatch");
         c.quoter = address(new RealmQuoter(c.launchpad));
         // Chain-shared singleton: every V4 graduator's secondary position and taxable tokens'
         // `processLiquidity` both route through it.
@@ -151,12 +158,15 @@ contract DeployRealmStack is Script {
             address(new RealmGraduatorUniswapV2(infra.univ2Router, c.launchpad, infra.univ2PairInitCodeHash));
         // One graduator per tier; the hook is fee-agnostic (it reads the LP fee off the token), so the
         // only per-tier difference is the graduation price and the primary range's upper tick.
-        c.graduatorV4 =
-            _deployGraduatorV4(infra, c, hook, DEFAULT_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER);
-        c.graduatorV4Thin =
-            _deployGraduatorV4(infra, c, hook, THIN_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER_THIN);
-        c.graduatorV4Thick =
-            _deployGraduatorV4(infra, c, hook, THICK_GRAD_SQRT_PRICE_X96, UniswapV4PoolConstants.TICK_UPPER);
+        c.graduatorV4 = _deployGraduatorV4(
+            infra, c, hook, UniswapV4PoolConstants.SQRT_PRICEX96_GRADUATION_DEFAULT, UniswapV4PoolConstants.TICK_UPPER
+        );
+        c.graduatorV4Thin = _deployGraduatorV4(
+            infra, c, hook, UniswapV4PoolConstants.SQRT_PRICEX96_GRADUATION_THIN, UniswapV4PoolConstants.TICK_UPPER_THIN
+        );
+        c.graduatorV4Thick = _deployGraduatorV4(
+            infra, c, hook, UniswapV4PoolConstants.SQRT_PRICEX96_GRADUATION_THICK, UniswapV4PoolConstants.TICK_UPPER
+        );
     }
 
     function _deployGraduatorV4(
@@ -350,5 +360,20 @@ contract DeployRealmStack is Script {
 
     function _slot(string memory slot, address a) internal pure {
         console.log(string.concat("    address internal constant ", slot, " = ", vm.toString(a), ";"));
+    }
+
+    /// @dev Brute-forces the CREATE2 salt whose address ends in `VANITY_SUFFIX`. 1 in 65,536 salts
+    ///      hits, so the bound is ~15x the expected work — overrunning it means the initcode is wrong,
+    ///      not that the search was unlucky.
+    function _mineSalt(bytes memory initCode) internal pure returns (bytes32) {
+        bytes32 initCodeHash = keccak256(initCode);
+        for (uint256 i = 0; i < 1_000_000; ++i) {
+            bytes32 salt = bytes32(i);
+            address predicted = address(
+                uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), CREATE2_DEPLOYER, salt, initCodeHash))))
+            );
+            if (uint16(uint160(predicted)) == VANITY_SUFFIX) return salt;
+        }
+        revert("no vanity salt found");
     }
 }

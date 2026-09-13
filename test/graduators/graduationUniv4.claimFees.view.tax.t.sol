@@ -64,9 +64,9 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         uint256 gross = Y + creatorDelta + treasuryDelta; // total ETH from pool
 
         // creatorDelta = lpCreatorShare + taxAmount, so isolating the tax means subtracting the
-        // creator's tier-0 LP share of the gross (the creator and treasury LP shares are no longer
-        // equal, so `creatorDelta - treasuryDelta` would leave the 20 bps tier-0 gap in `taxOnly`).
-        uint256 taxOnly = creatorDelta - _lpCreatorShareTier0(gross);
+        // creator's LP share of the gross (the creator and treasury LP shares are no longer
+        // equal, so `creatorDelta - treasuryDelta` would leave the 20 bps gap in `taxOnly`).
+        uint256 taxOnly = creatorDelta - _lpCreatorShare(gross);
 
         // taxOnly / gross == DEFAULT_SELL_TAX_BPS
         assertApproxEqRel(
@@ -84,7 +84,7 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
 
         uint256 claimableDelta = _creatorClaimable() - claimableBefore;
 
-        // Creator gets the tier-0 share (60%) of the 1% total LP fee on buys
-        assertApproxEqAbs(claimableDelta, _lpCreatorShareTier0(buyAmount), 1, "buy claimable should be tier-0 LP share");
+        // Creator gets the share (60%) of the 1% total LP fee on buys
+        assertApproxEqAbs(claimableDelta, _lpCreatorShare(buyAmount), 1, "buy claimable should be LP share");
     }
 }

@@ -61,7 +61,7 @@ contract InvariantsHelperLaunchpad is Test {
         for (uint256 i = _saltCounter;; i++) {
             bytes32 salt = bytes32(i);
             address predicted = Clones.predictDeterministicAddress(impl, _namespacedSalt(deployer, salt), factory);
-            if (uint16(uint160(predicted)) == 0x1110) {
+            if (uint16(uint160(predicted)) == 0xeeaa) {
                 _saltCounter = i + 1;
                 return salt;
             }

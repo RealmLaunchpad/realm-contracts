@@ -22,7 +22,7 @@ import {
 ///         in, and those come later in `DeployRealmStack`. Paste, `forge build`, then deploy the stack.
 ///
 ///         Run: just chain-<sepolia|robinhood> && forge script DeployRealmRegistries \
-///                  --rpc-url <sepolia|robinhood-mainnet> --account realm.dev --slow --broadcast --verify
+///                  --rpc-url <sepolia|rh-mainnet> --account realm.dev --slow --broadcast --verify
 contract DeployRealmRegistries is Script {
     function run() external virtual {
         vm.startBroadcast();

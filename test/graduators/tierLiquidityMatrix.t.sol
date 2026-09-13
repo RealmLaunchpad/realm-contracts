@@ -211,10 +211,10 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
             assertTrue(st.graduated, string.concat(ctx, "token must be graduated"));
             assertEq(st.ethCollected, 0, string.concat(ctx, "launchpad still holds reserves for token"));
             assertEq(_expectedGraduator(tier).balance, 0, string.concat(ctx, "graduator retained eth"));
-            // Treasury received at least its graduation share (V4: 0.125 ETH); excess reserves swept here too.
+            // Treasury received at least its graduation share (V4: 0.075 ETH); excess reserves swept here too.
             assertGe(
                 treasury.balance - treasuryBefore,
-                CREATOR_GRADUATION_COMPENSATION,
+                GRADUATION_FEE - CREATOR_GRADUATION_COMPENSATION,
                 string.concat(ctx, "treasury missing graduation share")
             );
         }

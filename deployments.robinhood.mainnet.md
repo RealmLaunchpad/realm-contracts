@@ -14,7 +14,7 @@
 | RealmUniV4LiquidityAdder                     | _(not deployed)_                             |
 | RealmHook                                    | `0xAE4c0Cf7C3Feb79e0c244EdBC6A3f8a3290940cC` |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
-| SwapLpFeeRouter (impl)                       | `0xa2E3C9B3B33Cbad41ECCA283734c335490a09d4a` |
+| SwapLpFeeRouter (impl)                       | `0x7480e46B8f6B3a8d9137F72b3006f7FBfA088ECf` |
 | RealmQuoter                                  | _(not deployed)_                             |
 | RealmKeepersRegistry                         | `0x914e8A6fcA2af6E8Cf4434d1D50234fC89CdF2Ec` |
 | RealmDividendSwapRegistry (proxy)            | `0x5606c6EDF892FEd317c60C95a1BCcDA5c1c5f551` |

@@ -28,9 +28,9 @@ contract RealmGraduatorUniswapV4 is IRealmGraduator, Ownable {
     /// @notice Graduation native fee (creator compensation + treasury fee). Per-chain via the aliased lib.
     uint256 public constant GRADUATION_ETH_FEE = GraduationFeeConstants.GRADUATION_FEE;
 
-    /// @notice ETH compensation paid to token creator at graduation (half of the fee)
+    /// @notice ETH compensation paid to token creator at graduation (70% of the fee)
     /// @dev this is part of the GRADUATION_ETH_FEE
-    uint256 public constant CREATOR_GRADUATION_COMPENSATION = GRADUATION_ETH_FEE / 2;
+    uint256 public constant CREATOR_GRADUATION_COMPENSATION = (GRADUATION_ETH_FEE * 7) / 10;
 
     /// @notice Sink for the token dust left over after the graduation liquidity deposit.
     address internal constant DEAD_ADDRESS = address(0xdEaD);

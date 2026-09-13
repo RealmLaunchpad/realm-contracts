@@ -122,7 +122,7 @@ Admins will deploy one GraduationManager to begin with, but the Launchpad will b
 1. User creates token with `RealmLaunchpad.createToken()`, choosing from whitelisted bonding curves and graduation managers
 2. RealmLaunchpad deploys new `RealmToken` contract (standard ERC20) mapping the token to specified bonding curve and graduation manager
 3. Users trade via `RealmLaunchpad.buyTokensWithExactEth()` and `sellToken()`
-4. 1% trading fee split 50/50 between creator and treasury
+4. 1% trading fee split 70/30 between creator and treasury
 
 ### Phase 2: Graduation Process
 1. Token reaches 20 ETH collected threshold in `RealmLaunchpad`, then `checkGraduationEligibility(token)` returns True.

@@ -23,15 +23,15 @@ library DeploymentsEthereumSepolia {
     address internal constant UNIV4_LIQUIDITY_ADDER = 0xE8168F37CdaAdB08818469De191eD2461EEcc229;
     address internal constant MASTER_FEE_HANDLER = 0x914e8A6fcA2af6E8Cf4434d1D50234fC89CdF2Ec;
 
-    /// @notice Marketcap-tiered swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
+    /// @notice Swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
     ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. The V4 graduators point here.
     /// @dev Realm deploys its OWN hook rather than reusing the Livo one, whose `TREASURY` and
     ///      `FEE_ROUTER` immutables are pinned to Livo addresses and cannot be repointed. Deploy with
     ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
     ///      variant Uniswap whitelists. `address(0)` until then.
     address internal constant SWAP_HOOK = 0xE3246e5Ae48bA84e345D88b3e7473ae8DBB540cC;
-    /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees treasury/creator
-    ///         by marketcap tier.
+    /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees 30/70
+    ///         treasury/creator.
     /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook
     ///      (`DeployRealmPrereqs`). Router policy changes ship by `upgradeToAndCall`ing this proxy.
     address internal constant LP_FEE_ROUTER = 0x823ca5B8041217Df052D9e64AC6E7c16A62FA957;
@@ -88,7 +88,7 @@ library DeploymentsEthereumSepolia {
     // --- Liquidity tiers (THIN + THICK) ---
     /// @notice THIN/THICK V4 graduators, one per tier (the fee-agnostic hook reads the swap fee from the
     ///         token). The DEFAULT tier reuses `GRADUATOR_UNIV4`. Update after deploying with
-    ///         `DeployRealmStack`. Both point at `SWAP_HOOK` above.
+    ///         `DeployRealmStack` or `RedeployGraduators`. Both point at `SWAP_HOOK` above.
     address internal constant GRADUATOR_UNIV4_THIN = 0x6B29469d3E5D5861E6a5C449863a0566E163272C;
     address internal constant GRADUATOR_UNIV4_THICK = 0xd0b4476f2044574CA498A5AdD5DFB26516E2526d;
 
@@ -137,5 +137,5 @@ library DeploymentsEthereumSepolia {
     address internal constant REALM_TOKEN_DEPLOYER = 0x566CB296539672bB2419F403d292544E9Abf7815;
     /// @notice The keeper lambda's EOA: `isKeeper` on `REALM_KEEPERS_REGISTRY` and the `keeper` that
     ///         `DIVIDEND_SWAP_REGISTRY` refunds gas to. Set via `setKeeper` / `setKeeperFunding`.
-    address internal constant REALM_KEEPER = 0x68ae8d23AeFde0454e1A391678e20e64E5ff034a;
+    address internal constant REALM_KEEPER = 0xE092CB5868e1Ca091Ea975069bf2Afc9CDD1732C;
 }

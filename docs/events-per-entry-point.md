@@ -214,8 +214,8 @@ Event names below are qualified as `RealmSwapHook.*`; on a `RealmHook` pool the 
 address and the signatures are identical (they are inherited).
 
 The hook reads the per-token fees via `RealmToken.getSwapFees(isBuy)` (LP fee + currently-effective tax for
-that direction). The LP fee is forwarded whole to `SwapLpFeeRouter`, which splits it between treasury and
-creator by a marketcap tier; the tax (if any) is forwarded to the token's master fee handler. The LP fee and
+that direction). The LP fee is forwarded whole to `SwapLpFeeRouter`, which splits it 30/70 between treasury and
+creator; the tax (if any) is forwarded to the token's master fee handler. The LP fee and
 the tax are accrued in **separate** `accrueFees` calls, so the creator can see up to two
 `CreatorFeesDeposited`.
 
