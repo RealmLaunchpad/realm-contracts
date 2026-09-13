@@ -402,7 +402,7 @@ replaces, so the leader is replayable from `Voted` alone (first to reach the max
 1. Optional **`RealmVoting.RoundStarted`** ×N (§11 step 1).
 2. ERC20 `Transfer(voter, 0x0, amount)` on REALM — the burn (`burnFrom`, needs allowance).
 3. **`RealmVoting.Voted`** (`roundId, token, voter, amount`) — `amount` burned = votes added. `token` is
-   guaranteed registered in the launchpad.
+   any address the voter chose: there is deliberately no launchpad check.
 
 ### `receive()` — native from the treasury router (or anyone)
 

@@ -6,26 +6,12 @@ import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {RealmVoting} from "src/voting/RealmVoting.sol";
-import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 
 contract MockRealm is ERC20, ERC20Burnable {
     constructor() ERC20("Realm", "REALM") {}
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
-    }
-}
-
-/// @dev The one launchpad view the voting contract reads.
-contract MockLaunchpad {
-    mapping(address => IRealmBondingCurve) public tokenConfigs;
-
-    function register(address token) external {
-        tokenConfigs[token] = IRealmBondingCurve(makeAddrHelper(token));
-    }
-
-    function makeAddrHelper(address token) internal pure returns (address) {
-        return address(uint160(uint256(keccak256(abi.encode(token)))));
     }
 }
 
@@ -40,26 +26,22 @@ contract RealmVotingTests is Test {
 
     RealmVoting voting;
     MockRealm realm;
-    MockLaunchpad launchpad;
     address owner = makeAddr("owner");
     address admin = makeAddr("admin");
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
     address tokenA = makeAddr("tokenA");
     address tokenB = makeAddr("tokenB");
-    address notAToken = makeAddr("notAToken");
+    address offPlatform = makeAddr("offPlatform");
     uint256 t0;
 
     function setUp() public {
         t0 = 1_000_000;
         vm.warp(t0);
         realm = new MockRealm();
-        launchpad = new MockLaunchpad();
-        launchpad.register(tokenA);
-        launchpad.register(tokenB);
 
         vm.startPrank(owner);
-        RealmVoting impl = new RealmVoting(address(realm), address(launchpad));
+        RealmVoting impl = new RealmVoting(address(realm));
         vm.expectEmit(true, false, false, true);
         emit RoundStarted(1, t0, t0 + DURATION);
         voting = RealmVoting(
@@ -116,9 +98,9 @@ contract RealmVotingTests is Test {
         assertEq(_round(1).winnerVotes, 100e18);
     }
 
-    function test_vote_rejectsNonRealmTokenAndZero() public {
-        vm.expectRevert(RealmVoting.NotARealmToken.selector);
-        _vote(alice, notAToken, 1);
+    function test_vote_anyAddress_onlyZeroAmountRejected() public {
+        _vote(alice, offPlatform, 1); // no launchpad check: any address is a valid candidate
+        assertEq(_round(1).winner, offPlatform);
         vm.expectRevert(RealmVoting.InvalidAmount.selector);
         _vote(alice, tokenA, 0);
     }
@@ -254,7 +236,7 @@ contract RealmVotingTests is Test {
     // ───────────────────────── upgrades ─────────────────────────
 
     function test_upgrade_onlyOwner() public {
-        RealmVoting newImpl = new RealmVoting(address(realm), address(launchpad));
+        RealmVoting newImpl = new RealmVoting(address(realm));
         vm.expectRevert();
         vm.prank(admin);
         voting.upgradeToAndCall(address(newImpl), "");

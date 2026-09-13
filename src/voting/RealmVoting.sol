@@ -6,10 +6,8 @@ import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contrac
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 
-import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
-
 /// @title RealmVoting
-/// @notice Burn REALM to vote for a Realm token; each round's native (1/3 of treasury earnings, forwarded by
+/// @notice Burn REALM to vote for a token; each round's native (1/3 of treasury earnings, forwarded by
 ///         `RealmTreasuryRouter`) is spent buying that round's winner.
 ///
 /// @dev ROUNDS ARE DERIVED FROM THE CLOCK, NOT FROM A COUNTER. Rounds are contiguous and fixed-length:
@@ -19,8 +17,10 @@ import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 ///      `RoundStarted` for it and for every round skipped in between. A round nobody touched has no
 ///      storage and nothing to process.
 ///
-/// @dev WINNER. The token with the most votes; a strictly greater total replaces the leader, so a tie keeps
-///      the earlier one. A round with no votes has `winner == address(0)`; its native is still pullable, and
+/// @dev WINNER. The address with the most votes; a strictly greater total replaces the leader, so a tie keeps
+///      the earlier one. ANY address can be voted for — no launchpad check, so a future launchpad or an
+///      off-platform coin qualifies. A vote for something unbuyable only costs the voter their REALM: the
+///      admin doing the manual swap simply decides what to do with that round's native. A round with no votes has `winner == address(0)`; its native is still pullable, and
 ///      what to do with it is the admin's call.
 ///
 /// @dev SWAPS ARE MANUAL. `processWinner` hands native to the calling admin, in as many slices as it likes,
@@ -37,8 +37,6 @@ contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     /// @notice The token burned to vote.
     ERC20Burnable public immutable REALM;
-    /// @notice Only tokens registered here can be voted for.
-    RealmLaunchpad public immutable LAUNCHPAD;
 
     /// @notice Length of every round from `anchorId` on.
     uint256 public roundDuration;
@@ -63,7 +61,6 @@ contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event AdminSet(address indexed account, bool allowed);
 
     error NotAdmin();
-    error NotARealmToken();
     error InvalidAmount();
     error RoundNotEnded();
     error InsufficientRoundEth();
@@ -74,9 +71,8 @@ contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _;
     }
 
-    constructor(address realm_, address launchpad_) {
+    constructor(address realm_) {
         REALM = ERC20Burnable(realm_);
-        LAUNCHPAD = RealmLaunchpad(launchpad_);
         _disableInitializers();
     }
 
@@ -99,7 +95,6 @@ contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     ///         live round.
     function vote(address token, uint256 amount) external {
         require(amount > 0, InvalidAmount());
-        require(address(LAUNCHPAD.tokenConfigs(token)) != address(0), NotARealmToken());
         uint256 id = _sync();
         REALM.burnFrom(msg.sender, amount);
         uint256 total = votes[id][token] += amount;
