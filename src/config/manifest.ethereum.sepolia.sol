@@ -148,7 +148,13 @@ library DeploymentsEthereumSepolia {
     }
 
     // --- Accounts ---
-    address internal constant REALM_DEV = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
+    /// @notice The `realm.dev` deployer keystore: the broadcaster of every deploy script and the initial
+    ///         owner of everything they deploy.
+    /// @dev Rotated from the now-deprecated `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb`, which is what the
+    ///      `deprecated.realm.dev` keystore holds. That old key still owns the contracts deployed before the
+    ///      rotation — `REALM_KEEPERS_REGISTRY` and `DIVIDEND_SWAP_REGISTRY` in `DeploymentAddresses.sol` —
+    ///      so their `setAdmin` / `transferOwnership` must still be signed with it.
+    address internal constant REALM_DEV = 0x81f7D06a88223f5a2850411E72256AacC9E27035;
     address internal constant REALM_TOKEN_DEPLOYER = 0x566CB296539672bB2419F403d292544E9Abf7815;
     /// @notice The keeper lambda's EOA: `isKeeper` on `REALM_KEEPERS_REGISTRY` and the `keeper` that
     ///         `DIVIDEND_SWAP_REGISTRY` refunds gas to. Set via `setKeeper` / `setKeeperFunding`.

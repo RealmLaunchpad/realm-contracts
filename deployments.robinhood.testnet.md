@@ -60,7 +60,7 @@
 
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| Realm Deployer                               | `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb` |
+| Realm Deployer                               | `0x81f7D06a88223f5a2850411E72256AacC9E27035` |
 | Realm Treasury                               | `0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B` |
 | Team Treasury (2/3 leg)                      | _(not deployed)_                             |
 | Vote Buyback Wallet (1/3 leg)                | _(not deployed)_                             |
