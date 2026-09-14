@@ -31,7 +31,9 @@ flowchart TD
 
     UniV2[(Uniswap V2<br/>Liquidity)]
     UniV4[(Uniswap V4<br/>Liquidity)]
-    Treasury([Treasury])
+    TreasuryRouter[RealmTreasuryRouter<br/>— proxy, the "treasury" address —]
+    Voting[RealmVoting<br/>— REALM burn votes, buys round winner —]
+    Treasury([Treasury Multisig])
     Creator([Creator])
     Seller([Seller])
     Recipients([Recipients])
@@ -44,12 +46,12 @@ flowchart TD
 
     %% Phase 1
     User -- "buy ETH" --> Launchpad
-    Launchpad -- "1% fee" --> Treasury
+    Launchpad -- "1% fee" --> TreasuryRouter
     Launchpad -- "sell proceeds" --> Seller
 
     %% Phase 2
     Launchpad -- "all ETH reserves" --> Graduator
-    Graduator -- "0.4 ETH" --> Treasury
+    Graduator -- "0.4 ETH" --> TreasuryRouter
     Graduator -- "0.1 ETH creator comp" --> FeeHandler
     Graduator -- "remaining ETH" --> UniV2
     Graduator -- "remaining ETH" --> UniV4
@@ -57,7 +59,9 @@ flowchart TD
     %% Phase 3 (V4)
     UniV4 -. "LP fees" .-> LiqLock
     LiqLock --> FeeHandlerV4
-    FeeHandlerV4 -- "50%" --> Treasury
+    FeeHandlerV4 -- "50%" --> TreasuryRouter
+    TreasuryRouter -- "1/3" --> Voting
+    TreasuryRouter -- "2/3" --> Treasury
     FeeHandlerV4 -- "50%" --> FeeHandler
     SwapHook -. "sell taxes" .-> FeeHandler
 

@@ -123,6 +123,40 @@ library ChainConfig {
         require(router != address(0), "manifest: LP_FEE_ROUTER missing");
     }
 
+    /// @notice The multisig that receives the 2/3 leg of `RealmTreasuryRouter`. Only Robinhood mainnet
+    ///         has a dedicated one; the dev chains use their dev treasury.
+    function teamTreasury() internal view returns (address t) {
+        if (isSepolia()) t = DeploymentAddressesEthereumSepolia.REALM_TREASURY;
+        else if (isRobinhood()) t = DeploymentAddressesRobinhoodMainnet.TEAM_TREASURY;
+        else if (isRobinhoodTestnet()) t = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
+        else revert(UNSUPPORTED);
+        require(t != address(0), "team treasury missing");
+    }
+
+    /// @notice The ops wallet appointed as `RealmVoting` admin (pulls each round's native and buys the
+    ///         winner). Only Robinhood mainnet names one; elsewhere the owner acts as admin.
+    function voteBuybackWallet() internal view returns (address) {
+        if (isRobinhood()) return DeploymentAddressesRobinhoodMainnet.VOTE_BUYBACK_WALLET;
+        if (isSepolia() || isRobinhoodTestnet()) return address(0);
+        revert(UNSUPPORTED);
+    }
+
+    /// @notice `RealmTreasuryRouter` proxy from the manifest; `address(0)` until deployed.
+    function treasuryRouter() internal view returns (address) {
+        if (isSepolia()) return DeploymentsEthereumSepolia.TREASURY_ROUTER;
+        if (isRobinhood()) return DeploymentsRobinhoodMainnet.TREASURY_ROUTER;
+        if (isRobinhoodTestnet()) return DeploymentsRobinhoodTestnet.TREASURY_ROUTER;
+        revert(UNSUPPORTED);
+    }
+
+    /// @notice `RealmVoting` proxy from the manifest; `address(0)` until deployed.
+    function voting() internal view returns (address) {
+        if (isSepolia()) return DeploymentsEthereumSepolia.VOTING;
+        if (isRobinhood()) return DeploymentsRobinhoodMainnet.VOTING;
+        if (isRobinhoodTestnet()) return DeploymentsRobinhoodTestnet.VOTING;
+        revert(UNSUPPORTED);
+    }
+
     /// @notice The keeper lambda's EOA from the manifest: appointed on `RealmKeepersRegistry` and set as
     ///         the `RealmDividendSwapRegistry`'s keeper-funding wallet by `ConfigureRegistries`.
     function realmKeeper() internal view returns (address keeper) {

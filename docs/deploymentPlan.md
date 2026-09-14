@@ -92,6 +92,27 @@ The hook address must be **mined**: a V4 hook advertises its callbacks in the lo
 address (mask `0xCC` here), so the script brute-forces a CREATE2 salt via `HookMiner.find`. Paste the
 mined address into the manifest's `SWAP_HOOK`, then `just export-deployments`.
 
+## Treasury routing
+
+The treasury address the protocol pushes to (`LAUNCHPAD.treasury()`, the LP fee router's `TREASURY`) is
+meant to be the `RealmTreasuryRouter` proxy, which forwards 1/3 to `RealmVoting` and the rest to the team
+multisig. It cannot go in with the stack: the router bakes the voting proxy in, and voting needs the
+REALM token, which is created through the stack. So the order is stack → REALM token → `RealmVoting`
+→ the router. Voting burns REALM through `burnFrom`, so on a chain whose token masters predate it,
+redeploy them first (`just redeploy-token-impls-<chain>` covers all three masters and rewires the
+factories) and only then create the REALM token.
+
+```bash
+just deploy-voting-rh <REALM token>  # paste VOTING / VOTING_IMPL into the manifest
+just deploy-treasury-router-rh       # or: -sepolia / -rh-testnet; dry-run without --broadcast first
+just export-deployments              # after pasting TREASURY_ROUTER, TREASURY_ROUTER_IMPL, LP_FEE_ROUTER_IMPL
+```
+
+Then set `REALM_TREASURY = TREASURY_ROUTER` in that chain's `DeploymentAddresses` library: token impls bake
+it as `DIVIDEND_TREASURY`, so impls deployed before this step keep sweeping to the multisig until redeployed.
+The hook's fallback treasury is a constructor immutable and stays where it was (`LEGACY_TREASURY` on
+Robinhood mainnet), which is why that address is kept on record.
+
 ## Upgrades
 
 Every dependency a unified factory holds is a constructor immutable, so changing token impls,
@@ -102,12 +123,13 @@ graduators, curves or the vault factory means a new factory implementation:
 just upgrade-factories-sepolia       # or: just upgrade-factories-rh
 ```
 
-When it is the **taxable token masters** that change (they bake per-chain constants, see
-`script/BuildTarget.sol`), one recipe deploys the fresh masters AND rewires the factories to them, with
-nothing to paste in between; the four printed slots go into the manifest afterwards:
+When it is the **token masters** that change (the taxable ones bake per-chain constants, see
+`script/BuildTarget.sol`; the base one carries the shared ERC20 surface), one recipe deploys all three
+fresh masters AND rewires the factories to them, with nothing to paste in between; the five printed
+slots go into the manifest afterwards:
 
 ```bash
-just redeploy-tax-impls-sepolia      # or: just redeploy-tax-impls-rh-testnet
+just redeploy-token-impls-sepolia      # or: just redeploy-token-impls-rh-testnet
 just export-deployments
 ```
 

@@ -38,6 +38,21 @@ library DeploymentsEthereumSepolia {
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
     address internal constant LP_FEE_ROUTER_IMPL = 0xa2E3C9B3B33Cbad41ECCA283734c335490a09d4a;
+    /// @notice `RealmTreasuryRouter` proxy (UUPS): the treasury address every push lands on once live —
+    ///         `LAUNCHPAD.treasury()` and the `SwapLpFeeRouter` impl's `TREASURY` point here. Forwards 1/3
+    ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryRouter`, which also
+    ///         does that repointing; `address(0)` until then.
+    address internal constant TREASURY_ROUTER = address(0);
+    /// @notice Implementation behind `TREASURY_ROUTER`. Tracked for verification and audit trails only.
+    address internal constant TREASURY_ROUTER_IMPL = address(0);
+    /// @notice The REALM token (a launchpad token like any other; the one `VOTING` burns). `address(0)`
+    ///         until it is launched on this chain.
+    address internal constant REALM_TOKEN = address(0);
+    /// @notice `RealmVoting` proxy (UUPS): REALM burn-to-vote rounds. Needs the REALM token, so it is
+    ///         deployed after the first token; `TREASURY_ROUTER` bakes it in, so it comes BEFORE that.
+    address internal constant VOTING = address(0);
+    /// @notice Implementation behind `VOTING`. Tracked for verification and audit trails only.
+    address internal constant VOTING_IMPL = address(0);
     address internal constant QUOTER = 0x5606c6EDF892FEd317c60C95a1BCcDA5c1c5f551;
 
     // --- Token implementations (cloned by factories) ---
@@ -133,7 +148,13 @@ library DeploymentsEthereumSepolia {
     }
 
     // --- Accounts ---
-    address internal constant REALM_DEV = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
+    /// @notice The `realm.dev` deployer keystore: the broadcaster of every deploy script and the initial
+    ///         owner of everything they deploy.
+    /// @dev Rotated from the now-deprecated `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb`, which is what the
+    ///      `deprecated.realm.dev` keystore holds. That old key still owns the contracts deployed before the
+    ///      rotation — `REALM_KEEPERS_REGISTRY` and `DIVIDEND_SWAP_REGISTRY` in `DeploymentAddresses.sol` —
+    ///      so their `setAdmin` / `transferOwnership` must still be signed with it.
+    address internal constant REALM_DEV = 0x81f7D06a88223f5a2850411E72256AacC9E27035;
     address internal constant REALM_TOKEN_DEPLOYER = 0x566CB296539672bB2419F403d292544E9Abf7815;
     /// @notice The keeper lambda's EOA: `isKeeper` on `REALM_KEEPERS_REGISTRY` and the `keeper` that
     ///         `DIVIDEND_SWAP_REGISTRY` refunds gas to. Set via `setKeeper` / `setKeeperFunding`.

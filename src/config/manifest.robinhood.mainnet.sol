@@ -38,6 +38,21 @@ library DeploymentsRobinhoodMainnet {
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
     address internal constant LP_FEE_ROUTER_IMPL = 0x7480e46B8f6B3a8d9137F72b3006f7FBfA088ECf;
+    /// @notice `RealmTreasuryRouter` proxy (UUPS): the treasury address every push lands on once live —
+    ///         `LAUNCHPAD.treasury()` and the `SwapLpFeeRouter` impl's `TREASURY` point here. Forwards 1/3
+    ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryRouter`, which also
+    ///         does that repointing; `address(0)` until then.
+    address internal constant TREASURY_ROUTER = address(0);
+    /// @notice Implementation behind `TREASURY_ROUTER`. Tracked for verification and audit trails only.
+    address internal constant TREASURY_ROUTER_IMPL = address(0);
+    /// @notice The REALM token (a launchpad token like any other; the one `VOTING` burns). `address(0)`
+    ///         until it is launched on this chain.
+    address internal constant REALM_TOKEN = address(0);
+    /// @notice `RealmVoting` proxy (UUPS): REALM burn-to-vote rounds. Needs the REALM token, so it is
+    ///         deployed after the first token; `TREASURY_ROUTER` bakes it in, so it comes BEFORE that.
+    address internal constant VOTING = address(0);
+    /// @notice Implementation behind `VOTING`. Tracked for verification and audit trails only.
+    address internal constant VOTING_IMPL = address(0);
     address internal constant QUOTER = address(0);
 
     // --- Token implementations (cloned by factories) ---
@@ -143,16 +158,23 @@ library DeploymentsRobinhoodMainnet {
     ///      `defaultThreshold` 2e18 (that threshold only gates the empty V2 route anyway).
     /// @dev WHAT IS STILL MISSING on the mainnet registry, both admin-tier, both harmless until
     ///      dividends actually launch here:
-    ///        1. `setAdmin(REALM_DEV, true)` — `REALM_DEV` is the OWNER but is not an admin, and every
-    ///           operational lever (`setBlacklisted`, `setAllowedQuoteToken`, the thresholds) is
-    ///           admin-only. Until then a payout asset that turns hostile cannot be vetoed.
+    ///        1. `setAdmin(...)` — the registry OWNER (the DEPRECATED deployer key, not the current
+    ///           `REALM_DEV`; it predates the rotation) is not an admin, and every operational lever
+    ///           (`setBlacklisted`, `setAllowedQuoteToken`, the thresholds) is admin-only. Until then a
+    ///           payout asset that turns hostile cannot be vetoed.
     ///        2. `setKeeperFunding(REALM_KEEPER)` — unset, so a conversion hands the keeper no gas money.
     ///      Only a V3 route's MIDDLE hops are allowlisted against `isAllowedQuoteToken` (USDG is not in
     ///      it today); every route the picker generates for an xStock is V4, whose hops are not checked
     ///      against that set, so this matters only if a V3 venue is ever used.
 
     // --- Accounts ---
-    address internal constant REALM_DEV = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
+    /// @notice The `realm.dev` deployer keystore: the broadcaster of every deploy script and the initial
+    ///         owner of everything they deploy.
+    /// @dev Rotated from the now-deprecated `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb`, which is what the
+    ///      `deprecated.realm.dev` keystore holds. That old key still owns the contracts deployed before the
+    ///      rotation — `REALM_KEEPERS_REGISTRY` and `DIVIDEND_SWAP_REGISTRY` in `DeploymentAddresses.sol` —
+    ///      so their `setAdmin` / `transferOwnership` must still be signed with it.
+    address internal constant REALM_DEV = 0x81f7D06a88223f5a2850411E72256AacC9E27035;
     address internal constant REALM_TOKEN_DEPLOYER = address(0);
     /// @notice The keeper lambda's EOA (see the Sepolia manifest). `address(0)` until configured here.
     address internal constant REALM_KEEPER = address(0);

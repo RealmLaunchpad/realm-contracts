@@ -48,7 +48,7 @@ contract UpgradeRealmFactories is Script {
 
     /// @dev Deploys both factory implementations from `m` and repoints the proxies. Inside a broadcast.
     ///      Takes the manifest as a parameter so a caller can substitute freshly deployed dependencies
-    ///      (see `RedeployTaxTokenImpls`) without a paste-and-rerun in between.
+    ///      (see `RedeployTokenImpls`) without a paste-and-rerun in between.
     function _upgradeFactories(ChainConfig.Manifest memory m) internal returns (address v2Impl, address v4Impl) {
         RealmFactoryUniV4Unified.V4TierConfig memory v4Tier = ChainConfig.v4TierConfig();
         v4Tier.graduators =

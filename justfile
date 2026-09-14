@@ -258,6 +258,39 @@ upgrade-lp-fee-router-rh-testnet: chain-rh-testnet
     forge script UpgradeSwapLpFeeRouter --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Deploys RealmVoting (impl + UUPS proxy) for an existing REALM token: round 1 opens at deploy, 3-day
+# rounds (override with VOTING_ROUND_DURATION seconds), VOTE_BUYBACK_WALLET appointed admin where the
+# chain names one. The token's master must have burnFrom (redeploy-token-impls first if it predates it).
+# Paste the printed VOTING / VOTING_IMPL into the manifest, then deploy-treasury-router. Dry-run first:
+# same command without --broadcast, plus --sender <realm.dev address>.
+deploy-voting-sepolia realm_token: chain-sepolia
+    REALM_TOKEN={{realm_token}} forge script DeployRealmVoting --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+deploy-voting-rh realm_token: chain-rh
+    REALM_TOKEN={{realm_token}} forge script DeployRealmVoting --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+deploy-voting-rh-testnet realm_token: chain-rh-testnet
+    REALM_TOKEN={{realm_token}} forge script DeployRealmVoting --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
+# Puts RealmTreasuryRouter in front of the treasury: deploys its impl + proxy (2/3 to the team treasury,
+# 1/3 to the manifest's VOTING, which must be live), then a SwapLpFeeRouter impl pointing at the new
+# proxy, upgrades LP_FEE_ROUTER onto it and repoints LAUNCHPAD.treasury(). Broadcaster must own the
+# launchpad and the LP router proxy. Paste the printed slots into the manifest, set REALM_TREASURY to
+# the proxy in DeploymentAddresses, `just export-deployments`. Dry-run first: same command without
+# --broadcast, plus --sender <realm.dev address>.
+deploy-treasury-router-sepolia: chain-sepolia
+    forge script DeployRealmTreasuryRouter --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+deploy-treasury-router-rh: chain-rh
+    forge script DeployRealmTreasuryRouter --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+deploy-treasury-router-rh-testnet: chain-rh-testnet
+    forge script DeployRealmTreasuryRouter --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
 # Redeploys the V2 graduator and the three per-tier V4 graduators from the current build and rewires
 # the live factories to them (new factory impls, proxies repointed) in ONE run — for a graduation policy
 # change on a chain whose stack is already live. Paste the six printed slots into the manifest and
@@ -273,16 +306,16 @@ redeploy-graduators-rh-testnet: chain-rh-testnet
     forge script RedeployGraduators --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Redeploys the two taxable token masters from the current build and rewires the live factories to
-# them (new factory impls, proxies repointed) in ONE run — for a master that has to change on a chain
-# whose stack is already live. Tokens already created keep the old master. Paste the four printed
+# Redeploys the three token masters (base + two taxable) from the current build and rewires the live
+# factories to them (new factory impls, proxies repointed) in ONE run — for a master that has to change
+# on a chain whose stack is already live. Tokens already created keep the old master. Paste the five printed
 # slots into the manifest and `just export-deployments` afterwards. Dry-run first: the same command
 # without --broadcast, plus --sender <realm.dev address> so the proxy-owner checks pass in simulation.
-redeploy-tax-impls-sepolia: chain-sepolia
-    forge script RedeployTaxTokenImpls --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+redeploy-token-impls-sepolia: chain-sepolia
+    forge script RedeployTokenImpls --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
-redeploy-tax-impls-rh-testnet: chain-rh-testnet
-    forge script RedeployTaxTokenImpls --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+redeploy-token-impls-rh-testnet: chain-rh-testnet
+    forge script RedeployTokenImpls --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Appoints the admin and the keeper on BOTH registries (keepers + dividend swap), which ship empty from

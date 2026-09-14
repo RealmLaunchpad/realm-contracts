@@ -314,8 +314,18 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0x914e8A6fcA2af6E8Cf4434d1D50234fC89CdF2Ec;
-    /// @notice Realm Treasury. Consumed by core contracts at deploy time.
-    address public constant REALM_TREASURY = 0x7826AaE926AfD2886257976770e93e0240D2426e;
+    /// @notice The treasury before `TEAM_TREASURY`. Still baked into the deployed `SWAP_HOOK`'s fallback
+    ///         and into the pre-upgrade `SwapLpFeeRouter` impl, so funds can keep landing here; kept so
+    ///         nobody forgets to sweep it.
+    address public constant LEGACY_TREASURY = 0x7826AaE926AfD2886257976770e93e0240D2426e;
+    /// @notice Team treasury multisig: the 2/3 leg of `RealmTreasuryRouter`.
+    address public constant TEAM_TREASURY = 0x24CF0733F2b6F9407ab34E2BE9059C16A33cFE8D;
+    /// @notice Ops wallet that pulls each round's 1/3 from `RealmVoting` (`processWinner`) and buys the
+    ///         winner. Set as a voting admin at deploy.
+    address public constant VOTE_BUYBACK_WALLET = 0x636A44e110a79d2a799BFe2F79ABdF9D6C2CE0A6;
+    /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
+    ///         lands on. The team multisig until `RealmTreasuryRouter` is live, then that proxy.
+    address public constant REALM_TREASURY = TEAM_TREASURY;
 }
 
 /// @title Deployment Address Constants for Robinhood Chain Testnet (chain id 46630)
@@ -416,9 +426,10 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0x7480e46B8f6B3a8d9137F72b3006f7FBfA088ECf;
-    /// @notice Realm Treasury. TEMPORARY: the `realm.dev` EOA stands in until Realm has its own
-    ///         treasury — replace before production. Consumed by core contracts at deploy time.
-    address public constant REALM_TREASURY = 0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb;
+    /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
+    ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
+    ///         2026-09-14; the `realm.dev` EOA before that.
+    address public constant REALM_TREASURY = 0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B;
 }
 
 /// @title Deployment Address Constants for ARC Chain Mainnet (chain id 5042)
