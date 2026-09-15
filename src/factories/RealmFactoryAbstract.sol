@@ -11,11 +11,9 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmLaunchpad} from "src/interfaces/IRealmLaunchpad.sol";
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
-import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {IRealmMasterFeeHandler} from "src/interfaces/IRealmMasterFeeHandler.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmCreatorVaultFactory} from "src/interfaces/IRealmCreatorVaultFactory.sol";
-import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {
     IRealmTaxableToken,
     TaxConfigInit,
@@ -26,7 +24,13 @@ import {
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 
-/// @notice Abstract base for Realm token factories. Holds shared state and helper logic.
+/// @notice Abstract base for EVERY Realm token factory: the parts that do not depend on how the token
+///         is brought to market. Input validation, the deterministic clone + vanity-suffix rule, impl
+///         dispatch, creator vaults, fee registration and the shared events all live here.
+/// @dev    What is deliberately NOT here is the bonding curve. A curve is one venue's answer to "how
+///         does supply reach the market", and `RealmFactoryCurveAbstract` is the layer that holds it —
+///         the curve immutables, curve resolution, `LAUNCHPAD.launchToken()` and the launchpad deploy
+///         buy. `RealmFactoryUniV4Direct` skips that layer entirely: it seeds a pool instead.
 /// @dev    UUPS-upgradeable. The implementation contract sets its immutables in the constructor
 ///         (baked into bytecode) and calls `_disableInitializers()` to prevent direct init.
 ///         Proxies must call `initialize()` exactly once to claim ownership. Upgrade authorisation
@@ -59,8 +63,6 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     IRealmLaunchpad public immutable LAUNCHPAD;
     /// @notice Graduator contract that handles token graduation to Uniswap
     IRealmGraduator public immutable GRADUATOR;
-    /// @notice Bonding curve used for token pricing before graduation
-    IRealmBondingCurve public immutable BONDING_CURVE;
     /// @notice Master fee handler for all token fee routing
     IRealmMasterFeeHandler public immutable MASTER_FEE_HANDLER;
 
@@ -73,37 +75,6 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
 
     /// @notice Factory that deploys the per-token creator-vault clones.
     IRealmCreatorVaultFactory public immutable CREATOR_VAULT_FACTORY;
-
-    /// @notice DEFAULT-tier bonding curves used when creator vaults lock 5%/10%/15%/20%/25%/30% of supply.
-    ///         Each keeps every graduation invariant identical to `BONDING_CURVE`; only the starting
-    ///         market cap is relaxed. Selected by `(tier, totalBps)` in `_resolveBondingCurve`.
-    IRealmBondingCurve public immutable VAULT_CURVE_5;
-    IRealmBondingCurve public immutable VAULT_CURVE_10;
-    IRealmBondingCurve public immutable VAULT_CURVE_15;
-    IRealmBondingCurve public immutable VAULT_CURVE_20;
-    IRealmBondingCurve public immutable VAULT_CURVE_25;
-    IRealmBondingCurve public immutable VAULT_CURVE_30;
-
-    /// @notice THIN-tier curves (1.75 ETH liquidity, 6.125 ETH graduation mcap): the no-vault curve
-    ///         plus the six vault curves. Same graduation invariants as the rest of the tier; only the
-    ///         starting market cap is relaxed as supply is locked.
-    IRealmBondingCurve public immutable THIN_CURVE_BASE;
-    IRealmBondingCurve public immutable THIN_VAULT_CURVE_5;
-    IRealmBondingCurve public immutable THIN_VAULT_CURVE_10;
-    IRealmBondingCurve public immutable THIN_VAULT_CURVE_15;
-    IRealmBondingCurve public immutable THIN_VAULT_CURVE_20;
-    IRealmBondingCurve public immutable THIN_VAULT_CURVE_25;
-    IRealmBondingCurve public immutable THIN_VAULT_CURVE_30;
-
-    /// @notice THICK-tier curves (7.0 ETH liquidity, 24.5 ETH graduation mcap): the no-vault curve
-    ///         plus the six vault curves.
-    IRealmBondingCurve public immutable THICK_CURVE_BASE;
-    IRealmBondingCurve public immutable THICK_VAULT_CURVE_5;
-    IRealmBondingCurve public immutable THICK_VAULT_CURVE_10;
-    IRealmBondingCurve public immutable THICK_VAULT_CURVE_15;
-    IRealmBondingCurve public immutable THICK_VAULT_CURVE_20;
-    IRealmBondingCurve public immutable THICK_VAULT_CURVE_25;
-    IRealmBondingCurve public immutable THICK_VAULT_CURVE_30;
 
     /// @notice Cap on the aggregate fee a swapper pays (LP fee + tax), in basis points. Fixed at 5%.
     ///         Enforced per call by `_validateTotalFee`. The tax headroom is venue-dependent because
@@ -130,49 +101,23 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     /// @dev    Immutables are read from the implementation's bytecode through delegatecall, so they
     ///         work transparently behind the UUPS proxy. To change any of them, deploy a new impl
     ///         with different constructor args and call `upgradeTo` on the proxy.
+    /// @param launchpad Launchpad tokens are registered with. `address(0)` on a venue that has none —
+    ///        the direct-launch factory — which is what makes the token's mint target fall back to its
+    ///        graduator and keeps the launchpad's infinite allowance out of that venue entirely.
     /// @param creatorVaultFactory Factory that deploys creator-vault clones
-    /// @param vaultBondingCurves The six DEFAULT-tier allocation-specific bonding curves, ordered
-    ///        [5%, 10%, 15%, 20%, 25%, 30%]
-    /// @param tierConfig The THIN + THICK tier curve sets (`thin`/`thick`, each `base` + `vaults`).
     constructor(
         address launchpad,
         TokenImpls memory impls,
-        address bondingCurve,
         address graduator,
         address masterFeeHandler,
-        address creatorVaultFactory,
-        address[6] memory vaultBondingCurves,
-        LiquidityTierConfig memory tierConfig
+        address creatorVaultFactory
     ) {
         LAUNCHPAD = IRealmLaunchpad(launchpad);
-        BONDING_CURVE = IRealmBondingCurve(bondingCurve);
         GRADUATOR = IRealmGraduator(graduator);
         MASTER_FEE_HANDLER = IRealmMasterFeeHandler(masterFeeHandler);
         TOKEN_IMPL_BASE = impls.base;
         TOKEN_IMPL_TAX = impls.tax;
         CREATOR_VAULT_FACTORY = IRealmCreatorVaultFactory(creatorVaultFactory);
-        VAULT_CURVE_5 = IRealmBondingCurve(vaultBondingCurves[0]);
-        VAULT_CURVE_10 = IRealmBondingCurve(vaultBondingCurves[1]);
-        VAULT_CURVE_15 = IRealmBondingCurve(vaultBondingCurves[2]);
-        VAULT_CURVE_20 = IRealmBondingCurve(vaultBondingCurves[3]);
-        VAULT_CURVE_25 = IRealmBondingCurve(vaultBondingCurves[4]);
-        VAULT_CURVE_30 = IRealmBondingCurve(vaultBondingCurves[5]);
-
-        THIN_CURVE_BASE = IRealmBondingCurve(tierConfig.thin.base);
-        THIN_VAULT_CURVE_5 = IRealmBondingCurve(tierConfig.thin.vaults[0]);
-        THIN_VAULT_CURVE_10 = IRealmBondingCurve(tierConfig.thin.vaults[1]);
-        THIN_VAULT_CURVE_15 = IRealmBondingCurve(tierConfig.thin.vaults[2]);
-        THIN_VAULT_CURVE_20 = IRealmBondingCurve(tierConfig.thin.vaults[3]);
-        THIN_VAULT_CURVE_25 = IRealmBondingCurve(tierConfig.thin.vaults[4]);
-        THIN_VAULT_CURVE_30 = IRealmBondingCurve(tierConfig.thin.vaults[5]);
-
-        THICK_CURVE_BASE = IRealmBondingCurve(tierConfig.thick.base);
-        THICK_VAULT_CURVE_5 = IRealmBondingCurve(tierConfig.thick.vaults[0]);
-        THICK_VAULT_CURVE_10 = IRealmBondingCurve(tierConfig.thick.vaults[1]);
-        THICK_VAULT_CURVE_15 = IRealmBondingCurve(tierConfig.thick.vaults[2]);
-        THICK_VAULT_CURVE_20 = IRealmBondingCurve(tierConfig.thick.vaults[3]);
-        THICK_VAULT_CURVE_25 = IRealmBondingCurve(tierConfig.thick.vaults[4]);
-        THICK_VAULT_CURVE_30 = IRealmBondingCurve(tierConfig.thick.vaults[5]);
         _disableInitializers();
     }
 
@@ -187,52 +132,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     /// @dev UUPS upgrade gate: only the owner can swap the implementation.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    /// @notice Max tokens a deploy buy can purchase for a given liquidity tier and total creator-vault
-    ///         allocation. Buying this amount pushes the curve to exactly its graduation threshold, so the
-    ///         token graduates in the same `createToken` tx while staying clear of `maxExcessOverThreshold`
-    ///         — a deploy buy sized at or below it never reverts `MaxEthReservesExceeded`. There is no other
-    ///         cap on the deploy buy; graduation is the limit. Frontends read this to bound the deploy-buy
-    ///         token amount, then price it with `quoteBuyOnDeploy`.
-    /// @param totalLockedInVaultsBps Sum of `supplyBps` across the creator vaults (0 for none); selects the
-    ///        same curve `createToken` uses. Reverts `InvalidCreatorVault` if not a valid multiple in range.
-    function maxBuyOnDeploy(LiquidityTier tier, uint256 totalLockedInVaultsBps)
-        external
-        view
-        returns (uint256 maxTokens)
-    {
-        IRealmBondingCurve curve = _resolveBondingCurve(tier, totalLockedInVaultsBps);
-        (maxTokens,) = curve.buyTokensWithExactEth(0, curve.ethGraduationThreshold());
-    }
-
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
-
-    /// @dev Shared body for the concrete factories' `quoteBuyOnDeploy`: total ETH (including the
-    ///      inverse buy fee) needed to buy `tokenAmount` from the curve `totalLockedInVaultsBps`
-    ///      selects. `buyFeeBps` is the pre-graduation buy fee the launchpad will charge (LP fee + buy
-    ///      tax); each factory's public `quoteBuyOnDeploy` derives it from the venue config + tax the
-    ///      deployer will pass to `createToken` — the token doesn't exist at quote time, so the fee is
-    ///      computed from those inputs rather than read from the token. Pass the SUM of `supplyBps`
-    ///      across the vaults (0 for a non-vault token); only the aggregate matters (it keys the curve),
-    ///      so vault owners/vesting need not be finalized to quote. The only bound on `tokenAmount` is
-    ///      graduation: keep it at or below `maxBuyOnDeploy(tier, totalLockedInVaultsBps)`, else the
-    ///      resulting buy reverts `MaxEthReservesExceeded`. Reverts (`InvalidCreatorVault`) on a
-    ///      `totalLockedInVaultsBps` no vault array could sum to; a `buyFeeBps >= BASIS_POINTS` reverts
-    ///      on the subtraction below (nonsensical input).
-    function _quoteBuyOnDeploy(
-        LiquidityTier tier,
-        uint256 tokenAmount,
-        uint256 totalLockedInVaultsBps,
-        uint256 buyFeeBps
-    ) internal view returns (uint256 totalEthNeeded) {
-        require(
-            totalLockedInVaultsBps <= MAX_CREATOR_VAULT_TOTAL_BPS
-                && totalLockedInVaultsBps % CREATOR_VAULT_BPS_STEP == 0,
-            InvalidCreatorVault()
-        );
-        (uint256 ethForReserves,) = _resolveBondingCurve(tier, totalLockedInVaultsBps).buyExactTokens(0, tokenAmount);
-        uint256 denom = BASIS_POINTS - buyFeeBps;
-        totalEthNeeded = (ethForReserves * BASIS_POINTS + denom - 1) / denom;
-    }
 
     /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0,
     ///      sum == 10 000, and at most one entry has `directFeesEnabled = true`. The factory caps
@@ -287,16 +187,13 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         require(total == BASIS_POINTS, InvalidShares());
     }
 
-    /// @dev Buys supply with `msg.value` and distributes it to `supplyShares` proportionally.
-    ///      Rounding dust goes to the last recipient so no tokens remain in the factory. There is no
-    ///      per-deploy buy cap: the buy is bounded only by graduation — the launchpad/curve accept ETH
-    ///      up to `graduationThreshold + maxExcessOverThreshold` and revert `MaxEthReservesExceeded`
-    ///      beyond it (a buy that reaches the threshold graduates the token in this same tx). Use
-    ///      `maxBuyOnDeploy` to size a buy up to the instant-graduation point without risking that revert.
-    /// @dev deployer-buy receivers bypass the sniper-protection features
-    function _buyAndDistribute(address token, SupplyShare[] calldata supplyShares) internal {
-        uint256 tokensBought = LAUNCHPAD.buyTokensWithExactEth{value: msg.value}(token, 0, block.timestamp);
-
+    /// @dev Splits `tokensBought` across `supplyShares` proportionally and emits `BuyOnDeploy`.
+    ///      Rounding dust goes to the last recipient so no tokens remain in the factory.
+    /// @dev Shared by both venues because the split — and the event an indexer reads it from — must be
+    ///      identical however the tokens were acquired: off a bonding curve on the curve factories, out
+    ///      of the launch pool on the direct one.
+    /// @dev deployer-buy receivers bypass the sniper-protection features (`from == tokenFactory`).
+    function _distributeDeployBuy(address token, SupplyShare[] calldata supplyShares, uint256 tokensBought) internal {
         uint256 len = supplyShares.length;
         address[] memory recipients = new address[](len);
         uint256[] memory amounts = new uint256[](len);
@@ -347,79 +244,6 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         }
     }
 
-    /// @dev Shared postamble: asks the token to self-register its fee config with the master
-    ///      handler, then performs the deployer buy (if any). Event order: `SharesUpdated` fires
-    ///      strictly after `TokenLaunched`, and the deployer buy events fire last.
-    function _finalizeCreation(address token, FeeShare[] memory feeReceivers, SupplyShare[] calldata supplyShares)
-        internal
-    {
-        IRealmToken(token).registerFees(feeReceivers);
-        if (msg.value > 0) _buyAndDistribute(token, supplyShares);
-    }
-
-    /// @dev Single shared `createToken` body called by both `createToken` overloads on each unified
-    ///      factory (legacy positional + tiered struct-based). Centralises validation → dispatch →
-    ///      launch → finalize so both signatures emit the exact same events in the same order.
-    ///      Takes structs (not flat args) so future fields can be added to `TokenSetupTiered`/configs
-    ///      without growing this function's stack frame. Callers derive `tokenOwner` per their
-    ///      venue policy (V2: always `address(0)`; V4: `msg.sender` unless renounced).
-    ///
-    ///      `graduator` is passed in by the caller (instead of read from the `GRADUATOR` immutable)
-    ///      so V4 can pick the graduator matching the token's liquidity tier. V2 has a single graduator
-    ///      and always passes `address(GRADUATOR)`. `swapLpFeeBps` is the per-swap LP fee the
-    ///      post-graduation `RealmSwapHook` charges, stored on the token and surfaced via `getSwapFees`:
-    ///      0 for V2 (no hook LP fee), 50 or 100 for V4. A single hook reads it from the token, so one
-    ///      V4 graduator per tier serves both fee tiers.
-    /// @dev `tokenSetup` is `memory` so the legacy positional overload — whose ABI takes flat
-    ///      calldata args — can build a `TokenSetupTiered` in memory and call this same umbrella. The
-    ///      string/`FeeShare[]` propagation forces `_validateInputs`/`_validateNameSymbol`/
-    ///      `_validateFeeShares`/`_dispatchAndInitialize`/`_cloneAndCreateToken`/`_finalizeCreation`
-    ///      to accept `memory` for those fields too. Once the legacy overload is removed, switch
-    ///      `tokenSetup` (and the cascaded fields) back to `calldata` to skip the one-time copy
-    ///      (~100–250 gas/deploy).
-    function _createToken(
-        TokenSetupTiered memory tokenSetup,
-        address tokenOwner,
-        address graduator,
-        uint16 swapLpFeeBps,
-        SupplyShare[] calldata buyOnDeployShares,
-        TaxConfigs memory taxConfigs,
-        AntiSniperConfigs calldata antiSniperConfigs,
-        CreatorVault[] memory creatorVaults
-    ) internal returns (address token) {
-        _validateInputs(tokenSetup.name, tokenSetup.symbol, tokenSetup.feeShares, buyOnDeployShares);
-        _validateAntiSniperConfig(antiSniperConfigs);
-        _validateTaxConfig(taxConfigs);
-
-        // Creator vaults: validate and pick the allocation-specific bonding curve. `vaultAllocation`
-        // is minted to this factory by the token initializer; everything else (`TOTAL_SUPPLY -
-        // vaultAllocation`) is minted to the launchpad and sold on the resolved curve.
-        (uint256 totalLockedInVaultsBps, uint256 vaultAllocation) = _validateCreatorVaults(creatorVaults);
-        IRealmBondingCurve bondingCurve = _resolveBondingCurve(tokenSetup.liquidityTier, totalLockedInVaultsBps);
-
-        token = _dispatchAndInitialize(
-            tokenSetup.name,
-            tokenSetup.symbol,
-            tokenSetup.salt,
-            tokenOwner,
-            graduator,
-            swapLpFeeBps,
-            vaultAllocation,
-            taxConfigs,
-            antiSniperConfigs
-        );
-
-        LAUNCHPAD.launchToken(token, bondingCurve);
-        emit BondingCurveAssigned(token, address(bondingCurve));
-
-        // Deploy + fund the vaults BEFORE the deployer buy so the factory ends the tx holding no
-        // tokens. The factory→vault transfers are exempt from sniper caps (`from == tokenFactory`).
-        if (vaultAllocation > 0) _deployAndFundVaults(token, creatorVaults, vaultAllocation);
-
-        // buy-on-deploy executes after the vaults are deployed and funded
-        _finalizeCreation(token, tokenSetup.feeShares, buyOnDeployShares);
-    }
-
     /// @dev Validates the creator-vault array and returns the aggregate allocation.
     ///      Rules: at most `MAX_CREATOR_VAULTS` vaults; each `owner != 0`; each `supplyBps` a
     ///      non-zero multiple of `CREATOR_VAULT_BPS_STEP` (5%); the SUM `<= MAX_CREATOR_VAULT_TOTAL_BPS`
@@ -448,40 +272,6 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
 
         require(totalBps <= MAX_CREATOR_VAULT_TOTAL_BPS, CreatorVaultAllocationTooHigh());
         vaultAllocation = TOTAL_SUPPLY * totalBps / BASIS_POINTS;
-    }
-
-    /// @dev Maps a `(liquidity tier, total locked allocation)` pair to the matching bonding curve.
-    ///      `totalBps == 0` uses the tier's no-vault curve (the deployed base curve for DEFAULT);
-    ///      otherwise it is guaranteed by `_validateCreatorVaults` to be a multiple of 500 in
-    ///      [500, 3000]. The explicit final branches + `else` revert make this a total function, so any
-    ///      unexpected value fails loudly instead of silently defaulting to a curve.
-    function _resolveBondingCurve(LiquidityTier tier, uint256 totalBps) internal view returns (IRealmBondingCurve) {
-        if (tier == LiquidityTier.DEFAULT) {
-            if (totalBps == 0) return BONDING_CURVE;
-            if (totalBps == 500) return VAULT_CURVE_5;
-            if (totalBps == 1000) return VAULT_CURVE_10;
-            if (totalBps == 1500) return VAULT_CURVE_15;
-            if (totalBps == 2000) return VAULT_CURVE_20;
-            if (totalBps == 2500) return VAULT_CURVE_25;
-            if (totalBps == 3000) return VAULT_CURVE_30;
-        } else if (tier == LiquidityTier.THIN) {
-            if (totalBps == 0) return THIN_CURVE_BASE;
-            if (totalBps == 500) return THIN_VAULT_CURVE_5;
-            if (totalBps == 1000) return THIN_VAULT_CURVE_10;
-            if (totalBps == 1500) return THIN_VAULT_CURVE_15;
-            if (totalBps == 2000) return THIN_VAULT_CURVE_20;
-            if (totalBps == 2500) return THIN_VAULT_CURVE_25;
-            if (totalBps == 3000) return THIN_VAULT_CURVE_30;
-        } else if (tier == LiquidityTier.THICK) {
-            if (totalBps == 0) return THICK_CURVE_BASE;
-            if (totalBps == 500) return THICK_VAULT_CURVE_5;
-            if (totalBps == 1000) return THICK_VAULT_CURVE_10;
-            if (totalBps == 1500) return THICK_VAULT_CURVE_15;
-            if (totalBps == 2000) return THICK_VAULT_CURVE_20;
-            if (totalBps == 2500) return THICK_VAULT_CURVE_25;
-            if (totalBps == 3000) return THICK_VAULT_CURVE_30;
-        }
-        revert InvalidCreatorVault();
     }
 
     /// @dev Deploys one `RealmCreatorVault` per entry via the vault factory and funds each with its

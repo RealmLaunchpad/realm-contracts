@@ -11,6 +11,7 @@ import {
     EarningsAllocationMultiConfig,
     IRealmTaxableToken
 } from "src/interfaces/IRealmTaxableToken.sol";
+import {RealmFactoryCurveAbstract} from "src/factories/RealmFactoryCurveAbstract.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
@@ -20,7 +21,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///
 ///         Replaces `RealmFactoryUniV4`, `RealmFactoryTaxToken`, `RealmFactoryUniV4SniperProtected`,
 ///         and `RealmFactoryTaxTokenSniperProtected`.
-contract RealmFactoryUniV4Unified is RealmFactoryAbstract {
+contract RealmFactoryUniV4Unified is RealmFactoryCurveAbstract {
     /// @notice V4-specific config bundle for the struct-based `createToken` overload.
     /// @dev `lpFeeBps` is the per-swap LP fee `RealmSwapHook` charges post-graduation. It is stored on
     ///      the token (via `InitializeParams.swapLpFeeBps`) and read back by the hook through
@@ -76,7 +77,7 @@ contract RealmFactoryUniV4Unified is RealmFactoryAbstract {
         address[6] memory vaultBondingCurves,
         V4TierConfig memory v4Tier
     )
-        RealmFactoryAbstract(
+        RealmFactoryCurveAbstract(
             launchpad,
             impls,
             bondingCurve,
