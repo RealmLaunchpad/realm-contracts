@@ -183,7 +183,7 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     mapping(PoolId => uint32) public pendingMask;
     /// @notice Where the next ring walk resumes. Rotates to avoid starvation; parks on the first unaffordable slot.
     mapping(PoolId => uint8) public payCursor;
-    // Gas forwarded to an ERC20 rewards push ({pushRewards}: self-call, transfer, `feedToken`). Kept below
+    // Gas forwarded to an ERC20 rewards push ({pushRewards}: self-call, two `balanceOf`, transfer, `feedToken`). Kept below
     // {PAY_FLOOR_FEED_TOKEN} so the catch always has gas for its `owed` fallback; an over-run only delays
     // booking, never loses funds. Tracker `feedToken` cost grows with a multi-basket's denomination count, so
     // re-check this cap against a realistic quote before raising a tracker's denomination limit.
@@ -2711,26 +2711,16 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         emit FeeCutPaid(id, to, quote, amt, uint8(slot), false);
     }
 
-    /// @dev Push for the rewards slot. On failure the slice is credited to the tracker, never the creator. For ERC20
-    /// the delivered amount is measured here, outside the forwarded {FEED_GAS_CAP_TOKEN} budget; a quote with a very
-    /// expensive `balanceOf` can exhaust this frame's reserve. Native needs no measurement.
+    /// @dev Push for the rewards slot. On failure the slice is credited to the tracker, never the creator. The delivered
+    /// amount is measured inside {pushRewards}, so a quote whose `balanceOf` reverts or burns gas for the tracker fails
+    /// into the catch like any other push instead of reverting the whole distribution.
     function _payRewardsSlot(PoolId id, address tracker, address quote, uint256 amt, bool native) internal {
-        uint256 before = native ? 0 : IERC20(quote).balanceOf(tracker);
-        try this.pushRewards{gas: _feedGasCap(native)}(tracker, quote, amt) {
-            uint256 delivered = amt;
-            if (!native) {
-                uint256 aft = IERC20(quote).balanceOf(tracker);
-                // Saturating: the tracker may move the quote onward, and a hostile quote must not over-report.
-                delivered = aft > before ? aft - before : 0;
-                if (delivered > amt) {
-                    delivered = amt;
-                }
-            }
+        try this.pushRewards{gas: _feedGasCap(native)}(tracker, quote, amt) returns (uint256 delivered) {
             emit RewardsRouted(id, tracker, delivered);
-            return;
-        } catch {}
-        // Nothing was delivered, so the full `amt` is still owed to the tracker.
-        owed[tracker][quote] += amt;
+        } catch {
+            // Nothing was delivered, so the full `amt` is still owed to the tracker.
+            owed[tracker][quote] += amt;
+        }
     }
 
     /// @notice Push whatever `id`'s payout ring can afford right now. Permissionless: money only goes to recorded payees.
@@ -2760,8 +2750,8 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     }
 
     /// @dev Transfer the rewards slice and let the tracker book its own measured increase. No amount is passed, since
-    /// a hostile quote could make any hook-side figure wrong.
-    function pushRewards(address tracker, address quote, uint256 amt) external {
+    /// a hostile quote could make any hook-side figure wrong. Returns what the transfer delivered, for the event only.
+    function pushRewards(address tracker, address quote, uint256 amt) external returns (uint256 delivered) {
         if (msg.sender != address(this)) {
             revert OnlySelf();
         }
@@ -2769,9 +2759,16 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         // credits the slice to `owed[tracker][address(0)]` for {pushOwed} to deliver.
         if (quote == address(0)) {
             IDividendFeeder(tracker).feed{value: amt}();
-            return;
+            return amt;
         }
+        uint256 before = IERC20(quote).balanceOf(tracker);
         IERC20(quote).safeTransfer(tracker, amt);
+        uint256 aft = IERC20(quote).balanceOf(tracker);
+        // Saturating: a hostile quote must not over-report.
+        delivered = aft > before ? aft - before : 0;
+        if (delivered > amt) {
+            delivered = amt;
+        }
         // Booking is best-effort; the transfer must stand. If `feedToken` fails (e.g. the tracker is reentrancy-locked)
         // the quote is already at the tracker, and its permissionless `sync()` books it later.
         try IDividendFeederToken(tracker).feedToken(0) {} catch {} // arg ignored; the tracker measures itself

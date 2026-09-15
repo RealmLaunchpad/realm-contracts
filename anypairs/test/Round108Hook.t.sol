@@ -16,6 +16,22 @@ import {RealmAnyPairsTokenPlain} from "src/RealmAnyPairsTokenPlain.sol";
 import {RealmAnyPairsDividendTrackerAutoBasket as AB} from "src/RealmAnyPairsDividendTrackerAutoBasket.sol";
 import {R106Token} from "./Round106.t.sol";
 
+/// @dev A quote that reverts `balanceOf` for one address, as a compliance-gated token does for a blacklisted one.
+contract BlockingQuote is R106Token {
+    address public blocked;
+
+    constructor() R106Token("BQ") {}
+
+    function blockAddress(address a) external {
+        blocked = a;
+    }
+
+    function balanceOf(address a) public view override returns (uint256) {
+        require(a != blocked, "blocked");
+        return super.balanceOf(a);
+    }
+}
+
 /// @notice The tax hook converts an auto-basket tracker's pending pool, and then pushes the result, at the end of
 /// ordinary swaps -- no keeper.
 contract Round108HookTest is Test {
@@ -132,6 +148,21 @@ contract Round108HookTest is Test {
 
         _buy(key);
         assertGt(stock.balanceOf(alice), 0.99e18, "the next swap pushed it to her, in-swap");
+    }
+
+    function test_aQuoteWhoseBalanceOfRevertsForTheTrackerFallsBackToOwed() public {
+        BlockingQuote bq = new BlockingQuote();
+        quote = bq;
+        quote.mint(address(this), 1e36);
+        quote.approve(address(lp), type(uint256).max);
+        quote.approve(address(swapper), type(uint256).max);
+        AB t = _autoTracker();
+        bq.blockAddress(address(t));
+        PoolKey memory key = _launch(address(t));
+        _buy(key);
+        assertGt(hook.accruedQuote(key.toId()), 0);
+        hook.distribute(key.toId()); // must not revert on the tracker's blocked `balanceOf`
+        assertGt(hook.owed(address(t), address(quote)), 0, "the rewards slice fell back to the pull ledger");
     }
 
     function test_aPlainRewardsPoolIsNotFlagged() public {
