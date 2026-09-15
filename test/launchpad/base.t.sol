@@ -36,6 +36,8 @@ import {IWETH} from "src/interfaces/IWETH.sol";
 import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {SwapLpFeeRouter} from "src/feeRouters/SwapLpFeeRouter.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
+import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
 
@@ -444,7 +446,7 @@ contract LaunchpadBaseTests is Test {
 
         vm.startPrank(admin);
         realmToken = new RealmToken();
-        realmTaxToken = new RealmTaxableTokenUniV4();
+        realmTaxToken = new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
 
         implementation = realmToken;
         launchpad = new RealmLaunchpad(treasury, admin);

@@ -328,19 +328,19 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
     function test_extension_disownsTheTokenEntryPoints() public {
         RealmDividendLogicUniV2 extension = RealmDividendLogicUniV2(payable(realmTaxTokenV2.DIVIDEND_LOGIC()));
 
-        vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
+        vm.expectRevert(RealmTaxableToken.NotAToken.selector);
         extension.transfer(buyer, 1);
 
-        vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
+        vm.expectRevert(RealmTaxableToken.NotAToken.selector);
         extension.getTaxConfig();
 
-        vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
+        vm.expectRevert(RealmTaxableToken.NotAToken.selector);
         extension.markGraduated();
 
-        vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
+        vm.expectRevert(RealmTaxableToken.NotAToken.selector);
         extension.accrueFees{value: 0}();
 
-        vm.expectRevert(DividendDistributionLogic.NotAToken.selector);
+        vm.expectRevert(RealmTaxableToken.NotAToken.selector);
         extension.rescueTokens(DAI);
     }
 

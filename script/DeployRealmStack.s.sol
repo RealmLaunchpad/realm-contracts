@@ -17,6 +17,8 @@ import {RealmCreatorVaultFactory} from "src/vaults/RealmCreatorVaultFactory.sol"
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
+import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
@@ -221,7 +223,7 @@ contract DeployRealmStack is Script {
     function _deployTokenImpls() internal returns (Tokens memory t) {
         t.token = address(new RealmToken());
         t.taxV2 = address(new RealmTaxableTokenUniV2());
-        t.taxV4 = address(new RealmTaxableTokenUniV4());
+        t.taxV4 = address(new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4())));
     }
 
     function _deployFactories(

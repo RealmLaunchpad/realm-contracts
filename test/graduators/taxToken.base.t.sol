@@ -6,6 +6,8 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
+import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
@@ -35,7 +37,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
 
     function setUp() public virtual override {
         super.setUp();
-        taxTokenImpl = new RealmTaxableTokenUniV4();
+        taxTokenImpl = new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
 
         // Set graduator to tax-enabled version for tests
         graduator = graduatorV4;

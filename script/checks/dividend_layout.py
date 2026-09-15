@@ -22,6 +22,10 @@ OUT = pathlib.Path("out-layout")
 PAIRS = [
     ("RealmTaxableTokenUniV2", "RealmDividendLogicUniV2"),
     ("RealmTaxableTokenUniV4", "RealmDividendLogicUniV4"),
+    # The V4 token has TWO extensions, not one: the dividend machine and the buy-back/liquidity
+    # processors no longer fit in a single contract under EIP-170 once every buffer is keyed by quote.
+    # Both are `delegatecall`ed with the token's storage, so both have to match it.
+    ("RealmTaxableTokenUniV4", "RealmEarningsLogicUniV4"),
 ]
 
 

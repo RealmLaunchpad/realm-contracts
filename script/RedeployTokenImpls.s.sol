@@ -7,6 +7,8 @@ import {ChainConfig} from "script/ChainConfig.sol";
 import {BuildTarget} from "script/BuildTarget.sol";
 import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
+import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 
 /// @title Redeploy the token masters and rewire the live factories to them
@@ -41,7 +43,7 @@ contract RedeployTokenImpls is UpgradeRealmFactories {
         vm.startBroadcast();
         m.tokenImpl = address(new RealmToken());
         m.taxTokenV2Impl = address(new RealmTaxableTokenUniV2());
-        m.taxTokenV4Impl = address(new RealmTaxableTokenUniV4());
+        m.taxTokenV4Impl = address(new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4())));
         (address v2Impl, address v4Impl) = _upgradeFactories(m);
         vm.stopBroadcast();
 
