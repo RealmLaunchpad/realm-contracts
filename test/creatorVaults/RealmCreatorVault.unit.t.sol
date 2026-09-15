@@ -246,14 +246,24 @@ contract RealmCreatorVaultUnitTest is Test {
         vault.claim();
     }
 
-    function test_factory_createVault_emitsAndInitializes() public {
+    function _newFactory() internal returns (RealmCreatorVaultFactory) {
         address factoryImpl = address(new RealmCreatorVaultFactory(address(impl)));
-        RealmCreatorVaultFactory factory = RealmCreatorVaultFactory(
+        return RealmCreatorVaultFactory(
             address(new ERC1967Proxy(factoryImpl, abi.encodeCall(RealmCreatorVaultFactory.initialize, ())))
         );
+    }
+
+    /// @dev The factory pulls the allocation from the caller itself, so `CreatorVaultDeployed` always
+    ///      describes a funded vault — the property the indexer relies on to trust the event's amount.
+    function test_factory_createVault_fundsEmitsAndInitializes() public {
+        RealmCreatorVaultFactory factory = _newFactory();
+        uint256 before = token.balanceOf(address(this));
+        token.approve(address(factory), ALLOC);
 
         address vault = factory.createVault(address(token), owner, ALLOC, CLIFF, VESTING);
         RealmCreatorVault v = RealmCreatorVault(payable(vault));
+        assertEq(token.balanceOf(vault), ALLOC, "vault funded by the factory");
+        assertEq(token.balanceOf(address(this)), before - ALLOC, "pulled from the caller");
         assertEq(v.token(), address(token));
         assertEq(v.owner(), owner);
         assertEq(v.totalAllocation(), ALLOC);
@@ -261,6 +271,12 @@ contract RealmCreatorVaultUnitTest is Test {
         assertEq(v.vestingSeconds(), VESTING);
         assertEq(v.startTimestamp(), block.timestamp);
         assertEq(factory.VAULT_IMPLEMENTATION(), address(impl));
+    }
+
+    function test_factory_createVault_withoutAllowance_reverts() public {
+        RealmCreatorVaultFactory factory = _newFactory();
+        vm.expectRevert();
+        factory.createVault(address(token), owner, ALLOC, CLIFF, VESTING);
     }
 
     function testFuzz_vestedMonotonicAndBounded(uint256 cliff, uint256 vesting, uint256 t) public {
