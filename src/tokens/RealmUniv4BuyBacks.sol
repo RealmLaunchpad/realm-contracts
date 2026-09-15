@@ -9,8 +9,12 @@ import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 // The structs are field-identical but nominally distinct, so the canonical key is converted at
 // this periphery boundary via an abi round-trip (see `_buyBackTokensWithEth`).
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode) — see the justfile `_taxtoken` recipe.
@@ -25,8 +29,14 @@ import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/co
 ///      fiddly universal-router encoding in one place, reusable by every ETH→token buy-back use case
 ///      (burn today; dividends/liquidity later).
 abstract contract RealmUniv4BuyBacks {
+    using SafeERC20 for IERC20;
+
     /// @notice Universal router used for buy-back swaps.
     address public constant UNIV4_UNIVERSAL_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
+
+    /// @notice Permit2 — the only way the universal router pulls an ERC20. Untouched by the native
+    ///         buy-back, which settles from the forwarded value.
+    address public constant PERMIT2 = DeploymentAddresses.PERMIT2;
 
     /// @notice Universal-router command byte selecting a V4 swap.
     uint8 internal constant V4_SWAP_COMMAND = 0x10;
@@ -48,42 +58,77 @@ abstract contract RealmUniv4BuyBacks {
     /// @return ok false if the router reverted or the floor was unrepresentable. Either way — and on a
     ///         partial fill too — the native the pool did not take stays with this contract.
     function _buyBackTokensWithEth(address hook, uint256 ethIn, uint256 minTokensOut) internal returns (bool ok) {
-        // The router's params are `uint128`. `ethIn` is capped far below that by the per-call spend cap,
-        // but `minTokensOut` comes from whoever called the processor: truncating it would SILENTLY weaken
-        // the floor they asked for, so an unrepresentable one fails the swap instead. Same rule as
-        // `UniversalRouterVenue.swapNativeToAssetV4`.
-        if (minTokensOut > type(uint128).max || ethIn > type(uint128).max) return false;
+        return _buyBackTokens(hook, address(0), ethIn, minTokensOut);
+    }
+
+    /// @dev The general form: buys this token with `amountIn` of `quote` on the pool the two share.
+    ///      `quote == address(0)` is the chain's native currency and reproduces `_buyBackTokensWithEth`.
+    /// @dev Orientation is resolved from the key, not assumed: against native the token is always
+    ///      `currency1`, but against an ERC20 it sorts either way, so `zeroForOne` follows which side
+    ///      the QUOTE landed on.
+    /// @dev An ERC20 quote is settled through Permit2, the only way the universal router pulls one. The
+    ///      two approvals are granted on demand and left at their maximum: this token holds the quote on
+    ///      the protocol's behalf either way, and the router can only ever pull what a swap it is
+    ///      executing for this token actually owes.
+    function _buyBackTokens(address hook, address quote, uint256 amountIn, uint256 minTokensOut)
+        internal
+        returns (bool ok)
+    {
+        // The router's params are `uint128`. `amountIn` is capped far below that by the per-call spend
+        // cap, but `minTokensOut` comes from whoever called the processor: truncating it would SILENTLY
+        // weaken the floor they asked for, so an unrepresentable one fails the swap instead. Same rule
+        // as `UniversalRouterVenue.swapNativeToAssetV4`.
+        if (minTokensOut > type(uint128).max || amountIn > type(uint128).max) return false;
 
         // abi round-trip converts the canonical lib/v4-core key into v4-periphery's identical PoolKey.
-        PoolKey memory key = abi.decode(abi.encode(UniswapV4PoolConstants.realmPoolKey(address(this), hook)), (PoolKey));
+        PoolKey memory key =
+            abi.decode(abi.encode(UniswapV4PoolConstants.realmPoolKey(address(this), quote, hook)), (PoolKey));
+        bool quoteIsC0 = quote < address(this);
+        (Currency currencyIn, Currency currencyOut) =
+            quoteIsC0 ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
+
+        if (quote != address(0)) _approveRouterPull(quote);
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
             IV4Router.ExactInputSingleParams({
                 poolKey: key,
-                zeroForOne: true, // ETH (currency0) -> token (currency1)
-                amountIn: uint128(ethIn),
+                zeroForOne: quoteIsC0, // quote -> token, whichever way the pair sorted
+                amountIn: uint128(amountIn),
                 amountOutMinimum: uint128(minTokensOut),
                 hookData: bytes("")
             })
         );
-        params[1] = abi.encode(key.currency0, ethIn); // SETTLE_ALL native ETH
-        params[2] = abi.encode(key.currency1, minTokensOut); // TAKE_ALL token to this contract
+        params[1] = abi.encode(currencyIn, amountIn); // SETTLE_ALL the quote
+        params[2] = abi.encode(currencyOut, minTokensOut); // TAKE_ALL token to this contract
 
         bytes memory actions =
             abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL));
         bytes[] memory inputs = new bytes[](2);
         inputs[0] = abi.encode(actions, params);
-        // `SETTLE_ALL` settles the debt the swap ACTUALLY incurred, not `ethIn`. A pool that fills only
-        // partially — or not at all, which `amountOutMinimum == 0` lets through without a revert — leaves
-        // the rest sitting in the router, which never refunds on its own and which anyone may sweep. This
-        // brings it back here, so "no tokens bought" also means "the ETH is still ours".
-        inputs[1] = abi.encode(address(0), address(this), uint256(0)); // SWEEP native, no minimum
+        // `SETTLE_ALL` settles the debt the swap ACTUALLY incurred, not `amountIn`. A pool that fills
+        // only partially — or not at all, which `amountOutMinimum == 0` lets through without a revert —
+        // leaves the rest sitting in the router, which never refunds on its own and which anyone may
+        // sweep. This brings it back here, so "no tokens bought" also means "the quote is still ours".
+        inputs[1] = abi.encode(quote, address(this), uint256(0)); // SWEEP the quote, no minimum
 
-        (ok,) = UNIV4_UNIVERSAL_ROUTER.call{value: ethIn}(
+        (ok,) = UNIV4_UNIVERSAL_ROUTER.call{value: quote == address(0) ? amountIn : 0}(
             abi.encodeCall(
                 IUniversalRouter.execute, (abi.encodePacked(V4_SWAP_COMMAND, SWEEP_COMMAND), inputs, block.timestamp)
             )
         );
+    }
+
+    /// @dev Grants Permit2, and through it the universal router, the standing allowance an ERC20 settle
+    ///      needs. Read-then-write: after the first buy-back in a given quote both allowances are
+    ///      already at their maximum, and re-issuing them would cost two SSTOREs and two logs per call.
+    function _approveRouterPull(address quote) private {
+        if (IERC20(quote).allowance(address(this), PERMIT2) == 0) {
+            IERC20(quote).forceApprove(PERMIT2, type(uint256).max);
+        }
+        (uint160 allowed,,) = IAllowanceTransfer(PERMIT2).allowance(address(this), quote, UNIV4_UNIVERSAL_ROUTER);
+        if (allowed == 0) {
+            IAllowanceTransfer(PERMIT2).approve(quote, UNIV4_UNIVERSAL_ROUTER, type(uint160).max, type(uint48).max);
+        }
     }
 }

@@ -18,6 +18,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IRealmUniV4LiquidityAdder, RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {IRealmV4Graduator, RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
+import {WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 interface IERC721Minimal {
@@ -29,15 +30,11 @@ interface IERC721Minimal {
 ///         far below anything a Realm pool's tick range can produce, so the branch is mocked rather than
 ///         contrived.
 contract RefundingLiquidityAdderStub {
-    function addOrTopUpSingleSidedEth(
-        PoolKey calldata,
-        int24,
-        int24,
-        uint256[2] calldata,
-        int24[2] calldata,
-        address,
-        address
-    ) external payable returns (uint128, uint256, int24) {
+    function addOrTopUpSingleSided(PoolKey calldata, WallParams calldata, uint256[2] calldata, int24[2] calldata)
+        external
+        payable
+        returns (uint128, uint256, int24)
+    {
         (bool sent,) = msg.sender.call{value: msg.value}("");
         require(sent, "refund failed");
         return (0, 0, 0);

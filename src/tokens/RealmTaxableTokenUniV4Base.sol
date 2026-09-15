@@ -66,47 +66,63 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     ///      price-pumping manipulator can steer an add.
     int24 internal constant LIQUIDITY_WALL_REUSE_MAX_GAP = 10 * UniswapV4PoolConstants.TICK_SPACING;
 
+    /// @notice Share of an ERC20 quote's buffer one `processBurn` / `processLiquidity` call may spend,
+    ///         in bps. The unit-free counterpart of `MAX_EARNINGS_PER_PROCESS`, which is denominated in
+    ///         the chain's native currency and therefore means nothing for a quote the creator picked.
+    /// @dev 25% does the same job an absolute cap does: it forces a price-manipulation sandwich to
+    ///      re-pay its pump every block for a geometrically shrinking prize, while an honest keeper just
+    ///      drains in a handful of batches. It is the SECOND bound either way — the keeper gate is what
+    ///      actually stops a caller choosing their own slippage floor around their own manipulation.
+    uint256 internal constant MAX_QUOTE_SPEND_BPS = 2_500;
+
     /////////////////////////// pure storage ///////////////////////
 
-    /// @notice ETH accrued from the burn allocation, awaiting a `processBurn` buy-back-and-burn. Held in
-    ///         the token's own balance; the rest of the balance (minus this and `liquidityPendingEth`) is
-    ///         stray ETH that `sweepStrayEth` routes back into the earnings split.
-    uint256 public burnPendingEth;
+    /// @notice Everything one QUOTE's out-of-band earnings machinery needs: what it has accrued, when
+    ///         it last spent it, and which liquidity walls it has placed. One entry per entry of the
+    ///         token's `quotes`, at the SAME index — so index 0 is always the chain's native currency
+    ///         and a native-only token uses exactly this one, as it always has.
+    /// @dev Per quote, not per token, because each quote has its OWN pool. A buy-back funded by fees
+    ///      collected on the USDC pool has to be spent on the USDC pool; routing it through native
+    ///      would pay two sets of pool fees to end up where it started.
+    /// @dev THREE SLOTS, packed so the two processors each touch two of them: the buffers in slot 0, and
+    ///      the cooldown marker each one dirties anyway sharing slot 1 with the first wall — which is
+    ///      why that wall costs no extra slot at all, and only the second takes one of its own.
+    struct QuoteBuffers {
+        // --- slot 0 ---
+        /// @dev Accrued from the burn allocation, awaiting a `processBurn` buy-back-and-burn on this
+        ///      quote's pool. Held in the token's own balance (native or ERC20); the rest of that
+        ///      balance, minus this and `liquidityPending`, is stray and `sweepStrayEth` routes it back
+        ///      into the earnings split.
+        uint128 burnPending;
+        /// @dev Accrued from the liquidity allocation, awaiting a `processLiquidity` single-sided add on
+        ///      this quote's pool. Excluded from the stray sweep for the same reason.
+        uint128 liquidityPending;
+        // --- slot 1 ---
+        /// @dev `block.number` of the last `processBurn` for this quote — its once-per-block cooldown.
+        uint48 lastBurnBlock;
+        /// @dev `block.number` of the last `processLiquidity` for this quote.
+        uint48 lastLiquidityBlock;
+        /// @dev Position-manager NFT id of the most recently USED single-sided wall on this quote's
+        ///      pool. `processLiquidity` tops it up instead of minting a fresh one whenever its range
+        ///      still sits entirely below the current price and close to it. Zero means "no wall yet".
+        ///      `uint112` because the position manager's id is a sequential counter from 1.
+        uint112 wall0Id;
+        /// @dev Lower tick of `wall0Id`'s range — the wall's top price. The upper tick is not kept: it
+        ///      decides nothing here, and the position manager sizes a top-up from the position's own
+        ///      recorded range.
+        int24 wall0TickLower;
+        // --- slot 2 ---
+        /// @dev Second-most recently used wall, same shape. Two entries, kept most-recently-used first,
+        ///      because a price that dips and then recovers leaves the PREVIOUS wall as the only one
+        ///      still below the price — a one-entry memory would mint on every such zigzag.
+        uint112 wall1Id;
+        /// @dev Lower tick of `wall1Id`'s range.
+        int24 wall1TickLower;
+    }
 
-    /// @notice ETH accrued from the liquidity allocation, awaiting a `processLiquidity` single-sided add.
-    ///         Held in the token's own balance and, like `burnPendingEth`, excluded from the stray sweep.
-    uint256 public liquidityPendingEth;
-
-    /// @notice `block.number` of the last `processBurn` — enforces its once-per-block cooldown
-    ///         (see `MAX_EARNINGS_PER_PROCESS`). Packed with `lastLiquidityProcessBlock`.
-    uint48 public lastBurnProcessBlock;
-
-    /// @notice `block.number` of the last `processLiquidity` — enforces its once-per-block cooldown.
-    uint48 public lastLiquidityProcessBlock;
-
-    /// @notice Position-manager NFT id of the most recently USED single-sided ETH wall.
-    ///         `processLiquidity` tops this position up instead of minting a fresh one whenever its range
-    ///         still sits entirely below the current price and close to it. Zero id means "no wall yet".
-    /// @dev `uint112` so this and its lower tick fill out the tail of the block-marker slot, which
-    ///      `processLiquidity` already dirties on every call — the first entry therefore costs no extra
-    ///      slot at all, and only the second one below takes a slot of its own. The position manager's id
-    ///      is a sequential counter, so 2^112 is not a bound anything can reach.
-    uint112 internal liquidityWall0Id;
-
-    /// @notice Lower tick of `liquidityWall0Id`'s range (the wall's top price — ETH-only positions live
-    ///         at ticks ABOVE the current one, since the pair is `(ETH, token)`). The upper tick is not
-    ///         kept: it decides nothing here, and the position manager sizes the top-up from the
-    ///         position's own recorded range.
-    int24 internal liquidityWall0TickLower;
-
-    /// @notice Second-most recently used wall, same shape as `liquidityWall0Id`. Two entries, kept
-    ///         most-recently-used first, because a price that dips and then recovers leaves the PREVIOUS
-    ///         wall as the only one still below the price — a one-entry memory would mint a fresh
-    ///         position on every such zigzag.
-    uint112 internal liquidityWall1Id;
-
-    /// @notice Lower tick of `liquidityWall1Id`'s range.
-    int24 internal liquidityWall1TickLower;
+    /// @notice Per-quote earnings buffers and wall memory, indexed exactly as `quotes` is. Entries at or
+    ///         beyond `quoteCount` are unused and must never be read.
+    QuoteBuffers[MAX_QUOTES] internal quoteBuffers;
 
     // Reentrancy: `processBurn` and `processLiquidity` share the transient `nonReentrant` lock that
     // `RealmTaxableToken` inherits for `sweepStrayEth` (they make external calls that pass through
@@ -140,38 +156,115 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     error NothingToAdd();
     error ProcessCooldown();
 
-    /// @dev The burn and liquidity buffers are committed ETH, not stray, and neither is the dividend
+    //////////////////////// EXTENSIONS //////////////////////
+
+    /// @notice The `RealmEarningsLogicUniV4` extension `processBurn` / `processLiquidity` execute in,
+    ///         against this token's own storage.
+    /// @dev A SECOND extension beside `dividendLogic()`, not a replacement: once every buffer is keyed
+    ///      by quote the two halves no longer fit in one contract under EIP-170. They are peers — same
+    ///      base, same layout, neither delegates to the other.
+    function earningsLogic() public view virtual returns (address);
+
+    //////////////////////// PER-QUOTE VIEWS //////////////////////
+
+    /// @notice Native accrued from the burn allocation, awaiting a `processBurn`. The index-0 entry of
+    ///         `quoteBuffers`; a token quoted only against native has no other.
+    /// @dev A view over the array rather than a field of its own. It used to be a plain public variable
+    ///      and the getter is kept because public view surfaces are append-only — deployed readers call
+    ///      it — but there is now ONE representation of the buffer, not a native special case beside a
+    ///      general one.
+    function burnPendingEth() external view returns (uint256) {
+        return quoteBuffers[0].burnPending;
+    }
+
+    /// @notice Native accrued from the liquidity allocation, awaiting a `processLiquidity`. See
+    ///         `burnPendingEth`.
+    function liquidityPendingEth() external view returns (uint256) {
+        return quoteBuffers[0].liquidityPending;
+    }
+
+    /// @notice `block.number` of the last native `processBurn`. See `burnPendingEth`.
+    function lastBurnProcessBlock() external view returns (uint48) {
+        return quoteBuffers[0].lastBurnBlock;
+    }
+
+    /// @notice `block.number` of the last native `processLiquidity`. See `burnPendingEth`.
+    function lastLiquidityProcessBlock() external view returns (uint48) {
+        return quoteBuffers[0].lastLiquidityBlock;
+    }
+
+    /// @notice What this token has accrued and not yet spent on ONE quote: the burn buffer, the
+    ///         liquidity buffer, and when each was last processed.
+    function quoteBufferOf(address quote)
+        external
+        view
+        returns (uint256 burnPending, uint256 liquidityPending, uint48 lastBurn, uint48 lastLiquidity)
+    {
+        QuoteBuffers storage b = quoteBuffers[_quoteIndex(quote)];
+        return (b.burnPending, b.liquidityPending, b.lastBurnBlock, b.lastLiquidityBlock);
+    }
+
+    //////////////////////// COMMITTED FUNDS //////////////////////
+
+    /// @dev The native burn and liquidity buffers are committed, not stray, and neither is the dividend
     ///      money the base already accounts for.
     function _reservedNative() internal view override returns (uint256) {
-        return super._reservedNative() + burnPendingEth + liquidityPendingEth;
+        QuoteBuffers storage b = quoteBuffers[0];
+        return super._reservedNative() + b.burnPending + b.liquidityPending;
+    }
+
+    /// @dev The same, for an ERC20 quote: what this token holds of it on the protocol's behalf. Without
+    ///      this the owner's `rescueTokens(quote)` would drain a quote's buy-back and liquidity buffers
+    ///      — money already committed to the token's holders and its pool depth.
+    function _reservedAsset(address asset) internal view override returns (uint256) {
+        uint256 reserved = super._reservedAsset(asset);
+        uint8 idx = _quoteIndexPlusOne[asset];
+        if (idx == 0) return reserved;
+        QuoteBuffers storage b = quoteBuffers[idx - 1];
+        return reserved + b.burnPending + b.liquidityPending;
     }
 
     //////////////////////// LIQUIDITY-WALL MEMORY //////////////////////
 
-    /// @notice The single-sided ETH walls this token remembers, most-recently-used first: their
-    ///         position-manager NFT ids and lower ticks. A zero id is an empty entry. Positions this token
-    ///         minted but has since forgotten are still owned by it and still pool depth — only the two
-    ///         entries here are candidates for a top-up.
-    /// @dev One packed view rather than four generated getters: on this contract, which sits close to the
-    ///      EIP-170 limit, the getters cost more bytecode than the reuse path they describe.
+    //////////////////////// LIQUIDITY-WALL MEMORY //////////////////////
+
+    /// @notice The single-sided walls this token remembers on its NATIVE pool, most-recently-used first.
+    ///         See `getLiquidityWalls(address)`.
     function getLiquidityWalls() public view returns (uint256[2] memory ids, int24[2] memory tickLowers) {
-        ids = [uint256(liquidityWall0Id), uint256(liquidityWall1Id)];
-        tickLowers = [liquidityWall0TickLower, liquidityWall1TickLower];
+        return _walls(0);
     }
 
-    /// @dev Moves the wall that just took the ETH to the front of the two-entry memory: a repeat of the
-    ///      most recent one changes nothing, the second entry is promoted past the first, and anything
-    ///      else is a fresh mint that evicts the older of the two. Most-recently-USED order is what keeps
-    ///      a wall the price keeps returning to from being evicted by a mint it sat out.
-    function _recordUsedWall(uint256 id, int24 tickLower) internal {
-        (uint112 id0, int24 lower0) = (liquidityWall0Id, liquidityWall0TickLower);
+    /// @notice The single-sided walls this token remembers on ONE quote's pool, most-recently-used
+    ///         first: their position-manager NFT ids and lower ticks. A zero id is an empty entry.
+    ///         Positions this token minted but has since forgotten are still owned by it and still pool
+    ///         depth — only the two entries here are candidates for a top-up.
+    /// @dev One packed view rather than four generated getters: on this contract, which sits close to
+    ///      the EIP-170 limit, the getters cost more bytecode than the reuse path they describe.
+    function getLiquidityWalls(address quote) public view returns (uint256[2] memory ids, int24[2] memory tickLowers) {
+        return _walls(_quoteIndex(quote));
+    }
+
+    /// @dev Shared body of the two `getLiquidityWalls` overloads.
+    function _walls(uint256 quoteIndex) internal view returns (uint256[2] memory ids, int24[2] memory tickLowers) {
+        QuoteBuffers storage b = quoteBuffers[quoteIndex];
+        ids = [uint256(b.wall0Id), uint256(b.wall1Id)];
+        tickLowers = [b.wall0TickLower, b.wall1TickLower];
+    }
+
+    /// @dev Moves the wall that just took the deposit to the front of that quote's two-entry memory: a
+    ///      repeat of the most recent one changes nothing, the second entry is promoted past the first,
+    ///      and anything else is a fresh mint that evicts the older of the two. Most-recently-USED order
+    ///      is what keeps a wall the price keeps returning to from being evicted by a mint it sat out.
+    function _recordUsedWall(uint256 quoteIndex, uint256 id, int24 tickLower) internal {
+        QuoteBuffers storage b = quoteBuffers[quoteIndex];
+        (uint112 id0, int24 lower0) = (b.wall0Id, b.wall0TickLower);
         if (id == id0) return;
 
         // One shift covers both remaining cases: if `id` was the second entry this swaps the two, and if
         // it is a fresh mint this evicts the older one.
-        (liquidityWall1Id, liquidityWall1TickLower) = (id0, lower0);
+        (b.wall1Id, b.wall1TickLower) = (id0, lower0);
         // Safe: the position manager's id is a counter incremented once per mint, from 1.
         // forge-lint: disable-next-line(unsafe-typecast)
-        (liquidityWall0Id, liquidityWall0TickLower) = (uint112(id), tickLower);
+        (b.wall0Id, b.wall0TickLower) = (uint112(id), tickLower);
     }
 }

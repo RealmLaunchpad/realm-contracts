@@ -2,7 +2,6 @@
 pragma solidity 0.8.28;
 
 import {RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
-import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
@@ -24,24 +23,33 @@ import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/co
 ///      `claimDividends`) is a thin `delegatecall` stub into `DIVIDEND_LOGIC`; only their bodies live
 ///      elsewhere, and nothing on the swap hot path does. See `RealmDividendLogicUniV4`.
 contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
-    /// @notice The `RealmDividendLogicUniV4` extension the out-of-band entry points `delegatecall` into.
-    /// @dev Deployed by THIS constructor rather than passed in or read from a manifest: the two are
-    ///      storage-layout-coupled, so pairing them at deploy time is one more thing that can be wired
-    ///      wrong for no benefit. Deploying it here makes the pair atomic, keeps every deploy script and
-    ///      test unchanged (`new RealmTaxableTokenUniV4()` still takes no arguments), and costs only
-    ///      creation-code size on the implementation — which EIP-170 does not bound, and EIP-3860 bounds
-    ///      far above what this needs. Immutable, so clones read it straight from the implementation.
+    /// @notice The `RealmDividendLogicUniV4` extension the dividend entry points `delegatecall` into.
+    /// @dev Immutable, so clones read it straight from the implementation.
     address public immutable DIVIDEND_LOGIC;
+
+    /// @notice The `RealmEarningsLogicUniV4` extension `processBurn` / `processLiquidity` delegate into.
+    address public immutable EARNINGS_LOGIC;
+
+    /// @notice Thrown when either extension address is zero. The token would be deployable but every
+    ///         out-of-band entry point on it would `delegatecall` into nothing and silently succeed.
+    error InvalidExtension();
 
     //////////////////////////////////////////////////////
 
     /// @notice Creates a new RealmTaxableTokenUniV4 instance which will be used as implementation for clones
-    /// @dev Token configuration is set during initialization, not in constructor
-    constructor() RealmToken() {
-        // All token initialization happens in initialize() due to minimal proxy pattern; the only thing
-        // the implementation itself owns is its dividend extension.
+    /// @dev Token configuration is set during initialization, not in constructor.
+    /// @dev The two extensions are PASSED IN rather than deployed here. They used to be deployed by this
+    ///      constructor — the pair is storage-layout-coupled, so making it atomic removed one thing that
+    ///      could be wired wrong — but their creation code counts toward this contract's own initcode,
+    ///      and with both of them it no longer fits under EIP-3860. Deploy them first, in the same
+    ///      script, and `just check-dividend-layout` still pins both layouts against this token's.
+    /// @param dividendLogic_ A freshly deployed `RealmDividendLogicUniV4`.
+    /// @param earningsLogic_ A freshly deployed `RealmEarningsLogicUniV4`.
+    constructor(address dividendLogic_, address earningsLogic_) RealmToken() {
         require(block.chainid == DeploymentAddresses.BLOCKCHAIN_ID, "configuration for wrong chainId");
-        DIVIDEND_LOGIC = address(new RealmDividendLogicUniV4());
+        require(dividendLogic_ != address(0) && earningsLogic_ != address(0), InvalidExtension());
+        DIVIDEND_LOGIC = dividendLogic_;
+        EARNINGS_LOGIC = earningsLogic_;
     }
 
     /// @notice Initializes the token clone with its tax configuration. Anti-sniper protection is
@@ -67,14 +75,28 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     ///        reverts. Callers should set this from the current price; a value of 0 invites sandwiching.
     function processBurn(uint256 minTokensOut) external {
         minTokensOut;
-        _delegateToDividendLogic();
+        _delegateTo(EARNINGS_LOGIC);
+    }
+
+    /// @notice Same, on ONE of the token's pools. `quote` picks which — `address(0)` is the native one,
+    ///         which the no-argument overload above targets.
+    function processBurn(address quote, uint256 minTokensOut) external {
+        quote;
+        minTokensOut;
+        _delegateTo(EARNINGS_LOGIC);
     }
 
     /// @notice Deposits the accrued liquidity ETH as a single-sided ETH position just below the current
     ///         price — a protective bid wall. Keeper-gated, once per block, spending at most
     ///         `MAX_EARNINGS_PER_PROCESS`.
     function processLiquidity() external {
-        _delegateToDividendLogic();
+        _delegateTo(EARNINGS_LOGIC);
+    }
+
+    /// @notice Same, on ONE of the token's pools. See `processBurn(address,uint256)`.
+    function processLiquidity(address quote) external {
+        quote;
+        _delegateTo(EARNINGS_LOGIC);
     }
 
     /// @notice Advances the dividend round by everything it is due for: freezes the pot once the buffer
@@ -123,25 +145,31 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         require(pair == UNIV4_POOL_MANAGER, "Invalid pair address");
     }
 
-    /// @dev V4 burn accrues ETH (earnings are ETH-native); the buy-back-and-burn happens out-of-band
-    ///      in `processBurn`, so this stays cheap (one SSTORE) and consumes the slice fully (returns 0,
-    ///      nothing folds back to the fund wallets). Overrides the base fund-fallback in
-    ///      `EarningsAllocation`.
-    function _handleBurn(uint256 amount) internal override returns (uint256) {
-        burnPendingEth += amount;
+    /// @dev The burn slice accrues in whatever currency the pool that produced it is quoted in; the
+    ///      buy-back-and-burn happens out-of-band in `processBurn`, on that same pool. Stays cheap (one
+    ///      SSTORE into a slot the sibling slice shares) and consumes the slice fully — returns 0, so
+    ///      nothing folds back to the fund wallets. Overrides the base fallback in `EarningsAllocation`.
+    function _handleBurn(address asset, uint256 amount) internal override returns (uint256) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        quoteBuffers[_quoteIndex(asset)].burnPending += uint128(amount);
         return 0;
     }
 
-    /// @dev V4 liquidity accrues ETH (earnings are ETH-native); the single-sided add happens out-of-band
-    ///      in `processLiquidity`, so this stays cheap (one SSTORE) and consumes the slice fully (returns
-    ///      0). Mirrors `_handleBurn`; overrides the base fund-fallback in `EarningsAllocation`.
-    function _handleLiquidity(uint256 amount) internal override returns (uint256) {
-        liquidityPendingEth += amount;
+    /// @dev The liquidity slice, same shape: buffered per quote and deposited out-of-band by
+    ///      `processLiquidity` as a single-sided wall on that quote's own pool.
+    function _handleLiquidity(address asset, uint256 amount) internal override returns (uint256) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        quoteBuffers[_quoteIndex(asset)].liquidityPending += uint128(amount);
         return 0;
     }
 
     /// @inheritdoc RealmTaxableToken
     function dividendLogic() public view override returns (address) {
         return DIVIDEND_LOGIC;
+    }
+
+    /// @inheritdoc RealmTaxableTokenUniV4Base
+    function earningsLogic() public view override returns (address) {
+        return EARNINGS_LOGIC;
     }
 }
