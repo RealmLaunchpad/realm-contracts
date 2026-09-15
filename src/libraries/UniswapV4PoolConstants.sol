@@ -69,9 +69,21 @@ library UniswapV4PoolConstants {
     ///         graduator, the buy-back mixin and the token's liquidity leg must all target the same
     ///         pool, so none of them may hand-roll the key.
     function realmPoolKey(address token, address hook) internal pure returns (PoolKey memory) {
+        return realmPoolKey(token, address(0), hook);
+    }
+
+    /// @notice The canonical PoolKey of a Realm token against an ARBITRARY quote, with the currencies
+    ///         sorted as Uniswap V4 requires. `quote == address(0)` is native, which always sorts as
+    ///         `currency0` and reproduces the native-only overload above exactly.
+    /// @dev THE single source of truth for every venue: the direct graduator, the curve graduator, the
+    ///      buy-back mixin and the tokens' liquidity leg must all target the same pool, so none of them
+    ///      may hand-roll the key. Sorting here is what lets a token be `currency0` or `currency1`
+    ///      depending on the quote it launched against, without any caller having to know.
+    function realmPoolKey(address token, address quote, address hook) internal pure returns (PoolKey memory) {
+        (address c0, address c1) = quote < token ? (quote, token) : (token, quote);
         return PoolKey({
-            currency0: Currency.wrap(address(0)), // native ETH
-            currency1: Currency.wrap(token),
+            currency0: Currency.wrap(c0),
+            currency1: Currency.wrap(c1),
             fee: LP_FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(hook)
