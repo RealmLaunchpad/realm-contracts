@@ -1745,11 +1745,10 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
                 // `filled` excludes the fee on exact-input and already includes it on exact-output.
                 uint256 total = params.amountSpecified < 0 ? filled + taken : filled;
                 // Reject a short fill charged above the ceiling. The ceiling uses hard constants (never the mutable
-                // `maxSideBps`) so a later cap change cannot brick configured pools, and it is widened by the launch tax only
-                // for buys on guarded pools, since only buys pay the launch premium. Shared with {launchBuyFee}.
-                uint256 ceilBps = _fillCeilBps(
-                    (c.hasGuards && (c.quoteIsC0 ? params.zeroForOne : !params.zeroForOne)) ? c.guards.launchTaxBps : 0
-                );
+                // `maxSideBps`) so a later cap change cannot brick configured pools, and it is widened only while a
+                // guarded pool's buys still pay a launch premium above the tolerance: the premium decays to the normal
+                // rate, and sells never pay it. Shared with {launchBuyFee}.
+                uint256 ceilBps = _fillCeilBps(_effectiveBps(c, c.quoteIsC0 ? params.zeroForOne : !params.zeroForOne));
                 if (taken * BPS > total * ceilBps) {
                     revert FillTooSmallForTax();
                 }
@@ -2162,11 +2161,11 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         return FullMath.mulDiv(amount, totalBps * 100, FEE_DENOM);
     }
 
-    /// @dev afterSwap's {FillTooSmallForTax} ceiling, in bps of the total. `launchTaxBps` must be passed as 0 unless
-    /// the pool is guarded AND the swap is a buy -- the buys-only premium may widen only the buyer's bound.
-    function _fillCeilBps(uint16 launchTaxBps) internal pure returns (uint256 ceilBps) {
+    /// @dev afterSwap's {FillTooSmallForTax} ceiling, in bps of the total, for a swap charged at `rateBps` (the creator
+    /// side's effective rate). Only a launch premium above {FILL_TOLERANCE_BPS} widens it.
+    function _fillCeilBps(uint16 rateBps) internal pure returns (uint256 ceilBps) {
         ceilBps = uint256(FILL_TOLERANCE_BPS) + FILL_PLATFORM_HEADROOM_BPS;
-        uint256 ramp = uint256(launchTaxBps) + FILL_PLATFORM_HEADROOM_BPS;
+        uint256 ramp = uint256(rateBps) + FILL_PLATFORM_HEADROOM_BPS;
         if (ramp > ceilBps) {
             ceilBps = ramp;
         }

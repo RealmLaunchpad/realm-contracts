@@ -8,6 +8,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
@@ -186,6 +188,35 @@ contract Round108HookTest is Test {
         hook.setBuybackBps(key.toId(), 0);
         _buy(key);
         assertLt(hook.buybackPot(key.toId()), pot, "the next swap spent the pot although the slice is now off");
+    }
+
+    function test_theFillCeilingFollowsTheDecayedLaunchTax() public {
+        RealmAnyPairsTaxHookPairImmutable.ConfigParams memory p = _params(address(0));
+        p.launchTaxBps = 3000;
+        p.launchTaxSecs = 3600;
+        PoolKey memory key = _launchWith(p);
+        vm.warp(block.timestamp + 2 hours); // fully decayed: buys pay the normal 3% again
+        assertEq(hook.effectiveBps(key.toId(), true), 300);
+        // A short fill of ~0.1e18 on a 1e18 request: the 3% charged on the request is ~23% of what traded -- over the
+        // normal 21% ceiling, under the 31% one the opening tax would still allow.
+        bool zeroForOne = Currency.unwrap(key.currency0) == address(quote);
+        uint160 step = uint160((uint256(0.1e18) << 96) / 1e25);
+        uint160 limit = zeroForOne ? uint160(1 << 96) - step : uint160(1 << 96) + step;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(hook),
+                IHooks.afterSwap.selector,
+                abi.encodeWithSelector(RealmAnyPairsTaxHookPairImmutable.FillTooSmallForTax.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+        swapper.swap(
+            key,
+            SwapParams({zeroForOne: zeroForOne, amountSpecified: -int256(1e18), sqrtPriceLimitX96: limit}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
     }
 
     function test_aPlainRewardsPoolIsNotFlagged() public {
