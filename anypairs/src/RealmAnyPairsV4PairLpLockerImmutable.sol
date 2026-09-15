@@ -17,6 +17,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {CurrencySettler} from "@openzeppelin/uniswap-hooks/src/utils/CurrencySettler.sol";
 
 import {RealmAnyPairsImmutableBase} from "./base/RealmAnyPairsImmutableBase.sol";
+import {RealmAnyPairsLiquidityMath} from "./RealmAnyPairsLiquidityMath.sol";
 
 /// @dev The `launcher()` getter every platform token exposes. Only called through a gas-capped low-level
 /// staticcall: a typed call to a codeless address reverts uncatchably in the caller's frame.
@@ -33,8 +34,6 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     using CurrencySettler for Currency;
     using StateLibrary for IPoolManager;
     using SafeERC20 for IERC20;
-
-    uint256 private constant Q96 = 0x1000000000000000000000000;
 
     IPoolManager public immutable poolManager;
     /// @notice Launchers allowed to seed pools. An allowlist, so a replacement launcher can be admitted
@@ -747,8 +746,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         // nobody has attacked never touches the fallback machinery at all.
         uint128 maxLiq = Pool.tickSpacingToMaxLiquidityPerTick(key.tickSpacing);
         (int24 lo, int24 hi, uint128 headroom, bool isNew) = _pickRange(id, key, p, curTick, maxLiq);
-        uint128 liq =
-            _liquidityForAmounts(sqrtP, TickMath.getSqrtPriceAtTick(lo), TickMath.getSqrtPriceAtTick(hi), size0, size1);
+        uint128 liq = RealmAnyPairsLiquidityMath.liquidityForAmounts(
+            sqrtP, TickMath.getSqrtPriceAtTick(lo), TickMath.getSqrtPriceAtTick(hi), size0, size1
+        );
         // Clamp to the remaining per-tick liquidity headroom, which is shared by every position on those ticks. An
         // add over the cap would revert every future compound; the remainder stays carried.
         if (liq > headroom) {
@@ -943,45 +943,6 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         int256 h = c + span;
         lo = int24(l < minT ? minT : l);
         hi = int24(h > maxT ? maxT : h);
-    }
-
-    // ─────────────────── vendored LiquidityAmounts (subset) ───────────────────
-
-    function _liquidityForAmount0(uint160 sqrtA, uint160 sqrtB, uint256 amount0) internal pure returns (uint128) {
-        if (sqrtA > sqrtB) {
-            (sqrtA, sqrtB) = (sqrtB, sqrtA);
-        }
-        uint256 intermediate = FullMath.mulDiv(sqrtA, sqrtB, Q96);
-        uint256 l0 = FullMath.mulDiv(amount0, intermediate, sqrtB - sqrtA);
-        // Saturate rather than wrap or revert: callers clamp the result again, and a revert in {_compound} is permanent.
-        return l0 > type(uint128).max ? type(uint128).max : uint128(l0);
-    }
-
-    function _liquidityForAmount1(uint160 sqrtA, uint160 sqrtB, uint256 amount1) internal pure returns (uint128) {
-        if (sqrtA > sqrtB) {
-            (sqrtA, sqrtB) = (sqrtB, sqrtA);
-        }
-        uint256 l1 = FullMath.mulDiv(amount1, Q96, sqrtB - sqrtA);
-        return l1 > type(uint128).max ? type(uint128).max : uint128(l1);
-    }
-
-    function _liquidityForAmounts(uint160 sqrtP, uint160 sqrtA, uint160 sqrtB, uint256 amount0, uint256 amount1)
-        internal
-        pure
-        returns (uint128 liquidity)
-    {
-        if (sqrtA > sqrtB) {
-            (sqrtA, sqrtB) = (sqrtB, sqrtA);
-        }
-        if (sqrtP <= sqrtA) {
-            liquidity = _liquidityForAmount0(sqrtA, sqrtB, amount0);
-        } else if (sqrtP < sqrtB) {
-            uint128 l0 = _liquidityForAmount0(sqrtP, sqrtB, amount0);
-            uint128 l1 = _liquidityForAmount1(sqrtA, sqrtP, amount1);
-            liquidity = l0 < l1 ? l0 : l1;
-        } else {
-            liquidity = _liquidityForAmount1(sqrtA, sqrtB, amount1);
-        }
     }
 
     // ─────────────────────────── rescue ───────────────────────────

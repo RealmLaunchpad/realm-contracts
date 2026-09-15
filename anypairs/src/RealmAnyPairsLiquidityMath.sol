@@ -5,8 +5,8 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @title RealmAnyPairsLiquidityMath
 /// @notice The Uniswap `LiquidityAmounts` subset this stack needs.
-/// @dev The authoritative copy for new code; {RealmAnyPairsV4PairLpLockerImmutable} keeps its own vendored
-/// copy, which must stay equivalent. All functions are `internal`, so there is nothing to deploy or link.
+/// @dev The one copy: the LP locker's compounding uses it too. All functions are `internal`, so there is nothing to
+/// deploy or link.
 library RealmAnyPairsLiquidityMath {
     uint256 private constant Q96 = 0x1000000000000000000000000;
 
