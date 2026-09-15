@@ -934,10 +934,8 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
             c -= sp;
         }
         int256 span = sp * FALLBACK_SPAN;
+        // Truncation toward zero already keeps both bounds inside [MIN_TICK, MAX_TICK].
         int256 minT = (int256(TickMath.MIN_TICK) / sp) * sp;
-        if (minT < int256(TickMath.MIN_TICK)) {
-            minT += sp;
-        }
         int256 maxT = (int256(TickMath.MAX_TICK) / sp) * sp;
         int256 l = c - span;
         int256 h = c + span;
