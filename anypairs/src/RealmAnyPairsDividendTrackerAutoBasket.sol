@@ -236,9 +236,6 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     event ReserveUnderrun(address indexed denomination, uint256 reserve, uint256 amount);
     event RewardClaimed(address indexed account, address indexed asset, uint256 amount);
     event LegPaymentFailed(address indexed account, address indexed asset, uint256 amount);
-    event LegSwapFailed(
-        address indexed account, address indexed denomination, address indexed tokenOut, uint256 amount
-    );
     event HolderPayoutFailed(address indexed holder);
     event MinEligibleSet(uint256 oldValue, uint256 newValue);
     event PendingCredited(address indexed input, uint256 amount);
@@ -279,7 +276,6 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     error NoNativeInput();
     error BadMinOuts();
     error BadRoutes();
-    error LegMinOutUnmet();
     error InsufficientGasForLeg();
     error EthSendFailed();
 
@@ -1361,9 +1357,10 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
 
     /// @notice Take everything as ONE token: `tokenOut` (address(0) = native ETH, via WETH). Each denomination you are
     /// owed is converted through `routes[i]` (empty = discover; a V3 path or a V4 `PoolKey` otherwise) under your own
-    /// `minOuts[i]`, both indexed like {denominations}. A denomination that fails to convert reverts the claim if its
-    /// minimum is non-zero, and is paid in its own token if the minimum is zero. `withPending` first pulls your pending
-    /// shares ({claimPending}) so they are converted too.
+    /// `minOuts[i]`, both indexed like {denominations}. A denomination with a zero minimum is paid in its own token
+    /// instead of being swapped (a swap with no floor would accept any dust); a swap that cannot meet a non-zero
+    /// minimum reverts the claim. `withPending` first pulls your pending shares ({claimPending}) so they are
+    /// converted too.
     function claimAs(
         address to,
         address tokenOut,
@@ -1404,23 +1401,19 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
                 }
                 continue;
             }
-            if (gasleft() < (LEG_GAS_CAP * 64) / 63 + 30_000) {
-                revert InsufficientGasForLeg();
-            }
-            try this.claimSwapSelf{gas: LEG_GAS_CAP}(d, tokenOut, amt, minOuts[i], routes[i], to) returns (
-                uint256 out
-            ) {
-                emit RewardClaimed(msg.sender, tokenOut, out);
-                ++denomsPaid;
-            } catch {
-                if (minOuts[i] != 0) {
-                    revert LegMinOutUnmet();
-                }
-                emit LegSwapFailed(msg.sender, d, tokenOut, amt);
+            if (minOuts[i] == 0) {
+                // No floor means "this one as is": a swap with no minimum would accept any dust for it.
                 if (_payDirect(msg.sender, to, d, amt)) {
                     ++denomsPaid;
                 }
+                continue;
             }
+            if (gasleft() < (LEG_GAS_CAP * 64) / 63 + 30_000) {
+                revert InsufficientGasForLeg();
+            }
+            uint256 out = this.claimSwapSelf{gas: LEG_GAS_CAP}(d, tokenOut, amt, minOuts[i], routes[i], to);
+            emit RewardClaimed(msg.sender, tokenOut, out);
+            ++denomsPaid;
         }
         if (!owed) {
             revert NothingToClaim();

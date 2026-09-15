@@ -303,8 +303,21 @@ contract Round108AutoBasketTest is HookedFixture {
         uint256[] memory mins = new uint256[](2);
         mins[1] = 2e18; // impossible
         vm.prank(alice);
-        vm.expectRevert(AB.LegMinOutUnmet.selector);
+        vm.expectRevert(AB.BelowMinOut.selector);
         t.claimAs(alice, address(quote), routes, mins, false);
+    }
+
+    function test_claimAsZeroMinimumPaysTheDenominationItself() public {
+        _pool(address(quote), address(stock), 2500, 25, 1e24);
+        AB t = _stockTracker();
+        _fund(t, 1e18);
+        t.convertStep();
+        bytes[] memory routes = new bytes[](2);
+        uint256[] memory mins = new uint256[](2); // no floor on the stock: it must not be swapped into the quote
+        vm.prank(alice);
+        t.claimAs(alice, address(quote), routes, mins, false);
+        assertGt(stock.balanceOf(alice), 0.99e18, "paid as the stock itself");
+        assertEq(quote.balanceOf(alice), 0);
     }
 
     function test_claimAsWithASuppliedRouteReachesAHookedPool() public {
