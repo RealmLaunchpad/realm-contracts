@@ -24,4 +24,24 @@ interface ISwapLpFeeRouter {
     ///                        execution price regardless of swap direction.
     /// @param tokenSwapAmount Token amount that crossed the pool during the same swap leg.
     function depositLpFees(address token, uint256 ethSwapAmount, uint256 tokenSwapAmount) external payable;
+
+    /// @notice Routes `amount` of `asset` as LP fees for `token`, for a pool quoted in an ERC20 rather
+    ///         than the chain's native currency.
+    /// @dev PULLS: the caller must have approved this contract for `amount` beforehand. Same split,
+    ///      same destinations and the same MUST-revert-on-failure contract as the payable overload, so
+    ///      the calling hook's own try/catch fallback still governs what happens to a fee this refuses.
+    /// @param asset           The pool's quote currency. `address(0)` is rejected — use the payable
+    ///                        overload for native.
+    /// @param amount          Fee to pull and split. What actually ARRIVES is what gets split, so a
+    ///                        fee-on-transfer quote is handled without over-crediting anyone.
+    /// @param quoteSwapAmount Quote the pool exchanged on the swap leg that produced these fees — the
+    ///                        `ethSwapAmount` analogue.
+    /// @param tokenSwapAmount Token amount that crossed the pool during the same swap leg.
+    function depositLpFees(
+        address token,
+        address asset,
+        uint256 amount,
+        uint256 quoteSwapAmount,
+        uint256 tokenSwapAmount
+    ) external;
 }
