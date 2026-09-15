@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
+import {RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
@@ -231,7 +232,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     function test_v4ProcessBurn_revertsWhenNothingPending() public {
         address token = _createBurnTaxToken(400, 5000);
-        vm.expectRevert(RealmTaxableTokenUniV4.NothingToBurn.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.NothingToBurn.selector);
         RealmTaxableTokenUniV4(payable(token)).processBurn(0);
     }
 
@@ -257,7 +258,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         // At most `cap` spent; the remainder (plus any re-accrual from the buy-back's own fees) stays.
         assertGe(burnToken.burnPendingEth(), pending - cap, "spend capped per call");
 
-        vm.expectRevert(RealmTaxableTokenUniV4.ProcessCooldown.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.ProcessCooldown.selector);
         burnToken.processBurn(0);
 
         vm.roll(block.number + 1);
@@ -282,7 +283,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         uint256 pending = burnToken.burnPendingEth();
         assertGt(pending, 0, "burn ETH should accrue from the sell tax");
 
-        vm.expectRevert(RealmTaxableTokenUniV4.BuyBackFailed.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.BuyBackFailed.selector);
         burnToken.processBurn(uint256(type(uint128).max) + 1);
 
         assertEq(burnToken.burnPendingEth(), pending, "the buffer is untouched by the rejected call");

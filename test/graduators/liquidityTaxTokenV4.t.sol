@@ -17,7 +17,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IRealmUniV4LiquidityAdder, RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
-import {IRealmV4Graduator} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
+import {IRealmV4Graduator, RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 interface IERC721Minimal {
@@ -165,7 +165,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     function test_v4ProcessLiquidity_revertsWhenNothingPending() public {
         address token = _createLiquidityTaxToken(0, 400, 5000);
-        vm.expectRevert(RealmTaxableTokenUniV4.NothingToAdd.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.NothingToAdd.selector);
         RealmTaxableTokenUniV4(payable(token)).processLiquidity();
     }
 
@@ -352,7 +352,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         liqToken.processLiquidity(); // top-up
 
         _swapBuy(buyer, 0.05 ether, 0, true);
-        vm.expectRevert(RealmTaxableTokenUniV4.ProcessCooldown.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.ProcessCooldown.selector);
         liqToken.processLiquidity();
     }
 

@@ -118,20 +118,21 @@ _retarget taxlib gradsuffix="":
 _taxtoken lib suffix="":
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
         src/tokens/RealmTaxableTokenUniV2.sol src/tokens/RealmTaxableTokenUniV4.sol src/tokens/RealmUniv4BuyBacks.sol \
-        src/tokens/RealmTaxableTokenUniV2Base.sol \
+        src/tokens/RealmTaxableTokenUniV2Base.sol src/tokens/RealmTaxableTokenUniV4Base.sol \
         src/tokens/DividendDistribution.sol src/dividends/RealmDividendSwapRegistry.sol src/tokens/KeeperGated.sol \
         test/helpers/DividendRegistryHelpers.sol test/helpers/KeepersRegistryHelpers.sol
     sed -i -E 's#\{UniswapV2Venue[A-Za-z]* as UniswapV2Venue\} from "src/libraries/UniswapV2Venue[A-Za-z]*\.sol"#{UniswapV2Venue{{suffix}} as UniswapV2Venue} from "src/libraries/UniswapV2Venue{{suffix}}.sol"#' \
         src/tokens/RealmTaxableTokenUniV2.sol src/dividends/RealmDividendSwapRegistry.sol
     sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
-        src/tokens/RealmTaxableTokenUniV4.sol src/tokens/RealmUniv4BuyBacks.sol
+        src/tokens/RealmUniv4BuyBacks.sol src/tokens/RealmTaxableTokenUniV4Base.sol \
+        src/tokens/RealmDividendLogicUniV4.sol
 
-# (internal) Repoints the V4 graduator's pool-geometry + fee libs to the `{{suffix}}` variant
+# (internal) Repoints the V4 graduators' pool-geometry + fee libs to the `{{suffix}}` variant
 # ("" = ETH, "Arc" = ARC). The V2 graduators are separate contracts and are NOT touched here.
 # Use a `chain-*` recipe.
 _graduators suffix:
     sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
-        src/graduators/RealmGraduatorUniswapV4.sol
+        src/graduators/RealmGraduatorUniswapV4.sol src/graduators/RealmDirectGraduatorUniV4.sol
     sed -i -E 's#\{GraduationFeeConstants[A-Za-z]* as GraduationFeeConstants\} from "src/libraries/GraduationFeeConstants[A-Za-z]*\.sol"#{GraduationFeeConstants{{suffix}} as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants{{suffix}}.sol"#' \
         src/graduators/RealmGraduatorUniswapV4.sol
 

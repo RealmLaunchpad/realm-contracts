@@ -3,6 +3,12 @@ pragma solidity 0.8.28;
 
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {RealmUniv4BuyBacks} from "src/tokens/RealmUniv4BuyBacks.sol";
+// Self-aliased so the `chain-*` recipes can import-swap it for the target chain's pool constants.
+import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+
+/// this line below is swapped per target chain at deploy time (the addresses are compile-time
+/// constants baked into bytecode) - see the justfile `_taxtoken` recipe.
+import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with (to rebuild the
 ///         pool key) and the shared liquidity adder it deployed (to mint the single-sided ETH wall).
@@ -22,6 +28,44 @@ interface IRealmV4Graduator {
 ///      `just check-dividend-layout`). Nothing behavioural belongs here: put a function in
 ///      this base only when BOTH sides need it, and everything else in the contract that uses it.
 abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4BuyBacks {
+    /////////////////////////// venue constants ///////////////////////
+    // NB: hardcoded per target chain to save gas.
+
+    /// @notice Pool manager for lock state checking
+    address public constant UNIV4_POOL_MANAGER = DeploymentAddresses.UNIV4_POOL_MANAGER;
+
+    /// @notice Position manager holding this token's liquidity walls. Only `processLiquidity`'s top-up
+    ///         path calls it directly — minting still goes through the shared `RealmUniV4LiquidityAdder` —
+    ///         because `PositionManager._increase` is `onlyIfApproved` and this token owns the NFTs.
+    address public constant UNIV4_POSITION_MANAGER = DeploymentAddresses.UNIV4_POSITION_MANAGER;
+
+    /// @notice Max ETH a single `processBurn` / `processLiquidity` call may spend. Combined with the
+    ///         once-per-block cooldown, it caps what a price-manipulation sandwich can extract from the
+    ///         buffers per block (the pump must be re-paid — or held, exposed to arbitrage — every
+    ///         block), while honest keepers just drain in batches. The remainder stays buffered.
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;
+
+    /// @notice Width, in TICKS, of the single-sided ETH liquidity wall minted by `processLiquidity`. The
+    ///         wall spans from just below the current price down to roughly -75%: ticks are log-price
+    ///         (price = 1.0001^tick), so 14000 ticks (70 * the current 200 spacing) is a price ratio of
+    ///         1.0001^14000 ≈ 4.05, i.e. the far end of the range is ~1/4.05 ≈ 0.25 of the current price
+    ///         (a ~-75% drop). A given % drop maps to a CONSTANT tick width regardless of the starting
+    ///         price. Derived from TICK_SPACING so the range stays spacing-aligned (and mints cleanly)
+    ///         even if the spacing is ever retargeted per chain.
+    int24 internal constant LIQUIDITY_WALL_TICK_WIDTH = 70 * UniswapV4PoolConstants.TICK_SPACING;
+
+    /// @notice Max distance, in TICKS, between the current tick and a remembered wall's lower tick for
+    ///         `processLiquidity` to top that wall up instead of minting a new one. 2000 ticks is a ~22%
+    ///         price rise since the wall was placed (1.0001^2000 ≈ 1.22), so a reused wall covers roughly
+    ///         -18% to -79% of the current price where a fresh one covers 0% to -75%.
+    /// @dev The bound is what stops the reuse path from degrading into "pile every future add into the
+    ///      first wall ever minted". Deliberately far below `LIQUIDITY_WALL_TICK_WIDTH` (the widest value
+    ///      that still leaves the old and the hypothetical fresh range overlapping): the dominant reason
+    ///      to mint is a price DROP, which disqualifies the old wall outright, so tightening this costs
+    ///      almost no reuse and buys a materially better-placed wall. It also caps how deep a
+    ///      price-pumping manipulator can steer an add.
+    int24 internal constant LIQUIDITY_WALL_REUSE_MAX_GAP = 10 * UniswapV4PoolConstants.TICK_SPACING;
+
     /////////////////////////// pure storage ///////////////////////
 
     /// @notice ETH accrued from the burn allocation, awaiting a `processBurn` buy-back-and-burn. Held in
@@ -89,9 +133,45 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     ///         protocol buy-backs stay distinguishable off-chain (one shrinks supply, one pays holders).
     event DividendBuyBackInitiated(uint256 ethIn);
 
+    error NothingToBurn();
+
+    /// @notice The buy-back router call reverted — a missed `minTokensOut`, or an unswappable pool.
+    error BuyBackFailed();
+    error NothingToAdd();
+    error ProcessCooldown();
+
     /// @dev The burn and liquidity buffers are committed ETH, not stray, and neither is the dividend
     ///      money the base already accounts for.
     function _reservedNative() internal view override returns (uint256) {
         return super._reservedNative() + burnPendingEth + liquidityPendingEth;
+    }
+
+    //////////////////////// LIQUIDITY-WALL MEMORY //////////////////////
+
+    /// @notice The single-sided ETH walls this token remembers, most-recently-used first: their
+    ///         position-manager NFT ids and lower ticks. A zero id is an empty entry. Positions this token
+    ///         minted but has since forgotten are still owned by it and still pool depth — only the two
+    ///         entries here are candidates for a top-up.
+    /// @dev One packed view rather than four generated getters: on this contract, which sits close to the
+    ///      EIP-170 limit, the getters cost more bytecode than the reuse path they describe.
+    function getLiquidityWalls() public view returns (uint256[2] memory ids, int24[2] memory tickLowers) {
+        ids = [uint256(liquidityWall0Id), uint256(liquidityWall1Id)];
+        tickLowers = [liquidityWall0TickLower, liquidityWall1TickLower];
+    }
+
+    /// @dev Moves the wall that just took the ETH to the front of the two-entry memory: a repeat of the
+    ///      most recent one changes nothing, the second entry is promoted past the first, and anything
+    ///      else is a fresh mint that evicts the older of the two. Most-recently-USED order is what keeps
+    ///      a wall the price keeps returning to from being evicted by a mint it sat out.
+    function _recordUsedWall(uint256 id, int24 tickLower) internal {
+        (uint112 id0, int24 lower0) = (liquidityWall0Id, liquidityWall0TickLower);
+        if (id == id0) return;
+
+        // One shift covers both remaining cases: if `id` was the second entry this swaps the two, and if
+        // it is a fresh mint this evicts the older one.
+        (liquidityWall1Id, liquidityWall1TickLower) = (id0, lower0);
+        // Safe: the position manager's id is a counter incremented once per mint, from 1.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (liquidityWall0Id, liquidityWall0TickLower) = (uint112(id), tickLower);
     }
 }
