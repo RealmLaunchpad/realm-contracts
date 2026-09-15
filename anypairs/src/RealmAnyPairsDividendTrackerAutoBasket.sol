@@ -10,6 +10,7 @@ import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {RealmAnyPairsRouteLib} from "./RealmAnyPairsRouteLib.sol";
+import {RealmAnyPairsV3TwapOracle} from "./RealmAnyPairsV3TwapOracle.sol";
 
 interface IAutoBasketExttload {
     function exttload(bytes32 slot) external view returns (bytes32);
@@ -1136,18 +1137,7 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         if (sqrtP == 0 || feePips >= 1_000_000) {
             revert NoPrice();
         }
-        bool zeroForOne = input < asset;
-        if (sqrtP <= type(uint128).max) {
-            uint256 ratioX192 = uint256(sqrtP) * sqrtP;
-            out = zeroForOne
-                ? FullMath.mulDiv(ratioX192, amount, 1 << 192)
-                : FullMath.mulDiv(1 << 192, amount, ratioX192);
-        } else {
-            uint256 ratioX128 = FullMath.mulDiv(sqrtP, sqrtP, 1 << 64);
-            out = zeroForOne
-                ? FullMath.mulDiv(ratioX128, amount, 1 << 128)
-                : FullMath.mulDiv(1 << 128, amount, ratioX128);
-        }
+        out = RealmAnyPairsV3TwapOracle.quoteAtSqrtPrice(sqrtP, amount, input, asset);
         out = (out * (1_000_000 - feePips)) / 1_000_000;
     }
 

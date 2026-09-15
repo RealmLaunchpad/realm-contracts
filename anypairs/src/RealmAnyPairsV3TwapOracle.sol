@@ -26,7 +26,15 @@ library RealmAnyPairsV3TwapOracle {
         pure
         returns (uint256 quoteAmount)
     {
-        uint160 sqrtRatioX96 = TickMath.getSqrtPriceAtTick(tick);
+        return quoteAtSqrtPrice(TickMath.getSqrtPriceAtTick(tick), baseAmount, baseToken, quoteToken);
+    }
+
+    /// @notice `baseAmount` of `baseToken` expressed in `quoteToken` at the pool price `sqrtRatioX96`.
+    function quoteAtSqrtPrice(uint160 sqrtRatioX96, uint256 baseAmount, address baseToken, address quoteToken)
+        internal
+        pure
+        returns (uint256 quoteAmount)
+    {
         // Calculate quoteAmount with better precision if it doesn't overflow when multiplied by itself.
         if (sqrtRatioX96 <= type(uint128).max) {
             uint256 ratioX192 = uint256(sqrtRatioX96) * sqrtRatioX96;
