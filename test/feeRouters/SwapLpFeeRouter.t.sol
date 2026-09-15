@@ -163,10 +163,27 @@ contract SwapLpFeeRouterTests is Test {
 
     // ───────────────────────── ISwapLpFeeRouter interface ─────────────────────────
 
-    function test_interface_id_matchesSelector() public pure {
-        // Smoke test: the canonical selector must remain stable across upgrades.
-        bytes4 sel = ISwapLpFeeRouter.depositLpFees.selector;
-        assertEq(sel, bytes4(keccak256("depositLpFees(address,uint256,uint256)")));
+    /// @dev The wire format both hook generations dispatch on must stay stable across upgrades.
+    ///      Asserted by CALLING each selector rather than reading `.selector`, which Solidity refuses to
+    ///      resolve now that `depositLpFees` is overloaded for ERC20-quoted pools. Both calls are
+    ///      zero-amount, which every implementation must treat as a no-op that still succeeds.
+    function test_interface_selectors_dispatch() public {
+        (bool nativeOk,) = address(router).call{value: 0}(
+            abi.encodeWithSignature("depositLpFees(address,uint256,uint256)", address(0xbeef), uint256(0), uint256(0))
+        );
+        assertTrue(nativeOk, "native depositLpFees selector must dispatch");
+
+        (bool assetOk,) = address(router).call(
+            abi.encodeWithSignature(
+                "depositLpFees(address,address,uint256,uint256,uint256)",
+                address(0xbeef),
+                address(0xdead),
+                uint256(0),
+                uint256(0),
+                uint256(0)
+            )
+        );
+        assertTrue(assetOk, "asset depositLpFees selector must dispatch");
     }
 
     receive() external payable {}
