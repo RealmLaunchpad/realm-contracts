@@ -8,6 +8,10 @@ interface IRealmToken is IERC20 {
     //////////////////////// Events //////////////////////
 
     event Graduated();
+
+    /// @notice Emitted once at creation when a token is launched against ERC20 quotes on top of the
+    ///         native one every token carries at index 0. Absent on a native-only token.
+    event QuotesRegistered(address[] quotes);
     event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
 
@@ -86,6 +90,17 @@ interface IRealmToken is IERC20 {
 
     /// @notice Routes ETH fees to the token's fee handler for the token's fee receiver
     function accrueFees() external payable;
+
+    /// @notice Routes ERC20 fees, for a pool quoted in something other than the chain's native
+    ///         currency. PULLS `amount` of `asset` from the caller, who must have approved this token.
+    ///         `asset` must be one of the token's registered `quotes`.
+    function accrueFees(address asset, uint256 amount) external;
+
+    /// @notice The currencies this token's pools are quoted in. Index 0 is always `address(0)`.
+    function quotes(uint256 index) external view returns (address);
+
+    /// @notice How many entries of `quotes` are configured. 1 for a native-only token.
+    function quoteCount() external view returns (uint8);
 
     /// @notice Allows the current owner or whitelisted address to propose a new owner
     function proposeNewOwner(address newOwner) external;

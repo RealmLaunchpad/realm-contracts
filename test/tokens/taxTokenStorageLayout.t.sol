@@ -36,18 +36,19 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev Moved 21 -> 19 when the dividend round machinery was replaced by the streaming accumulator,
     ///      which needs three global slots instead of five, then 19 -> 20 when the treasury sweep's
     ///      persistence marker (`failedConversionBlock`) took a full word ahead of it, then 20 -> 26 when
-    ///      the payout became a SET: `dividendAssets` is three slots per asset (15..23),
+    ///      the payout became a SET: `dividendAssets` is three slots per asset (19..27), and again
+    ///      15 -> 19 when the quote registry (`quotes[3]` + its index mapping) landed ahead of it,
     ///      `dividendAccounts` 24 and `dividendWeightsBps` 25. `failedConversionBlock` no longer needs a
     ///      word of its own — inside a struct array it cannot leak into the head of this slot — but the
     ///      arrays that replaced it occupy whole slots, so the effect is the same.
-    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 26;
+    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 30;
 
     /// @dev The V2 swap-back counters, which the packing above pushes into the following slot.
-    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 27;
+    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 31;
 
     /// @dev First `DivAsset` of the payout set. Three slots each: the hot slot (accumulator + the three
     ///      clocks + the precision exponent), then `token` + `rate`, then the ledger + the buffer.
-    uint256 internal constant DIVIDEND_ASSETS_SLOT = 15;
+    uint256 internal constant DIVIDEND_ASSETS_SLOT = 19;
 
     RealmTaxableTokenUniV2 internal tok;
 

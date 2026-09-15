@@ -134,6 +134,13 @@ abstract contract RealmTaxableToken is
     //////////////////////// Errors //////////////////////
 
     error NotTokenOwner();
+    /// @notice Thrown by every token entry point an EXTENSION inherits but must never serve. Declared
+    ///         here, on the common ancestor of every token and every extension, because both venues'
+    ///         extensions revert with it and only one of them is about dividends.
+    /// @dev The revert is not politeness: it makes the machinery behind each entry point unreachable, so
+    ///      the compiler drops it from the extension's bytecode. That is what buys a cold half its room
+    ///      under EIP-170 — see `RealmV4ExtensionBase`.
+    error NotAToken();
     error CannotRescueSelfToken();
     error TaxBpsCanOnlyDecrease();
     /// @notice A dividends allocation was configured without the payout asset that makes it payable.
@@ -310,6 +317,18 @@ abstract contract RealmTaxableToken is
         _allocateEthEarnings(msg.value, burnBps, liquidityBps);
     }
 
+    /// @notice Routes ERC20 earnings — the creator's share of the LP fee and the swap tax on a pool
+    ///         quoted in something other than the chain's native currency — through the same
+    ///         earnings-allocation split the native path uses, in that currency.
+    /// @dev PULLS `amount` of `asset` from the caller, who must have approved this token, and requires
+    ///      `asset` to be one of this token's registered `quotes`.
+    function accrueFees(address asset, uint256 amount) external virtual override(IRealmToken, RealmToken) {
+        _requireQuote(asset);
+        if (amount == 0) return;
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+        _allocateEarnings(asset, amount, burnBps, liquidityBps);
+    }
+
     /// @dev Earnings split routes each slice post-graduation only; pre-graduation the whole amount
     ///      goes to the fund wallets. Reads the base `RealmToken.graduated` flag.
     function _earningsGraduated() internal view override returns (bool) {
@@ -317,16 +336,28 @@ abstract contract RealmTaxableToken is
     }
 
     /// @dev Routes the fund-wallet slice to this token's master fee handler — the same path all
-    ///      earnings took before the allocation split was introduced.
-    function _depositToFund(uint256 amount) internal override {
-        IRealmMasterFeeHandler(feeHandler).depositFees{value: amount}(address(this));
+    ///      earnings took before the allocation split was introduced. The creator receives the slice in
+    ///      whatever currency the pool that produced it is quoted in, native included; the handler keeps
+    ///      a separate accumulator per asset.
+    function _depositToFund(address asset, uint256 amount) internal override {
+        if (asset == address(0)) {
+            IRealmMasterFeeHandler(feeHandler).depositFees{value: amount}(address(this));
+            return;
+        }
+        _depositAssetToFund(asset, amount);
     }
 
     /// @dev Dividends accrue as native into the packed per-leg buffer — one SSTORE for all three legs,
     ///      well inside the router gas budget — and are converted out-of-band by `processDividends`.
     ///      A token with no dividend configuration has a zero native weight total, so this consumes
     ///      nothing and the slice folds back to the fund wallets.
-    function _handleDividends(uint256 amount) internal override returns (uint256 unconsumed) {
+    function _handleDividends(address asset, uint256 amount) internal override returns (uint256 unconsumed) {
+        // Quote-denominated dividends are not wired yet: the pots, their thresholds and the conversion
+        // route are all native-denominated, and an ERC20 slice buffered against them would be counted in
+        // units that mean nothing. Until they are, the slice falls back to the fund wallets — which is
+        // exactly the contract `EarningsAllocation` defines for a leg that has not shipped, and is why a
+        // token launched against an ERC20 quote today cannot silently strand holders' money.
+        if (asset != address(0)) return amount;
         return _accrueDividends(amount);
     }
 
@@ -350,8 +381,8 @@ abstract contract RealmTaxableToken is
 
     /// @notice The `DividendDistributionLogic` extension this token's four out-of-band dividend entry
     ///         points execute in, against this token's own storage.
-    /// @dev Declared here and implemented by each concrete token (which deploys its own alongside
-    ///      itself), so a venue that forgets to wire one does not compile.
+    /// @dev Declared here and implemented by each concrete token, so a venue that forgets to wire one
+    ///      does not compile.
     function dividendLogic() public view virtual returns (address);
 
     /// @dev Runs the extension's copy of the entry point against THIS contract's storage, balance and
@@ -374,7 +405,13 @@ abstract contract RealmTaxableToken is
     ///      otherwise is not. OpenZeppelin's `Proxy._delegate` leaves the identical body unannotated for
     ///      exactly this reason.
     function _delegateToDividendLogic() internal {
-        address logic = dividendLogic();
+        _delegateTo(dividendLogic());
+    }
+
+    /// @dev Same, for whichever extension the caller names. The two V4 extensions are peers — one
+    ///      carries the dividend machine, the other the buy-back and liquidity processors — because
+    ///      together they no longer fit under EIP-170.
+    function _delegateTo(address logic) internal {
         assembly {
             calldatacopy(0, 0, calldatasize())
             let ok := delegatecall(gas(), logic, 0, calldatasize(), 0, 0)
@@ -473,12 +510,22 @@ abstract contract RealmTaxableToken is
         return balance > reserved ? balance - reserved : 0;
     }
 
-    /// @notice ERC20 balance of `asset` that is not owed to dividend holders.
+    /// @notice ERC20 balance of `asset` this token does NOT hold on someone else's behalf.
     function _sweepableAsset(address asset) internal view virtual returns (uint256) {
         uint256 balance = IERC20(asset).balanceOf(address(this));
-        if (!hasDividends) return balance;
-        uint256 reserved = committedDividends(asset);
+        uint256 reserved = _reservedAsset(asset);
         return balance > reserved ? balance - reserved : 0;
+    }
+
+    /// @dev `asset` units this contract holds on someone else's behalf — the ERC20 twin of
+    ///      `_reservedNative`. The base covers the undelivered dividend pot of whichever assets are
+    ///      payout assets; a venue extends it with its own per-quote buffers.
+    /// @dev Every sweep and rescue path MUST route through `_sweepableAsset` rather than reading
+    ///      `balanceOf` directly. The failure mode of forgetting a bucket here is not a lost balance but
+    ///      a silent transfer of committed money to the token owner.
+    function _reservedAsset(address asset) internal view virtual returns (uint256) {
+        if (!hasDividends) return 0;
+        return committedDividends(asset);
     }
 
     /// @dev Native this contract holds on someone else's behalf. Venues extend it with their own

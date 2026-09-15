@@ -372,7 +372,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
         // `ethFromSwap` (this swap) and `ethToFund` (what reaches the fee handler) are equal for a token
         // with no earnings allocation.
         emit CreatorTaxSwapback(swapAmount, ethFromSwap, ethToFund);
-        if (ethToFund > 0) _depositToFund(ethToFund);
+        if (ethToFund > 0) _depositToFund(address(0), ethToFund);
     }
 
     //////////////////////// DIVIDENDS (delegated) //////////////////////

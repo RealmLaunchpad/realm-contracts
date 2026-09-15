@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
@@ -18,6 +19,8 @@ import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.s
 ///      no extra SLOAD and behave identically to a plain token — the caps code is present but never
 ///      reached. Tax variants (`RealmTaxableToken*`) inherit this same gated feature.
 contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperProtection {
+    using SafeERC20 for IERC20;
+
     /// @notice Version of the Realm stack this token belongs to
     string public constant override VERSION = "2.0";
 
@@ -62,6 +65,13 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     ///      `_update` already loads, so the transfer hook learns how many assets to settle from a WARM
     ///      slot instead of a cold one. A token without dividends never reads it at all.
     uint8 public dividendAssetCount;
+
+    /// @notice How many entries of `quotes` are configured: 1 for a native-only token, up to
+    ///         `MAX_QUOTES` for a multi-pair one. Fixed at creation.
+    /// @dev Declared HERE, beside `dividendAssetCount` and for the same reason: it packs into the
+    ///      `pair` slot, so the earnings path learns how many currencies to walk from a slot the
+    ///      transfer hook has already warmed rather than a cold one of its own.
+    uint8 public quoteCount;
 
     /// @notice Launchpad address
     RealmLaunchpad public launchpad;
@@ -110,12 +120,34 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     /// @notice Token symbol
     string internal _tokenSymbol;
 
+    /// @notice Max currencies a token's pools may be quoted in — one per pool, and the bound on the
+    ///         pools themselves. A FIXED compile-time bound, not a policy knob: the earnings path walks
+    ///         the set, so it has to be small and impossible to grow after creation.
+    uint256 public constant MAX_QUOTES = 3;
+
+    /// @notice The currencies this token's pools are quoted in, in registration order. Index 0 is
+    ///         ALWAYS the chain's native currency (`address(0)`), set at initialization, so a token that
+    ///         never registers anything else behaves exactly as it did before quotes existed. Entries at
+    ///         or beyond `quoteCount` are unset and must never be read.
+    address[MAX_QUOTES] public quotes;
+
+    /// @notice `quotes` index of a currency, PLUS ONE, so that 0 reads as "not a quote of this token".
+    ///         The gate on every asset-denominated earnings deposit: a currency this token was not
+    ///         launched against has no pool, no buffer and no way to be spent, so accepting one would
+    ///         strand it.
+    mapping(address quote => uint8 indexPlusOne) internal _quoteIndexPlusOne;
+
     //////////////////////// Errors //////////////////////
 
     error OnlyGraduatorAllowed();
     error TransferToPairBeforeGraduationNotAllowed();
     error CannotSelfTransfer();
     error Unauthorized();
+    /// @notice Thrown when earnings arrive denominated in a currency this token has no pool in.
+    error UnknownQuote();
+    /// @notice Thrown when `registerQuotes` is handed more than `MAX_QUOTES - 1` extra currencies, a
+    ///         duplicate, or the native sentinel (which index 0 already holds).
+    error InvalidQuotes();
 
     //////////////////////////////////////////////////////
 
@@ -185,6 +217,12 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         treasuryShareBps = params.treasuryShareBps;
         swapLpFeeBps = params.swapLpFeeBps;
         emit LaunchpadFeesInitialized(params.lpFeeBps, params.treasuryShareBps);
+
+        // Every token quotes against the chain's native currency at index 0, always. A token launched
+        // only against native never touches anything else here, so the whole quote dimension costs it
+        // one SSTORE at creation and nothing afterwards.
+        quoteCount = 1;
+        _quoteIndexPlusOne[address(0)] = 1;
 
         // Creation timestamp, set AFTER the initial mint so that mint still observes
         // `launchTimestamp == 0` (the sniper-window early-return relies on it; see the `tokenFactory`
@@ -256,11 +294,68 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         IRealmMasterFeeHandler(feeHandler).registerToken(feeShares);
     }
 
-    /// @notice Routes ETH fees to the fee handler for this token
+    /// @notice Registers the ERC20 currencies this token's pools are quoted in, beyond the native one
+    ///         index 0 always holds. Callable only by the factory that initialized the token, in the
+    ///         creation transaction — the same one-shot transient gate `registerFees` uses.
+    /// @dev The set is what `accrueFees(asset, amount)` validates against and what the taxable variants
+    ///      key their burn / liquidity / dividend buffers by. Fixed for the token's life: a clone is not
+    ///      patchable, and a quote added later would have earnings with no pool to spend them in.
+    function registerQuotes(address[] calldata extraQuotes) external {
+        require(msg.sender == tokenFactory, Unauthorized());
+        uint256 n = extraQuotes.length;
+        require(n > 0 && n < MAX_QUOTES, InvalidQuotes());
+
+        uint8 count = quoteCount;
+        for (uint256 i = 0; i < n; ++i) {
+            address q = extraQuotes[i];
+            // `address(0)` is index 0's, already taken; a repeat would give one currency two buffers.
+            require(q != address(0) && _quoteIndexPlusOne[q] == 0, InvalidQuotes());
+            quotes[count] = q;
+            ++count;
+            _quoteIndexPlusOne[q] = count;
+        }
+        quoteCount = count;
+        emit QuotesRegistered(extraQuotes);
+    }
+
+    /// @notice Routes native fees to the fee handler for this token
     /// @dev `virtual` so taxable variants can override to split earnings across allocation buckets
     ///      (see `EarningsAllocation`) before the fund-wallet deposit.
     function accrueFees() external payable virtual {
         IRealmMasterFeeHandler(feeHandler).depositFees{value: msg.value}(address(this));
+    }
+
+    /// @notice Routes ERC20 fees to the fee handler for this token, for a pool quoted in something
+    ///         other than the chain's native currency. PULLS `amount` of `asset` from the caller, who
+    ///         must have approved this token for it.
+    /// @dev The asset must be one of this token's registered `quotes`. Anything else has no pool here,
+    ///      so it could never be spent, distributed or swept — accepting it would strand it. `virtual`
+    ///      for the same reason the payable overload is: taxable variants carve the allocation slices.
+    function accrueFees(address asset, uint256 amount) external virtual {
+        _requireQuote(asset);
+        if (amount == 0) return;
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+        _depositAssetToFund(asset, amount);
+    }
+
+    /// @dev Hands `amount` of `asset` to the fee handler, approving it to pull exactly that much. The
+    ///      base token's whole asset-earnings path; taxable variants reuse it for their fund slice.
+    function _depositAssetToFund(address asset, uint256 amount) internal {
+        IERC20(asset).forceApprove(feeHandler, amount);
+        IRealmMasterFeeHandler(feeHandler).depositFees(address(this), asset, amount);
+    }
+
+    /// @dev Index of `quote` in `quotes`, reverting if it is not one of this token's. Native is always
+    ///      index 0, so a native-only token's callers never pay for the mapping read.
+    function _quoteIndex(address quote) internal view returns (uint256) {
+        uint8 idx = _quoteIndexPlusOne[quote];
+        require(idx != 0, UnknownQuote());
+        return idx - 1;
+    }
+
+    /// @dev `_quoteIndex` without the return value, for the paths that only need the check.
+    function _requireQuote(address quote) internal view {
+        require(_quoteIndexPlusOne[quote] != 0, UnknownQuote());
     }
 
     //////////////////////// view functions ////////////////////////
