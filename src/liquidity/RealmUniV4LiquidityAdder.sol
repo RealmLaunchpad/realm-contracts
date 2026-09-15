@@ -10,9 +10,23 @@ import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Currency} from "lib/v4-core/src/types/Currency.sol";
+import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 
-/// @notice Minimal surface the graduator and taxable tokens call to add single-sided ETH liquidity.
+/// @notice Minimal surface the graduators and taxable tokens call to add single-sided liquidity.
 interface IRealmUniV4LiquidityAdder {
+    function addSingleSided(
+        PoolKey calldata key,
+        Currency currency,
+        uint256 amount,
+        int24 tickLower,
+        int24 tickUpper,
+        address nftReceiver,
+        address excessReceiver
+    ) external payable returns (uint128 liquidity);
+
     function addSingleSidedEth(
         PoolKey calldata key,
         int24 tickLower,
@@ -40,16 +54,21 @@ interface IRealmUniV4LiquidityAdder {
 }
 
 /// @title RealmUniV4LiquidityAdder
-/// @notice Permissionless, stateless helper that turns native ETH into a SINGLE-SIDED ETH Uniswap-V4
-///         liquidity position — a protective bid wall placed just below the current price. The pair is
-///         `(currency0, currency1) = (ETH, token)`, so an ETH-only position lives at ticks ABOVE the
-///         current tick (= below the current price in ETH/token terms); as the token price falls, that
-///         ETH is progressively spent buying the token, cushioning the drop. No token custody and no
-///         swaps: only native ETH is settled.
-/// @dev Shared by `RealmGraduatorUniswapV4` (its secondary graduation position) and the taxable tokens'
-///      liquidity earnings leg (`processLiquidity`). Holds no funds between calls: the minted NFT goes to
-///      `nftReceiver` and any dust ETH is swept to `excessEthReceiver` within the same call. The position
-///      NFT is never withdrawable here, so wherever the caller points it the liquidity is permanent pool
+/// @notice Permissionless, stateless helper that turns ONE side of a pair into a SINGLE-SIDED Uniswap-V4
+///         liquidity position. Two shapes, one primitive:
+///         - The NATIVE side (`currency0` on every Realm pool) becomes a protective bid wall placed just
+///           below the current price. An ETH-only position lives at ticks ABOVE the current tick (= below
+///           the current price in ETH/token terms); as the token price falls that ETH is progressively
+///           spent buying the token, cushioning the drop.
+///         - The TOKEN side (`currency1`) becomes a launch band: a position entirely BELOW the current
+///           tick holds only the token, and buyers walk up into it. This is how the direct-launch venue
+///           seeds a pool with supply and no quote at all.
+///         No swaps: exactly one currency is ever settled.
+/// @dev Shared by `RealmGraduatorUniswapV4` (its secondary graduation position),
+///      `RealmDirectGraduatorUniV4` (the launch band) and the taxable tokens' liquidity earnings leg
+///      (`processLiquidity`). Holds no funds between calls: the minted NFT goes to `nftReceiver` and
+///      whatever the sizing rounded off goes to `excessReceiver` within the same call. The position NFT
+///      is never withdrawable here, so wherever the caller points it the liquidity is permanent pool
 ///      depth.
 /// @dev MINTING is permissionless — anyone may place a fresh wall on any pool. TOPPING UP an existing
 ///      position is not: it requires the owner's ERC721 approval (v4's `onlyIfApproved`) AND that the
@@ -65,12 +84,17 @@ interface IRealmUniV4LiquidityAdder {
 contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
+    using SafeERC20 for IERC20;
 
     /// @notice Uniswap V4 position manager that mints the liquidity positions.
     IPositionManager public immutable UNIV4_POSITION_MANAGER;
 
     /// @notice Uniswap V4 pool manager, read for the pool's current tick.
     IPoolManager public immutable UNIV4_POOL_MANAGER;
+
+    /// @notice Permit2, the only way the position manager pulls an ERC20 settle. Only the ERC20 half of
+    ///         `addSingleSided` touches it; the native paths settle straight from `msg.value`.
+    address public immutable PERMIT2;
 
     /// @notice Thrown when called with no ETH — there is nothing to deposit.
     error NoEthProvided();
@@ -87,16 +111,64 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
     ///         anyone; topping up does not, because an increase also collects the position's accrued fees
     ///         into the deltas, and this call hands those to a receiver the CALLER names.
     error NotPositionOwner();
+    /// @notice Thrown when `currency` is neither side of `key`, or when the value sent does not match
+    ///         the side being deposited (native needs `msg.value == amount`, ERC20 needs none).
+    error CurrencyMismatch();
 
-    constructor(address positionManager, address poolManager) {
+    constructor(address positionManager, address poolManager, address permit2) {
         UNIV4_POSITION_MANAGER = IPositionManager(positionManager);
         UNIV4_POOL_MANAGER = IPoolManager(poolManager);
+        PERMIT2 = permit2;
+    }
+
+    /// @inheritdoc IRealmUniV4LiquidityAdder
+    /// @dev The general form: deposit `amount` of ONE side of `key` into `[tickLower, tickUpper]`, which
+    ///      must sit entirely on the side of the current tick that makes the position single-sided in
+    ///      that currency — above it for `currency0`, below it for `currency1`. Otherwise the mint would
+    ///      need the other side, which this call does not settle, and reverts.
+    /// @dev Native is settled from `msg.value` (which must equal `amount`); an ERC20 is PULLED from
+    ///      `msg.sender`, who must have approved this contract for `amount`. Whatever the sizing rounds
+    ///      off goes to `excessReceiver` in the same call — this contract never holds funds between them.
+    function addSingleSided(
+        PoolKey calldata key,
+        Currency currency,
+        uint256 amount,
+        int24 tickLower,
+        int24 tickUpper,
+        address nftReceiver,
+        address excessReceiver
+    ) external payable returns (uint128 liquidity) {
+        require(amount > 0, NoEthProvided());
+        bool isCurrency1 = Currency.unwrap(currency) == Currency.unwrap(key.currency1);
+        require(isCurrency1 || Currency.unwrap(currency) == Currency.unwrap(key.currency0), CurrencyMismatch());
+        // Native settles from the forwarded value; an ERC20 settles from a pull, so any value sent
+        // alongside it would strand here.
+        require(msg.value == (currency.isAddressZero() ? amount : 0), CurrencyMismatch());
+
+        if (currency.isAddressZero()) {
+            return _mintSingleSided(key, isCurrency1, amount, tickLower, tickUpper, nftReceiver, excessReceiver);
+        }
+
+        IERC20 asset = IERC20(Currency.unwrap(currency));
+        asset.safeTransferFrom(msg.sender, address(this), amount);
+        _approveForSettle(asset);
+
+        // Measured around the mint, not derived from the sizing: the position manager pulls only what the
+        // mint actually owes, and the `SWEEP` action only ever hands back NATIVE — so on the ERC20 side
+        // the rounding remainder would otherwise stay here, where the next caller's mint would spend it.
+        // `balanceBefore` is read after the pull, so `balanceBefore - amount` is the pre-existing balance
+        // this call must leave untouched.
+        uint256 balanceBefore = asset.balanceOf(address(this));
+        liquidity = _mintSingleSided(key, isCurrency1, amount, tickLower, tickUpper, nftReceiver, excessReceiver);
+        uint256 unspent = asset.balanceOf(address(this)) + amount - balanceBefore;
+        if (unspent > 0) asset.safeTransfer(excessReceiver, unspent);
     }
 
     /// @inheritdoc IRealmUniV4LiquidityAdder
     /// @dev `[tickLower, tickUpper]` MUST sit entirely above the pool's current tick, otherwise the
     ///      position would require token1 (the token) that this call does not settle and the mint
-    ///      reverts. Sizes the position from all of `msg.value`.
+    ///      reverts. Sizes the position from all of `msg.value`. A thin wrapper over `addSingleSided`
+    ///      for the native side, kept because the graduator and every token's liquidity leg call it.
     function addSingleSidedEth(
         PoolKey calldata key,
         int24 tickLower,
@@ -105,7 +177,7 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
         address excessEthReceiver
     ) external payable returns (uint128 liquidity) {
         require(msg.value > 0, NoEthProvided());
-        liquidity = _mintSingleSidedEth(key, tickLower, tickUpper, nftReceiver, excessEthReceiver);
+        liquidity = _mintSingleSided(key, false, msg.value, tickLower, tickUpper, nftReceiver, excessEthReceiver);
     }
 
     /// @inheritdoc IRealmUniV4LiquidityAdder
@@ -124,7 +196,7 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
         require(tickWidth > 0, InvalidTickWidth());
         (, int24 currentTick,,) = UNIV4_POOL_MANAGER.getSlot0(key.toId());
         (int24 tickLower, int24 tickUpper) = _wallRangeBelowPrice(currentTick, tickWidth, key.tickSpacing);
-        liquidity = _mintSingleSidedEth(key, tickLower, tickUpper, nftReceiver, excessEthReceiver);
+        liquidity = _mintSingleSided(key, false, msg.value, tickLower, tickUpper, nftReceiver, excessEthReceiver);
     }
 
     /// @inheritdoc IRealmUniV4LiquidityAdder
@@ -168,7 +240,7 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
         usedTokenId = UNIV4_POSITION_MANAGER.nextTokenId();
         int24 tickUpper;
         (usedTickLower, tickUpper) = _wallRangeBelowPrice(currentTick, tickWidth, key.tickSpacing);
-        liquidity = _mintSingleSidedEth(key, usedTickLower, tickUpper, nftReceiver, excessEthReceiver);
+        liquidity = _mintSingleSided(key, false, msg.value, usedTickLower, tickUpper, nftReceiver, excessEthReceiver);
         // Nothing was minted, so no id was consumed and there is no wall for the caller to remember.
         if (liquidity == 0) return (0, 0, 0);
     }
@@ -245,39 +317,87 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
         require(tickLower < tickUpper, WallOutOfRange());
     }
 
-    /// @dev Sizes single-sided-ETH liquidity for `[tickLower, tickUpper]` from `msg.value` and mints it via
-    ///      the position manager, sending the NFT to `nftReceiver` and sweeping any leftover ETH to
-    ///      `excessEthReceiver`. Mirrors `RealmGraduatorUniswapV4._addLiquidity` for the ETH-only case (the
-    ///      `amount1` bound is 0, and the SWEEP returns the rounding dust rather than leaving it stuck).
-    function _mintSingleSidedEth(
+    /// @dev Grants the position manager, through Permit2, the standing allowance its ERC20 settle needs.
+    ///      Read-then-write: after the first deposit of a given asset both approvals are already at their
+    ///      maximum, and re-issuing them would cost two SSTOREs and two logs per call for nothing. The
+    ///      allowance is unbounded but harmless — this contract only ever holds an asset WITHIN a call,
+    ///      and the position manager can only pull what a mint it is executing actually owes.
+    function _approveForSettle(IERC20 asset) internal {
+        if (asset.allowance(address(this), PERMIT2) == 0) asset.forceApprove(PERMIT2, type(uint256).max);
+        (uint160 allowed,,) =
+            IAllowanceTransfer(PERMIT2).allowance(address(this), address(asset), address(UNIV4_POSITION_MANAGER));
+        if (allowed == 0) {
+            IAllowanceTransfer(PERMIT2)
+                .approve(address(asset), address(UNIV4_POSITION_MANAGER), type(uint160).max, type(uint48).max);
+        }
+    }
+
+    /// @dev Sizes single-sided liquidity for `[tickLower, tickUpper]` from `amount` of ONE side and mints
+    ///      it via the position manager, sending the NFT to `nftReceiver` and returning whatever the
+    ///      sizing rounded off to `excessReceiver`. Mirrors `RealmGraduatorUniswapV4._addLiquidity` for
+    ///      the single-sided case: the other side's `amountMax` bound is 0, and the remainder comes back
+    ///      rather than sticking here.
+    /// @param isCurrency1 Which side `amount` is denominated in. `false` = `currency0` (the native side
+    ///        on every Realm pool, settled from the forwarded value); `true` = `currency1`, settled from
+    ///        this contract's own balance through Permit2.
+    function _mintSingleSided(
         PoolKey calldata key,
+        bool isCurrency1,
+        uint256 amount,
         int24 tickLower,
         int24 tickUpper,
         address nftReceiver,
-        address excessEthReceiver
+        address excessReceiver
     ) internal returns (uint128 liquidity) {
-        liquidity = LiquidityAmounts.getLiquidityForAmount0(
-            TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(tickUpper), msg.value
-        );
+        liquidity = isCurrency1
+            ? LiquidityAmounts.getLiquidityForAmount1(
+                TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(tickUpper), amount
+            )
+            : LiquidityAmounts.getLiquidityForAmount0(
+                TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(tickUpper), amount
+            );
 
         // Dust that sizes to nothing goes straight back: v4-core's `Position.update` reverts
         // `CannotUpdateEmptyPosition` on a zero `liquidityDelta`, and a graduation whose secondary
         // position is pure rounding remainder must not take the whole graduation down with it.
         if (liquidity == 0) {
-            (bool returned,) = excessEthReceiver.call{value: msg.value}("");
-            require(returned, EthReturnFailed());
+            _returnUnspent(key, isCurrency1, amount, excessReceiver);
             return 0;
         }
 
-        bytes memory actions =
-            abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP));
         bytes[] memory params = new bytes[](3);
-        // MINT_POSITION: amount0Max = msg.value (slippage cap), amount1Max = 0 (ETH-only).
-        params[0] = abi.encode(key, tickLower, tickUpper, liquidity, msg.value, uint256(0), nftReceiver, bytes(""));
+        // MINT_POSITION: the deposited side's max is `amount` (slippage cap), the other side's is 0.
+        params[0] = abi.encode(
+            key,
+            tickLower,
+            tickUpper,
+            liquidity,
+            isCurrency1 ? uint256(0) : amount,
+            isCurrency1 ? amount : uint256(0),
+            nftReceiver,
+            bytes("")
+        );
         params[1] = abi.encode(key.currency0, key.currency1); // SETTLE_PAIR
-        params[2] = abi.encode(key.currency0, excessEthReceiver); // SWEEP native ETH dust
+        params[2] = abi.encode(key.currency0, excessReceiver); // SWEEP native ETH dust
 
-        UNIV4_POSITION_MANAGER.modifyLiquidities{value: msg.value}(abi.encode(actions, params), block.timestamp);
+        UNIV4_POSITION_MANAGER.modifyLiquidities{value: isCurrency1 ? 0 : amount}(
+            abi.encode(
+                abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP)), params
+            ),
+            block.timestamp
+        );
+    }
+
+    /// @dev Hands `amount` of the deposited side back to `excessReceiver`. The native leg is a raw call
+    ///      whose failure must revert — the caller's funds are in this contract and there is nowhere else
+    ///      for them to go.
+    function _returnUnspent(PoolKey calldata key, bool isCurrency1, uint256 amount, address excessReceiver) internal {
+        if (isCurrency1) {
+            IERC20(Currency.unwrap(key.currency1)).safeTransfer(excessReceiver, amount);
+            return;
+        }
+        (bool returned,) = excessReceiver.call{value: amount}("");
+        require(returned, EthReturnFailed());
     }
 
     /// @dev Smallest multiple of `spacing` that is `>= tick`. Solidity `%` keeps the dividend's sign, so a

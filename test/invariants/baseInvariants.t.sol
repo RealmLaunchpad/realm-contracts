@@ -92,7 +92,8 @@ contract LaunchpadInvariants is Test {
         );
         feeHandler = new RealmMasterFeeHandler();
 
-        address univ4LiquidityAdder = address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress));
+        address univ4LiquidityAdder =
+            address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress, permit2Address));
         graduatorV4 = new RealmGraduatorUniswapV4(
             address(launchpad),
             poolManagerAddress,

@@ -153,7 +153,8 @@ contract DeployRealmStack is Script {
         c.quoter = address(new RealmQuoter(c.launchpad));
         // Chain-shared singleton: every V4 graduator's secondary position and taxable tokens'
         // `processLiquidity` both route through it.
-        c.liquidityAdder = address(new RealmUniV4LiquidityAdder(infra.univ4PositionManager, infra.univ4PoolManager));
+        c.liquidityAdder =
+            address(new RealmUniV4LiquidityAdder(infra.univ4PositionManager, infra.univ4PoolManager, infra.permit2));
         c.graduatorV2 =
             address(new RealmGraduatorUniswapV2(infra.univ2Router, c.launchpad, infra.univ2PairInitCodeHash));
         // One graduator per tier; the hook is fee-agnostic (it reads the LP fee off the token), so the

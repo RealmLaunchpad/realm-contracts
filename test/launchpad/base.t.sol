@@ -469,7 +469,8 @@ contract LaunchpadBaseTests is Test {
 
         // Single shared liquidity adder, mirroring the production topology (deployed once, all graduators
         // and taxable tokens point at the same one).
-        address univ4LiquidityAdder = address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress));
+        address univ4LiquidityAdder =
+            address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress, permit2Address));
 
         graduatorV4 = new RealmGraduatorUniswapV4(
             address(launchpad),

@@ -38,7 +38,7 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
 
     function setUp() public virtual override {
         super.setUp();
-        adder = new RealmUniV4LiquidityAdder(address(positionManagerAddress), address(poolManager));
+        adder = new RealmUniV4LiquidityAdder(address(positionManagerAddress), address(poolManager), permit2Address);
         posm = IPositionManager(positionManagerAddress);
 
         testToken = _createTaxToken(0, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
