@@ -95,33 +95,13 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     ///      same tx, so the value only needs to survive across that single tx. Auto-clears at
     ///      end of tx, so a second `registerFees` attempt from any future tx finds it zeroed
     ///      and reverts on the `msg.sender == 0` check.
-    /// @dev SECURITY ASSUMPTION (tokens with `hasSniperProt`): `SniperProtection._checkSniperProtection`
-    ///      reads this slot to exempt the deployer-buy hops `launchpad → factory → supplyShares`
-    ///      from the per-tx / per-wallet caps (both `to == factoryAddr` and `from == factoryAddr`
-    ///      branches). Outside the deploy tx the slot reads `address(0)`, so the exemption checks
-    ///      effectively become `if (to == address(0)) return;` and `if (from == address(0))
-    ///      return;`. This is currently safe because:
-    ///        - `to == 0`: OZ ERC20 v5's `transfer`/`transferFrom` revert with
-    ///          `ERC20InvalidReceiver` before reaching `_update`, so the `to == factoryAddr`
-    ///          branch is unreachable with `factoryAddr == 0`.
-    ///        - `from == 0`: the only mint is `_initializeRealmToken`'s initial mint to the
-    ///          launchpad, which runs before `_initializeSniperProtection` caches
-    ///          `protectionWindowEnd` (so it reads 0 during the mint, and `launchTimestamp` itself
-    ///          is also set only at the END of this initializer). At that moment the window-active
-    ///          check (`block.timestamp >= protectionWindowEnd`) returns early on its own, so the
-    ///          `from == factoryAddr` branch is unreachable with `factoryAddr == 0`.
-    /// @dev ⚠️ FUTURE FOOT-GUN: any new path that lets `_update` fire with `to == address(0)`
-    ///      OR with `from == address(0)` while the protection window is open (`protectionWindowEnd`
-    ///      set, not yet elapsed) would silently bypass the sniper caps. Concrete cases to watch out for:
-    ///        - a custom transfer override (or alternate ERC20 base) that drops the
-    ///          zero-recipient guard, enabling burns through `_update`;
-    ///        - any new `_mint` call site that runs after init (e.g. a rebase or inflation
-    ///          hook), since post-init mints have `from == address(0)`;
-    ///        - any new internal call site that issues `_update(*, address(0), x)` directly
-    ///          (e.g. a "burn from launchpad" admin path).
-    ///      If any such path is introduced, harden the exemption: pass a non-zero sentinel
-    ///      for the cleared state, or have `_checkSniperProtection` add explicit
-    ///      `factoryAddr != address(0)` guards around the factoryAddr short-circuits.
+    /// @dev `SniperProtection._checkSniperProtection` reads this slot to exempt the deployer-buy hops
+    ///      `launchpad → factory → supplyShares` from the per-tx / per-wallet caps (both the
+    ///      `to == factoryAddr` and `from == factoryAddr` branches). Outside the deploy tx the slot
+    ///      reads `address(0)`, so those branches become `to == address(0)` / `from == address(0)` —
+    ///      which that function short-circuits on FIRST, before any address comparison, because a burn
+    ///      and a mint are both exempt on their own terms. The aliasing is therefore harmless by
+    ///      construction rather than by accident of when the window happens to be open.
     address internal transient tokenFactory;
 
     /// @notice Token name
@@ -183,8 +163,16 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         // `vaultAllocation == 0` (the common case) reproduces the original single mint exactly.
         // The factory→vault transfers later in the tx are exempt from sniper caps via the
         // `from == tokenFactory` branch in `_checkSniperProtection`.
+        // Mint target: the launchpad on the bonding-curve venues, which sells the supply on the curve.
+        // The DIRECT-launch venue has no launchpad at all (`params.launchpad == address(0)`) and mints
+        // to the GRADUATOR instead, which seeds the whole amount into the pool in this same transaction.
+        // Falling back rather than taking a separate parameter is what keeps `launchpad` genuinely
+        // zero on that venue — and a zero `launchpad` is the point: `allowance`/`_spendAllowance`
+        // grant it an infinite, unspendable allowance over every holder, which a venue that does not
+        // need it must not inherit. Nobody can act as `address(0)`, so the grant is unreachable there.
         uint256 vaultAllocation = params.vaultAllocation;
-        _mint(params.launchpad, TOTAL_SUPPLY - vaultAllocation);
+        address mintTarget = params.launchpad == address(0) ? params.graduator : params.launchpad;
+        _mint(mintTarget, TOTAL_SUPPLY - vaultAllocation);
         if (vaultAllocation > 0) {
             _mint(msg.sender, vaultAllocation);
         }
@@ -305,12 +293,13 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         return IRealmToken.LaunchpadFees({lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: 0});
     }
 
-    /// @notice Largest amount `buyer` may purchase on the bonding curve right now. No cap unless the
-    ///         token opted into anti-sniper protection (`hasSniperProt`), in which case the per-tx /
-    ///         per-wallet caps apply during the protection window.
+    /// @notice Largest amount `buyer` may acquire in one purchase right now. No cap unless the token
+    ///         opted into anti-sniper protection (`hasSniperProt`), in which case the per-tx /
+    ///         per-wallet caps apply for the whole protection window — on bonding-curve buys and,
+    ///         since the window no longer ends at graduation, on pool buys too.
     function maxTokenPurchase(address buyer) external view virtual returns (uint256) {
         if (!hasSniperProt) return type(uint256).max;
-        return _maxTokenPurchase(buyer, balanceOf(buyer), graduated);
+        return _maxTokenPurchase(buyer, balanceOf(buyer));
     }
 
     /// @dev ERC20 interface compliance
@@ -346,13 +335,15 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         // Dividend round minima, gated by the warm-slot flag so a non-dividend token pays nothing.
         if (_hasDividends) _onBalanceChange(from, to, amount);
 
-        // Anti-sniper caps, gated by the warm-slot flag. Only enforced pre-graduation;
-        // `_hasSniperProt && !_graduated` short-circuits for the common non-protected token AND for
-        // every post-graduation transfer (when the tax variants' `_update` re-enters here after
-        // splitting a taxed transfer).
-        if (_hasSniperProt && !_graduated) {
+        // Anti-sniper caps, gated by the warm-slot flag — which short-circuits for the common
+        // non-protected token. Enforced for the WHOLE configured window, before and after graduation
+        // alike: the direct-launch venue graduates a token in the same transaction that creates it, so
+        // a rule that stopped at graduation would be a rule that never applied there at all. On the
+        // curve venues this extends the caps over post-graduation DEX buys, which is the same
+        // protection the creator asked for against the same snipers.
+        if (_hasSniperProt) {
             _checkSniperProtection(
-                from, to, amount, address(launchpad), tokenFactory, address(graduator), balanceOf(to)
+                from, to, amount, address(launchpad), _pair, tokenFactory, address(graduator), balanceOf(to)
             );
         }
 

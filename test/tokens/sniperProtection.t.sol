@@ -278,10 +278,27 @@ abstract contract SniperProtectionBaseTest is Test {
         assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX + 1 + MAX_WALLET * 2);
     }
 
-    function test_postGraduationBypass_withinWindow() public {
+    /// @dev Graduation does NOT lift the caps: the window runs to its configured end on both venues.
+    ///      It has to — the direct-launch venue graduates a token in the transaction that creates it,
+    ///      so a rule that stopped at graduation would never apply there at all.
+    function test_postGraduation_capsStillApply_withinWindow() public {
         vm.warp(block.timestamp + 30 minutes);
         vm.prank(address(graduator));
         _token().markGraduated();
+
+        vm.expectRevert(SniperProtection.MaxBuyPerTxExceeded.selector);
+        _curveBuy(buyer, MAX_BUY_PER_TX + 1);
+
+        // ...and a sub-cap buy still goes through.
+        _curveBuy(buyer, MAX_BUY_PER_TX);
+        assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX);
+    }
+
+    /// @dev The caps lift when the WINDOW ends, graduated or not.
+    function test_postGraduation_capsLift_afterWindow() public {
+        vm.prank(address(graduator));
+        _token().markGraduated();
+        vm.warp(uint256(IRealmToken(address(_token())).launchTimestamp()) + DEFAULT_WINDOW + 1);
 
         _curveBuy(buyer, MAX_BUY_PER_TX + 1);
         assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX + 1);
@@ -562,10 +579,12 @@ abstract contract SniperProtectionBaseTest is Test {
         assertEq(_maxBuy(buyer), type(uint256).max);
     }
 
-    function test_maxTokenPurchase_afterGraduationReturnsMax() public {
+    /// @dev Mirrors `test_postGraduation_capsStillApply_withinWindow` on the view side: the quote a
+    ///      frontend reads must keep reporting the cap for as long as the cap is enforced.
+    function test_maxTokenPurchase_afterGraduationStillReportsCap() public {
         vm.prank(address(graduator));
         _token().markGraduated();
-        assertEq(_maxBuy(buyer), type(uint256).max);
+        assertEq(_maxBuy(buyer), MAX_BUY_PER_TX);
     }
 
     /// @dev With asymmetric configs (maxBuyPerTxBps < maxWalletBps), the tx cap binds for a

@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {EarningsAllocation} from "src/tokens/EarningsAllocation.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
@@ -191,7 +192,7 @@ abstract contract RealmTaxableToken is
     ///      TRANSFER it from holders to the owner, which is worse. Never open-code
     ///      `IERC20(token).balanceOf(address(this))` on a sweep path.
     function rescueTokens(address token) external virtual {
-        require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
+        require(msg.sender == owner || msg.sender == _launchpadOwner(), NotTokenOwner());
         // disallow rescuing the token's own balance to prevent siphoning accrued taxes
         require(token != address(this), CannotRescueSelfToken());
         IERC20(token).safeTransfer(owner, _sweepableAsset(token));
@@ -209,13 +210,24 @@ abstract contract RealmTaxableToken is
     /// @param newBuyTaxBps New buy tax rate in basis points. Must be `<= buyTaxBps`.
     /// @param newSellTaxBps New sell tax rate in basis points. Must be `<= sellTaxBps`.
     function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external virtual {
-        require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
+        require(msg.sender == owner || msg.sender == _launchpadOwner(), NotTokenOwner());
         require(newBuyTaxBps <= buyTaxBps && newSellTaxBps <= sellTaxBps, TaxBpsCanOnlyDecrease());
 
         emit TaxBpsUpdated(newBuyTaxBps, newSellTaxBps);
 
         buyTaxBps = newBuyTaxBps;
         sellTaxBps = newSellTaxBps;
+    }
+
+    /// @dev The protocol admin half of the dual-auth on `rescueTokens` / `setTaxBps`. The DIRECT-launch
+    ///      venue has no launchpad (`launchpad == address(0)`), and calling `owner()` on an address with
+    ///      no code reverts with empty returndata — so a non-owner caller on such a token would get that
+    ///      instead of `NotTokenOwner`. Returning zero keeps the revert honest. It also means those two
+    ///      functions are owner-only on that venue, and unreachable on one whose owner is renounced:
+    ///      accepted, because the venue's tokens are not administered through a launchpad at all.
+    function _launchpadOwner() internal view returns (address) {
+        RealmLaunchpad lp = launchpad;
+        return address(lp) == address(0) ? address(0) : lp.owner();
     }
 
     //////////////////////// EARNINGS ALLOCATION //////////////////////
