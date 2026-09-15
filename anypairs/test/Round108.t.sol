@@ -461,6 +461,25 @@ contract Round108AutoBasketTest is HookedFixture {
         assertGt(t.claimableOf(alice, address(stock2)), 0.99e18);
     }
 
+    function test_aFundedLegBeyondTheScanWindowIsStillReached() public {
+        // Four inputs, only the last one funded: a scan that finds nothing must still move the cursor on.
+        AB.InputBasket[] memory ins = new AB.InputBasket[](4);
+        R106Token last;
+        for (uint256 i; i < 4; ++i) {
+            last = new R106Token("Q");
+            last.mint(address(this), 1e36);
+            _pool(address(last), address(stock), 2500, 25, 1e24);
+            ins[i] = AB.InputBasket(address(last), _legs1(address(stock)));
+        }
+        AB t = _trackerOf(ins);
+        last.transfer(address(t), 1e18);
+        t.feedToken(0);
+        t.convertStep(); // scans legs 0-2: nothing there
+        assertTrue(t.convertStep(), "the next step reaches leg 3");
+        assertEq(t.buffered(address(last)), 0);
+        assertGt(t.claimableOf(alice, address(stock)), 0.99e18);
+    }
+
     function test_minConvertHoldsSmallPools() public {
         _pool(address(quote), address(stock), 2500, 25, 1e24);
         AB t = _stockTracker();

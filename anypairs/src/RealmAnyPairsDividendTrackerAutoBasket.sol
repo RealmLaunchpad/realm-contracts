@@ -955,6 +955,11 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
             }
             return _attempt(id, pool, locked);
         }
+        // Nothing funded in this window: move past it, or a funded leg beyond it would never be reached.
+        uint256 past = (cur + scan) % total;
+        if (past != cur) {
+            _convertCursor = past;
+        }
         return false;
     }
 
