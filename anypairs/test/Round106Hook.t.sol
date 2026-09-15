@@ -57,7 +57,9 @@ contract Round106HookTest is Test {
         address predicted;
         for (;; ++salt) {
             predicted = vm.computeCreate2Address(bytes32(salt), initHash, address(this));
-            if (uint160(predicted) & FLAG_MASK == FLAGS) break;
+            if (uint160(predicted) & FLAG_MASK == FLAGS) {
+                break;
+            }
         }
         hook = new RealmAnyPairsTaxHookPairImmutable{salt: bytes32(salt)}(pm, address(this), platform);
         assertEq(address(hook), predicted);

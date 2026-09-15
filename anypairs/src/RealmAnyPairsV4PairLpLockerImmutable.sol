@@ -148,7 +148,10 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     /// one-wei rounding disagreement would permanently block launches.
     event SeedUnderDeclaredCoin(PoolId indexed poolId, uint256 declared, uint256 consumed);
 
-    enum Op { SEED, COMPOUND }
+    enum Op {
+        SEED,
+        COMPOUND
+    }
 
     /// @dev An additional tick range this pool's fees have been compounded into, opened only after the
     /// primary range hit the per-tick liquidity cap. See {_pickRange}.
@@ -188,13 +191,17 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     /// @dev Owner, or the admin when it is non-zero. Ownership transfer and renounce stay `onlyOwner`, so the
     /// admin can never reach the owner seat.
     modifier onlyOwnerOrAdmin() {
-        if (msg.sender != owner && (msg.sender != admin || admin == address(0))) revert NotOwnerOrAdmin();
+        if (msg.sender != owner && (msg.sender != admin || admin == address(0))) {
+            revert NotOwnerOrAdmin();
+        }
         _;
     }
 
     constructor(IPoolManager pm, address owner_) RealmAnyPairsImmutableBase(owner_) {
         // Immutable with no setter, so a zero address would be unrecoverable.
-        if (address(pm) == address(0)) revert ZeroAddress();
+        if (address(pm) == address(0)) {
+            revert ZeroAddress();
+        }
         poolManager = pm;
         // The deployer is the first admin, so the contract is renounce-ready without a {setAdmin} call.
         admin = owner_;
@@ -203,7 +210,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     /// @notice Hand the surviving config key to `admin_`. Owner OR admin -- the admin may rotate itself.
     /// @dev `address(0)` is allowed while the owner holds the key; {_requireRenounceReady} refuses to renounce over it.
     function setAdmin(address admin_) external onlyOwnerOrAdmin {
-        if (admin_ == address(this)) revert SelfAddress();
+        if (admin_ == address(this)) {
+            revert SelfAddress();
+        }
         admin = admin_;
         emit AdminSet(admin_);
     }
@@ -211,10 +220,15 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     /// @notice Allow or disallow a launcher. Owner or admin.
     /// @dev `launcherCount` changes only on an actual state change; {_requireRenounceReady} reads it.
     function setLauncher(address launcher_, bool allowed) external onlyOwnerOrAdmin {
-        if (launcher_ == address(0)) revert NotLauncher();
+        if (launcher_ == address(0)) {
+            revert NotLauncher();
+        }
         if (allowed != isLauncher[launcher_]) {
-            if (allowed) launcherCount += 1;
-            else launcherCount -= 1;
+            if (allowed) {
+                launcherCount += 1;
+            } else {
+                launcherCount -= 1;
+            }
         }
         isLauncher[launcher_] = allowed;
         emit LauncherSet(launcher_, allowed);
@@ -223,8 +237,12 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     /// @dev Blocks {renounceOwnership} until a launcher is allowlisted and an admin is set; otherwise no launcher
     /// could ever be authorised again.
     function _requireRenounceReady() internal view override {
-        if (launcherCount == 0) revert LauncherNotSet();
-        if (admin == address(0)) revert AdminZero();
+        if (launcherCount == 0) {
+            revert LauncherNotSet();
+        }
+        if (admin == address(0)) {
+            revert AdminZero();
+        }
     }
 
     /// @notice Seed a new pool's single-sided LP and perform the dev buy, paid entirely to `creator`.
@@ -233,35 +251,69 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     /// @dev Allowlisted launchers only. For an ERC20 quote the launcher transfers `devBuyQuote` beforehand and
     /// sends no value; for a native quote `msg.value` must equal `devBuyQuote`.
     function launch(
-        PoolKey calldata key, uint128 liquidity, int24 tickLower, int24 tickUpper,
-        address creator, bool quoteIsC0, uint256 devBuyQuote, uint256 coinAmountIn
+        PoolKey calldata key,
+        uint128 liquidity,
+        int24 tickLower,
+        int24 tickUpper,
+        address creator,
+        bool quoteIsC0,
+        uint256 devBuyQuote,
+        uint256 coinAmountIn
     ) external payable nonReentrant returns (uint256 devBuySpent) {
         // The whole dev buy goes to `creator` through the same distribution path as a split.
         address[] memory recipients = new address[](1);
         uint16[] memory bps = new uint16[](1);
         recipients[0] = creator;
         bps[0] = DEV_BUY_BPS;
-        return _launch(key, liquidity, tickLower, tickUpper, creator, quoteIsC0, devBuyQuote, coinAmountIn, recipients, bps);
+        return
+            _launch(
+                key, liquidity, tickLower, tickUpper, creator, quoteIsC0, devBuyQuote, coinAmountIn, recipients, bps
+            );
     }
 
     /// @notice {launch} with the dev buy's coin split across up to {MAX_DEV_BUY_RECIPIENTS} wallets. Still one swap;
     /// each recipient gets `bps / 10,000` and the last takes the rounding remainder. Leftover quote goes to `creator`.
     function launch(
-        PoolKey calldata key, uint128 liquidity, int24 tickLower, int24 tickUpper,
-        address creator, bool quoteIsC0, uint256 devBuyQuote, uint256 coinAmountIn,
-        address[] calldata devBuyRecipients, uint16[] calldata devBuyBps
+        PoolKey calldata key,
+        uint128 liquidity,
+        int24 tickLower,
+        int24 tickUpper,
+        address creator,
+        bool quoteIsC0,
+        uint256 devBuyQuote,
+        uint256 coinAmountIn,
+        address[] calldata devBuyRecipients,
+        uint16[] calldata devBuyBps
     ) external payable nonReentrant returns (uint256 devBuySpent) {
         return _launch(
-            key, liquidity, tickLower, tickUpper, creator, quoteIsC0, devBuyQuote, coinAmountIn, devBuyRecipients, devBuyBps
+            key,
+            liquidity,
+            tickLower,
+            tickUpper,
+            creator,
+            quoteIsC0,
+            devBuyQuote,
+            coinAmountIn,
+            devBuyRecipients,
+            devBuyBps
         );
     }
 
     function _launch(
-        PoolKey calldata key, uint128 liquidity, int24 tickLower, int24 tickUpper,
-        address creator, bool quoteIsC0, uint256 devBuyQuote, uint256 coinAmountIn,
-        address[] memory recipients, uint16[] memory bps
+        PoolKey calldata key,
+        uint128 liquidity,
+        int24 tickLower,
+        int24 tickUpper,
+        address creator,
+        bool quoteIsC0,
+        uint256 devBuyQuote,
+        uint256 coinAmountIn,
+        address[] memory recipients,
+        uint16[] memory bps
     ) internal returns (uint256 devBuySpent) {
-        if (!isLauncher[msg.sender]) revert NotLauncher();
+        if (!isLauncher[msg.sender]) {
+            revert NotLauncher();
+        }
         // `msg.value` must match the quote side exactly: an unfunded native dev buy would be paid out of the pooled
         // balance backing other pools and refunds. Orientation is derived from the key, not trusted from the caller.
         _requireOrientation(key, quoteIsC0);
@@ -271,18 +323,32 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         }
         // Native ETH can only be currency0, and {_requireOrientation} has established it is then the quote.
         uint256 needValue = Currency.unwrap(key.currency0) == address(0) ? devBuyQuote : 0;
-        if (msg.value != needValue) revert BadDevBuyValue(msg.value, needValue);
+        if (msg.value != needValue) {
+            revert BadDevBuyValue(msg.value, needValue);
+        }
         // Checked after the guards above so they report the real problem first, and before any state is written.
         _requireDevBuySplit(recipients, bps, key, quoteIsC0, creator);
         PoolId id = key.toId();
-        if (poolInfo[id].seeded) revert AlreadySeeded();
-        if (liquidity == 0) revert BadLiquidity();
+        if (poolInfo[id].seeded) {
+            revert AlreadySeeded();
+        }
+        if (liquidity == 0) {
+            revert BadLiquidity();
+        }
         poolInfo[id] = PoolInfo({tickLower: tickLower, tickUpper: tickUpper, seeded: true});
         bytes memory ret = poolManager.unlock(
             abi.encode(
                 uint8(Op.SEED),
-                SeedData({key: key, liquidity: liquidity, tickLower: tickLower, tickUpper: tickUpper,
-                          creator: creator, quoteIsC0: quoteIsC0, devBuyQuote: devBuyQuote, coinAmountIn: coinAmountIn})
+                SeedData({
+                    key: key,
+                    liquidity: liquidity,
+                    tickLower: tickLower,
+                    tickUpper: tickUpper,
+                    creator: creator,
+                    quoteIsC0: quoteIsC0,
+                    devBuyQuote: devBuyQuote,
+                    coinAmountIn: coinAmountIn
+                })
             )
         );
         uint256 refundAmount;
@@ -303,7 +369,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
             }
         }
         // Paid out after the lock has closed, for the same reason as the refund push.
-        if (coinOut > 0) _distributeDevBuy(key, quoteIsC0, coinOut, recipients, bps);
+        if (coinOut > 0) {
+            _distributeDevBuy(key, quoteIsC0, coinOut, recipients, bps);
+        }
         emit Seeded(id, liquidity, tickLower, tickUpper);
     }
 
@@ -311,28 +379,46 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     /// zero, this locker, the PoolManager, the coin or the pool's hook; the calling launcher is refused unless it
     /// is also the creator. Bps must be non-zero and sum to 10,000.
     function _requireDevBuySplit(
-        address[] memory recipients, uint16[] memory bps, PoolKey calldata key, bool quoteIsC0, address creator
+        address[] memory recipients,
+        uint16[] memory bps,
+        PoolKey calldata key,
+        bool quoteIsC0,
+        address creator
     ) internal view {
         address coin = Currency.unwrap(quoteIsC0 ? key.currency1 : key.currency0);
         uint256 n = recipients.length;
-        if (n == 0 || n > MAX_DEV_BUY_RECIPIENTS || n != bps.length) revert BadDevBuySplit();
+        if (n == 0 || n > MAX_DEV_BUY_RECIPIENTS || n != bps.length) {
+            revert BadDevBuySplit();
+        }
         uint256 sum;
         for (uint256 i; i < n; ++i) {
             address r = recipients[i];
-            if (r == address(0) || r == address(this) || r == address(poolManager) || bps[i] == 0) revert BadDevBuySplit();
-            if (r == coin || (r == msg.sender && r != creator) || r == address(key.hooks)) revert BadDevBuySplit();
+            if (r == address(0) || r == address(this) || r == address(poolManager) || bps[i] == 0) {
+                revert BadDevBuySplit();
+            }
+            if (r == coin || (r == msg.sender && r != creator) || r == address(key.hooks)) {
+                revert BadDevBuySplit();
+            }
             for (uint256 j; j < i; ++j) {
-                if (recipients[j] == r) revert BadDevBuySplit();
+                if (recipients[j] == r) {
+                    revert BadDevBuySplit();
+                }
             }
             sum += bps[i];
         }
-        if (sum != DEV_BUY_BPS) revert BadDevBuySplit();
+        if (sum != DEV_BUY_BPS) {
+            revert BadDevBuySplit();
+        }
     }
 
     /// @dev Pays `coinOut` of the coin (taken to this contract by {_seed}) to the recipients. A failed transfer
     /// reverts the launch: leftover coin would read as unreserved surplus in the shared balance.
     function _distributeDevBuy(
-        PoolKey calldata key, bool quoteIsC0, uint256 coinOut, address[] memory recipients, uint16[] memory bps
+        PoolKey calldata key,
+        bool quoteIsC0,
+        uint256 coinOut,
+        address[] memory recipients,
+        uint16[] memory bps
     ) internal {
         address coin = Currency.unwrap(quoteIsC0 ? key.currency1 : key.currency0);
         uint256 n = recipients.length;
@@ -342,7 +428,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
             uint256 amt = i + 1 == n ? coinOut - sent : coinOut * bps[i] / DEV_BUY_BPS;
             amounts[i] = amt;
             sent += amt;
-            if (amt != 0) IERC20(coin).safeTransfer(recipients[i], amt);
+            if (amt != 0) {
+                IERC20(coin).safeTransfer(recipients[i], amt);
+            }
         }
         emit DevBuyDistributed(coin, recipients, amounts);
     }
@@ -363,12 +451,18 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     function _requireOrientation(PoolKey calldata key, bool quoteIsC0) internal view {
         address c0 = Currency.unwrap(key.currency0);
         address c1 = Currency.unwrap(key.currency1);
-        if (c1 == address(0)) revert BadPoolKey();
+        if (c1 == address(0)) {
+            revert BadPoolKey();
+        }
         if (c0 == address(0)) {
-            if (!quoteIsC0) revert OrientationMismatch(quoteIsC0, true);
+            if (!quoteIsC0) {
+                revert OrientationMismatch(quoteIsC0, true);
+            }
             return;
         }
-        if (_isCallerCoin(quoteIsC0 ? c0 : c1)) revert OrientationMismatch(quoteIsC0, !quoteIsC0);
+        if (_isCallerCoin(quoteIsC0 ? c0 : c1)) {
+            revert OrientationMismatch(quoteIsC0, !quoteIsC0);
+        }
     }
 
     /// @dev True if `t` reports the calling launcher as its `launcher()`. Low-level and gas-capped so a codeless
@@ -395,7 +489,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     }
 
     function _reserve(address token, uint256 amount) internal {
-        if (amount != 0) reservedOf[token] += amount;
+        if (amount != 0) {
+            reservedOf[token] += amount;
+        }
     }
 
     /// @dev Saturating for the same reason {availableOf} is: a permanent revert here would brick every
@@ -411,25 +507,35 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         uint256 old0 = carried0[id];
         if (new0 != old0) {
             carried0[id] = new0;
-            if (new0 > old0) _reserve(Currency.unwrap(key.currency0), new0 - old0);
-            else _releaseReserved(Currency.unwrap(key.currency0), old0 - new0);
+            if (new0 > old0) {
+                _reserve(Currency.unwrap(key.currency0), new0 - old0);
+            } else {
+                _releaseReserved(Currency.unwrap(key.currency0), old0 - new0);
+            }
         }
         uint256 old1 = carried1[id];
         if (new1 != old1) {
             carried1[id] = new1;
-            if (new1 > old1) _reserve(Currency.unwrap(key.currency1), new1 - old1);
-            else _releaseReserved(Currency.unwrap(key.currency1), old1 - new1);
+            if (new1 > old1) {
+                _reserve(Currency.unwrap(key.currency1), new1 - old1);
+            } else {
+                _releaseReserved(Currency.unwrap(key.currency1), old1 - new1);
+            }
         }
     }
 
     function compound(PoolKey calldata key) external nonReentrant {
         PoolId id = key.toId();
-        if (!poolInfo[id].seeded) revert NotSeeded();
+        if (!poolInfo[id].seeded) {
+            revert NotSeeded();
+        }
         poolManager.unlock(abi.encode(uint8(Op.COMPOUND), key));
     }
 
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
+        if (msg.sender != address(poolManager)) {
+            revert NotPoolManager();
+        }
         uint8 op = abi.decode(data[:32], (uint8));
         if (op == uint8(Op.SEED)) {
             (uint256 sp, uint256 rf, address qa, uint256 co) = _seed(abi.decode(data[32:], (SeedData)));
@@ -456,20 +562,28 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
             : (Currency.unwrap(s.key.currency1), Currency.unwrap(s.key.currency0));
         {
             uint256 availCoin = availableOf(coinAddr);
-            if (s.coinAmountIn > availCoin) revert BadCoinAmountIn(s.coinAmountIn, availCoin);
+            if (s.coinAmountIn > availCoin) {
+                revert BadCoinAmountIn(s.coinAmountIn, availCoin);
+            }
             uint256 availQuote = availableOf(quoteAddr);
-            if (s.devBuyQuote > availQuote) revert BadDevBuyBacking(s.devBuyQuote, availQuote);
+            if (s.devBuyQuote > availQuote) {
+                revert BadDevBuyBacking(s.devBuyQuote, availQuote);
+            }
         }
         (BalanceDelta delta,) = poolManager.modifyLiquidity(
             s.key,
-            ModifyLiquidityParams({tickLower: s.tickLower, tickUpper: s.tickUpper, liquidityDelta: int256(uint256(s.liquidity)), salt: 0}),
+            ModifyLiquidityParams({
+                tickLower: s.tickLower, tickUpper: s.tickUpper, liquidityDelta: int256(uint256(s.liquidity)), salt: 0
+            }),
             ""
         );
         int128 owed0 = delta.amount0();
         int128 owed1 = delta.amount1();
         // Single-sided by construction: a non-zero quote leg would be settled out of the shared quote balance.
         // Current launchers cannot reach this (price pin and {_requireOrientation}); kept for future launchers.
-        if (s.quoteIsC0 ? owed0 != 0 : owed1 != 0) revert SeedNotSingleSided();
+        if (s.quoteIsC0 ? owed0 != 0 : owed1 != 0) {
+            revert SeedNotSingleSided();
+        }
         // Bound the ACTUAL settle charge per currency (from the key, not the caller's labels), so the seed can never
         // spend balance reserved for other pools or refunds. Declared amounts do not bound what `modifyLiquidity` charges.
         {
@@ -477,17 +591,25 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
                 uint256 need0 = uint256(uint128(-owed0));
                 address cur0 = Currency.unwrap(s.key.currency0);
                 uint256 have0 = availableOf(cur0);
-                if (need0 > have0) revert SeedSettleUnbacked(cur0, need0, have0);
+                if (need0 > have0) {
+                    revert SeedSettleUnbacked(cur0, need0, have0);
+                }
             }
             if (owed1 < 0) {
                 uint256 need1 = uint256(uint128(-owed1));
                 address cur1 = Currency.unwrap(s.key.currency1);
                 uint256 have1 = availableOf(cur1);
-                if (need1 > have1) revert SeedSettleUnbacked(cur1, need1, have1);
+                if (need1 > have1) {
+                    revert SeedSettleUnbacked(cur1, need1, have1);
+                }
             }
         }
-        if (owed0 < 0) s.key.currency0.settle(poolManager, address(this), uint256(uint128(-owed0)), false);
-        if (owed1 < 0) s.key.currency1.settle(poolManager, address(this), uint256(uint128(-owed1)), false);
+        if (owed0 < 0) {
+            s.key.currency0.settle(poolManager, address(this), uint256(uint128(-owed0)), false);
+        }
+        if (owed1 < 0) {
+            s.key.currency1.settle(poolManager, address(this), uint256(uint128(-owed1)), false);
+        }
 
         if (s.devBuyQuote > 0) {
             bool zeroForOne = s.quoteIsC0;
@@ -497,9 +619,8 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
                 SwapParams({zeroForOne: zeroForOne, amountSpecified: -int256(s.devBuyQuote), sqrtPriceLimitX96: limit}),
                 ""
             );
-            (Currency quoteCur, Currency coinCur) = zeroForOne
-                ? (s.key.currency0, s.key.currency1)
-                : (s.key.currency1, s.key.currency0);
+            (Currency quoteCur, Currency coinCur) =
+                zeroForOne ? (s.key.currency0, s.key.currency1) : (s.key.currency1, s.key.currency0);
             int128 quoteDelta = zeroForOne ? d.amount0() : d.amount1();
             int128 coinDelta = zeroForOne ? d.amount1() : d.amount0();
             uint256 quoteSpent = quoteDelta < 0 ? uint256(uint128(-quoteDelta)) : 0;
@@ -508,7 +629,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
             // reserved for others.
             if (quoteSpent > 0) {
                 uint256 haveQuote = availableOf(quoteAddr);
-                if (quoteSpent > haveQuote) revert SeedSettleUnbacked(quoteAddr, quoteSpent, haveQuote);
+                if (quoteSpent > haveQuote) {
+                    revert SeedSettleUnbacked(quoteAddr, quoteSpent, haveQuote);
+                }
                 quoteCur.settle(poolManager, address(this), quoteSpent, false);
             }
             // The coin comes to this contract; {launch} pays it out to the dev-buy recipients after the lock closes.
@@ -532,12 +655,18 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         uint256 consumed = owedCoin < 0 ? uint256(uint128(-owedCoin)) : 0;
         uint256 dust;
         if (consumed >= s.coinAmountIn) {
-            if (consumed > s.coinAmountIn) emit SeedUnderDeclaredCoin(s.key.toId(), s.coinAmountIn, consumed);
+            if (consumed > s.coinAmountIn) {
+                emit SeedUnderDeclaredCoin(s.key.toId(), s.coinAmountIn, consumed);
+            }
         } else {
             dust = s.coinAmountIn - consumed;
         }
         if (dust != 0) {
-            if (s.quoteIsC0) carried1[s.key.toId()] += dust; else carried0[s.key.toId()] += dust;
+            if (s.quoteIsC0) {
+                carried1[s.key.toId()] += dust;
+            } else {
+                carried0[s.key.toId()] += dust;
+            }
             _reserve(coinAddr, dust);
         }
     }
@@ -557,16 +686,24 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     function _withdrawQuoteRefundTo(address creator, address quote, address to) internal {
         // Every withdrawal path rejects these: sending to this locker would destroy the claim, and sending to the
         // PoolManager would donate it to the next settler.
-        if (to == address(0)) revert ZeroAddress();
-        if (to == address(this) || to == address(poolManager)) revert BadRefundDestination();
+        if (to == address(0)) {
+            revert ZeroAddress();
+        }
+        if (to == address(this) || to == address(poolManager)) {
+            revert BadRefundDestination();
+        }
         uint256 amount = pendingQuoteRefund[creator][quote];
-        if (amount == 0) revert NothingToWithdraw();
+        if (amount == 0) {
+            revert NothingToWithdraw();
+        }
         pendingQuoteRefund[creator][quote] = 0;
         _releaseReserved(quote, amount);
         // Native withdrawal is uncapped (there is no launch to protect); a failure reverts, keeping the claim intact.
         if (quote == address(0)) {
             (bool ok,) = payable(to).call{value: amount}("");
-            if (!ok) revert RefundWithdrawFailed();
+            if (!ok) {
+                revert RefundWithdrawFailed();
+            }
         } else {
             IERC20(quote).safeTransfer(to, amount);
         }
@@ -576,7 +713,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     /// @dev Accepts native ETH only from the PoolManager (takes of dev-buy leftovers and native fees). Value can
     /// still be forced in (e.g. SELFDESTRUCT), so no bound may rely on `address(this).balance` alone.
     receive() external payable {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
+        if (msg.sender != address(poolManager)) {
+            revert NotPoolManager();
+        }
     }
 
     // ─────────────────────────── compound ───────────────────────────
@@ -608,9 +747,8 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         // nobody has attacked never touches the fallback machinery at all.
         uint128 maxLiq = Pool.tickSpacingToMaxLiquidityPerTick(key.tickSpacing);
         (int24 lo, int24 hi, uint128 headroom, bool isNew) = _pickRange(id, key, p, curTick, maxLiq);
-        uint128 liq = _liquidityForAmounts(
-            sqrtP, TickMath.getSqrtPriceAtTick(lo), TickMath.getSqrtPriceAtTick(hi), size0, size1
-        );
+        uint128 liq =
+            _liquidityForAmounts(sqrtP, TickMath.getSqrtPriceAtTick(lo), TickMath.getSqrtPriceAtTick(hi), size0, size1);
         // Clamp to the remaining per-tick liquidity headroom, which is shared by every position on those ticks. An
         // add over the cap would revert every future compound; the remainder stays carried.
         if (liq > headroom) {
@@ -635,12 +773,20 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         // Fees accrued between the harvest and this add are netted into `d`; a positive leg is taken below.
         uint256 used0 = d.amount0() < 0 ? uint256(uint128(-d.amount0())) : 0;
         uint256 used1 = d.amount1() < 0 ? uint256(uint128(-d.amount1())) : 0;
-        if (used0 > 0) key.currency0.settle(poolManager, address(this), used0, false);
-        if (used1 > 0) key.currency1.settle(poolManager, address(this), used1, false);
+        if (used0 > 0) {
+            key.currency0.settle(poolManager, address(this), used0, false);
+        }
+        if (used1 > 0) {
+            key.currency1.settle(poolManager, address(this), used1, false);
+        }
         // A positive delta is owed to this pool: take it (measured) and credit it to `total` so {_setCarried} reserves
         // it. Done after the settles so it can never cover a shortfall that {CompoundOverspend} must refuse.
-        if (d.amount0() > 0) total0 += _takeMeasured(key.currency0, uint256(uint128(d.amount0())));
-        if (d.amount1() > 0) total1 += _takeMeasured(key.currency1, uint256(uint128(d.amount1())));
+        if (d.amount0() > 0) {
+            total0 += _takeMeasured(key.currency0, uint256(uint128(d.amount0())));
+        }
+        if (d.amount1() > 0) {
+            total1 += _takeMeasured(key.currency1, uint256(uint128(d.amount1())));
+        }
 
         // `used > total` would mean the settle drew on balance owed to others. Unreachable today, but revert with the
         // amounts rather than let a clamp commit the shortfall.
@@ -678,7 +824,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         // A revert here would block every future compound, so an empty band (which has no fees) is skipped.
         try poolManager.modifyLiquidity(
             key, ModifyLiquidityParams({tickLower: lower, tickUpper: upper, liquidityDelta: 0, salt: 0}), ""
-        ) returns (BalanceDelta, BalanceDelta fees) {
+        ) returns (
+            BalanceDelta, BalanceDelta fees
+        ) {
             return (
                 acc0 + (fees.amount0() > 0 ? uint256(uint128(fees.amount0())) : 0),
                 acc1 + (fees.amount1() > 0 ? uint256(uint128(fees.amount1())) : 0)
@@ -691,7 +839,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     /// @dev `take` one currency into this locker and return what actually arrived (balance delta), never the amount
     /// asked for. Saturates at zero so a currency that shrinks our balance cannot brick compounding.
     function _takeMeasured(Currency cur, uint256 amount) internal returns (uint256 received) {
-        if (amount == 0) return 0;
+        if (amount == 0) {
+            return 0;
+        }
         address t = Currency.unwrap(cur);
         uint256 before = t == address(0) ? address(this).balance : IERC20(t).balanceOf(address(this));
         cur.take(poolManager, address(this), amount, false);
@@ -720,7 +870,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         returns (int24 lo, int24 hi, uint128 headroom, bool isNew)
     {
         headroom = _headroomAt(id, p.tickLower, p.tickUpper, maxLiq);
-        if (headroom != 0) return (p.tickLower, p.tickUpper, headroom, false);
+        if (headroom != 0) {
+            return (p.tickLower, p.tickUpper, headroom, false);
+        }
 
         Range[] storage fb = fallbackRanges[id];
         uint256 n = fb.length;
@@ -729,9 +881,13 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         // the primary is pinned, so a band the market has left behind would otherwise keep receiving
         // every future compound forever.
         for (uint256 i; i < n; i++) {
-            if (curTick < fb[i].lower || curTick >= fb[i].upper) continue;
+            if (curTick < fb[i].lower || curTick >= fb[i].upper) {
+                continue;
+            }
             headroom = _headroomAt(id, fb[i].lower, fb[i].upper, maxLiq);
-            if (headroom != 0) return (fb[i].lower, fb[i].upper, headroom, false);
+            if (headroom != 0) {
+                return (fb[i].lower, fb[i].upper, headroom, false);
+            }
         }
 
         // Nothing open covers spot: open a fresh band there, if the cap still allows one.
@@ -740,14 +896,18 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
             // Dedupe: at the top clamp {_spotRange} can return a band that is already open, which would waste a harvest slot.
             if (lo < hi && !_isOpen(fb, lo, hi)) {
                 headroom = _headroomAt(id, lo, hi, maxLiq);
-                if (headroom != 0) return (lo, hi, headroom, true);
+                if (headroom != 0) {
+                    return (lo, hi, headroom, true);
+                }
             }
         }
 
         // Last resort: any known band with room. Compounding out of range beats not compounding at all.
         for (uint256 i; i < n; i++) {
             headroom = _headroomAt(id, fb[i].lower, fb[i].upper, maxLiq);
-            if (headroom != 0) return (fb[i].lower, fb[i].upper, headroom, false);
+            if (headroom != 0) {
+                return (fb[i].lower, fb[i].upper, headroom, false);
+            }
         }
         return (p.tickLower, p.tickUpper, 0, false);
     }
@@ -756,7 +916,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     function _isOpen(Range[] storage fb, int24 lower, int24 upper) internal view returns (bool) {
         uint256 n = fb.length;
         for (uint256 i; i < n; i++) {
-            if (fb[i].lower == lower && fb[i].upper == upper) return true;
+            if (fb[i].lower == lower && fb[i].upper == upper) {
+                return true;
+            }
         }
         return false;
     }
@@ -768,10 +930,14 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
         int256 t = int256(curTick);
         // FLOOR, not Solidity's truncate-toward-zero, or a range below spot would be misaligned upward.
         int256 c = (t / sp) * sp;
-        if (t < 0 && c != t) c -= sp;
+        if (t < 0 && c != t) {
+            c -= sp;
+        }
         int256 span = sp * FALLBACK_SPAN;
         int256 minT = (int256(TickMath.MIN_TICK) / sp) * sp;
-        if (minT < int256(TickMath.MIN_TICK)) minT += sp;
+        if (minT < int256(TickMath.MIN_TICK)) {
+            minT += sp;
+        }
         int256 maxT = (int256(TickMath.MAX_TICK) / sp) * sp;
         int256 l = c - span;
         int256 h = c + span;
@@ -782,7 +948,9 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     // ─────────────────── vendored LiquidityAmounts (subset) ───────────────────
 
     function _liquidityForAmount0(uint160 sqrtA, uint160 sqrtB, uint256 amount0) internal pure returns (uint128) {
-        if (sqrtA > sqrtB) (sqrtA, sqrtB) = (sqrtB, sqrtA);
+        if (sqrtA > sqrtB) {
+            (sqrtA, sqrtB) = (sqrtB, sqrtA);
+        }
         uint256 intermediate = FullMath.mulDiv(sqrtA, sqrtB, Q96);
         uint256 l0 = FullMath.mulDiv(amount0, intermediate, sqrtB - sqrtA);
         // Saturate rather than wrap or revert: callers clamp the result again, and a revert in {_compound} is permanent.
@@ -790,15 +958,21 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     }
 
     function _liquidityForAmount1(uint160 sqrtA, uint160 sqrtB, uint256 amount1) internal pure returns (uint128) {
-        if (sqrtA > sqrtB) (sqrtA, sqrtB) = (sqrtB, sqrtA);
+        if (sqrtA > sqrtB) {
+            (sqrtA, sqrtB) = (sqrtB, sqrtA);
+        }
         uint256 l1 = FullMath.mulDiv(amount1, Q96, sqrtB - sqrtA);
         return l1 > type(uint128).max ? type(uint128).max : uint128(l1);
     }
 
     function _liquidityForAmounts(uint160 sqrtP, uint160 sqrtA, uint160 sqrtB, uint256 amount0, uint256 amount1)
-        internal pure returns (uint128 liquidity)
+        internal
+        pure
+        returns (uint128 liquidity)
     {
-        if (sqrtA > sqrtB) (sqrtA, sqrtB) = (sqrtB, sqrtA);
+        if (sqrtA > sqrtB) {
+            (sqrtA, sqrtB) = (sqrtB, sqrtA);
+        }
         if (sqrtP <= sqrtA) {
             liquidity = _liquidityForAmount0(sqrtA, sqrtB, amount0);
         } else if (sqrtP < sqrtB) {
@@ -813,7 +987,8 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     // ─────────────────────────── rescue ───────────────────────────
 
     /// @dev V4's `Lock` unlocked-flag transient slot, read the same way {RealmAnyPairsTaxHookPairImmutable} reads it.
-    bytes32 internal constant V4_IS_UNLOCKED_SLOT_R96 = 0xc090fc4683624cfc3884e9d8de5eca132f2d0ec062aff75d43c0465d5ceeab23;
+    bytes32 internal constant V4_IS_UNLOCKED_SLOT_R96 =
+        0xc090fc4683624cfc3884e9d8de5eca132f2d0ec062aff75d43c0465d5ceeab23;
 
     function _managerUnlockedR96() internal view returns (bool) {
         (bool ok, bytes memory d) =
@@ -826,13 +1001,21 @@ contract RealmAnyPairsV4PairLpLockerImmutable is IUnlockCallback, RealmAnyPairsI
     /// @dev Bounded by {availableOf}, so reserved dust and queued refunds cannot leave; LP positions are untouchable.
     /// Refused while the PoolManager is unlocked, when incoming launch funds are held but not yet reserved.
     function rescue(address token, address to, uint256 amount) external onlyOwnerOrAdmin nonReentrant {
-        if (to == address(0) || to == address(this) || to == address(poolManager)) revert BadRefundDestination();
-        if (_managerUnlockedR96()) revert RescueWhileUnlocked();
+        if (to == address(0) || to == address(this) || to == address(poolManager)) {
+            revert BadRefundDestination();
+        }
+        if (_managerUnlockedR96()) {
+            revert RescueWhileUnlocked();
+        }
         uint256 avail = availableOf(token);
-        if (amount == 0 || amount > avail) revert RescueExceedsAvailable(amount, avail);
+        if (amount == 0 || amount > avail) {
+            revert RescueExceedsAvailable(amount, avail);
+        }
         if (token == address(0)) {
             (bool ok,) = to.call{value: amount}("");
-            if (!ok) revert RescueFailed();
+            if (!ok) {
+                revert RescueFailed();
+            }
         } else {
             IERC20(token).safeTransfer(to, amount);
         }

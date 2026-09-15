@@ -17,6 +17,8 @@ library RealmAnyPairsCloneLib {
             mstore(0x20, or(shl(0x78, implementation), 0x5af43d82803e903d91602b57fd5bf3))
             instance := create(0, 0x09, 0x37)
         }
-        if (instance == address(0)) revert CloneFailed();
+        if (instance == address(0)) {
+            revert CloneFailed();
+        }
     }
 }

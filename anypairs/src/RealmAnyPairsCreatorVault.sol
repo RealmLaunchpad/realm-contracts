@@ -43,12 +43,23 @@ contract RealmAnyPairsCreatorVault {
     /// @notice One-shot setup, called by the launcher on a fresh clone in the launch transaction.
     /// @param cliffSecs seconds from `start_` until the first claim; must not exceed `vestSecs`.
     /// @param vestSecs seconds from `start_` until everything has vested; must be non-zero.
-    function initialize(address token_, address beneficiary_, uint256 total_, uint64 start_, uint32 cliffSecs, uint32 vestSecs)
-        external
-    {
-        if (token != address(0)) revert AlreadyInitialized();
-        if (token_ == address(0) || beneficiary_ == address(0) || total_ == 0) revert BadVault();
-        if (vestSecs == 0 || cliffSecs > vestSecs) revert BadVault();
+    function initialize(
+        address token_,
+        address beneficiary_,
+        uint256 total_,
+        uint64 start_,
+        uint32 cliffSecs,
+        uint32 vestSecs
+    ) external {
+        if (token != address(0)) {
+            revert AlreadyInitialized();
+        }
+        if (token_ == address(0) || beneficiary_ == address(0) || total_ == 0) {
+            revert BadVault();
+        }
+        if (vestSecs == 0 || cliffSecs > vestSecs) {
+            revert BadVault();
+        }
         token = token_;
         beneficiary = beneficiary_;
         total = total_;
@@ -59,8 +70,12 @@ contract RealmAnyPairsCreatorVault {
 
     /// @notice How much has vested by now, claimed or not.
     function vested() public view returns (uint256) {
-        if (block.timestamp < cliff) return 0;
-        if (block.timestamp >= end) return total;
+        if (block.timestamp < cliff) {
+            return 0;
+        }
+        if (block.timestamp >= end) {
+            return total;
+        }
         return (total * (block.timestamp - start)) / (end - start);
     }
 
@@ -71,9 +86,13 @@ contract RealmAnyPairsCreatorVault {
 
     /// @notice Pay everything vested and not yet claimed to the beneficiary.
     function claim() external returns (uint256 amount) {
-        if (msg.sender != beneficiary) revert NotBeneficiary();
+        if (msg.sender != beneficiary) {
+            revert NotBeneficiary();
+        }
         amount = claimable();
-        if (amount == 0) revert NothingToClaim();
+        if (amount == 0) {
+            revert NothingToClaim();
+        }
         claimed += amount;
         IERC20(token).safeTransfer(beneficiary, amount);
         emit VaultClaimed(beneficiary, amount);

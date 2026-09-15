@@ -23,19 +23,25 @@ abstract contract RealmAnyPairsImmutableBase {
     error ZeroOwner();
 
     modifier onlyOwner() {
-        if (msg.sender != owner) revert NotOwner();
+        if (msg.sender != owner) {
+            revert NotOwner();
+        }
         _;
     }
 
     modifier nonReentrant() {
-        if (_entered == 2) revert ReentrantCall();
+        if (_entered == 2) {
+            revert ReentrantCall();
+        }
         _entered = 2;
         _;
         _entered = 1;
     }
 
     constructor(address owner_) {
-        if (owner_ == address(0)) revert ZeroOwner();
+        if (owner_ == address(0)) {
+            revert ZeroOwner();
+        }
         owner = owner_;
         _entered = 1;
         emit OwnershipTransferred(address(0), owner_);
@@ -46,14 +52,21 @@ abstract contract RealmAnyPairsImmutableBase {
     function transferOwnership(address newOwner) external onlyOwner {
         address cleared = pendingOwner;
         pendingOwner = newOwner;
-        if (newOwner == address(0)) emit OwnershipTransferCanceled(owner, cleared);
-        else emit OwnershipTransferStarted(owner, newOwner);
+        if (newOwner == address(0)) {
+            emit OwnershipTransferCanceled(owner, cleared);
+        } else {
+            emit OwnershipTransferStarted(owner, newOwner);
+        }
     }
 
     /// @notice The pending owner accepts ownership, completing the handoff.
     function acceptOwnership() external {
-        if (pendingOwner == address(0)) revert NotPendingOwner();
-        if (msg.sender != pendingOwner) revert NotPendingOwner();
+        if (pendingOwner == address(0)) {
+            revert NotPendingOwner();
+        }
+        if (msg.sender != pendingOwner) {
+            revert NotPendingOwner();
+        }
         address old = owner;
         owner = pendingOwner;
         pendingOwner = address(0);

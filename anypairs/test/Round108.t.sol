@@ -46,11 +46,15 @@ contract R108LockHarness is IUnlockCallback {
     }
 
     function unlockCallback(bytes calldata) external returns (bytes memory) {
-        if (syncToken != address(0)) pm.sync(Currency.wrap(syncToken)); // a pending sync, as mid-settlement
+        if (syncToken != address(0)) {
+            pm.sync(Currency.wrap(syncToken)); // a pending sync, as mid-settlement
+        }
         uint256 g0 = gasleft();
         (callOk,) = target.call{gas: gasCap}(abi.encodeWithSignature("convertStep()"));
         gasUsed = g0 - gasleft();
-        if (syncToken != address(0)) pm.settle();
+        if (syncToken != address(0)) {
+            pm.settle();
+        }
         return "";
     }
 }
@@ -236,9 +240,7 @@ contract Round108AutoBasketTest is HookedFixture {
         assertApproxEqRel(t.claimableOf(alice, address(stock)), 2.5e18, 0.01e18, "1 + 1 + 0.5");
         assertApproxEqRel(t.claimableOf(bob, address(stock)), 0.5e18, 0.01e18, "only the last half");
         // and it all adds up to what the tracker really holds
-        assertLe(
-            t.claimableOf(alice, address(stock)) + t.claimableOf(bob, address(stock)), stock.balanceOf(address(t))
-        );
+        assertLe(t.claimableOf(alice, address(stock)) + t.claimableOf(bob, address(stock)), stock.balanceOf(address(t)));
     }
 
     function test_pendingFromBeforeATransferStillConverts() public {

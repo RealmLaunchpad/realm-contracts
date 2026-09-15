@@ -15,7 +15,9 @@ library RealmAnyPairsV3TwapOracle {
         int56 delta = cumulativeNow - cumulativeThen;
         int56 s = int56(uint56(secondsAgo));
         tick = int24(delta / s);
-        if (delta < 0 && (delta % s != 0)) tick--;
+        if (delta < 0 && (delta % s != 0)) {
+            tick--;
+        }
     }
 
     /// @notice `baseAmount` of `baseToken` expressed in `quoteToken` at `tick` (price of token1 in token0 = 1.0001^tick).

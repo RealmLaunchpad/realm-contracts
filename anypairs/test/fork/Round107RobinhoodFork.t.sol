@@ -30,7 +30,9 @@ contract Round107RobinhoodForkTest is Test {
 
     function setUp() public {
         string memory rpc = vm.envOr("FORK_RPC_URL", string(""));
-        if (bytes(rpc).length == 0) return;
+        if (bytes(rpc).length == 0) {
+            return;
+        }
         vm.createSelectFork(rpc);
         forked = true;
     }
@@ -45,7 +47,9 @@ contract Round107RobinhoodForkTest is Test {
         for (uint256 i; i < 2; ++i) {
             PoolKey memory k = _key(hooks[i]);
             (uint160 sqrtP,,,) = PM.getSlot0(k.toId());
-            if (sqrtP == 0) continue;
+            if (sqrtP == 0) {
+                continue;
+            }
             uint128 liq = PM.getLiquidity(k.toId());
             if (liq > bestLiq) {
                 bestLiq = liq;
@@ -77,14 +81,18 @@ contract Round107RobinhoodForkTest is Test {
     }
 
     function test_fork_hookedStockMarketIsNotDiscoverable() public {
-        if (!forked) return;
+        if (!forked) {
+            return;
+        }
         RealmAnyPairsDividendTrackerBasket t = _tracker();
         (,, bytes memory route) = t.basketLeg(0);
         assertEq(route.length, 0, "no hookless NVDAx3L/USDG pool: discovery finds nothing");
     }
 
     function test_fork_suppliedRouteDeliversTheStock() public {
-        if (!forked) return;
+        if (!forked) {
+            return;
+        }
         (PoolKey memory key, bool ok) = _liveKey();
         if (!ok) {
             console.log("no live NVDAx3L/USDG pool at this block; skipping");

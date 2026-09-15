@@ -167,7 +167,9 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     /// @dev Set only across this contract's own `poolManager.unlock`, so {unlockCallback} runs only on data encoded here.
     bool private transient _v4Swapping;
 
-    event Converted(address indexed quote, uint256 amountIn, uint256 ethOut, uint256 reimbursed, address indexed caller);
+    event Converted(
+        address indexed quote, uint256 amountIn, uint256 ethOut, uint256 reimbursed, address indexed caller
+    );
     event ConvertSkipped(address indexed quote, uint8 reason);
     event TreasurySendFailed(address indexed treasury, uint256 amount);
     event CallerPayFailed(address indexed caller, uint256 amount);
@@ -191,12 +193,16 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     error PartialFill();
 
     modifier onlyAdmin() {
-        if (msg.sender != admin) revert NotAdmin();
+        if (msg.sender != admin) {
+            revert NotAdmin();
+        }
         _;
     }
 
     modifier nonReentrant() {
-        if (_lock != 1) revert Reentrancy();
+        if (_lock != 1) {
+            revert Reentrancy();
+        }
         _lock = 2;
         _;
         _lock = 1;
@@ -213,9 +219,15 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
         uint256 tip_,
         address poolManager_
     ) {
-        if (weth_ == address(0) || router_ == address(0) || v3Factory_ == address(0) || admin_ == address(0)
-            || treasury_ == address(0)) revert ZeroAddress();
-        if (maxGasPrice_ > HARD_MAX_GAS_PRICE || tip_ > HARD_MAX_TIP) revert BadGasParams();
+        if (
+            weth_ == address(0) || router_ == address(0) || v3Factory_ == address(0) || admin_ == address(0)
+                || treasury_ == address(0)
+        ) {
+            revert ZeroAddress();
+        }
+        if (maxGasPrice_ > HARD_MAX_GAS_PRICE || tip_ > HARD_MAX_TIP) {
+            revert BadGasParams();
+        }
         weth = weth_;
         router = router_;
         v3Factory = v3Factory_;
@@ -234,19 +246,25 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     // ───────────────────────────── admin ─────────────────────────────
 
     function setAdmin(address a) external onlyAdmin {
-        if (a == address(0)) revert ZeroAddress();
+        if (a == address(0)) {
+            revert ZeroAddress();
+        }
         admin = a;
         emit AdminSet(a);
     }
 
     function setTreasury(address t) external onlyAdmin {
-        if (t == address(0)) revert ZeroAddress();
+        if (t == address(0)) {
+            revert ZeroAddress();
+        }
         treasury = t;
         emit TreasurySet(t);
     }
 
     function setGasParams(uint256 maxGasPrice_, uint256 tip_) external onlyAdmin {
-        if (maxGasPrice_ > HARD_MAX_GAS_PRICE || tip_ > HARD_MAX_TIP) revert BadGasParams();
+        if (maxGasPrice_ > HARD_MAX_GAS_PRICE || tip_ > HARD_MAX_TIP) {
+            revert BadGasParams();
+        }
         maxGasPrice = maxGasPrice_;
         tip = tip_;
         emit GasParamsSet(maxGasPrice_, tip_);
@@ -258,18 +276,28 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     function setRoute(address quote, bytes calldata path, uint256 maxIn) external onlyAdmin {
         if (path.length == 0) {
             delete routeOf[quote];
-            if (_v4Route[quote].length == 0) delete maxInPerCall[quote];
+            if (_v4Route[quote].length == 0) {
+                delete maxInPerCall[quote];
+            }
             emit RouteSet(quote, path, 0);
             return;
         }
-        if (quote == address(0) || quote == weth || maxIn == 0) revert BadRoute();
-        if (path.length < 43 || (path.length - 20) % 23 != 0) revert BadRoute();
-        if (_addrAt(path, 0) != quote || _addrAt(path, path.length - 20) != weth) revert BadRoute();
+        if (quote == address(0) || quote == weth || maxIn == 0) {
+            revert BadRoute();
+        }
+        if (path.length < 43 || (path.length - 20) % 23 != 0) {
+            revert BadRoute();
+        }
+        if (_addrAt(path, 0) != quote || _addrAt(path, path.length - 20) != weth) {
+            revert BadRoute();
+        }
         uint256 hops = (path.length - 20) / 23;
         for (uint256 i; i < hops; ++i) {
             uint256 o = 23 * i;
             address p = ILpfcV3Factory(v3Factory).getPool(_addrAt(path, o), _addrAt(path, o + 23), _feeAt(path, o + 20));
-            if (p == address(0)) revert BadRoute();
+            if (p == address(0)) {
+                revert BadRoute();
+            }
         }
         routeOf[quote] = path;
         maxInPerCall[quote] = maxIn;
@@ -290,30 +318,48 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     function setV4Route(address quote, PoolKey[] calldata hops, uint256 maxIn) external onlyAdmin {
         if (hops.length == 0) {
             delete _v4Route[quote];
-            if (routeOf[quote].length == 0) delete maxInPerCall[quote];
+            if (routeOf[quote].length == 0) {
+                delete maxInPerCall[quote];
+            }
             emit V4RouteSet(quote, hops, 0);
             return;
         }
-        if (address(poolManager) == address(0)) revert V4Disabled();
-        if (quote == address(0) || quote == weth || maxIn == 0) revert BadRoute();
+        if (address(poolManager) == address(0)) {
+            revert V4Disabled();
+        }
+        if (quote == address(0) || quote == weth || maxIn == 0) {
+            revert BadRoute();
+        }
         // The first hop's input is passed to PoolManager.swap as a negative int256 and settled as an int128 delta.
-        if (maxIn > uint256(uint128(type(int128).max))) revert BadRoute();
-        if (hops.length > MAX_V4_HOPS) revert BadRoute();
+        if (maxIn > uint256(uint128(type(int128).max))) {
+            revert BadRoute();
+        }
+        if (hops.length > MAX_V4_HOPS) {
+            revert BadRoute();
+        }
 
         delete _v4Route[quote];
         Currency cur = Currency.wrap(quote);
         for (uint256 i; i < hops.length; ++i) {
             PoolKey calldata k = hops[i];
-            if (hook != address(0) && address(k.hooks) == hook) revert BadRoute();
+            if (hook != address(0) && address(k.hooks) == hook) {
+                revert BadRoute();
+            }
             bool in0 = k.currency0 == cur;
-            if (!in0 && !(k.currency1 == cur)) revert BadRoute();
+            if (!in0 && !(k.currency1 == cur)) {
+                revert BadRoute();
+            }
             (uint160 sqrtP,,,) = poolManager.getSlot0(k.toId());
-            if (sqrtP == 0) revert BadRoute();
+            if (sqrtP == 0) {
+                revert BadRoute();
+            }
             cur = in0 ? k.currency1 : k.currency0;
             _v4Route[quote].push(k);
         }
         address out = Currency.unwrap(cur);
-        if (out != weth && out != address(0)) revert BadRoute();
+        if (out != weth && out != address(0)) {
+            revert BadRoute();
+        }
 
         maxInPerCall[quote] = maxIn;
         if (routeOf[quote].length != 0) {
@@ -337,7 +383,11 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     }
 
     /// @notice Raw ring for `poolId`: the samples, how many of the slots are valid, and the next write index.
-    function samplesOf(PoolId poolId) external view returns (Sample[MAX_SAMPLES] memory samples, uint8 count, uint8 next) {
+    function samplesOf(PoolId poolId)
+        external
+        view
+        returns (Sample[MAX_SAMPLES] memory samples, uint8 count, uint8 next)
+    {
         return (_samples[poolId], _sampleCount[poolId], _sampleNext[poolId]);
     }
 
@@ -350,7 +400,9 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     {
         (int24[] memory ticks, uint256 n, uint32 oldest, uint32 newest) = _live(poolId);
         live = n;
-        if (n == 0) return (0, 0, 0, false);
+        if (n == 0) {
+            return (0, 0, 0, false);
+        }
         span = newest - oldest;
         medianTick = _medianOf(ticks, n);
         ready = n >= MIN_SAMPLES && span >= MIN_SAMPLE_SPAN;
@@ -366,7 +418,9 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
             return reason == 0 ? f : 0;
         }
         bytes memory path = routeOf[quote];
-        if (path.length == 0) return 0;
+        if (path.length == 0) {
+            return 0;
+        }
         return _twapFloor(path, amountIn);
     }
 
@@ -381,27 +435,41 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
 
         if (quote == address(0)) {
             ethOut = address(this).balance;
-            if (ethOut == 0) return _skip(quote, SKIP_NOTHING);
-            if (!_covers(ethOut, gp)) return _skip(quote, SKIP_DUST);
+            if (ethOut == 0) {
+                return _skip(quote, SKIP_NOTHING);
+            }
+            if (!_covers(ethOut, gp)) {
+                return _skip(quote, SKIP_DUST);
+            }
         } else {
             bool isV4 = _v4Route[quote].length != 0;
             // Sampled BEFORE any skip: a skip returns normally, so the reading persists and history builds even while
             // the pool is still too young to price.
-            if (isV4) _pokeRoute(quote);
-            if (!isV4 && routeOf[quote].length == 0) return _skip(quote, SKIP_NO_ROUTE);
+            if (isV4) {
+                _pokeRoute(quote);
+            }
+            if (!isV4 && routeOf[quote].length == 0) {
+                return _skip(quote, SKIP_NO_ROUTE);
+            }
             uint256 bal = IERC20(quote).balanceOf(address(this));
-            if (bal == 0) return _skip(quote, SKIP_NOTHING);
+            if (bal == 0) {
+                return _skip(quote, SKIP_NOTHING);
+            }
             uint256 cap = maxInPerCall[quote];
             amountIn = bal < cap ? bal : cap;
             uint8 reason;
             (ethOut, reason) = isV4 ? _swapV4(quote, amountIn, gp) : _swapV3(quote, amountIn, gp);
-            if (reason != 0) return _skip(quote, reason);
+            if (reason != 0) {
+                return _skip(quote, reason);
+            }
         }
 
         // Reimbursement: everything above is metered; GAS_OVERHEAD covers what the frame cannot see.
         uint256 reimb = (g0 - gasleft() + GAS_OVERHEAD) * gp + tip;
         uint256 maxReimb = ethOut * MAX_REIMBURSE_BPS / BPS;
-        if (reimb > maxReimb) reimb = maxReimb;
+        if (reimb > maxReimb) {
+            reimb = maxReimb;
+        }
         uint256 toTreasury = ethOut - reimb;
         emit Converted(quote, amountIn, ethOut, reimb, msg.sender);
 
@@ -409,18 +477,26 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
         // it to the treasury.
         address t = treasury;
         (bool okT,) = t.call{value: toTreasury}("");
-        if (!okT) emit TreasurySendFailed(t, toTreasury);
+        if (!okT) {
+            emit TreasurySendFailed(t, toTreasury);
+        }
         if (reimb != 0) {
             (bool okC,) = msg.sender.call{value: reimb}("");
-            if (!okC) emit CallerPayFailed(msg.sender, reimb);
+            if (!okC) {
+                emit CallerPayFailed(msg.sender, reimb);
+            }
         }
     }
 
     /// @notice PoolManager callback for a V4 conversion. Swaps every hop exact-in, requires each hop to fill completely,
     /// enforces the floor on the final output, then pays the input and takes the output.
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
-        if (!_v4Swapping) revert UnexpectedUnlock();
+        if (msg.sender != address(poolManager)) {
+            revert NotPoolManager();
+        }
+        if (!_v4Swapping) {
+            revert UnexpectedUnlock();
+        }
         (address quote, uint256 amountIn, uint256 floorOut) = abi.decode(data, (address, uint256, uint256));
 
         PoolKey[] storage r = _v4Route[quote];
@@ -442,11 +518,15 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
             int128 outDelta = zeroForOne ? d.amount1() : d.amount0();
             // A partial fill (price limit reached, or a hook returning a delta) would leave an intermediate currency
             // unsettled; refuse it and let the caller skip.
-            if (inDelta >= 0 || outDelta <= 0 || uint256(uint128(-inDelta)) != amt) revert PartialFill();
+            if (inDelta >= 0 || outDelta <= 0 || uint256(uint128(-inDelta)) != amt) {
+                revert PartialFill();
+            }
             amt = uint256(uint128(outDelta));
             cur = zeroForOne ? k.currency1 : k.currency0;
         }
-        if (amt < floorOut) revert FloorBreached(amt, floorOut);
+        if (amt < floorOut) {
+            revert FloorBreached(amt, floorOut);
+        }
 
         Currency.wrap(quote).settle(poolManager, address(this), amountIn, false);
         cur.take(poolManager, address(this), amt, false);
@@ -474,7 +554,9 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     /// @dev Pull a ledger credit the hook could not push (native to a contract, denied / reverting ERC20). Best-effort.
     function _pullOwed(address quote) internal {
         address h = hook;
-        if (h == address(0)) return;
+        if (h == address(0)) {
+            return;
+        }
         try ILpfcFeeHook(h).owed(address(this), quote) returns (uint256 o) {
             if (o != 0) {
                 try ILpfcFeeHook(h).pushOwed(address(this), quote) {} catch {}
@@ -486,16 +568,23 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     function _swapV3(address quote, uint256 amountIn, uint256 gp) internal returns (uint256 ethOut, uint8 reason) {
         bytes memory path = routeOf[quote];
         uint256 floorOut = _twapFloor(path, amountIn);
-        if (floorOut == 0) return (0, SKIP_NO_TWAP);
-        if (!_covers(floorOut, gp)) return (0, SKIP_DUST);
+        if (floorOut == 0) {
+            return (0, SKIP_NO_TWAP);
+        }
+        if (!_covers(floorOut, gp)) {
+            return (0, SKIP_DUST);
+        }
 
         uint256 wBefore = IERC20(weth).balanceOf(address(this));
         IERC20(quote).forceApprove(router, amountIn); // exact, reset below on BOTH outcomes
-        try ILpfcSwapRouter02(router).exactInput(
-            ILpfcSwapRouter02.ExactInputParams({
-                path: path, recipient: address(this), amountIn: amountIn, amountOutMinimum: floorOut
-            })
-        ) returns (uint256) {
+        try ILpfcSwapRouter02(router)
+            .exactInput(
+                ILpfcSwapRouter02.ExactInputParams({
+                    path: path, recipient: address(this), amountIn: amountIn, amountOutMinimum: floorOut
+                })
+            ) returns (
+            uint256
+        ) {
             IERC20(quote).forceApprove(router, 0);
         } catch {
             IERC20(quote).forceApprove(router, 0);
@@ -504,7 +593,9 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
         uint256 wAfter = IERC20(weth).balanceOf(address(this));
         ethOut = wAfter > wBefore ? wAfter - wBefore : 0;
         // Measured, not the router's report: the floor must hold on what ARRIVED.
-        if (ethOut < floorOut) revert FloorBreached(ethOut, floorOut);
+        if (ethOut < floorOut) {
+            revert FloorBreached(ethOut, floorOut);
+        }
         ILpfcWeth(weth).withdraw(ethOut);
     }
 
@@ -513,8 +604,12 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     function _swapV4(address quote, uint256 amountIn, uint256 gp) internal returns (uint256 ethOut, uint8 reason) {
         uint256 floorOut;
         (floorOut, reason) = _v4Floor(quote, amountIn);
-        if (reason != 0) return (0, reason);
-        if (!_covers(floorOut, gp)) return (0, SKIP_DUST);
+        if (reason != 0) {
+            return (0, reason);
+        }
+        if (!_covers(floorOut, gp)) {
+            return (0, SKIP_DUST);
+        }
 
         bool native = _v4OutToken(quote) == address(0);
         uint256 before = native ? address(this).balance : IERC20(weth).balanceOf(address(this));
@@ -528,8 +623,12 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
         uint256 afterBal = native ? address(this).balance : IERC20(weth).balanceOf(address(this));
         ethOut = afterBal > before ? afterBal - before : 0;
         // Measured, not the delta: the floor must hold on what ARRIVED.
-        if (ethOut < floorOut) revert FloorBreached(ethOut, floorOut);
-        if (!native) ILpfcWeth(weth).withdraw(ethOut);
+        if (ethOut < floorOut) {
+            revert FloorBreached(ethOut, floorOut);
+        }
+        if (!native) {
+            ILpfcWeth(weth).withdraw(ethOut);
+        }
     }
 
     /// @dev What the V4 route for `quote` ends in: WETH or address(0) for native ETH (guaranteed by {setV4Route}).
@@ -545,7 +644,9 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
     function _pokeRoute(address quote) internal returns (uint256 recorded) {
         PoolKey[] storage r = _v4Route[quote];
         for (uint256 i; i < r.length; ++i) {
-            if (_recordSample(r[i].toId())) ++recorded;
+            if (_recordSample(r[i].toId())) {
+                ++recorded;
+            }
         }
     }
 
@@ -556,10 +657,14 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
         uint8 next = _sampleNext[id];
         if (count != 0) {
             uint8 last = next == 0 ? MAX_SAMPLES - 1 : next - 1;
-            if (block.timestamp < uint256(_samples[id][last].time) + MIN_SAMPLE_SPACING) return false;
+            if (block.timestamp < uint256(_samples[id][last].time) + MIN_SAMPLE_SPACING) {
+                return false;
+            }
         }
         (uint160 sqrtP, int24 tick,,) = poolManager.getSlot0(id);
-        if (sqrtP == 0 || poolManager.getLiquidity(id) == 0) return false;
+        if (sqrtP == 0 || poolManager.getLiquidity(id) == 0) {
+            return false;
+        }
 
         (int24[] memory ticks, uint256 n,,) = _live(id);
         if (n >= MIN_SAMPLES) {
@@ -572,7 +677,9 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
 
         _samples[id][next] = Sample({time: uint32(block.timestamp), tick: tick});
         _sampleNext[id] = next + 1 == MAX_SAMPLES ? 0 : next + 1;
-        if (count < MAX_SAMPLES) _sampleCount[id] = count + 1;
+        if (count < MAX_SAMPLES) {
+            _sampleCount[id] = count + 1;
+        }
         emit SampleRecorded(id, tick, uint32(block.timestamp));
         return true;
     }
@@ -585,7 +692,9 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
         oldest = type(uint32).max;
         for (uint256 i; i < count; ++i) {
             Sample memory s = _samples[id][i];
-            if (block.timestamp > uint256(s.time) + MAX_SAMPLE_AGE) continue;
+            if (block.timestamp > uint256(s.time) + MAX_SAMPLE_AGE) {
+                continue;
+            }
             uint256 j = n;
             while (j != 0 && ticks[j - 1] > s.tick) {
                 ticks[j] = ticks[j - 1];
@@ -593,15 +702,21 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
             }
             ticks[j] = s.tick;
             ++n;
-            if (s.time < oldest) oldest = s.time;
-            if (s.time > newest) newest = s.time;
+            if (s.time < oldest) {
+                oldest = s.time;
+            }
+            if (s.time > newest) {
+                newest = s.time;
+            }
         }
     }
 
     /// @dev Median of the first `n` (sorted) ticks; the mean of the two middle ones when `n` is even. Requires n > 0.
     function _medianOf(int24[] memory ticks, uint256 n) internal pure returns (int24) {
         uint256 m = n / 2;
-        if (n % 2 == 1) return ticks[m];
+        if (n % 2 == 1) {
+            return ticks[m];
+        }
         return int24((int256(ticks[m - 1]) + int256(ticks[m])) / 2);
     }
 
@@ -617,17 +732,25 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
         out = amountIn;
         Currency cur = Currency.wrap(quote);
         for (uint256 i; i < r.length; ++i) {
-            if (out == 0 || out > type(uint128).max) return (0, SKIP_NO_TWAP);
+            if (out == 0 || out > type(uint128).max) {
+                return (0, SKIP_NO_TWAP);
+            }
             PoolKey memory k = r[i];
             PoolId id = k.toId();
 
             (int24[] memory ticks, uint256 n, uint32 oldest, uint32 newest) = _live(id);
-            if (n < MIN_SAMPLES || newest - oldest < MIN_SAMPLE_SPAN) return (0, SKIP_NO_TWAP);
+            if (n < MIN_SAMPLES || newest - oldest < MIN_SAMPLE_SPAN) {
+                return (0, SKIP_NO_TWAP);
+            }
             int24 med = _medianOf(ticks, n);
 
             (uint160 sqrtP, int24 spot,, uint24 lpFee) = poolManager.getSlot0(id);
-            if (sqrtP == 0 || poolManager.getLiquidity(id) == 0) return (0, SKIP_NO_TWAP);
-            if (_absDiff(spot, med) > MAX_TICK_DEVIATION) return (0, SKIP_PRICE_MOVING);
+            if (sqrtP == 0 || poolManager.getLiquidity(id) == 0) {
+                return (0, SKIP_NO_TWAP);
+            }
+            if (_absDiff(spot, med) > MAX_TICK_DEVIATION) {
+                return (0, SKIP_PRICE_MOVING);
+            }
 
             Currency next = k.currency0 == cur ? k.currency1 : k.currency0;
             // V4 ticks price currency1 in currency0 exactly as V3 ticks price token1 in token0, and currencies sort by
@@ -637,7 +760,9 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
             cur = next;
         }
         out = out * (BPS - MAX_SLIPPAGE_BPS) / BPS;
-        if (out == 0) return (0, SKIP_NO_TWAP);
+        if (out == 0) {
+            return (0, SKIP_NO_TWAP);
+        }
     }
 
     function _twapFloor(bytes memory path, uint256 amountIn) internal view returns (uint256 out) {
@@ -646,21 +771,29 @@ contract RealmAnyPairsPlatformFeeConverter is IUnlockCallback {
         uint32[] memory ago = new uint32[](2);
         ago[0] = TWAP_SECONDS;
         for (uint256 i; i < hops; ++i) {
-            if (out == 0 || out > type(uint128).max) return 0;
+            if (out == 0 || out > type(uint128).max) {
+                return 0;
+            }
             uint256 o = 23 * i;
             address a = _addrAt(path, o);
             uint24 fee = _feeAt(path, o + 20);
             address b = _addrAt(path, o + 23);
             address pool = ILpfcV3Factory(v3Factory).getPool(a, b, fee);
-            if (pool == address(0) || pool.code.length == 0) return 0;
+            if (pool == address(0) || pool.code.length == 0) {
+                return 0;
+            }
             try ILpfcV3Pool(pool).liquidity() returns (uint128 l) {
-                if (l == 0) return 0;
+                if (l == 0) {
+                    return 0;
+                }
             } catch {
                 return 0;
             }
             int24 tick;
             try ILpfcV3Pool(pool).observe(ago) returns (int56[] memory tc, uint160[] memory) {
-                if (tc.length != 2) return 0;
+                if (tc.length != 2) {
+                    return 0;
+                }
                 tick = RealmAnyPairsV3TwapOracle.meanTick(tc[0], tc[1], TWAP_SECONDS);
             } catch {
                 return 0; // "OLD": not enough observation history for the window

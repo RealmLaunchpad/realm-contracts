@@ -17,7 +17,12 @@ interface IHookConvert {
 }
 
 interface ISwapRouter02Lib {
-    struct ExactInputParams { bytes path; address recipient; uint256 amountIn; uint256 amountOutMinimum; }
+    struct ExactInputParams {
+        bytes path;
+        address recipient;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+    }
     function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut);
 }
 
@@ -66,34 +71,48 @@ library RealmAnyPairsSplitLib {
     function store(Split[] storage arr, address[] calldata recipients, uint16[] calldata bps, address poolManager)
         external
     {
-        if (recipients.length != bps.length || recipients.length > MAX_SPLIT_RECIPIENTS) revert BadSplitLength();
+        if (recipients.length != bps.length || recipients.length > MAX_SPLIT_RECIPIENTS) {
+            revert BadSplitLength();
+        }
         // `delete` is unavailable on a storage pointer, so clear by popping (bounded by MAX_SPLIT_RECIPIENTS).
-        while (arr.length != 0) arr.pop();
-        if (recipients.length == 0) return;
+        while (arr.length != 0) {
+            arr.pop();
+        }
+        if (recipients.length == 0) {
+            return;
+        }
         uint256 sum;
         for (uint256 i; i < recipients.length; i++) {
             // Rejected: zero; the hook itself (a self-push succeeds and strands the funds forever); the
             // PoolManager (funds there are unattributed and swept by the next settler). The hook's
             // `_storeSplit` adds further refusals.
             if (
-                recipients[i] == address(0) || recipients[i] == address(this)
-                    || recipients[i] == poolManager || bps[i] == 0
-            ) revert BadSplit();
+                recipients[i] == address(0) || recipients[i] == address(this) || recipients[i] == poolManager
+                    || bps[i] == 0
+            ) {
+                revert BadSplit();
+            }
             sum += bps[i];
             arr.push(Split({to: recipients[i], bps: bps[i]}));
         }
-        if (sum != BPS) revert BadSplit();
+        if (sum != BPS) {
+            revert BadSplit();
+        }
     }
 
     /// @notice Validate a V3 multi-hop path that must start at `quote` and end at `weth`.
     /// @dev Also checks structure (20 bytes + N * 23-byte hops) so a malformed path is rejected at config
     /// time rather than silently failing at claim time.
     function requireQuotePath(address quote, address weth, bytes calldata path) external pure {
-        if (quote == weth || weth == address(0)) revert QuoteIsWeth();
+        if (quote == weth || weth == address(0)) {
+            revert QuoteIsWeth();
+        }
         if (
             path.length < 43 || address(bytes20(path[0:20])) != quote
                 || address(bytes20(path[path.length - 20:])) != weth || (path.length - 43) % 23 != 0
-        ) revert BadQuotePath();
+        ) {
+            revert BadQuotePath();
+        }
     }
 
     /// @notice The approve -> exactInput -> approve-reset sequence behind the hook's `convertToWeth`.
@@ -111,9 +130,12 @@ library RealmAnyPairsSplitLib {
         IERC20(token).forceApprove(swapRouter, amount);
         // Report the recipient's actual balance delta, not the router's self-reported amountOut.
         uint256 before = IERC20(weth).balanceOf(recipient);
-        ISwapRouter02Lib(swapRouter).exactInput(
-            ISwapRouter02Lib.ExactInputParams({path: path, recipient: recipient, amountIn: amount, amountOutMinimum: minOut})
-        );
+        ISwapRouter02Lib(swapRouter)
+            .exactInput(
+                ISwapRouter02Lib.ExactInputParams({
+                    path: path, recipient: recipient, amountIn: amount, amountOutMinimum: minOut
+                })
+            );
         // Saturating: a recipient that forwards WETH onward must not make a successful swap revert.
         uint256 aft = IERC20(weth).balanceOf(recipient);
         out = aft > before ? aft - before : 0;
@@ -143,7 +165,9 @@ library RealmAnyPairsSplitLib {
     ) external returns (uint256 amountPaid, address tokenPaid) {
         // Reject destinations that would destroy (zero, the hook) or donate (the PoolManager) the payout.
         // The PoolManager is read from the hook; if that read fails, only the other two checks apply.
-        if (to == address(0) || to == address(this)) revert BadClaimDestination();
+        if (to == address(0) || to == address(this)) {
+            revert BadClaimDestination();
+        }
         (bool pmOk, bytes memory pmRet) =
             address(this).staticcall(abi.encodeWithSelector(IHookPoolManager.poolManager.selector));
         if (pmOk && pmRet.length >= 32 && address(uint160(uint256(bytes32(pmRet)))) == to) {
@@ -151,14 +175,18 @@ library RealmAnyPairsSplitLib {
         }
 
         uint256 amount = owed[msg.sender][token];
-        if (amount == 0) revert NothingAccrued();
+        if (amount == 0) {
+            revert NothingAccrued();
+        }
         owed[msg.sender][token] = 0;
 
         // Native quote: send ETH directly. Reverts on failure (rather than falling back) so the zeroed
         // ledger entry is restored; a recipient that cannot receive ETH should name another `to`.
         if (token == address(0)) {
             (bool sent,) = payable(to).call{value: amount}("");
-            if (!sent) revert EthTransferFailed();
+            if (!sent) {
+                revert EthTransferFailed();
+            }
             emit Claimed(msg.sender, address(0), amount);
             return (amount, address(0));
         }
@@ -166,11 +194,12 @@ library RealmAnyPairsSplitLib {
         bytes memory path = quoteToWethPath[token];
         // `weth` can be repointed without revalidating stored paths; a path that no longer ends at the
         // current `weth` is treated as unconfigured (pay raw quote) instead of paying a mislabeled asset.
-        bool pathTargetsCurrentWeth =
-            weth != address(0) && path.length >= 43 && _lastAddress(path) == weth;
+        bool pathTargetsCurrentWeth = weth != address(0) && path.length >= 43 && _lastAddress(path) == weth;
         // Gas-capped swap with a floor check first, so enough gas always remains for the raw-quote fallback.
         if (pathTargetsCurrentWeth && swapRouter != address(0) && token != weth && gasleft() >= CONVERT_GAS_FLOOR) {
-            try IHookConvert(address(this)).convertToWeth{gas: CONVERT_GAS_CAP}(to, token, path, amount, minWethOut) returns (
+            try IHookConvert(address(this)).convertToWeth{gas: CONVERT_GAS_CAP}(
+                to, token, path, amount, minWethOut
+            ) returns (
                 uint256 out
             ) {
                 emit Claimed(msg.sender, weth, out);

@@ -8,7 +8,11 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {
+    BeforeSwapDelta,
+    toBeforeSwapDelta,
+    BeforeSwapDeltaLibrary
+} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {SwapParams, ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {RealmAnyPairsLiquidityMath} from "./RealmAnyPairsLiquidityMath.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -74,17 +78,17 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     // ── optional launch guards ──────────────────────────────────────────────────────────────────────
     /// @dev Ceiling on the opening launch tax. Above {MAX_SIDE_BPS_LIMIT} on purpose; it decays to the normal rate.
-    uint16 public constant MAX_LAUNCH_TAX_BPS = 3000;      // 30%
+    uint16 public constant MAX_LAUNCH_TAX_BPS = 3000; // 30%
     /// @dev Maximum launch-tax window, in seconds. Seconds rather than blocks because `block.number` on this chain
     /// is the L1 block number and advances only every ~12 seconds.
-    uint16 public constant MAX_LAUNCH_TAX_SECS = 3600;   // 1 hour
+    uint16 public constant MAX_LAUNCH_TAX_SECS = 3600; // 1 hour
     /// @dev Floor on a max-buy cap. Without it, `maxBuyBps = 1` is a honeypot wearing a limit's clothes.
-    uint16 public constant MIN_MAX_BUY_BPS = 10;           // 0.1% of supply
+    uint16 public constant MIN_MAX_BUY_BPS = 10; // 0.1% of supply
     /// @dev Ceiling on the anti-snipe delay, for the same reason.
-    uint8 public constant MAX_TRADING_DELAY = 60;          // seconds
+    uint8 public constant MAX_TRADING_DELAY = 60; // seconds
     /// @dev How long an advertised max buy cannot be loosened, measured from when trading opens (not from
     /// launch), so a trading delay cannot be used to wait out the lock.
-    uint40 public constant MAX_BUY_LOCK_SECS = 300;   // 5 minutes of real trading under the advertised number
+    uint40 public constant MAX_BUY_LOCK_SECS = 300; // 5 minutes of real trading under the advertised number
 
     /// @notice Owner-tunable per-side tax ceiling enforced when rates are set. Can only be tightened; never
     /// exceeds {MAX_SIDE_BPS_LIMIT}.
@@ -98,8 +102,8 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// ({setPlatformRates}, {configurePool}); later changes never reprice live coins.
     uint16 public constant MIN_PLATFORM_SHARE_BPS = 1000; // 10% of what the trader pays
     uint16 public constant MAX_PLATFORM_SHARE_BPS = 3000; // 30% of what the trader pays
-    uint16 public constant MAX_PLATFORM_FLOOR_BPS = 100;  // 1.00% of the trade
-    uint16 public constant MAX_PLATFORM_CAP_BPS = 300;    // 3.00% of the trade
+    uint16 public constant MAX_PLATFORM_FLOOR_BPS = 100; // 1.00% of the trade
+    uint16 public constant MAX_PLATFORM_CAP_BPS = 300; // 3.00% of the trade
     /// @notice Headroom {_fillCeilBps} adds over a rate for the platform fee inside it.
     uint16 internal constant FILL_PLATFORM_HEADROOM_BPS = 100;
     /// @notice The rates NEW launches snapshot. See {setPlatformRates}.
@@ -169,7 +173,10 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     /// @dev One ring entry, packed into one slot. `to` is snapshotted at booking and never re-derived at push
     /// time, so a later split or creator change cannot redirect money already earned.
-    struct PaySlot { address to; uint96 amt; }
+    struct PaySlot {
+        address to;
+        uint96 amt;
+    }
     mapping(PoolId => PaySlot[PAY_SLOTS]) internal _paySlots;
 
     /// @notice Bit `i` set when ring slot `i` of this pool is funded; lets a swap skip the walk with one SLOAD.
@@ -218,12 +225,12 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @notice Optional launch guards, grouped in one slot so {TaxConfig} stays constructible; `hasGuards` lets
     /// swaps skip loading it when no guard is set.
     struct Guards {
-        uint16 maxBuyBps;       // informational: the cap as bps of supply (maxBuyAmount is what's enforced)
-        uint16 launchTaxBps;    // opening tax for the launch window, decaying to buyBps/sellBps
-        uint128 maxBuyAmount;   // absolute per-transaction ceiling in coin units, resolved from supply
-        uint40 launchTime;     // unix ts the pool was configured at; anchors the decay window
+        uint16 maxBuyBps; // informational: the cap as bps of supply (maxBuyAmount is what's enforced)
+        uint16 launchTaxBps; // opening tax for the launch window, decaying to buyBps/sellBps
+        uint128 maxBuyAmount; // absolute per-transaction ceiling in coin units, resolved from supply
+        uint40 launchTime; // unix ts the pool was configured at; anchors the decay window
         uint16 launchTaxSecs; // length of the decay window, in SECONDS
-        uint40 tradingOpensAt;  // unix ts before which swaps revert (the launch tx itself excepted)
+        uint40 tradingOpensAt; // unix ts before which swaps revert (the launch tx itself excepted)
     }
 
     struct TaxConfig {
@@ -232,8 +239,8 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         uint16 sellBps;
         bool configured;
         bool autoEnabled;
-        bool autoSend;          // true = PUSH the creator share to its recipients in-swap (pull ledger is the fallback)
-        bool quoteIsC0;         // true if the QUOTE token is currency0 (else currency1). Set at configure time.
+        bool autoSend; // true = PUSH the creator share to its recipients in-swap (pull ledger is the fallback)
+        bool quoteIsC0; // true if the QUOTE token is currency0 (else currency1). Set at configure time.
         /// @dev True when any guard is on. Kept in slot 0 so the check costs no extra SLOAD.
         bool hasGuards;
         /// @dev Set when an in-swap redeem was given the full {AUTO_DISTRIBUTE_MAX}, spent most of it, and still failed.
@@ -244,7 +251,7 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         bool rewardsInCoin;
         /// @dev The tracker converts rewards itself, so {_maybeConvertRewards} runs after each swap. Read once from the tracker.
         bool rewardsAutoConvert;
-        address quote;          // the pool's quote token (stock/USDG) — the currency tax is skimmed/paid in
+        address quote; // the pool's quote token (stock/USDG) — the currency tax is skimmed/paid in
         /// @dev Creator-pool slice routed to buyback-and-burn. Placed after `quote` to pack into its slot.
         uint16 buybackBps;
         /// @dev Creator-pool slice routed to auto-liquidity. Packs into `quote`'s slot.
@@ -254,8 +261,8 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         uint16 platformFloorBps;
         uint16 platformCapBps;
         address rewardsTracker; // 0 = not a rewards pool; else the coin's quote-token DividendTracker
-        uint16 rewardsBps;      // slice of the CREATOR pool routed to holders; 0 = none
-        uint80 autoThreshold;   // accrued-quote (raw units) that triggers the in-swap auto-distribute
+        uint16 rewardsBps; // slice of the CREATOR pool routed to holders; 0 = none
+        uint80 autoThreshold; // accrued-quote (raw units) that triggers the in-swap auto-distribute
         Guards guards;
     }
 
@@ -270,7 +277,7 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     mapping(PoolId => TaxConfig) internal _config;
     mapping(PoolId => RealmAnyPairsSplitLib.Split[]) internal creatorSplits;
-    mapping(PoolId => uint256) public accruedQuote;           // per-pool tax accrued, in the pool's quote token
+    mapping(PoolId => uint256) public accruedQuote; // per-pool tax accrued, in the pool's quote token
 
     // ── buyback-and-burn ─────────────────────────────────────────────────────────────────────────
     /// @notice Where bought-back coin is sent. Not `address(0)`, which many ERC20s reject.
@@ -324,7 +331,7 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     address public weth;
     address public swapRouter;
-    mapping(address => bytes) public quoteToWethPath;   // quote token -> V3 path quote→…→WETH
+    mapping(address => bytes) public quoteToWethPath; // quote token -> V3 path quote→…→WETH
 
     event PoolConfigured(PoolId indexed poolId, address indexed creator, uint16 buyBps, uint16 sellBps);
     event TaxAccrued(PoolId indexed poolId, bool isBuy, uint256 quoteAmount);
@@ -408,7 +415,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     event RewardsTrackerSet(PoolId indexed poolId, address indexed tracker);
     event AutoSendSet(PoolId indexed poolId, bool enabled);
     event MaxBuySet(PoolId indexed poolId, uint16 maxBuyBps, uint128 maxBuyAmount);
-    event LaunchGuardsSet(PoolId indexed poolId, uint16 maxBuyBps, uint16 launchTaxBps, uint16 launchTaxSecs, uint40 tradingOpensAt);
+    event LaunchGuardsSet(
+        PoolId indexed poolId, uint16 maxBuyBps, uint16 launchTaxBps, uint16 launchTaxSecs, uint40 tradingOpensAt
+    );
     /// @notice The wallets that skip this pool's max buy (and the token's max wallet). Emitted once, at launch.
     event SniperWhitelistSet(PoolId indexed poolId, address[] wallets);
     /// @notice `from` (the coin's creator) proposed handing every pool of `coin` to `to`.
@@ -531,7 +540,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     error TooSoonAfterLaunch();
 
     modifier onlyPoolManager() {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
+        if (msg.sender != address(poolManager)) {
+            revert NotPoolManager();
+        }
         _;
     }
 
@@ -539,16 +550,24 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// a compromised admin is unrecoverable once ownership is renounced (accepted risk).
     /// {transferOwnership} and {renounceOwnership} stay owner-only; do not widen them to this modifier.
     modifier onlyOwnerOrAdmin() {
-        if (msg.sender != owner && (msg.sender != admin || admin == address(0))) revert NotOwnerOrAdmin();
+        if (msg.sender != owner && (msg.sender != admin || admin == address(0))) {
+            revert NotOwnerOrAdmin();
+        }
         _;
     }
 
     constructor(IPoolManager pm, address owner_, address platform_) RealmAnyPairsImmutableBase(owner_) {
         // Fail at construction if the linked library is not deployed (proves code exists, not that it is the right code).
-        if (address(RealmAnyPairsSplitLib).code.length == 0) revert SplitLibraryMissing();
-        if (platform_ == address(0)) revert ZeroAddress();
+        if (address(RealmAnyPairsSplitLib).code.length == 0) {
+            revert SplitLibraryMissing();
+        }
+        if (platform_ == address(0)) {
+            revert ZeroAddress();
+        }
         // poolManager is immutable and has no setter — a zero would brick every hook callback permanently.
-        if (address(pm) == address(0)) revert ZeroAddress();
+        if (address(pm) == address(0)) {
+            revert ZeroAddress();
+        }
         poolManager = pm;
         admin = owner_;
         platform = platform_;
@@ -558,10 +577,15 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     function setLauncher(address launcher, bool allowed) external onlyOwnerOrAdmin {
         // Reject zero so a bogus launcher entry cannot satisfy {_requireRenounceReady}.
-        if (launcher == address(0)) revert ZeroAddress();
+        if (launcher == address(0)) {
+            revert ZeroAddress();
+        }
         if (allowed != isLauncher[launcher]) {
-            if (allowed) launcherCount += 1;
-            else launcherCount -= 1;
+            if (allowed) {
+                launcherCount += 1;
+            } else {
+                launcherCount -= 1;
+            }
         }
         isLauncher[launcher] = allowed;
         emit LauncherSet(launcher, allowed);
@@ -570,13 +594,21 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Blocks {renounceOwnership} until the hook is fully wired: a launcher, a non-zero admin, the swap config
     /// and the in-swap registry. Each would be unrepairable after renounce.
     function _requireRenounceReady() internal view override {
-        if (launcherCount == 0) revert NoLauncherWhitelisted();
+        if (launcherCount == 0) {
+            revert NoLauncherWhitelisted();
+        }
         // A zero admin could never be restored after renounce, bricking CTO reassignment.
-        if (admin == address(0)) revert AdminZero();
+        if (admin == address(0)) {
+            revert AdminZero();
+        }
         // Unset weth/swapRouter is legal while owned, but only the admin could repair it after renounce.
-        if (weth == address(0) || swapRouter == address(0)) revert SwapConfigUnset();
+        if (weth == address(0) || swapRouter == address(0)) {
+            revert SwapConfigUnset();
+        }
         // An unset registry means no kill switch: every quote would be pushed in-swap with no way to deny one.
-        if (inSwapRegistry == address(0)) revert InSwapRegistryNotSet();
+        if (inSwapRegistry == address(0)) {
+            revert InSwapRegistryNotSet();
+        }
     }
 
     /// @notice Set the initial auto-distribute threshold for NEW pools of `quote`, in that quote's units.
@@ -591,18 +623,30 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// whole units of the quote, derived from its decimals.
     function _initialAutoThreshold(address quote) internal view returns (uint80) {
         uint80 configured = defaultAutoThreshold[quote];
-        if (configured != 0) return configured;
+        if (configured != 0) {
+            return configured;
+        }
         // Native: fixed 0.02 ETH, not derived from decimals() (a staticcall to address(0) returns empty data).
-        if (quote == address(0)) return uint80(0.02 ether);
+        if (quote == address(0)) {
+            return uint80(0.02 ether);
+        }
         // Raw staticcall rather than a typed call in try/catch: a typed call to a codeless address, or a return value
         // that does not decode as uint8, reverts this frame and would brick every launch against that quote.
         uint256 dec = 18;
         (bool ok, bytes memory ret) = quote.staticcall{gas: 20_000}(abi.encodeWithSelector(0x313ce567)); // decimals()
-        if (ok && ret.length >= 32) dec = abi.decode(ret, (uint256));
-        if (dec > 30) dec = 18;                       // nonsense/hostile decimals -> treat as standard
-        uint256 t = (10 ** dec) / 100;                // 0.01 quote units
-        if (t == 0) t = 1;                            // 0- and 1-decimal tokens
-        if (t > type(uint80).max) t = type(uint80).max;
+        if (ok && ret.length >= 32) {
+            dec = abi.decode(ret, (uint256));
+        }
+        if (dec > 30) {
+            dec = 18; // nonsense/hostile decimals -> treat as standard
+        }
+        uint256 t = (10 ** dec) / 100; // 0.01 quote units
+        if (t == 0) {
+            t = 1; // 0- and 1-decimal tokens
+        }
+        if (t > type(uint80).max) {
+            t = type(uint80).max;
+        }
         return uint80(t);
     }
 
@@ -635,7 +679,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     function platformBpsOf(PoolId id, bool isBuy) external view returns (uint256) {
         TaxConfig storage c = _config[id];
         uint256 total = _totalBps(c, _effectiveBps(c, isBuy));
-        if (total == 0) return 0;
+        if (total == 0) {
+            return 0;
+        }
         return _platformBps(c, total) * BPS / total;
     }
 
@@ -644,14 +690,18 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     function creatorPoolBpsOf(PoolId id, bool isBuy) external view returns (uint256) {
         TaxConfig storage c = _config[id];
         uint256 total = _totalBps(c, _effectiveBps(c, isBuy));
-        if (total == 0) return 0;
+        if (total == 0) {
+            return 0;
+        }
         return BPS - (_platformBps(c, total) * BPS / total);
     }
 
     /// @notice Tighten the per-side tax ceiling. Cannot exceed {MAX_SIDE_BPS_LIMIT}.
     /// @dev Does not affect configured pools' partial-fill ceiling, which reads constants only.
     function setMaxSideBps(uint16 bps) external onlyOwnerOrAdmin {
-        if (bps > MAX_SIDE_BPS_LIMIT) revert SideCapExceeded();
+        if (bps > MAX_SIDE_BPS_LIMIT) {
+            revert SideCapExceeded();
+        }
         maxSideBps = bps;
         emit MaxSideBpsSet(bps);
     }
@@ -659,7 +709,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @notice Set the platform rates NEW launches snapshot: `shareBps` of what a trader pays, clamped between
     /// `floorBps` and `capBps` of the trade. Bounds: share 10%-30%, floor <= 1%, floor <= cap <= 3%. Live coins keep their rates.
     function setPlatformRates(uint16 shareBps, uint16 floorBps, uint16 capBps) external onlyOwnerOrAdmin {
-        if (shareBps < MIN_PLATFORM_SHARE_BPS || shareBps > MAX_PLATFORM_SHARE_BPS) revert BadPlatformRates();
+        if (shareBps < MIN_PLATFORM_SHARE_BPS || shareBps > MAX_PLATFORM_SHARE_BPS) {
+            revert BadPlatformRates();
+        }
         if (floorBps > MAX_PLATFORM_FLOOR_BPS || capBps > MAX_PLATFORM_CAP_BPS || capBps < floorBps) {
             revert BadPlatformRates();
         }
@@ -673,13 +725,19 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// mutable cap and the hard {MAX_SIDE_BPS_LIMIT}.
     function _requireRatesOk(uint16 buyBps, uint16 sellBps) internal view {
         uint16 cap = maxSideBps;
-        if (cap > MAX_SIDE_BPS_LIMIT) cap = MAX_SIDE_BPS_LIMIT;
-        if (buyBps > cap || sellBps > cap) revert SideCapExceeded();
+        if (cap > MAX_SIDE_BPS_LIMIT) {
+            cap = MAX_SIDE_BPS_LIMIT;
+        }
+        if (buyBps > cap || sellBps > cap) {
+            revert SideCapExceeded();
+        }
     }
 
     /// @dev Admin ratchet for {adminSetRates}: the admin may only lower a pool's rate, per side. Only the creator can raise it.
     function _requireRatchetDown(TaxConfig storage c, uint16 buyBps, uint16 sellBps) internal view {
-        if (buyBps > c.buyBps || sellBps > c.sellBps) revert RateNotLowered();
+        if (buyBps > c.buyBps || sellBps > c.sellBps) {
+            revert RateNotLowered();
+        }
     }
 
     // ── admin overrides of the creator-owned knobs ──
@@ -688,7 +746,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// can raise their own rate ({setRates}).
     function adminSetRates(PoolId id, uint16 buyBps, uint16 sellBps) external onlyOwnerOrAdmin {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _requireRatesOk(buyBps, sellBps);
         _requireRatchetDown(c, buyBps, sellBps);
         c.buyBps = buyBps;
@@ -700,8 +760,12 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// read at distribution time.
     function adminSetRewardsBps(PoolId id, uint16 rewardsBps) external onlyOwnerOrAdmin nonReentrant {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
-        if (c.rewardsTracker == address(0)) revert BadRewardsBps();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
+        if (c.rewardsTracker == address(0)) {
+            revert BadRewardsBps();
+        }
         _requireSliceSum(rewardsBps, c.buybackBps, c.lpBps);
         _flushAtOldTerms(id);
         c.rewardsBps = rewardsBps;
@@ -713,13 +777,25 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Admin-gated so it survives renounce. No flush needed: `rewardsBps` is necessarily 0 until a tracker
     /// exists. Rejects zero, this hook ({SelfAddress}) and codeless trackers ({TrackerCodeless}).
     function adminSetRewardsTracker(PoolId id, address tracker) external {
-        if (msg.sender != admin || admin == address(0)) revert NotAdmin();
+        if (msg.sender != admin || admin == address(0)) {
+            revert NotAdmin();
+        }
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
-        if (c.rewardsTracker != address(0)) revert TrackerAlreadySet();
-        if (tracker == address(0)) revert ZeroAddress();
-        if (tracker == address(this)) revert SelfAddress();
-        if (tracker.code.length == 0) revert TrackerCodeless();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
+        if (c.rewardsTracker != address(0)) {
+            revert TrackerAlreadySet();
+        }
+        if (tracker == address(0)) {
+            revert ZeroAddress();
+        }
+        if (tracker == address(this)) {
+            revert SelfAddress();
+        }
+        if (tracker.code.length == 0) {
+            revert TrackerCodeless();
+        }
         c.rewardsTracker = tracker;
         c.rewardsAutoConvert = _rewardsAutoConvert(tracker);
         emit RewardsTrackerSet(id, tracker);
@@ -727,17 +803,25 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     function adminSetAutoThreshold(PoolId id, uint80 threshold) external onlyOwnerOrAdmin {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
-        if (!c.autoEnabled || threshold == 0) revert BadAutoThreshold();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
+        if (!c.autoEnabled || threshold == 0) {
+            revert BadAutoThreshold();
+        }
         c.autoThreshold = threshold;
         emit AutoThresholdSet(id, threshold);
     }
 
     /// @dev Flushes at the old terms first, like {setCreatorSplit}: the split is read at distribution time.
     function adminSetCreatorSplit(PoolId id, address[] calldata recipients, uint16[] calldata bps)
-        external onlyOwnerOrAdmin nonReentrant
+        external
+        onlyOwnerOrAdmin
+        nonReentrant
     {
-        if (!_config[id].configured) revert NotConfigured();
+        if (!_config[id].configured) {
+            revert NotConfigured();
+        }
         _flushAtOldTerms(id);
         _storeSplit(id, recipients, bps, address(0));
         emit CreatorSplitSet(id, msg.sender, recipients.length);
@@ -762,8 +846,12 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         address seeder;
         (bool ok, bytes memory d) =
             launcher_.staticcall{gas: 20_000}(abi.encodeWithSelector(ILauncherSeeder.lpLocker.selector));
-        if (ok && d.length == 32) seeder = address(uint160(abi.decode(d, (uint256))));
-        if (seeder == address(0)) return;
+        if (ok && d.length == 32) {
+            seeder = address(uint160(abi.decode(d, (uint256))));
+        }
+        if (seeder == address(0)) {
+            return;
+        }
         bytes32 s = _launchTxSlot(id);
         uint256 v = uint256(uint160(seeder));
         assembly ("memory-safe") { tstore(s, v) }
@@ -778,8 +866,12 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev True only inside the launch transaction for the recorded sender: the transient marker is set and the
     /// timestamp equals the launch time.
     function _inLaunchTx(PoolId id, TaxConfig storage c, address sender) internal view returns (bool) {
-        if (sender == address(0)) return false;
-        if (block.timestamp != uint256(c.guards.launchTime)) return false;
+        if (sender == address(0)) {
+            return false;
+        }
+        if (block.timestamp != uint256(c.guards.launchTime)) {
+            return false;
+        }
         bytes32 s = _launchTxSlot(id);
         uint256 v;
         assembly ("memory-safe") { v := tload(s) }
@@ -787,9 +879,13 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     }
 
     function setPlatform(address platform_) external onlyOwnerOrAdmin {
-        if (platform_ == address(0)) revert ZeroAddress();
+        if (platform_ == address(0)) {
+            revert ZeroAddress();
+        }
         // `owed[address(this)][quote]` could never be drained.
-        if (platform_ == address(this)) revert SelfAddress();
+        if (platform_ == address(this)) {
+            revert SelfAddress();
+        }
         platform = platform_;
         emit PlatformSet(platform_);
     }
@@ -797,7 +893,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev `address(this)` is rejected: {setTokenCreator} is admin-gated, so it would kill the CTO path.
     /// `address(0)` is allowed and disables admin powers (permanently, once ownership is renounced).
     function setAdmin(address admin_) external onlyOwnerOrAdmin {
-        if (admin_ == address(this)) revert SelfAddress();
+        if (admin_ == address(this)) {
+            revert SelfAddress();
+        }
         admin = admin_;
         emit AdminSet(admin_);
     }
@@ -805,7 +903,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @notice Configure the WETH token and SwapRouter02 used to convert quote fees to ETH at claim time.
     /// Both must be non-zero.
     function setSwapConfig(address weth_, address router_) external onlyOwnerOrAdmin {
-        if (weth_ == address(0) || router_ == address(0)) revert ZeroAddress();
+        if (weth_ == address(0) || router_ == address(0)) {
+            revert ZeroAddress();
+        }
         weth = weth_;
         isPoolAsset[weth_] = true; // every WETH ever configured stays unrescuable
         swapRouter = router_;
@@ -817,7 +917,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// path degrades to a raw-quote payout rather than stranding funds.
     /// @dev Rejects the native quote, which already pays out in ETH.
     function setQuoteToWethPath(address quote, bytes calldata path) external onlyOwnerOrAdmin {
-        if (quote == address(0)) revert NativeQuote();
+        if (quote == address(0)) {
+            revert NativeQuote();
+        }
         RealmAnyPairsSplitLib.requireQuotePath(quote, weth, path);
         quoteToWethPath[quote] = path;
         emit QuoteToWethPathSet(quote, path);
@@ -830,39 +932,61 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         view
         returns (address coin, address quote, bool quoteIsC0)
     {
-        if (key.fee != POOL_FEE) revert BadPoolFee();
-        if (address(key.hooks) != address(this)) revert WrongHook();
+        if (key.fee != POOL_FEE) {
+            revert BadPoolFee();
+        }
+        if (address(key.hooks) != address(this)) {
+            revert WrongHook();
+        }
         address c0 = Currency.unwrap(key.currency0);
         address c1 = Currency.unwrap(key.currency1);
         // `address(0)` (native ETH) is a legal quote. Native can only be currency0, so a zero currency1 is a malformed key.
-        if (c1 == address(0)) revert NotPairPool();
+        if (c1 == address(0)) {
+            revert NotPairPool();
+        }
         // Probe currency1 first: {_isCoin} is a typed call, and probing address(0) would revert instead of returning false.
-        if (_isCoin(c1, launcher)) { coin = c1; quote = c0; quoteIsC0 = true; }
-        else if (c0 != address(0) && _isCoin(c0, launcher)) { coin = c0; quote = c1; quoteIsC0 = false; }
-        else revert NotLauncher();
+        if (_isCoin(c1, launcher)) {
+            coin = c1;
+            quote = c0;
+            quoteIsC0 = true;
+        } else if (c0 != address(0) && _isCoin(c0, launcher)) {
+            coin = c0;
+            quote = c1;
+            quoteIsC0 = false;
+        } else {
+            revert NotLauncher();
+        }
     }
 
     function _isCoin(address t, address launcher) internal view returns (bool) {
-        try RealmAnyPairsTokenPlain(t).launcher() returns (address l) { return l == launcher; }
-        catch { return false; }
+        try RealmAnyPairsTokenPlain(t).launcher() returns (address l) {
+            return l == launcher;
+        } catch {
+            return false;
+        }
     }
 
     /// @notice Launcher-only: record who referred this pool. One-shot; a later launcher cannot redirect it.
     /// @dev Referrers that can never claim are rejected here, so every launcher gets the same checks.
     function markReferred(PoolKey calldata key, address referrer) external {
-        if (!isLauncher[msg.sender]) revert NotLauncher();
+        if (!isLauncher[msg.sender]) {
+            revert NotLauncher();
+        }
         (address coin,,) = _shape(key, msg.sender);
         PoolId id = key.toId();
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         // Refuse every address this launch itself puts in the pool's graph: none can claim, so naming one would burn
         // the referral share of the platform fee for the life of the coin. The launcher screens its LP locker.
         if (
-            referrer == address(0) || referrer == coin || referrer == c.creator
-            || referrer == c.quote || referrer == address(this)
-            || referrer == address(poolManager) || referrer == c.rewardsTracker
-            || isLauncher[referrer] || referrer == BURN_SINK
-        ) revert BadReferrer();
+            referrer == address(0) || referrer == coin || referrer == c.creator || referrer == c.quote
+                || referrer == address(this) || referrer == address(poolManager) || referrer == c.rewardsTracker
+                || isLauncher[referrer] || referrer == BURN_SINK
+        ) {
+            revert BadReferrer();
+        }
         if (referrerOf[id] == address(0)) {
             referrerOf[id] = referrer;
             emit PoolReferred(id, coin, referrer);
@@ -879,14 +1003,14 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         uint16[] splitBps;
         address rewardsTracker;
         uint16 rewardsBps;
-        bool autoSend;          // true = pay the creator share out in-swap instead of accruing it to owed[]
+        bool autoSend; // true = pay the creator share out in-swap instead of accruing it to owed[]
         /// @dev Auto-distribute threshold in the quote's units. 0 = use the default. Retunable via {setAutoThreshold}.
         uint80 autoThreshold;
         // ── optional launch guards; leave every one at 0 to opt out (existing callers unaffected) ──
-        uint16 maxBuyBps;        // max single buy as bps of total supply
-        uint16 launchTaxBps;     // opening tax for the launch window
-        uint16 launchTaxSecs;  // decay window length, in SECONDS (block.number here is the L1 block)
-        uint8 tradingDelaySecs;  // jitter window: trading opens 1..N seconds after launch
+        uint16 maxBuyBps; // max single buy as bps of total supply
+        uint16 launchTaxBps; // opening tax for the launch window
+        uint16 launchTaxSecs; // decay window length, in SECONDS (block.number here is the L1 block)
+        uint8 tradingDelaySecs; // jitter window: trading opens 1..N seconds after launch
         /// @dev Creator-pool slice routed to buyback-and-burn. 0 = off.
         uint16 buybackBps;
         /// @dev Creator-pool slice routed to auto-liquidity. 0 = off.
@@ -899,16 +1023,21 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Whether `tracker` pays rewards in `coin` rather than the quote. Read once at configure time; a tracker
     /// without `quote()` is treated as paying in the quote.
     function _rewardsArePaidInCoin(address tracker, address coin) internal view returns (bool) {
-        if (tracker == address(0) || coin == address(0)) return false;
-        (bool ok, bytes memory data) =
-            tracker.staticcall{gas: 20_000}(abi.encodeWithSignature("quote()"));
-        if (!ok || data.length != 32) return false;
+        if (tracker == address(0) || coin == address(0)) {
+            return false;
+        }
+        (bool ok, bytes memory data) = tracker.staticcall{gas: 20_000}(abi.encodeWithSignature("quote()"));
+        if (!ok || data.length != 32) {
+            return false;
+        }
         return abi.decode(data, (address)) == coin;
     }
 
     /// @dev True when `tracker` answers `autoConvertsRewards() == true`. Fail-closed: no readable answer means false.
     function _rewardsAutoConvert(address tracker) internal view returns (bool) {
-        if (tracker == address(0)) return false;
+        if (tracker == address(0)) {
+            return false;
+        }
         (bool ok, bytes memory data) = tracker.staticcall{gas: 20_000}(abi.encodeWithSignature("autoConvertsRewards()"));
         return ok && data.length == 32 && abi.decode(data, (uint256)) == 1;
     }
@@ -916,41 +1045,66 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Rewards, buyback and LP slices are shares of the same creator pool, so their sum must fit {BPS} after
     /// every change. Shared by every caller that can change a term; add any new slice here.
     function _requireSliceSum(uint256 rewardsBps, uint256 buybackBps, uint256 lpBps) internal pure {
-        if (rewardsBps > BPS || buybackBps > BPS || lpBps > BPS) revert BadSliceSum();
-        if (rewardsBps + buybackBps + lpBps > BPS) revert BadSliceSum();
+        if (rewardsBps > BPS || buybackBps > BPS || lpBps > BPS) {
+            revert BadSliceSum();
+        }
+        if (rewardsBps + buybackBps + lpBps > BPS) {
+            revert BadSliceSum();
+        }
     }
 
     function configurePool(PoolKey calldata key, ConfigParams calldata p) external {
-        if (!isLauncher[msg.sender]) revert NotLauncher();
+        if (!isLauncher[msg.sender]) {
+            revert NotLauncher();
+        }
         (address coin, address quote, bool quoteIsC0) = _shape(key, msg.sender);
 
         PoolId id = key.toId();
         (uint160 sqrtP,,,) = poolManager.getSlot0(id);
-        if (sqrtP == 0) revert PoolNotInitialized();
-        if (_config[id].configured) revert AlreadyConfigured();
-        if (p.creator == address(0)) revert ZeroAddress();
+        if (sqrtP == 0) {
+            revert PoolNotInitialized();
+        }
+        if (_config[id].configured) {
+            revert AlreadyConfigured();
+        }
+        if (p.creator == address(0)) {
+            revert ZeroAddress();
+        }
         // Never this hook: `owed[address(this)][quote]` is unreachable and a self-push is backed by no accrual.
-        if (p.creator == address(this)) revert SelfAddress();
+        if (p.creator == address(this)) {
+            revert SelfAddress();
+        }
         _requireRatesOk(p.buyBps, p.sellBps);
         // Same self-address rule for the tracker.
-        if (p.rewardsTracker == address(this)) revert SelfAddress();
+        if (p.rewardsTracker == address(this)) {
+            revert SelfAddress();
+        }
         _requireSliceSum(p.rewardsBps, p.buybackBps, p.lpBps);
 
         // Hoisted out of the struct literal below to avoid stack-too-deep.
         uint128 maxBuyAmount_ = _guardsFor(
-            p.maxBuyBps, p.launchTaxBps, p.launchTaxSecs, p.tradingDelaySecs,
+            p.maxBuyBps,
+            p.launchTaxBps,
+            p.launchTaxSecs,
+            p.tradingDelaySecs,
             Currency.unwrap(quoteIsC0 ? key.currency1 : key.currency0)
         );
         uint40 opensAt_ = _jitteredOpen(p.tradingDelaySecs);
         bool hasGuards_ = p.maxBuyBps != 0 || p.launchTaxBps != 0 || p.tradingDelaySecs != 0;
         bool rewards = p.rewardsTracker != address(0);
         _config[id] = TaxConfig({
-            creator: p.creator, buyBps: p.buyBps, sellBps: p.sellBps, configured: true,
+            creator: p.creator,
+            buyBps: p.buyBps,
+            sellBps: p.sellBps,
+            configured: true,
             // Every pool needs the in-swap path: the platform and referral cuts are pushed in-swap. A pull-mode
             // creator's own share is still booked to `owed[]`.
-            autoEnabled: true, autoSend: p.autoSend,
-            quoteIsC0: quoteIsC0, quote: quote,
-            rewardsTracker: p.rewardsTracker, rewardsBps: rewards ? p.rewardsBps : 0,
+            autoEnabled: true,
+            autoSend: p.autoSend,
+            quoteIsC0: quoteIsC0,
+            quote: quote,
+            rewardsTracker: p.rewardsTracker,
+            rewardsBps: rewards ? p.rewardsBps : 0,
             rewardsInCoin: _rewardsArePaidInCoin(p.rewardsTracker, coin),
             rewardsAutoConvert: _rewardsAutoConvert(p.rewardsTracker),
             // Creator-chosen when supplied, else the default. Never 0.
@@ -977,18 +1131,28 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         _storeSniperWhitelist(id, p.whitelist);
         _requireCoinNotRenounced(coin); // no creator-controlled pool on a renounced coin
         _coinPools[coin].push(id);
-        isPoolAsset[coin] = true;  // never rescuable
+        isPoolAsset[coin] = true; // never rescuable
         isPoolAsset[quote] = true; // address(0) here marks that a native pool exists
         emit PoolConfigured(id, p.creator, p.buyBps, p.sellBps);
         emit PoolPlatformRates(id, platformShareBps, platformFloorBps, platformCapBps);
         TaxConfig storage nc = _config[id];
         // Announce the state set here with the same events its setters emit, so indexers see the initial values.
-        if (nc.rewardsBps != 0) emit RewardsBpsSet(id, nc.rewardsBps);
-        if (nc.autoSend) emit AutoSendSet(id, true);
-        if (nc.autoThreshold != 0) emit AutoThresholdSet(id, nc.autoThreshold);
-        if (nc.guards.maxBuyAmount != 0) emit MaxBuySet(id, nc.guards.maxBuyBps, nc.guards.maxBuyAmount);
+        if (nc.rewardsBps != 0) {
+            emit RewardsBpsSet(id, nc.rewardsBps);
+        }
+        if (nc.autoSend) {
+            emit AutoSendSet(id, true);
+        }
+        if (nc.autoThreshold != 0) {
+            emit AutoThresholdSet(id, nc.autoThreshold);
+        }
+        if (nc.guards.maxBuyAmount != 0) {
+            emit MaxBuySet(id, nc.guards.maxBuyBps, nc.guards.maxBuyAmount);
+        }
         if (nc.guards.maxBuyBps != 0 || nc.guards.launchTaxBps != 0 || nc.guards.tradingOpensAt != 0) {
-            emit LaunchGuardsSet(id, nc.guards.maxBuyBps, nc.guards.launchTaxBps, nc.guards.launchTaxSecs, nc.guards.tradingOpensAt);
+            emit LaunchGuardsSet(
+                id, nc.guards.maxBuyBps, nc.guards.launchTaxBps, nc.guards.launchTaxSecs, nc.guards.tradingOpensAt
+            );
             _markLaunchTx(id, msg.sender);
         }
     }
@@ -1000,7 +1164,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev No flush needed: accrued fees were already collected at the old rate. The launch-tax ramp is unaffected.
     function setRates(PoolId id, uint16 buyBps, uint16 sellBps) external nonReentrant {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _requireActiveCreator(c, id);
         _requireRatesOk(buyBps, sellBps);
         c.buyBps = buyBps;
@@ -1012,10 +1178,14 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// it over an outstanding pot would reprice fees holders already earned.
     function setRewardsBps(PoolId id, uint16 rewardsBps) external nonReentrant {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _requireActiveCreator(c, id);
         // Validate before flushing.
-        if (c.rewardsTracker == address(0)) revert BadRewardsBps();
+        if (c.rewardsTracker == address(0)) {
+            revert BadRewardsBps();
+        }
         _requireSliceSum(rewardsBps, c.buybackBps, c.lpBps);
         _flushAtOldTerms(id);
         c.rewardsBps = rewardsBps;
@@ -1026,7 +1196,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Flushes at the old terms first. Not ratchet-limited; bounded by the slice sum check.
     function setBuybackBps(PoolId id, uint16 buybackBps) external nonReentrant {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _requireActiveCreator(c, id);
         _requireSliceSum(c.rewardsBps, buybackBps, c.lpBps);
         _flushAtOldTerms(id);
@@ -1049,7 +1221,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Shaped like {setBuybackBps}.
     function setLpBps(PoolId id, uint16 lpBps) external nonReentrant {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _requireActiveCreator(c, id);
         _requireSliceSum(c.rewardsBps, c.buybackBps, lpBps);
         _flushAtOldTerms(id);
@@ -1069,16 +1243,22 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     function setAutoThreshold(PoolId id, uint80 threshold) external nonReentrant {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _requireActiveCreator(c, id);
-        if (!c.autoEnabled || threshold == 0) revert BadAutoThreshold();
+        if (!c.autoEnabled || threshold == 0) {
+            revert BadAutoThreshold();
+        }
         c.autoThreshold = threshold;
         emit AutoThresholdSet(id, threshold);
     }
 
     function setCreatorSplit(PoolId id, address[] calldata recipients, uint16[] calldata bps) external nonReentrant {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _requireActiveCreator(c, id);
         // Flush at the old split first: rewriting it over an outstanding pot would reprice money already earned.
         _flushAtOldTerms(id);
@@ -1091,7 +1271,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// called from inside an existing V4 lock.
     function _flushAtOldTerms(PoolId id) internal {
         uint256 amount = accruedQuote[id];
-        if (amount == 0) return;
+        if (amount == 0) {
+            return;
+        }
         uint256 plat = accruedPlatformQuote[id];
         accruedQuote[id] = 0;
         accruedPlatformQuote[id] = 0;
@@ -1103,10 +1285,14 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// and later paid under the new terms. Not `nonReentrant`: the caller already holds the guard.
     function _flushAtOldTermsSoft(PoolId id) internal {
         uint256 amount = accruedQuote[id];
-        if (amount == 0) return;
+        if (amount == 0) {
+            return;
+        }
         // Calling from inside a V4 lock is the caller's own state, so fail hard instead of silently repricing the pot.
         // Checked before the try because a hostile quote could fake `AlreadyUnlocked` revert data.
-        if (_managerAlreadyUnlocked()) revert PendingDistribution();
+        if (_managerAlreadyUnlocked()) {
+            revert PendingDistribution();
+        }
         uint256 plat = accruedPlatformQuote[id];
         accruedQuote[id] = 0;
         accruedPlatformQuote[id] = 0;
@@ -1120,8 +1306,7 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     }
 
     /// @dev Transient slot of V4's `Lock` unlocked flag: `bytes32(uint256(keccak256("Unlocked")) - 1)`.
-    bytes32 internal constant V4_IS_UNLOCKED_SLOT =
-        0xc090fc4683624cfc3884e9d8de5eca132f2d0ec062aff75d43c0465d5ceeab23;
+    bytes32 internal constant V4_IS_UNLOCKED_SLOT = 0xc090fc4683624cfc3884e9d8de5eca132f2d0ec062aff75d43c0465d5ceeab23;
 
     /// @dev True when the PoolManager is already unlocked (so a nested `unlock` would revert). Uses a raw staticcall
     /// to `exttload`; if that fails it reads false (a soft flush) rather than bricking the CTO path.
@@ -1134,26 +1319,38 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     /// @dev Self-only trampoline so {_flushAtOldTermsSoft} can try/catch an unlock. No privilege of its own.
     function flushUnlock(PoolId id, uint256 amount, uint256 plat) external {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         poolManager.unlock(abi.encode(UNLOCK_DISTRIBUTE, id, amount, plat, FLUSH_ALL));
     }
 
     /// @dev Flushes first and is `nonReentrant`: it replaces the creator and deletes the split in one call.
     function setTokenCreator(PoolId id, address newCreator) external nonReentrant {
-        if (msg.sender != admin || admin == address(0)) revert NotAdmin();
+        if (msg.sender != admin || admin == address(0)) {
+            revert NotAdmin();
+        }
         _changeCreator(id, newCreator, true);
     }
 
     /// @dev The single place a pool's creator changes, used by the admin CTO ({setTokenCreator}) and the voluntary
     /// hand-off ({acceptCreator}). They differ in how an outstanding pot is settled and whether a renounce is cleared.
     function _changeCreator(PoolId id, address newCreator, bool byAdmin) internal {
-        if (newCreator == address(0)) revert ZeroAddress();
+        if (newCreator == address(0)) {
+            revert ZeroAddress();
+        }
         // Reject this hook (unreachable `owed` key) and the PoolManager (a pushed share would be taken by the next settler).
-        if (newCreator == address(this) || newCreator == address(poolManager)) revert SelfAddress();
+        if (newCreator == address(this) || newCreator == address(poolManager)) {
+            revert SelfAddress();
+        }
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         address old = c.creator;
-        if (newCreator == old) revert SameCreator();
+        if (newCreator == old) {
+            revert SameCreator();
+        }
         // Admin CTO. With split partners: fail-soft flush at the old terms (still reverts inside a V4 lock).
         // With no partners: the unsettled pot follows the new creator. Already-booked ring slots and `owed[]`
         // still pay the old creator either way.
@@ -1162,7 +1359,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
                 _flushAtOldTermsSoft(id);
             } else {
                 uint256 pot = accruedQuote[id];
-                if (pot != 0) emit HandoverPotFollowed(id, newCreator, pot);
+                if (pot != 0) {
+                    emit HandoverPotFollowed(id, newCreator, pot);
+                }
             }
             // A CTO hands the pool to a new, active creator, so the renounce does not carry over.
             creatorRenounced[id] = false;
@@ -1180,20 +1379,28 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     /// @dev The single creator-only gate, so a renounce closes every creator setter at once.
     function _requireActiveCreator(TaxConfig storage c, PoolId id) internal view {
-        if (msg.sender != c.creator) revert NotCreator();
-        if (creatorRenounced[id]) revert CreatorIsRenounced();
+        if (msg.sender != c.creator) {
+            revert NotCreator();
+        }
+        if (creatorRenounced[id]) {
+            revert CreatorIsRenounced();
+        }
     }
 
     /// @dev A renounce is per coin: refuse configuring a new creator-controlled pool on a renounced coin.
     function _requireCoinNotRenounced(address coin) internal view {
         PoolId[] storage ids = _coinPools[coin];
-        if (ids.length != 0 && creatorRenounced[ids[0]]) revert CreatorIsRenounced();
+        if (ids.length != 0 && creatorRenounced[ids[0]]) {
+            revert CreatorIsRenounced();
+        }
     }
 
     function _requireActiveCreatorOfCoin(address coin) internal view returns (PoolId[] storage ids) {
         ids = _coinPools[coin];
         uint256 n = ids.length;
-        if (n == 0) revert NotConfigured();
+        if (n == 0) {
+            revert NotConfigured();
+        }
         for (uint256 i; i < n; ++i) {
             TaxConfig storage c = _config[ids[i]];
             _requireActiveCreator(c, ids[i]);
@@ -1204,10 +1411,16 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// Nothing changes until `newCreator` calls {acceptCreator}; a new proposal replaces the old one.
     function proposeCreator(address coin, address newCreator) external nonReentrant {
         _requireActiveCreatorOfCoin(coin);
-        if (newCreator == address(0)) revert ZeroAddress();
+        if (newCreator == address(0)) {
+            revert ZeroAddress();
+        }
         // Nor the PoolManager: a creator share pushed there would be taken by the next settler.
-        if (newCreator == address(this) || newCreator == address(poolManager)) revert SelfAddress();
-        if (newCreator == msg.sender) revert SameCreator();
+        if (newCreator == address(this) || newCreator == address(poolManager)) {
+            revert SelfAddress();
+        }
+        if (newCreator == msg.sender) {
+            revert SameCreator();
+        }
         creatorProposalOf[coin] = CreatorProposal({from: msg.sender, to: newCreator});
         _proposedAtNonce[coin] = _creatorChangeNonce; // any creator change after this voids it
         emit CreatorProposed(coin, msg.sender, newCreator);
@@ -1216,8 +1429,12 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @notice Withdraw a pending hand-off. Only the address that proposed it.
     function cancelCreatorProposal(address coin) external nonReentrant {
         CreatorProposal storage pr = creatorProposalOf[coin];
-        if (pr.to == address(0)) revert NoCreatorProposal();
-        if (msg.sender != pr.from) revert NotCreator();
+        if (pr.to == address(0)) {
+            revert NoCreatorProposal();
+        }
+        if (msg.sender != pr.from) {
+            revert NotCreator();
+        }
         delete creatorProposalOf[coin];
         emit CreatorProposalCancelled(coin, msg.sender);
     }
@@ -1227,8 +1444,12 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// PoolManager cannot cover its accrual (e.g. a rebasing-down quote) blocks this until the shortfall is covered.
     function acceptCreator(address coin) external nonReentrant {
         CreatorProposal memory pr = creatorProposalOf[coin];
-        if (pr.to == address(0)) revert NoCreatorProposal();
-        if (msg.sender != pr.to) revert NotProposedCreator();
+        if (pr.to == address(0)) {
+            revert NoCreatorProposal();
+        }
+        if (msg.sender != pr.to) {
+            revert NotProposedCreator();
+        }
         PoolId[] storage ids = _coinPools[coin];
         uint256 n = ids.length;
         uint256 proposedAt = _proposedAtNonce[coin];
@@ -1236,10 +1457,14 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
             // `_creatorChangedAt` also catches an admin CTO away and back.
             if (
                 _config[ids[i]].creator != pr.from || creatorRenounced[ids[i]] || _creatorChangedAt[ids[i]] > proposedAt
-            ) revert StaleCreatorProposal();
+            ) {
+                revert StaleCreatorProposal();
+            }
         }
         delete creatorProposalOf[coin];
-        for (uint256 i; i < n; ++i) _changeCreator(ids[i], pr.to, false);
+        for (uint256 i; i < n; ++i) {
+            _changeCreator(ids[i], pr.to, false);
+        }
     }
 
     /// @notice Give up creator control of every pool of `coin`, permanently for the creator. Requires a fee split on
@@ -1249,9 +1474,13 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         PoolId[] storage ids = _requireActiveCreatorOfCoin(coin);
         uint256 n = ids.length;
         for (uint256 i; i < n; ++i) {
-            if (creatorSplits[ids[i]].length == 0) revert RenounceNeedsSplit();
+            if (creatorSplits[ids[i]].length == 0) {
+                revert RenounceNeedsSplit();
+            }
         }
-        for (uint256 i; i < n; ++i) creatorRenounced[ids[i]] = true;
+        for (uint256 i; i < n; ++i) {
+            creatorRenounced[ids[i]] = true;
+        }
         delete creatorProposalOf[coin];
         emit CreatorRenounced(coin, msg.sender);
     }
@@ -1265,7 +1494,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// tracker. Per-pool admin CTOs on later pools are not reflected.
     function creatorOfCoin(address coin) external view returns (address) {
         PoolId[] storage ids = _coinPools[coin];
-        if (ids.length == 0 || creatorRenounced[ids[0]]) return address(0);
+        if (ids.length == 0 || creatorRenounced[ids[0]]) {
+            return address(0);
+        }
         return _config[ids[0]].creator;
     }
 
@@ -1275,14 +1506,26 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Refused for any {isPoolAsset}: every pool quote and coin, every configured WETH, and native ETH once a
     /// native pool exists (or while WETH is unset). Refused while the PoolManager is unlocked.
     function rescue(address token, address to, uint256 amount) external nonReentrant {
-        if (msg.sender != admin || admin == address(0)) revert NotAdmin();
-        if (to == address(0)) revert ZeroAddress();
-        if (to == address(this)) revert SelfAddress();
-        if (isPoolAsset[token] || token == weth) revert RescueForbiddenAsset(token);
-        if (_managerAlreadyUnlocked()) revert PendingDistribution();
+        if (msg.sender != admin || admin == address(0)) {
+            revert NotAdmin();
+        }
+        if (to == address(0)) {
+            revert ZeroAddress();
+        }
+        if (to == address(this)) {
+            revert SelfAddress();
+        }
+        if (isPoolAsset[token] || token == weth) {
+            revert RescueForbiddenAsset(token);
+        }
+        if (_managerAlreadyUnlocked()) {
+            revert PendingDistribution();
+        }
         if (token == address(0)) {
             (bool ok,) = to.call{value: amount}("");
-            if (!ok) revert RescueFailed();
+            if (!ok) {
+                revert RescueFailed();
+            }
         } else {
             IERC20(token).safeTransfer(to, amount);
         }
@@ -1292,9 +1535,15 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Set once from {configurePool}; no other writer.
     function _storeSniperWhitelist(PoolId id, address[] calldata wallets) internal {
         uint256 n = wallets.length;
-        if (n == 0) return;
-        if (n > MAX_SNIPER_WHITELIST) revert WhitelistTooLarge();
-        for (uint256 i; i < n; ++i) sniperWhitelisted[id][wallets[i]] = true;
+        if (n == 0) {
+            return;
+        }
+        if (n > MAX_SNIPER_WHITELIST) {
+            revert WhitelistTooLarge();
+        }
+        for (uint256 i; i < n; ++i) {
+            sniperWhitelisted[id][wallets[i]] = true;
+        }
         emit SniperWhitelistSet(id, wallets);
     }
 
@@ -1303,21 +1552,31 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     function _recordSeeder(address launcher_) internal {
         (bool ok, bytes memory d) =
             launcher_.staticcall{gas: 20_000}(abi.encodeWithSelector(ILauncherSeeder.lpLocker.selector));
-        if (!ok || d.length != 32) return;
+        if (!ok || d.length != 32) {
+            return;
+        }
         address seeder = address(uint160(abi.decode(d, (uint256))));
-        if (seeder != address(0) && !isSeeder[seeder]) isSeeder[seeder] = true;
+        if (seeder != address(0) && !isSeeder[seeder]) {
+            isSeeder[seeder] = true;
+        }
     }
 
     /// @dev True for a rewards tracker funded by this hook whose payout asset is not this pool's quote: quote pushed
     /// to it could never be booked. A multi-basket tracker is allowed only if the quote is one of its denominations
     /// (never for native); a tracker without `quote()` is treated as the native tracker.
     function _isForeignTracker(PoolId id, address r) internal view returns (bool) {
-        if (r.code.length == 0) return false;
+        if (r.code.length == 0) {
+            return false;
+        }
         // Probes copy at most one word of returndata, so a returndata bomb costs nothing extra.
         (bool ok, uint256 w) = _probeWord(r, abi.encodeWithSignature("feeder()"));
-        if (!ok || address(uint160(w)) != address(this)) return false;
+        if (!ok || address(uint160(w)) != address(this)) {
+            return false;
+        }
         (ok, w) = _probeWord(r, abi.encodeWithSignature("isDenomination(address)", _config[id].quote));
-        if (ok) return w == 0; // multi-basket tracker
+        if (ok) {
+            return w == 0; // multi-basket tracker
+        }
         (ok, w) = _probeWord(r, abi.encodeWithSignature("quote()"));
         address asset = ok ? address(uint160(w)) : address(0);
         return asset != _config[id].quote;
@@ -1332,8 +1591,7 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
             address r = recipients[i];
             if (
                 (ownCoin != address(0) && r == ownCoin) || isLauncher[r] || _coinPools[r].length != 0 || isSeeder[r]
-                    || _isForeignTracker(id, r)
-                    || _isLpLocker(r) // any Realm AnyPairs LP locker, including one not yet recorded
+                    || _isForeignTracker(id, r) || _isLpLocker(r) // any Realm AnyPairs LP locker, including one not yet recorded
             ) {
                 revert RealmAnyPairsSplitLib.BadSplit();
             }
@@ -1344,9 +1602,13 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev True for a contract shaped like the LP locker: answers `availableOf(address)` and its `poolManager()` is
     /// this hook's PoolManager.
     function _isLpLocker(address r) internal view returns (bool) {
-        if (r.code.length == 0) return false;
+        if (r.code.length == 0) {
+            return false;
+        }
         (bool ok,) = _probeWord(r, abi.encodeWithSignature("availableOf(address)", address(0)));
-        if (!ok) return false;
+        if (!ok) {
+            return false;
+        }
         uint256 pm;
         (ok, pm) = _probeWord(r, abi.encodeWithSignature("poolManager()"));
         return ok && address(uint160(pm)) == address(poolManager);
@@ -1373,17 +1635,27 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     function getHookPermissions() public pure returns (Hooks.Permissions memory permissions) {
         permissions = Hooks.Permissions({
-            beforeInitialize: true, afterInitialize: false,
-            beforeAddLiquidity: false, afterAddLiquidity: false,
-            beforeRemoveLiquidity: false, afterRemoveLiquidity: false,
-            beforeSwap: true, afterSwap: true, beforeDonate: false, afterDonate: false,
-            beforeSwapReturnDelta: true, afterSwapReturnDelta: true,
-            afterAddLiquidityReturnDelta: false, afterRemoveLiquidityReturnDelta: false
+            beforeInitialize: true,
+            afterInitialize: false,
+            beforeAddLiquidity: false,
+            afterAddLiquidity: false,
+            beforeRemoveLiquidity: false,
+            afterRemoveLiquidity: false,
+            beforeSwap: true,
+            afterSwap: true,
+            beforeDonate: false,
+            afterDonate: false,
+            beforeSwapReturnDelta: true,
+            afterSwapReturnDelta: true,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
         });
     }
 
     function beforeInitialize(address sender, PoolKey calldata key, uint160) external onlyPoolManager returns (bytes4) {
-        if (!isLauncher[sender]) revert NotLauncher();
+        if (!isLauncher[sender]) {
+            revert NotLauncher();
+        }
         _shape(key, sender); // validates shape + that one side is sender's coin
         return this.beforeInitialize.selector;
     }
@@ -1395,41 +1667,54 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     /// @dev Skims the quote-token tax when the QUOTE is the SPECIFIED currency of the swap.
     function beforeSwap(address sender, PoolKey calldata key, SwapParams calldata params, bytes calldata)
-        external onlyPoolManager returns (bytes4, BeforeSwapDelta, uint24)
+        external
+        onlyPoolManager
+        returns (bytes4, BeforeSwapDelta, uint24)
     {
         PoolId id = key.toId();
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _requireTradingOpen(id, c, sender);
 
         bool c0Specified = (params.zeroForOne == (params.amountSpecified < 0));
         bool quoteSpecified = c.quoteIsC0 ? c0Specified : !c0Specified;
-        if (!quoteSpecified) return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        if (!quoteSpecified) {
+            return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        }
 
         uint256 amt = params.amountSpecified < 0 ? uint256(-params.amountSpecified) : uint256(params.amountSpecified);
         uint256 fee = _taxOn(c, params.zeroForOne, amt);
-        if (fee == 0) return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        if (fee == 0) {
+            return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        }
 
         _quoteCurrency(key, c.quoteIsC0).take(poolManager, address(this), fee, true);
         accruedQuote[id] += fee;
-        accruedPlatformQuote[id] +=
-            _platformCutOn(id, c, c.quoteIsC0 ? params.zeroForOne : !params.zeroForOne, amt);
+        accruedPlatformQuote[id] += _platformCutOn(id, c, c.quoteIsC0 ? params.zeroForOne : !params.zeroForOne, amt);
         emit TaxAccrued(id, c.quoteIsC0 ? params.zeroForOne : !params.zeroForOne, fee);
         return (this.beforeSwap.selector, toBeforeSwapDelta(fee.toInt128(), 0), 0);
     }
 
     /// @dev Skims the quote-token tax when the QUOTE is the UNSPECIFIED currency of the swap.
-    function afterSwap(address sender, PoolKey calldata key, SwapParams calldata params, BalanceDelta delta, bytes calldata)
-        external onlyPoolManager returns (bytes4, int128)
-    {
+    function afterSwap(
+        address sender,
+        PoolKey calldata key,
+        SwapParams calldata params,
+        BalanceDelta delta,
+        bytes calldata
+    ) external onlyPoolManager returns (bytes4, int128) {
         PoolId id = key.toId();
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         // The coin is the non-quote currency; a positive delta there is coin leaving the pool (a buy).
         _requireUnderMaxBuy(id, c, sender, c.quoteIsC0 ? delta.amount1() : delta.amount0());
 
         int128 feeReturn = 0;
-        uint256 swapTax;                 // observational only, for {SwapObserved}
+        uint256 swapTax; // observational only, for {SwapObserved}
         bool c0Specified = (params.zeroForOne == (params.amountSpecified < 0));
         bool quoteUnspecified = c.quoteIsC0 ? !c0Specified : c0Specified;
         if (quoteUnspecified) {
@@ -1440,8 +1725,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
                 if (fee != 0) {
                     _quoteCurrency(key, c.quoteIsC0).take(poolManager, address(this), fee, true);
                     accruedQuote[id] += fee;
-                    accruedPlatformQuote[id] +=
-                        _platformCutOn(id, c, c.quoteIsC0 ? params.zeroForOne : !params.zeroForOne, amt);
+                    accruedPlatformQuote[
+                        id
+                    ] += _platformCutOn(id, c, c.quoteIsC0 ? params.zeroForOne : !params.zeroForOne, amt);
                     emit TaxAccrued(id, c.quoteIsC0 ? params.zeroForOne : !params.zeroForOne, fee);
                     feeReturn = fee.toInt128();
                     swapTax = fee;
@@ -1450,8 +1736,8 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         }
         // beforeSwap sized the fee against the requested amount, so check the rate against what actually traded.
         if (!quoteUnspecified) {
-            uint256 requested = params.amountSpecified < 0
-                ? uint256(-params.amountSpecified) : uint256(params.amountSpecified);
+            uint256 requested =
+                params.amountSpecified < 0 ? uint256(-params.amountSpecified) : uint256(params.amountSpecified);
             uint256 taken = _taxOn(c, params.zeroForOne, requested);
             if (taken != 0) {
                 int128 moved = c.quoteIsC0 ? delta.amount0() : delta.amount1();
@@ -1472,8 +1758,13 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         }
         // Emitted before payouts. Buy direction depends on which currency is the quote.
         emit SwapObserved(
-            id, sender, tx.origin, delta.amount0(), delta.amount1(),
-            swapTax, params.amountSpecified < 0,
+            id,
+            sender,
+            tx.origin,
+            delta.amount0(),
+            delta.amount1(),
+            swapTax,
+            params.amountSpecified < 0,
             c.quoteIsC0 ? params.zeroForOne : !params.zeroForOne
         );
         _maybeAutoDistribute(id, c);
@@ -1484,7 +1775,6 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         _maybeConvertRewards(c);
         return (this.afterSwap.selector, feeReturn);
     }
-
 
     // In-swap conversions (buyback, liquidity, reflection) end with a `take` of the coin, which fails if the
     // PoolManager does not hold it yet (e.g. during a sell, before the router settles). The catch turns that into
@@ -1498,11 +1788,10 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     /// @dev The buyback swap. External and self-only so {_maybeBuyback} can try/catch it (a revert is a deferral);
     /// {runBuyback} calls it directly so a revert reaches the caller.
-    function buybackAndBurnSelf(PoolKey calldata key, uint256 amt)
-        external
-        returns (uint256 spent, uint256 burned)
-    {
-        if (msg.sender != address(this)) revert NotSelf();
+    function buybackAndBurnSelf(PoolKey calldata key, uint256 amt) external returns (uint256 spent, uint256 burned) {
+        if (msg.sender != address(this)) {
+            revert NotSelf();
+        }
         PoolId id = key.toId();
         TaxConfig storage c = _config[id];
         bool quoteIsC0 = c.quoteIsC0;
@@ -1540,7 +1829,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// a revert) is a deferral: {buybackPot} is kept for the next swap or {runBuyback}.
     function _maybeBuyback(PoolKey calldata key, PoolId id, TaxConfig storage c) internal {
         uint256 pot = buybackPot[id];
-        if (pot == 0 || c.buybackBps == 0) return;
+        if (pot == 0 || c.buybackBps == 0) {
+            return;
+        }
         if (gasleft() < BUYBACK_CONVERT_GAS + SWAP_TAIL_RESERVE) {
             emit BuybackSkipped(id, pot, 0);
             return;
@@ -1549,14 +1840,15 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         buybackPot[id] = 0;
         try this.buybackAndBurnSelf{gas: BUYBACK_CONVERT_GAS}(key, pot) returns (uint256 spent, uint256 burned) {
             // A short fill returns the unspent remainder to the pot.
-            if (spent < pot) buybackPot[id] = pot - spent;
+            if (spent < pot) {
+                buybackPot[id] = pot - spent;
+            }
             emit BuybackExecuted(id, spent, burned);
         } catch {
             buybackPot[id] = pot;
             emit BuybackSkipped(id, pot, 1);
         }
     }
-
 
     // ═══════════════════════════ AUTO-LIQUIDITY EXECUTION ═════════════════════════════════
     // The position is owned by this hook, which has no path to remove liquidity, so it is permanently locked.
@@ -1568,7 +1860,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         external
         returns (uint256 spentQuote, uint128 liquidityAdded)
     {
-        if (msg.sender != address(this)) revert NotSelf();
+        if (msg.sender != address(this)) {
+            revert NotSelf();
+        }
         PoolId id = key.toId();
         TaxConfig storage c = _config[id];
         bool quoteIsC0 = c.quoteIsC0;
@@ -1577,7 +1871,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
         // ── 1. half the pot buys coin, so the add has both sides ──
         uint256 half = amt / 2;
-        if (half == 0) revert NothingToAddLiquidity();
+        if (half == 0) {
+            revert NothingToAddLiquidity();
+        }
         BalanceDelta sd = poolManager.swap(
             key,
             SwapParams({
@@ -1591,7 +1887,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         int128 sq = quoteIsC0 ? sd.amount0() : sd.amount1();
         int128 sc = quoteIsC0 ? sd.amount1() : sd.amount0();
         uint256 coinBought = sc > 0 ? uint256(uint128(sc)) : 0;
-        if (coinBought == 0) revert NothingToAddLiquidity();
+        if (coinBought == 0) {
+            revert NothingToAddLiquidity();
+        }
 
         // ── 2. size the add from what we ACTUALLY hold, at the post-swap price ──
         uint256 quoteLeft = amt - (sq < 0 ? uint256(uint128(-sq)) : 0);
@@ -1609,7 +1907,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         // 1 bp haircut: liquidity math floors but the charge rounds up, so sizing to the last wei would ask for
         // slightly more than the hook holds. Leftovers go back to the pot (quote) or the sink (coin).
         liq = uint128((uint256(liq) * 9_999) / 10_000);
-        if (liq == 0) revert NothingToAddLiquidity();
+        if (liq == 0) {
+            revert NothingToAddLiquidity();
+        }
 
         (BalanceDelta md,) = poolManager.modifyLiquidity(
             key,
@@ -1640,20 +1940,26 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
         // What the pot actually paid is the NET quote that left, never the nominal request.
         spentQuote = netQ < 0 ? uint256(-netQ) : 0;
-        if (spentQuote > amt) spentQuote = amt;
+        if (spentQuote > amt) {
+            spentQuote = amt;
+        }
     }
 
     /// @dev In-swap attempt, mirroring {_maybeBuyback}: gas-gated, pot zeroed before the call, restored on failure.
     function _maybeAddLiquidity(PoolKey calldata key, PoolId id, TaxConfig storage c) internal {
         uint256 pot = lpPot[id];
-        if (pot == 0 || c.lpBps == 0) return;
+        if (pot == 0 || c.lpBps == 0) {
+            return;
+        }
         if (gasleft() < LP_CONVERT_GAS + SWAP_TAIL_RESERVE) {
             emit AutoLiquiditySkipped(id, pot, 0);
             return;
         }
         lpPot[id] = 0;
         try this.addLiquiditySelf{gas: LP_CONVERT_GAS}(key, pot) returns (uint256 spent, uint128 liq) {
-            if (spent < pot) lpPot[id] = pot - spent;
+            if (spent < pot) {
+                lpPot[id] = pot - spent;
+            }
             emit AutoLiquidityAdded(id, spent, liq);
         } catch {
             lpPot[id] = pot;
@@ -1669,30 +1975,36 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         returns (uint256 spent, uint128 liquidityAdded)
     {
         PoolId id = key.toId();
-        if (!_config[id].configured) revert NotConfigured();
+        if (!_config[id].configured) {
+            revert NotConfigured();
+        }
         uint256 pot = lpPot[id];
-        if (pot == 0) revert NothingToAddLiquidity();
+        if (pot == 0) {
+            revert NothingToAddLiquidity();
+        }
         lpPot[id] = 0;
         bytes memory ret = poolManager.unlock(abi.encode(UNLOCK_ADDLIQ, key, pot));
         (spent, liquidityAdded) = abi.decode(ret, (uint256, uint128));
-        if (spent < pot) lpPot[id] = pot - spent;
+        if (spent < pot) {
+            lpPot[id] = pot - spent;
+        }
         emit AutoLiquidityAdded(id, spent, liquidityAdded);
     }
-
 
     // ═══════════════════════════ REFLECTIONS EXECUTION ════════════════════════════════════
     // Like the buyback, but the coin goes to the rewards tracker, which books its own measured balance increase.
 
     /// @dev Self-only so {_maybeReflect} can wrap it in a try/catch; called directly by {runReflect}.
-    function reflectSelf(PoolKey calldata key, uint256 amt)
-        external
-        returns (uint256 spent, uint256 coinToHolders)
-    {
-        if (msg.sender != address(this)) revert NotSelf();
+    function reflectSelf(PoolKey calldata key, uint256 amt) external returns (uint256 spent, uint256 coinToHolders) {
+        if (msg.sender != address(this)) {
+            revert NotSelf();
+        }
         PoolId id = key.toId();
         TaxConfig storage c = _config[id];
         address tracker = c.rewardsTracker;
-        if (tracker == address(0)) revert NothingToReflect();
+        if (tracker == address(0)) {
+            revert NothingToReflect();
+        }
         bool quoteIsC0 = c.quoteIsC0;
         Currency qc = _quoteCurrency(key, quoteIsC0);
         Currency cc = quoteIsC0 ? key.currency1 : key.currency0;
@@ -1724,14 +2036,18 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev The in-swap attempt. Mirrors {_maybeBuyback}; every failure is a deferral.
     function _maybeReflect(PoolKey calldata key, PoolId id, TaxConfig storage c) internal {
         uint256 pot = reflectPot[id];
-        if (pot == 0) return;
+        if (pot == 0) {
+            return;
+        }
         if (gasleft() < REFLECT_CONVERT_GAS + SWAP_TAIL_RESERVE) {
             emit ReflectionSkipped(id, pot, 0);
             return;
         }
         reflectPot[id] = 0;
         try this.reflectSelf{gas: REFLECT_CONVERT_GAS}(key, pot) returns (uint256 spent, uint256 coin) {
-            if (spent < pot) reflectPot[id] = pot - spent;
+            if (spent < pot) {
+                reflectPot[id] = pot - spent;
+            }
             emit ReflectionPaid(id, spent, coin);
         } catch {
             reflectPot[id] = pot;
@@ -1742,8 +2058,12 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Let an auto-converting tracker convert one buffered leg after a swap. Low-level and gas-capped, so neither
     /// a revert nor a hostile return can affect the swap.
     function _maybeConvertRewards(TaxConfig storage c) internal {
-        if (!c.rewardsAutoConvert) return;
-        if (gasleft() < REWARD_CONVERT_GAS + SWAP_TAIL_RESERVE) return;
+        if (!c.rewardsAutoConvert) {
+            return;
+        }
+        if (gasleft() < REWARD_CONVERT_GAS + SWAP_TAIL_RESERVE) {
+            return;
+        }
         (bool ok,) = c.rewardsTracker.call{gas: REWARD_CONVERT_GAS}(abi.encodeWithSignature("convertStep()"));
         ok; // failure is a deferral: the buffer stays for the next swap or a manual call
     }
@@ -1752,13 +2072,19 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Permissionless and uncapped, like {runBuyback} and {runAddLiquidity}.
     function runReflect(PoolKey calldata key) external nonReentrant returns (uint256 spent, uint256 coin) {
         PoolId id = key.toId();
-        if (!_config[id].configured) revert NotConfigured();
+        if (!_config[id].configured) {
+            revert NotConfigured();
+        }
         uint256 pot = reflectPot[id];
-        if (pot == 0) revert NothingToReflect();
+        if (pot == 0) {
+            revert NothingToReflect();
+        }
         reflectPot[id] = 0;
         bytes memory ret = poolManager.unlock(abi.encode(UNLOCK_REFLECT, key, pot));
         (spent, coin) = abi.decode(ret, (uint256, uint256));
-        if (spent < pot) reflectPot[id] = pot - spent;
+        if (spent < pot) {
+            reflectPot[id] = pot - spent;
+        }
         emit ReflectionPaid(id, spent, coin);
     }
 
@@ -1783,20 +2109,28 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     function runBuyback(PoolKey calldata key) external nonReentrant returns (uint256 spent, uint256 burned) {
         PoolId id = key.toId();
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         uint256 pot = buybackPot[id];
-        if (pot == 0) revert NothingToBuyBack();
+        if (pot == 0) {
+            revert NothingToBuyBack();
+        }
         buybackPot[id] = 0;
         // Off-swap the PoolManager is locked, so the work runs inside an unlock.
         bytes memory ret = poolManager.unlock(abi.encode(UNLOCK_BUYBACK, key, pot));
         (spent, burned) = abi.decode(ret, (uint256, uint256));
-        if (spent < pot) buybackPot[id] = pot - spent;
+        if (spent < pot) {
+            buybackPot[id] = pot - spent;
+        }
         emit BuybackExecuted(id, spent, burned);
     }
 
     /// @dev The tax on `amount` at an explicit rate, floored.
     function _taxAt(uint256 bps, uint256 amount) internal pure returns (uint256) {
-        if (bps == 0 || amount == 0) return 0;
+        if (bps == 0 || amount == 0) {
+            return 0;
+        }
         return FullMath.mulDiv(amount, bps * 100, FEE_DENOM);
     }
 
@@ -1821,7 +2155,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev The fee formula on a resolved total. Shared by {_taxOn} and {launchBuyFee} so the dev-buy quote matches
     /// what a swap is charged.
     function _feeAtTotalBps(uint256 totalBps, uint256 amount) internal pure returns (uint256) {
-        if (amount == 0) return 0;
+        if (amount == 0) {
+            return 0;
+        }
         return FullMath.mulDiv(amount, totalBps * 100, FEE_DENOM);
     }
 
@@ -1830,13 +2166,19 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     function _fillCeilBps(uint16 launchTaxBps) internal pure returns (uint256 ceilBps) {
         ceilBps = uint256(FILL_TOLERANCE_BPS) + FILL_PLATFORM_HEADROOM_BPS;
         uint256 ramp = uint256(launchTaxBps) + FILL_PLATFORM_HEADROOM_BPS;
-        if (ramp > ceilBps) ceilBps = ramp;
+        if (ramp > ceilBps) {
+            ceilBps = ramp;
+        }
     }
 
     /// @dev The launch-tax parameter rule, shared by {_guardsFor} (configurePool) and {launchBuyFee}.
     function _requireLaunchTaxOk(uint16 launchTaxBps, uint16 launchTaxSecs) internal pure {
-        if ((launchTaxBps == 0) != (launchTaxSecs == 0)) revert BadLaunchGuard();
-        if (launchTaxBps > MAX_LAUNCH_TAX_BPS || launchTaxSecs > MAX_LAUNCH_TAX_SECS) revert BadLaunchGuard();
+        if ((launchTaxBps == 0) != (launchTaxSecs == 0)) {
+            revert BadLaunchGuard();
+        }
+        if (launchTaxBps > MAX_LAUNCH_TAX_BPS || launchTaxSecs > MAX_LAUNCH_TAX_SECS) {
+            revert BadLaunchGuard();
+        }
     }
 
     /// @notice The fee the hook will charge a dev buy of `amount` quote in the LAUNCH TRANSACTION, and the
@@ -1860,9 +2202,13 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     function distribute(PoolId id) external nonReentrant {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         uint256 amount = accruedQuote[id];
-        if (amount == 0) revert NothingAccrued();
+        if (amount == 0) {
+            revert NothingAccrued();
+        }
         uint256 plat = accruedPlatformQuote[id];
         accruedQuote[id] = 0;
         accruedPlatformQuote[id] = 0;
@@ -1877,7 +2223,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         // Revert only if nothing was settled and no parked platform slot was actually drained by this call.
         bool drained;
         (settled, drained) = _settlePlatform(id);
-        if (settled == 0 && !drained) revert NothingAccrued();
+        if (settled == 0 && !drained) {
+            revert NothingAccrued();
+        }
     }
 
     /// @notice Claim the platform's cut across many pools in one transaction.
@@ -1891,21 +2239,31 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         returns (uint256 paidPools, uint256 skippedPools)
     {
         uint256 n = ids.length;
-        if (n == 0 || n > MAX_CLAIM_BATCH) revert BadBatchLength();
+        if (n == 0 || n > MAX_CLAIM_BATCH) {
+            revert BadBatchLength();
+        }
         for (uint256 i; i < n; ++i) {
             // Stop before a forwarded call could exhaust the gas needed to finish; the returned counts show progress.
-            if (gasleft() < CLAIM_ONE_GAS_CAP + CLAIM_BATCH_TAIL) break;
+            if (gasleft() < CLAIM_ONE_GAS_CAP + CLAIM_BATCH_TAIL) {
+                break;
+            }
             // A drained parked slot paid the platform even with `amt == 0`, so it counts as paid, not skipped.
             try this.claimPlatformOne{gas: CLAIM_ONE_GAS_CAP}(ids[i]) returns (uint256 amt, bool drained) {
                 if (amt != 0 || drained) {
-                    unchecked { ++paidPools; }
+                    unchecked {
+                        ++paidPools;
+                    }
                 } else {
                     emit PlatformClaimSkipped(ids[i]);
-                    unchecked { ++skippedPools; }
+                    unchecked {
+                        ++skippedPools;
+                    }
                 }
             } catch {
                 emit PlatformClaimSkipped(ids[i]);
-                unchecked { ++skippedPools; }
+                unchecked {
+                    ++skippedPools;
+                }
             }
         }
     }
@@ -1915,7 +2273,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @return settled What came out of `accruedPlatformQuote`.
     /// @return drained Whether this call emptied a parked platform ring slot.
     function claimPlatformOne(PoolId id) external returns (uint256 settled, bool drained) {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         return _settlePlatform(id);
     }
 
@@ -1923,11 +2283,15 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @return drained whether a parked platform ring slot was actually emptied (a walk short of gas leaves it parked).
     function _settlePlatform(PoolId id) internal returns (uint256 plat, bool drained) {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         plat = accruedPlatformQuote[id];
         uint256 acc = accruedQuote[id];
         // Defensive clamp; `plat <= acc` always holds.
-        if (plat > acc) plat = acc;
+        if (plat > acc) {
+            plat = acc;
+        }
         if (plat == 0) {
             // Nothing new to settle, but an earlier walk may have parked platform slices. Drain only those slots.
             if (pendingMask[id] & RING_PLATFORM != 0) {
@@ -1949,12 +2313,18 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// afterwards, so a later {claimPlatform} settles the identical figure it would have settled before.
     function claimCreator(PoolId id) external nonReentrant returns (uint256 settled) {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         uint256 acc = accruedQuote[id];
         uint256 plat = accruedPlatformQuote[id];
-        if (plat > acc) plat = acc;
+        if (plat > acc) {
+            plat = acc;
+        }
         settled = acc - plat;
-        if (settled == 0) revert NothingAccrued();
+        if (settled == 0) {
+            revert NothingAccrued();
+        }
         accruedQuote[id] = plat;
         poolManager.unlock(abi.encode(UNLOCK_DISTRIBUTE, id, settled, 0, FLUSH_CREATOR));
     }
@@ -1963,7 +2333,11 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// raw quote. `minWethOut` is the conversion's slippage floor; if it cannot be met the claim falls back to the raw
     /// quote. Pass 0 only if you accept that.
     /// @dev `owed[]` is paid nominally, first come first served; rebasing-down quotes are unsupported.
-    function claim(address token, uint256 minWethOut) external nonReentrant returns (uint256 amountPaid, address tokenPaid) {
+    function claim(address token, uint256 minWethOut)
+        external
+        nonReentrant
+        returns (uint256 amountPaid, address tokenPaid)
+    {
         return _claimTo(token, minWethOut, msg.sender);
     }
 
@@ -1975,7 +2349,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         nonReentrant
         returns (uint256 amountPaid, address tokenPaid)
     {
-        if (to == address(0)) revert ZeroAddress();
+        if (to == address(0)) {
+            revert ZeroAddress();
+        }
         return _claimTo(token, minWethOut, to);
     }
 
@@ -1987,11 +2363,15 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         return RealmAnyPairsSplitLib.claimTo(owed, quoteToWethPath, token, minWethOut, to, weth, swapRouter);
     }
 
-
     /// @dev External-self-only so {claim} can try/catch the whole approve/swap/reset sequence. `minOut` is the router's
     /// `amountOutMinimum`, so a bad price reverts and {claim} falls back to the raw quote.
-    function convertToWeth(address recipient, address token, bytes memory path, uint256 amount, uint256 minOut) external returns (uint256 out) {
-        if (msg.sender != address(this)) revert OnlySelf();
+    function convertToWeth(address recipient, address token, bytes memory path, uint256 amount, uint256 minOut)
+        external
+        returns (uint256 out)
+    {
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         // Body lives in the library for size; the self-only check stays here so the try has a real frame to cap and catch.
         return RealmAnyPairsSplitLib.swapToWeth(recipient, token, path, amount, minOut, swapRouter, weth);
     }
@@ -2001,9 +2381,13 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// the transfer). `owed[]` is paid nominally; rebasing-down quotes are unsupported.
     function pushOwed(address who, address token) external nonReentrant returns (uint256 amount) {
         // Contracts only: an EOA can call {claim} itself, and a third-party push would strip its choice of payout asset.
-        if (who.code.length == 0) revert NotAContract();
+        if (who.code.length == 0) {
+            revert NotAContract();
+        }
         amount = owed[who][token];
-        if (amount == 0) revert NothingAccrued();
+        if (amount == 0) {
+            revert NothingAccrued();
+        }
         owed[who][token] = 0;
         // Native: try a plain send, then `feed{value:}` (the native tracker has no `receive`); if both fail the frame
         // reverts and the `owed` entry is restored. Native reports `amount` (all-or-nothing); ERC20 reports the measured
@@ -2013,7 +2397,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
             (bool ok,) = payable(who).call{value: amount}("");
             if (!ok) {
                 try IDividendFeeder(who).feed{value: amount}() {}
-                catch { revert EthTransferFailed(); }
+                catch {
+                    revert EthTransferFailed();
+                }
             }
             delivered = amount;
         } else {
@@ -2030,11 +2416,15 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
     /// @dev Accepts native ETH from the PoolManager only (native `take`s). Any other ETH would be unbacked and stuck.
     receive() external payable {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
+        if (msg.sender != address(poolManager)) {
+            revert NotPoolManager();
+        }
     }
 
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
+        if (msg.sender != address(poolManager)) {
+            revert NotPoolManager();
+        }
         // The leading op selects the payload shape. Only this contract's own unlocks reach here, so an unknown op reverts.
         uint8 op = abi.decode(data[:32], (uint8));
         if (op == UNLOCK_BUYBACK) {
@@ -2080,12 +2470,16 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         uint256 received = balAfter > balBefore ? balAfter - balBefore : 0;
         // Revert rather than return: callers have already zeroed the accrual, and reverting restores it (e.g. a frozen
         // quote whose transfer silently does nothing).
-        if (received == 0) revert NothingAccrued();
+        if (received == 0) {
+            revert NothingAccrued();
+        }
 
         // Scale the platform's cut by what actually arrived, sharing any transfer fee proportionally.
         uint256 toPlatform = amount == 0 ? 0 : plat * received / amount;
         amount = received;
-        if (toPlatform > amount) toPlatform = amount;
+        if (toPlatform > amount) {
+            toPlatform = amount;
+        }
         uint256 creatorPool = amount - toPlatform;
         // Every slice is a share of the same base, snapshotted before any is taken. Slices floor, so rounding
         // remainders stay with the creator; each is also clamped to what remains.
@@ -2108,81 +2502,98 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
 
         // FLUSH_PLATFORM leaves `creatorPool` at 0; skip the creator side so a large split is never walked for nothing.
         if (mode != FLUSH_PLATFORM) {
-        address tracker = c.rewardsTracker;
-        if (tracker != address(0) && c.rewardsBps != 0 && creatorPool != 0) {
-            uint256 toRewards = sliceBase * c.rewardsBps / BPS;
-            if (toRewards > creatorPool) toRewards = creatorPool;
-            if (toRewards != 0) {
-                creatorPool -= toRewards;
-                if (c.rewardsInCoin) {
-                    // Coin-paid rewards cannot go through the quote ring; accrue for {_maybeReflect} instead.
-                    reflectPot[id] += toRewards;
-                    emit ReflectionAccrued(id, toRewards);
-                } else {
-                    _bookSlot(id, PAY_SLOT_REWARDS, tracker, quote, toRewards);
+            address tracker = c.rewardsTracker;
+            if (tracker != address(0) && c.rewardsBps != 0 && creatorPool != 0) {
+                uint256 toRewards = sliceBase * c.rewardsBps / BPS;
+                if (toRewards > creatorPool) {
+                    toRewards = creatorPool;
+                }
+                if (toRewards != 0) {
+                    creatorPool -= toRewards;
+                    if (c.rewardsInCoin) {
+                        // Coin-paid rewards cannot go through the quote ring; accrue for {_maybeReflect} instead.
+                        reflectPot[id] += toRewards;
+                        emit ReflectionAccrued(id, toRewards);
+                    } else {
+                        _bookSlot(id, PAY_SLOT_REWARDS, tracker, quote, toRewards);
+                    }
                 }
             }
-        }
 
-        // ── buyback-and-burn, carved from the SAME creatorPool as the rewards slice ──
-        // Booked to a pot, not executed here: off-swap callers have no PoolKey. Drained by {_maybeBuyback} or {runBuyback}.
-        if (mode != FLUSH_PLATFORM && c.buybackBps != 0 && creatorPool != 0) {
-            uint256 toBuyback = sliceBase * c.buybackBps / BPS;
-            if (toBuyback > creatorPool) toBuyback = creatorPool;
-            if (toBuyback != 0) {
-                creatorPool -= toBuyback;
-                buybackPot[id] += toBuyback;
-                emit BuybackAccrued(id, toBuyback);
-            }
-        }
-
-        // ── auto-liquidity, carved from the SAME creatorPool, after the buyback slice ──
-        if (mode != FLUSH_PLATFORM && c.lpBps != 0 && creatorPool != 0) {
-            uint256 toLp = sliceBase * c.lpBps / BPS;
-            if (toLp > creatorPool) toLp = creatorPool;
-            if (toLp != 0) {
-                creatorPool -= toLp;
-                lpPot[id] += toLp;
-                emit AutoLiquidityAccrued(id, toLp);
-            }
-        }
-
-        bool push = c.autoSend;
-        RealmAnyPairsSplitLib.Split[] storage sp = creatorSplits[id];
-        if (sp.length == 0) {
-            // Split-less pool: the creator IS split slot 0, at ring index PAY_SLOT_SPLIT_BASE.
-            if (creatorPool > 0) {
-                if (push) _bookSlot(id, PAY_SLOT_SPLIT_BASE, c.creator, quote, creatorPool);
-                else owed[c.creator][quote] += creatorPool;
-            }
-        } else {
-            uint256 rem = creatorPool;
-            uint256 last = sp.length - 1;
-            for (uint256 i; i <= last; i++) {
-                uint256 part = i == last ? rem : (creatorPool * sp[i].bps) / BPS;
-                rem -= part;
-                if (part > 0) {
-                    // Pull-mode pools book straight to `owed[]`.
-                    if (push) _bookSlot(id, PAY_SLOT_SPLIT_BASE + i, sp[i].to, quote, part);
-                    else owed[sp[i].to][quote] += part;
+            // ── buyback-and-burn, carved from the SAME creatorPool as the rewards slice ──
+            // Booked to a pot, not executed here: off-swap callers have no PoolKey. Drained by {_maybeBuyback} or {runBuyback}.
+            if (mode != FLUSH_PLATFORM && c.buybackBps != 0 && creatorPool != 0) {
+                uint256 toBuyback = sliceBase * c.buybackBps / BPS;
+                if (toBuyback > creatorPool) {
+                    toBuyback = creatorPool;
+                }
+                if (toBuyback != 0) {
+                    creatorPool -= toBuyback;
+                    buybackPot[id] += toBuyback;
+                    emit BuybackAccrued(id, toBuyback);
                 }
             }
-        }
 
+            // ── auto-liquidity, carved from the SAME creatorPool, after the buyback slice ──
+            if (mode != FLUSH_PLATFORM && c.lpBps != 0 && creatorPool != 0) {
+                uint256 toLp = sliceBase * c.lpBps / BPS;
+                if (toLp > creatorPool) {
+                    toLp = creatorPool;
+                }
+                if (toLp != 0) {
+                    creatorPool -= toLp;
+                    lpPot[id] += toLp;
+                    emit AutoLiquidityAccrued(id, toLp);
+                }
+            }
+
+            bool push = c.autoSend;
+            RealmAnyPairsSplitLib.Split[] storage sp = creatorSplits[id];
+            if (sp.length == 0) {
+                // Split-less pool: the creator IS split slot 0, at ring index PAY_SLOT_SPLIT_BASE.
+                if (creatorPool > 0) {
+                    if (push) {
+                        _bookSlot(id, PAY_SLOT_SPLIT_BASE, c.creator, quote, creatorPool);
+                    } else {
+                        owed[c.creator][quote] += creatorPool;
+                    }
+                }
+            } else {
+                uint256 rem = creatorPool;
+                uint256 last = sp.length - 1;
+                for (uint256 i; i <= last; i++) {
+                    uint256 part = i == last ? rem : (creatorPool * sp[i].bps) / BPS;
+                    rem -= part;
+                    if (part > 0) {
+                        // Pull-mode pools book straight to `owed[]`.
+                        if (push) {
+                            _bookSlot(id, PAY_SLOT_SPLIT_BASE + i, sp[i].to, quote, part);
+                        } else {
+                            owed[sp[i].to][quote] += part;
+                        }
+                    }
+                }
+            }
         }
 
         emit TaxDistributed(id, creatorPool, toPlatform);
         // A platform-only flush walks only platform slots and leaves the cursor alone, so a hostile creator recipient
         // cannot interfere and platform sweeps cannot drive the creator ring's rotation.
-        if (mode == FLUSH_PLATFORM) _runQueueMasked(id, quote, native, RING_PLATFORM, false);
-        else if (mode == FLUSH_CREATOR) _runQueueMasked(id, quote, native, RING_CREATOR, true);
-        else _runQueue(id, quote, native);
+        if (mode == FLUSH_PLATFORM) {
+            _runQueueMasked(id, quote, native, RING_PLATFORM, false);
+        } else if (mode == FLUSH_CREATOR) {
+            _runQueueMasked(id, quote, native, RING_CREATOR, true);
+        } else {
+            _runQueue(id, quote, native);
+        }
     }
 
     /// @dev Assign `amt` of `quote` in ring slot `i` to `to`, for a later push. Anything that cannot use the slot is
     /// booked to `owed[]` instead, so nothing is lost.
     function _bookSlot(PoolId id, uint256 i, address to, address quote, uint256 amt) internal {
-        if (amt == 0) return;
+        if (amt == 0) {
+            return;
+        }
         PaySlot storage sl = _paySlots[id][i];
         uint256 cur = sl.amt;
         address prev = sl.to;
@@ -2219,12 +2630,14 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         returns (uint256 pushed)
     {
         uint32 mask = pendingMask[id];
-        if (mask & filter == 0) return 0;
+        if (mask & filter == 0) {
+            return 0;
+        }
         // Bits cleared by this walk, so the final store can be a masked update.
         uint32 cleared;
         uint256 start = payCursor[id];
         uint256 i = start;
-        uint256 park = PAY_SLOTS;                     // PAY_SLOTS == "nothing was skipped"
+        uint256 park = PAY_SLOTS; // PAY_SLOTS == "nothing was skipped"
         for (uint256 k; k < PAY_SLOTS; ++k) {
             if (mask & filter & uint32(1 << i) != 0) {
                 // Only the rewards slot is a feed; platform, referral and split slots use the push floors. The swap tail is
@@ -2233,31 +2646,45 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
                     ? (native ? PAY_FLOOR_FEED_NATIVE : PAY_FLOOR_FEED_TOKEN)
                     : (native ? PAY_FLOOR_PUSH_NATIVE : PAY_FLOOR_PUSH_TOKEN);
                 if (gasleft() < floorGas) {
-                    if (park == PAY_SLOTS) park = i;  // remember the FIRST one we could not afford
+                    if (park == PAY_SLOTS) {
+                        park = i; // remember the FIRST one we could not afford
+                    }
                 } else {
                     PaySlot storage sl = _paySlots[id][i];
                     address to = sl.to;
                     uint256 amt = sl.amt;
-                    sl.to = address(0);               // CEI: clear before any external call
+                    sl.to = address(0); // CEI: clear before any external call
                     sl.amt = 0;
                     mask &= ~uint32(1 << i);
                     cleared |= uint32(1 << i);
-                    if (i == PAY_SLOT_REWARDS) _payRewardsSlot(id, to, quote, amt, native);
-                    else if (i == PAY_SLOT_PLATFORM || i == PAY_SLOT_REFERRAL) _payPlatformSlot(id, i, to, quote, amt);
-                    else _payCreatorShare(to, quote, amt);
-                    unchecked { ++pushed; }
+                    if (i == PAY_SLOT_REWARDS) {
+                        _payRewardsSlot(id, to, quote, amt, native);
+                    } else if (i == PAY_SLOT_PLATFORM || i == PAY_SLOT_REFERRAL) {
+                        _payPlatformSlot(id, i, to, quote, amt);
+                    } else {
+                        _payCreatorShare(to, quote, amt);
+                    }
+                    unchecked {
+                        ++pushed;
+                    }
                 }
             }
-            unchecked { i = i + 1 == PAY_SLOTS ? 0 : i + 1; }
+            unchecked {
+                i = i + 1 == PAY_SLOTS ? 0 : i + 1;
+            }
         }
         // Masked update (`& ~cleared`), not an absolute write of the pre-call snapshot, so a bit set during the walk
         // is never lost.
         uint32 stored = pendingMask[id] & ~cleared;
         pendingMask[id] = stored;
-        uint256 next = park == PAY_SLOTS ? i : park;  // `i` is back at `start` after a full lap
-        if (!moveCursor) next = start;
+        uint256 next = park == PAY_SLOTS ? i : park; // `i` is back at `start` after a full lap
+        if (!moveCursor) {
+            next = start;
+        }
         // The cursor is only a rotation hint, so an absolute write is fine.
-        if (next != start) payCursor[id] = uint8(next);
+        if (next != start) {
+            payCursor[id] = uint8(next);
+        }
         // Emit the stored mask, not the pre-call local.
         emit PayoutsProcessed(id, pushed, stored, uint8(next));
     }
@@ -2295,7 +2722,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
                 uint256 aft = IERC20(quote).balanceOf(tracker);
                 // Saturating: the tracker may move the quote onward, and a hostile quote must not over-report.
                 delivered = aft > before ? aft - before : 0;
-                if (delivered > amt) delivered = amt;
+                if (delivered > amt) {
+                    delivered = amt;
+                }
             }
             emit RewardsRouted(id, tracker, delivered);
             return;
@@ -2308,7 +2737,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Drains a ring funded by the final swap of an idle pool.
     function runPayouts(PoolId id) external nonReentrant returns (uint256 pushed) {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         return _runQueue(id, c.quote, c.quote == address(0));
     }
 
@@ -2322,14 +2753,18 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     function pendingPayoutTotal(PoolId id) external view returns (uint256 total) {
         uint32 mask = pendingMask[id];
         for (uint256 i; i < PAY_SLOTS; ++i) {
-            if (mask & uint32(1 << i) != 0) total += _paySlots[id][i].amt;
+            if (mask & uint32(1 << i) != 0) {
+                total += _paySlots[id][i].amt;
+            }
         }
     }
 
     /// @dev Transfer the rewards slice and let the tracker book its own measured increase. No amount is passed, since
     /// a hostile quote could make any hook-side figure wrong.
     function pushRewards(address tracker, address quote, uint256 amt) external {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         // Native: `feed{value:}` is both the transfer and the booking, so a failure reverts and {_payRewardsSlot}
         // credits the slice to `owed[tracker][address(0)]` for {pushOwed} to deliver.
         if (quote == address(0)) {
@@ -2339,7 +2774,7 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         IERC20(quote).safeTransfer(tracker, amt);
         // Booking is best-effort; the transfer must stand. If `feedToken` fails (e.g. the tracker is reentrancy-locked)
         // the quote is already at the tracker, and its permissionless `sync()` books it later.
-        try IDividendFeederToken(tracker).feedToken(0) {} catch {}   // arg ignored; the tracker measures itself
+        try IDividendFeederToken(tracker).feedToken(0) {} catch {} // arg ignored; the tracker measures itself
     }
 
     /// @dev Gas an in-swap distribution of `id` must have to be attempted: base + one booking per payee + the cheapest
@@ -2350,12 +2785,18 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         bool native = c.quote == address(0);
         // Slots this distribution will book: one per split recipient (or the bare creator), plus rewards if set.
         uint256 slots = creatorSplits[id].length;
-        if (slots == 0) slots = 1;
+        if (slots == 0) {
+            slots = 1;
+        }
         // The platform slot is booked on every distribution; a referred pool also books {PAY_SLOT_REFERRAL}.
         ++slots;
-        if (referrerOf[id] != address(0)) ++slots;
+        if (referrerOf[id] != address(0)) {
+            ++slots;
+        }
 
-        if (c.rewardsTracker != address(0) && c.rewardsBps != 0) ++slots;
+        if (c.rewardsTracker != address(0) && c.rewardsBps != 0) {
+            ++slots;
+        }
         need = AUTO_DISTRIBUTE_BASE + slots * AUTO_DISTRIBUTE_PER_SPLIT + SWAP_TAIL_RESERVE;
         need += native ? PAY_FLOOR_PUSH_NATIVE : PAY_FLOOR_PUSH_TOKEN;
     }
@@ -2369,7 +2810,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Per-swap payout step, in two independent parts: (1) redeem the pot if it is over the threshold, affordable
     /// and not latched; (2) otherwise still walk the ring so payees booked by earlier swaps get paid.
     function _maybeAutoDistribute(PoolId id, TaxConfig storage c) internal {
-        if (!c.autoEnabled) return;
+        if (!c.autoEnabled) {
+            return;
+        }
         uint256 acc = accruedQuote[id];
         // Skip the redeem while latched (no event; it would fire every swap). The ring walk below still runs.
         if (c.autoThreshold != 0 && acc >= c.autoThreshold && !c.autoRedeemLatched) {
@@ -2380,13 +2823,16 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
                 // {_distribute} walks the ring itself. The explicit gas cap withholds {SWAP_TAIL_RESERVE} so the swap can always
                 // finish, and {AUTO_DISTRIBUTE_MAX} bounds the trader's cost. The precheck guarantees no underflow.
                 uint256 payBudget = gasleft() - SWAP_TAIL_RESERVE;
-                if (payBudget > AUTO_DISTRIBUTE_MAX) payBudget = AUTO_DISTRIBUTE_MAX;
+                if (payBudget > AUTO_DISTRIBUTE_MAX) {
+                    payBudget = AUTO_DISTRIBUTE_MAX;
+                }
                 // Latch only if the attempt proves the pool can never redeem in-swap: it had the full ceiling (not a budget
                 // clamped by a thin trade) AND spent at least AUTO_REDEEM_SPEND_NUM/DEN of it. A cheap revert, such as the
                 // first buy of a pool before the router settles, must not latch.
                 bool fullBudget = payBudget == AUTO_DISTRIBUTE_MAX;
                 uint256 gasBefore = gasleft();
-                try this.autoDistribute{gas: payBudget}(id, acc, plat) {} catch {
+                try this.autoDistribute{gas: payBudget}(id, acc, plat) {}
+                catch {
                     // Measured first in the catch, before the restores, so storage warmth does not skew it.
                     uint256 spent = gasBefore - gasleft();
                     emit AutoDistributeSkipped(id, acc);
@@ -2408,7 +2854,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         if (pendingMask[id] != 0 && gasleft() > walkFloor) {
             // Same bounds as the redeem path: the withheld tail and {AUTO_DISTRIBUTE_MAX}.
             uint256 walkBudget = gasleft() - SWAP_TAIL_RESERVE;
-            if (walkBudget > AUTO_DISTRIBUTE_MAX) walkBudget = AUTO_DISTRIBUTE_MAX;
+            if (walkBudget > AUTO_DISTRIBUTE_MAX) {
+                walkBudget = AUTO_DISTRIBUTE_MAX;
+            }
             try this.runPayouts{gas: walkBudget}(id) {} catch {}
         }
     }
@@ -2417,9 +2865,12 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// callback quote cannot re-enter a claim mid-distribution. A blocked re-entry makes {pushRewards} revert, and
     /// {_payRewardsSlot} credits the slice to `owed[tracker][quote]`.
     function autoDistribute(PoolId id, uint256 amount, uint256 plat) external nonReentrant {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         _distribute(id, amount, plat, FLUSH_ALL);
     }
+
     /// @dev Push one recipient's slice of the creator pool; on any failure fall back to the pull ledger, so a failed
     /// payout never fails the trade.
     /// @dev Safety does not rely on gas caps. Native pushes go only to codeless addresses (no code runs). ERC20 pushes
@@ -2459,11 +2910,14 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// -> not allowed (fail-closed, so a broken registry cannot disable the kill switch).
     function _inSwapAllowed(address quote) internal view returns (bool) {
         address r = inSwapRegistry;
-        if (r == address(0)) return true;
-        (bool ok, bytes memory d) =
-            r.staticcall{gas: 20_000}(abi.encodeWithSignature("denied(address)", quote));
+        if (r == address(0)) {
+            return true;
+        }
+        (bool ok, bytes memory d) = r.staticcall{gas: 20_000}(abi.encodeWithSignature("denied(address)", quote));
         // Raw word, not `abi.decode(d, (bool))`: a non-0/1 word would revert this frame instead of reading as denied.
-        if (!ok || d.length != 32) return false;
+        if (!ok || d.length != 32) {
+            return false;
+        }
         return abi.decode(d, (uint256)) == 0;
     }
 
@@ -2471,7 +2925,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// Re-measured so a fee-on-transfer quote is reported correctly.
     /// @return delivered what the recipient's balance actually rose by.
     function pushSplit(address to, address quote, uint256 amt) external returns (uint256 delivered) {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         uint256 before = IERC20(quote).balanceOf(to);
         IERC20(quote).safeTransfer(to, amt);
         uint256 aft = IERC20(quote).balanceOf(to);
@@ -2482,7 +2938,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @notice Turn in-swap auto-send on/off for a pool. Creator only.
     function setAutoSend(PoolId id, bool on) external nonReentrant {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _requireActiveCreator(c, id);
         _setAutoSend(c, id, on);
     }
@@ -2490,7 +2948,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @notice Same, as the platform. Lets a mis-set pool be corrected without touching the creator role.
     function adminSetAutoSend(PoolId id, bool on) external onlyOwnerOrAdmin {
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _setAutoSend(c, id, on);
     }
 
@@ -2498,9 +2958,13 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// @dev Clearing makes the next swap over the threshold retry at full cost; if it still fails the pool re-latches.
     /// The creator is excluded so they cannot repeatedly bill traders for doomed attempts. Survives renounce.
     function resetAutoRedeem(PoolId id, bool latched) external {
-        if (msg.sender != platform && (msg.sender != admin || admin == address(0))) revert NotPlatformOrAdmin();
+        if (msg.sender != platform && (msg.sender != admin || admin == address(0))) {
+            revert NotPlatformOrAdmin();
+        }
         TaxConfig storage c = _config[id];
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         c.autoRedeemLatched = latched;
         emit AutoRedeemReset(id, msg.sender);
     }
@@ -2540,14 +3004,32 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         external
         view
         returns (
-            address creator, uint16 buyBps, uint16 sellBps, bool configured, bool autoEnabled, bool autoSend,
-            bool quoteIsC0, address quote, address rewardsTracker, uint16 rewardsBps, uint80 autoThreshold
+            address creator,
+            uint16 buyBps,
+            uint16 sellBps,
+            bool configured,
+            bool autoEnabled,
+            bool autoSend,
+            bool quoteIsC0,
+            address quote,
+            address rewardsTracker,
+            uint16 rewardsBps,
+            uint80 autoThreshold
         )
     {
         TaxConfig storage c = _config[id];
         return (
-            c.creator, c.buyBps, c.sellBps, c.configured, c.autoEnabled, c.autoSend,
-            c.quoteIsC0, c.quote, c.rewardsTracker, c.rewardsBps, c.autoThreshold
+            c.creator,
+            c.buyBps,
+            c.sellBps,
+            c.configured,
+            c.autoEnabled,
+            c.autoSend,
+            c.quoteIsC0,
+            c.quote,
+            c.rewardsTracker,
+            c.rewardsBps,
+            c.autoThreshold
         );
     }
 
@@ -2567,17 +3049,25 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// normal rate when the feature is off or the window has passed.
     function _effectiveBps(TaxConfig storage c, bool isBuy) internal view returns (uint16) {
         uint16 normal = isBuy ? c.buyBps : c.sellBps;
-        if (!c.hasGuards) return normal;                    // slot 0 only; never touches the guard slot
+        if (!c.hasGuards) {
+            return normal; // slot 0 only; never touches the guard slot
+        }
         // Buys only: the launch tax deters snipers, and sellers can always exit at the advertised sell rate.
-        if (!isBuy) return normal;
+        if (!isBuy) {
+            return normal;
+        }
         uint16 startBps = c.guards.launchTaxBps;
-        if (startBps <= normal) return normal;              // also covers startBps == 0 (feature off)
+        if (startBps <= normal) {
+            return normal; // also covers startBps == 0 (feature off)
+        }
         uint16 window = c.guards.launchTaxSecs;
         // Seconds, anchored to when trading opens (not launch), so a trading delay does not consume the window.
         // Clamped below so the public view cannot underflow before the open.
         uint256 anchor = c.guards.tradingOpensAt != 0 ? uint256(c.guards.tradingOpensAt) : uint256(c.guards.launchTime);
         uint256 elapsed = block.timestamp <= anchor ? 0 : block.timestamp - anchor;
-        if (window == 0 || elapsed >= window) return normal;
+        if (window == 0 || elapsed >= window) {
+            return normal;
+        }
         // Premium term rounded up so it lasts until the real end of the window; exactly `normal` at `elapsed == window`.
         uint256 rem = window - elapsed;
         uint256 prem = (uint256(startBps - normal) * rem + window - 1) / window;
@@ -2591,32 +3081,46 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         returns (uint128 maxBuyAmount)
     {
         if (maxBuyBps != 0) {
-            if (maxBuyBps < MIN_MAX_BUY_BPS || maxBuyBps > BPS) revert BadLaunchGuard();
+            if (maxBuyBps < MIN_MAX_BUY_BPS || maxBuyBps > BPS) {
+                revert BadLaunchGuard();
+            }
             uint256 cap = FullMath.mulDiv(IERC20Supply(coin).totalSupply(), maxBuyBps, BPS);
             // Resolved to absolute units once, at launch, so enforcement costs no external call per swap.
             // Safe because these tokens are fixed-supply with no mint and no burn hook.
-            if (cap == 0 || cap > type(uint128).max) revert BadLaunchGuard();
+            if (cap == 0 || cap > type(uint128).max) {
+                revert BadLaunchGuard();
+            }
             maxBuyAmount = uint128(cap);
         }
         // Launch tax rate and window must be set together (window in seconds).
         _requireLaunchTaxOk(launchTaxBps, launchTaxSecs);
-        if (delaySecs > MAX_TRADING_DELAY) revert BadLaunchGuard();
+        if (delaySecs > MAX_TRADING_DELAY) {
+            revert BadLaunchGuard();
+        }
     }
 
     /// @dev Jittered trading-open time. Not a secret and not anti-snipe protection: all inputs are public, the result is
     /// emitted, and a wrapper contract can grind it.
     function _jitteredOpen(uint8 secs) internal view returns (uint40) {
-        if (secs == 0) return 0;
+        if (secs == 0) {
+            return 0;
+        }
         uint256 r = uint256(keccak256(abi.encodePacked(blockhash(block.number - 1), block.timestamp, msg.sender)));
         return uint40(block.timestamp + 1 + (r % secs));
     }
 
     /// @dev Reverts a non-seeder swap before the pool opens.
     function _requireTradingOpen(PoolId id, TaxConfig storage c, address sender) internal view {
-        if (!c.hasGuards) return;
+        if (!c.hasGuards) {
+            return;
+        }
         uint40 opensAt = c.guards.tradingOpensAt;
-        if (opensAt == 0 || block.timestamp >= opensAt) return;
-        if (_inLaunchTx(id, c, sender)) return;
+        if (opensAt == 0 || block.timestamp >= opensAt) {
+            return;
+        }
+        if (_inLaunchTx(id, c, sender)) {
+            return;
+        }
         revert TradingNotOpen();
     }
 
@@ -2624,18 +3128,26 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     /// transient storage, so splitting into several swaps does not help. Per transaction and per pool only; holdings
     /// across transactions are bounded by max wallet in the token. The launch transaction's dev buy is exempt once.
     function _requireUnderMaxBuy(PoolId id, TaxConfig storage c, address sender, int128 coinOut) internal {
-        if (!c.hasGuards) return;
+        if (!c.hasGuards) {
+            return;
+        }
         // Consume the launch-transaction exemption on first use, so only the locker's dev buy is exempt. Cleared here
         // (not in {_requireTradingOpen}, which runs for the same swap) and before the `cap == 0` check.
         if (_inLaunchTx(id, c, sender)) {
             _clearLaunchTx(id);
             return;
         }
-        if (coinOut <= 0) return;
+        if (coinOut <= 0) {
+            return;
+        }
         uint128 cap = c.guards.maxBuyAmount;
-        if (cap == 0) return;
+        if (cap == 0) {
+            return;
+        }
         // Whitelisted wallets (matched on tx.origin, since the hook only sees the router) skip the max buy only.
-        if (sniperWhitelisted[id][tx.origin]) return;
+        if (sniperWhitelisted[id][tx.origin]) {
+            return;
+        }
 
         bytes32 slot = _txBoughtSlot(id);
         uint256 acc;
@@ -2646,7 +3158,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         assembly ("memory-safe") {
             tstore(slot, acc)
         }
-        if (acc > cap) revert MaxBuyExceeded();
+        if (acc > cap) {
+            revert MaxBuyExceeded();
+        }
     }
 
     /// @dev Per-pool, per-transaction running total of coin bought. Distinct from {_launchTxSlot} by prefix.
@@ -2660,27 +3174,38 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         PoolId id = key.toId();
         TaxConfig storage c = _config[id];
         // Validate before reading `quoteIsC0`.
-        if (!c.configured) revert NotConfigured();
+        if (!c.configured) {
+            revert NotConfigured();
+        }
         _requireActiveCreator(c, id);
         address coin = Currency.unwrap(c.quoteIsC0 ? key.currency1 : key.currency0);
-        if (c.guards.maxBuyAmount == 0) revert CannotTighten();   // already unlimited; nothing to loosen
+        if (c.guards.maxBuyAmount == 0) {
+            revert CannotTighten(); // already unlimited; nothing to loosen
+        }
         // Locked for {MAX_BUY_LOCK_SECS} after trading opens, so the advertised cap governs real trading.
         // `tradingOpensAt` is 0 when no delay was set.
         uint256 opensAt = c.guards.tradingOpensAt == 0 ? uint256(c.guards.launchTime) : uint256(c.guards.tradingOpensAt);
-        if (block.timestamp < opensAt + MAX_BUY_LOCK_SECS) revert TooSoonAfterLaunch();
+        if (block.timestamp < opensAt + MAX_BUY_LOCK_SECS) {
+            revert TooSoonAfterLaunch();
+        }
         uint128 next;
         if (maxBuyBps != 0) {
-            if (maxBuyBps > BPS) revert BadLaunchGuard();
+            if (maxBuyBps > BPS) {
+                revert BadLaunchGuard();
+            }
             uint256 cap = FullMath.mulDiv(IERC20Supply(coin).totalSupply(), maxBuyBps, BPS);
-            if (cap > type(uint128).max) revert BadLaunchGuard();
+            if (cap > type(uint128).max) {
+                revert BadLaunchGuard();
+            }
             next = uint128(cap);
-            if (next <= c.guards.maxBuyAmount) revert CannotTighten();
+            if (next <= c.guards.maxBuyAmount) {
+                revert CannotTighten();
+            }
         }
         c.guards.maxBuyBps = maxBuyBps;
         c.guards.maxBuyAmount = next;
         emit MaxBuySet(id, maxBuyBps, next);
     }
-
 
     // ── sniper whitelist storage (appended so no existing slot moves) ───────────────────────────
     /// @notice Most wallets a launch may whitelist.

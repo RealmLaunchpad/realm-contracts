@@ -71,24 +71,32 @@ library RealmAnyPairsRouteLib {
         view
         returns (Route memory r)
     {
-        if (asset == tokenIn) return r;
+        if (asset == tokenIn) {
+            return r;
+        }
         if (v3Factory != address(0)) {
             uint24[4] memory fees = [uint24(100), uint24(500), uint24(3000), uint24(10000)];
             for (uint256 i; i < fees.length; ++i) {
                 address pool = IRealmAnyPairsV3Factory(v3Factory).getPool(tokenIn, asset, fees[i]);
-                if (pool == address(0) || pool.code.length == 0) continue;
+                if (pool == address(0) || pool.code.length == 0) {
+                    continue;
+                }
                 uint128 liq;
                 try IRealmAnyPairsV3Pool(pool).liquidity() returns (uint128 l) {
                     liq = l;
                 } catch {
                     continue;
                 }
-                if (liq > r.liquidity) r = Route(VENUE_V3, fees[i], 0, tokenIn, address(0), liq);
+                if (liq > r.liquidity) {
+                    r = Route(VENUE_V3, fees[i], 0, tokenIn, address(0), liq);
+                }
             }
         }
         if (poolManager != address(0)) {
             r = _bestV4(IPoolManager(poolManager), tokenIn, asset, r);
-            if (probeNative) r = _bestV4(IPoolManager(poolManager), address(0), asset, r);
+            if (probeNative) {
+                r = _bestV4(IPoolManager(poolManager), address(0), asset, r);
+            }
         }
     }
 
@@ -105,9 +113,13 @@ library RealmAnyPairsRouteLib {
         for (uint256 i; i < fees.length; ++i) {
             PoolId id = poolKey(tokenIn, asset, fees[i], spacings[i], address(0)).toId();
             (uint160 sqrtP,,,) = pm.getSlot0(id);
-            if (sqrtP == 0) continue;
+            if (sqrtP == 0) {
+                continue;
+            }
             uint128 liq = pm.getLiquidity(id);
-            if (liq > r.liquidity) r = Route(VENUE_V4, fees[i], spacings[i], tokenIn, address(0), liq);
+            if (liq > r.liquidity) {
+                r = Route(VENUE_V4, fees[i], spacings[i], tokenIn, address(0), liq);
+            }
         }
         return r;
     }
@@ -132,26 +144,42 @@ library RealmAnyPairsRouteLib {
         address forbiddenHook
     ) internal view returns (Route memory r) {
         if (route.length == 43) {
-            if (v3Factory == address(0)) revert BadRoute();
+            if (v3Factory == address(0)) {
+                revert BadRoute();
+            }
             (address a, uint24 fee, address b) = _decodeV3(route);
-            if (a != tokenIn || b != asset) revert BadRoute();
+            if (a != tokenIn || b != asset) {
+                revert BadRoute();
+            }
             address pool = IRealmAnyPairsV3Factory(v3Factory).getPool(tokenIn, asset, fee);
-            if (pool == address(0) || pool.code.length == 0) revert BadRoute();
+            if (pool == address(0) || pool.code.length == 0) {
+                revert BadRoute();
+            }
             return Route(VENUE_V3, fee, 0, tokenIn, address(0), 0);
         }
         if (route.length == 160) {
-            if (poolManager == address(0)) revert BadRoute();
+            if (poolManager == address(0)) {
+                revert BadRoute();
+            }
             PoolKey memory k = abi.decode(route, (PoolKey));
             address c0 = Currency.unwrap(k.currency0);
             address c1 = Currency.unwrap(k.currency1);
             address paidIn;
-            if ((c0 == tokenIn && c1 == asset) || (c0 == asset && c1 == tokenIn)) paidIn = tokenIn;
-            else if (allowNativeIn && c0 == address(0) && c1 == asset) paidIn = address(0);
-            else revert BadRoute();
-            if (forbiddenHook != address(0) && address(k.hooks) == forbiddenHook) revert BadRoute();
+            if ((c0 == tokenIn && c1 == asset) || (c0 == asset && c1 == tokenIn)) {
+                paidIn = tokenIn;
+            } else if (allowNativeIn && c0 == address(0) && c1 == asset) {
+                paidIn = address(0);
+            } else {
+                revert BadRoute();
+            }
+            if (forbiddenHook != address(0) && address(k.hooks) == forbiddenHook) {
+                revert BadRoute();
+            }
             // An unsorted or never-initialized key reads a zero price here, so this also rejects malformed keys.
             (uint160 sqrtP,,,) = IPoolManager(poolManager).getSlot0(k.toId());
-            if (sqrtP == 0) revert BadRoute();
+            if (sqrtP == 0) {
+                revert BadRoute();
+            }
             return Route(VENUE_V4, k.fee, k.tickSpacing, paidIn, address(k.hooks), 0);
         }
         revert BadRoute();
@@ -185,8 +213,12 @@ library RealmAnyPairsRouteLib {
     /// @notice A route as the trackers' `basketLeg` views report it -- and in the same encoding a front end SUPPLIES one:
     /// the V3 path (43 bytes), the ABI-encoded V4 `PoolKey` (160 bytes), or empty when there is none.
     function encode(Route memory r, address asset) internal pure returns (bytes memory) {
-        if (r.venue == VENUE_V3) return v3Path(r, asset);
-        if (r.venue == VENUE_V4) return abi.encode(poolKey(r.tokenIn, asset, r.fee, r.tickSpacing, r.hooks));
+        if (r.venue == VENUE_V3) {
+            return v3Path(r, asset);
+        }
+        if (r.venue == VENUE_V4) {
+            return abi.encode(poolKey(r.tokenIn, asset, r.fee, r.tickSpacing, r.hooks));
+        }
         return "";
     }
 
@@ -208,7 +240,9 @@ library RealmAnyPairsRouteLib {
         );
         int128 inDelta = zeroForOne ? d.amount0() : d.amount1();
         int128 outDelta = zeroForOne ? d.amount1() : d.amount0();
-        if (inDelta >= 0 || outDelta <= 0 || uint256(uint128(-inDelta)) != amountIn) revert PartialFill();
+        if (inDelta >= 0 || outDelta <= 0 || uint256(uint128(-inDelta)) != amountIn) {
+            revert PartialFill();
+        }
         out = uint256(uint128(outDelta));
     }
 

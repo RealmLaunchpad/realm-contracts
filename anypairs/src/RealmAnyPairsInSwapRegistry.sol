@@ -27,42 +27,55 @@ contract RealmAnyPairsInSwapRegistry {
     error NotPendingOwner();
 
     constructor(address owner_) {
-        if (owner_ == address(0)) revert ZeroAddress();
+        if (owner_ == address(0)) {
+            revert ZeroAddress();
+        }
         owner = owner_;
         emit OwnershipTransferred(address(0), owner_);
     }
 
     modifier onlyOwner() {
-        if (msg.sender != owner) revert NotOwner();
+        if (msg.sender != owner) {
+            revert NotOwner();
+        }
         _;
     }
 
     /// @notice Ban `quote` from in-swap payouts (`on == true`), or lift the ban (`on == false`).
     /// @dev `address(0)` is rejected: native in-swap payouts never consult this registry.
     function setDenied(address quote, bool on) public onlyOwner {
-        if (quote == address(0)) revert ZeroAddress();
+        if (quote == address(0)) {
+            revert ZeroAddress();
+        }
         denied[quote] = on;
         emit DeniedSet(quote, on);
     }
 
     /// @notice Batch form of {setDenied}.
     function setDeniedBatch(address[] calldata quotes, bool on) external onlyOwner {
-        for (uint256 i; i < quotes.length; i++) setDenied(quotes[i], on);
+        for (uint256 i; i < quotes.length; i++) {
+            setDenied(quotes[i], on);
+        }
     }
 
     /// @notice Start a two-step ownership transfer, or pass `address(0)` to cancel a pending one.
     function transferOwnership(address to) external onlyOwner {
         address cleared = pendingOwner;
         pendingOwner = to;
-        if (to == address(0)) emit OwnershipTransferCanceled(owner, cleared);
-        else emit OwnershipTransferStarted(owner, to);
+        if (to == address(0)) {
+            emit OwnershipTransferCanceled(owner, cleared);
+        } else {
+            emit OwnershipTransferStarted(owner, to);
+        }
     }
 
     /// @notice The pending owner accepts ownership.
     /// @dev The zero-pending guard makes it impossible for ownership to ever reach `address(0)` (this
     /// contract has no renounce).
     function acceptOwnership() external {
-        if (pendingOwner == address(0) || msg.sender != pendingOwner) revert NotPendingOwner();
+        if (pendingOwner == address(0) || msg.sender != pendingOwner) {
+            revert NotPendingOwner();
+        }
         emit OwnershipTransferred(owner, pendingOwner);
         owner = pendingOwner;
         pendingOwner = address(0);

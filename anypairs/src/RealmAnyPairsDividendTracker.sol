@@ -28,7 +28,7 @@ contract RealmAnyPairsDividendTracker {
     bytes32 internal constant V4_IS_UNLOCKED_SLOT = 0xc090fc4683624cfc3884e9d8de5eca132f2d0ec062aff75d43c0465d5ceeab23;
 
     // ── immutable config ──
-    address public immutable token;  // the RealmAnyPairsTokenDividend feeding balances
+    address public immutable token; // the RealmAnyPairsTokenDividend feeding balances
     address public immutable feeder; // the tax hook, the only address that funds rewards
     address public immutable poolManager; // V4 singleton; gates the auto-push during a swap (0 = ungated, tests)
     // Dust floor: no reward is booked while eligible supply is below it (it is buffered to `pending`). This
@@ -90,9 +90,26 @@ contract RealmAnyPairsDividendTracker {
     error MinEligibleTooHigh();
     event MinEligibleSet(uint256 oldValue, uint256 newValue);
 
-    modifier onlyToken() { if (msg.sender != token) revert OnlyToken(); _; }
-    modifier onlyFeeder() { if (msg.sender != feeder) revert OnlyFeeder(); _; }
-    modifier nonReentrant() { if (_entered == 2) revert Reentrancy(); _entered = 2; _; _entered = 1; }
+    modifier onlyToken() {
+        if (msg.sender != token) {
+            revert OnlyToken();
+        }
+        _;
+    }
+    modifier onlyFeeder() {
+        if (msg.sender != feeder) {
+            revert OnlyFeeder();
+        }
+        _;
+    }
+    modifier nonReentrant() {
+        if (_entered == 2) {
+            revert Reentrancy();
+        }
+        _entered = 2;
+        _;
+        _entered = 1;
+    }
 
     struct Config {
         address token;
@@ -110,7 +127,9 @@ contract RealmAnyPairsDividendTracker {
         uint256 me_ = c.minEligible == 0 ? 1 : c.minEligible;
         minEligibleFloor = me_;
         minEligible = me_;
-        for (uint256 i; i < c.excluded.length; ++i) excluded[c.excluded[i]] = true;
+        for (uint256 i; i < c.excluded.length; ++i) {
+            excluded[c.excluded[i]] = true;
+        }
         // Exclude the coin itself: tokens mis-sent there would otherwise accrue rewards nobody can claim and
         // occupy a permanently failing slot in the payout ring.
         excluded[c.token] = true;
@@ -128,7 +147,9 @@ contract RealmAnyPairsDividendTracker {
     }
 
     function setBalance(address account, uint256 newBalance) external onlyToken {
-        if (excluded[account]) newBalance = 0;
+        if (excluded[account]) {
+            newBalance = 0;
+        }
         _applyBalance(account, newBalance);
     }
 
@@ -136,7 +157,9 @@ contract RealmAnyPairsDividendTracker {
     /// applied the `excluded` override.
     function _applyBalance(address account, uint256 newBalance) internal {
         uint256 old = trackedBalance[account];
-        if (newBalance == old) return;
+        if (newBalance == old) {
+            return;
+        }
         if (newBalance > old) {
             uint256 add = newBalance - old;
             eligibleSupply += add;
@@ -153,7 +176,9 @@ contract RealmAnyPairsDividendTracker {
         // Ring membership is gated on `minEligible` so dust accounts cannot fill the gas-bounded ring. This
         // withholds only the automatic push; sub-threshold holders still accrue and can {claim}.
         if (newBalance < minEligible) {
-            if (idx1 != 0) _removeHolder(account, idx1);
+            if (idx1 != 0) {
+                _removeHolder(account, idx1);
+            }
         } else if (idx1 == 0) {
             _holders.push(account);
             _holderIdx1[account] = _holders.length;
@@ -161,7 +186,6 @@ contract RealmAnyPairsDividendTracker {
         // Do NOT flush `pending` here: setBalance runs under the token's gas-capped try/catch and an OOG
         // would be swallowed. `pending` is flushed by the next feed or by pokePending().
     }
-
 
     /// @notice Repair a `trackedBalance` that has drifted from the token's real balance. Permissionless: it
     /// can only move tracked state toward the truth.
@@ -173,23 +197,30 @@ contract RealmAnyPairsDividendTracker {
 
     /// @notice Batch form of {syncBalance}.
     function syncBalances(address[] calldata accounts) external nonReentrant {
-        for (uint256 i; i < accounts.length; ++i) _syncBalance(accounts[i]);
+        for (uint256 i; i < accounts.length; ++i) {
+            _syncBalance(accounts[i]);
+        }
     }
 
     /// @dev Re-reads the token's real balance for `account` and re-applies it. No-op when already in sync.
     function _syncBalance(address account) internal {
         if (excluded[account]) {
-            if (trackedBalance[account] != 0) _applyBalance(account, 0);
+            if (trackedBalance[account] != 0) {
+                _applyBalance(account, 0);
+            }
             return;
         }
         // Low-level staticcall so a revert or short return degrades to "skip the repair" instead of bricking
         // {claim}/{process}. Deliberately uncapped: `token` is the immutable launcher-deployed coin, whose
         // balanceOf is a cheap mapping read, and a too-tight cap would silently disable repair.
-        (bool ok, bytes memory ret) =
-            token.staticcall(abi.encodeWithSelector(0x70a08231, account)); // balanceOf(address)
-        if (!ok || ret.length < 32) return;
+        (bool ok, bytes memory ret) = token.staticcall(abi.encodeWithSelector(0x70a08231, account)); // balanceOf(address)
+        if (!ok || ret.length < 32) {
+            return;
+        }
         uint256 real = abi.decode(ret, (uint256));
-        if (real != trackedBalance[account]) _applyBalance(account, real);
+        if (real != trackedBalance[account]) {
+            _applyBalance(account, real);
+        }
     }
 
     function _removeHolder(address account, uint256 idx1) private {
@@ -203,7 +234,9 @@ contract RealmAnyPairsDividendTracker {
         _holderIdx1[account] = 0;
     }
 
-    function holderCount() external view returns (uint256) { return _holders.length; }
+    function holderCount() external view returns (uint256) {
+        return _holders.length;
+    }
 
     // ─────────────────────────── creator-settable eligibility floor ───────────────────────────
 
@@ -212,10 +245,18 @@ contract RealmAnyPairsDividendTracker {
     /// `eligibleSupply`. Only ring membership depends on it: accrual, the booking gate and the overflow bound
     /// all use the immutable floor, so a holder below the threshold keeps accruing and can still claim.
     function setMinEligible(uint256 newMinEligible) external {
-        if (msg.sender != _tokenCreator()) revert NotCreator();
-        if (newMinEligible < minEligibleFloor) revert MinEligibleBelowFloor();
-        if (newMinEligible > minEligibleFloor * MAX_MIN_ELIGIBLE_MULTIPLE) revert MinEligibleTooHigh();
-        if (newMinEligible > eligibleSupply) revert MinEligibleTooHigh();
+        if (msg.sender != _tokenCreator()) {
+            revert NotCreator();
+        }
+        if (newMinEligible < minEligibleFloor) {
+            revert MinEligibleBelowFloor();
+        }
+        if (newMinEligible > minEligibleFloor * MAX_MIN_ELIGIBLE_MULTIPLE) {
+            revert MinEligibleTooHigh();
+        }
+        if (newMinEligible > eligibleSupply) {
+            revert MinEligibleTooHigh();
+        }
         emit MinEligibleSet(minEligible, newMinEligible);
         minEligible = newMinEligible;
     }
@@ -228,21 +269,28 @@ contract RealmAnyPairsDividendTracker {
             feeder.staticcall{gas: 50_000}(abi.encodeWithSignature("creatorOfCoin(address)", token));
         if (hok && hret.length >= 32) {
             c = abi.decode(hret, (address));
-            if (c == address(0)) revert NotCreator();
+            if (c == address(0)) {
+                revert NotCreator();
+            }
             return c;
         }
         (bool ok, bytes memory ret) = token.staticcall{gas: 20_000}(abi.encodeWithSelector(0x02d05d3f)); // creator()
-        if (!ok || ret.length < 32) revert NotCreator();
+        if (!ok || ret.length < 32) {
+            revert NotCreator();
+        }
         c = abi.decode(ret, (address));
-        if (c == address(0)) revert NotCreator();
+        if (c == address(0)) {
+            revert NotCreator();
+        }
     }
-
 
     /// @dev True while a V4 PoolManager operation holds the singleton lock.
     /// address(0) poolManager (unit tests) => always false.
     function _v4LockHeld() internal view returns (bool) {
         address pm = poolManager;
-        if (pm == address(0)) return false;
+        if (pm == address(0)) {
+            return false;
+        }
         return IExttload(pm).exttload(V4_IS_UNLOCKED_SLOT) != bytes32(0);
     }
 
@@ -250,7 +298,11 @@ contract RealmAnyPairsDividendTracker {
     /// uncapped; also happens automatically on the next feed.
     /// @dev Gated on {minEligibleFloor}, not the creator-settable {minEligible}.
     function pokePending() external nonReentrant {
-        if (pending != 0 && eligibleSupply >= minEligibleFloor) { uint256 p = pending; pending = 0; _book(p); }
+        if (pending != 0 && eligibleSupply >= minEligibleFloor) {
+            uint256 p = pending;
+            pending = 0;
+            _book(p);
+        }
     }
 
     // ─────────────────────────── feeding (hook-driven) ───────────────────────────
@@ -271,7 +323,9 @@ contract RealmAnyPairsDividendTracker {
             // Book nothing. Deliberately keep `reserve` (do not write it down to `bal`): it backs claims already
             // booked, so later income repairs a shortfall instead of being booked as fresh rewards.
             // Emit only on a strict shortfall; `bal == reserve` is the normal resting state.
-            if (bal < reserve) emit RewardShortfall(reserve, bal);
+            if (bal < reserve) {
+                emit RewardShortfall(reserve, bal);
+            }
             return;
         }
         uint256 delta = bal - reserve;
@@ -308,13 +362,22 @@ contract RealmAnyPairsDividendTracker {
     // ─────────────────────────── internal booking ───────────────────────────
 
     function _receive(uint256 amount) internal {
-        if (amount == 0) return;
+        if (amount == 0) {
+            return;
+        }
         // Never book over a dust supply (it would pump magnifiedRewardPerShare and let a tiny holder capture
         // the batch); buffer to `pending` instead. Gated on the immutable floor so the creator-settable
         // {minEligible} can never stall reward booking.
-        if (eligibleSupply < minEligibleFloor) { pending += amount; return; }
+        if (eligibleSupply < minEligibleFloor) {
+            pending += amount;
+            return;
+        }
         // Flush any buffered pending first. feed() is not gas-capped, so the extra _book can't be starved.
-        if (pending != 0) { uint256 p = pending; pending = 0; _book(p); }
+        if (pending != 0) {
+            uint256 p = pending;
+            pending = 0;
+            _book(p);
+        }
         _book(amount);
     }
 
@@ -350,7 +413,9 @@ contract RealmAnyPairsDividendTracker {
         // Repair any balance drift first so a phantom holder cannot claim against tokens it no longer holds.
         _syncBalance(account);
         amount = claimableOf(account);
-        if (amount == 0) revert NothingToClaim();
+        if (amount == 0) {
+            revert NothingToClaim();
+        }
         _pushReward(account, account, amount, 0);
     }
 
@@ -361,14 +426,18 @@ contract RealmAnyPairsDividendTracker {
         // Same phantom-holder repair as {claim}; see {syncBalance}.
         _syncBalance(msg.sender);
         amount = claimableOf(msg.sender);
-        if (amount == 0) revert NothingToClaim();
+        if (amount == 0) {
+            revert NothingToClaim();
+        }
         _pushReward(msg.sender, to, amount, 0);
     }
 
     /// @dev Rejects destinations where a reward would be burned, stranded or re-booked (address(0), this
     /// tracker, the coin, the feeder). Self-harm protection only; not the full excluded set.
     function _checkRecipient(address to) internal view {
-        if (to == address(0) || to == address(this) || to == token || to == feeder) revert ZeroRecipient();
+        if (to == address(0) || to == address(this) || to == token || to == feeder) {
+            revert ZeroRecipient();
+        }
     }
 
     /// @notice Round-robin push: pay accrued ETH rewards to holders, bounded by `gasBudget`. Permissionless;
@@ -377,7 +446,9 @@ contract RealmAnyPairsDividendTracker {
     /// double-pay or brick the ring.
     function process(uint256 gasBudget) public nonReentrant returns (uint256 pushed) {
         uint256 n = _holders.length; // at most one full ring per call
-        if (n == 0) return 0;
+        if (n == 0) {
+            return 0;
+        }
         // Honeypot guard: while the V4 lock is held (the token pokes this mid-swap), pay only recipients with
         // no code. Paying a contract there could re-enter the PoolManager and make every later swap revert;
         // no gas cap prevents that. Holders with code are paid out of lock or via {claim}.
@@ -388,9 +459,13 @@ contract RealmAnyPairsDividendTracker {
         while (iterations < n) {
             // Only start an iteration if a worst-case payout plus the cursor SSTORE still fit, so saving the
             // cursor can never OOG and roll back the run.
-            if (gasleft() < PUSH_GAS + 120_000) break;
+            if (gasleft() < PUSH_GAS + 120_000) {
+                break;
+            }
             uint256 len = _holders.length; // re-read: a payout callback can shrink the set (swap-and-pop)
-            if (len == 0) break;
+            if (len == 0) {
+                break;
+            }
             idx = idx + 1 < len ? idx + 1 : 0;
             address h = _holders[idx];
             // No _syncBalance here (too expensive per iteration); use {syncBalance} or {claim}.
@@ -398,13 +473,20 @@ contract RealmAnyPairsDividendTracker {
             // A reverting recipient is skipped; the self-call rolls back its own debit, so the holder stays
             // claimable. A codeless destination executes nothing, so it is safe to pay even in lock.
             if (amt != 0 && (!inLock || h.code.length == 0)) {
-                try this.pushReward(h, amt) { unchecked { ++pushed; } }
-                catch {
+                try this.pushReward(h, amt) {
+                    unchecked {
+                        ++pushed;
+                    }
+                } catch {
                     emit PushPaymentFailed(h, amt);
                 }
             }
-            unchecked { ++iterations; }
-            if (gasStart - gasleft() > gasBudget) break; // cumulative budget spent -> save cursor, resume later
+            unchecked {
+                ++iterations;
+            }
+            if (gasStart - gasleft() > gasBudget) {
+                break; // cumulative budget spent -> save cursor, resume later
+            }
         }
         lastProcessedIndex = idx;
     }
@@ -412,7 +494,9 @@ contract RealmAnyPairsDividendTracker {
     /// @dev External self-only wrapper so {process} can isolate one failed payout in try/catch. Always
     /// forwards the PUSH_GAS cap.
     function pushReward(address account, uint256 amount) external {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         _pushReward(account, account, amount, PUSH_GAS);
     }
 
@@ -420,7 +504,7 @@ contract RealmAnyPairsDividendTracker {
     /// CEI: withdrawn and `reserve` are updated before the send, so a failed send rolls both back.
     function _pushReward(address account, address to, uint256 amount, uint256 gasCap) internal {
         withdrawnRewards[account] += amount;
-        _spend(amount);   // same frame as the send below: a failed send rolls this back too
+        _spend(amount); // same frame as the send below: a failed send rolls this back too
         bool ok;
         // gasCap == 0 => forward everything (manual claim); otherwise bound the recipient.
         if (gasCap == 0) {
@@ -428,7 +512,9 @@ contract RealmAnyPairsDividendTracker {
         } else {
             (ok,) = payable(to).call{value: amount, gas: gasCap}("");
         }
-        if (!ok) revert EthTransferFailed();
+        if (!ok) {
+            revert EthTransferFailed();
+        }
         emit RewardClaimed(account, amount);
     }
 }

@@ -36,8 +36,14 @@ library RealmAnyPairsFeeMath {
         returns (uint256 p)
     {
         p = total * shareBps / BPS;
-        if (p > capBps) p = capBps;
-        if (p < floorBps) p = floorBps;
-        if (p > total) p = total;
+        if (p > capBps) {
+            p = capBps;
+        }
+        if (p < floorBps) {
+            p = floorBps;
+        }
+        if (p > total) {
+            p = total;
+        }
     }
 }

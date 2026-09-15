@@ -136,14 +136,15 @@ contract RealmAnyPairsTokenPlain is ERC20 {
         bytes32 launchSlot = _LAUNCH_TX_SLOT;
         assembly ("memory-safe") { tstore(launchSlot, 1) }
         // See {devBuySource}. Bounded raw staticcall; on failure the exemption stays disabled (fail-closed).
-        (bool pmOk, bytes memory pmRet) =
-            launcher_.staticcall{gas: 30_000}(abi.encodeWithSignature("lpLocker()"));
+        (bool pmOk, bytes memory pmRet) = launcher_.staticcall{gas: 30_000}(abi.encodeWithSignature("lpLocker()"));
         devBuySource = (pmOk && pmRet.length >= 32) ? address(uint160(uint256(bytes32(pmRet)))) : address(0);
         // See {rewardsHook}. Same bounded raw staticcall; on failure {attachTracker} is disabled (fail-closed).
         (bool hkOk, bytes memory hkRet) =
             launcher_.staticcall{gas: 30_000}(abi.encodeWithSelector(IRealmAnyPairsLauncherHook.pairTaxHook.selector));
         rewardsHook = (hkOk && hkRet.length >= 32) ? address(uint160(uint256(bytes32(hkRet)))) : address(0);
-        for (uint256 i; i < exempt_.length; ++i) maxWalletExempt[exempt_[i]] = true;
+        for (uint256 i; i < exempt_.length; ++i) {
+            maxWalletExempt[exempt_[i]] = true;
+        }
         _mint(launcher_, totalSupply_);
     }
 
@@ -157,20 +158,34 @@ contract RealmAnyPairsTokenPlain is ERC20 {
     /// paying out the dev buy inside the deploying transaction.
     function _checkMaxWallet(address from, address to, uint256 value) private {
         uint256 cap = maxWallet;
-        if (cap == 0) return;
-        if (block.timestamp >= maxWalletUntil) return;
-        if (from == address(0) || from == to) return;
-        if (to == address(0) || to.code.length != 0) return;
-        if (maxWalletExempt[to]) return; // whitelisted at launch; applies to buys and transfers alike
+        if (cap == 0) {
+            return;
+        }
+        if (block.timestamp >= maxWalletUntil) {
+            return;
+        }
+        if (from == address(0) || from == to) {
+            return;
+        }
+        if (to == address(0) || to.code.length != 0) {
+            return;
+        }
+        if (maxWalletExempt[to]) {
+            return; // whitelisted at launch; applies to buys and transfers alike
+        }
         if (from == devBuySource && devBuySource != address(0)) {
             // Dev-buy payout from the locker, only inside the deploying transaction. Coins taken from the
             // PoolManager are still capped. A keccak constant cannot be named in inline assembly, hence the local.
             bytes32 slot = _LAUNCH_TX_SLOT;
             bool inLaunchTx;
             assembly ("memory-safe") { inLaunchTx := tload(slot) }
-            if (inLaunchTx) return;
+            if (inLaunchTx) {
+                return;
+            }
         }
-        if (balanceOf(to) + value > cap) revert MaxWalletExceeded();
+        if (balanceOf(to) + value > cap) {
+            revert MaxWalletExceeded();
+        }
     }
 
     /// @notice Switch holder rewards ON for this already-launched coin, once and forever. Callable only by
@@ -182,27 +197,45 @@ contract RealmAnyPairsTokenPlain is ERC20 {
     function attachTracker(address tracker_) external {
         // ── the gate. `admin` is read at call time, so hook admin rotations keep working.
         address h = rewardsHook;
-        if (h == address(0)) revert RewardsHookUnavailable();
+        if (h == address(0)) {
+            revert RewardsHookUnavailable();
+        }
         // Raw staticcall: a typed call to a codeless address would revert uncatchably in this frame.
         (bool aOk, bytes memory aRet) =
             h.staticcall{gas: 30_000}(abi.encodeWithSelector(IRealmAnyPairsHookAdmin.admin.selector));
-        if (!aOk || aRet.length < 32) revert RewardsHookUnavailable();
+        if (!aOk || aRet.length < 32) {
+            revert RewardsHookUnavailable();
+        }
         address hookAdmin = address(uint160(uint256(bytes32(aRet))));
-        if (hookAdmin == address(0) || msg.sender != hookAdmin) revert NotHookAdmin();
+        if (hookAdmin == address(0) || msg.sender != hookAdmin) {
+            revert NotHookAdmin();
+        }
 
         // ── the refusals.
-        if (tracker != address(0)) revert TrackerAlreadySet();
+        if (tracker != address(0)) {
+            revert TrackerAlreadySet();
+        }
         // A zero would not consume the one-shot and would leave rewards silently off.
-        if (tracker_ == address(0)) revert ZeroTracker();
-        if (tracker_.code.length == 0) revert TrackerCodeless();
+        if (tracker_ == address(0)) {
+            revert ZeroTracker();
+        }
+        if (tracker_.code.length == 0) {
+            revert TrackerCodeless();
+        }
         // Supply is fixed, so a sub-minimum coin is refused forever.
-        if (totalSupply() < MIN_REWARDS_TOTAL_SUPPLY) revert SupplyTooSmallForRewards();
+        if (totalSupply() < MIN_REWARDS_TOTAL_SUPPLY) {
+            revert SupplyTooSmallForRewards();
+        }
 
         (bool ok, bytes memory ret) =
             tracker_.staticcall{gas: 100_000}(abi.encodeWithSelector(IBalanceSyncGas.balanceSyncGas.selector));
-        if (!ok || ret.length < 32) revert TrackerSyncGasUnavailable();
+        if (!ok || ret.length < 32) {
+            revert TrackerSyncGasUnavailable();
+        }
         uint256 g = abi.decode(ret, (uint256));
-        if (g == 0) revert TrackerSyncGasUnavailable();
+        if (g == 0) {
+            revert TrackerSyncGasUnavailable();
+        }
         uint256 stored = g > SET_BALANCE_GAS ? (g > MAX_TRACKER_SYNC_GAS ? MAX_TRACKER_SYNC_GAS : g) : 0;
 
         tracker = tracker_;
@@ -235,10 +268,14 @@ contract RealmAnyPairsTokenPlain is ERC20 {
         _checkMaxWallet(from, to, value);
         super._update(from, to, value);
         address t = tracker;
-        if (t == address(0)) return;
+        if (t == address(0)) {
+            return;
+        }
         (uint256 syncGas, uint256 minDebit, uint256 minNotify) = _syncGas();
         if (from != address(0)) {
-            if (gasleft() < minDebit) revert InsufficientGasForBalanceSync();
+            if (gasleft() < minDebit) {
+                revert InsufficientGasForBalanceSync();
+            }
             try IDividendTracker(t).setBalance{gas: syncGas}(from, balanceOf(from)) {} catch {}
         }
         if (to != address(0) && gasleft() >= minNotify) {
@@ -257,7 +294,9 @@ contract RealmAnyPairsTokenPlain is ERC20 {
     /// @dev Not total: against a codeless launcher the empty-returndata decode reverts in this frame.
     function tokenURI() external view returns (string memory) {
         try IRealmAnyPairsLauncherBase(launcher).baseTokenURI() returns (string memory base) {
-            if (bytes(base).length == 0) return "";
+            if (bytes(base).length == 0) {
+                return "";
+            }
             return string.concat(base, Strings.toHexString(address(this)), ".json");
         } catch {
             return "";
@@ -278,11 +317,15 @@ contract RealmAnyPairsTokenPlain is ERC20 {
         address to = launcher;
         if (asset == address(this)) {
             amount = balanceOf(address(this));
-            if (amount == 0) revert NothingToRescue();
+            if (amount == 0) {
+                revert NothingToRescue();
+            }
             _transfer(address(this), to, amount);
         } else {
             amount = IERC20(asset).balanceOf(address(this));
-            if (amount == 0) revert NothingToRescue();
+            if (amount == 0) {
+                revert NothingToRescue();
+            }
             IERC20(asset).safeTransfer(to, amount);
         }
         emit Rescued(asset, to, amount);

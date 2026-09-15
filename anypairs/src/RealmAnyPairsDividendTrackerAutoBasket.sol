@@ -236,11 +236,15 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     event ReserveUnderrun(address indexed denomination, uint256 reserve, uint256 amount);
     event RewardClaimed(address indexed account, address indexed asset, uint256 amount);
     event LegPaymentFailed(address indexed account, address indexed asset, uint256 amount);
-    event LegSwapFailed(address indexed account, address indexed denomination, address indexed tokenOut, uint256 amount);
+    event LegSwapFailed(
+        address indexed account, address indexed denomination, address indexed tokenOut, uint256 amount
+    );
     event HolderPayoutFailed(address indexed holder);
     event MinEligibleSet(uint256 oldValue, uint256 newValue);
     event PendingCredited(address indexed input, uint256 amount);
-    event Converted(uint256 indexed legId, address indexed input, address indexed asset, uint256 amountIn, uint256 amountOut);
+    event Converted(
+        uint256 indexed legId, address indexed input, address indexed asset, uint256 amountIn, uint256 amountOut
+    );
     event ConversionFailed(uint256 indexed legId, address indexed input, address indexed asset, uint256 amountIn);
     event ConversionFallback(uint256 indexed legId, address indexed input, address indexed asset, uint256 amount);
     event PendingPulled(address indexed account, uint256 indexed legId, uint256 amount);
@@ -280,17 +284,23 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     error EthSendFailed();
 
     modifier onlyToken() {
-        if (msg.sender != token) revert OnlyToken();
+        if (msg.sender != token) {
+            revert OnlyToken();
+        }
         _;
     }
 
     modifier onlyFeeder() {
-        if (msg.sender != feeder) revert OnlyFeeder();
+        if (msg.sender != feeder) {
+            revert OnlyFeeder();
+        }
         _;
     }
 
     modifier nonReentrant() {
-        if (_entered == 2) revert Reentrancy();
+        if (_entered == 2) {
+            revert Reentrancy();
+        }
         _entered = 2;
         _;
         _entered = 1;
@@ -315,29 +325,43 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         excluded[address(this)] = true;
         excluded[address(0)] = true;
         excluded[c.feeder] = true;
-        if (c.swapRouter != address(0)) excluded[c.swapRouter] = true;
-        if (c.poolManager != address(0)) excluded[c.poolManager] = true;
+        if (c.swapRouter != address(0)) {
+            excluded[c.swapRouter] = true;
+        }
+        if (c.poolManager != address(0)) {
+            excluded[c.poolManager] = true;
+        }
 
         uint256 inCount = c.inputs.length;
-        if (inCount == 0) revert BadInputs();
+        if (inCount == 0) {
+            revert BadInputs();
+        }
         uint256 totalLegs;
         for (uint256 ii; ii < inCount; ++ii) {
             address input = c.inputs[ii].input;
-            if (input == address(0) || isInput[input]) revert BadInputs();
+            if (input == address(0) || isInput[input]) {
+                revert BadInputs();
+            }
             isInput[input] = true;
             inputs.push(input);
             _addDenomination(input);
 
             Leg[] memory legs = c.inputs[ii].legs;
             uint256 n = legs.length;
-            if (n == 0 || n > MAX_LEGS) revert BadBasket();
+            if (n == 0 || n > MAX_LEGS) {
+                revert BadBasket();
+            }
             totalLegs += n;
-            if (totalLegs > MAX_TOTAL_LEGS) revert TooManyLegs();
+            if (totalLegs > MAX_TOTAL_LEGS) {
+                revert TooManyLegs();
+            }
             uint256 sumBps;
             uint16 swapBps;
             for (uint256 i; i < n; ++i) {
                 Leg memory leg = legs[i];
-                if (leg.asset == address(0) || leg.bps == 0) revert BadBasket();
+                if (leg.asset == address(0) || leg.bps == 0) {
+                    revert BadBasket();
+                }
                 sumBps += leg.bps;
                 _basketOf[input].push(leg);
                 _addDenomination(leg.asset);
@@ -354,15 +378,23 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
                     legOut[id] = 1;
                 }
             }
-            if (sumBps != BPS) revert BadBasket();
+            if (sumBps != BPS) {
+                revert BadBasket();
+            }
             swapBpsOf[input] = swapBps;
         }
-        if (denominations.length > ABSOLUTE_MAX_DENOMINATIONS) revert AboveAbsoluteMax();
-        if (_syncGasFor(denominations.length, _convLegs.length) > MAX_TRACKER_SYNC_GAS) revert TooHeavy();
+        if (denominations.length > ABSOLUTE_MAX_DENOMINATIONS) {
+            revert AboveAbsoluteMax();
+        }
+        if (_syncGasFor(denominations.length, _convLegs.length) > MAX_TRACKER_SYNC_GAS) {
+            revert TooHeavy();
+        }
     }
 
     function _addDenomination(address d) private {
-        if (isDenomination[d]) return;
+        if (isDenomination[d]) {
+            return;
+        }
         isDenomination[d] = true;
         denominations.push(d);
     }
@@ -372,7 +404,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     }
 
     receive() external payable {
-        if (msg.sender != weth) revert NoNativeInput();
+        if (msg.sender != weth) {
+            revert NoNativeInput();
+        }
     }
 
     // ─────────────────────────── views ───────────────────────────
@@ -480,16 +514,27 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
 
     /// @dev A holder's position on leg `id` brought forward to now at balance `bal`, without writing: what is still
     /// pending, and what has converted into the asset (`a`) or fallen back into the input (`q`) since the last settlement.
-    function _lazy(address account, uint256 id, uint256 bal) internal view returns (uint256 pend, uint256 a, uint256 q) {
+    function _lazy(address account, uint256 id, uint256 bal)
+        internal
+        view
+        returns (uint256 pend, uint256 a, uint256 q)
+    {
         HolderLeg memory s = _holderLeg[account][id];
-        if (s.idx == 0) return (0, 0, 0);
+        if (s.idx == 0) {
+            return (0, 0, 0);
+        }
         uint256 n = epochCount[id];
         uint256 now_ = legIdx[id];
-        if (s.ep == n) return (s.pend + FullMath.mulDiv(bal, now_ - s.idx, MAGNITUDE), 0, 0);
+        if (s.ep == n) {
+            return (s.pend + FullMath.mulDiv(bal, now_ - s.idx, MAGNITUDE), 0, 0);
+        }
         Epoch storage e1 = _epochs[id][s.ep + 1];
         uint256 first = s.pend + FullMath.mulDiv(bal, e1.idx - s.idx, MAGNITUDE);
-        if (e1.rate & QUOTE_FLAG != 0) q = first;
-        else a = FullMath.mulDiv(first, e1.rate, Q128);
+        if (e1.rate & QUOTE_FLAG != 0) {
+            q = first;
+        } else {
+            a = FullMath.mulDiv(first, e1.rate, Q128);
+        }
         if (n > uint256(s.ep) + 1) {
             Epoch storage en = _epochs[id][n];
             a += FullMath.mulDiv(bal, en.cAsset - e1.cAsset, MAGNITUDE);
@@ -505,12 +550,18 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         HolderLeg storage s = _holderLeg[account][id];
         uint256 now_ = legIdx[id];
         uint256 n = epochCount[id];
-        if (s.idx == now_ && s.ep == n) return;
+        if (s.idx == now_ && s.ep == n) {
+            return;
+        }
         if (s.idx != 0 && (bal != 0 || s.pend != 0)) {
             (uint256 pend, uint256 a, uint256 q) = _lazy(account, id, bal);
             ConvLeg storage l = _convLegs[id];
-            if (a != 0) credited[account][l.asset] += a;
-            if (q != 0) credited[account][l.input] += q;
+            if (a != 0) {
+                credited[account][l.asset] += a;
+            }
+            if (q != 0) {
+                credited[account][l.input] += q;
+            }
             s.pend = pend.toUint128();
         }
         s.idx = now_;
@@ -527,15 +578,23 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     // ─────────────────────────── creator settings ───────────────────────────
 
     function setSlippageBps(uint16 newBps) external {
-        if (msg.sender != _tokenCreator()) revert NotCreator();
-        if (newBps < MIN_SLIPPAGE_BPS || newBps > MAX_SLIPPAGE_BPS) revert BadSlippage();
+        if (msg.sender != _tokenCreator()) {
+            revert NotCreator();
+        }
+        if (newBps < MIN_SLIPPAGE_BPS || newBps > MAX_SLIPPAGE_BPS) {
+            revert BadSlippage();
+        }
         emit SlippageSet(slippageBps, newBps);
         slippageBps = newBps;
     }
 
     function setFallbackDelay(uint256 newDelay) external {
-        if (msg.sender != _tokenCreator()) revert NotCreator();
-        if (newDelay < MIN_FALLBACK_DELAY || newDelay > MAX_FALLBACK_DELAY) revert BadFallbackDelay();
+        if (msg.sender != _tokenCreator()) {
+            revert NotCreator();
+        }
+        if (newDelay < MIN_FALLBACK_DELAY || newDelay > MAX_FALLBACK_DELAY) {
+            revert BadFallbackDelay();
+        }
         emit FallbackDelaySet(fallbackDelay, newDelay);
         fallbackDelay = newDelay;
     }
@@ -543,8 +602,12 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     /// @notice Store the route `input` converts into `asset` through: a 43-byte V3 path or an ABI-encoded V4 `PoolKey`,
     /// validated now ({RealmAnyPairsRouteLib.supplied}). Empty clears it back to discovery.
     function setRoute(address input, address asset, bytes calldata route) external {
-        if (msg.sender != _tokenCreator()) revert NotCreator();
-        if (!_isConvertingLeg(input, asset)) revert NotALeg();
+        if (msg.sender != _tokenCreator()) {
+            revert NotCreator();
+        }
+        if (!_isConvertingLeg(input, asset)) {
+            revert NotALeg();
+        }
         if (route.length != 0) {
             RealmAnyPairsRouteLib.supplied(route, _v3FactoryForRoutes(), poolManager, input, false, asset, feeder);
         }
@@ -553,26 +616,42 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     }
 
     function setMinConvert(address input, uint256 amount) external {
-        if (msg.sender != _tokenCreator()) revert NotCreator();
-        if (!isInput[input]) revert BadInputs();
+        if (msg.sender != _tokenCreator()) {
+            revert NotCreator();
+        }
+        if (!isInput[input]) {
+            revert BadInputs();
+        }
         minConvertOf[input] = amount;
         emit MinConvertSet(input, amount);
     }
 
     function setMinEligible(uint256 newMinEligible) external {
-        if (msg.sender != _tokenCreator()) revert NotCreator();
-        if (newMinEligible < minEligibleFloor) revert MinEligibleBelowFloor();
-        if (newMinEligible > minEligibleFloor * MAX_MIN_ELIGIBLE_MULTIPLE) revert MinEligibleTooHigh();
-        if (newMinEligible > eligibleSupply) revert MinEligibleTooHigh();
+        if (msg.sender != _tokenCreator()) {
+            revert NotCreator();
+        }
+        if (newMinEligible < minEligibleFloor) {
+            revert MinEligibleBelowFloor();
+        }
+        if (newMinEligible > minEligibleFloor * MAX_MIN_ELIGIBLE_MULTIPLE) {
+            revert MinEligibleTooHigh();
+        }
+        if (newMinEligible > eligibleSupply) {
+            revert MinEligibleTooHigh();
+        }
         emit MinEligibleSet(minEligible, newMinEligible);
         minEligible = newMinEligible;
     }
 
     function _isConvertingLeg(address input, address asset) internal view returns (bool) {
-        if (!isInput[input] || asset == input) return false;
+        if (!isInput[input] || asset == input) {
+            return false;
+        }
         uint256[] storage ids = _legIdsOf[input];
         for (uint256 i; i < ids.length; ++i) {
-            if (_convLegs[ids[i]].asset == asset) return true;
+            if (_convLegs[ids[i]].asset == asset) {
+                return true;
+            }
         }
         return false;
     }
@@ -583,25 +662,35 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
             feeder.staticcall{gas: 50_000}(abi.encodeWithSignature("creatorOfCoin(address)", token));
         if (hok && hret.length >= 32) {
             c = abi.decode(hret, (address));
-            if (c == address(0)) revert NotCreator();
+            if (c == address(0)) {
+                revert NotCreator();
+            }
             return c;
         }
         (bool ok, bytes memory ret) = token.staticcall{gas: 20_000}(abi.encodeWithSelector(0x02d05d3f)); // creator()
-        if (!ok || ret.length < 32) revert NotCreator();
+        if (!ok || ret.length < 32) {
+            revert NotCreator();
+        }
         c = abi.decode(ret, (address));
-        if (c == address(0)) revert NotCreator();
+        if (c == address(0)) {
+            revert NotCreator();
+        }
     }
 
     // ─────────────────────────── balance mirror (token-driven) ───────────────────────────
 
     function setBalance(address account, uint256 newBalance) external onlyToken {
-        if (excluded[account]) newBalance = 0;
+        if (excluded[account]) {
+            newBalance = 0;
+        }
         _applyBalance(account, newBalance);
     }
 
     function _applyBalance(address account, uint256 newBalance) internal {
         uint256 old = trackedBalance[account];
-        if (newBalance == old) return;
+        if (newBalance == old) {
+            return;
+        }
         _settleAll(account, old); // at the balance that EARNED it, before it changes
         uint256 dCount = denominations.length;
         if (newBalance > old) {
@@ -623,7 +712,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
 
         uint256 idx1 = _holderIdx1[account];
         if (newBalance < minEligible) {
-            if (idx1 != 0) _removeHolder(account, idx1);
+            if (idx1 != 0) {
+                _removeHolder(account, idx1);
+            }
         } else if (idx1 == 0) {
             _holders.push(account);
             _holderIdx1[account] = _holders.length;
@@ -653,13 +744,19 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
 
     function _syncBalance(address account) internal {
         if (excluded[account]) {
-            if (trackedBalance[account] != 0) _applyBalance(account, 0);
+            if (trackedBalance[account] != 0) {
+                _applyBalance(account, 0);
+            }
             return;
         }
         (bool ok, bytes memory ret) = token.staticcall(abi.encodeWithSelector(0x70a08231, account));
-        if (!ok || ret.length < 32) return;
+        if (!ok || ret.length < 32) {
+            return;
+        }
         uint256 real = abi.decode(ret, (uint256));
-        if (real != trackedBalance[account]) _applyBalance(account, real);
+        if (real != trackedBalance[account]) {
+            _applyBalance(account, real);
+        }
     }
 
     // ─────────────────────────── feeding ───────────────────────────
@@ -672,8 +769,12 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     /// in which case the ETH waits for the next sync. Not `nonReentrant` on purpose: a revert here would send the hook's
     /// slice to its fallback ledger instead of to holders.
     function feed() external payable onlyFeeder {
-        if (weth == address(0) || !isInput[weth]) revert NoNativeInput();
-        if (_entered == 2) return;
+        if (weth == address(0) || !isInput[weth]) {
+            revert NoNativeInput();
+        }
+        if (_entered == 2) {
+            return;
+        }
         _entered = 2;
         _syncAll();
         _entered = 1;
@@ -702,7 +803,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         address w = weth;
         if (w != address(0)) {
             uint256 native = address(this).balance;
-            if (native != 0) IAutoBasketWETH(w).deposit{value: native}();
+            if (native != 0) {
+                IAutoBasketWETH(w).deposit{value: native}();
+            }
         }
         uint256 dCount = denominations.length;
         for (uint256 i; i < dCount; ++i) {
@@ -714,7 +817,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         uint256 bal = IERC20(d).balanceOf(address(this));
         uint256 held = reserve[d] + buffered[d];
         if (bal <= held) {
-            if (bal < held) emit RewardShortfall(d, held, bal);
+            if (bal < held) {
+                emit RewardShortfall(d, held, bal);
+            }
             return;
         }
         uint256 delta = bal - held;
@@ -747,7 +852,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     /// @dev Credit `input`'s not-yet-attributed converting share to holders as PENDING, split across its converting legs.
     function _attribute(address input) internal {
         uint256 u = unattributed[input];
-        if (u == 0 || eligibleSupply < minEligibleFloor) return;
+        if (u == 0 || eligibleSupply < minEligibleFloor) {
+            return;
+        }
         unattributed[input] = 0;
         uint256[] storage ids = _legIdsOf[input];
         uint256 n = ids.length;
@@ -758,7 +865,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
             uint256 id = ids[i];
             uint256 part = i + 1 == n ? u - given : (u * _convLegs[id].bps) / s;
             given += part;
-            if (part == 0) continue;
+            if (part == 0) {
+                continue;
+            }
             legIn[id] += part;
             legIdx[id] += (part * MAGNITUDE) / supply;
         }
@@ -776,7 +885,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     }
 
     function _receive(address d, uint256 amount) internal {
-        if (amount == 0) return;
+        if (amount == 0) {
+            return;
+        }
         if (eligibleSupply < minEligibleFloor) {
             pending[d] += amount;
             return;
@@ -800,14 +911,18 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     /// @notice Convert (or fall back) at most one leg's pending pool; with nothing to convert, push rewards to holders
     /// instead. Permissionless; the tax hook calls it after every swap on this coin's pools.
     function convertStep() external nonReentrant returns (bool worked) {
-        if (_convertStep()) return true;
+        if (_convertStep()) {
+            return true;
+        }
         return _process(CONVERT_PUSH_BUDGET) != 0;
     }
 
     /// @notice The manual way: up to `steps` conversions in one call.
     function convert(uint256 steps) external nonReentrant returns (uint256 done) {
         for (uint256 i; i < steps; ++i) {
-            if (!_convertStep()) break;
+            if (!_convertStep()) {
+                break;
+            }
             unchecked {
                 ++done;
             }
@@ -816,9 +931,13 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
 
     function _convertStep() internal returns (bool) {
         uint256 total = _convLegs.length;
-        if (total == 0) return false;
+        if (total == 0) {
+            return false;
+        }
         bool locked = _v4LockHeld();
-        if (locked && IAutoBasketExttload(poolManager).exttload(V4_SYNCED_CURRENCY_SLOT) != bytes32(0)) return false;
+        if (locked && IAutoBasketExttload(poolManager).exttload(V4_SYNCED_CURRENCY_SLOT) != bytes32(0)) {
+            return false;
+        }
         uint256 cur = _convertCursor;
         uint256 scan = total < CONVERT_SCAN ? total : CONVERT_SCAN;
         for (uint256 k; k < scan; ++k) {
@@ -827,9 +946,13 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
             _syncOne(input);
             _attribute(input);
             uint256 pool = legIn[id] - legOut[id];
-            if (pool == 0 || pool < minConvertOf[input]) continue;
+            if (pool == 0 || pool < minConvertOf[input]) {
+                continue;
+            }
             uint256 next = (id + 1) % total;
-            if (next != cur) _convertCursor = next;
+            if (next != cur) {
+                _convertCursor = next;
+            }
             return _attempt(id, pool, locked);
         }
         return false;
@@ -837,7 +960,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
 
     function _attempt(uint256 id, uint256 amt, bool locked) internal returns (bool) {
         ConvLeg memory l = _convLegs[id];
-        if (IERC20(l.input).balanceOf(address(this)) < reserve[l.input] + buffered[l.input]) return false;
+        if (IERC20(l.input).balanceOf(address(this)) < reserve[l.input] + buffered[l.input]) {
+            return false;
+        }
 
         uint64 since = failingSince[id];
         if (since != 0 && block.timestamp >= since + fallbackDelay) {
@@ -850,19 +975,27 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         }
 
         uint256 left = gasleft();
-        if (left < (CONVERT_GAS_MIN * 64) / 63 + CONVERT_TAIL_GAS) return false;
+        if (left < (CONVERT_GAS_MIN * 64) / 63 + CONVERT_TAIL_GAS) {
+            return false;
+        }
         uint256 forward = ((left - CONVERT_TAIL_GAS) * 63) / 64;
-        if (forward > CONVERT_GAS_MAX) forward = CONVERT_GAS_MAX;
+        if (forward > CONVERT_GAS_MAX) {
+            forward = CONVERT_GAS_MAX;
+        }
         uint256 g0 = gasleft();
         try this.convertSelf{gas: forward}(l.input, l.asset, amt, locked) returns (uint256 out) {
             _closeEpoch(id, amt, out, false);
             buffered[l.input] -= amt;
             reserve[l.asset] += out;
-            if (since != 0) failingSince[id] = 0;
+            if (since != 0) {
+                failingSince[id] = 0;
+            }
             emit Converted(id, l.input, l.asset, amt, out);
         } catch {
             // Only a failure that did NOT exhaust its budget starts the fallback clock.
-            if (since == 0 && g0 - gasleft() < forward - forward / 32) failingSince[id] = uint64(block.timestamp);
+            if (since == 0 && g0 - gasleft() < forward - forward / 32) {
+                failingSince[id] = uint64(block.timestamp);
+            }
             emit ConversionFailed(id, l.input, l.asset, amt);
         }
         return true;
@@ -895,10 +1028,14 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
 
     /// @dev Self-only: route, quote, swap and measure inside a gas-capped frame. The output lands on this contract.
     function convertSelf(address input, address asset, uint256 amount, bool locked) external returns (uint256 out) {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         RealmAnyPairsRouteLib.Route memory r = _routeFor(input, asset, _routeOf[input][asset]);
         uint256 minOut = (_spotOut(r, input, asset, amount) * (BPS - slippageBps)) / BPS;
-        if (minOut == 0) revert NoPrice();
+        if (minOut == 0) {
+            revert NoPrice();
+        }
         uint256 before = IERC20(asset).balanceOf(address(this));
         if (r.venue == RealmAnyPairsRouteLib.VENUE_V4 && locked) {
             IPoolManager pm = IPoolManager(poolManager);
@@ -910,8 +1047,12 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         }
         uint256 aft = IERC20(asset).balanceOf(address(this));
         out = aft > before ? aft - before : 0;
-        if (out < minOut) revert BelowMinOut();
-        if (FullMath.mulDiv(out, Q128, amount) >= QUOTE_FLAG) revert NoPrice();
+        if (out < minOut) {
+            revert BelowMinOut();
+        }
+        if (FullMath.mulDiv(out, Q128, amount) >= QUOTE_FLAG) {
+            revert NoPrice();
+        }
     }
 
     function _routeFor(address tokenIn, address tokenOut, bytes memory route)
@@ -923,7 +1064,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         r = route.length == 0
             ? RealmAnyPairsRouteLib.best(f, poolManager, tokenIn, false, tokenOut)
             : RealmAnyPairsRouteLib.supplied(route, f, poolManager, tokenIn, false, tokenOut, feeder);
-        if (r.venue == RealmAnyPairsRouteLib.VENUE_NONE) revert NoRouteFound();
+        if (r.venue == RealmAnyPairsRouteLib.VENUE_NONE) {
+            revert NoRouteFound();
+        }
     }
 
     /// @dev Out-of-lock swap of `amount` `tokenIn` to `recipient` through `r` (V3 router or a V4 unlock).
@@ -937,14 +1080,15 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     ) internal {
         if (r.venue == RealmAnyPairsRouteLib.VENUE_V3) {
             IERC20(tokenIn).forceApprove(swapRouter, amount);
-            IAutoBasketSwapRouter02(swapRouter).exactInput(
-                IAutoBasketSwapRouter02.ExactInputParams({
-                    path: RealmAnyPairsRouteLib.v3Path(r, tokenOut),
-                    recipient: recipient,
-                    amountIn: amount,
-                    amountOutMinimum: minOut
-                })
-            );
+            IAutoBasketSwapRouter02(swapRouter)
+                .exactInput(
+                    IAutoBasketSwapRouter02.ExactInputParams({
+                        path: RealmAnyPairsRouteLib.v3Path(r, tokenOut),
+                        recipient: recipient,
+                        amountIn: amount,
+                        amountOutMinimum: minOut
+                    })
+                );
             IERC20(tokenIn).forceApprove(swapRouter, 0);
         } else {
             PoolKey memory key = RealmAnyPairsRouteLib.poolKey(tokenIn, tokenOut, r.fee, r.tickSpacing, r.hooks);
@@ -955,7 +1099,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     }
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != poolManager || !_v4Swapping) revert OnlySelf();
+        if (msg.sender != poolManager || !_v4Swapping) {
+            revert OnlySelf();
+        }
         (PoolKey memory key, address tokenIn, address tokenOut, uint256 amount, address recipient) =
             abi.decode(data, (PoolKey, address, address, uint256, address));
         IPoolManager pm = IPoolManager(poolManager);
@@ -975,7 +1121,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         if (r.venue == RealmAnyPairsRouteLib.VENUE_V3) {
             address pool = IAutoBasketV3Factory(v3Factory).getPool(input, asset, r.fee);
             (bool ok, bytes memory d) = pool.staticcall(abi.encodeWithSignature("slot0()"));
-            if (!ok || d.length < 32) revert NoPrice();
+            if (!ok || d.length < 32) {
+                revert NoPrice();
+            }
             sqrtP = uint160(abi.decode(d, (uint256)));
             feePips = r.fee;
         } else {
@@ -984,14 +1132,20 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
             (sqrtP,,, lpFee) = IPoolManager(poolManager).getSlot0(key.toId());
             feePips = lpFee;
         }
-        if (sqrtP == 0 || feePips >= 1_000_000) revert NoPrice();
+        if (sqrtP == 0 || feePips >= 1_000_000) {
+            revert NoPrice();
+        }
         bool zeroForOne = input < asset;
         if (sqrtP <= type(uint128).max) {
             uint256 ratioX192 = uint256(sqrtP) * sqrtP;
-            out = zeroForOne ? FullMath.mulDiv(ratioX192, amount, 1 << 192) : FullMath.mulDiv(1 << 192, amount, ratioX192);
+            out = zeroForOne
+                ? FullMath.mulDiv(ratioX192, amount, 1 << 192)
+                : FullMath.mulDiv(1 << 192, amount, ratioX192);
         } else {
             uint256 ratioX128 = FullMath.mulDiv(sqrtP, sqrtP, 1 << 64);
-            out = zeroForOne ? FullMath.mulDiv(ratioX128, amount, 1 << 128) : FullMath.mulDiv(1 << 128, amount, ratioX128);
+            out = zeroForOne
+                ? FullMath.mulDiv(ratioX128, amount, 1 << 128)
+                : FullMath.mulDiv(1 << 128, amount, ratioX128);
         }
         out = (out * (1_000_000 - feePips)) / 1_000_000;
     }
@@ -1002,7 +1156,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
 
     function _v4LockHeld() internal view returns (bool) {
         address pm = poolManager;
-        if (pm == address(0)) return false;
+        if (pm == address(0)) {
+            return false;
+        }
         return IAutoBasketExttload(pm).exttload(V4_IS_UNLOCKED_SLOT) != bytes32(0);
     }
 
@@ -1017,11 +1173,15 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
 
     function _process(uint256 gasBudget) internal returns (uint256 pushed) {
         uint256 n = _holders.length;
-        if (n == 0) return 0;
+        if (n == 0) {
+            return 0;
+        }
         uint256 dCount = denominations.length;
         bool locked = _v4LockHeld();
         uint256 floor_ = PUSH_GAS + PUSH_TAIL_GAS + VIEW_BASE_GAS + (locked ? GATE_GAS : 0);
-        if (gasleft() < floor_) return 0;
+        if (gasleft() < floor_) {
+            return 0;
+        }
         uint8[] memory allowedCache = locked ? new uint8[](dCount) : new uint8[](0);
         uint256 gasStart = gasleft();
         uint256 idx = lastProcessedIndex;
@@ -1029,9 +1189,13 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         uint256 newDenomCursor = resumeDenom;
         uint256 iterations;
         while (iterations < n) {
-            if (gasleft() < floor_) break;
+            if (gasleft() < floor_) {
+                break;
+            }
             uint256 len = _holders.length;
-            if (len == 0) break;
+            if (len == 0) {
+                break;
+            }
             uint256 nextIdx = idx + 1 < len ? idx + 1 : 0;
             address h = _holders[nextIdx];
             uint256 di = (resumeDenom != 0 && resumeDenom < dCount && h == lastProcessedHolder) ? resumeDenom : 0;
@@ -1056,7 +1220,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
                         a = _inSwapAllowed(d) ? 2 : 1;
                         allowedCache[di] = a;
                     }
-                    if (a == 1) continue;
+                    if (a == 1) {
+                        continue;
+                    }
                 }
                 uint256 amt = claimableOf(h, d);
                 if (amt != 0) {
@@ -1071,7 +1237,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
             }
             if (!finishedHolder) {
                 newDenomCursor = di < dCount ? di : 0;
-                if (newDenomCursor != 0 && lastProcessedHolder != h) lastProcessedHolder = h;
+                if (newDenomCursor != 0 && lastProcessedHolder != h) {
+                    lastProcessedHolder = h;
+                }
                 break;
             }
             idx = nextIdx;
@@ -1079,21 +1247,29 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
             unchecked {
                 ++iterations;
             }
-            if (gasStart - gasleft() > gasBudget) break;
+            if (gasStart - gasleft() > gasBudget) {
+                break;
+            }
         }
         lastProcessedIndex = idx;
-        if (newDenomCursor != _lastProcessedDenom) _lastProcessedDenom = uint96(newDenomCursor);
+        if (newDenomCursor != _lastProcessedDenom) {
+            _lastProcessedDenom = uint96(newDenomCursor);
+        }
     }
 
     function pushReward(address account, address denomination, uint256 amount) external {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         withdrawnRewards[account][denomination] += amount;
         _spend(denomination, amount);
         uint256 before = IERC20(denomination).balanceOf(account);
         IERC20(denomination).safeTransfer(account, amount);
         uint256 aft = IERC20(denomination).balanceOf(account);
         uint256 delivered = aft > before ? aft - before : 0;
-        if (delivered > amount) delivered = amount;
+        if (delivered > amount) {
+            delivered = amount;
+        }
         emit RewardClaimed(account, denomination, delivered);
     }
 
@@ -1108,12 +1284,16 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         nonReentrant
         returns (uint256 processed)
     {
-        if (_v4LockHeld()) revert NotDuringSwap();
-        uint256 cap = PROCESS_HOLDER_BASE_GAS + PROCESS_HOLDER_PER_DENOM_GAS * denominations.length
-            + VIEW_PER_LEG_GAS * 2 * _convLegs.length;
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
+        uint256 cap = PROCESS_HOLDER_BASE_GAS + PROCESS_HOLDER_PER_DENOM_GAS * denominations.length + VIEW_PER_LEG_GAS
+            * 2 * _convLegs.length;
         uint256 gasStart = gasleft();
         for (uint256 i; i < holders.length; ++i) {
-            if (gasStart - gasleft() > gasBudget) break;
+            if (gasStart - gasleft() > gasBudget) {
+                break;
+            }
             try this._processHolder{gas: cap}(holders[i]) {
                 unchecked {
                     ++processed;
@@ -1125,9 +1305,13 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     }
 
     function _processHolder(address holder) external {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         _syncBalance(holder);
-        if (_payAll(holder, holder, denominations) == 0) revert NothingToClaim();
+        if (_payAll(holder, holder, denominations) == 0) {
+            revert NothingToClaim();
+        }
     }
 
     // ─────────────────────────── claim ───────────────────────────
@@ -1142,11 +1326,19 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         return _claim(msg.sender, to, denominations);
     }
 
-    function claimDenominations(address to, address[] calldata denoms) external nonReentrant returns (uint256 denomsPaid) {
+    function claimDenominations(address to, address[] calldata denoms)
+        external
+        nonReentrant
+        returns (uint256 denomsPaid)
+    {
         _checkRecipient(to);
-        if (denoms.length == 0) revert NothingToClaim();
+        if (denoms.length == 0) {
+            revert NothingToClaim();
+        }
         for (uint256 i; i < denoms.length; ++i) {
-            if (!isDenomination[denoms[i]]) revert NotADenomination();
+            if (!isDenomination[denoms[i]]) {
+                revert NotADenomination();
+            }
         }
         return _claim(msg.sender, to, denoms);
     }
@@ -1154,7 +1346,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     /// @notice Take your pending share of every not-yet-converted leg NOW, in its input token, together with everything
     /// else you are owed. Your share leaves the conversion pool; nobody else's changes.
     function claimPending(address to) external nonReentrant returns (uint256 denomsPaid) {
-        if (_v4LockHeld()) revert NotDuringSwap();
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
         _checkRecipient(to);
         _pullPending(msg.sender);
         return _claim(msg.sender, to, denominations);
@@ -1165,42 +1359,70 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     /// `minOuts[i]`, both indexed like {denominations}. A denomination that fails to convert reverts the claim if its
     /// minimum is non-zero, and is paid in its own token if the minimum is zero. `withPending` first pulls your pending
     /// shares ({claimPending}) so they are converted too.
-    function claimAs(address to, address tokenOut, bytes[] calldata routes, uint256[] calldata minOuts, bool withPending)
-        external
-        nonReentrant
-        returns (uint256 denomsPaid)
-    {
-        if (_v4LockHeld()) revert NotDuringSwap();
+    function claimAs(
+        address to,
+        address tokenOut,
+        bytes[] calldata routes,
+        uint256[] calldata minOuts,
+        bool withPending
+    ) external nonReentrant returns (uint256 denomsPaid) {
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
         _checkRecipient(to);
         uint256 dCount = denominations.length;
-        if (routes.length != dCount) revert BadRoutes();
-        if (minOuts.length != dCount) revert BadMinOuts();
-        if (tokenOut == address(0) && weth == address(0)) revert NoNativeInput();
-        if (withPending) _pullPending(msg.sender);
+        if (routes.length != dCount) {
+            revert BadRoutes();
+        }
+        if (minOuts.length != dCount) {
+            revert BadMinOuts();
+        }
+        if (tokenOut == address(0) && weth == address(0)) {
+            revert NoNativeInput();
+        }
+        if (withPending) {
+            _pullPending(msg.sender);
+        }
         _syncBalance(msg.sender);
         bool owed;
         for (uint256 i; i < dCount; ++i) {
             address d = denominations[i];
             uint256 amt = claimableOf(msg.sender, d);
-            if (amt == 0) continue;
+            if (amt == 0) {
+                continue;
+            }
             owed = true;
             withdrawnRewards[msg.sender][d] += amt;
             if (d == tokenOut) {
-                if (_payDirect(msg.sender, to, d, amt)) ++denomsPaid;
+                if (_payDirect(msg.sender, to, d, amt)) {
+                    ++denomsPaid;
+                }
                 continue;
             }
-            if (gasleft() < (LEG_GAS_CAP * 64) / 63 + 30_000) revert InsufficientGasForLeg();
-            try this.claimSwapSelf{gas: LEG_GAS_CAP}(d, tokenOut, amt, minOuts[i], routes[i], to) returns (uint256 out) {
+            if (gasleft() < (LEG_GAS_CAP * 64) / 63 + 30_000) {
+                revert InsufficientGasForLeg();
+            }
+            try this.claimSwapSelf{gas: LEG_GAS_CAP}(d, tokenOut, amt, minOuts[i], routes[i], to) returns (
+                uint256 out
+            ) {
                 emit RewardClaimed(msg.sender, tokenOut, out);
                 ++denomsPaid;
             } catch {
-                if (minOuts[i] != 0) revert LegMinOutUnmet();
+                if (minOuts[i] != 0) {
+                    revert LegMinOutUnmet();
+                }
                 emit LegSwapFailed(msg.sender, d, tokenOut, amt);
-                if (_payDirect(msg.sender, to, d, amt)) ++denomsPaid;
+                if (_payDirect(msg.sender, to, d, amt)) {
+                    ++denomsPaid;
+                }
             }
         }
-        if (!owed) revert NothingToClaim();
-        if (denomsPaid == 0) revert NothingDelivered();
+        if (!owed) {
+            revert NothingToClaim();
+        }
+        if (denomsPaid == 0) {
+            revert NothingDelivered();
+        }
     }
 
     /// @dev Self-only leg of {claimAs}: convert `amt` of `d` into `tokenOut` for `to`, measured at the recipient.
@@ -1208,7 +1430,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         external
         returns (uint256 out)
     {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         bool native = tokenOut == address(0);
         address target = native ? weth : tokenOut;
         _spend(d, amt);
@@ -1222,11 +1446,15 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
             uint256 aft = IERC20(target).balanceOf(recipient);
             out = aft > before ? aft - before : 0;
         }
-        if (out < minOut) revert BelowMinOut();
+        if (out < minOut) {
+            revert BelowMinOut();
+        }
         if (native) {
             IAutoBasketWETH(weth).withdraw(out);
             (bool ok,) = to.call{value: out}("");
-            if (!ok) revert EthSendFailed();
+            if (!ok) {
+                revert EthSendFailed();
+            }
         }
     }
 
@@ -1238,7 +1466,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
             _settle(account, id, bal);
             HolderLeg storage s = _holderLeg[account][id];
             uint256 p = s.pend;
-            if (p == 0) continue;
+            if (p == 0) {
+                continue;
+            }
             s.pend = 0;
             address input = _convLegs[id].input;
             legOut[id] += p;
@@ -1250,7 +1480,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     }
 
     function _claim(address account, address to, address[] memory denoms) internal returns (uint256 denomsPaid) {
-        if (_v4LockHeld()) revert NotDuringSwap();
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
         _syncBalance(account);
         bool owed;
         for (uint256 i; i < denoms.length; ++i) {
@@ -1259,16 +1491,22 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
                 break;
             }
         }
-        if (!owed) revert NothingToClaim();
+        if (!owed) {
+            revert NothingToClaim();
+        }
         denomsPaid = _payAll(account, to, denoms);
-        if (denomsPaid == 0) revert NothingDelivered();
+        if (denomsPaid == 0) {
+            revert NothingDelivered();
+        }
     }
 
     function _payAll(address account, address to, address[] memory denoms) internal returns (uint256 paid) {
         for (uint256 i; i < denoms.length; ++i) {
             address d = denoms[i];
             uint256 amt = claimableOf(account, d);
-            if (amt == 0) continue;
+            if (amt == 0) {
+                continue;
+            }
             withdrawnRewards[account][d] += amt;
             if (_payDirect(account, to, d, amt)) {
                 unchecked {
@@ -1282,7 +1520,9 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
         if (
             to == address(0) || to == address(this) || to == token || isDenomination[to] || to == swapRouter
                 || to == feeder || to == poolManager
-        ) revert ZeroRecipient();
+        ) {
+            revert ZeroRecipient();
+        }
     }
 
     /// @dev A reverting transfer re-credits the account and reports false; the debit is nominal, the report measured.
@@ -1298,12 +1538,16 @@ contract RealmAnyPairsDividendTrackerAutoBasket {
     }
 
     function _transferDirect(address to, address denomination, uint256 amt) external returns (uint256 delivered) {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         _spend(denomination, amt);
         uint256 before = IERC20(denomination).balanceOf(to);
         IERC20(denomination).safeTransfer(to, amt);
         uint256 aft = IERC20(denomination).balanceOf(to);
         delivered = aft > before ? aft - before : 0;
-        if (delivered > amt) delivered = amt;
+        if (delivered > amt) {
+            delivered = amt;
+        }
     }
 }

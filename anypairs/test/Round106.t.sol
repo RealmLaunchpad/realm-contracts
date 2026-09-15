@@ -52,7 +52,10 @@ contract Round106FeeMathTest is Test {
         _row(3000, 3000, 100); // 30% launch ramp: the cap binds
     }
 
-    function testFuzz_platformNeverExceedsWhatTheTraderPays(uint16 rate, uint16 share, uint16 floor, uint16 cap) public view {
+    function testFuzz_platformNeverExceedsWhatTheTraderPays(uint16 rate, uint16 share, uint16 floor, uint16 cap)
+        public
+        view
+    {
         rate = uint16(bound(rate, 0, 3000));
         share = uint16(bound(share, 1000, 3000));
         floor = uint16(bound(floor, 0, 100));
@@ -62,7 +65,9 @@ contract Round106FeeMathTest is Test {
         assertLe(p, t, "platform <= total");
         assertGe(t, rate, "trader never pays below the creator rate");
         assertGe(t, floor, "trader never pays below the floor");
-        if (t > 0) assertGe(p, floor < t ? floor : t, "the floor always reaches the platform");
+        if (t > 0) {
+            assertGe(p, floor < t ? floor : t, "the floor always reaches the platform");
+        }
     }
 }
 
@@ -79,15 +84,22 @@ abstract contract V4Fixture is Test {
         vm.deal(address(this), 10_000_000 ether);
     }
 
-    function _pool(address a, address b, uint24 fee, int24 spacing, uint128 liquidity) internal returns (PoolKey memory key) {
+    function _pool(address a, address b, uint24 fee, int24 spacing, uint128 liquidity)
+        internal
+        returns (PoolKey memory key)
+    {
         (address c0, address c1) = a < b ? (a, b) : (b, a);
         key = PoolKey(Currency.wrap(c0), Currency.wrap(c1), fee, spacing, IHooks(address(0)));
         pm.initialize(key, TickMath.getSqrtPriceAtTick(0));
-        if (c0 != address(0)) R106Token(c0).approve(address(lp), type(uint256).max);
+        if (c0 != address(0)) {
+            R106Token(c0).approve(address(lp), type(uint256).max);
+        }
         R106Token(c1).approve(address(lp), type(uint256).max);
         int24 lo = -int24(60000 / spacing) * spacing;
         uint256 value = c0 == address(0) ? 1_000_000 ether : 0;
-        lp.modifyLiquidity{value: value}(key, ModifyLiquidityParams(lo, -lo, int256(uint256(liquidity)), bytes32(0)), "");
+        lp.modifyLiquidity{value: value}(
+            key, ModifyLiquidityParams(lo, -lo, int256(uint256(liquidity)), bytes32(0)), ""
+        );
     }
 }
 

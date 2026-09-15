@@ -33,10 +33,14 @@ abstract contract HookedFixture is V4Fixture {
         (address c0, address c1) = a < b ? (a, b) : (b, a);
         key = PoolKey(Currency.wrap(c0), Currency.wrap(c1), 2500, 25, IHooks(hook));
         pm.initialize(key, TickMath.getSqrtPriceAtTick(0));
-        if (c0 != address(0)) R106Token(c0).approve(address(lp), type(uint256).max);
+        if (c0 != address(0)) {
+            R106Token(c0).approve(address(lp), type(uint256).max);
+        }
         R106Token(c1).approve(address(lp), type(uint256).max);
         uint256 value = c0 == address(0) ? 1_000_000 ether : 0;
-        lp.modifyLiquidity{value: value}(key, ModifyLiquidityParams(-60000, 60000, int256(uint256(liquidity)), bytes32(0)), "");
+        lp.modifyLiquidity{value: value}(
+            key, ModifyLiquidityParams(-60000, 60000, int256(uint256(liquidity)), bytes32(0)), ""
+        );
     }
 }
 

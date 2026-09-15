@@ -17,11 +17,18 @@ interface IUniswapV3Pool {
 }
 
 interface ISwapRouter02 {
-    struct ExactInputParams { bytes path; address recipient; uint256 amountIn; uint256 amountOutMinimum; }
+    struct ExactInputParams {
+        bytes path;
+        address recipient;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+    }
     function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut);
 }
 
-interface IExttload { function exttload(bytes32 slot) external view returns (bytes32); }
+interface IExttload {
+    function exttload(bytes32 slot) external view returns (bytes32);
+}
 
 /**
  * @title RealmAnyPairsDividendTrackerBasket
@@ -53,17 +60,16 @@ contract RealmAnyPairsDividendTrackerBasket {
     // eat the keeper's whole transaction; larger than {PUSH_GAS} because it also runs {_syncBalance}.
     uint256 internal constant PROCESS_HOLDER_GAS = 330_000;
 
-    address public immutable token;      // the RealmAnyPairsTokenDividend feeding balances
-    address public immutable feeder;     // the tax hook, the only address that funds rewards
-    address public immutable quote;      // the ERC-20 rewards accrue in (the pool's quote token)
+    address public immutable token; // the RealmAnyPairsTokenDividend feeding balances
+    address public immutable feeder; // the tax hook, the only address that funds rewards
+    address public immutable quote; // the ERC-20 rewards accrue in (the pool's quote token)
     address public immutable swapRouter; // SwapRouter02, converts quote -> each basket leg at claim time
     /// @notice The real Uniswap V3 factory, used to discover each non-direct leg's route.
     address public immutable v3Factory;
     /// @dev Only read by {_v4LockHeld}. Zero disables the gate.
     address public immutable poolManager;
     /// @dev `PoolManager.isUnlocked`'s transient slot.
-    bytes32 internal constant V4_IS_UNLOCKED_SLOT =
-        0xc090fc4683624cfc3884e9d8de5eca132f2d0ec062aff75d43c0465d5ceeab23;
+    bytes32 internal constant V4_IS_UNLOCKED_SLOT = 0xc090fc4683624cfc3884e9d8de5eca132f2d0ec062aff75d43c0465d5ceeab23;
     /// @notice Immutable overflow-safe floor (`totalSupply / 1e4` from the launcher). It gates reward booking, so
     /// `magnifiedRewardPerShare <= D*2^128/minEligibleFloor` regardless of {minEligible}.
     uint256 public immutable minEligibleFloor;
@@ -136,11 +142,31 @@ contract RealmAnyPairsDividendTrackerBasket {
     error MinEligibleTooHigh();
     event MinEligibleSet(uint256 oldValue, uint256 newValue);
 
-    modifier onlyToken() { if (msg.sender != token) revert OnlyToken(); _; }
-    modifier onlyFeeder() { if (msg.sender != feeder) revert OnlyFeeder(); _; }
-    modifier nonReentrant() { if (_entered == 2) revert Reentrancy(); _entered = 2; _; _entered = 1; }
+    modifier onlyToken() {
+        if (msg.sender != token) {
+            revert OnlyToken();
+        }
+        _;
+    }
+    modifier onlyFeeder() {
+        if (msg.sender != feeder) {
+            revert OnlyFeeder();
+        }
+        _;
+    }
+    modifier nonReentrant() {
+        if (_entered == 2) {
+            revert Reentrancy();
+        }
+        _entered = 2;
+        _;
+        _entered = 1;
+    }
 
-    struct Leg { address asset; uint16 bps; }
+    struct Leg {
+        address asset;
+        uint16 bps;
+    }
 
     struct Config {
         address token;
@@ -166,41 +192,52 @@ contract RealmAnyPairsDividendTrackerBasket {
         uint256 me_ = c.minEligible == 0 ? 1 : c.minEligible;
         minEligibleFloor = me_;
         minEligible = me_;
-        for (uint256 i; i < c.excluded.length; ++i) excluded[c.excluded[i]] = true;
+        for (uint256 i; i < c.excluded.length; ++i) {
+            excluded[c.excluded[i]] = true;
+        }
         // Tokens mis-sent to the coin contract must not accrue unclaimable rewards.
         excluded[c.token] = true;
         excluded[address(this)] = true;
         excluded[address(0)] = true;
         excluded[c.feeder] = true;
         // The router keeps quote dust mid-swap; it must not accrue rewards against it.
-        if (c.swapRouter != address(0)) excluded[c.swapRouter] = true;
+        if (c.swapRouter != address(0)) {
+            excluded[c.swapRouter] = true;
+        }
 
         uint256 n = c.basket.length;
-        if (n == 0 || n > MAX_LEGS) revert BadBasket();
+        if (n == 0 || n > MAX_LEGS) {
+            revert BadBasket();
+        }
         uint256 sumBps;
         for (uint256 i; i < n; ++i) {
             Leg memory leg = c.basket[i];
-            if (leg.asset == address(0) || leg.bps == 0) revert BadBasket();
+            if (leg.asset == address(0) || leg.bps == 0) {
+                revert BadBasket();
+            }
             sumBps += leg.bps;
             _legAsset[i] = leg.asset;
             _legBps[i] = leg.bps;
         }
-        if (sumBps != BPS) revert BadBasket();
+        if (sumBps != BPS) {
+            revert BadBasket();
+        }
         legCount = n;
     }
+
     function basketLeg(uint256 i) external view returns (address asset, uint16 bps, bytes memory path) {
         asset = _legAsset[i];
         bps = _legBps[i];
         // The route a conversion would take right now (empty for a direct leg or when none exists).
         if (asset != quote) {
             path = RealmAnyPairsRouteLib.encode(
-                RealmAnyPairsRouteLib.best(swapRouter == address(0) ? address(0) : v3Factory, poolManager, quote, false, asset),
+                RealmAnyPairsRouteLib.best(
+                    swapRouter == address(0) ? address(0) : v3Factory, poolManager, quote, false, asset
+                ),
                 asset
             );
         }
     }
-
-
 
     // ─────────────────────────── balance mirror (token-driven) ───────────────────────────
 
@@ -211,7 +248,9 @@ contract RealmAnyPairsDividendTrackerBasket {
     }
 
     function setBalance(address account, uint256 newBalance) external onlyToken {
-        if (excluded[account]) newBalance = 0;
+        if (excluded[account]) {
+            newBalance = 0;
+        }
         _applyBalance(account, newBalance);
     }
 
@@ -219,7 +258,9 @@ contract RealmAnyPairsDividendTrackerBasket {
     /// applied the `excluded` override.
     function _applyBalance(address account, uint256 newBalance) internal {
         uint256 old = trackedBalance[account];
-        if (newBalance == old) return;
+        if (newBalance == old) {
+            return;
+        }
         if (newBalance > old) {
             uint256 add = newBalance - old;
             eligibleSupply += add;
@@ -235,7 +276,9 @@ contract RealmAnyPairsDividendTrackerBasket {
         // Ring membership is gated on `minEligible` so dust accounts cannot fill the gas-bounded ring. Accrual above
         // is unaffected; sub-threshold holders just claim instead of being pushed.
         if (newBalance < minEligible) {
-            if (idx1 != 0) _removeHolder(account, idx1);
+            if (idx1 != 0) {
+                _removeHolder(account, idx1);
+            }
         } else if (idx1 == 0) {
             _holders.push(account);
             _holderIdx1[account] = _holders.length;
@@ -253,7 +296,9 @@ contract RealmAnyPairsDividendTrackerBasket {
         _holderIdx1[account] = 0;
     }
 
-    function holderCount() external view returns (uint256) { return _holders.length; }
+    function holderCount() external view returns (uint256) {
+        return _holders.length;
+    }
 
     // ─────────────────────────── creator-settable eligibility floor ───────────────────────────
 
@@ -262,10 +307,18 @@ contract RealmAnyPairsDividendTrackerBasket {
     /// @dev Only ring membership depends on this; accrual continues for holders below it. Booking is gated on the
     /// immutable floor, so this setter cannot strand rewards in `pending` or weaken the overflow bound.
     function setMinEligible(uint256 newMinEligible) external {
-        if (msg.sender != _tokenCreator()) revert NotCreator();
-        if (newMinEligible < minEligibleFloor) revert MinEligibleBelowFloor();
-        if (newMinEligible > minEligibleFloor * MAX_MIN_ELIGIBLE_MULTIPLE) revert MinEligibleTooHigh();
-        if (newMinEligible > eligibleSupply) revert MinEligibleTooHigh();
+        if (msg.sender != _tokenCreator()) {
+            revert NotCreator();
+        }
+        if (newMinEligible < minEligibleFloor) {
+            revert MinEligibleBelowFloor();
+        }
+        if (newMinEligible > minEligibleFloor * MAX_MIN_ELIGIBLE_MULTIPLE) {
+            revert MinEligibleTooHigh();
+        }
+        if (newMinEligible > eligibleSupply) {
+            revert MinEligibleTooHigh();
+        }
         emit MinEligibleSet(minEligible, newMinEligible);
         minEligible = newMinEligible;
     }
@@ -278,16 +331,20 @@ contract RealmAnyPairsDividendTrackerBasket {
             feeder.staticcall{gas: 50_000}(abi.encodeWithSignature("creatorOfCoin(address)", token));
         if (hok && hret.length >= 32) {
             c = abi.decode(hret, (address));
-            if (c == address(0)) revert NotCreator();
+            if (c == address(0)) {
+                revert NotCreator();
+            }
             return c;
         }
         (bool ok, bytes memory ret) = token.staticcall{gas: 20_000}(abi.encodeWithSelector(0x02d05d3f)); // creator()
-        if (!ok || ret.length < 32) revert NotCreator();
+        if (!ok || ret.length < 32) {
+            revert NotCreator();
+        }
         c = abi.decode(ret, (address));
-        if (c == address(0)) revert NotCreator();
+        if (c == address(0)) {
+            revert NotCreator();
+        }
     }
-
-
 
     /// @notice Permissionless repair of a `trackedBalance` that drifted from the token's real balance (e.g. a
     /// notify skipped under starved gas). Can only move state toward the truth.
@@ -297,41 +354,54 @@ contract RealmAnyPairsDividendTrackerBasket {
 
     /// @notice Batch form of {syncBalance}.
     function syncBalances(address[] calldata accounts) external nonReentrant {
-        for (uint256 i; i < accounts.length; ++i) _syncBalance(accounts[i]);
+        for (uint256 i; i < accounts.length; ++i) {
+            _syncBalance(accounts[i]);
+        }
     }
 
     /// @dev Re-reads the token's real balance for `account` and re-applies it. No-op when already in sync.
     function _syncBalance(address account) internal {
         if (excluded[account]) {
-            if (trackedBalance[account] != 0) _applyBalance(account, 0);
+            if (trackedBalance[account] != 0) {
+                _applyBalance(account, 0);
+            }
             return;
         }
         // Low-level so a revert or short return skips the repair instead of bricking {process} or a claim.
         // Uncapped on purpose: `token` is the immutable launcher-deployed coin with a plain `balanceOf`.
-        (bool ok, bytes memory ret) =
-            token.staticcall(abi.encodeWithSelector(0x70a08231, account)); // balanceOf(address)
-        if (!ok || ret.length < 32) return;
+        (bool ok, bytes memory ret) = token.staticcall(abi.encodeWithSelector(0x70a08231, account)); // balanceOf(address)
+        if (!ok || ret.length < 32) {
+            return;
+        }
         uint256 real = abi.decode(ret, (uint256));
-        if (real != trackedBalance[account]) _applyBalance(account, real);
+        if (real != trackedBalance[account]) {
+            _applyBalance(account, real);
+        }
     }
-
-
 
     /// @notice Round-robin push of the raw accrued quote; never converts legs.
     /// @dev A basket conversion calls external router code, so it never runs here. A plain quote transfer can run
     /// mid-swap unless the quote is denied via {_inSwapAllowed}.
     function process(uint256 gasBudget) external nonReentrant returns (uint256 pushed) {
         uint256 n = _holders.length;
-        if (n == 0) return 0;
-        if (_v4LockHeld() && !_inSwapAllowed()) return 0;
+        if (n == 0) {
+            return 0;
+        }
+        if (_v4LockHeld() && !_inSwapAllowed()) {
+            return 0;
+        }
         uint256 idx = lastProcessedIndex;
         uint256 gasStart = gasleft();
         uint256 iterations;
         while (iterations < n) {
             // PUSH_GAS covers the capped payout; +40_000 covers the SLOADs, try/catch frame and cursor SSTORE.
-            if (gasleft() < PUSH_GAS + 40_000) break;
+            if (gasleft() < PUSH_GAS + 40_000) {
+                break;
+            }
             uint256 len = _holders.length; // re-read: a payout can shrink the set via {_removeHolder}
-            if (len == 0) break;
+            if (len == 0) {
+                break;
+            }
             idx = idx + 1 < len ? idx + 1 : 0;
             address h = _holders[idx];
             // No _syncBalance in the hot loop; claims and {syncBalance} repair drift.
@@ -339,14 +409,21 @@ contract RealmAnyPairsDividendTrackerBasket {
             if (amt != 0) {
                 // The debit lives inside the capped {pushReward} frame, so a revert unwinds it and the loop reserve
                 // only has to cover the cursor SSTORE. Do not raise the reserve: it would cut off in-swap pushes.
-                try this.pushReward{gas: PUSH_GAS}(h, amt) { unchecked { ++pushed; } }
-                catch {
+                try this.pushReward{gas: PUSH_GAS}(h, amt) {
+                    unchecked {
+                        ++pushed;
+                    }
+                } catch {
                     // No rollback: the debit is inside the reverted frame and is already undone.
                     emit LegPaymentFailed(h, quote, amt);
                 }
             }
-            unchecked { ++iterations; }
-            if (gasStart - gasleft() > gasBudget) break;
+            unchecked {
+                ++iterations;
+            }
+            if (gasStart - gasleft() > gasBudget) {
+                break;
+            }
         }
         lastProcessedIndex = idx;
     }
@@ -354,7 +431,9 @@ contract RealmAnyPairsDividendTrackerBasket {
     /// @dev Self-only, gas-capped payout for {process}. The ledger debit and `_spend` sit in this frame so a failed
     /// payout unwinds them.
     function pushReward(address account, uint256 amount) external {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         withdrawnRewards[account] += amount; // CEI: debited before the transfer, in the same frame
         _spend(amount); // same frame as the transfer: a revert rolls it back
         // The debit stays nominal; only the event reports the measured inflow (saturating, clamped to `amount`).
@@ -362,7 +441,9 @@ contract RealmAnyPairsDividendTrackerBasket {
         IERC20(quote).safeTransfer(account, amount);
         uint256 aft = IERC20(quote).balanceOf(account);
         uint256 delivered = aft > before ? aft - before : 0;
-        if (delivered > amount) delivered = amount;
+        if (delivered > amount) {
+            delivered = amount;
+        }
         emit RewardClaimed(account, quote, delivered);
     }
 
@@ -382,12 +463,18 @@ contract RealmAnyPairsDividendTrackerBasket {
         nonReentrant
         returns (uint256 processed)
     {
-        if (_v4LockHeld()) revert NotDuringSwap();
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
         uint256 gasStart = gasleft();
         for (uint256 i; i < holders.length; ++i) {
-            if (gasStart - gasleft() > gasBudget) break;
+            if (gasStart - gasleft() > gasBudget) {
+                break;
+            }
             try this._processHolder{gas: PROCESS_HOLDER_GAS}(holders[i]) {
-                unchecked { ++processed; }
+                unchecked {
+                    ++processed;
+                }
             } catch {
                 emit HolderPayoutFailed(holders[i]);
             }
@@ -396,11 +483,15 @@ contract RealmAnyPairsDividendTrackerBasket {
 
     /// @dev Self-only. Pays `holder` themselves; a third party can trigger a payout but never redirect it.
     function _processHolder(address holder) external {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         // Repair a starved-gas desync before paying, so a phantom balance cannot be paid.
         _syncBalance(holder);
         uint256 amt = claimableOf(holder);
-        if (amt == 0) revert NothingToClaim();
+        if (amt == 0) {
+            revert NothingToClaim();
+        }
         withdrawnRewards[holder] += amt; // CEI: bumped before the transfer, in this same frame
         _spend(amt);
         // Not routed through {_payDirect}: a reverting transfer unwinds this whole frame, so `processed` counts
@@ -409,13 +500,19 @@ contract RealmAnyPairsDividendTrackerBasket {
         IERC20(quote).safeTransfer(holder, amt);
         uint256 aft = IERC20(quote).balanceOf(holder);
         uint256 delivered = aft > before ? aft - before : 0;
-        if (delivered > amt) delivered = amt;
+        if (delivered > amt) {
+            delivered = amt;
+        }
         emit RewardClaimed(holder, quote, delivered);
     }
 
     function pokePending() external nonReentrant {
         // Gated on the immutable {minEligibleFloor}, not {minEligible}.
-        if (pending != 0 && eligibleSupply >= minEligibleFloor) { uint256 p = pending; pending = 0; _book(p); }
+        if (pending != 0 && eligibleSupply >= minEligibleFloor) {
+            uint256 p = pending;
+            pending = 0;
+            _book(p);
+        }
     }
 
     // ─────────────────────────── feeding (hook-driven) ───────────────────────────
@@ -434,7 +531,9 @@ contract RealmAnyPairsDividendTrackerBasket {
         if (bal <= reserve) {
             // Never write `reserve` down: a shortfall holds the baseline so later income repairs it first.
             // Emit only on a strict shrink; equality is the normal idle state.
-            if (bal < reserve) emit RewardShortfall(reserve, bal);
+            if (bal < reserve) {
+                emit RewardShortfall(reserve, bal);
+            }
             return;
         }
         uint256 delta = bal - reserve;
@@ -466,11 +565,20 @@ contract RealmAnyPairsDividendTrackerBasket {
     }
 
     function _receive(uint256 amount) internal {
-        if (amount == 0) return;
+        if (amount == 0) {
+            return;
+        }
         // Gated on the immutable floor, never the creator-settable {minEligible}, so the creator cannot divert
         // income into `pending`.
-        if (eligibleSupply < minEligibleFloor) { pending += amount; return; }
-        if (pending != 0) { uint256 p = pending; pending = 0; _book(p); }
+        if (eligibleSupply < minEligibleFloor) {
+            pending += amount;
+            return;
+        }
+        if (pending != 0) {
+            uint256 p = pending;
+            pending = 0;
+            _book(p);
+        }
         _book(amount);
     }
 
@@ -515,18 +623,27 @@ contract RealmAnyPairsDividendTrackerBasket {
 
     function _v4LockHeld() internal view returns (bool) {
         address pm = poolManager;
-        if (pm == address(0)) return false;
+        if (pm == address(0)) {
+            return false;
+        }
         return IExttload(pm).exttload(V4_IS_UNLOCKED_SLOT) != bytes32(0);
     }
 
     /// @notice Claim with a per-leg `amountOutMinimum` (basket leg order; 0 = no floor), paid to `to`.
     /// @dev A failed leg with a non-zero floor reverts {LegMinOutUnmet} and preserves the accrual. Only a zero floor
     /// gets the raw-quote fallback.
-    function claimToWithMinOuts(address to, uint256[] memory minOuts) public nonReentrant returns (uint256 totalAmount) {
-        if (_v4LockHeld()) revert NotDuringSwap();
+    function claimToWithMinOuts(address to, uint256[] memory minOuts)
+        public
+        nonReentrant
+        returns (uint256 totalAmount)
+    {
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
         _checkRecipient(to);
         return _claim(msg.sender, to, minOuts, new bytes[](legCount));
     }
+
     /// @notice Claim with a caller-supplied route per leg. An empty route is discovered on-chain; otherwise it is a
     /// 43-byte V3 path or an ABI-encoded V4 `PoolKey` (the only way to reach a hooked V4 pool).
     /// @dev Every supplied route is validated before anything is paid and may not route through {feeder}.
@@ -540,7 +657,9 @@ contract RealmAnyPairsDividendTrackerBasket {
         nonReentrant
         returns (uint256 totalAmount)
     {
-        if (_v4LockHeld()) revert NotDuringSwap();
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
         _checkRecipient(to);
         _requireRoutes(routes);
         return _claim(msg.sender, to, minOuts, routes);
@@ -549,10 +668,22 @@ contract RealmAnyPairsDividendTrackerBasket {
     /// @dev Validates every supplied route up front, so a bad one fails the claim loudly instead of being swallowed by
     /// {_payLeg}'s fallback.
     function _requireRoutes(bytes[] memory routes) internal view {
-        if (routes.length != legCount) revert BadRoutes();
+        if (routes.length != legCount) {
+            revert BadRoutes();
+        }
         for (uint256 i; i < routes.length; ++i) {
-            if (routes[i].length == 0 || _legAsset[i] == quote) continue;
-            RealmAnyPairsRouteLib.supplied(routes[i], swapRouter == address(0) ? address(0) : v3Factory, poolManager, quote, false, _legAsset[i], feeder);
+            if (routes[i].length == 0 || _legAsset[i] == quote) {
+                continue;
+            }
+            RealmAnyPairsRouteLib.supplied(
+                routes[i],
+                swapRouter == address(0) ? address(0) : v3Factory,
+                poolManager,
+                quote,
+                false,
+                _legAsset[i],
+                feeder
+            );
         }
     }
 
@@ -560,9 +691,11 @@ contract RealmAnyPairsDividendTrackerBasket {
     /// {sync}). Guards against UI mistakes; it does not cover every excluded address.
     function _checkRecipient(address to) internal view {
         if (
-            to == address(0) || to == address(this) || to == token || to == quote || to == swapRouter
-                || to == feeder || to == poolManager
-        ) revert ZeroRecipient();
+            to == address(0) || to == address(this) || to == token || to == quote || to == swapRouter || to == feeder
+                || to == poolManager
+        ) {
+            revert ZeroRecipient();
+        }
     }
 
     /// @dev Self-claim body: debit the whole accrual, then pay each leg by weight. `account` is always `msg.sender`.
@@ -570,21 +703,29 @@ contract RealmAnyPairsDividendTrackerBasket {
         internal
         returns (uint256 totalAmount)
     {
-        if (minOuts.length != legCount) revert BadMinOuts();
-        if (routes.length != legCount) revert BadRoutes();
+        if (minOuts.length != legCount) {
+            revert BadMinOuts();
+        }
+        if (routes.length != legCount) {
+            revert BadRoutes();
+        }
         _syncBalance(account);
         totalAmount = claimableOf(account);
-        if (totalAmount == 0) revert NothingToClaim();
+        if (totalAmount == 0) {
+            revert NothingToClaim();
+        }
         withdrawnRewards[account] += totalAmount; // CEI: bumped before any transfer/swap below
         uint256 n = legCount;
         uint256 distributed;
         for (uint256 i; i < n; ++i) {
             address asset = _legAsset[i];
             uint256 legAmt = i + 1 == n
-                ? totalAmount - distributed // last leg takes the remainder, avoids bps-rounding dust loss
+                ? totalAmount - distributed  // last leg takes the remainder, avoids bps-rounding dust loss
                 : (totalAmount * _legBps[i]) / BPS;
             distributed += legAmt;
-            if (legAmt == 0) continue;
+            if (legAmt == 0) {
+                continue;
+            }
             _payLeg(account, to, asset, legAmt, minOuts[i], routes[i]);
         }
     }
@@ -602,14 +743,18 @@ contract RealmAnyPairsDividendTrackerBasket {
         }
         // Require enough gas for the full capped leg, so a caller's short gas limit reverts instead of silently
         // degrading to the raw-quote fallback.
-        if (gasleft() < LEG_GAS_CAP * 64 / 63 + 30_000) revert InsufficientGasForLeg();
+        if (gasleft() < LEG_GAS_CAP * 64 / 63 + 30_000) {
+            revert InsufficientGasForLeg();
+        }
 
         try this._executeSwap{gas: LEG_GAS_CAP}(to, asset, quoteAmt, minOut, route) returns (uint256 out) {
             emit RewardClaimed(account, asset, out);
         } catch {
             // The raw-quote fallback is opt-in: a caller who set a floor gets the claim unwound and can retry
             // (with minOut = 0 if the pool is genuinely griefed).
-            if (minOut != 0) revert LegMinOutUnmet();
+            if (minOut != 0) {
+                revert LegMinOutUnmet();
+            }
             emit LegSwapFailed(account, asset, quoteAmt);
             _payDirect(account, to, quoteAmt); // fall back to raw quote -- itself failure-isolated, see _payDirect
         }
@@ -621,36 +766,52 @@ contract RealmAnyPairsDividendTrackerBasket {
         external
         returns (uint256 out)
     {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         // Caller's route if supplied, otherwise discovered now; inside the capped frame either way.
         RealmAnyPairsRouteLib.Route memory r = route.length == 0
-            ? RealmAnyPairsRouteLib.best(swapRouter == address(0) ? address(0) : v3Factory, poolManager, quote, false, asset)
-            : RealmAnyPairsRouteLib.supplied(route, swapRouter == address(0) ? address(0) : v3Factory, poolManager, quote, false, asset, feeder);
-        if (r.venue == RealmAnyPairsRouteLib.VENUE_NONE) revert NoRouteFound();
+            ? RealmAnyPairsRouteLib.best(
+                swapRouter == address(0) ? address(0) : v3Factory, poolManager, quote, false, asset
+            )
+            : RealmAnyPairsRouteLib.supplied(
+                route, swapRouter == address(0) ? address(0) : v3Factory, poolManager, quote, false, asset, feeder
+            );
+        if (r.venue == RealmAnyPairsRouteLib.VENUE_NONE) {
+            revert NoRouteFound();
+        }
         uint256 before = IERC20(asset).balanceOf(account);
         if (r.venue == RealmAnyPairsRouteLib.VENUE_V3) {
             IERC20(quote).forceApprove(swapRouter, quoteAmt);
-            ISwapRouter02(swapRouter).exactInput(
-                ISwapRouter02.ExactInputParams({
-                    path: RealmAnyPairsRouteLib.v3Path(r, asset), recipient: account, amountIn: quoteAmt, amountOutMinimum: minOut
-                })
-            );
+            ISwapRouter02(swapRouter)
+                .exactInput(
+                    ISwapRouter02.ExactInputParams({
+                        path: RealmAnyPairsRouteLib.v3Path(r, asset),
+                        recipient: account,
+                        amountIn: quoteAmt,
+                        amountOutMinimum: minOut
+                    })
+                );
             IERC20(quote).forceApprove(swapRouter, 0);
         } else {
             _v4Swapping = true;
-            IPoolManager(poolManager).unlock(
-                abi.encode(account, quote, asset, r.fee, r.tickSpacing, r.hooks, quoteAmt, minOut)
-            );
+            IPoolManager(poolManager)
+                .unlock(abi.encode(account, quote, asset, r.fee, r.tickSpacing, r.hooks, quoteAmt, minOut));
             _v4Swapping = false;
         }
         uint256 aft = IERC20(asset).balanceOf(account);
         out = aft > before ? aft - before : 0;
-        if (out < minOut) revert RealizedBelowMinOut();
+        if (out < minOut) {
+            revert RealizedBelowMinOut();
+        }
         _spend(quoteAmt);
     }
+
     /// @notice PoolManager callback for a V4 leg swap started by {_executeSwap}; runs only inside this contract's own unlock.
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != poolManager || !_v4Swapping) revert OnlySelf();
+        if (msg.sender != poolManager || !_v4Swapping) {
+            revert OnlySelf();
+        }
         (
             address to,
             address tokenIn,
@@ -665,7 +826,9 @@ contract RealmAnyPairsDividendTrackerBasket {
         uint256 out = RealmAnyPairsRouteLib.swapExactIn(
             pm, RealmAnyPairsRouteLib.poolKey(tokenIn, asset, fee, spacing, hooks), tokenIn, amountIn
         );
-        if (out < minOut) revert RealizedBelowMinOut();
+        if (out < minOut) {
+            revert RealizedBelowMinOut();
+        }
         RealmAnyPairsRouteLib.settleAndTake(pm, tokenIn, amountIn, asset, to, out);
         return "";
     }
@@ -685,12 +848,16 @@ contract RealmAnyPairsDividendTrackerBasket {
     /// @dev Self-only so {_payDirect} can try/catch a SafeERC20 transfer.
     /// @return delivered The recipient's measured inflow (saturating), clamped to `quoteAmt`. Used only for the event.
     function _transferDirect(address account, uint256 quoteAmt) external returns (uint256 delivered) {
-        if (msg.sender != address(this)) revert OnlySelf();
-        _spend(quoteAmt);   // same frame as the transfer: a revert rolls this back
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
+        _spend(quoteAmt); // same frame as the transfer: a revert rolls this back
         uint256 before = IERC20(quote).balanceOf(account);
         IERC20(quote).safeTransfer(account, quoteAmt);
         uint256 aft = IERC20(quote).balanceOf(account);
         delivered = aft > before ? aft - before : 0;
-        if (delivered > quoteAmt) delivered = quoteAmt;
+        if (delivered > quoteAmt) {
+            delivered = quoteAmt;
+        }
     }
 }

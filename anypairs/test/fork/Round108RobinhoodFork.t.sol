@@ -40,7 +40,9 @@ contract Round108RobinhoodForkTest is Test {
 
     function setUp() public {
         string memory rpc = vm.envOr("FORK_RPC_URL", string(""));
-        if (bytes(rpc).length == 0) return;
+        if (bytes(rpc).length == 0) {
+            return;
+        }
         vm.createSelectFork(rpc);
         forked = true;
     }
@@ -51,7 +53,9 @@ contract Round108RobinhoodForkTest is Test {
         for (uint256 i; i < 2; ++i) {
             PoolKey memory k = PoolKey(Currency.wrap(USDG), Currency.wrap(NVDAX3L), 0, 1, IHooks(hooks[i]));
             (uint160 sqrtP,,,) = PM.getSlot0(k.toId());
-            if (sqrtP == 0) continue;
+            if (sqrtP == 0) {
+                continue;
+            }
             uint128 liq = PM.getLiquidity(k.toId());
             if (liq > bestLiq) {
                 bestLiq = liq;
@@ -111,9 +115,13 @@ contract Round108RobinhoodForkTest is Test {
     }
 
     function test_fork_defaultBandRefusesThisPool() public {
-        if (!forked) return;
+        if (!forked) {
+            return;
+        }
         (PoolKey memory key, bool ok) = _liveKey();
-        if (!ok) return;
+        if (!ok) {
+            return;
+        }
         AB t = _tracker(key);
         t.convertStep();
         assertEq(t.buffered(USDG), AMOUNT, "the fill is too far below spot for the default 3%");
@@ -121,9 +129,13 @@ contract Round108RobinhoodForkTest is Test {
     }
 
     function test_fork_fillVsSpotAtTwoSizes() public {
-        if (!forked) return;
+        if (!forked) {
+            return;
+        }
         (PoolKey memory key, bool ok) = _liveKey();
-        if (!ok) return;
+        if (!ok) {
+            return;
+        }
         uint256 big = _measure(key, AMOUNT);
         uint256 small = _measure(key, AMOUNT / 100);
         assertGt(big, 0, "converted at 20%");
@@ -131,9 +143,13 @@ contract Round108RobinhoodForkTest is Test {
     }
 
     function test_fork_autoConvertsIntoTheStock_insideASwap() public {
-        if (!forked) return;
+        if (!forked) {
+            return;
+        }
         (PoolKey memory key, bool ok) = _liveKey();
-        if (!ok) return;
+        if (!ok) {
+            return;
+        }
         AB t = _tracker(key);
         t.setSlippageBps(2_000);
         R108LockHarness h = new R108LockHarness(PM);

@@ -24,3 +24,8 @@ remappings = [
 
 [rpc_endpoints]
 rh-mainnet = "${ROBINHOOD_RPC_URL}"
+
+[fmt]
+# "preserve" (the default) strips the braces off one-line multi-statement blocks in forge 1.5.1, silently
+# changing control flow; "multi" expands them instead.
+single_line_statement_blocks = "multi"

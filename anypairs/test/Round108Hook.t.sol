@@ -51,7 +51,9 @@ contract Round108HookTest is Test {
         bytes32 initHash = keccak256(init);
         uint256 salt;
         for (;; ++salt) {
-            if (uint160(vm.computeCreate2Address(bytes32(salt), initHash, address(this))) & FLAG_MASK == FLAGS) break;
+            if (uint160(vm.computeCreate2Address(bytes32(salt), initHash, address(this))) & FLAG_MASK == FLAGS) {
+                break;
+            }
         }
         hook = new RealmAnyPairsTaxHookPairImmutable{salt: bytes32(salt)}(pm, address(this), makeAddr("platform"));
         hook.setLauncher(address(this), true);

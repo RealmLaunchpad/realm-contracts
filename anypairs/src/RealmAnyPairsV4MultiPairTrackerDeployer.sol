@@ -9,7 +9,10 @@ import {RealmAnyPairsDividendTrackerMultiBasket} from "./RealmAnyPairsDividendTr
 /// @dev Kept separate from {RealmAnyPairsV4PairTrackerDeployer} because dependents link each library's
 ///      address, so merging them would change linked bytecode and invalidate mined CREATE2 salts.
 library RealmAnyPairsV4MultiPairTrackerDeployer {
-    function deployMultiBasketTracker(RealmAnyPairsDividendTrackerMultiBasket.Config memory c) external returns (address) {
+    function deployMultiBasketTracker(RealmAnyPairsDividendTrackerMultiBasket.Config memory c)
+        external
+        returns (address)
+    {
         return address(new RealmAnyPairsDividendTrackerMultiBasket(c));
     }
 }

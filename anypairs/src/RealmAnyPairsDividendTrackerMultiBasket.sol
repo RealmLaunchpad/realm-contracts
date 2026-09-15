@@ -8,7 +8,12 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {RealmAnyPairsRouteLib} from "./RealmAnyPairsRouteLib.sol";
 
 interface ISwapRouter02 {
-    struct ExactInputParams { bytes path; address recipient; uint256 amountIn; uint256 amountOutMinimum; }
+    struct ExactInputParams {
+        bytes path;
+        address recipient;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+    }
     function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut);
 }
 
@@ -21,7 +26,9 @@ interface IUniswapV3Pool {
     function liquidity() external view returns (uint128);
 }
 
-interface IExttload { function exttload(bytes32 slot) external view returns (bytes32); }
+interface IExttload {
+    function exttload(bytes32 slot) external view returns (bytes32);
+}
 
 /**
  * @title RealmAnyPairsDividendTrackerMultiBasket
@@ -76,8 +83,7 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     address public immutable poolManager;
     /// @notice The real Uniswap V3 factory, used to discover each non-direct leg's route.
     address public immutable v3Factory;
-    bytes32 internal constant V4_IS_UNLOCKED_SLOT =
-        0xc090fc4683624cfc3884e9d8de5eca132f2d0ec062aff75d43c0465d5ceeab23;
+    bytes32 internal constant V4_IS_UNLOCKED_SLOT = 0xc090fc4683624cfc3884e9d8de5eca132f2d0ec062aff75d43c0465d5ceeab23;
     /// @notice Immutable overflow-safe floor (`totalSupply / 1e4` from the launcher). It gates reward booking, so
     /// `magnifiedRewardPerShare <= D*2^128/minEligibleFloor` regardless of {minEligible}.
     uint256 public immutable minEligibleFloor;
@@ -91,11 +97,14 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     mapping(address => bool) public isDenomination;
 
     /// @notice A leg names an output asset and a weight; its route is discovered, never supplied by the creator.
-    struct Leg { address asset; uint16 bps; }
+    struct Leg {
+        address asset;
+        uint16 bps;
+    }
     // Each denomination has its own basket, flattened into parallel mappings.
     mapping(address => uint256) public legCountOf; // denomination -> that denomination's leg count
-    mapping(address => mapping(uint256 => address)) private _legAsset;   // [denomination][legIndex]
-    mapping(address => mapping(uint256 => uint16)) private _legBps;      // [denomination][legIndex]
+    mapping(address => mapping(uint256 => address)) private _legAsset; // [denomination][legIndex]
+    mapping(address => mapping(uint256 => uint16)) private _legBps; // [denomination][legIndex]
     /// @dev Set only across this contract's own V4 unlock, so {unlockCallback} runs on nothing else.
     bool private transient _v4Swapping;
 
@@ -127,7 +136,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
 
     /// @notice INTRA-HOLDER cursor: the index into {denominations} at which the next {process} call
     /// resumes for the holder {lastProcessedIndex} is currently parked on. See {_lastProcessedDenom}.
-    function lastProcessedDenom() public view returns (uint256) { return _lastProcessedDenom; }
+    function lastProcessedDenom() public view returns (uint256) {
+        return _lastProcessedDenom;
+    }
 
     uint256 private _entered = 1;
 
@@ -170,11 +181,31 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     error TooManyLegs();
     error NotADenomination();
 
-    modifier onlyToken() { if (msg.sender != token) revert OnlyToken(); _; }
-    modifier onlyFeeder() { if (msg.sender != feeder) revert OnlyFeeder(); _; }
-    modifier nonReentrant() { if (_entered == 2) revert Reentrancy(); _entered = 2; _; _entered = 1; }
+    modifier onlyToken() {
+        if (msg.sender != token) {
+            revert OnlyToken();
+        }
+        _;
+    }
+    modifier onlyFeeder() {
+        if (msg.sender != feeder) {
+            revert OnlyFeeder();
+        }
+        _;
+    }
+    modifier nonReentrant() {
+        if (_entered == 2) {
+            revert Reentrancy();
+        }
+        _entered = 2;
+        _;
+        _entered = 1;
+    }
 
-    struct DenomBasket { address denomination; Leg[] legs; }
+    struct DenomBasket {
+        address denomination;
+        Leg[] legs;
+    }
 
     struct Config {
         address token;
@@ -198,43 +229,66 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         uint256 me_ = c.minEligible == 0 ? 1 : c.minEligible;
         minEligibleFloor = me_;
         minEligible = me_;
-        for (uint256 i; i < c.excluded.length; ++i) excluded[c.excluded[i]] = true;
+        for (uint256 i; i < c.excluded.length; ++i) {
+            excluded[c.excluded[i]] = true;
+        }
         excluded[c.token] = true;
         excluded[address(this)] = true;
         excluded[address(0)] = true;
         excluded[c.feeder] = true;
         // The router keeps denomination dust mid-swap; it must not accrue rewards against it.
-        if (c.swapRouter != address(0)) excluded[c.swapRouter] = true;
+        if (c.swapRouter != address(0)) {
+            excluded[c.swapRouter] = true;
+        }
 
         uint256 dn = c.denomBaskets.length;
-        if (dn == 0) revert BadDenominations();
-        if (dn > ABSOLUTE_MAX_DENOMINATIONS) revert AboveAbsoluteMax();
+        if (dn == 0) {
+            revert BadDenominations();
+        }
+        if (dn > ABSOLUTE_MAX_DENOMINATIONS) {
+            revert AboveAbsoluteMax();
+        }
         uint256 totalLegs;
         for (uint256 di; di < dn; ++di) {
             DenomBasket memory db = c.denomBaskets[di];
             address d = db.denomination;
-            if (d == address(0) || isDenomination[d]) revert BadDenominations();
+            if (d == address(0) || isDenomination[d]) {
+                revert BadDenominations();
+            }
             isDenomination[d] = true;
             denominations.push(d);
 
             // Same basket validation as the single-denomination tracker, run once per denomination.
             uint256 n = db.legs.length;
-            if (n == 0 || n > MAX_LEGS) revert BadBasket();
+            if (n == 0 || n > MAX_LEGS) {
+                revert BadBasket();
+            }
             totalLegs += n;
-            if (totalLegs > MAX_TOTAL_LEGS) revert TooManyLegs();
+            if (totalLegs > MAX_TOTAL_LEGS) {
+                revert TooManyLegs();
+            }
             uint256 sumBps;
             for (uint256 i; i < n; ++i) {
                 Leg memory leg = db.legs[i];
-                if (leg.asset == address(0) || leg.bps == 0) revert BadBasket();
+                if (leg.asset == address(0) || leg.bps == 0) {
+                    revert BadBasket();
+                }
                 sumBps += leg.bps;
                 _legAsset[d][i] = leg.asset;
                 _legBps[d][i] = leg.bps;
             }
-            if (sumBps != BPS) revert BadBasket();
+            if (sumBps != BPS) {
+                revert BadBasket();
+            }
             legCountOf[d] = n;
         }
     }
-    function basketLeg(address denomination, uint256 i) external view returns (address asset, uint16 bps, bytes memory path) {
+
+    function basketLeg(address denomination, uint256 i)
+        external
+        view
+        returns (address asset, uint16 bps, bytes memory path)
+    {
         asset = _legAsset[denomination][i];
         bps = _legBps[denomination][i];
         // The route a conversion would take right now (empty for a direct leg or when none exists).
@@ -248,7 +302,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         }
     }
 
-    function denominationCount() external view returns (uint256) { return denominations.length; }
+    function denominationCount() external view returns (uint256) {
+        return denominations.length;
+    }
 
     /// @notice Worst-case gas {setBalance} needs for this tracker's denomination count. {RealmAnyPairsTokenDividend}
     /// reads it once when linked and forwards it on every transfer.
@@ -261,14 +317,18 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     // ─────────────────────────── balance mirror (token-driven) ───────────────────────────
 
     function setBalance(address account, uint256 newBalance) external onlyToken {
-        if (excluded[account]) newBalance = 0;
+        if (excluded[account]) {
+            newBalance = 0;
+        }
         _applyBalance(account, newBalance);
     }
 
     /// @dev The per-transfer cost center: one correction per denomination. See {balanceSyncGas}.
     function _applyBalance(address account, uint256 newBalance) internal {
         uint256 old = trackedBalance[account];
-        if (newBalance == old) return;
+        if (newBalance == old) {
+            return;
+        }
         uint256 dCount = denominations.length;
         if (newBalance > old) {
             uint256 add = newBalance - old;
@@ -291,7 +351,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         // Ring membership is gated on `minEligible` so dust accounts cannot fill the gas-bounded ring. Accrual above
         // is unaffected; sub-threshold holders just claim instead of being pushed.
         if (newBalance < minEligible) {
-            if (idx1 != 0) _removeHolder(account, idx1);
+            if (idx1 != 0) {
+                _removeHolder(account, idx1);
+            }
         } else if (idx1 == 0) {
             _holders.push(account);
             _holderIdx1[account] = _holders.length;
@@ -309,7 +371,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         _holderIdx1[account] = 0;
     }
 
-    function holderCount() external view returns (uint256) { return _holders.length; }
+    function holderCount() external view returns (uint256) {
+        return _holders.length;
+    }
 
     // ─────────────────────────── creator-settable eligibility floor ───────────────────────────
 
@@ -318,10 +382,18 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     /// @dev Only ring membership depends on this; accrual continues for holders below it. Booking is gated on the
     /// immutable floor, so this setter cannot strand rewards in `pending` or weaken the overflow bound.
     function setMinEligible(uint256 newMinEligible) external {
-        if (msg.sender != _tokenCreator()) revert NotCreator();
-        if (newMinEligible < minEligibleFloor) revert MinEligibleBelowFloor();
-        if (newMinEligible > minEligibleFloor * MAX_MIN_ELIGIBLE_MULTIPLE) revert MinEligibleTooHigh();
-        if (newMinEligible > eligibleSupply) revert MinEligibleTooHigh();
+        if (msg.sender != _tokenCreator()) {
+            revert NotCreator();
+        }
+        if (newMinEligible < minEligibleFloor) {
+            revert MinEligibleBelowFloor();
+        }
+        if (newMinEligible > minEligibleFloor * MAX_MIN_ELIGIBLE_MULTIPLE) {
+            revert MinEligibleTooHigh();
+        }
+        if (newMinEligible > eligibleSupply) {
+            revert MinEligibleTooHigh();
+        }
         emit MinEligibleSet(minEligible, newMinEligible);
         minEligible = newMinEligible;
     }
@@ -334,33 +406,48 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
             feeder.staticcall{gas: 50_000}(abi.encodeWithSignature("creatorOfCoin(address)", token));
         if (hok && hret.length >= 32) {
             c = abi.decode(hret, (address));
-            if (c == address(0)) revert NotCreator();
+            if (c == address(0)) {
+                revert NotCreator();
+            }
             return c;
         }
         (bool ok, bytes memory ret) = token.staticcall{gas: 20_000}(abi.encodeWithSelector(0x02d05d3f)); // creator()
-        if (!ok || ret.length < 32) revert NotCreator();
+        if (!ok || ret.length < 32) {
+            revert NotCreator();
+        }
         c = abi.decode(ret, (address));
-        if (c == address(0)) revert NotCreator();
+        if (c == address(0)) {
+            revert NotCreator();
+        }
     }
 
-
-    function syncBalance(address account) external nonReentrant { _syncBalance(account); }
+    function syncBalance(address account) external nonReentrant {
+        _syncBalance(account);
+    }
 
     function syncBalances(address[] calldata accounts) external nonReentrant {
-        for (uint256 i; i < accounts.length; ++i) _syncBalance(accounts[i]);
+        for (uint256 i; i < accounts.length; ++i) {
+            _syncBalance(accounts[i]);
+        }
     }
 
     function _syncBalance(address account) internal {
         if (excluded[account]) {
-            if (trackedBalance[account] != 0) _applyBalance(account, 0);
+            if (trackedBalance[account] != 0) {
+                _applyBalance(account, 0);
+            }
             return;
         }
         // Low-level so a revert or short return skips the repair instead of bricking {process} or a claim.
         // Uncapped on purpose: `token` is the immutable launcher-deployed coin with a plain `balanceOf`.
         (bool ok, bytes memory ret) = token.staticcall(abi.encodeWithSelector(0x70a08231, account));
-        if (!ok || ret.length < 32) return;
+        if (!ok || ret.length < 32) {
+            return;
+        }
         uint256 real = abi.decode(ret, (uint256));
-        if (real != trackedBalance[account]) _applyBalance(account, real);
+        if (real != trackedBalance[account]) {
+            _applyBalance(account, real);
+        }
     }
 
     /// @notice Round-robin push of every denomination's raw accrual, one holder per turn; never converts legs.
@@ -368,7 +455,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     /// resumed at {lastProcessedDenom}. The in-swap gate is asked per denomination and memoised per call.
     function process(uint256 gasBudget) external nonReentrant returns (uint256 pushed) {
         uint256 n = _holders.length;
-        if (n == 0) return 0;
+        if (n == 0) {
+            return 0;
+        }
         uint256 dCount = denominations.length;
         bool locked = _v4LockHeld();
         // In-swap gate answers, memoised lazily so only denominations the walk reaches pay the staticcall.
@@ -385,9 +474,13 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         uint256 newDenomCursor = resumeDenom;
         uint256 iterations;
         while (iterations < n) {
-            if (gasleft() < turnFloor) break;
+            if (gasleft() < turnFloor) {
+                break;
+            }
             uint256 len = _holders.length; // re-read: a payout can shrink the set via {_removeHolder}
-            if (len == 0) break;
+            if (len == 0) {
+                break;
+            }
             uint256 nextIdx = idx + 1 < len ? idx + 1 : 0;
             address h = _holders[nextIdx];
             // Resume mid-sweep only for the holder we actually parked on: swap-and-pop can move a different
@@ -397,22 +490,36 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
             uint256 startDi = di;
             bool finishedHolder = true;
             for (; di < dCount; ++di) {
-                if (gasleft() < turnFloor) { finishedHolder = false; break; }
+                if (gasleft() < turnFloor) {
+                    finishedHolder = false;
+                    break;
+                }
                 // Check the budget before each denomination, not after the last, so a finished holder is not parked.
                 // `di != startDi` guarantees at least one denomination of progress per visit.
-                if (di != startDi && gasStart - gasleft() > gasBudget) { finishedHolder = false; break; }
+                if (di != startDi && gasStart - gasleft() > gasBudget) {
+                    finishedHolder = false;
+                    break;
+                }
                 if (locked) {
                     uint8 a = allowedCache[di];
-                    if (a == 0) { a = _inSwapAllowed(denominations[di]) ? 2 : 1; allowedCache[di] = a; }
-                    if (a == 1) continue; // per-denomination: each denomination is denied independently
+                    if (a == 0) {
+                        a = _inSwapAllowed(denominations[di]) ? 2 : 1;
+                        allowedCache[di] = a;
+                    }
+                    if (a == 1) {
+                        continue; // per-denomination: each denomination is denied independently
+                    }
                 }
                 address d = denominations[di];
                 uint256 amt = claimableOf(h, d);
                 if (amt != 0) {
                     // The debit lives inside the capped {pushReward} frame, so a failed payout unwinds itself and
                     // `turnFloor` only has to cover the cursor writes.
-                    try this.pushReward{gas: PUSH_GAS}(h, d, amt) { unchecked { ++pushed; } }
-                    catch {
+                    try this.pushReward{gas: PUSH_GAS}(h, d, amt) {
+                        unchecked {
+                            ++pushed;
+                        }
+                    } catch {
                         // No rollback: the debit is inside the reverted frame and is already undone.
                         emit LegPaymentFailed(h, d, amt);
                     }
@@ -422,24 +529,34 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
                 // Park ON this holder (idx deliberately NOT advanced) and remember where in their sweep we
                 // stopped, so the next call finishes them instead of starting them over.
                 newDenomCursor = di < dCount ? di : 0;
-                if (newDenomCursor != 0 && lastProcessedHolder != h) lastProcessedHolder = h;
+                if (newDenomCursor != 0 && lastProcessedHolder != h) {
+                    lastProcessedHolder = h;
+                }
                 break;
             }
             idx = nextIdx;
             newDenomCursor = 0;
-            unchecked { ++iterations; }
-            if (gasStart - gasleft() > gasBudget) break;
+            unchecked {
+                ++iterations;
+            }
+            if (gasStart - gasleft() > gasBudget) {
+                break;
+            }
         }
         lastProcessedIndex = idx;
         // Second write to the packed slot on the park branch, hence ~100 gas rather than a second
         // SSTORE_SET. uint96 cannot truncate: `newDenomCursor < dCount <= ABSOLUTE_MAX_DENOMINATIONS`.
-        if (newDenomCursor != _lastProcessedDenom) _lastProcessedDenom = uint96(newDenomCursor);
+        if (newDenomCursor != _lastProcessedDenom) {
+            _lastProcessedDenom = uint96(newDenomCursor);
+        }
     }
 
     /// @dev Self-only, gas-capped payout for {process}. The ledger debit and `_spend` sit in this frame so a failed
     /// payout unwinds them.
     function pushReward(address account, address denomination, uint256 amount) external {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         withdrawnRewards[account][denomination] += amount; // CEI: debited before the transfer, same frame
         _spend(denomination, amount); // same frame as the transfer: a revert rolls it back
         // The debit stays nominal; only the event reports the measured inflow (saturating, clamped to `amount`).
@@ -447,7 +564,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         IERC20(denomination).safeTransfer(account, amount);
         uint256 aft = IERC20(denomination).balanceOf(account);
         uint256 delivered = aft > before ? aft - before : 0;
-        if (delivered > amount) delivered = amount;
+        if (delivered > amount) {
+            delivered = amount;
+        }
         emit RewardClaimed(account, denomination, denomination, delivered);
     }
 
@@ -467,13 +586,19 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         nonReentrant
         returns (uint256 processed)
     {
-        if (_v4LockHeld()) revert NotDuringSwap();
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
         uint256 cap = PROCESS_HOLDER_BASE_GAS + PROCESS_HOLDER_PER_DENOM_GAS * denominations.length;
         uint256 gasStart = gasleft();
         for (uint256 i; i < holders.length; ++i) {
-            if (gasStart - gasleft() > gasBudget) break;
+            if (gasStart - gasleft() > gasBudget) {
+                break;
+            }
             try this._processHolder{gas: cap}(holders[i]) {
-                unchecked { ++processed; }
+                unchecked {
+                    ++processed;
+                }
             } catch {
                 emit HolderPayoutFailed(holders[i]);
             }
@@ -483,7 +608,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     /// @dev Self-only. Pays `holder` themselves in every owed denomination via {_payDirect}, so one blocked
     /// denomination re-credits itself and the others still pay. Reverts if nothing was paid.
     function _processHolder(address holder) external {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         // Repair a starved-gas desync before paying, so a phantom balance cannot be paid.
         _syncBalance(holder);
         uint256 dCount = denominations.length;
@@ -491,15 +618,23 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         for (uint256 di; di < dCount; ++di) {
             address d = denominations[di];
             uint256 amt = claimableOf(holder, d);
-            if (amt == 0) continue;
+            if (amt == 0) {
+                continue;
+            }
             uint256 wBefore = withdrawnRewards[holder][d];
             withdrawnRewards[holder][d] += amt; // CEI; rolled back by {_payDirect} if the transfer reverts
             _payDirect(holder, holder, d, amt);
             // {_payDirect} re-credits on a reverted transfer, so this is how a denomination that actually
             // paid is told apart from one that was merely attempted -- the paid counter must count the former.
-            if (withdrawnRewards[holder][d] != wBefore) { unchecked { ++paid; } }
+            if (withdrawnRewards[holder][d] != wBefore) {
+                unchecked {
+                    ++paid;
+                }
+            }
         }
-        if (paid == 0) revert NothingToClaim();
+        if (paid == 0) {
+            revert NothingToClaim();
+        }
     }
 
     function pokePending() external nonReentrant {
@@ -507,7 +642,11 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         for (uint256 i; i < dCount; ++i) {
             address d = denominations[i];
             // Gated on {minEligibleFloor}, not the creator-settable {minEligible} -- see {_receive}.
-            if (pending[d] != 0 && eligibleSupply >= minEligibleFloor) { uint256 p = pending[d]; pending[d] = 0; _book(d, p); }
+            if (pending[d] != 0 && eligibleSupply >= minEligibleFloor) {
+                uint256 p = pending[d];
+                pending[d] = 0;
+                _book(d, p);
+            }
         }
     }
 
@@ -515,13 +654,19 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
 
     /// @notice Called by the hook after it transfers a rewards slice for some pool of this coin. The argument is
     /// ignored; the call does not say which denomination arrived, so every denomination's balance is synced.
-    function feedToken(uint256) external onlyFeeder nonReentrant { _syncAll(); }
+    function feedToken(uint256) external onlyFeeder nonReentrant {
+        _syncAll();
+    }
 
-    function sync() external nonReentrant { _syncAll(); }
+    function sync() external nonReentrant {
+        _syncAll();
+    }
 
     function _syncAll() internal {
         uint256 dCount = denominations.length;
-        for (uint256 i; i < dCount; ++i) _syncOne(denominations[i]);
+        for (uint256 i; i < dCount; ++i) {
+            _syncOne(denominations[i]);
+        }
     }
 
     function _syncOne(address d) internal {
@@ -529,7 +674,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         uint256 r = reserve[d];
         if (bal <= r) {
             // Never write `reserve[d]` down: a shortfall holds the baseline so later income repairs it first.
-            if (bal < r) emit RewardShortfall(d, r, bal);
+            if (bal < r) {
+                emit RewardShortfall(d, r, bal);
+            }
             return;
         }
         uint256 delta = bal - r;
@@ -548,11 +695,20 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     }
 
     function _receive(address d, uint256 amount) internal {
-        if (amount == 0) return;
+        if (amount == 0) {
+            return;
+        }
         // Gated on the immutable floor, never the creator-settable {minEligible}, so the creator cannot divert
         // income into `pending`.
-        if (eligibleSupply < minEligibleFloor) { pending[d] += amount; return; }
-        if (pending[d] != 0) { uint256 p = pending[d]; pending[d] = 0; _book(d, p); }
+        if (eligibleSupply < minEligibleFloor) {
+            pending[d] += amount;
+            return;
+        }
+        if (pending[d] != 0) {
+            uint256 p = pending[d];
+            pending[d] = 0;
+            _book(d, p);
+        }
         _book(d, amount);
     }
 
@@ -606,19 +762,31 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     function _zeroMinOutsForAllDenoms() internal view returns (uint256[][] memory minOutsPerDenom) {
         uint256 dCount = denominations.length;
         minOutsPerDenom = new uint256[][](dCount);
-        for (uint256 i; i < dCount; ++i) minOutsPerDenom[i] = new uint256[](legCountOf[denominations[i]]);
+        for (uint256 i; i < dCount; ++i) {
+            minOutsPerDenom[i] = new uint256[](legCountOf[denominations[i]]);
+        }
     }
 
     function _v4LockHeld() internal view returns (bool) {
         address pm = poolManager;
-        if (pm == address(0)) return false;
+        if (pm == address(0)) {
+            return false;
+        }
         return IExttload(pm).exttload(V4_IS_UNLOCKED_SLOT) != bytes32(0);
     }
-    function claimToWithMinOuts(address to, uint256[][] memory minOutsPerDenom) public nonReentrant returns (uint256 totalDenomsPaid) {
-        if (_v4LockHeld()) revert NotDuringSwap();
+
+    function claimToWithMinOuts(address to, uint256[][] memory minOutsPerDenom)
+        public
+        nonReentrant
+        returns (uint256 totalDenomsPaid)
+    {
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
         _checkRecipient(to);
         return _claim(msg.sender, to, minOutsPerDenom, _emptyRoutes());
     }
+
     /// @notice Claim with a caller-supplied route per leg. An empty route is discovered on-chain; otherwise it is a
     /// 43-byte V3 path or an ABI-encoded V4 `PoolKey` (the only way to reach a hooked V4 pool).
     /// `routesPerDenom` is indexed like `minOutsPerDenom`: by denomination, then by leg.
@@ -636,7 +804,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         nonReentrant
         returns (uint256 totalDenomsPaid)
     {
-        if (_v4LockHeld()) revert NotDuringSwap();
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
         _checkRecipient(to);
         _requireRoutes(routesPerDenom);
         return _claim(msg.sender, to, minOutsPerDenom, routesPerDenom);
@@ -645,15 +815,23 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     /// @dev Validates every supplied route up front, so a bad one fails the claim loudly.
     function _requireRoutes(bytes[][] memory routesPerDenom) internal view {
         uint256 dCount = denominations.length;
-        if (routesPerDenom.length != dCount) revert BadRoutes();
+        if (routesPerDenom.length != dCount) {
+            revert BadRoutes();
+        }
         for (uint256 di; di < dCount; ++di) {
             address d = denominations[di];
             bytes[] memory routes = routesPerDenom[di];
-            if (routes.length != legCountOf[d]) revert BadRoutes();
+            if (routes.length != legCountOf[d]) {
+                revert BadRoutes();
+            }
             for (uint256 i; i < routes.length; ++i) {
                 address asset = _legAsset[d][i];
-                if (routes[i].length == 0 || asset == d) continue;
-                RealmAnyPairsRouteLib.supplied(routes[i], swapRouter == address(0) ? address(0) : v3Factory, poolManager, d, false, asset, feeder);
+                if (routes[i].length == 0 || asset == d) {
+                    continue;
+                }
+                RealmAnyPairsRouteLib.supplied(
+                    routes[i], swapRouter == address(0) ? address(0) : v3Factory, poolManager, d, false, asset, feeder
+                );
             }
         }
     }
@@ -662,7 +840,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     function _emptyRoutes() internal view returns (bytes[][] memory routes) {
         uint256 dCount = denominations.length;
         routes = new bytes[][](dCount);
-        for (uint256 di; di < dCount; ++di) routes[di] = new bytes[](legCountOf[denominations[di]]);
+        for (uint256 di; di < dCount; ++di) {
+            routes[di] = new bytes[](legCountOf[denominations[di]]);
+        }
     }
 
     /// @notice Partial claim: pay out only the named denominations, for when a whole-basket claim is too large for
@@ -674,30 +854,50 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         nonReentrant
         returns (uint256 totalDenomsPaid)
     {
-        if (_v4LockHeld()) revert NotDuringSwap();
+        if (_v4LockHeld()) {
+            revert NotDuringSwap();
+        }
         _checkRecipient(to);
-        if (denoms.length == 0 || denoms.length != minOuts.length) revert BadMinOuts();
+        if (denoms.length == 0 || denoms.length != minOuts.length) {
+            revert BadMinOuts();
+        }
         _syncBalance(msg.sender);
         uint256 owedCount;
         for (uint256 i; i < denoms.length; ++i) {
             address d = denoms[i];
-            if (!isDenomination[d]) revert NotADenomination();
+            if (!isDenomination[d]) {
+                revert NotADenomination();
+            }
             (bool owed, bool delivered) = _payDenomination(msg.sender, to, d, minOuts[i], new bytes[](legCountOf[d]));
-            if (owed) { unchecked { ++owedCount; } }
-            if (delivered) { unchecked { ++totalDenomsPaid; } }
+            if (owed) {
+                unchecked {
+                    ++owedCount;
+                }
+            }
+            if (delivered) {
+                unchecked {
+                    ++totalDenomsPaid;
+                }
+            }
         }
         // Nothing owed and owed-but-undeliverable are different failures; see {NothingDelivered}.
-        if (owedCount == 0) revert NothingToClaim();
-        if (totalDenomsPaid == 0) revert NothingDelivered();
+        if (owedCount == 0) {
+            revert NothingToClaim();
+        }
+        if (totalDenomsPaid == 0) {
+            revert NothingDelivered();
+        }
     }
 
     /// @dev Rejects recipients where a reward would be burned, stranded or re-booked (this tracker re-books on
     /// {sync}). Guards against UI mistakes; it does not cover every excluded address.
     function _checkRecipient(address to) internal view {
         if (
-            to == address(0) || to == address(this) || to == token || isDenomination[to]
-                || to == swapRouter || to == feeder || to == poolManager
-        ) revert ZeroRecipient();
+            to == address(0) || to == address(this) || to == token || isDenomination[to] || to == swapRouter
+                || to == feeder || to == poolManager
+        ) {
+            revert ZeroRecipient();
+        }
     }
 
     /// @dev Runs the basket claim body for every denomination with a non-zero accrual. Reverts {NothingToClaim} if
@@ -707,18 +907,34 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         returns (uint256 totalDenomsPaid)
     {
         uint256 dCount = denominations.length;
-        if (minOutsPerDenom.length != dCount) revert BadMinOuts();
-        if (routesPerDenom.length != dCount) revert BadRoutes();
+        if (minOutsPerDenom.length != dCount) {
+            revert BadMinOuts();
+        }
+        if (routesPerDenom.length != dCount) {
+            revert BadRoutes();
+        }
         _syncBalance(account);
         uint256 owedCount;
         for (uint256 di; di < dCount; ++di) {
             (bool owed, bool delivered) =
                 _payDenomination(account, to, denominations[di], minOutsPerDenom[di], routesPerDenom[di]);
-            if (owed) { unchecked { ++owedCount; } }
-            if (delivered) { unchecked { ++totalDenomsPaid; } }
+            if (owed) {
+                unchecked {
+                    ++owedCount;
+                }
+            }
+            if (delivered) {
+                unchecked {
+                    ++totalDenomsPaid;
+                }
+            }
         }
-        if (owedCount == 0) revert NothingToClaim();
-        if (totalDenomsPaid == 0) revert NothingDelivered();
+        if (owedCount == 0) {
+            revert NothingToClaim();
+        }
+        if (totalDenomsPaid == 0) {
+            revert NothingDelivered();
+        }
     }
 
     /// @dev One denomination's whole basket. `owed` is whether the ledger had a balance; `delivered` is whether
@@ -728,11 +944,17 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         returns (bool owed, bool delivered)
     {
         uint256 totalAmount = claimableOf(account, d);
-        if (totalAmount == 0) return (false, false);
+        if (totalAmount == 0) {
+            return (false, false);
+        }
         owed = true;
         uint256 legCount = legCountOf[d];
-        if (minOuts.length != legCount) revert BadMinOuts();
-        if (routes.length != legCount) revert BadRoutes();
+        if (minOuts.length != legCount) {
+            revert BadMinOuts();
+        }
+        if (routes.length != legCount) {
+            revert BadRoutes();
+        }
         uint256 wBefore = withdrawnRewards[account][d];
         withdrawnRewards[account][d] += totalAmount; // CEI, per denomination
         uint256 distributed;
@@ -740,7 +962,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
             address asset = _legAsset[d][i];
             uint256 legAmt = i + 1 == legCount ? totalAmount - distributed : (totalAmount * _legBps[d][i]) / BPS;
             distributed += legAmt;
-            if (legAmt == 0) continue;
+            if (legAmt == 0) {
+                continue;
+            }
             _payLeg(account, to, d, asset, legAmt, minOuts[i], routes[i]);
         }
         delivered = withdrawnRewards[account][d] != wBefore;
@@ -761,13 +985,19 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
             _payDirect(account, to, denomination, quoteAmt);
             return;
         }
-        if (gasleft() < LEG_GAS_CAP * 64 / 63 + 30_000) revert InsufficientGasForLeg();
+        if (gasleft() < LEG_GAS_CAP * 64 / 63 + 30_000) {
+            revert InsufficientGasForLeg();
+        }
 
-        try this._executeSwap{gas: LEG_GAS_CAP}(to, denomination, asset, quoteAmt, minOut, route) returns (uint256 out) {
+        try this._executeSwap{gas: LEG_GAS_CAP}(to, denomination, asset, quoteAmt, minOut, route) returns (
+            uint256 out
+        ) {
             emit RewardClaimed(account, denomination, asset, out);
         } catch {
             // The raw fallback is opt-in: a caller who set a floor gets the claim unwound and can retry.
-            if (minOut != 0) revert LegMinOutUnmet();
+            if (minOut != 0) {
+                revert LegMinOutUnmet();
+            }
             emit LegSwapFailed(account, denomination, asset, quoteAmt);
             _payDirect(account, to, denomination, quoteAmt);
         }
@@ -782,36 +1012,58 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         uint256 minOut,
         bytes memory route
     ) external returns (uint256 out) {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         // Caller's route if supplied, otherwise discovered now, inside the gas-capped frame.
         RealmAnyPairsRouteLib.Route memory r = route.length == 0
-            ? RealmAnyPairsRouteLib.best(swapRouter == address(0) ? address(0) : v3Factory, poolManager, denomination, false, asset)
-            : RealmAnyPairsRouteLib.supplied(route, swapRouter == address(0) ? address(0) : v3Factory, poolManager, denomination, false, asset, feeder);
-        if (r.venue == RealmAnyPairsRouteLib.VENUE_NONE) revert NoRouteFound();
+            ? RealmAnyPairsRouteLib.best(
+                swapRouter == address(0) ? address(0) : v3Factory, poolManager, denomination, false, asset
+            )
+            : RealmAnyPairsRouteLib.supplied(
+                route,
+                swapRouter == address(0) ? address(0) : v3Factory,
+                poolManager,
+                denomination,
+                false,
+                asset,
+                feeder
+            );
+        if (r.venue == RealmAnyPairsRouteLib.VENUE_NONE) {
+            revert NoRouteFound();
+        }
         uint256 before = IERC20(asset).balanceOf(account);
         if (r.venue == RealmAnyPairsRouteLib.VENUE_V3) {
             IERC20(denomination).forceApprove(swapRouter, quoteAmt);
-            ISwapRouter02(swapRouter).exactInput(
-                ISwapRouter02.ExactInputParams({
-                    path: RealmAnyPairsRouteLib.v3Path(r, asset), recipient: account, amountIn: quoteAmt, amountOutMinimum: minOut
-                })
-            );
+            ISwapRouter02(swapRouter)
+                .exactInput(
+                    ISwapRouter02.ExactInputParams({
+                        path: RealmAnyPairsRouteLib.v3Path(r, asset),
+                        recipient: account,
+                        amountIn: quoteAmt,
+                        amountOutMinimum: minOut
+                    })
+                );
             IERC20(denomination).forceApprove(swapRouter, 0);
         } else {
             _v4Swapping = true;
-            IPoolManager(poolManager).unlock(
-                abi.encode(account, denomination, asset, r.fee, r.tickSpacing, r.hooks, quoteAmt, minOut)
-            );
+            IPoolManager(poolManager)
+                .unlock(abi.encode(account, denomination, asset, r.fee, r.tickSpacing, r.hooks, quoteAmt, minOut));
             _v4Swapping = false;
         }
         uint256 aft = IERC20(asset).balanceOf(account);
         out = aft > before ? aft - before : 0;
-        if (out < minOut) revert RealizedBelowMinOut();
+        if (out < minOut) {
+            revert RealizedBelowMinOut();
+        }
         _spend(denomination, quoteAmt);
     }
+
     /// @notice PoolManager callback for a V4 leg swap started by {_executeSwap}; runs only inside this contract's own unlock.
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != poolManager || !_v4Swapping) revert OnlySelf();
+        if (msg.sender != poolManager || !_v4Swapping) {
+            revert OnlySelf();
+        }
         (
             address to,
             address tokenIn,
@@ -826,7 +1078,9 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
         uint256 out = RealmAnyPairsRouteLib.swapExactIn(
             pm, RealmAnyPairsRouteLib.poolKey(tokenIn, asset, fee, spacing, hooks), tokenIn, amountIn
         );
-        if (out < minOut) revert RealizedBelowMinOut();
+        if (out < minOut) {
+            revert RealizedBelowMinOut();
+        }
         RealmAnyPairsRouteLib.settleAndTake(pm, tokenIn, amountIn, asset, to, out);
         return "";
     }
@@ -844,12 +1098,16 @@ contract RealmAnyPairsDividendTrackerMultiBasket {
     /// @dev Self-only so {_payDirect} can try/catch a SafeERC20 transfer.
     /// @return delivered The recipient's measured inflow (saturating), clamped to `amt`. Used only for the event.
     function _transferDirect(address to, address denomination, uint256 amt) external returns (uint256 delivered) {
-        if (msg.sender != address(this)) revert OnlySelf();
+        if (msg.sender != address(this)) {
+            revert OnlySelf();
+        }
         _spend(denomination, amt);
         uint256 before = IERC20(denomination).balanceOf(to);
         IERC20(denomination).safeTransfer(to, amt);
         uint256 aft = IERC20(denomination).balanceOf(to);
         delivered = aft > before ? aft - before : 0;
-        if (delivered > amt) delivered = amt;
+        if (delivered > amt) {
+            delivered = amt;
+        }
     }
 }
