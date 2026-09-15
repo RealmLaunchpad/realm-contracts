@@ -1769,8 +1769,8 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
         );
         _maybeAutoDistribute(id, c);
         // After the distribution, which is what credits {buybackPot}.
-        _maybeBuyback(key, id, c);
-        _maybeAddLiquidity(key, id, c);
+        _maybeBuyback(key, id);
+        _maybeAddLiquidity(key, id);
         _maybeReflect(key, id, c);
         _maybeConvertRewards(c);
         return (this.afterSwap.selector, feeReturn);
@@ -1826,10 +1826,11 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     }
 
     /// @dev The in-swap buyback attempt, after {_maybeAutoDistribute} credits the pot. Every failure (not enough gas,
-    /// a revert) is a deferral: {buybackPot} is kept for the next swap or {runBuyback}.
-    function _maybeBuyback(PoolKey calldata key, PoolId id, TaxConfig storage c) internal {
+    /// a revert) is a deferral: {buybackPot} is kept for the next swap or {runBuyback}. Gated on the pot, not on the
+    /// current slice, so a pot accrued before the slice was turned off is still spent.
+    function _maybeBuyback(PoolKey calldata key, PoolId id) internal {
         uint256 pot = buybackPot[id];
-        if (pot == 0 || c.buybackBps == 0) {
+        if (pot == 0) {
             return;
         }
         if (gasleft() < BUYBACK_CONVERT_GAS + SWAP_TAIL_RESERVE) {
@@ -1946,9 +1947,9 @@ contract RealmAnyPairsTaxHookPairImmutable is IUnlockCallback, RealmAnyPairsImmu
     }
 
     /// @dev In-swap attempt, mirroring {_maybeBuyback}: gas-gated, pot zeroed before the call, restored on failure.
-    function _maybeAddLiquidity(PoolKey calldata key, PoolId id, TaxConfig storage c) internal {
+    function _maybeAddLiquidity(PoolKey calldata key, PoolId id) internal {
         uint256 pot = lpPot[id];
-        if (pot == 0 || c.lpBps == 0) {
+        if (pot == 0) {
             return;
         }
         if (gasleft() < LP_CONVERT_GAS + SWAP_TAIL_RESERVE) {

@@ -83,20 +83,30 @@ contract Round108HookTest is Test {
     }
 
     function _launch(address tracker) internal returns (PoolKey memory key) {
-        RealmAnyPairsTokenPlain coin =
-            new RealmAnyPairsTokenPlain("C", "C", 1e30, address(this), address(this), 0, 0, new address[](0));
-        coin.approve(address(lp), type(uint256).max);
-        (address c0, address c1) =
-            address(coin) < address(quote) ? (address(coin), address(quote)) : (address(quote), address(coin));
-        key = PoolKey(Currency.wrap(c0), Currency.wrap(c1), 3000, 60, IHooks(address(hook)));
-        pm.initialize(key, TickMath.getSqrtPriceAtTick(0));
-        RealmAnyPairsTaxHookPairImmutable.ConfigParams memory p;
+        return _launchWith(_params(tracker));
+    }
+
+    function _params(address tracker) internal view returns (RealmAnyPairsTaxHookPairImmutable.ConfigParams memory p) {
         p.creator = address(this);
         p.buyBps = 300;
         p.sellBps = 300;
         p.autoThreshold = type(uint80).max;
         p.rewardsTracker = tracker;
         p.rewardsBps = tracker == address(0) ? 0 : 2000;
+    }
+
+    function _launchWith(RealmAnyPairsTaxHookPairImmutable.ConfigParams memory p)
+        internal
+        returns (PoolKey memory key)
+    {
+        RealmAnyPairsTokenPlain coin = new RealmAnyPairsTokenPlain(
+            "C", "C", 1e30, address(this), address(this), 0, 0, new address[](0)
+        );
+        coin.approve(address(lp), type(uint256).max);
+        (address c0, address c1) =
+            address(coin) < address(quote) ? (address(coin), address(quote)) : (address(quote), address(coin));
+        key = PoolKey(Currency.wrap(c0), Currency.wrap(c1), 3000, 60, IHooks(address(hook)));
+        pm.initialize(key, TickMath.getSqrtPriceAtTick(0));
         hook.configurePool(key, p);
         lp.modifyLiquidity(key, ModifyLiquidityParams(-60000, 60000, 1e25, bytes32(0)), "");
     }
@@ -163,6 +173,19 @@ contract Round108HookTest is Test {
         assertGt(hook.accruedQuote(key.toId()), 0);
         hook.distribute(key.toId()); // must not revert on the tracker's blocked `balanceOf`
         assertGt(hook.owed(address(t), address(quote)), 0, "the rewards slice fell back to the pull ledger");
+    }
+
+    function test_aPotAccruedBeforeTheSliceWasTurnedOffIsStillSpentInSwap() public {
+        RealmAnyPairsTaxHookPairImmutable.ConfigParams memory p = _params(address(0));
+        p.buybackBps = 500;
+        PoolKey memory key = _launchWith(p);
+        _buy(key);
+        hook.distribute(key.toId());
+        uint256 pot = hook.buybackPot(key.toId());
+        assertGt(pot, 0);
+        hook.setBuybackBps(key.toId(), 0);
+        _buy(key);
+        assertLt(hook.buybackPot(key.toId()), pot, "the next swap spent the pot although the slice is now off");
     }
 
     function test_aPlainRewardsPoolIsNotFlagged() public {
