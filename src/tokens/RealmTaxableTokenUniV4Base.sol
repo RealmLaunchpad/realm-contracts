@@ -15,6 +15,11 @@ import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/co
 interface IRealmV4Graduator {
     function HOOK_ADDRESS() external view returns (address);
     function LIQUIDITY_ADDER() external view returns (address);
+
+    /// @notice The hook mediating the pool this token shares with `quote`. Native pools keep
+    ///         `RealmHook`, which Uniswap whitelisted; an ERC20-quoted pool is served by
+    ///         `RealmHookAnyPair`. A single-hook graduator returns the same address for every quote.
+    function hookFor(address quote) external view returns (address);
 }
 
 /// @title RealmTaxableTokenUniV4Base

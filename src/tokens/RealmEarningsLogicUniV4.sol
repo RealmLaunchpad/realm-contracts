@@ -53,7 +53,7 @@ contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase {
         // forge-lint: disable-next-line(unsafe-typecast)
         buf.burnPending = uint128(pending - amountIn);
 
-        address hook = IRealmV4Graduator(graduator).HOOK_ADDRESS();
+        address hook = IRealmV4Graduator(graduator).hookFor(quote);
         uint256 balanceBefore = balanceOf(address(this));
         uint256 quoteBefore = _quoteHoldings(quote);
         uint256 reservedBefore = _quoteReserved(quote);

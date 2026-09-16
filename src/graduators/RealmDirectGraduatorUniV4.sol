@@ -61,8 +61,13 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     ///         token's own pre-graduation transfer guard points at the same place the curve venue's does.
     IPoolManager public immutable UNIV4_POOL_MANAGER;
 
-    /// @notice Hook every pool this graduator creates is bound to. `RealmHook` for native-quoted pools.
+    /// @notice Hook the NATIVE-quoted pool is bound to: `RealmHook`, the variant Uniswap whitelisted.
     address public immutable HOOK_ADDRESS;
+
+    /// @notice Hook every ERC20-quoted pool is bound to: `RealmHookAnyPair`, which resolves which side
+    ///         of the pair is the token and collects its fee in the quote. A second hook rather than a
+    ///         change to the first, because `RealmHook`'s bytecode is whitelisted and must not move.
+    address public immutable ANY_PAIR_HOOK;
 
     /// @notice The shared, permissionless `RealmUniV4LiquidityAdder` singleton. Used here for the seed
     ///         band and resolved through this same getter by the tokens' `processLiquidity`.
@@ -85,12 +90,20 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     ///      coin sorts as currency1.
     int24 transient _pendingLaunchTick;
 
+    /// @dev Pair 0's share of the circulating supply, in bps. Staged with the rest of pair 0 because
+    ///      `graduateToken` — whose signature is `IRealmGraduator`'s and cannot grow — reports it.
+    uint16 transient _pendingWeightBps;
+
     /// @dev Set by `prepare`, cleared by nothing — the transient slot clears itself at end of tx.
     bool transient _prepared;
 
-    /// @dev The token `initialize` was called for. `graduateToken` requires the same one, so a factory
-    ///      that staged one launch cannot seed a different token with it.
+    /// @dev The token `initialize` was called for: the launch in flight. EVERY other entry point
+    ///      requires the same one, so a factory that staged one launch cannot drive another with it, and
+    ///      nothing outside the creating transaction can drive one at all.
     address transient _initializedToken;
+
+    /// @dev Set by `graduateToken`, so a launch cannot be graduated (and pair 0 seeded) twice.
+    bool transient _launched;
 
     /////////////////////// Errors ///////////////////////
 
@@ -117,11 +130,6 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     error DevBuyNotFilled();
     /// @notice Thrown when `unlockCallback` is reached from anywhere but the pool manager.
     error OnlyPoolManager();
-    /// @notice Thrown when a dev buy is requested on a pair whose quote is not native. The settle leg
-    ///         below pays in native; an ERC20 quote needs a `sync` + transfer + `settle` instead, which
-    ///         lands with the rest of the ERC20-quote work. Unreachable today — the factory refuses an
-    ///         ERC20 quote outright — and here so it stays a revert rather than a wrong-currency settle.
-    error NativeDevBuyOnly();
 
     /////////////////////// Events ///////////////////////
 
@@ -146,10 +154,16 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
 
     //////////////////////////////////////////////////////
 
-    constructor(address poolManager, address hook, address liquidityAdder) {
+    constructor(address poolManager, address hook, address anyPairHook, address liquidityAdder) {
         UNIV4_POOL_MANAGER = IPoolManager(poolManager);
         HOOK_ADDRESS = hook;
+        ANY_PAIR_HOOK = anyPairHook;
         LIQUIDITY_ADDER = liquidityAdder;
+    }
+
+    /// @notice The hook mediating the pool this token shares with `quote`. See the two immutables.
+    function hookFor(address quote) public view returns (address) {
+        return quote == address(0) ? HOOK_ADDRESS : ANY_PAIR_HOOK;
     }
 
     /// @notice Defensive. Nothing routes native here: the dev buy settles exactly what it owes and
@@ -167,10 +181,12 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     ///        is always a more expensive coin whichever way the pair happens to sort. Must be a multiple
     ///        of the tick spacing and strictly inside the usable band; it is VALIDATED, never rounded, so
     ///        a creator always launches at exactly the price they asked for.
-    function prepare(address quote, int24 launchTick) external {
+    /// @param weightBps Pair 0's share of the circulating supply, in bps. Carried for `PoolSeeded` only.
+    function prepare(address quote, int24 launchTick, uint16 weightBps) external {
         _validateLaunchTick(launchTick);
         _pendingQuote = quote;
         _pendingLaunchTick = launchTick;
+        _pendingWeightBps = weightBps;
         _prepared = true;
     }
 
@@ -188,13 +204,33 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         address quote = _pendingQuote;
         require(tokenAddress != quote, TokenEqualsQuote());
 
-        PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, HOOK_ADDRESS);
-        UNIV4_POOL_MANAGER.initialize(key, TickMath.getSqrtPriceAtTick(_poolTick(tokenAddress, quote)));
         _initializedToken = tokenAddress;
+        _openPool(tokenAddress, quote, _pendingLaunchTick);
 
         emit PairInitialized(tokenAddress, address(UNIV4_POOL_MANAGER));
-        emit PoolIdRegistered(tokenAddress, PoolId.unwrap(key.toId()), HOOK_ADDRESS);
         return address(UNIV4_POOL_MANAGER);
+    }
+
+    /// @notice Creates ANOTHER pool for the launch in flight, against a second quote. Driven by the
+    ///         factory rather than the token, because only the FIRST pool has to be created from inside
+    ///         the token's initializer — that is the one whose address the token records as its `pair`,
+    ///         and the only call that cannot take arguments.
+    /// @dev Authorised by the same thing every other entry point is: `token` must be the launch this
+    ///      transaction's `initialize` opened, which transient storage makes unreachable from any later
+    ///      one. Nothing else can be in flight, so no separate caller check is needed.
+    function initializePool(address tokenAddress, address quote, int24 launchTick) external {
+        require(tokenAddress == _initializedToken, LaunchNotPrepared());
+        require(tokenAddress != quote, TokenEqualsQuote());
+        _validateLaunchTick(launchTick);
+        _openPool(tokenAddress, quote, launchTick);
+    }
+
+    /// @dev Creates one pool at `launchTick` and announces it. Shared by the two entry points above.
+    function _openPool(address tokenAddress, address quote, int24 launchTick) internal {
+        address hook = hookFor(quote);
+        PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, hook);
+        UNIV4_POOL_MANAGER.initialize(key, TickMath.getSqrtPriceAtTick(_poolTickFor(tokenAddress, quote, launchTick)));
+        emit PoolIdRegistered(tokenAddress, PoolId.unwrap(key.toId()), hook);
     }
 
     /// @notice Opens the token for trading and seeds its pool: marks it graduated, deposits `tokenAmount`
@@ -209,35 +245,71 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override {
         // Reachable only in the same transaction as the `initialize` that staged it — the marker lives
         // in transient storage — and `createToken` hands control to nothing untrusted in between, so
-        // "the caller is the factory mid-`createToken`" needs no separate check to be true. Consumed
-        // here so a second call cannot re-enter the same launch.
-        require(tokenAddress == _initializedToken, LaunchNotPrepared());
-        _initializedToken = address(0);
+        // "the caller is the factory mid-`createToken`" needs no separate check to be true.
+        require(tokenAddress == _initializedToken && !_launched, LaunchNotPrepared());
+        _launched = true;
         require(tokenAmount > 0, NoTokensToGraduate());
-
-        address quote = _pendingQuote;
-        int24 launchTick = _pendingLaunchTick;
-        PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, HOOK_ADDRESS);
 
         // Opens the gate on transfers to the pool manager, which the seed below is the first to use.
         IRealmToken(tokenAddress).markGraduated();
 
-        uint128 liquidity = _seed(key, tokenAddress, quote, tokenAmount, launchTick);
+        uint128 liquidity =
+            _seedPool(tokenAddress, _pendingQuote, _pendingLaunchTick, tokenAmount, _pendingWeightBps);
+        emit TokenGraduated(tokenAddress, tokenAmount, msg.value, liquidity);
+    }
 
-        // The band is the only liquidity in the pool, so the dev buy is a pure function of the launch
-        // tick and the supply seeded — the pool did not exist a few frames ago and nobody else can have
-        // traded it. That is why no slippage bound is taken for this leg.
-        if (msg.value > 0) {
-            require(quote == address(0), NativeDevBuyOnly());
-            _devBuy(key, tokenAddress, quote, msg.sender);
-        }
+    /// @notice Seeds ANOTHER of the launch's pools. Same authorisation as `initializePool`.
+    /// @param weightBps This pool's share of the circulating supply, in bps — carried for `PoolSeeded`
+    ///        only; the amount itself is `tokenAmount`, which the factory has already split.
+    function seedPool(address tokenAddress, address quote, int24 launchTick, uint256 tokenAmount, uint16 weightBps)
+        external
+        returns (uint128 liquidity)
+    {
+        require(tokenAddress == _initializedToken && _launched, LaunchNotPrepared());
+        require(tokenAmount > 0, NoTokensToGraduate());
+        return _seedPool(tokenAddress, quote, launchTick, tokenAmount, weightBps);
+    }
 
-        // Rounding remainder the band could not absorb. Burned rather than held, for the reason the
-        // `DEAD_ADDRESS` comment gives.
+    /// @notice Spends everything this graduator holds of `quote` on the token, and hands the result to
+    ///         the caller — the factory, which owns the recipient split.
+    /// @dev A separate entry point from `graduateToken` so a launch with several pools can name WHICH
+    ///      one the creator's buy executes on. The buy is a pure function of the launch tick and the
+    ///      supply seeded — the pool did not exist a few frames ago and nobody else can have traded it —
+    ///      which is why no slippage bound is taken for this leg.
+    /// @dev Native arrives as `msg.value`; an ERC20 quote is transferred here by the factory first, and
+    ///      the whole balance is spent. Either way nothing is left behind: a partial fill reverts.
+    function devBuy(address tokenAddress, address quote) external payable {
+        require(tokenAddress == _initializedToken && _launched, LaunchNotPrepared());
+        uint256 amountIn = quote == address(0) ? msg.value : IERC20(quote).balanceOf(address(this));
+        require(amountIn > 0, NoETHToGraduate());
+
+        PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, hookFor(quote));
+        bool quoteIsC0 = Currency.unwrap(key.currency0) == quote;
+        UNIV4_POOL_MANAGER.unlock(abi.encode(key, amountIn, quoteIsC0));
+        IERC20(tokenAddress).safeTransfer(msg.sender, IERC20(tokenAddress).balanceOf(address(this)));
+    }
+
+    /// @notice Burns whatever supply the seed bands could not absorb, once every pool of the launch has
+    ///         been seeded. Same authorisation as the other factory-driven entry points.
+    /// @dev A SEPARATE call rather than something each seed does, because with several pools this
+    ///      contract holds the later pools' share between seeds and "everything left over is dust" is
+    ///      only true after the last one. Burned rather than held because a graduator balance is a
+    ///      CONTINUOUS holder — see the `DEAD_ADDRESS` comment.
+    /// @dev A dev buy must run AFTER this: it takes bought tokens into this contract, and burning then
+    ///      would destroy them. The factory orders the two.
+    function burnSeedDust(address tokenAddress) external {
+        require(tokenAddress == _initializedToken && _launched, LaunchNotPrepared());
         uint256 dust = IERC20(tokenAddress).balanceOf(address(this));
         if (dust > 0) IERC20(tokenAddress).safeTransfer(DEAD_ADDRESS, dust);
+    }
 
-        emit TokenGraduated(tokenAddress, tokenAmount, msg.value, liquidity);
+    /// @dev Seeds ONE pool with `tokenAmount`.
+    function _seedPool(address tokenAddress, address quote, int24 launchTick, uint256 tokenAmount, uint16 weightBps)
+        internal
+        returns (uint128 liquidity)
+    {
+        PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, hookFor(quote));
+        return _seed(key, tokenAddress, quote, tokenAmount, launchTick, weightBps);
     }
 
     /// @notice The pool manager's re-entry into this contract for the dev buy. Does nothing a caller
@@ -266,10 +338,24 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
             quoteIsC0 ? (delta.amount0(), delta.amount1()) : (delta.amount1(), delta.amount0());
         // forge-lint: disable-next-line(unsafe-typecast)
         require(uint256(uint128(-quoteDelta)) == amountIn, DevBuyNotFilled());
-        UNIV4_POOL_MANAGER.settle{value: amountIn}();
+        _settleQuote(quoteIsC0 ? key.currency0 : key.currency1, amountIn);
         // forge-lint: disable-next-line(unsafe-typecast)
         UNIV4_POOL_MANAGER.take(quoteIsC0 ? key.currency1 : key.currency0, address(this), uint256(uint128(coinDelta)));
         return "";
+    }
+
+    /// @dev Pays the quote the swap owes. Native settles straight from the forwarded value; an ERC20
+    ///      goes through v4's `sync` -> transfer -> `settle` handshake, which is how the manager
+    ///      measures what actually arrived (and therefore the only shape that is honest about a
+    ///      fee-on-transfer quote).
+    function _settleQuote(Currency currency, uint256 amount) internal {
+        if (currency.isAddressZero()) {
+            UNIV4_POOL_MANAGER.settle{value: amount}();
+            return;
+        }
+        UNIV4_POOL_MANAGER.sync(currency);
+        IERC20(Currency.unwrap(currency)).safeTransfer(address(UNIV4_POOL_MANAGER), amount);
+        UNIV4_POOL_MANAGER.settle();
     }
 
     ////////////////////////////// INTERNAL FUNCTIONS ///////////////////////////////////
@@ -279,11 +365,11 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     ///      coin — above the current tick when the coin is `currency1`'s counterpart, below it otherwise
     ///      — so every buy walks into it and no quote is ever needed to open the pool. The NFT stays
     ///      here, permanently: that is the liquidity lock.
-    function _seed(PoolKey memory key, address token, address quote, uint256 amount, int24 launchTick)
+    function _seed(PoolKey memory key, address token, address quote, uint256 amount, int24 launchTick, uint16 weightBps)
         internal
         returns (uint128 liquidity)
     {
-        int24 poolTick = _poolTick(token, quote);
+        int24 poolTick = _poolTickFor(token, quote, launchTick);
         // Nothing can have moved it (an empty pool cannot be swapped), but the seed is the last thing
         // that would notice if something ever could.
         (uint160 sqrtNow,,,) = UNIV4_POOL_MANAGER.getSlot0(key.toId());
@@ -311,25 +397,14 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         liquidity = IRealmUniV4LiquidityAdder(LIQUIDITY_ADDER)
             .addSingleSided(key, Currency.wrap(token), amount, tickLower, tickUpper, address(this), address(this));
 
-        emit PoolSeeded(token, quote, PoolId.unwrap(key.toId()), 10_000, launchTick, liquidity);
-    }
-
-    /// @dev Spends the forwarded `msg.value` on the coin and hands the result to the factory, which owns
-    ///      the recipient split. Runs inside this contract's OWN `unlock`, not through a router: the
-    ///      launch and its first buy are one transaction, and a router would need an approval, a
-    ///      deadline and a second trust boundary to do the same swap.
-    function _devBuy(PoolKey memory key, address token, address quote, address recipient) internal {
-        bool quoteIsC0 = Currency.unwrap(key.currency0) == quote;
-        UNIV4_POOL_MANAGER.unlock(abi.encode(key, msg.value, quoteIsC0));
-        IERC20(token).safeTransfer(recipient, IERC20(token).balanceOf(address(this)));
+        emit PoolSeeded(token, quote, PoolId.unwrap(key.toId()), weightBps, launchTick, liquidity);
     }
 
     /// @dev The launch tick in the POOL's orientation. `launchTick` is quote-per-coin; a V4 tick is
     ///      currency1-per-currency0, which is the same thing when the coin is `currency0` and its
     ///      reciprocal otherwise. Negation is exact because the usable band is symmetric and the tick is
     ///      already spacing-aligned.
-    function _poolTick(address token, address quote) internal view returns (int24) {
-        int24 launchTick = _pendingLaunchTick;
+    function _poolTickFor(address token, address quote, int24 launchTick) internal pure returns (int24) {
         return token < quote ? launchTick : -launchTick;
     }
 

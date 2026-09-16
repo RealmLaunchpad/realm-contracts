@@ -42,7 +42,7 @@ contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLo
     {
         if (asset != address(this)) return super._acquireDividendAsset(asset, nativeIn, minOut);
 
-        address hook = IRealmV4Graduator(graduator).HOOK_ADDRESS();
+        address hook = IRealmV4Graduator(graduator).hookFor(address(0));
         uint256 balanceBefore = balanceOf(address(this));
         // Balance AND reserves, not either alone. A buy-back is a SWAP, so the hook's `accrueFees` lands
         // native here mid-call: it raises the balance and the buffers together, and only the router's

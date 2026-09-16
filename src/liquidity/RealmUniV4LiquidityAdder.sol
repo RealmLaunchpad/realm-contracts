@@ -384,13 +384,18 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
     ) internal returns (uint128 liquidity) {
         uint128 liquidityBefore = UNIV4_POSITION_MANAGER.getPositionLiquidity(tokenId);
 
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.SETTLE),
-            uint8(Actions.INCREASE_LIQUIDITY_FROM_DELTAS),
-            uint8(Actions.TAKE_PAIR),
-            uint8(Actions.SWEEP)
-        );
-        bytes[] memory params = new bytes[](4);
+        // `SWEEP` only when the pool has a native side to sweep — see the note in `_mintSingleSided`.
+        bytes memory actions = key.currency0.isAddressZero()
+            ? abi.encodePacked(
+                uint8(Actions.SETTLE),
+                uint8(Actions.INCREASE_LIQUIDITY_FROM_DELTAS),
+                uint8(Actions.TAKE_PAIR),
+                uint8(Actions.SWEEP)
+            )
+            : abi.encodePacked(
+                uint8(Actions.SETTLE), uint8(Actions.INCREASE_LIQUIDITY_FROM_DELTAS), uint8(Actions.TAKE_PAIR)
+            );
+        bytes[] memory params = new bytes[](key.currency0.isAddressZero() ? 4 : 3);
         // `payerIsUser` is false either way: native settles from the value forwarded below, and an ERC20
         // settles from THIS contract's balance, which the caller's pull already funded.
         params[0] = abi.encode(currency, amount, false);
@@ -407,9 +412,9 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
             bytes("")
         );
         params[2] = abi.encode(key.currency0, key.currency1, receiver); // TAKE_PAIR
-        params[3] = abi.encode(key.currency0, receiver); // SWEEP native dust
+        if (params.length == 4) params[3] = abi.encode(key.currency0, receiver); // SWEEP native dust
 
-        UNIV4_POSITION_MANAGER.modifyLiquidities{value: isCurrency1 ? 0 : (currency.isAddressZero() ? amount : 0)}(
+        UNIV4_POSITION_MANAGER.modifyLiquidities{value: currency.isAddressZero() ? amount : 0}(
             abi.encode(actions, params), block.timestamp
         );
         liquidity = UNIV4_POSITION_MANAGER.getPositionLiquidity(tokenId) - liquidityBefore;
@@ -504,7 +509,16 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
             return 0;
         }
 
-        bytes[] memory params = new bytes[](3);
+        // NATIVE is a property of the CURRENCY, not of which index it sits at. On a pool quoted in the
+        // chain's native currency that is always `currency0`, but against an ERC20 quote the token
+        // itself can sort first — and forwarding `amount` as value for an ERC20 deposit would send funds
+        // this contract does not have.
+        bool poolHasNative = key.currency0.isAddressZero();
+
+        // The `SWEEP` leg exists only for a pool with a native side: it returns the value forwarded
+        // below that the mint did not consume. An all-ERC20 pool forwards nothing, and its rounding
+        // remainder comes back through `addSingleSided`'s measured balance delta instead.
+        bytes[] memory params = new bytes[](poolHasNative ? 3 : 2);
         // MINT_POSITION: the deposited side's max is `amount` (slippage cap), the other side's is 0.
         params[0] = abi.encode(
             key,
@@ -517,11 +531,16 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
             bytes("")
         );
         params[1] = abi.encode(key.currency0, key.currency1); // SETTLE_PAIR
-        params[2] = abi.encode(key.currency0, excessReceiver); // SWEEP native ETH dust
+        if (poolHasNative) params[2] = abi.encode(key.currency0, excessReceiver); // SWEEP native dust
 
-        UNIV4_POSITION_MANAGER.modifyLiquidities{value: isCurrency1 ? 0 : amount}(
+        UNIV4_POSITION_MANAGER.modifyLiquidities{value: poolHasNative && !isCurrency1 ? amount : 0}(
             abi.encode(
-                abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP)), params
+                poolHasNative
+                    ? abi.encodePacked(
+                        uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP)
+                    )
+                    : abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR)),
+                params
             ),
             block.timestamp
         );

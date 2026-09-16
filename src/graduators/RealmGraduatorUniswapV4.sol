@@ -270,6 +270,14 @@ contract RealmGraduatorUniswapV4 is IRealmGraduator, Ownable {
         emit TreasuryGraduationFeeCollected(tokenAddress, treasuryShare);
     }
 
+    /// @notice The hook mediating this token's pool. The curve venue graduates into exactly one pool,
+    ///         quoted in the chain's native currency, so the answer does not depend on `quote`.
+    /// @dev Present so the taxable tokens' keeper paths can ask their graduator the same question
+    ///      whichever venue they came from — the direct venue answers it per quote.
+    function hookFor(address) external view returns (address) {
+        return HOOK_ADDRESS;
+    }
+
     /// @notice Constructs the Uniswap V4 PoolKey for a given token paired with native ETH
     function _getPoolKey(address tokenAddress) internal view virtual returns (PoolKey memory) {
         return UniswapV4PoolConstants.realmPoolKey(tokenAddress, HOOK_ADDRESS);
