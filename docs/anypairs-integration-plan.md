@@ -1,8 +1,8 @@
 # AnyPairs integration: decisions and plan
 
-Status: agreed 2026-09-15. **Phase 0 and Phase 1 implemented 2026-09-16** (see §5); phases 2-4 not
-started. Realm is not on mainnet yet, so every Realm contract may change except `RealmHook` (already
-whitelisted by Uniswap).
+Status: agreed 2026-09-15. **Phases 0-3 implemented 2026-09-16** (see §5); phase 4 (round-robin
+dividend push) not started, and quote-denominated DIVIDENDS are deferred with it. Realm is not on
+mainnet yet, so every Realm contract may change except `RealmHook` (already whitelisted by Uniswap).
 
 ## 1. Outcome
 
@@ -87,7 +87,7 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 - `UniswapV4PoolConstants.realmPoolKey(token, quote, hook)` sorted; native overload kept.
 - Events: reuse `TokenCreated`, `LpFeeBpsSet`, `CreatorVaultsCreated`, `BuyOnDeploy`, `TokenReferral`, `PairInitialized`, `TokenGraduated`; add `PoolSeeded(token, quote, poolId, weightBps, tick, liquidity)`. Update `docs/events-per-entry-point.md`; envio configs append-only.
 
-### Phase 2: ERC20 quotes (money path keyed by quote)
+### Phase 2: ERC20 quotes (money path keyed by quote) — DONE except dividends
 - Token: `quotes[]` + `mapping(quote => buffers)` for burn, liquidity and dividend pending, appended to `RealmTaxableTokenUniV4Base` (no slot shift). `accrueFees(asset, amount)` pulls from the caller and requires a registered quote; native `accrueFees()` stays.
 - Keeper calls take the quote: `processBurn(quote, minOut)` buys back in that quote's pool; `processLiquidity(quote)` walls in that pool; `processDividends(assetIndex, quote, minOut, holders[])`.
 - `RealmMasterFeeHandler`: `depositFees(token, asset, amount)`, per-asset accumulators and claims, direct receivers via try/catch transfer (D8).
@@ -98,7 +98,7 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 - Launch sanity on a quote: not WETH (use native), not a Realm token, has `decimals()`, not fee-on-transfer (measured at first use).
 - Chain retargeting: add new files to the `_taxtoken` sed list; chain-id assert in impl constructors.
 
-### Phase 3: multi-pair
+### Phase 3: multi-pair — DONE
 - Factory accepts up to `MAX_PAIRS = 3` pairs, weights sum to 10,000, no duplicate quote; graduator initialises and seeds N pools; hook per pool (`RealmHook` if native, `RealmHookAnyPair` otherwise).
 - Indexer: pools per token from `PoolSeeded`, trades keyed by pool id, market cap weighted across pools. Frontend hides multi-pair until the schema ships.
 - `RealmQuoter`: tick → price preview.
@@ -119,3 +119,43 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 - none on pairs: `MAX_PAIRS = 3`, dev buy on the creator-chosen pair only.
 - Whether ERC20-pool fees should later be auto-converted to ETH for the treasury (keeper `convert()` on the router).
 - Uniswap whitelisting of `RealmHookAnyPair`: approved, file the request once deployed.
+
+## 8. Phases 2-3: what was built, and where it departs from the plan above
+
+### Departures worth knowing about
+
+- **The dividends slice is NOT keyed by quote yet.** Burn and liquidity are: each has a per-quote
+  buffer and acts on that quote's own pool. Dividends are not, because every constant the dividend
+  machine is calibrated against (`DIVIDEND_THRESHOLD`, `MAX_DIVIDEND_PER_CONVERSION`, the accumulator's
+  scale) is denominated in the chain's NATIVE unit, and nobody can calibrate them for a currency the
+  creator picks. Until that is settled, an ERC20-quoted token's dividends slice falls back to the fund
+  wallets — the contract `EarningsAllocation` already defines for a leg that has not shipped, so a
+  creator's money is paid out rather than stranded. **This is the open product question**: per-quote
+  thresholds need a source (creator-supplied? unit-free fractions? an oracle?).
+- **The per-call spend cap for an ERC20 quote is a FRACTION of the buffer** (`MAX_QUOTE_SPEND_BPS`,
+  25%), not the native absolute `MAX_EARNINGS_PER_PROCESS`, for the same units reason. It does the same
+  job — a sandwich must re-pay its pump every block for a geometrically shrinking prize — and needs no
+  calibration. The keeper gate remains the first line either way.
+- **`RealmHookAnyPair` CLAIMS its fee (ERC-6909) instead of taking it.** A swapper settles their input
+  after the swap callbacks run, so on the first buy of a freshly seeded ERC20-quoted pool the manager
+  holds none of the quote and `take` reverts — the launch would be untradeable until someone else
+  funded it. `settleFees(token, quote)` redeems the claims and is permissionless. Fee EVENTS still fire
+  at the trade; only the currency movement is batched.
+- **No ETH-to-quote zap (D4).** A creator buying on an ERC20 pair brings that currency and the factory
+  pulls it (`DevBuy.quoteAmount`). That needs no route, no oracle and no slippage floor, and is still
+  one transaction. The `route` / `minQuoteOut` fields are in the ABI and rejected as non-empty.
+- **The V4 token has TWO extensions now**, `RealmDividendLogicUniV4` and `RealmEarningsLogicUniV4`:
+  together they no longer fit under EIP-170. They are peers sharing `RealmV4ExtensionBase`, and the
+  token impl's constructor TAKES both addresses — their creation code counted toward its own initcode
+  and two of them broke EIP-3860. `just check-dividend-layout` pins three pairings now.
+- **The direct graduator names no factory.** A launch is authorised by `initialize`'s caller being the
+  token itself; every other entry point (`initializePool`, `seedPool`, `devBuy`, `burnSeedDust`) hangs
+  off a transient in-flight marker only that call sets.
+
+### Not done
+
+- Phase 4 (round-robin payout) and quote-denominated dividends.
+- Envio indexer configs for the new events (`PoolSeeded`, `QuotesRegistered`, the `RealmHookAnyPair`
+  set, `CreatorAssetFeesDeposited` / `CreatorAssetClaimed`, `LpAssetFeesRouted`, `TreasuryAssetSwept`).
+  Append-only; nothing was removed.
+- `anypairs/` is still there.
