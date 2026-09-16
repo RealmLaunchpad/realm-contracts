@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -18,7 +19,7 @@ import {KeeperGated} from "src/tokens/KeeperGated.sol";
 ///         third-asset payout shape — the only one that actually performs a swap — can be exercised
 ///         against real Uniswap pools without dragging a launchpad, a graduator and a pool through
 ///         the test. Balances are set directly instead of being moved by transfers.
-contract DividendHarness is DividendDistributionLogic {
+contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
     mapping(address => uint256) public balances;
     uint256 public eligibleSupply;
 

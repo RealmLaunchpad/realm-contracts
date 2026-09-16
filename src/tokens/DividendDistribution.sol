@@ -359,10 +359,11 @@ abstract contract DividendDistribution {
     ///         Emitted once, at graduation, for all configured assets at once.
     event DividendsActivated();
 
-    /// @notice A distribution credited one asset's holders. `nativeIn` is the native buffer consumed (0
-    ///         for the V2 token-space payout), `assetOut` what it bought — split pro rata across the
-    ///         eligible supply at this instant.
-    event DividendsFunded(address indexed asset, uint256 nativeIn, uint256 assetOut);
+    /// @notice A distribution credited one asset's holders. `quote` is the currency the buffer was held
+    ///         in — `address(0)` for native, else one of the token's ERC20 quotes — `amountIn` how much
+    ///         of it was consumed (0 for the V2 token-space payout), `assetOut` what it bought — split
+    ///         pro rata across the eligible supply at this instant.
+    event DividendsFunded(address indexed quote, address indexed asset, uint256 amountIn, uint256 assetOut);
 
     /// @notice One holder, one asset, one payout of everything they had accrued in it at that moment.
     event DividendPaid(address indexed holder, address indexed asset, uint256 amount);

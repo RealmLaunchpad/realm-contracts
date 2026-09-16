@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {RealmTaxableTokenUniV2Base} from "src/tokens/RealmTaxableTokenUniV2Base.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
@@ -16,7 +17,7 @@ import {ERC20, IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ER
 /// @dev It shares `RealmTaxableTokenUniV2Base` with the token and adds NO state of its own, so the
 ///      compiler derives the same storage layout for both — the property the delegatecall depends on.
 ///      Pinned by `just check-dividend-layout`.
-contract RealmDividendLogicUniV2 is RealmTaxableTokenUniV2Base, DividendDistributionLogic {
+contract RealmDividendLogicUniV2 is RealmTaxableTokenUniV2Base, DividendDistributionLogic, DividendInitLogic {
     /// @dev Funds a self-token payout straight out of its token buffer — no conversion, no slippage,
     ///      and so no way for it to fail. Its threshold is `SWAP_THRESHOLD` (the same 0.05%-of-supply
     ///      size the swap-back amortises against) because the buffer is denominated in tokens, not
@@ -85,6 +86,21 @@ contract RealmDividendLogicUniV2 is RealmTaxableTokenUniV2Base, DividendDistribu
             dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
             hasDividends = true;
         }
+    }
+
+    /// @dev A V2 token earns in native only — its pair is the WETH pair — so it has no ERC20 quotes to
+    ///      route out of. Refused rather than silently accepting an empty list, so a factory that
+    ///      reaches for this overload on the wrong venue finds out at creation.
+    function initializeEarningsAllocation(
+        uint16,
+        uint16,
+        uint16,
+        address[] calldata,
+        uint16[] calldata,
+        bytes[] calldata,
+        bytes[] calldata
+    ) external pure override {
+        revert InvalidQuotes();
     }
 
     ////////////////// NOT A TOKEN //////////////////

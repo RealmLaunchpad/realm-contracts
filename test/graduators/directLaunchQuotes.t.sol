@@ -85,10 +85,15 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
 
     /// @dev An exact-input swap on an ERC20-quoted pool, through the universal router.
     function _swapQuotePool(address caller, address token, bool isBuy, uint256 amountIn) internal {
-        CorePoolKey memory coreKey = _qcPoolKey(token);
+        _swapQuotePool(caller, token, address(quoteCoin), isBuy, amountIn);
+    }
+
+    /// @dev The same, on the pool `token` shares with any ERC20 `quote`.
+    function _swapQuotePool(address caller, address token, address quote, bool isBuy, uint256 amountIn) internal {
+        CorePoolKey memory coreKey = UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS);
         PoolKey memory key = abi.decode(abi.encode(coreKey), (PoolKey));
-        bool quoteIsC0 = address(quoteCoin) < token;
-        address tokenIn = isBuy ? address(quoteCoin) : token;
+        bool quoteIsC0 = quote < token;
+        address tokenIn = isBuy ? quote : token;
 
         vm.startPrank(caller);
         IERC20(tokenIn).approve(permit2Address, type(uint256).max);

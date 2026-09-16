@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
@@ -13,7 +14,7 @@ import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 /// @notice A bare `DividendDistributionLogic` with the token's hooks stubbed out, configured with a SET
 ///         of payout assets rather than one. Balances are set directly; what is under test is the
 ///         per-asset machinery, not the transfer hook (`dividendAccounting.t.sol` owns that).
-contract MultiAssetHarness is DividendDistributionLogic {
+contract MultiAssetHarness is DividendDistributionLogic, DividendInitLogic {
     mapping(address account => uint256 balance) public balances;
     uint256 public eligibleSupply;
     uint8 public assetCount;

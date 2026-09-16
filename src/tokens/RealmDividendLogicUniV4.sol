@@ -4,11 +4,16 @@ pragma solidity 0.8.28;
 import {RealmV4ExtensionBase} from "src/tokens/RealmV4ExtensionBase.sol";
 import {IRealmV4Graduator} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {IRealmDividendSwapRegistry} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title RealmDividendLogicUniV4
 /// @notice The dividend extension `RealmTaxableTokenUniV4` `delegatecall`s its out-of-band entry
-///         points into: the round machinery, the native -> payout-asset conversion, and the per-holder
-///         push. Deployed alongside the token implementation and passed to its constructor.
+///         points into: the round machinery, the native or quote -> payout-asset conversion, and the
+///         per-holder push. Deployed alongside the token implementation and passed to its constructor.
+///         The creation-time configuration lives in its peer `RealmEarningsLogicUniV4` — run once per
+///         token, it takes the room where the hot entry points do not need it.
 /// @dev It shares `RealmTaxableTokenUniV4Base` with the token and adds NO state of its own, so the
 ///      compiler derives the same storage layout for both — the property the delegatecall depends on.
 /// @dev Its PEER is `RealmEarningsLogicUniV4`, which carries the buy-back and liquidity processors:
@@ -17,95 +22,163 @@ import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.so
 ///      the token.
 ///      Pinned by `just check-dividend-layout`.
 contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLogic {
-    //////////////////////// DIVIDENDS //////////////////////    //////////////////////// DIVIDENDS //////////////////////
+    using SafeERC20 for IERC20;
 
-    /// @dev Adds the SELF-TOKEN payout shape: V4 is ETH-native, so a token paying dividends in itself
-    ///      buys itself back on its own pool, reusing the same primitive `processBurn` uses. Native and
-    ///      third-asset payouts fall through to the base.
-    /// @dev The precursor event must stay BEFORE the swap: an indexer has to classify the resulting
-    ///      `RealmSwapHook.RealmSwapBuy` as protocol-internal as it arrives, whereas anything emitted after
-    ///      the swap lands once the keeper's PnL has already been updated.
+    //////////////////////// QUOTE-DENOMINATED DIVIDENDS //////////////////////
+
+    /// @notice `processDividends` for a buffer held in one of this token's QUOTES: converts what asset
+    ///         `assetIndex` has accrued from earnings on `quote`'s pool into that asset, credits it to
+    ///         the holders, and pushes `holders` their accruals. `quote == address(0)` is the shared
+    ///         native machine, exactly `processDividends(uint8,uint256,address[])`.
+    /// @dev What differs from the native path, and why:
+    ///      - NO absolute threshold: `DIVIDEND_THRESHOLD` is native-denominated and means nothing in a
+    ///        currency the creator picked. The keeper pays the gas and decides when a buffer is worth
+    ///        converting, as it does for `processBurn(quote, …)`.
+    ///      - The per-call cap is `_maxSpend`'s FRACTION of the buffer, for the same units reason, and
+    ///        only on a leg that SWAPS. A payout that IS the quote has no swap: nothing to sandwich, the
+    ///        whole buffer credits at once.
+    ///      - A leg that swaps is keeper-only, ALWAYS — the staleness hatch never opens it, because
+    ///        without a threshold there is nothing that evidences an absent keeper rather than a quiet
+    ///        token, and a zero-floor conversion handed to anyone is the sandwich the gate exists for.
+    ///        The passthrough keeps the hatch: it moves no money through a pool.
+    ///      - NO treasury sweep for a dead pool: a quote pool nobody can swap on strands that quote's
+    ///        buffer, as it strands `processBurn`'s. The registry legs pivot through native, whose
+    ///        liquidity the payout asset's own route already vouches for.
+    ///      - The once-per-block cooldown is the ASSET's, shared with the native leg and the other
+    ///        quotes: one conversion of asset `i` per block, whichever buffer feeds it.
+    /// @param minOut Slippage floor in the PAYOUT asset's units, checked on the final amount however
+    ///        many pools the conversion crosses. Ignored by the passthrough.
+    function processDividends(uint8 assetIndex, address quote, uint256 minOut, address[] calldata holders)
+        external
+        nonReentrant
+        nonReentrantDividends
+    {
+        if (quote == address(0)) {
+            _processDividends(assetIndex, minOut, holders);
+            return;
+        }
+        _processQuoteDividends(assetIndex, quote, minOut, holders);
+    }
+
+    /// @dev The quote path's body. Mirrors `_processDividends`'s shape — gate, fund once per block,
+    ///      credit, push, then the error that tells a keeper what to do next — over `quoteBuffers`.
+    function _processQuoteDividends(uint8 assetIndex, address quote, uint256 minOut, address[] calldata holders)
+        private
+    {
+        require(assetIndex < _dividendAssetCount(), DividendAssetOutOfRange());
+        DivAsset storage asset = dividendAssets[assetIndex];
+        require(asset.lastDistribution != 0, DividendsNotActive());
+        address payout = asset.token;
+        if (payout != quote || !dividendsStale(assetIndex)) _requireKeeper();
+
+        bool cooldown = block.number <= asset.lastProcessBlock;
+        uint256 spend;
+        uint256 out;
+        if (!cooldown) (spend, out) = _fundFromQuote(assetIndex, quote, payout, minOut);
+        if (out != 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            asset.lastProcessBlock = uint40(block.number);
+            _creditDividends(assetIndex, out);
+            emit DividendsFunded(quote, payout, spend, out);
+        }
+
+        if (holders.length != 0) {
+            _pushDividends(assetIndex, holders);
+        } else if (cooldown) {
+            revert DividendProcessCooldown();
+        } else if (spend == 0) {
+            revert BelowDividendThreshold();
+        } else if (out == 0) {
+            revert DividendConversionFailed();
+        }
+    }
+
+    /// @dev Debits asset `i`'s buffer on `quote` — the whole of it for a passthrough, `_maxSpend`'s
+    ///      slice for a leg that swaps — converts it, and re-earmarks whatever the conversion did not
+    ///      consume. Debit-first, so the reserve a mid-swap accrual is measured against already excludes
+    ///      the spend; re-earmarked with `+=` on the live slot, so an accrual that landed during the swap
+    ///      (`accrueFees` takes no lock) survives the write.
+    /// @return spend what was attempted, 0 when nothing was buffered.
+    /// @return out payout-asset units actually acquired, 0 when the conversion did not happen.
+    function _fundFromQuote(uint256 i, address quote, address payout, uint256 minOut)
+        private
+        returns (uint256 spend, uint256 out)
+    {
+        uint128[MAX_DIVIDEND_ASSETS] storage pending = quoteBuffers[_quoteIndex(quote)].dividendPending;
+        uint256 buffered = pending[i];
+        if (buffered == 0) return (0, 0);
+        spend = payout == quote ? buffered : _maxSpend(quote, buffered);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        pending[i] = uint128(buffered - spend);
+        uint256 spent;
+        (out, spent) = _acquireFromQuote(quote, payout, spend, minOut);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (spent < spend) pending[i] += uint128(spend - spent);
+    }
+
+    /// @dev Turns `amountIn` of `quote` into `payout`. Three shapes:
+    ///      - `payout == quote`: nothing to do, the buffer already IS the payout.
+    ///      - `payout == this token`: a buy-back on `quote`'s own pool, the `processBurn` primitive; a
+    ///        partial fill reports what the pool actually took.
+    ///      - anything else: the registry, which walks `quote`'s route backwards to native and the
+    ///        payout's forward (or stops at native). A LOW-LEVEL call for the same reason the native leg
+    ///        makes one: a registry revert must become "not converted", never a reverted distribution.
+    ///        The registry consumes the whole `amountIn` or reverts, so `spent` is all or nothing.
+    /// @return out payout units received, measured as a balance delta.
+    /// @return spent quote units the conversion consumed.
+    function _acquireFromQuote(address quote, address payout, uint256 amountIn, uint256 minOut)
+        private
+        returns (uint256 out, uint256 spent)
+    {
+        if (payout == quote) return (amountIn, amountIn);
+        if (payout == address(this)) {
+            uint256 balanceBefore = balanceOf(address(this));
+            uint256 quoteBefore = _quoteHoldings(quote);
+            uint256 reservedBefore = _quoteReserved(quote);
+            // Precursor marker, BEFORE the swap: see the native override below.
+            emit DividendBuyBackInitiated(amountIn);
+            if (!_buyBackTokens(IRealmV4Graduator(graduator).hookFor(quote), quote, amountIn, minOut)) return (0, 0);
+            out = balanceOf(address(this)) - balanceBefore;
+            if (out == 0) return (0, 0);
+            return (out, _spent(quote, quoteBefore, reservedBefore));
+        }
+        // Fail CLOSED against a codeless registry, as `_swapNativeToDividendAsset` does.
+        if (DIVIDEND_SWAP_REGISTRY.code.length == 0) return (0, 0);
+        IERC20(quote).forceApprove(DIVIDEND_SWAP_REGISTRY, amountIn);
+        uint256 before = payout == address(0) ? address(this).balance : IERC20(payout).balanceOf(address(this));
+        (bool ok,) = DIVIDEND_SWAP_REGISTRY.call(
+            abi.encodeCall(
+                IRealmDividendSwapRegistry.swapAssetToAsset, (quote, payout, amountIn, minOut, address(this))
+            )
+        );
+        if (!ok) return (0, 0);
+        uint256 after_ = payout == address(0) ? address(this).balance : IERC20(payout).balanceOf(address(this));
+        return (after_ - before, amountIn);
+    }
+
+    //////////////////////// DIVIDENDS //////////////////////
+
+    /// @dev Adds the SELF-TOKEN payout shape: a token paying dividends in itself buys itself back on its
+    ///      own native pool — the same leg `_acquireFromQuote` runs for an ERC20 quote, with native as
+    ///      the quote. Native and third-asset payouts fall through to the base.
+    /// @dev The base is about to debit the FULL `nativeIn`, so whatever the pool did not take — returned
+    ///      by the router's `SWEEP` on a partial fill — goes back on the dividend ledger. Without this it
+    ///      becomes stray and `sweepStrayEth` re-splits holders' money into the burn / liquidity / fund
+    ///      buckets. Asset 0 by construction: a self-token payout is only ever configured as the SOLE
+    ///      asset. Nothing bought: the base leaves the buffer alone or sweeps the whole `nativeIn`, and
+    ///      both already account for the native the router handed back.
     function _acquireDividendAsset(address asset, uint256 nativeIn, uint256 minOut)
         internal
         override
         returns (uint256)
     {
         if (asset != address(this)) return super._acquireDividendAsset(asset, nativeIn, minOut);
-
-        address hook = IRealmV4Graduator(graduator).hookFor(address(0));
-        uint256 balanceBefore = balanceOf(address(this));
-        // Balance AND reserves, not either alone. A buy-back is a SWAP, so the hook's `accrueFees` lands
-        // native here mid-call: it raises the balance and the buffers together, and only the router's
-        // spend moves the two apart. `_sweepableNative()` is the same quantity but CLAMPED at zero, and
-        // the clamp bites exactly here — `pendingNative` still holds the amount being spent (the base
-        // debits it after this returns), so the token is fully reserved and stray reads 0 both times.
-        uint256 balanceBeforeEth = address(this).balance;
-        uint256 reservedBefore = _reservedNative();
-        emit DividendBuyBackInitiated(nativeIn);
-        _buyBackTokensWithEth(hook, nativeIn, minOut);
-        uint256 bought = balanceOf(address(this)) - balanceBefore;
-
-        // Nothing bought: the base either leaves the buffer alone or sweeps the whole `nativeIn` to the
-        // treasury, and both of those already account for the native the router handed back. Re-earmarking
-        // here would double-count it.
-        if (bought == 0) return 0;
-
-        // The base is about to debit the FULL `nativeIn`, so whatever the pool did not take — returned by
-        // the router's `SWEEP` on a partial fill — has to go back on the dividend ledger. Without this it
-        // becomes stray and `sweepStrayEth` re-splits holders' money into the burn / liquidity / fund
-        // buckets. Read defensively: assuming the whole spend merely under-credits, an underflow would
-        // revert a good conversion.
-        // `spent = (balance drop) + (reserve growth)`, arranged so neither side can underflow: an
-        // accrual that lands mid-swap shows up in both terms and cancels out.
-        uint256 lhs = balanceBeforeEth + _reservedNative();
-        uint256 rhs = address(this).balance + reservedBefore;
-        uint256 spent = lhs > rhs ? lhs - rhs : 0;
-        // Asset 0 by construction: a self-token payout may only be configured as the SOLE asset, so this
-        // branch is only ever reached for index 0 and there is no other buffer the refund could belong to.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        if (spent < nativeIn) {
+        (uint256 out, uint256 spent) = _acquireFromQuote(address(0), address(this), nativeIn, minOut);
+        if (out != 0 && spent < nativeIn) {
             // forge-lint: disable-next-line(unsafe-typecast)
             dividendAssets[0].pendingNative = uint88(dividendAssets[0].pendingNative + (nativeIn - spent));
         }
-
-        return bought;
-    }
-
-    /// @notice Creation-time dividend configuration, executed here on the token's storage. Guarded by
-    ///         the transient `tokenFactory`, which the `delegatecall` shares with the token.
-    function initializeEarningsAllocation(
-        uint16 _burnBps,
-        uint16 _dividendsBps,
-        uint16 _liquidityBps,
-        address _dividendToken
-    ) external override {
-        require(msg.sender == tokenFactory, Unauthorized());
-        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
-        if (_dividendsBps != 0) {
-            (address[] memory tokens, uint16[] memory weights) = _soleAssetSet(_dividendToken);
-            // No routes: the legacy single-asset shape predates them, and an empty route is exactly the
-            // permissionless V2 pair it always meant.
-            dividendAssetCount = _initializeDividends(tokens, weights, new bytes[](0));
-            hasDividends = true;
-        }
-    }
-
-    /// @notice Multi-asset creation-time dividend configuration. See
-    ///         `RealmTaxableToken.initializeEarningsAllocation(uint16,uint16,uint16,address[],uint16[])`.
-    function initializeEarningsAllocation(
-        uint16 _burnBps,
-        uint16 _dividendsBps,
-        uint16 _liquidityBps,
-        address[] calldata _dividendTokens,
-        uint16[] calldata _dividendWeightsBps,
-        bytes[] calldata _dividendRoutes
-    ) external override {
-        require(msg.sender == tokenFactory, Unauthorized());
-        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
-        if (_dividendsBps != 0) {
-            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
-            hasDividends = true;
-        }
+        return out;
     }
 
     ////////////////// NOT A TOKEN //////////////////

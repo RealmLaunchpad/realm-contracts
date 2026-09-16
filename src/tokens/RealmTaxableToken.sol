@@ -277,7 +277,7 @@ abstract contract RealmTaxableToken is
         // Runs in the extension: the payout configuration is validated once, at creation, and the
         // validation is the same ~0.9 KB of bytecode a clone would otherwise carry forever. Delegated
         // rather than duplicated, so there is exactly one copy of the rules.
-        _delegateToDividendLogic();
+        _delegateTo(_allocationLogic());
     }
 
     /// @notice Same again, for a token paying in UP TO `MAX_DIVIDEND_ASSETS` assets: the payout set, the
@@ -304,7 +304,31 @@ abstract contract RealmTaxableToken is
         _dividendTokens;
         _dividendWeightsBps;
         _dividendRoutes;
-        _delegateToDividendLogic();
+        _delegateTo(_allocationLogic());
+    }
+
+    /// @notice The multi-asset overload plus the routes of this token's ERC20 QUOTES — for a venue
+    ///         whose earnings can arrive in a currency other than native, where a dividends leg may
+    ///         have to be bought OUT of a quote. See `TaxConfigsWithDirectAllocation` for which entries
+    ///         are required. Positional to `quotes` from index 1.
+    function initializeEarningsAllocation(
+        uint16 _burnBps,
+        uint16 _dividendsBps,
+        uint16 _liquidityBps,
+        address[] calldata _dividendTokens,
+        uint16[] calldata _dividendWeightsBps,
+        bytes[] calldata _dividendRoutes,
+        bytes[] calldata _quoteRoutes
+    ) external virtual {
+        // Named for the ABI, unread here: the extension decodes them straight out of calldata.
+        _burnBps;
+        _dividendsBps;
+        _liquidityBps;
+        _dividendTokens;
+        _dividendWeightsBps;
+        _dividendRoutes;
+        _quoteRoutes;
+        _delegateTo(_allocationLogic());
     }
 
     /// @notice Routes ETH earnings (post-graduation swap tax + LP-fee creator share) through the
@@ -352,13 +376,25 @@ abstract contract RealmTaxableToken is
     ///      A token with no dividend configuration has a zero native weight total, so this consumes
     ///      nothing and the slice folds back to the fund wallets.
     function _handleDividends(address asset, uint256 amount) internal override returns (uint256 unconsumed) {
-        // Quote-denominated dividends are not wired yet: the pots, their thresholds and the conversion
-        // route are all native-denominated, and an ERC20 slice buffered against them would be counted in
-        // units that mean nothing. Until they are, the slice falls back to the fund wallets — which is
-        // exactly the contract `EarningsAllocation` defines for a leg that has not shipped, and is why a
-        // token launched against an ERC20 quote today cannot silently strand holders' money.
-        if (asset != address(0)) return amount;
+        if (asset != address(0)) return _accrueQuoteDividends(asset, amount);
         return _accrueDividends(amount);
+    }
+
+    /// @dev The dividends slice of earnings that arrived in an ERC20 QUOTE. The shared machine is
+    ///      native-denominated — its pots, thresholds and conversion all are — so the base consumes
+    ///      nothing and the slice folds back to the fund wallets, the contract `EarningsAllocation`
+    ///      defines for a leg a venue has not shipped. A venue whose tokens earn in other currencies
+    ///      overrides it with buffers keyed by quote (`RealmTaxableTokenUniV4`).
+    function _accrueQuoteDividends(
+        address,
+        /* asset */
+        uint256 amount
+    )
+        internal
+        virtual
+        returns (uint256 unconsumed)
+    {
+        return amount;
     }
 
     /// @inheritdoc EarningsAllocation
@@ -384,6 +420,13 @@ abstract contract RealmTaxableToken is
     /// @dev Declared here and implemented by each concrete token, so a venue that forgets to wire one
     ///      does not compile.
     function dividendLogic() public view virtual returns (address);
+
+    /// @dev Which extension the creation-time `initializeEarningsAllocation` overloads run in: the
+    ///      dividend extension unless a venue with two of them puts them elsewhere (V4 hosts them in
+    ///      `RealmEarningsLogicUniV4`, which has the room).
+    function _allocationLogic() internal view virtual returns (address) {
+        return dividendLogic();
+    }
 
     /// @dev Runs the extension's copy of the entry point against THIS contract's storage, balance and
     ///      transient slots, forwarding calldata and returndata untouched. The extension exists for one

@@ -124,6 +124,18 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         _delegateToDividendLogic();
     }
 
+    /// @notice Same, for a buffer held in one of this token's QUOTES: `quote == address(0)` is the
+    ///         native machine above; an ERC20 quote services what that quote's pool earned, converting
+    ///         it into asset `assetIndex` on the quote's own pool or through the registry. See
+    ///         `RealmDividendLogicUniV4.processDividends(uint8,address,uint256,address[])`.
+    function processDividends(uint8 assetIndex, address quote, uint256 minOut, address[] calldata holders) external {
+        assetIndex;
+        quote;
+        minOut;
+        holders;
+        _delegateToDividendLogic();
+    }
+
     /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
     function claimDividends() external {
         _delegateToDividendLogic();
@@ -163,6 +175,27 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         return 0;
     }
 
+    /// @dev The dividends slice of ERC20-quoted earnings, buffered per quote AND per payout asset —
+    ///      split by `dividendWeightsBps` here exactly as the native slice is split across
+    ///      `pendingNative` — and converted out-of-band by `processDividends(i, quote, …)`. Two SSTOREs
+    ///      at most (the three buffers pack into two slots), inside the router's gas budget.
+    function _accrueQuoteDividends(address asset, uint256 amount) internal override returns (uint256) {
+        uint256 n = dividendAssetCount;
+        if (n == 0) return amount;
+        uint128[MAX_DIVIDEND_ASSETS] storage pending = quoteBuffers[_quoteIndex(asset)].dividendPending;
+        uint256 remaining = amount;
+        for (uint256 i; i < n; ++i) {
+            uint256 share = i + 1 == n ? remaining : amount * dividendWeightsBps[i] / DIVIDEND_BPS_TOTAL;
+            remaining -= share;
+            if (share == 0) continue;
+            uint256 updated = uint256(pending[i]) + share;
+            require(updated <= type(uint128).max, DividendBufferOverflow());
+            // forge-lint: disable-next-line(unsafe-typecast)
+            pending[i] = uint128(updated);
+        }
+        return 0;
+    }
+
     /// @inheritdoc RealmTaxableToken
     function dividendLogic() public view override returns (address) {
         return DIVIDEND_LOGIC;
@@ -170,6 +203,12 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
 
     /// @inheritdoc RealmTaxableTokenUniV4Base
     function earningsLogic() public view override returns (address) {
+        return EARNINGS_LOGIC;
+    }
+
+    /// @dev The payout-set configuration lives in the earnings extension on this venue: it runs once per
+    ///      token, and the dividend extension has no room left for it under EIP-170.
+    function _allocationLogic() internal view override returns (address) {
         return EARNINGS_LOGIC;
     }
 }

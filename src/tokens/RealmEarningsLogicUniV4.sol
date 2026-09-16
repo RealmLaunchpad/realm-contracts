@@ -2,6 +2,9 @@
 pragma solidity 0.8.28;
 
 import {RealmV4ExtensionBase} from "src/tokens/RealmV4ExtensionBase.sol";
+import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
+import {IRealmDividendSwapRegistry} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {IRealmV4Graduator} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
 // Self-aliased so the `chain-*` recipes can import-swap it for the target chain's pool constants.
 import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
@@ -14,12 +17,14 @@ import {Currency} from "lib/v4-core/src/types/Currency.sol";
 
 /// @title RealmEarningsLogicUniV4
 /// @notice The extension `RealmTaxableTokenUniV4` `delegatecall`s its BUY-BACK and LIQUIDITY entry
-///         points into: `processBurn` and `processLiquidity`, for any one of the token's quotes.
+///         points into: `processBurn` and `processLiquidity`, for any one of the token's quotes — and,
+///         because it has the room the dividend extension no longer does, the creation-time
+///         `initializeEarningsAllocation` overloads that configure the payout set.
 /// @dev Split from `RealmDividendLogicUniV4` because the two together no longer fit under EIP-170 once
 ///      every buffer is keyed by quote. They are peers, not a hierarchy: both share
 ///      `RealmV4ExtensionBase`, both add no storage, and `just check-dividend-layout` pins each one's
 ///      layout against the token's.
-contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase {
+contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase, DividendInitLogic {
     using SafeERC20 for IERC20;
 
     //////////////////////// BURN (delegated from the token) //////////////////////
@@ -196,44 +201,92 @@ contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase {
         if (usedId != 0) _recordUsedWall(qi, usedId, usedTickLower);
     }
 
-    //////////////////////// QUOTE HELPERS //////////////////////
+    //////////////////////// CREATION-TIME CONFIGURATION (delegated from the token) //////////////////////
 
-    /// @dev Cap on what ONE call may spend out of a buffer.
-    ///      - NATIVE keeps the absolute `MAX_EARNINGS_PER_PROCESS` it always had, per chain.
-    ///      - An ERC20 quote gets a FRACTION of the buffer instead, because an absolute cap is
-    ///        meaningless for a currency nobody calibrated it against: `MAX_EARNINGS_PER_PROCESS` is
-    ///        denominated in the chain's native unit, and a creator picks their quote. A fraction needs
-    ///        no calibration and does the same job — it bounds what a manipulated block can extract,
-    ///        forcing a sandwich to re-pay its pump every block for a geometrically shrinking prize.
-    /// @dev Either way this is the SECOND bound, not the first: the keeper gate is what actually stops a
-    ///      caller choosing their own floor around their own manipulation.
-    function _maxSpend(address quote, uint256 pending) internal pure returns (uint256) {
-        if (quote != address(0)) {
-            uint256 slice = pending * MAX_QUOTE_SPEND_BPS / 10_000;
-            // A buffer too small to slice would otherwise never be spendable at all.
-            return slice == 0 ? pending : slice;
+    /// @notice Creation-time dividend configuration, executed here on the token's storage. Guarded by
+    ///         the transient `tokenFactory`, which the `delegatecall` shares with the token.
+    function initializeEarningsAllocation(
+        uint16 _burnBps,
+        uint16 _dividendsBps,
+        uint16 _liquidityBps,
+        address _dividendToken
+    ) external override {
+        require(msg.sender == tokenFactory, Unauthorized());
+        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
+        if (_dividendsBps != 0) {
+            (address[] memory tokens, uint16[] memory weights) = _soleAssetSet(_dividendToken);
+            // No routes: the legacy single-asset shape predates them, and an empty route is exactly the
+            // permissionless V2 pair it always meant.
+            dividendAssetCount = _initializeDividends(tokens, weights, new bytes[](0));
+            hasDividends = true;
         }
-        return pending > MAX_EARNINGS_PER_PROCESS ? MAX_EARNINGS_PER_PROCESS : pending;
     }
 
-    /// @dev This token's holdings of `quote`, native or ERC20.
-    function _quoteHoldings(address quote) internal view returns (uint256) {
-        return quote == address(0) ? address(this).balance : IERC20(quote).balanceOf(address(this));
+    /// @notice Multi-asset creation-time dividend configuration. See
+    ///         `RealmTaxableToken.initializeEarningsAllocation(uint16,uint16,uint16,address[],uint16[])`.
+    function initializeEarningsAllocation(
+        uint16 _burnBps,
+        uint16 _dividendsBps,
+        uint16 _liquidityBps,
+        address[] calldata _dividendTokens,
+        uint16[] calldata _dividendWeightsBps,
+        bytes[] calldata _dividendRoutes
+    ) external override {
+        require(msg.sender == tokenFactory, Unauthorized());
+        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
+        if (_dividendsBps != 0) {
+            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
+            hasDividends = true;
+        }
     }
 
-    /// @dev What of those holdings is committed to someone else.
-    function _quoteReserved(address quote) internal view returns (uint256) {
-        return quote == address(0) ? _reservedNative() : _reservedAsset(quote);
+    /// @notice The multi-asset overload plus the routes of this token's ERC20 quotes. See
+    ///         `RealmTaxableToken.initializeEarningsAllocation(uint16,uint16,uint16,address[],uint16[],bytes[],bytes[])`.
+    function initializeEarningsAllocation(
+        uint16 _burnBps,
+        uint16 _dividendsBps,
+        uint16 _liquidityBps,
+        address[] calldata _dividendTokens,
+        uint16[] calldata _dividendWeightsBps,
+        bytes[] calldata _dividendRoutes,
+        bytes[] calldata _quoteRoutes
+    ) external override {
+        require(msg.sender == tokenFactory, Unauthorized());
+        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
+        if (_dividendsBps != 0) {
+            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
+            hasDividends = true;
+            _registerQuoteRoutes(_quoteRoutes);
+        }
     }
 
-    /// @dev What a swap actually consumed, measured as `(holdings drop) + (reserve growth)` rather than
-    ///      either alone. A buy-back is a SWAP, so the hook's `accrueFees` lands earnings here mid-call:
-    ///      that raises the holdings and the buffers together, and only the router's spend moves the two
-    ///      apart. Arranged so neither side can underflow — reporting a spend of 0 merely re-earmarks
-    ///      the whole amount, which is the safe direction.
-    function _spent(address quote, uint256 holdingsBefore, uint256 reservedBefore) internal view returns (uint256) {
-        uint256 lhs = holdingsBefore + _quoteReserved(quote);
-        uint256 rhs = _quoteHoldings(quote) + reservedBefore;
-        return lhs > rhs ? lhs - rhs : 0;
+    /// @dev Registers the route of every ERC20 quote a dividends leg has to be bought OUT of — one where
+    ///      some payout asset is neither that quote itself nor this token. Only those: a route nobody
+    ///      needs is a pool this token commits to for life for nothing. A quote that is itself a payout
+    ///      asset already has its route from `_initializeDividends` (the registry holds ONE route per
+    ///      asset, walked either way), so it is checked here but not registered again.
+    /// @dev The registry can only walk a V4 route backwards, so anything else is refused HERE, at
+    ///      creation, rather than failing every conversion out of that quote for the token's life.
+    ///      `_quoteRoutes` is positional to `quotes` from index 1; a missing entry is empty, which the
+    ///      registry reads as the permissionless V2 pair — and which therefore fails this venue check.
+    function _registerQuoteRoutes(bytes[] calldata routes) private {
+        uint256 nq = quoteCount;
+        uint256 na = dividendAssetCount;
+        IRealmDividendSwapRegistry registry = IRealmDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
+        for (uint256 q = 1; q < nq; ++q) {
+            address quote = quotes[q];
+            bool needed;
+            bool isPayout;
+            for (uint256 i; i < na; ++i) {
+                address a = dividendAssets[i].token;
+                if (a == quote) isPayout = true;
+                else if (a != address(this)) needed = true;
+            }
+            if (!needed) continue;
+            bytes memory route =
+                isPayout ? registry.routeOf(address(this), quote) : (q - 1 < routes.length ? routes[q - 1] : bytes(""));
+            require(DividendRouteLib.venue(route) == DividendRouteLib.VENUE_V4, QuoteRouteUnsupported());
+            if (!isPayout) registry.registerRoute(quote, route);
+        }
     }
 }

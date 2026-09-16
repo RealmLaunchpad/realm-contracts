@@ -88,9 +88,11 @@ struct EarningsAllocationMultiConfig {
 ///         by the allocation-aware `createToken` overload, which lifts the tax fields back into a
 ///         `TaxConfigs` for the shared creation pipeline and forwards `earningsAllocation` to
 ///         `initializeEarningsAllocation` at creation.
-/// @dev A non-zero allocation requires a token with a long-term static tax (`taxDurationSeconds != 0`);
-///      decay-only tokens are rejected by the factories (`EarningsAllocationRequiresTax`).
-///      The leading fields mirror `TaxConfigs` exactly.
+/// @dev On the Uniswap-V2 factory a non-zero allocation requires a long-term static tax
+///      (`taxDurationSeconds != 0`, else `EarningsAllocationRequiresTax`): V2 LP fees never reach the
+///      token, so a tax is its only earnings stream. The V4 factories accept any tax config, zero
+///      included — the creator's LP-fee share is a permanent stream there — and clone the taxable
+///      implementation whenever an allocation is set. The leading fields mirror `TaxConfigs` exactly.
 struct TaxConfigsWithAllocation {
     uint16 buyTaxBps;
     uint16 sellTaxBps;
@@ -114,6 +116,29 @@ struct TaxConfigsWithMultiAllocation {
     uint16 sellTaxDecayStartBps;
     uint32 taxDecayDuration;
     EarningsAllocationMultiConfig earningsAllocation;
+}
+
+/// @notice `TaxConfigsWithMultiAllocation` for the DIRECT venue, where a token's earnings can arrive in
+///         an ERC20 quote as well as in native. Same leading fields, same allocation rules, plus the
+///         swap routes the token's ERC20 quotes are converted THROUGH when a dividends leg has to move
+///         out of one of them.
+/// @dev `quoteRoutes` is positional to the factory's `pairs[]`: one `DividendRouteLib` route per pair,
+///      from native to that pair's quote, empty for a native pair. It may be shorter than `pairs`,
+///      which means empty for the rest. A route is only REQUIRED for an ERC20 quote that some payout
+///      asset has to be bought out of — i.e. one that is neither that quote itself nor the token —
+///      and only when the quote is not already a payout asset, whose route `dividendRoutes` carries.
+///      The registry walks it BACKWARDS (quote -> native) and then forward along the payout asset's own
+///      route, so every conversion pivots through native and there is nothing else to configure.
+struct TaxConfigsWithDirectAllocation {
+    uint16 buyTaxBps;
+    uint16 sellTaxBps;
+    uint32 taxDurationSeconds;
+    bool startTaxFromLaunch;
+    uint16 buyTaxDecayStartBps;
+    uint16 sellTaxDecayStartBps;
+    uint32 taxDecayDuration;
+    EarningsAllocationMultiConfig earningsAllocation;
+    bytes[] quoteRoutes;
 }
 
 /// @title IRealmTaxableToken
@@ -171,5 +196,19 @@ interface IRealmTaxableToken is IRealmToken {
         address[] calldata dividendTokens,
         uint16[] calldata dividendWeightsBps,
         bytes[] calldata dividendRoutes
+    ) external;
+
+    /// @notice The multi-asset overload plus the routes of this token's ERC20 QUOTES, for a token whose
+    ///         earnings can arrive in a currency other than native. `quoteRoutes` is positional to the
+    ///         token's `quotes` from index 1 (index 0 is native and needs no route). See
+    ///         `TaxConfigsWithDirectAllocation` for when an entry is required.
+    function initializeEarningsAllocation(
+        uint16 burnBps,
+        uint16 dividendsBps,
+        uint16 liquidityBps,
+        address[] calldata dividendTokens,
+        uint16[] calldata dividendWeightsBps,
+        bytes[] calldata dividendRoutes,
+        bytes[] calldata quoteRoutes
     ) external;
 }

@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
@@ -11,7 +12,7 @@ import {KeeperGated} from "src/tokens/KeeperGated.sol";
 ///         order a real token's `_update` moves them: SETTLE FIRST, then mutate. That order is the whole
 ///         of the anti-sandwich argument, so the harness has to reproduce it exactly — a harness that
 ///         mutated first would quietly test a different (and broken) contract.
-contract DividendHarness is DividendDistributionLogic {
+contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
     mapping(address account => uint256 balance) public balances;
     uint256 public eligibleSupply;
 

@@ -123,6 +123,13 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
         uint112 wall1Id;
         /// @dev Lower tick of `wall1Id`'s range.
         int24 wall1TickLower;
+        // --- slots 3-4 ---
+        /// @dev Accrued from the dividends allocation on THIS quote, per payout asset (same index as
+        ///      `dividendAssets`), awaiting a `processDividends(i, quote, …)` that turns it into that
+        ///      asset — on this quote's own pool for a self-token payout, through the registry for
+        ///      anything else, or as-is when the payout IS this quote. Unused at index 0: native
+        ///      dividends live on `DivAsset.pendingNative`, the machine every venue shares.
+        uint128[MAX_DIVIDEND_ASSETS] dividendPending;
     }
 
     /// @notice Per-quote earnings buffers and wall memory, indexed exactly as `quotes` is. Entries at or
@@ -154,6 +161,10 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     ///         protocol buy-backs stay distinguishable off-chain (one shrinks supply, one pays holders).
     event DividendBuyBackInitiated(uint256 ethIn);
 
+    /// @notice A quote route was given, or found already registered, in a venue the registry cannot
+    ///         walk backwards (only V4 routes can be), for a quote a dividends leg has to be bought
+    ///         out of.
+    error QuoteRouteUnsupported();
     error NothingToBurn();
 
     /// @notice The buy-back router call reverted — a missed `minTokensOut`, or an unswappable pool.
@@ -226,7 +237,19 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
         uint8 idx = _quoteIndexPlusOne[asset];
         if (idx == 0) return reserved;
         QuoteBuffers storage b = quoteBuffers[idx - 1];
-        return reserved + b.burnPending + b.liquidityPending;
+        reserved += b.burnPending + b.liquidityPending;
+        uint256 n = dividendAssetCount;
+        for (uint256 i; i < n; ++i) {
+            reserved += b.dividendPending[i];
+        }
+        return reserved;
+    }
+
+    /// @notice What of `quote` this token has accrued for holder dividends and not yet converted, per
+    ///         payout asset (same index as `dividendAssets`). All zero for the native quote, whose
+    ///         buffers are `dividendAssets(i).pendingNative`.
+    function quoteDividendPending(address quote) external view returns (uint128[MAX_DIVIDEND_ASSETS] memory) {
+        return quoteBuffers[_quoteIndex(quote)].dividendPending;
     }
 
     //////////////////////// LIQUIDITY-WALL MEMORY //////////////////////
