@@ -43,7 +43,12 @@ contract RedeployTokenImpls is UpgradeRealmFactories {
         vm.startBroadcast();
         m.tokenImpl = address(new RealmToken());
         m.taxTokenV2Impl = address(new RealmTaxableTokenUniV2());
-        m.taxTokenV4Impl = address(new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4())));
+        // The V4 token's two extensions are deployed HERE and passed in, rather than by the token's own
+        // constructor: their creation code counts toward its initcode, and two of them break EIP-3860.
+        // Both share the token's storage layout by construction; `just check-dividend-layout` pins it.
+        address dividendLogic = address(new RealmDividendLogicUniV4());
+        address earningsLogic = address(new RealmEarningsLogicUniV4());
+        m.taxTokenV4Impl = address(new RealmTaxableTokenUniV4(dividendLogic, earningsLogic));
         (address v2Impl, address v4Impl) = _upgradeFactories(m);
         vm.stopBroadcast();
 
@@ -51,8 +56,13 @@ contract RedeployTokenImpls is UpgradeRealmFactories {
         console.log("  TOKEN_IMPL                 =", m.tokenImpl);
         console.log("  TAXABLE_TOKEN_V2_IMPL      =", m.taxTokenV2Impl);
         console.log("  TAXABLE_TOKEN_V4_IMPL      =", m.taxTokenV4Impl);
+        console.log("  DIVIDEND_LOGIC_V4          =", dividendLogic);
+        console.log("  EARNINGS_LOGIC_V4          =", earningsLogic);
         console.log("  FACTORY_UNIV2_UNIFIED_IMPL =", v2Impl);
         console.log("  FACTORY_UNIV4_UNIFIED_IMPL =", v4Impl);
+        console.log("");
+        console.log("NOTE: the DIRECT factory holds the token impls as immutables too. If it is already");
+        console.log("      deployed, redeploy it against these and repoint its proxy.");
         console.log("");
         console.log("Then: just export-deployments");
     }

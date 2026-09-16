@@ -7,6 +7,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
 import {RealmHook} from "src/hooks/RealmHook.sol";
+import {RealmHookAnyPair} from "src/hooks/RealmHookAnyPair.sol";
 import {
     DeploymentAddressesEthereumSepolia,
     DeploymentAddressesRobinhoodMainnet,
@@ -146,5 +147,32 @@ contract DeployRealmHook is DeployHookBase {
         returns (address)
     {
         return address(new RealmHook{salt: salt}(IPoolManager(poolManager), router, treasury));
+    }
+}
+
+/// @notice Deploys `RealmHookAnyPair` — the hook every ERC20-quoted Realm pool is bound to, which
+///         resolves which side of the pair is the token and collects its fee in the pool's own quote.
+/// @dev A SECOND hook, not a replacement: `RealmHook` is whitelisted by Uniswap and keeps every
+///      native-quoted pool. This one's address becomes the manifest's `SWAP_HOOK_ANY_PAIR` and is what
+///      `RealmDirectGraduatorUniV4` binds an ERC20 pair to. It declares the same four callbacks, so it
+///      mines against the same `0xCC` mask.
+///
+/// Usage (dry run):   forge script DeployRealmHookAnyPair --rpc-url rh-testnet --account realm.dev
+/// Usage (deploy):    just deploy-anypair-hook-rh-testnet
+contract DeployRealmHookAnyPair is DeployHookBase {
+    function hookName() internal pure override returns (string memory) {
+        return "RealmHookAnyPair";
+    }
+
+    function creationCode() internal pure override returns (bytes memory) {
+        return type(RealmHookAnyPair).creationCode;
+    }
+
+    function _deploy(bytes32 salt, address poolManager, address router, address treasury)
+        internal
+        override
+        returns (address)
+    {
+        return address(new RealmHookAnyPair{salt: salt}(IPoolManager(poolManager), router, treasury));
     }
 }

@@ -30,6 +30,28 @@ library DeploymentsRobinhoodTestnet {
     ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
     ///      variant Uniswap whitelists. `address(0)` until then.
     address internal constant SWAP_HOOK = 0xCb31DF4846fd7aFaF4Ffdb074c733DE216F340Cc;
+
+    /// @notice `RealmHookAnyPair`: the hook every ERC20-quoted Realm pool is bound to. A SECOND hook
+    ///         beside `SWAP_HOOK`, which is whitelisted by Uniswap and keeps every native pool. Mined
+    ///         with the same permission bits; deployed by `DeployRealmHookAnyPair`.
+    address public constant SWAP_HOOK_ANY_PAIR = 0x0000000000000000000000000000000000000000;
+
+    /// @notice `RealmDirectGraduatorUniV4`: the direct-launch venue's graduator. Non-upgradeable, holds
+    ///         every launch's seed position NFTs forever.
+    address public constant GRADUATOR_UNIV4_DIRECT = 0x0000000000000000000000000000000000000000;
+
+    /// @notice `RealmFactoryUniV4Direct` proxy — the direct-launch venue's entry point.
+    address public constant FACTORY_UNIV4_DIRECT = 0x0000000000000000000000000000000000000000;
+
+    /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
+    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x0000000000000000000000000000000000000000;
+
+    /// @notice `RealmDividendLogicUniV4`: the V4 token's dividend extension. Passed to the token impl's
+    ///         constructor and reached only by `delegatecall`; recorded here so it can be verified.
+    address public constant DIVIDEND_LOGIC_V4 = 0x0000000000000000000000000000000000000000;
+
+    /// @notice `RealmEarningsLogicUniV4`: the V4 token's buy-back / liquidity extension. Same shape.
+    address public constant EARNINGS_LOGIC_V4 = 0x0000000000000000000000000000000000000000;
     /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees 30/70
     ///         treasury/creator.
     /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook

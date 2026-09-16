@@ -104,6 +104,24 @@ library ChainConfig {
     /// @notice The V4 swap hook for the active chain (`RealmSwapHook` or `RealmHook` — whichever Uniswap
     ///         whitelisted). Deployed separately by `DeployRealmSwapHook`, since its address must be
     ///         mined for the permission flags, so this is a manifest read.
+    /// @notice `RealmHookAnyPair`, the hook every ERC20-quoted pool is bound to. A SECOND hook beside
+    ///         `swapHook()`, which Uniswap whitelisted and which keeps every native pool.
+    function swapHookAnyPair() internal view returns (address hook) {
+        if (isSepolia()) hook = DeploymentsEthereumSepolia.SWAP_HOOK_ANY_PAIR;
+        else if (isRobinhood()) hook = DeploymentsRobinhoodMainnet.SWAP_HOOK_ANY_PAIR;
+        else if (isRobinhoodTestnet()) hook = DeploymentsRobinhoodTestnet.SWAP_HOOK_ANY_PAIR;
+        else revert(UNSUPPORTED);
+        require(hook != address(0), "manifest: SWAP_HOOK_ANY_PAIR missing; run DeployRealmHookAnyPair first");
+    }
+
+    /// @notice The chain's wrapped native token, which the direct venue refuses as a pair quote.
+    function wrappedNative() internal view returns (address) {
+        if (isSepolia()) return DeploymentAddressesEthereumSepolia.WETH;
+        if (isRobinhood()) return DeploymentAddressesRobinhoodMainnet.WETH;
+        if (isRobinhoodTestnet()) return DeploymentAddressesRobinhoodTestnet.WETH;
+        revert(UNSUPPORTED);
+    }
+
     function swapHook() internal view returns (address hook) {
         if (isSepolia()) hook = DeploymentsEthereumSepolia.SWAP_HOOK;
         else if (isRobinhood()) hook = DeploymentsRobinhoodMainnet.SWAP_HOOK;

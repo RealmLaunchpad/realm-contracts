@@ -125,7 +125,7 @@ _taxtoken lib suffix="":
         src/tokens/RealmTaxableTokenUniV2.sol src/dividends/RealmDividendSwapRegistry.sol
     sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
         src/tokens/RealmUniv4BuyBacks.sol src/tokens/RealmTaxableTokenUniV4Base.sol \
-        src/tokens/RealmDividendLogicUniV4.sol
+        src/tokens/RealmDividendLogicUniV4.sol src/tokens/RealmEarningsLogicUniV4.sol
 
 # (internal) Repoints the V4 graduators' pool-geometry + fee libs to the `{{suffix}}` variant
 # ("" = ETH, "Arc" = ARC). The V2 graduators are separate contracts and are NOT touched here.
@@ -319,6 +319,10 @@ redeploy-token-impls-rh-testnet: chain-rh-testnet
     forge script RedeployTokenImpls --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+redeploy-token-impls-rh: chain-rh
+    forge script RedeployTokenImpls --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
 # Appoints the admin and the keeper on BOTH registries (keepers + dividend swap), which ship empty from
 # DeployRealmPrereqs. Admin defaults to the broadcasting account (the registries' owner) — override with
 # REALMDEVADDRESS=<addr>; the keeper is REALM_KEEPER in the chain's manifest. Idempotent, so it is also
@@ -371,6 +375,42 @@ deploy-dummy-xstocks-sepolia:
 deploy-dummy-xstocks-rh-testnet:
     forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
+# --- DIRECT-LAUNCH VENUE -----------------------------------------------------
+# The second venue: a token that goes straight to a Uniswap V4 pool at a price its creator picks, with
+# no bonding curve and no launchpad. Two steps, in this order, because the graduator takes the hook as
+# an immutable.
+#
+# Step 1. `RealmHookAnyPair`, the hook every ERC20-quoted pool is bound to. Its address carries its
+# permission bits, so the script mines a CREATE2 salt for it (30-60s). `SWAP_HOOK` — the whitelisted
+# `RealmHook` — is NOT redeployed and keeps every native-quoted pool. Paste the mined address into the
+# manifest's SWAP_HOOK_ANY_PAIR, then rebuild. Dry-run first: the same command without --broadcast,
+# plus --sender <realm.dev address>.
+deploy-anypair-hook-rh-testnet: chain-rh-testnet
+    forge script DeployRealmHookAnyPair --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
+deploy-anypair-hook-sepolia: chain-sepolia
+    forge script DeployRealmHookAnyPair --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+deploy-anypair-hook-rh: chain-rh
+    forge script DeployRealmHookAnyPair --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+# Step 2. `RealmDirectGraduatorUniV4` + `RealmFactoryUniV4Direct` (impl + UUPS proxy), wired to the
+# hooks, the liquidity adder, the token impls, the fee handler and the creator-vault factory already in
+# the manifest. Nothing to whitelist afterwards — this venue has no launchpad. Paste the three printed
+# slots into the manifest and `just export-deployments`. Dry-run first.
+deploy-direct-venue-rh-testnet: chain-rh-testnet
+    forge script DeployDirectVenue --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
+deploy-direct-venue-sepolia: chain-sepolia
+    forge script DeployDirectVenue --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+deploy-direct-venue-rh: chain-rh
+    forge script DeployDirectVenue --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 # Regenerates deployments.{ethereum.sepolia,robinhood.mainnet,robinhood.testnet}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
