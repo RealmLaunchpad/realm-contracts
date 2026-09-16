@@ -37,7 +37,8 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
 
     function setUp() public virtual override {
         super.setUp();
-        taxTokenImpl = new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
+        taxTokenImpl =
+            new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
 
         // Set graduator to tax-enabled version for tests
         graduator = graduatorV4;

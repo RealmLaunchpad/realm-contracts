@@ -63,14 +63,10 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
 
     function _quotePairs(int24 tick) internal view returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
         p = new RealmFactoryUniV4Direct.DirectPair[](1);
-        p[0] =
-            RealmFactoryUniV4Direct.DirectPair({quote: address(quoteCoin), weightBps: 10_000, launchTick: tick});
+        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(quoteCoin), weightBps: 10_000, launchTick: tick});
     }
 
-    function _launchAgainstQuoteCoin(RealmFactoryUniV4Direct.DevBuy memory devBuy)
-        internal
-        returns (address token)
-    {
+    function _launchAgainstQuoteCoin(RealmFactoryUniV4Direct.DevBuy memory devBuy) internal returns (address token) {
         vm.prank(creator);
         token = directFactory.createToken(
             _setup(false),
@@ -228,9 +224,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         p = new RealmFactoryUniV4Direct.DirectPair[](2);
         p[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 6_000, launchTick: LAUNCH_TICK});
         p[1] = RealmFactoryUniV4Direct.DirectPair({
-            quote: address(quoteCoin),
-            weightBps: 4_000,
-            launchTick: QC_LAUNCH_TICK
+            quote: address(quoteCoin), weightBps: 4_000, launchTick: QC_LAUNCH_TICK
         });
     }
 
@@ -330,9 +324,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](4);
         for (uint256 i; i < 4; ++i) {
             pairs[i] = RealmFactoryUniV4Direct.DirectPair({
-                quote: address(uint160(0x1000 + i)),
-                weightBps: 2_500,
-                launchTick: LAUNCH_TICK
+                quote: address(uint160(0x1000 + i)), weightBps: 2_500, launchTick: LAUNCH_TICK
             });
         }
         vm.prank(creator);

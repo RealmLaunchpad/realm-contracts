@@ -453,7 +453,8 @@ contract LaunchpadBaseTests is Test {
 
         vm.startPrank(admin);
         realmToken = new RealmToken();
-        realmTaxToken = new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
+        realmTaxToken =
+            new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
 
         implementation = realmToken;
         launchpad = new RealmLaunchpad(treasury, admin);

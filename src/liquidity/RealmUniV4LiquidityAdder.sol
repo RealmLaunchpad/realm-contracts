@@ -536,9 +536,7 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
         UNIV4_POSITION_MANAGER.modifyLiquidities{value: poolHasNative && !isCurrency1 ? amount : 0}(
             abi.encode(
                 poolHasNative
-                    ? abi.encodePacked(
-                        uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP)
-                    )
+                    ? abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP))
                     : abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR)),
                 params
             ),

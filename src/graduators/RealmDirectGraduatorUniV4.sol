@@ -253,8 +253,7 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         // Opens the gate on transfers to the pool manager, which the seed below is the first to use.
         IRealmToken(tokenAddress).markGraduated();
 
-        uint128 liquidity =
-            _seedPool(tokenAddress, _pendingQuote, _pendingLaunchTick, tokenAmount, _pendingWeightBps);
+        uint128 liquidity = _seedPool(tokenAddress, _pendingQuote, _pendingLaunchTick, tokenAmount, _pendingWeightBps);
         emit TokenGraduated(tokenAddress, tokenAmount, msg.value, liquidity);
     }
 

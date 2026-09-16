@@ -166,11 +166,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         // pulled `quoteAmount` on an ERC20 one. `_validateDirectInputs` has already ruled out both at
         // once, so either is the whole spend.
         _validateInputs(
-            setup.name,
-            setup.symbol,
-            setup.feeShares,
-            devBuy.recipients,
-            msg.value > 0 ? msg.value : devBuy.quoteAmount
+            setup.name, setup.symbol, setup.feeShares, devBuy.recipients, msg.value > 0 ? msg.value : devBuy.quoteAmount
         );
         _validateAntiSniperConfig(antiSniperConfigs);
         _validateTaxConfig(taxConfigs);
@@ -327,11 +323,10 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
 
     /// @dev Venue-specific validation: the V4 fee tier, the pair set, and the dev buy's consistency
     ///      with it. Everything not yet supported is rejected explicitly — see the ABI note above.
-    function _validateDirectInputs(
-        DirectTokenSetup calldata setup,
-        DirectPair[] calldata pairs,
-        DevBuy calldata devBuy
-    ) internal view {
+    function _validateDirectInputs(DirectTokenSetup calldata setup, DirectPair[] calldata pairs, DevBuy calldata devBuy)
+        internal
+        view
+    {
         require(setup.lpFeeBps == 100 || setup.lpFeeBps == 50, InvalidLpFeeBps());
 
         uint256 n = pairs.length;

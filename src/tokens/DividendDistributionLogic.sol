@@ -51,7 +51,6 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     /// @notice Thrown by every TOKEN entry point on an extension. An extension is an execution body for
     ///         a token, not a token: deployed once, never cloned, holding no balance, and its own
     ///         storage never read. Anyone reaching one of those entry points here has the wrong address.
-
     /// @notice The eligible supply is under `MIN_DIVIDEND_SUPPLY`: there is nobody to credit, so the
     ///         buffer stays where it is until a holder shows up.
     error NoDividendSupply();

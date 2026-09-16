@@ -3,30 +3,20 @@ pragma solidity 0.8.28;
 
 import {RealmV4ExtensionBase} from "src/tokens/RealmV4ExtensionBase.sol";
 import {IRealmV4Graduator} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
-// Self-aliased so the `chain-*` recipes can import-swap it for the target chain's pool constants.
-import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
-import {IRealmToken} from "src/interfaces/IRealmToken.sol";
-import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
-import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {ERC20, IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
-import {IRealmUniV4LiquidityAdder, WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
-import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
-import {Currency} from "lib/v4-core/src/types/Currency.sol";
 
 /// @title RealmDividendLogicUniV4
 /// @notice The dividend extension `RealmTaxableTokenUniV4` `delegatecall`s its out-of-band entry
 ///         points into: the round machinery, the native -> payout-asset conversion, and the per-holder
-///         push. Deployed once, by the token implementation's own constructor.
+///         push. Deployed alongside the token implementation and passed to its constructor.
 /// @dev It shares `RealmTaxableTokenUniV4Base` with the token and adds NO state of its own, so the
 ///      compiler derives the same storage layout for both — the property the delegatecall depends on.
+/// @dev Its PEER is `RealmEarningsLogicUniV4`, which carries the buy-back and liquidity processors:
+///      once every buffer is keyed by quote the two halves no longer fit in one contract under
+///      EIP-170. Neither delegates to the other, and `just check-dividend-layout` pins both against
+///      the token.
 ///      Pinned by `just check-dividend-layout`.
 contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLogic {
-    using SafeERC20 for IERC20;
-
     //////////////////////// DIVIDENDS //////////////////////    //////////////////////// DIVIDENDS //////////////////////
 
     /// @dev Adds the SELF-TOKEN payout shape: V4 is ETH-native, so a token paying dividends in itself
@@ -120,5 +110,4 @@ contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLo
 
     ////////////////// NOT A TOKEN //////////////////
     // See `RealmV4ExtensionBase`, which carries the stub set both V4 extensions share.
-
 }

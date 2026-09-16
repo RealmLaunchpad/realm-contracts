@@ -173,16 +173,17 @@ contract SwapLpFeeRouterTests is Test {
         );
         assertTrue(nativeOk, "native depositLpFees selector must dispatch");
 
-        (bool assetOk,) = address(router).call(
-            abi.encodeWithSignature(
-                "depositLpFees(address,address,uint256,uint256,uint256)",
-                address(0xbeef),
-                address(0xdead),
-                uint256(0),
-                uint256(0),
-                uint256(0)
-            )
-        );
+        (bool assetOk,) = address(router)
+            .call(
+                abi.encodeWithSignature(
+                    "depositLpFees(address,address,uint256,uint256,uint256)",
+                    address(0xbeef),
+                    address(0xdead),
+                    uint256(0),
+                    uint256(0),
+                    uint256(0)
+                )
+            );
         assertTrue(assetOk, "asset depositLpFees selector must dispatch");
     }
 

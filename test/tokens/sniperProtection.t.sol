@@ -698,7 +698,8 @@ contract RealmTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
         launchpad = address(launchpadMock);
 
         graduator = new MockGraduator(DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER);
-        impl = new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
+        impl =
+            new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
         token = RealmTaxableTokenUniV4(payable(Clones.clone(address(impl))));
         token.initialize(
             IRealmToken.InitializeParams({
