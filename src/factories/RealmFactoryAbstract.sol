@@ -19,7 +19,8 @@ import {
     TaxConfigInit,
     TaxConfigs,
     TaxConfigsWithAllocation,
-    TaxConfigsWithMultiAllocation
+    TaxConfigsWithMultiAllocation,
+    TaxConfigsWithDirectAllocation
 } from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
@@ -424,6 +425,30 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         cfg.taxDecayDuration = c.taxDecayDuration;
     }
 
+    /// @dev Same, for the direct venue's variant.
+    function _toTaxConfigs(TaxConfigsWithDirectAllocation calldata c) internal pure returns (TaxConfigs memory cfg) {
+        cfg.buyTaxBps = c.buyTaxBps;
+        cfg.sellTaxBps = c.sellTaxBps;
+        cfg.taxDurationSeconds = c.taxDurationSeconds;
+        cfg.startTaxFromLaunch = c.startTaxFromLaunch;
+        cfg.buyTaxDecayStartBps = c.buyTaxDecayStartBps;
+        cfg.sellTaxDecayStartBps = c.sellTaxDecayStartBps;
+        cfg.taxDecayDuration = c.taxDecayDuration;
+    }
+
+    /// @dev Whether an allocation configures any bucket at all. Shared by every allocation-aware
+    ///      `createToken` overload, and the flag that routes the token to the taxable implementation.
+    function _hasAllocation(uint16 burnBps, uint16 dividendsBps, uint16 liquidityBps) internal pure returns (bool) {
+        return burnBps != 0 || dividendsBps != 0 || liquidityBps != 0;
+    }
+
+    /// @dev Raised by an allocation-aware `createToken` overload for the length of its call and consumed
+    ///      by `_dispatchAndInitialize`, which routes the token to the taxable implementation on it. A
+    ///      TRANSIENT marker rather than a parameter: the creation pipeline's stack is already at the
+    ///      limit without `via_ir`, and this is the one input that only the dispatch reads. Cleared by
+    ///      the read, so nothing outlives the call that set it.
+    bool internal transient _allocationPending;
+
     /// @dev Validates a tax config. The static tax and the decay add-on are validated INDEPENDENTLY,
     ///      each with its own sentinel consistency (zero duration ⇒ zero bps, and vice-versa) so a token
     ///      may configure either, both, or neither — in particular a "decay-only" token sets just the
@@ -539,7 +564,15 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         view
         returns (address)
     {
-        return _isTaxConfigured(taxCfg) ? TOKEN_IMPL_TAX : TOKEN_IMPL_BASE;
+        return _previewTokenImplementation(taxCfg, false);
+    }
+
+    /// @dev The general form. An earnings allocation lives on the taxable implementation — the base
+    ///      token has no split, no buffers and no dividend machine — so a token that configures one is
+    ///      cloned from it even with no tax at all: on the V4 venues the creator's LP-fee share is a
+    ///      permanent earnings stream in its own right.
+    function _previewTokenImplementation(TaxConfigs memory taxCfg, bool hasAllocation) internal view returns (address) {
+        return (hasAllocation || _isTaxConfigured(taxCfg)) ? TOKEN_IMPL_TAX : TOKEN_IMPL_BASE;
     }
 
     /// @dev Resolves the implementation for `taxCfg` (tax vs non-tax — anti-sniper does NOT change the
@@ -561,14 +594,17 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         TaxConfigs memory taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
     ) internal returns (address token) {
-        address impl = _previewTokenImplementation(taxCfg, antiSniperCfg);
+        bool hasAllocation = _allocationPending;
+        if (hasAllocation) _allocationPending = false;
+        address impl = _previewTokenImplementation(taxCfg, hasAllocation);
 
         IRealmToken.InitializeParams memory params;
         (token, params) =
             _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, swapLpFeeBps, vaultAllocation);
 
-        if (_isTaxConfigured(taxCfg)) {
-            // Taxable impl: stores the tax rate from `taxCfg` in `_initializeTaxConfig`.
+        if (impl == TOKEN_IMPL_TAX) {
+            // Taxable impl: stores the tax rate from `taxCfg` in `_initializeTaxConfig`. With an
+            // allocation and no tax, `taxCfg` is all zeros and the token simply charges none.
             IRealmTaxableToken(payable(token)).initialize(params, taxCfg, antiSniperCfg);
         } else {
             // Non-tax impl: `taxCfg` is empty (validated); base `getLaunchpadFees` returns 0 tax.

@@ -181,9 +181,10 @@ contract RealmFactoryUniV4Unified is RealmFactoryCurveAbstract {
     /// @notice Allocation-aware overload: the recommended `referral` overload plus a
     ///         `TaxConfigsWithAllocation` that also carries the earnings-allocation split (burn /
     ///         dividends / liquidity bps; the fund wallets take the remainder). The split is stored on
-    ///         the token at creation via `initializeEarningsAllocation`. A non-zero split requires a
-    ///         token with a LONG-TERM static tax (`taxDurationSeconds != 0`); a decay-only token is
-    ///         rejected — its tax window lasts minutes, so there is no earnings stream worth splitting.
+    ///         the token at creation via `initializeEarningsAllocation`. Any tax config is accepted, a
+    ///         zero one included: the creator's share of the LP fee is a permanent earnings stream on
+    ///         this venue, so a no-tax token with an allocation is a revenue-share token and is cloned
+    ///         from the taxable implementation (see `previewTokenImplementation`).
     ///         A non-zero `dividendsBps` must name a payout asset in `dividendToken`; the token asks
     ///         `RealmDividendSwapRegistry` whether it can be bought and reverts at creation otherwise. The
     ///         registry answers yes either because the asset has a Uniswap V2 pair that is deep enough
@@ -199,14 +200,13 @@ contract RealmFactoryUniV4Unified is RealmFactoryCurveAbstract {
         address referral
     ) external payable returns (address token) {
         EarningsAllocationConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
-        bool hasAllocation = alloc.burnBps != 0 || alloc.dividendsBps != 0 || alloc.liquidityBps != 0;
+        bool hasAllocation = _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps);
         // Naming a payout asset with a zero share would leave dividends silently OFF, forever: clones
         // are not upgradeable and `initializeEarningsAllocation` only ever runs here, at creation.
         require(alloc.dividendToken == address(0) || alloc.dividendsBps != 0, DividendAssetWithoutShare());
 
         TaxConfigs memory taxConfigs = _toTaxConfigs(taxAllocationConfigs);
-        if (hasAllocation) require(_hasStaticTax(taxConfigs), EarningsAllocationRequiresTax());
-
+        _allocationPending = hasAllocation;
         token = _createV4(tokenSetup, univ4Configs, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults);
         if (hasAllocation) {
             IRealmTaxableToken(payable(token))
@@ -234,14 +234,13 @@ contract RealmFactoryUniV4Unified is RealmFactoryCurveAbstract {
         address referral
     ) external payable returns (address token) {
         EarningsAllocationMultiConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
-        bool hasAllocation = alloc.burnBps != 0 || alloc.dividendsBps != 0 || alloc.liquidityBps != 0;
+        bool hasAllocation = _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps);
         // Naming payout assets with a zero share would leave dividends silently OFF, forever: clones
         // are not upgradeable and `initializeEarningsAllocation` only ever runs here, at creation.
         require(alloc.dividendTokens.length == 0 || alloc.dividendsBps != 0, DividendAssetWithoutShare());
 
         TaxConfigs memory taxConfigs = _toTaxConfigs(taxAllocationConfigs);
-        if (hasAllocation) require(_hasStaticTax(taxConfigs), EarningsAllocationRequiresTax());
-
+        _allocationPending = hasAllocation;
         token = _createV4(tokenSetup, univ4Configs, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults);
         if (hasAllocation) {
             IRealmTaxableToken(payable(token))
@@ -341,6 +340,21 @@ contract RealmFactoryUniV4Unified is RealmFactoryCurveAbstract {
         _validateAntiSniperConfig(antiSniperCfg);
         _validateTaxConfig(taxCfg);
         return _previewTokenImplementation(taxCfg, antiSniperCfg);
+    }
+
+    /// @notice `previewTokenImplementation` for the allocation-aware `createToken` overloads. The
+    ///         allocation participates in dispatch — a token with one is cloned from the taxable
+    ///         implementation whatever its tax — so a salt mined against the tax-only preview would
+    ///         name the wrong implementation for such a token.
+    function previewTokenImplementation(
+        TaxConfigsWithMultiAllocation calldata taxCfg,
+        AntiSniperConfigs calldata antiSniperCfg
+    ) external view returns (address) {
+        _validateAntiSniperConfig(antiSniperCfg);
+        TaxConfigs memory cfg = _toTaxConfigs(taxCfg);
+        _validateTaxConfig(cfg);
+        EarningsAllocationMultiConfig calldata alloc = taxCfg.earningsAllocation;
+        return _previewTokenImplementation(cfg, _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps));
     }
 
     /// @notice Quotes the ETH (msg.value) needed to receive ~`tokenAmount` tokens via the deployer buy.

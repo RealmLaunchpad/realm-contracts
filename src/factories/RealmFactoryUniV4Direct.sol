@@ -7,7 +7,12 @@ import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
-import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
+import {
+    IRealmTaxableToken,
+    TaxConfigs,
+    TaxConfigsWithDirectAllocation,
+    EarningsAllocationMultiConfig
+} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {RealmLaunchPricing} from "src/libraries/RealmLaunchPricing.sol";
@@ -122,6 +127,8 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     /// @notice Thrown when the dev buy names a pair that does not exist, carries a conversion route
     ///         while no route is needed, or sets a floor for a conversion that will not happen.
     error InvalidDevBuy();
+    /// @notice `quoteRoutes` names more entries than there are pairs, or a route for a native pair.
+    error InvalidQuoteRoutes();
 
     constructor(
         TokenImpls memory impls,
@@ -172,7 +179,45 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         _validateTaxConfig(taxConfigs);
         _validateTotalFee(setup.lpFeeBps, taxConfigs);
 
-        token = _launch(setup, pairs, taxConfigs, antiSniperConfigs, creatorVaults, devBuy);
+        token = _launch(setup, pairs, taxConfigs, antiSniperConfigs, creatorVaults);
+        _open(token, pairs, devBuy);
+
+        emit LpFeeBpsSet(token, setup.lpFeeBps);
+        if (referral != address(0)) emit TokenReferral(token, referral);
+    }
+
+    /// @notice Allocation-aware overload: the same launch, with `TaxConfigsWithDirectAllocation` carrying
+    ///         the earnings-allocation split (burn / dividends / liquidity bps, the payout assets and
+    ///         their routes, and the routes of the token's ERC20 quotes). Any tax config is accepted,
+    ///         zero included: the creator's LP-fee share is a permanent earnings stream on this venue,
+    ///         and a token with an allocation is cloned from the taxable implementation whatever its
+    ///         tax — see `previewTokenImplementation(TaxConfigsWithDirectAllocation, AntiSniperConfigs)`.
+    /// @dev The allocation is configured BEFORE the pools are seeded, so `markGraduated()` — which the
+    ///      first seed triggers — activates the dividend machine the normal way. Configured after, the
+    ///      token would graduate with `hasDividends` unset and only start accruing on its first earnings.
+    ///      Event order therefore inserts, after `SharesUpdated`: `EarningsAllocationInitialized`, one
+    ///      `DividendAssetInitialized` per payout asset, `DividendsInitialized`, and the registry's
+    ///      `DividendRouteRegistered` for each route the token registers (payout assets first, then the
+    ///      ERC20 quotes that need one); `DividendsActivated` lands with `Graduated`.
+    function createToken(
+        DirectTokenSetup calldata setup,
+        DirectPair[] calldata pairs,
+        TaxConfigsWithDirectAllocation calldata taxAllocationConfigs,
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata creatorVaults,
+        DevBuy calldata devBuy,
+        address referral
+    ) external payable returns (address token) {
+        _validateDirectInputs(setup, pairs, devBuy);
+        _validateInputs(
+            setup.name, setup.symbol, setup.feeShares, devBuy.recipients, msg.value > 0 ? msg.value : devBuy.quoteAmount
+        );
+        _validateAntiSniperConfig(antiSniperConfigs);
+        bool hasAllocation = _validateAllocation(taxAllocationConfigs, pairs);
+
+        token =
+            _createWithAllocation(setup, pairs, taxAllocationConfigs, antiSniperConfigs, creatorVaults, hasAllocation);
+        _open(token, pairs, devBuy);
 
         emit LpFeeBpsSet(token, setup.lpFeeBps);
         if (referral != address(0)) emit TokenReferral(token, referral);
@@ -195,6 +240,20 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         return _previewTokenImplementation(taxCfg, antiSniperCfg);
     }
 
+    /// @notice `previewTokenImplementation` for the allocation-aware overload. The allocation takes part
+    ///         in dispatch — a token with one is cloned from the taxable implementation whatever its
+    ///         tax — so a salt mined against the tax-only preview would name the wrong implementation.
+    function previewTokenImplementation(
+        TaxConfigsWithDirectAllocation calldata taxCfg,
+        AntiSniperConfigs calldata antiSniperCfg
+    ) external view returns (address) {
+        _validateAntiSniperConfig(antiSniperCfg);
+        TaxConfigs memory cfg = _toTaxConfigs(taxCfg);
+        _validateTaxConfig(cfg);
+        EarningsAllocationMultiConfig calldata alloc = taxCfg.earningsAllocation;
+        return _previewTokenImplementation(cfg, _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps));
+    }
+
     /// @notice What a `launchTick` actually means: the opening price of one whole coin in whole units
     ///         of `quote`, and the market cap that implies across the fixed supply — both scaled by 1e18.
     /// @dev The reader that stops a creator launching at ten times the price they meant. A tick is
@@ -211,15 +270,55 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    /// @dev Creation body, split out of `createToken` purely to keep its stack shallow enough to
-    ///      compile without `via_ir`.
+    /// @dev The allocation overload's creation body, split out of `createToken` to keep its stack
+    ///      shallow enough to compile without `via_ir`: the token, then its allocation, in that order and
+    ///      before `_open` seeds the pools (see the overload's docstring for why).
+    function _createWithAllocation(
+        DirectTokenSetup calldata setup,
+        DirectPair[] calldata pairs,
+        TaxConfigsWithDirectAllocation calldata c,
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata creatorVaults,
+        bool hasAllocation
+    ) private returns (address token) {
+        TaxConfigs memory taxConfigs = _toTaxConfigs(c);
+        _validateTaxConfig(taxConfigs);
+        _validateTotalFee(setup.lpFeeBps, taxConfigs);
+        _allocationPending = hasAllocation;
+        token = _launch(setup, pairs, taxConfigs, antiSniperConfigs, creatorVaults);
+        if (hasAllocation) _initializeAllocation(token, c, pairs);
+    }
+
+    /// @dev Its own frame purely for the stack: seven calldata arguments do not fit beside the launch's.
+    function _initializeAllocation(
+        address token,
+        TaxConfigsWithDirectAllocation calldata c,
+        DirectPair[] calldata pairs
+    ) private {
+        bytes[] memory quoteRoutes = _quoteRoutes(c.quoteRoutes, pairs);
+        EarningsAllocationMultiConfig calldata alloc = c.earningsAllocation;
+        IRealmTaxableToken(payable(token))
+            .initializeEarningsAllocation(
+                alloc.burnBps,
+                alloc.dividendsBps,
+                alloc.liquidityBps,
+                alloc.dividendTokens,
+                alloc.dividendWeightsBps,
+                alloc.dividendRoutes,
+                quoteRoutes
+            );
+    }
+
+    /// @dev Creation body up to the point the token exists and is configured: clone, quotes, vaults,
+    ///      fee shares. Split from `_open` so the allocation overload can configure the token in
+    ///      between, and out of `createToken` to keep its stack shallow enough to compile without
+    ///      `via_ir`.
     function _launch(
         DirectTokenSetup calldata setup,
         DirectPair[] calldata pairs,
-        TaxConfigs calldata taxConfigs,
+        TaxConfigs memory taxConfigs,
         AntiSniperConfigs calldata antiSniperConfigs,
-        CreatorVault[] calldata creatorVaults,
-        DevBuy calldata devBuy
+        CreatorVault[] calldata creatorVaults
     ) private returns (address token) {
         (, uint256 vaultAllocation) = _validateCreatorVaults(creatorVaults);
 
@@ -247,9 +346,51 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         // minted to this factory and it must end the call holding none of it.
         if (vaultAllocation > 0) _deployAndFundVaults(token, creatorVaults, vaultAllocation);
         IRealmToken(token).registerFees(setup.feeShares);
+    }
 
+    /// @dev The rest of the launch: seed the pools — which graduates the token — and settle the dev buy.
+    function _open(address token, DirectPair[] calldata pairs, DevBuy calldata devBuy) private {
         _seedPools(token, pairs);
         _settleDevBuy(token, pairs[devBuy.pairIndex].quote, devBuy);
+    }
+
+    /// @dev The allocation overload's own checks. Returns whether any bucket is configured.
+    function _validateAllocation(TaxConfigsWithDirectAllocation calldata c, DirectPair[] calldata pairs)
+        private
+        pure
+        returns (bool hasAllocation)
+    {
+        EarningsAllocationMultiConfig calldata alloc = c.earningsAllocation;
+        hasAllocation = _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps);
+        // Naming payout assets with a zero share would leave dividends silently OFF, forever: clones
+        // are not upgradeable and `initializeEarningsAllocation` only ever runs here, at creation.
+        require(alloc.dividendTokens.length == 0 || alloc.dividendsBps != 0, DividendAssetWithoutShare());
+        uint256 n = c.quoteRoutes.length;
+        require(n <= pairs.length, InvalidQuoteRoutes());
+        // A route on a native pair is a caller who believes something is being converted that is not.
+        for (uint256 i = 0; i < n; ++i) {
+            require(pairs[i].quote != address(0) || c.quoteRoutes[i].length == 0, InvalidQuoteRoutes());
+        }
+    }
+
+    /// @dev Compacts the per-PAIR `quoteRoutes` into the per-ERC20-QUOTE list the token takes: same
+    ///      order as `_registerExtraQuotes` registers them, native pairs skipped, missing entries empty.
+    function _quoteRoutes(bytes[] calldata routes, DirectPair[] calldata pairs)
+        private
+        pure
+        returns (bytes[] memory out)
+    {
+        uint256 n = pairs.length;
+        out = new bytes[](n);
+        uint256 count;
+        for (uint256 i = 0; i < n; ++i) {
+            if (pairs[i].quote == address(0)) continue;
+            if (i < routes.length) out[count] = routes[i];
+            ++count;
+        }
+        assembly ("memory-safe") {
+            mstore(out, count)
+        }
     }
 
     /// @dev Tells the token which ERC20 currencies it will earn in, so its buffers and its

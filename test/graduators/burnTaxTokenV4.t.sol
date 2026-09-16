@@ -7,7 +7,12 @@ import {RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
+import {
+    TaxConfigsWithAllocation,
+    EarningsAllocationConfig,
+    TaxConfigsWithMultiAllocation,
+    EarningsAllocationMultiConfig
+} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
@@ -308,9 +313,10 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertApproxEqAbs(burnToken.burnPendingEth() - pendingBefore, 0.5 ether, 1, "half of stray -> burn buffer");
     }
 
-    function test_createToken_revertsOnAllocationForDecayOnlyToken() public {
-        // The V4 factory carries its own copy of the gate: decay-only tokens (no long-term static tax)
-        // cannot configure an earnings allocation.
+    /// @dev A decay-only token — no long-term static tax — may still configure an allocation on V4:
+    ///      the creator's LP-fee share is a permanent stream there, so the split has something to split.
+    ///      It is cloned from the TAXABLE implementation, which is where the split lives.
+    function test_createToken_allowsAllocationForDecayOnlyToken() public {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DecayOnly",
             symbol: "DEC",
@@ -331,8 +337,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             })
         });
         vm.prank(creator);
-        vm.expectRevert(IRealmFactory.EarningsAllocationRequiresTax.selector);
-        factoryTax.createToken(
+        address token = factoryTax.createToken(
             setup,
             cfg,
             RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
@@ -341,5 +346,53 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             new IRealmFactory.CreatorVault[](0),
             address(0)
         );
+        assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).burnBps()), 5000, "allocation stored");
+    }
+
+    /// @dev And with NO tax at all — a pure revenue-share token — the allocation alone routes the clone
+    ///      to the taxable implementation. The preview must say so too, or a mined salt names the wrong
+    ///      initcode.
+    function test_createToken_zeroTaxWithAllocationClonesTheTaxableImpl() public {
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
+            buyTaxBps: 0,
+            sellTaxBps: 0,
+            taxDurationSeconds: 0,
+            startTaxFromLaunch: true,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0,
+            earningsAllocation: EarningsAllocationMultiConfig({
+                burnBps: 2500,
+                dividendsBps: 0,
+                liquidityBps: 0,
+                dividendTokens: new address[](0),
+                dividendWeightsBps: new uint16[](0),
+                dividendRoutes: new bytes[](0)
+            })
+        });
+        assertEq(
+            factoryTax.previewTokenImplementation(cfg, _emptyAntiSniperCfg()),
+            address(realmTaxToken),
+            "an allocation alone selects the taxable implementation"
+        );
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
+            name: "RevShare",
+            symbol: "REV",
+            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+        vm.prank(creator);
+        address token = factoryTax.createToken(
+            setup,
+            cfg,
+            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            address(0)
+        );
+        assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).burnBps()), 2500, "allocation stored");
+        assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).sellTaxBps()), 0, "and no tax");
     }
 }
