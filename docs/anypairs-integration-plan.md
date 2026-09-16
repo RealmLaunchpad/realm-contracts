@@ -1,9 +1,9 @@
 # AnyPairs integration: decisions and plan
 
 Status: agreed 2026-09-15. **Phases 0-3 implemented 2026-09-16** (see §5); phase 4 (round-robin
-dividend push) was implemented and then DROPPED the same day (see D7). Quote-denominated DIVIDENDS
-remain deferred (§8). Realm is not on mainnet yet, so every Realm contract may change except
-`RealmHook` (already whitelisted by Uniswap).
+dividend push) was implemented and then DROPPED the same day (see D7). Quote-denominated DIVIDENDS and
+the direct venue's earnings allocation landed 2026-09-16 (§8). Realm is not on mainnet yet, so every
+Realm contract may change except `RealmHook` (already whitelisted by Uniswap).
 
 ## 1. Outcome
 
@@ -88,7 +88,7 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 - `UniswapV4PoolConstants.realmPoolKey(token, quote, hook)` sorted; native overload kept.
 - Events: reuse `TokenCreated`, `LpFeeBpsSet`, `CreatorVaultsCreated`, `BuyOnDeploy`, `TokenReferral`, `PairInitialized`, `TokenGraduated`; add `PoolSeeded(token, quote, poolId, weightBps, tick, liquidity)`. Update `docs/events-per-entry-point.md`; envio configs append-only.
 
-### Phase 2: ERC20 quotes (money path keyed by quote) — DONE except dividends
+### Phase 2: ERC20 quotes (money path keyed by quote) — DONE
 - Token: `quotes[]` + `mapping(quote => buffers)` for burn, liquidity and dividend pending, appended to `RealmTaxableTokenUniV4Base` (no slot shift). `accrueFees(asset, amount)` pulls from the caller and requires a registered quote; native `accrueFees()` stays.
 - Keeper calls take the quote: `processBurn(quote, minOut)` buys back in that quote's pool; `processLiquidity(quote)` walls in that pool; `processDividends(assetIndex, quote, minOut, holders[])`.
 - `RealmMasterFeeHandler`: `depositFees(token, asset, amount)`, per-asset accumulators and claims, direct receivers via try/catch transfer (D8).
@@ -127,14 +127,32 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 
 ### Departures worth knowing about
 
-- **The dividends slice is NOT keyed by quote yet.** Burn and liquidity are: each has a per-quote
-  buffer and acts on that quote's own pool. Dividends are not, because every constant the dividend
-  machine is calibrated against (`DIVIDEND_THRESHOLD`, `MAX_DIVIDEND_PER_CONVERSION`, the accumulator's
-  scale) is denominated in the chain's NATIVE unit, and nobody can calibrate them for a currency the
-  creator picks. Until that is settled, an ERC20-quoted token's dividends slice falls back to the fund
-  wallets — the contract `EarningsAllocation` already defines for a leg that has not shipped, so a
-  creator's money is paid out rather than stranded. **This is the open product question**: per-quote
-  thresholds need a source (creator-supplied? unit-free fractions? an oracle?).
+- **The dividends slice IS keyed by quote** (since 2026-09-16), as a fourth per-quote buffer beside burn
+  and liquidity: `QuoteBuffers.dividendPending[asset]`, split by the payout weights at accrual.
+  `processDividends(asset, quote, minOut, holders)` services it with no absolute threshold — the
+  threshold was the native-calibrated constant nobody could restate per quote, and the keeper (which
+  pays the gas) decides instead, exactly as it does for `processBurn(quote)` — and `MAX_QUOTE_SPEND_BPS`
+  as the per-call cap on any leg that swaps. Three shapes: payout == quote is a free passthrough (the
+  Robinhood flagship: xStock-paired, xStock-paid), payout == self buys back on the quote's own pool
+  (the `processBurn` primitive), anything else goes through the registry's `swapAssetToAsset`, which
+  walks the quote's own registered route BACKWARDS to native and the payout asset's forward. Every
+  registry conversion therefore pivots through native — on Robinhood every xStock pool is ETH-paired,
+  so that is the deep path, not the weak one — and the keeper's `KEEPER_FEE` is taken there, in native,
+  unchanged. Only a V4 route can be walked backwards; a quote registered with a V2/V3 route is refused
+  at creation (`QuoteRouteUnsupported`). The direct factory's allocation overload carries the quotes'
+  routes (`TaxConfigsWithDirectAllocation.quoteRoutes`, positional to `pairs`, from the same catalogue
+  the payout routes come from); one is required only for an ERC20 quote some payout leg has to leave.
+- **The direct factory had NO allocation overload at all** until the same day: every direct launch was
+  created with `hasDividends == false` and zero buckets, and a clone cannot be configured later. It
+  has one now (`TaxConfigsWithDirectAllocation`), configuring the token BEFORE the seed so the
+  graduation activates dividends the normal way. With it came the rule change on both V4 factories: an
+  allocation no longer requires a static tax — the LP-fee creator share is a permanent stream on V4 —
+  and a token with one is cloned from the taxable implementation whatever its tax (a transient
+  `_allocationPending` marker read by `_dispatchAndInitialize`; the creation pipeline's stack could not
+  take a parameter). V2 keeps the rule: its LP fees never reach the token.
+- **EIP-170 forced a third split**: the creation-time payout configuration (`DividendInitLogic`) now
+  runs in `RealmEarningsLogicUniV4`, reached through `RealmTaxableToken._allocationLogic()`; the
+  dividend extension keeps only the hot entry points. `just check-dividend-layout` still pins both.
 - **The per-call spend cap for an ERC20 quote is a FRACTION of the buffer** (`MAX_QUOTE_SPEND_BPS`,
   25%), not the native absolute `MAX_EARNINGS_PER_PROCESS`, for the same units reason. It does the same
   job — a sandwich must re-pay its pump every block for a geometrically shrinking prize — and needs no
@@ -157,7 +175,7 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 
 ### Not done
 
-- Quote-denominated dividends (the open product question above). Phase 4 is dropped, not pending.
+- Phase 4 is dropped, not pending.
 - Envio indexer configs for the new events (`PoolSeeded`, `QuotesRegistered`, the `RealmHookAnyPair`
   set, `CreatorAssetFeesDeposited` / `CreatorAssetClaimed`, `LpAssetFeesRouted`, `TreasuryAssetSwept`).
   Append-only; nothing was removed.
