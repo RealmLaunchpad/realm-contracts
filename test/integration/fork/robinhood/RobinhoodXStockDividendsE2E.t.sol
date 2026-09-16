@@ -247,7 +247,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
 ///         installs over its address. The route the suite above ships must pass there too, and convert.
 /// @dev This test contract stands in for a token: routes are keyed by the caller.
 contract RobinhoodLiveRegistryTests is RobinhoodForkBase {
-    RealmDividendSwapRegistry internal live = RealmDividendSwapRegistry(Robinhood.DIVIDEND_SWAP_REGISTRY);
+    RealmDividendSwapRegistry internal live = RealmDividendSwapRegistry(payable(Robinhood.DIVIDEND_SWAP_REGISTRY));
 
     receive() external payable {}
 

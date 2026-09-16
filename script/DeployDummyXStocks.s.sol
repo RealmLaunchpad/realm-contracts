@@ -108,7 +108,7 @@ contract DeployDummyXStocks is Script {
         console.log("Stocks:       %d", stocks.length);
         console.log("ETH per pool: %d wei", ethPerPool);
 
-        RealmDividendSwapRegistry registry = RealmDividendSwapRegistry(_registry());
+        RealmDividendSwapRegistry registry = RealmDividendSwapRegistry(payable(_registry()));
         address poolManager = ChainConfig.infra().univ4PoolManager;
 
         vm.startBroadcast();

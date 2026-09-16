@@ -12,6 +12,8 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
+import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title UniversalRouterVenue
 /// @notice Native -> ERC20 swaps on Uniswap V3 and V4, both through the universal router. The V2 leg of
@@ -188,6 +190,80 @@ library UniversalRouterVenue {
     ///      goes back to the caller with its buffer untouched, and the next call retries.
     /// @dev Measured as a DELTA on the router's own native balance, never an absolute — dust somebody
     ///      else left there is not ours to fail on.
+    /// @dev The reverse leg: `amountIn` of `source` -> native along `path`, which is a native-anchored
+    ///      route already REVERSED by the caller (each hop's `intermediateCurrency` is that hop's OUTPUT,
+    ///      the last one native). The router pulls `source` through Permit2, so the caller must have
+    ///      granted `ensureRouterPull` first. Same `uint128` rule and the same one-hop special case as
+    ///      the forward legs, and the same full-fill rule: `source` left in the router fails the swap.
+    function swapAssetToNativeV4Path(
+        address router,
+        address source,
+        PathKey[] memory path,
+        uint256 amountIn,
+        uint256 minOut
+    ) internal returns (bool ok) {
+        if (minOut > type(uint128).max || amountIn > type(uint128).max) return false;
+        bytes[] memory params = new bytes[](3);
+        bool single = path.length == 1;
+        if (single) {
+            PathKey memory only = path[0];
+            // Native is `address(0)`, so it is always `currency0`; the source sells as `currency1`.
+            PoolKey memory key = PoolKey({
+                currency0: Currency.wrap(NATIVE),
+                currency1: Currency.wrap(source),
+                fee: only.fee,
+                tickSpacing: only.tickSpacing,
+                hooks: only.hooks
+            });
+            params[0] = abi.encode(
+                IV4Router.ExactInputSingleParams({
+                    poolKey: key,
+                    zeroForOne: false,
+                    amountIn: uint128(amountIn),
+                    amountOutMinimum: uint128(minOut),
+                    hookData: bytes("")
+                })
+            );
+        } else {
+            params[0] = abi.encode(
+                IV4Router.ExactInputParams({
+                    currencyIn: Currency.wrap(source),
+                    path: path,
+                    amountIn: uint128(amountIn),
+                    amountOutMinimum: uint128(minOut)
+                })
+            );
+        }
+        params[1] = abi.encode(Currency.wrap(source), amountIn); // SETTLE_ALL the source, pulled via Permit2
+        params[2] = abi.encode(Currency.wrap(NATIVE), minOut); // TAKE_ALL the native to this contract
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = abi.encode(
+            abi.encodePacked(
+                uint8(single ? Actions.SWAP_EXACT_IN_SINGLE : Actions.SWAP_EXACT_IN),
+                uint8(Actions.SETTLE_ALL),
+                uint8(Actions.TAKE_ALL)
+            ),
+            params
+        );
+        uint256 routerHeld = IERC20(source).balanceOf(router);
+        (ok,) =
+            router.call(abi.encodeCall(IUniversalRouter.execute, (abi.encodePacked(V4_SWAP), inputs, block.timestamp)));
+        if (ok && IERC20(source).balanceOf(router) > routerHeld) ok = false;
+    }
+
+    /// @dev Grants Permit2, and through it `router`, the standing allowance an ERC20 settle needs. Read
+    ///      then write: after the first pull of a given token both allowances are at their maximum, and
+    ///      re-issuing them would cost two SSTOREs and two logs per swap.
+    function ensureRouterPull(address permit2, address router, address token) internal {
+        if (IERC20(token).allowance(address(this), permit2) == 0) {
+            SafeERC20.forceApprove(IERC20(token), permit2, type(uint256).max);
+        }
+        (uint160 allowed,,) = IAllowanceTransfer(permit2).allowance(address(this), token, router);
+        if (allowed == 0) {
+            IAllowanceTransfer(permit2).approve(token, router, type(uint160).max, type(uint48).max);
+        }
+    }
+
     function _executeAndRequireFullFill(address router, bytes[] memory inputs, uint256 nativeIn)
         private
         returns (bool ok)

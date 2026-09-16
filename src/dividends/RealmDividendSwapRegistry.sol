@@ -70,6 +70,9 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     ///      every asset goes through the V2 path.
     address public constant UNIV4_UNIVERSAL_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
 
+    /// @notice Permit2, through which the universal router pulls an ERC20 the registry sells.
+    address public constant PERMIT2 = DeploymentAddresses.PERMIT2;
+
     /// @notice The V4 singleton, read (never written) to prove a route's pools are real.
     /// @dev `StateLibrary` reaches into it with `extsload`, so this needs no separate StateView
     ///      deployment and no interface beyond the one v4-core already ships.
@@ -183,6 +186,18 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     ///          conversion is the FULL amount the token sent, this included, not the amount swapped.
     event KeeperFunded(address indexed keeper, uint256 amount);
 
+    /// @notice A `swapAssetToAsset` conversion: `amountIn` of `source` became `nativeVia` native on the
+    ///         way — the keeper's cut, if any, came out of that — and `assetOut` of `asset` for
+    ///         `recipient` (`asset == address(0)`: native, and `assetOut` is what was delivered).
+    event DividendAssetSwapped(
+        address indexed source,
+        address indexed asset,
+        address indexed recipient,
+        uint256 amountIn,
+        uint256 nativeVia,
+        uint256 assetOut
+    );
+
     //////////////////////// errors //////////////////////
 
     error NotAdmin();
@@ -198,6 +213,8 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     ///         Reported as a revert because the caller (a dividend freeze) must keep its native.
     error SwapFailed();
     error InsufficientOutput();
+    /// @notice A native payout could not be delivered to the recipient.
+    error NativeDeliveryFailed();
     /// @notice The keeper wallet refused its cut. Reverting is deliberate: the alternative is a keeper
     ///          that silently stops being funded while conversions keep spending its gas.
     error KeeperFundingFailed();
@@ -394,6 +411,12 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
 
     //////////////////////// the swap //////////////////////
 
+    /// @notice Accepts the native a reverse leg takes out of the pool manager: `swapAssetToAsset`'s
+    ///         first leg lands here before the keeper's cut and the second leg move it on. Nothing
+    ///         rests here between calls — `swapNativeToAsset` never needed this because its native
+    ///         arrives as `msg.value`.
+    receive() external payable {}
+
     /// @inheritdoc IRealmDividendSwapRegistry
     /// @dev Re-validates on every conversion rather than trusting the creation-time proof. A pool can be
     ///      drained, and an asset can be blacklisted, long after a token was configured for it; without
@@ -416,13 +439,7 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         // The keeper's fee comes off the top, so what follows only ever spends what is left. `minOut` is
         // therefore a floor on the SWAPPED amount, not on `msg.value` — the keeper computes it off-chain
         // and has to quote the net.
-        address keeperWallet = keeper;
-        uint256 cut;
-        if (keeperWallet != address(0)) {
-            uint256 maxCut = (MAX_KEEPER_CUT_BPS * msg.value) / BPS_TOTAL;
-            cut = KEEPER_FEE < maxCut ? KEEPER_FEE : maxCut;
-        }
-        uint256 nativeIn = msg.value - cut;
+        (uint256 nativeIn, uint256 cut, address keeperWallet) = _keeperCut(msg.value);
 
         // Buy to THIS contract, not straight to `recipient`: the amount forwarded has to be a balance
         // delta measured here, because a fee-on-transfer asset delivers less than the router reports.
@@ -444,11 +461,109 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         // Paid LAST, and only on a conversion that worked: a reverted swap keeps the caller's native
         // whole, so the keeper must not have been paid out of it on the way. Still custodies nothing —
         // the cut only rests here for the length of this call.
-        if (cut != 0) {
-            (bool sent,) = keeperWallet.call{value: cut}("");
-            require(sent, KeeperFundingFailed());
-            emit KeeperFunded(keeperWallet, cut);
+        _payKeeper(keeperWallet, cut);
+    }
+
+    /// @inheritdoc IRealmDividendSwapRegistry
+    /// @dev Two legs, both re-validated on every conversion as `swapNativeToAsset` is. The keeper's cut
+    ///      is taken from the native in between, so the ERC20 legs fund the keeper exactly as the native
+    ///      ones do and nothing but native ever rests here for it. `minOut` guards the FINAL amount:
+    ///      a sandwich on either leg shows up there, so the native leg carries no floor of its own except
+    ///      when native IS the destination.
+    function swapAssetToAsset(address source, address asset, uint256 amountIn, uint256 minOut, address recipient)
+        external
+        returns (uint256 out)
+    {
+        require(amountIn != 0, NothingToSwap());
+        require(source != address(0) && source != asset, SwapNotSupported(SwapRejection.MalformedRoute));
+        IERC20(source).safeTransferFrom(msg.sender, address(this), amountIn);
+        address quote = nativeQuoteToken();
+        uint256 native = _swapToNative(source, quote, amountIn, asset == address(0) ? minOut : 0);
+        (uint256 nativeIn, uint256 cut, address keeperWallet) = _keeperCut(native);
+        if (asset == address(0)) {
+            out = nativeIn;
+            require(out >= minOut, InsufficientOutput());
+            (bool sent,) = recipient.call{value: out}("");
+            require(sent, NativeDeliveryFailed());
+        } else {
+            out = _swapFromNative(asset, quote, nativeIn, minOut);
+            IERC20(asset).safeTransfer(recipient, out);
         }
+        emit DividendAssetSwapped(source, asset, recipient, amountIn, native, out);
+        _payKeeper(keeperWallet, cut);
+    }
+
+    /// @dev Leg 1 of `swapAssetToAsset`: `source`'s registered route walked BACKWARDS to native. Only a
+    ///      V4 route can be: it names its pools outright, whereas a V3 path is one-directional calldata
+    ///      and a V2 pair swap needs the router's ETH-out entry point this registry does not wire.
+    // ponytail: V4 only; every chain this venue ships on routes on V4. Add the V3/V2 reverses if a
+    // quote ever needs one.
+    function _swapToNative(address source, address quote, uint256 amountIn, uint256 minOut)
+        private
+        returns (uint256 native)
+    {
+        DividendRouteLib.Decoded memory route = DividendRouteLib.decode(_routes[msg.sender][source]);
+        SwapRejection rejection = _validate(source, quote, route);
+        require(rejection == SwapRejection.OK, SwapNotSupported(rejection));
+        require(route.venue == DividendRouteLib.VENUE_V4, SwapNotSupported(SwapRejection.MalformedRoute));
+        Hop[] memory hops = route.hops;
+        uint256 n = hops.length;
+        PathKey[] memory path = new PathKey[](n);
+        // The route runs native -> ... -> source; walked back, hop `j` OUTPUTS the currency before it.
+        for (uint256 k; k < n; ++k) {
+            uint256 j = n - 1 - k;
+            path[k] = PathKey({
+                intermediateCurrency: Currency.wrap(j == 0 ? address(0) : hops[j - 1].currency),
+                fee: hops[j].fee,
+                tickSpacing: hops[j].tickSpacing,
+                hooks: IHooks(hops[j].hooks),
+                hookData: ""
+            });
+        }
+        UniversalRouterVenue.ensureRouterPull(PERMIT2, UNIV4_UNIVERSAL_ROUTER, source);
+        uint256 before = address(this).balance;
+        require(
+            UniversalRouterVenue.swapAssetToNativeV4Path(UNIV4_UNIVERSAL_ROUTER, source, path, amountIn, minOut),
+            SwapFailed()
+        );
+        native = address(this).balance - before;
+        require(native != 0, InsufficientOutput());
+    }
+
+    /// @dev Leg 2 of `swapAssetToAsset`: the payout asset's own route, forward — `swapNativeToAsset`'s
+    ///      body without the pull and the delivery.
+    function _swapFromNative(address asset, address quote, uint256 nativeIn, uint256 minOut)
+        private
+        returns (uint256 out)
+    {
+        DividendRouteLib.Decoded memory route = DividendRouteLib.decode(_routes[msg.sender][asset]);
+        SwapRejection rejection = _validate(asset, quote, route);
+        require(rejection == SwapRejection.OK, SwapNotSupported(rejection));
+        uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
+        require(_venueSwap(asset, quote, route, nativeIn, minOut), SwapFailed());
+        out = IERC20(asset).balanceOf(address(this)) - balanceBefore;
+        require(out != 0 && out >= minOut, InsufficientOutput());
+    }
+
+    /// @dev The keeper's cut off `native`: the flat `KEEPER_FEE`, clipped to `MAX_KEEPER_CUT_BPS` of the
+    ///      amount, and nothing while no keeper wallet is set.
+    function _keeperCut(uint256 native) private view returns (uint256 net, uint256 cut, address keeperWallet) {
+        keeperWallet = keeper;
+        if (keeperWallet != address(0)) {
+            uint256 maxCut = (MAX_KEEPER_CUT_BPS * native) / BPS_TOTAL;
+            cut = KEEPER_FEE < maxCut ? KEEPER_FEE : maxCut;
+        }
+        net = native - cut;
+    }
+
+    /// @dev Paid LAST, and only on a conversion that worked: a reverted swap keeps the caller's input
+    ///      whole, so the keeper must not have been paid out of it on the way. Still custodies nothing —
+    ///      the cut only rests here for the length of the call.
+    function _payKeeper(address keeperWallet, uint256 cut) private {
+        if (cut == 0) return;
+        (bool sent,) = keeperWallet.call{value: cut}("");
+        require(sent, KeeperFundingFailed());
+        emit KeeperFunded(keeperWallet, cut);
     }
 
     /// @dev Spends `nativeIn` on the venue `route` names. Mirrors `_validate`'s branch order exactly.

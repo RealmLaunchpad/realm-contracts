@@ -131,4 +131,16 @@ interface IRealmDividendSwapRegistry {
     /// @return out asset delivered to `recipient`, measured as its balance delta so a fee-on-transfer
     ///         asset is counted for what it actually delivered.
     function swapNativeToAsset(address asset, uint256 minOut, address recipient) external payable returns (uint256 out);
+
+    /// @notice Converts `amountIn` of `source` — pulled from the caller, who must have approved it —
+    ///         into `asset` (`address(0)` for native) and forwards the result to `recipient`. The route
+    ///         is derived from what the caller registered: `source`'s route walked BACKWARDS to native,
+    ///         then `asset`'s route forward, so every conversion pivots through native and the keeper's
+    ///         `KEEPER_FEE` is taken there exactly as `swapNativeToAsset` takes it.
+    /// @dev Only a V4 route can be walked backwards; a `source` registered with a V2 or V3 route reverts
+    ///      `SwapNotSupported(MalformedRoute)`. Reverts on a dead pool, a missed `minOut` (checked on the
+    ///      FINAL asset) or a blacklisted asset, leaving the caller's `source` untouched.
+    function swapAssetToAsset(address source, address asset, uint256 amountIn, uint256 minOut, address recipient)
+        external
+        returns (uint256 out);
 }

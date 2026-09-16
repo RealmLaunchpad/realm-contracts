@@ -33,7 +33,7 @@ function installDividendSwapRegistry(address owner) returns (RealmDividendSwapRe
     VM.etch(at, address(deployed).code);
     VM.label(at, "DividendSwapRegistry");
 
-    registry = RealmDividendSwapRegistry(at);
+    registry = RealmDividendSwapRegistry(payable(at));
     // On a chain where the registry proxy is already live (Robinhood), the address carries the proxy's
     // storage, initialized flag included; clear it so the fresh copy can be initialized like the rest.
     VM.store(at, INITIALIZABLE_STORAGE, bytes32(0));

@@ -49,7 +49,7 @@ contract PickDividendRoutes is Script {
     string internal constant DEFAULT_ROUTES_OUT = "script/operations/dividend-routes/catalogue.robinhood.mainnet.json";
 
     function run() external {
-        RealmDividendSwapRegistry registry = RealmDividendSwapRegistry(vm.envAddress("DIVIDEND_SWAP_REGISTRY"));
+        RealmDividendSwapRegistry registry = RealmDividendSwapRegistry(payable(vm.envAddress("DIVIDEND_SWAP_REGISTRY")));
         string memory json = vm.readFile(vm.envOr("ROUTES_JSON", DEFAULT_ROUTES_JSON));
 
         address[] memory assets = vm.parseJsonAddressArray(json, ".assets");

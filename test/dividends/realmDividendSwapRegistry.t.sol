@@ -462,6 +462,81 @@ contract RealmDividendSwapRegistryTests is Test {
         assertEq(registry.defaultThreshold(), DEFAULT_DIVIDEND_POOL_LIQUIDITY);
     }
 
+    //////////////////////// swapAssetToAsset //////////////////////
+
+    /// @dev A quote's route walked backwards and the payout asset's forward: USDC -> native on the V4
+    ///      pool, native -> DAI on the V2 pair. The registry ends the call holding nothing of either.
+    function test_swapAssetToAsset_pivotsThroughNative() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+        registry.registerRoute(DAI, V2_ROUTE);
+        deal(USDC, address(this), 1_000e6);
+        IERC20(USDC).approve(address(registry), 1_000e6);
+
+        uint256 out = registry.swapAssetToAsset(USDC, DAI, 1_000e6, 1, recipient);
+
+        assertGt(out, 900e18, "a thousand USDC is roughly a thousand DAI");
+        assertEq(IERC20(DAI).balanceOf(recipient), out, "delivered to the recipient");
+        assertEq(IERC20(USDC).balanceOf(address(this)), 0, "the source was consumed whole");
+        assertEq(IERC20(USDC).balanceOf(address(registry)), 0, "the registry kept no source");
+        assertEq(address(registry).balance, 0, "nor any native");
+    }
+
+    /// @dev Native as the destination is the reverse leg alone; the floor applies to it directly.
+    function test_swapAssetToAsset_deliversNativeWhenAskedFor() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+        deal(USDC, address(this), 1_000e6);
+        IERC20(USDC).approve(address(registry), 1_000e6);
+
+        uint256 before = recipient.balance;
+        uint256 out = registry.swapAssetToAsset(USDC, address(0), 1_000e6, 0.1 ether, recipient);
+
+        assertEq(recipient.balance - before, out, "native delivered");
+        assertGt(out, 0.1 ether, "the floor held");
+        assertEq(address(registry).balance, 0, "nothing withheld");
+    }
+
+    /// @dev The keeper is funded from the native in the MIDDLE of the conversion, so an ERC20 source
+    ///      pays it exactly as a native one does — nothing but native ever rests here for it.
+    function test_swapAssetToAsset_fundsTheKeeperInNative() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+        registry.registerRoute(DAI, V2_ROUTE);
+        address keeper = makeAddr("keeper");
+        vm.prank(admin);
+        registry.setKeeperFunding(keeper);
+        deal(USDC, address(this), 10_000e6);
+        IERC20(USDC).approve(address(registry), 10_000e6);
+
+        registry.swapAssetToAsset(USDC, DAI, 10_000e6, 1, recipient);
+
+        assertEq(keeper.balance, registry.KEEPER_FEE(), "the flat fee, in native");
+        assertEq(IERC20(USDC).balanceOf(keeper), 0, "and nothing in the source");
+    }
+
+    /// @dev Only a V4 route names its pools outright; a V2 or V3 one cannot be walked backwards.
+    function test_swapAssetToAsset_refusesASourceWithoutAV4Route() public {
+        registry.registerRoute(DAI, V2_ROUTE);
+        registry.registerRoute(USDC, V2_ROUTE);
+        deal(USDC, address(this), 1_000e6);
+        IERC20(USDC).approve(address(registry), 1_000e6);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(RealmDividendSwapRegistry.SwapNotSupported.selector, SwapRejection.MalformedRoute)
+        );
+        registry.swapAssetToAsset(USDC, DAI, 1_000e6, 1, recipient);
+    }
+
+    /// @dev The floor is on the FINAL asset, however many pools the conversion crossed.
+    function test_swapAssetToAsset_enforcesTheFloorOnTheFinalAsset() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+        registry.registerRoute(DAI, V2_ROUTE);
+        deal(USDC, address(this), 1_000e6);
+        IERC20(USDC).approve(address(registry), 1_000e6);
+
+        vm.expectRevert();
+        registry.swapAssetToAsset(USDC, DAI, 1_000e6, 2_000e18, recipient);
+        assertEq(IERC20(USDC).balanceOf(address(this)), 1_000e6, "a refused conversion leaves the source whole");
+    }
+
     //////////////////////// helpers //////////////////////
 
     function _v4(address currency, uint24 fee, int24 tickSpacing) internal pure returns (bytes memory) {
