@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
+
+import {Test} from "forge-std/Test.sol";
+import {RealmLaunchPricing} from "src/libraries/RealmLaunchPricing.sol";
+
+/// @notice The reader that turns a launch tick into a price a creator can check. The property under
+///         test throughout is the one a creator gets wrong by hand: the answer depends on the QUOTE's
+///         decimals, because a tick is a ratio of raw units.
+contract PricingHarness {
+    function priceAtTick(int24 tick, uint8 dec) external pure returns (uint256, uint256) {
+        return RealmLaunchPricing.priceAtTick(tick, dec);
+    }
+}
+
+contract RealmLaunchPricingTests is Test {
+    /// @dev Tick 0 is a raw ratio of exactly 1. Against an 18-decimal quote that is one whole quote per
+    ///      whole coin; the 1e27 supply is then worth 1e9 whole units.
+    function test_tickZero_againstAnEighteenDecimalQuote() public pure {
+        (uint256 price, uint256 mcap) = RealmLaunchPricing.priceAtTick(0, 18);
+        assertEq(price, 1e18, "one whole quote per whole coin");
+        assertEq(mcap, 1e18 * RealmLaunchPricing.WHOLE_SUPPLY);
+    }
+
+    /// @dev The same tick against a 6-decimal quote is a TRILLION times more expensive per whole coin —
+    ///      twelve orders of magnitude, one per decimal of difference. This is the mistake the reader
+    ///      exists to surface.
+    function test_tickZero_againstASixDecimalQuote() public pure {
+        (uint256 price,) = RealmLaunchPricing.priceAtTick(0, 6);
+        assertEq(price, 1e18 * 1e12);
+    }
+
+    /// @dev The tick the direct-launch suite uses for its native pair: ~1e-8 native per coin, i.e. a
+    ///      ~10-unit market cap across the whole supply.
+    function test_nativeLaunchTick_impliesATenUnitMarketCap() public pure {
+        (uint256 price, uint256 mcap) = RealmLaunchPricing.priceAtTick(-184_200, 18);
+        assertApproxEqRel(price, 1e10, 0.01e18, "~1e-8 whole native per whole coin");
+        assertApproxEqRel(mcap, 10e18, 0.01e18, "~10 whole native of market cap");
+    }
+
+    /// @dev Monotonic, which is the whole reason the tick is defined as quote-per-coin rather than in
+    ///      the pool's own orientation: a higher tick is ALWAYS a more expensive coin, whichever way the
+    ///      pair happens to sort.
+    function testFuzz_priceIsMonotonicInTheTick(int24 a, uint8 dec) public pure {
+        a = int24(bound(a, -700_000, 700_000));
+        dec = uint8(bound(dec, 0, 24));
+        (uint256 lower,) = RealmLaunchPricing.priceAtTick(a, dec);
+        (uint256 higher,) = RealmLaunchPricing.priceAtTick(a + 200, dec);
+        assertGe(higher, lower, "a higher tick is never a cheaper coin");
+    }
+
+    /// @dev Through a harness, because `expectRevert` needs a call frame and a library is inlined.
+    function test_rejectsAbsurdDecimals() public {
+        PricingHarness h = new PricingHarness();
+        vm.expectRevert(RealmLaunchPricing.UnsupportedDecimals.selector);
+        h.priceAtTick(0, 37);
+    }
+}
