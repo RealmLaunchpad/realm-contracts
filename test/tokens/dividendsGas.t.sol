@@ -161,32 +161,23 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
     ///      state (every account slot already touched once).
     function test_gas_wholeOperationOverhead() public {
         RealmTaxableTokenUniV4 plain = _create(0);
-        (uint256 pTransfer, uint256 pBuy, uint256 pQuietBuy, uint256 pSell) = _measureOperations(plain);
+        (uint256 pTransfer, uint256 pBuy, uint256 pSell) = _measureOperations(plain);
 
         RealmTaxableTokenUniV4 div = _create(5_000);
-        (uint256 dTransfer, uint256 dBuy, uint256 dQuietBuy, uint256 dSell) = _measureOperations(div);
+        (uint256 dTransfer, uint256 dBuy, uint256 dSell) = _measureOperations(div);
 
         console.log("--- whole user operation, incl. 21k intrinsic, steady state ---");
         console.log("transfer  no-div / div / +bps", pTransfer, dTransfer, _bps(pTransfer, dTransfer));
         console.log("V4 buy    no-div / div / +bps", pBuy, dBuy, _bps(pBuy, dBuy));
-        console.log("V4 buy q. no-div / div / +bps", pQuietBuy, dQuietBuy, _bps(pQuietBuy, dQuietBuy));
         console.log("V4 sell   no-div / div / +bps", pSell, dSell, _bps(pSell, dSell));
 
-        // THE COMMON TRADE, and the one that competes with other launchpads on gas: nothing has been
-        // distributed since the last one, so only ONE side is settled (the pool is excluded) and the
-        // round-robin push reads its member and finds nothing owed.
-        assertLt(_bps(pQuietBuy, dQuietBuy), 1_000, "an ordinary V4 buy must stay under +10%");
-
-        // THE FIRST TRADE AFTER A DISTRIBUTION, which carries the extra cost of actually DELIVERING one
-        // holder's share — a settle, a stipend-bounded send and the `owed` write-down. That is the whole
-        // point of the round-robin push: the payouts a keeper batch used to pay for are spread over the
-        // trades that follow a distribution, one holder at a time, so a holder who never claims and whom
-        // no keeper names is still paid. It is bounded, it is not recurring, and it buys a real transfer.
-        assertLt(_bps(pBuy, dBuy), 1_500, "a V4 buy that also pays a holder must stay under +15%");
-        assertLt(_bps(pSell, dSell), 1_500, "a V4 sell that also pays a holder must stay under +15%");
+        // A pool trade is the operation that competes with other launchpads on gas. Only ONE side of
+        // it is ever settled — the `pair` is excluded — so the overhead lands on a single account slot
+        // plus the shared accumulator slot.
+        assertLt(_bps(pBuy, dBuy), 1_000, "a V4 buy must stay under +10%");
+        assertLt(_bps(pSell, dSell), 1_000, "a V4 sell must stay under +10%");
         // A bare transfer has no pool cost to amortise against, so the same absolute overhead is a much
         // larger fraction of it. Still bounded, and only on the first transfer after a distribution.
-        // It never carries a push: the ring is served by pool trades only.
         assertLt(_bps(pTransfer, dTransfer), 4_000, "a wallet-to-wallet transfer must stay under +40%");
     }
 
@@ -197,7 +188,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
     ///      account last moved, the hook writes nothing at all.
     function _measureOperations(RealmTaxableTokenUniV4 token)
         internal
-        returns (uint256 transferGas, uint256 buyGas, uint256 quietBuyGas, uint256 sellGas)
+        returns (uint256 transferGas, uint256 buyGas, uint256 sellGas)
     {
         IERC20 erc = IERC20(address(token));
         testToken = address(token);
@@ -222,14 +213,6 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         g = gasleft();
         _swapBuy(holderB, 0.01 ether, 0, true);
         buyGas = g - gasleft() + 21_000;
-
-        // The same buy with NOTHING distributed since: the settle short-circuits on the unmoved
-        // accumulator and the round-robin push finds the member it picks owed nothing. This is the
-        // COMMON case — the one above is the worst recurring one, the trade that also delivers a
-        // holder's share of the distribution that just landed.
-        g = gasleft();
-        _swapBuy(holderB, 0.01 ether, 0, true);
-        quietBuyGas = g - gasleft() + 21_000;
 
         uint256 sellAmount = erc.balanceOf(holderB) / 8;
         _swapSell(holderB, sellAmount, 0, true); // warm the sell path

@@ -1,8 +1,9 @@
 # AnyPairs integration: decisions and plan
 
-Status: agreed 2026-09-15. **Phases 0-4 implemented 2026-09-16** (see §5). Quote-denominated DIVIDENDS
-remain deferred on an open product question (§8). Realm is not on mainnet yet, so every Realm contract
-may change except `RealmHook` (already whitelisted by Uniswap).
+Status: agreed 2026-09-15. **Phases 0-3 implemented 2026-09-16** (see §5); phase 4 (round-robin
+dividend push) was implemented and then DROPPED the same day (see D7). Quote-denominated DIVIDENDS
+remain deferred (§8). Realm is not on mainnet yet, so every Realm contract may change except
+`RealmHook` (already whitelisted by Uniswap).
 
 ## 1. Outcome
 
@@ -39,7 +40,7 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 | D4 | Dev buy | in-tx zap: ETH → quote through caller-supplied V4 `PoolKey[]` hops with `minQuoteOut`, then quote → token, all inside the graduator's own `unlock` | one transaction at deploy, no V3 router, no universal router. Native pools skip the first hop. Multi-pair: dev buy on the one pool the creator picks (`devBuy.pairIndex`). |
 | D5 | Sniper window | protection lasts until the window ends regardless of graduation, for both venues | one rule. Buy source becomes `from == launchpad || from == pair`; sells exempt `to == pair`. |
 | D6 | ERC20 treasury share | pushed to `RealmTreasuryRouter`; add owner `sweep(asset)` | voting stays ETH-only. A keeper-gated `convert(asset, minOut)` can be added later. |
-| D7 | Dividend payout | keeper conversion (unchanged) + round-robin push of credited balances on pool transfers | conversion needs a slippage-protected `minOut`; payout does not. Push is try/catch, fixed stipend, debit-first, transient lock; can raise gas, can never revert a transfer. |
+| D7 | Dividend payout | keeper conversion + keeper push list (`processDividends(holders[])`) + self-serve `claimDividends()`; NO on-trade push. **Revised 2026-09-16**: the round-robin ring was built (`47d0e7f`) and reverted. | the keeper already pushes to any list it likes, so the ring was a third delivery path for the same credited balances. It cost +6-14% gas per pool trade, ~1.3 KB on bytecode-tight contracts, two storage slots on layout-checked contracts and a control handoff to an arbitrary address inside every trade — for holders the keeper can name anyway. |
 | D8 | Creator fee handler | `RealmMasterFeeHandler` multi-asset, direct receivers supported for ERC20 too | creators receive the pool's quote. Direct forward is a `safeTransfer` in try/catch with claimable fallback, same as ETH today. |
 | D9 | Multi-pair | supported; buffers keyed by quote from the start | one token, N pools, N quotes, supply split by weight. Designing single-quote first would force a second refactor. |
 
@@ -49,7 +50,7 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 |---|---|
 | epoch trackers / AutoBasket | ~80k gas per leg per transfer, 1.3k lines; our accumulator covers it |
 | in-swap conversion | sandwichable, 650k gas per swap; conversion stays keeper-gated |
-| in-swap pushes + payout ring + `InSwapRegistry` | violate pull-over-push; registry only exists because of the pushes |
+| in-swap pushes + payout ring + `InSwapRegistry` | violate pull-over-push; registry only exists because of the pushes. Realm's own round-robin variant (phase 4) was tried and dropped for the same reason plus its gas/bytecode cost — see D7 |
 | platform fee converter + V4 median oracle | treasury handled manually (D6) |
 | trading delay | computable randomness; sniper window covers it |
 | referral ledger | not wanted |
@@ -103,20 +104,14 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 - Indexer: pools per token from `PoolSeeded`, trades keyed by pool id, market cap weighted across pools. Frontend hides multi-pair until the schema ships.
 - `RealmQuoter`: tick → price preview.
 
-### Phase 4: round-robin payout (D7) — DONE
-- `dividendRing` + `dividendRingIndex` appended to `DividendDistribution`; membership maintained on pool
-  trades at `DIVIDEND_RING_MIN_BALANCE` (0.01% of supply) crossings, swap-removed, and openable to any
-  holder through the permissionless `updateDividendRing(account)`.
-- `RealmToken._update` gained an `_onPoolTransfer` hook that fires AFTER the balances move and only when
-  the pool is one side of the transfer. `RealmTaxableToken` overrides it with a `delegatecall` into
-  `DividendDistributionLogic.serviceDividendRing`, whose result is DISCARDED — a push can never revert
-  the trade it rides on.
-- Budget: ONE member per trade, per configured asset, cursor = `block.number % length` (no stored
-  counter). `processDividends(holders[])` and `claimDividends()` are unchanged.
+### Phase 4: round-robin payout (D7) — DROPPED
+- Implemented in `47d0e7f` (ring in `DividendDistribution`, `_onPoolTransfer` hook in `RealmToken`,
+  `serviceDividendRing` in the extension) and reverted the same day. Delivery is the keeper push list
+  plus `claimDividends()`; nothing pushes on a trade.
 
 ## 6. Invariants kept
 
-- Nobody receives ETH or tokens unless they claim, except the treasury and stipend-bounded dividend pushes that can never revert the caller.
+- Nobody receives ETH or tokens unless they claim, except the treasury and the keeper's stipend-bounded dividend pushes. No transfer ever hands control to a third party.
 - `TOTAL_SUPPLY = 1e27`, CREATE2 salt `keccak256(msg.sender, salt)`, address suffix `0xeeaa`.
 - `RealmHook` bytecode and address untouched.
 - `just check-dividend-layout` after every change under `src/tokens/`.
@@ -160,28 +155,9 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
   token itself; every other entry point (`initializePool`, `seedPool`, `devBuy`, `burnSeedDust`) hangs
   off a transient in-flight marker only that call sets.
 
-### Phase 4 notes
-
-- **The cursor is the block number, not a stored counter.** A counter would cost an SSTORE on every
-  trade to buy an ordering nobody can observe. Several trades in one block serve the same member; the
-  second finds nothing owed and costs one settle.
-- **One push per TRADE, not per `_update`.** A taxed transfer is two `_update` calls and the V2
-  swap-back is a third, all with the pool on one side; the trigger excludes the token itself on either
-  side so only the leg carrying the trader's own tokens pushes. Without that a taxed buy pushed twice,
-  and the swap-back pushed from halfway through its own router call — handing control to an arbitrary
-  address mid-transfer.
-- **One member per trade.** Measured: an ordinary V4 buy on a dividend token is +5.8% against a
-  non-dividend one, and the first buy after a distribution — the one that actually delivers a holder's
-  share — is +13.6%. `test/tokens/dividendsGas.t.sol` pins both.
-- **Enrolment is trade-only, plus a permissionless opener.** The hook only ever sees the two sides of a
-  trade, so launchpad buyers and airdrop recipients are invited in through `updateDividendRing` rather
-  than by taxing every wallet-to-wallet transfer with ring maintenance the token has no bytecode for.
-- Membership is a PUSH list, never an eligibility list. Nothing about it changes what anyone accrues,
-  and `claimDividends()` pays a non-member in full.
-
 ### Not done
 
-- Quote-denominated dividends (the open product question above).
+- Quote-denominated dividends (the open product question above). Phase 4 is dropped, not pending.
 - Envio indexer configs for the new events (`PoolSeeded`, `QuotesRegistered`, the `RealmHookAnyPair`
   set, `CreatorAssetFeesDeposited` / `CreatorAssetClaimed`, `LpAssetFeesRouted`, `TreasuryAssetSwept`).
   Append-only; nothing was removed.

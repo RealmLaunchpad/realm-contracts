@@ -172,23 +172,17 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     /// @dev Undelivered dividends are holders' money sitting in the token's balance. The swap-back's
     ///      ETH sweep must not see them either.
-    /// @dev The sell ALSO enrols its seller in the round-robin push ring and pays them on the way out, so
-    ///      `owed` does move — the assertion is that it moves by exactly what a holder received and not
-    ///      by a wei more. The couple of wei of slack is the accumulator's integer-division residue,
-    ///      which stays in `owed` and is never payable to anybody.
     function test_undeliveredDividendsSurviveTheSwapBack() public {
         RealmTaxableTokenUniV2 token = _nativeToken();
         _accrue(token, 1 ether);
         token.processDividends(0, _noHolders());
         assertEq(token.dividendsOwed(), 0.5 ether, "the stream is funded");
 
-        uint256 accruedBefore = token.previewDividend(buyer, 0);
         uint256 sellAmount = IERC20(address(token)).balanceOf(buyer) / 2;
         _swapSellV2(buyer, address(token), sellAmount, 0, true);
 
-        uint256 delivered = accruedBefore - token.previewDividend(buyer, 0);
-        assertApproxEqAbs(0.5 ether - token.dividendsOwed(), delivered, 2, "owed fell only by what was paid out");
-        assertGe(address(token).balance, token.dividendsOwed(), "and what is left is still fully backed");
+        assertEq(token.dividendsOwed(), 0.5 ether, "owed untouched");
+        assertGe(address(token).balance, 0.5 ether, "and still fully backed");
     }
 
     ///////////////////////// self-token leg (token space) /////////////////////////

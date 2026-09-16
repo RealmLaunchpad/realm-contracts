@@ -89,20 +89,12 @@ import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/co
 ///      derived from each asset's own decimals (see `DivAsset.precisionExp`) — and what is left is the
 ///      genuinely exotic case above.
 ///
-/// @dev ACCRUAL NEEDS NO HOLDER SET, AND THERE ISN'T ONE. The accumulator credits balances, never a
-///      list, so nobody has to be enumerated to be paid. `processDividends(index, minOut, address[])`
-///      takes its push list from the caller and reads each amount out of that holder's own accrued
+/// @dev NO HOLDER SET. The contract never enumerates holders. `processDividends(index, minOut, address[])`
+///      takes the push list from the caller and reads each amount out of that holder's own accrued
 ///      balance, so the call is idempotent and unforgeable: a duplicate pays 0, a wrong address pays 0,
 ///      and an omitted holder loses NOTHING — their accrual simply keeps sitting there until the next
 ///      batch, or until they call `claimDividends()` themselves. That is what lets a keeper push only
 ///      to holders above whatever threshold it likes.
-///
-/// @dev THE ONE LIST THAT DOES EXIST IS `dividendRing`, and it is a PUSH list, not an eligibility list.
-///      Holders that cross `DIVIDEND_RING_MIN_BALANCE` on a pool trade are enrolled, and every
-///      subsequent pool trade pays one of them, rotating by block number. It changes WHO GETS PAID
-///      WITHOUT ASKING and nothing else: membership never affects what anyone accrues, and a holder who
-///      is not in it — or whom the rotation has not reached — is owed exactly the same and can always
-///      claim it. Trading volume is what serves it, which is why it only runs on trades.
 ///
 /// @dev THE HOT PATH IS THE WHOLE COST, and it is one warm read per asset between distributions. The
 ///      accumulator only moves when a distribution lands, so an account whose `rewardPerTokenPaid`
@@ -178,14 +170,6 @@ abstract contract DividendDistribution {
     /// @dev Not per-chain: this bounds a contract's own code, which is the same everywhere, unlike the
     ///      wallet population `NATIVE_PAYOUT_GAS` is sized against.
     uint256 public constant ASSET_PAYOUT_GAS = 500_000;
-
-    /// @notice Balance a holder must reach on a pool trade to join the round-robin push ring: 0.01% of
-    ///         the fixed 1e27 total supply.
-    /// @dev It exists to bound the ring (10,000 members at most) and to keep dust holders from making
-    ///      every trader pay an SSTORE to enrol someone whose payout will round to nothing. Absolute
-    ///      rather than a fraction of the live supply because the live supply shrinks as `processBurn`
-    ///      runs, and a moving bar would silently evict nobody while admitting everybody.
-    uint256 public constant DIVIDEND_RING_MIN_BALANCE = 1e23;
 
     /// @notice Decimal exponent every payout asset's fixed-point scale is measured against:
     ///         `precisionExp = DIVIDEND_PRECISION_DECIMALS - asset decimals`.
@@ -341,26 +325,6 @@ abstract contract DividendDistribution {
     /// @dev Its own slot, off the transfer hot path: it is read only when earnings are routed, which is
     ///      the V2 swap-back and the V4 fee-router call, never a plain transfer.
     uint16[MAX_DIVIDEND_ASSETS] public dividendWeightsBps;
-
-    /// @notice Holders the round-robin push serves, appended when a balance crosses
-    ///         `DIVIDEND_RING_MIN_BALANCE` upwards on a pool trade and swap-removed when it crosses back
-    ///         down. Order is not meaningful and does not survive a removal.
-    /// @dev A push LIST, not an eligibility list: membership decides who gets paid without asking, never
-    ///      who accrues. Everyone accrues, and everyone can always `claimDividends()`. A stale entry
-    ///      (a holder who left through a plain transfer, which is not a trade and does not maintain the
-    ///      ring) is therefore harmless — it is paid exactly what it earned, or nothing.
-    address[] public dividendRing;
-
-    /// @notice `dividendRing` position PLUS ONE for each member; 0 means absent. The plus-one is what
-    ///         makes the absent case free to test against a zeroed slot.
-    mapping(address account => uint256 indexPlusOne) internal dividendRingIndex;
-
-    /// @notice How many holders the round-robin push is currently rotating through.
-    /// @dev Lives here rather than in the extension so a reader needs no `delegatecall` stub for it; the
-    ///      array's own getter (`dividendRing(i)`) is free for the same reason.
-    function dividendRingLength() external view returns (uint256) {
-        return dividendRing.length;
-    }
 
     /// @dev Reentrancy guard for every dividend entry point that makes an external call: the payouts,
     ///      which send to arbitrary addresses, and the funding, which swaps through the venue. One lock

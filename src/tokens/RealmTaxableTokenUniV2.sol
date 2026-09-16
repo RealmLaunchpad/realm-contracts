@@ -402,14 +402,6 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
         _delegateToDividendLogic();
     }
 
-    /// @notice Enrols an account in — or drops it from — the round-robin dividend push ring, according to
-    ///         its balance now. Permissionless: the trade hook only ever enrols the two sides of a trade,
-    ///         so this is how a launchpad buyer or an airdrop recipient gets into the rotation.
-    function updateDividendRing(address account) external {
-        account;
-        _delegateToDividendLogic();
-    }
-
     /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
     function claimDividends() external {
         _delegateToDividendLogic();

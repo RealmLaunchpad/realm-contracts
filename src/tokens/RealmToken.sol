@@ -421,12 +421,6 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     ///      Runs BEFORE the balances move, so implementations read pre-transfer balances.
     function _onBalanceChange(address from, address to, uint256 amount) internal virtual {}
 
-    /// @dev Same, for AFTER the balances have moved, and only for transfers with the pool on one side.
-    ///      A no-op here; the taxable variant overrides it to push dividends round-robin. Anything that
-    ///      hands control to an arbitrary address belongs here rather than in `_onBalanceChange`: by
-    ///      this point the transfer is complete, so a reentrant call sees consistent balances.
-    function _onPoolTransfer(address from, address to) internal virtual {}
-
     function _update(address from, address to, uint256 amount) internal virtual override {
         // Load `pair`/`graduated`/`hasSniperProt`/`hasDividends` (one packed slot) with a single SLOAD,
         // reused for every check below instead of re-reading the slot up to four times.
@@ -455,22 +449,6 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         }
 
         super._update(from, to, amount);
-
-        // Round-robin dividend push, AFTER the balances have moved and only on a pool trade — the one
-        // transfer shape that already costs a swap, and the one whose volume is what pays the ring.
-        // The first two operands are locals this function has already loaded, so a token without
-        // dividends and every wallet-to-wallet transfer pay one comparison for the feature.
-        //
-        // ⚠️ THE TOKEN ITSELF ON EITHER SIDE IS NOT A TRADE, and excluding it is load-bearing rather
-        // than tidy. A taxable transfer splits into two `_update` calls, and the V2 swap-back sells the
-        // token's own balance into the pair from INSIDE this hook — both have the pool on one side and
-        // the token on the other. Without this a taxed buy would push twice, and the swap-back would
-        // push from halfway through its own router call, handing control to an arbitrary address with
-        // the transfer it is nested in incomplete. With it, the only leg that pushes is the one that
-        // moves the trader's tokens, and it is the last thing `_update` does.
-        if (_hasDividends && (from == _pair || to == _pair) && from != address(this) && to != address(this)) {
-            _onPoolTransfer(from, to);
-        }
     }
 
     function _spendAllowance(address owner_, address spender, uint256 value) internal override {

@@ -41,10 +41,10 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     ///      `dividendAccounts` 24 and `dividendWeightsBps` 25. `failedConversionBlock` no longer needs a
     ///      word of its own — inside a struct array it cannot leak into the head of this slot — but the
     ///      arrays that replaced it occupy whole slots, so the effect is the same.
-    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 32;
+    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 30;
 
     /// @dev The V2 swap-back counters, which the packing above pushes into the following slot.
-    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 33;
+    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 31;
 
     /// @dev First `DivAsset` of the payout set. Three slots each: the hot slot (accumulator + the three
     ///      clocks + the precision exponent), then `token` + `rate`, then the ledger + the buffer.
