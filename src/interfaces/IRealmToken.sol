@@ -88,6 +88,11 @@ interface IRealmToken is IERC20 {
     /// @dev Callable only by the factory that initialized the token.
     function registerFees(IRealmFactory.FeeShare[] calldata feeShares) external;
 
+    /// @notice Registers the ERC20 currencies this token's pools are quoted in, beyond the native one
+    ///         index 0 always holds. Callable only by the factory that created the token, in the
+    ///         creation transaction.
+    function registerQuotes(address[] calldata extraQuotes) external;
+
     /// @notice Routes ETH fees to the token's fee handler for the token's fee receiver
     function accrueFees() external payable;
 

@@ -34,6 +34,7 @@ import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
+import {RealmHookAnyPair} from "src/hooks/RealmHookAnyPair.sol";
 import {SwapLpFeeRouter} from "src/feeRouters/SwapLpFeeRouter.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
@@ -128,6 +129,11 @@ contract LaunchpadBaseTests is Test {
     // Hook address with correct Uniswap V4 permission bits; deployCodeTo() overrides whatever is at this address
     address constant TEST_HOOK_ADDRESS = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
 
+    /// @dev Where `RealmHookAnyPair` is etched for the tests. Same permission bits in the low bytes as
+    ///      `TEST_HOOK_ADDRESS` (v4 reads a hook's callbacks off its own address), different address:
+    ///      the two hooks serve different pools and a pool key names exactly one of them.
+    address constant TEST_ANYPAIR_HOOK_ADDRESS = 0x99999999999999999999999999999999999900cc;
+
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
@@ -180,6 +186,7 @@ contract LaunchpadBaseTests is Test {
     RealmGraduatorUniswapV2 public graduatorV2;
     RealmGraduatorUniswapV4 public graduatorV4;
     RealmSwapHook public taxHook;
+    RealmHookAnyPair public anyPairHook;
     SwapLpFeeRouter public lpFeeRouter;
 
     /// @dev Treasury share of every post-graduation LP fee routed by `SwapLpFeeRouter` (flat 30/70).
@@ -466,6 +473,13 @@ contract LaunchpadBaseTests is Test {
             TEST_HOOK_ADDRESS
         );
         taxHook = RealmSwapHook(payable(TEST_HOOK_ADDRESS));
+
+        deployCodeTo(
+            "RealmHookAnyPair.sol:RealmHookAnyPair",
+            abi.encode(poolManagerAddress, address(lpFeeRouter), treasury),
+            TEST_ANYPAIR_HOOK_ADDRESS
+        );
+        anyPairHook = RealmHookAnyPair(payable(TEST_ANYPAIR_HOOK_ADDRESS));
 
         feeHandler = new RealmMasterFeeHandler();
 
