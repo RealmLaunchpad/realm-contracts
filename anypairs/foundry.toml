@@ -1,0 +1,47 @@
+[profile.default]
+# NO `libraries = [...]` PIN IS COMMITTED HERE. The linker bakes library addresses into every dependent's bytecode:
+# with no pin, `forge test` deploys all four libraries from src/ into the test EVM, so every suite links against this
+# tree. Pin the four deployed library addresses only in the deploy build (see docs/DEPLOY_UNIFIED.md), never in git.
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.30"
+optimizer = true
+extra_output = ["storageLayout"]
+optimizer_runs = 200
+via_ir = true
+evm_version = "cancun"
+# REQUIRED, not a preference. Guard state lives in transient storage (EIP-1153), which Foundry only clears
+# at transaction boundaries -- and without isolation a whole test body is one transaction. Turn this off and
+# the launch-tx exemption never expires while the per-transaction max-buy accumulator never resets, so the
+# guard tests stop testing the guards and start testing the harness.
+isolate = true
+# Tests that deploy a real PoolManager read its compiled bytecode from `artifacts/` via `vm.getCode`; without this
+# every such suite fails at `setUp`.
+# `./src` is granted so test/consistency/ can ENUMERATE the tracker variants rather than trust a hand-maintained list.
+# Without it that check degrades to advisory mode and a seventh tracker variant added with no adapter -- the exact drift
+# that hid the round-8 ZeroDelivery gap for eight rounds -- is caught by convention instead of by CI. Read-only.
+fs_permissions = [{ access = "read", path = "./artifacts" }, { access = "read", path = "./src" }]
+# Exact versions are pinned by COMMIT in dependencies.lock; `bash scripts/install-deps.sh` materialises lib/ from it.
+# AUDIT ROUND 12: the `@uniswap/v4-periphery/`, `v4-periphery/` and `solmate/` remappings were removed -- nothing in
+# src/ or test/ imported them, and a remapping pointing at a directory nobody ships is how a phantom dependency ends
+# up in a deploy. `uniswap-hooks` stays for exactly ONE file (src/utils/CurrencySettler.sol); see dependencies.lock.
+remappings = [
+  "@openzeppelin/uniswap-hooks/=lib/uniswap-hooks/",
+  "@uniswap/v4-core/=lib/v4-core/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "@openzeppelin/=lib/openzeppelin-contracts/",
+  "forge-std/=lib/forge-std/src/",
+  "uniswap-hooks/=lib/uniswap-hooks/src/",
+  "v4-core/=lib/v4-core/src/",
+]
+
+# The 1k-holder x 1k-swap stress harness (test/stress/) drives thousands of taxed swaps inside ONE test body. Under
+# `isolate = true` each of those is its own transaction, but the test frame itself is still bounded by a single
+# `gas_limit`, and the run needs far more than the 2^30 default. This profile changes NOTHING ELSE: Foundry merges it
+# over `profile.default`, so via_ir, isolate, solc, fs_permissions and the remappings are inherited unchanged. It
+# exists precisely so the harness never has a reason to ask for any of those to be relaxed.
+#   FOUNDRY_PROFILE=stress forge test --match-path "test/stress/*" --threads 1 -vv
+[profile.stress]
+gas_limit = 9223372036854775807
+memory_limit = 1073741824
