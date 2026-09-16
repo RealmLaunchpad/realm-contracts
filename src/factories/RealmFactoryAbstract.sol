@@ -228,9 +228,24 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         FeeShare[] memory feeReceivers,
         SupplyShare[] calldata supplyShares
     ) internal {
+        _validateInputs(name, symbol, feeReceivers, supplyShares, msg.value);
+    }
+
+    /// @dev Same, for a venue whose deploy buy is not necessarily paid in the chain's native currency.
+    ///      `deployBuyAmount` is what the buy will actually spend — `msg.value` on the curve venues,
+    ///      and on the direct one either that or the ERC20 amount the creator brought. What the check
+    ///      is for is the pairing: recipients with nothing to give them, or a buy with nowhere to send
+    ///      what it buys, are both a caller who believes something is configured that is not.
+    function _validateInputs(
+        string memory name,
+        string memory symbol,
+        FeeShare[] memory feeReceivers,
+        SupplyShare[] calldata supplyShares,
+        uint256 deployBuyAmount
+    ) internal pure {
         _validateNameSymbol(name, symbol);
         _validateFeeShares(feeReceivers);
-        if (msg.value > 0) _validateSupplyShares(supplyShares);
+        if (deployBuyAmount > 0) _validateSupplyShares(supplyShares);
         else require(supplyShares.length == 0, InvalidSupplyShares());
     }
 

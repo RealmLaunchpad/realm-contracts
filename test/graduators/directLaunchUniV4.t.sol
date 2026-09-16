@@ -40,14 +40,16 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         super.setUp();
 
         vm.startPrank(admin);
-        directGraduator =
-            new RealmDirectGraduatorUniV4(poolManagerAddress, TEST_HOOK_ADDRESS, graduatorV4.LIQUIDITY_ADDER());
+        directGraduator = new RealmDirectGraduatorUniV4(
+            poolManagerAddress, TEST_HOOK_ADDRESS, TEST_ANYPAIR_HOOK_ADDRESS, graduatorV4.LIQUIDITY_ADDER()
+        );
         address impl = address(
             new RealmFactoryUniV4Direct(
                 IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxToken)}),
                 address(directGraduator),
                 address(feeHandler),
-                address(creatorVaultFactory)
+                address(creatorVaultFactory),
+                address(WETH)
             )
         );
         directFactory = RealmFactoryUniV4Direct(
@@ -58,7 +60,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
 
     /////////////////////////// HELPERS ///////////////////////////
 
-    function _setup(bool taxable) internal returns (RealmFactoryUniV4Direct.DirectTokenSetup memory s) {
+    function _setup(bool taxable) internal virtual returns (RealmFactoryUniV4Direct.DirectTokenSetup memory s) {
         s = RealmFactoryUniV4Direct.DirectTokenSetup({
             name: "Direct",
             symbol: "DIR",
@@ -76,7 +78,11 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
 
     function _noDevBuy() internal pure returns (RealmFactoryUniV4Direct.DevBuy memory d) {
         d = RealmFactoryUniV4Direct.DevBuy({
-            pairIndex: 0, route: new CorePoolKey[](0), minQuoteOut: 0, recipients: new IRealmFactory.SupplyShare[](0)
+            pairIndex: 0,
+            route: new CorePoolKey[](0),
+            minQuoteOut: 0,
+            quoteAmount: 0,
+            recipients: new IRealmFactory.SupplyShare[](0)
         });
     }
 
@@ -305,12 +311,29 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         );
     }
 
-    function test_revertsOnErc20Quote() public {
+    /// @dev The wrapped native token is the one quote the venue refuses outright: a pool holding it and
+    ///      a pool holding native are the same market, so a token with both would split its own
+    ///      liquidity across two pools for nothing.
+    function test_revertsOnWrappedNativeQuote() public {
         vm.prank(creator);
         vm.expectRevert(RealmFactoryUniV4Direct.QuoteNotSupported.selector);
         directFactory.createToken(
             _setup(false),
             _pairs(address(WETH), LAUNCH_TICK),
+            _toCfgs(_emptyTaxCfg()),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+    }
+
+    function test_revertsOnQuoteWithoutDecimals() public {
+        vm.prank(creator);
+        vm.expectRevert(RealmFactoryUniV4Direct.QuoteNotSupported.selector);
+        directFactory.createToken(
+            _setup(false),
+            _pairs(address(directGraduator), LAUNCH_TICK), // a contract, but not an ERC20
             _toCfgs(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -372,7 +395,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
     function test_graduatorInitialize_rejectsAnyCallerButTheToken() public {
         address token = _launch(0, _noDevBuy());
 
-        directGraduator.prepare(address(0), LAUNCH_TICK);
+        directGraduator.prepare(address(0), LAUNCH_TICK, 10_000);
         vm.expectRevert(RealmDirectGraduatorUniV4.LaunchNotPrepared.selector);
         directGraduator.initialize(token);
     }
