@@ -1,8 +1,8 @@
 # AnyPairs integration: decisions and plan
 
-Status: agreed 2026-09-15. **Phases 0-3 implemented 2026-09-16** (see §5); phase 4 (round-robin
-dividend push) not started, and quote-denominated DIVIDENDS are deferred with it. Realm is not on
-mainnet yet, so every Realm contract may change except `RealmHook` (already whitelisted by Uniswap).
+Status: agreed 2026-09-15. **Phases 0-4 implemented 2026-09-16** (see §5). Quote-denominated DIVIDENDS
+remain deferred on an open product question (§8). Realm is not on mainnet yet, so every Realm contract
+may change except `RealmHook` (already whitelisted by Uniswap).
 
 ## 1. Outcome
 
@@ -103,8 +103,16 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 - Indexer: pools per token from `PoolSeeded`, trades keyed by pool id, market cap weighted across pools. Frontend hides multi-pair until the schema ships.
 - `RealmQuoter`: tick → price preview.
 
-### Phase 4: round-robin payout (D7)
-- Holder set in the token maintained on threshold crossings; push of credited balances on pool transfers with a small budget; keeper `processDividends(holders[])` and `claimDividends()` unchanged.
+### Phase 4: round-robin payout (D7) — DONE
+- `dividendRing` + `dividendRingIndex` appended to `DividendDistribution`; membership maintained on pool
+  trades at `DIVIDEND_RING_MIN_BALANCE` (0.01% of supply) crossings, swap-removed, and openable to any
+  holder through the permissionless `updateDividendRing(account)`.
+- `RealmToken._update` gained an `_onPoolTransfer` hook that fires AFTER the balances move and only when
+  the pool is one side of the transfer. `RealmTaxableToken` overrides it with a `delegatecall` into
+  `DividendDistributionLogic.serviceDividendRing`, whose result is DISCARDED — a push can never revert
+  the trade it rides on.
+- Budget: ONE member per trade, per configured asset, cursor = `block.number % length` (no stored
+  counter). `processDividends(holders[])` and `claimDividends()` are unchanged.
 
 ## 6. Invariants kept
 
@@ -152,9 +160,28 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
   token itself; every other entry point (`initializePool`, `seedPool`, `devBuy`, `burnSeedDust`) hangs
   off a transient in-flight marker only that call sets.
 
+### Phase 4 notes
+
+- **The cursor is the block number, not a stored counter.** A counter would cost an SSTORE on every
+  trade to buy an ordering nobody can observe. Several trades in one block serve the same member; the
+  second finds nothing owed and costs one settle.
+- **One push per TRADE, not per `_update`.** A taxed transfer is two `_update` calls and the V2
+  swap-back is a third, all with the pool on one side; the trigger excludes the token itself on either
+  side so only the leg carrying the trader's own tokens pushes. Without that a taxed buy pushed twice,
+  and the swap-back pushed from halfway through its own router call — handing control to an arbitrary
+  address mid-transfer.
+- **One member per trade.** Measured: an ordinary V4 buy on a dividend token is +5.8% against a
+  non-dividend one, and the first buy after a distribution — the one that actually delivers a holder's
+  share — is +13.6%. `test/tokens/dividendsGas.t.sol` pins both.
+- **Enrolment is trade-only, plus a permissionless opener.** The hook only ever sees the two sides of a
+  trade, so launchpad buyers and airdrop recipients are invited in through `updateDividendRing` rather
+  than by taxing every wallet-to-wallet transfer with ring maintenance the token has no bytecode for.
+- Membership is a PUSH list, never an eligibility list. Nothing about it changes what anyone accrues,
+  and `claimDividends()` pays a non-member in full.
+
 ### Not done
 
-- Phase 4 (round-robin payout) and quote-denominated dividends.
+- Quote-denominated dividends (the open product question above).
 - Envio indexer configs for the new events (`PoolSeeded`, `QuotesRegistered`, the `RealmHookAnyPair`
   set, `CreatorAssetFeesDeposited` / `CreatorAssetClaimed`, `LpAssetFeesRouted`, `TreasuryAssetSwept`).
   Append-only; nothing was removed.

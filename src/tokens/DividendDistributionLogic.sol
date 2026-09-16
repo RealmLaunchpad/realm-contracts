@@ -339,7 +339,95 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         }
     }
 
+    /// @notice Enrols `account` in the round-robin push ring, or drops it, according to its balance
+    ///         right now. Permissionless and idempotent.
+    /// @dev The trade hook only ever sees the two addresses of a trade, so a holder who bought on the
+    ///      launchpad, or was airdropped, or received a plain transfer, is never enrolled by it. This is
+    ///      how they get in — called by them, by a keeper walking the holder list, or by anyone at all.
+    ///      It cannot be abused: it decides membership from the account's OWN balance, and membership
+    ///      only ever changes who gets paid without asking.
+    function updateDividendRing(address account) external nonReentrantDividends {
+        _updateDividendRing(account);
+    }
+
+    /// @notice Maintains the round-robin push ring and pays `DIVIDEND_RING_PUSHES` of its members, per
+    ///         configured asset. Reached ONLY from the token's transfer hook, on a pool trade, through a
+    ///         `delegatecall` whose result the token discards — so this may revert freely and a revert
+    ///         costs the trader gas but never their trade.
+    ///
+    /// @dev WHAT THIS IS FOR. `claimDividends()` already pays anyone in full and `processDividends`
+    ///      already lets a keeper push a list. What neither covers is the holder who never claims and
+    ///      whom no keeper ever names — a real majority on any token — whose accrual otherwise sits in
+    ///      the contract forever. Trading volume pays them instead, a member at a time.
+    ///
+    /// @dev IT IS NOT A SECOND ELIGIBILITY RULE. Membership decides who gets paid WITHOUT ASKING; it
+    ///      never decides who accrues. Every holder accrues on every distribution whether or not they
+    ///      are in the ring, and every holder can always claim in full.
+    ///
+    /// @dev ⚠️ RUNS AFTER THE BALANCES HAVE MOVED, unlike `_onDividendTransfer` which must run before.
+    ///      Both halves need it: membership is decided on the POST-trade balance, and a native payout
+    ///      hands control to the holder, which is only safe once the transfer it is nested in is
+    ///      complete. `nonReentrantDividends` then stops the reentry from pushing again, and stops a
+    ///      self-token payout inside `processDividends` from re-entering here at all.
+    ///
+    /// @param from The trade's sender. Leaves the ring when the trade took it under the minimum.
+    /// @param to The trade's recipient. Joins the ring when the trade took it over the minimum.
+    function serviceDividendRing(address from, address to) external nonReentrantDividends {
+        _updateDividendRing(from);
+        _updateDividendRing(to);
+
+        uint256 len = dividendRing.length;
+        if (len == 0) return;
+
+        // ONE member per trade, every configured asset. The cursor is the BLOCK NUMBER rather than a
+        // stored counter: a counter would cost an SSTORE on every trade to buy an ordering nobody can
+        // observe, and the ring is walked just as evenly a block at a time. Several trades in one block
+        // hit the same member, whose second push finds nothing owed and costs one settle.
+        // ponytail: block-number cursor, one member per trade; widen only if a ring is provably starved.
+        address member = dividendRing[block.number % len];
+
+        uint256 n = _dividendAssetCount();
+        for (uint256 i; i < n; ++i) {
+            DivAsset storage a = dividendAssets[i];
+            uint256 rpt = a.rewardPerTokenStored;
+            // Nothing has ever been distributed in this asset, so no member can be owed anything and a
+            // settle here would be a write for nothing.
+            if (rpt == 0) continue;
+
+            address payout = a.token;
+            uint256 paid =
+                _payHolder(member, i, payout, rpt, payout == address(0) ? NATIVE_PAYOUT_GAS : ASSET_PAYOUT_GAS);
+            if (paid != 0) _reduceDividendsOwed(i, paid);
+        }
+    }
+
     //////////////////////// internal //////////////////////
+
+    /// @dev Adds `account` to the push ring when its balance is at or above `DIVIDEND_RING_MIN_BALANCE`
+    ///      and it is not there, removes it when it has fallen below and it is. Swap-removal, so the
+    ///      ring has no holes and no ordering to preserve.
+    /// @dev Excluded addresses — the pair, the token, the launchpad, the burn address — are never
+    ///      admitted: `_payHolder` pays them nothing, so a member that is one is a permanent dead slot
+    ///      in the rotation.
+    function _updateDividendRing(address account) private {
+        uint256 pos = dividendRingIndex[account];
+        bool member = pos != 0;
+        // Exclusion first: one side of every trade is the pool, and testing it costs three address
+        // comparisons where reading its balance costs an SLOAD.
+        bool qualifies = !_dividendExcluded(account) && _dividendBalanceOf(account) >= DIVIDEND_RING_MIN_BALANCE;
+        if (qualifies == member) return;
+
+        if (qualifies) {
+            dividendRing.push(account);
+            dividendRingIndex[account] = dividendRing.length;
+        } else {
+            address last = dividendRing[dividendRing.length - 1];
+            dividendRing[pos - 1] = last;
+            dividendRingIndex[last] = pos;
+            dividendRing.pop();
+            dividendRingIndex[account] = 0;
+        }
+    }
 
     /// @dev Credits `amount` of asset `i` to the balances held right now: the accumulator grows by
     ///      `amount / eligibleSupply` and every holder's next settle banks their share of it.

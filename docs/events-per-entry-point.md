@@ -321,6 +321,9 @@ Realm event order (LP fee `> 0`, sell tax active, router healthy):
 
 Router-failure fallback: same as §6.1 — `LpFeesRouted` + step 4 absent, full LP fee pushed to treasury.
 
+Trailing, on a dividend token: up to one **`DividendPaid`** per configured asset for an unrelated
+holder — the round-robin push. See "Holder dividends (out-of-band)".
+
 ### 6.3 V2 post-graduation swaps on tax variants
 
 Tax tokens deployed on V2 (`RealmTaxableTokenUniV2`, `RealmTaxableTokenUniV2SniperProtected`) take taxes intrinsically inside `_update`. There is no V2 hook; the token contract diverts a portion of every pair-touching transfer into its own balance, then auto-swaps the accumulated tokens to ETH on a sell once the contract balance crosses `SWAP_THRESHOLD = TOTAL_SUPPLY / 2000` (= 500_000e18).
@@ -607,6 +610,31 @@ across several transactions in one block works exactly as before.
    A call that swept does NOT revert —
    it resolved the buffer, and reverting would undo the sweep. A call carrying holders never reverts for
    either reason — it pushes the payouts it was asked to push.
+
+**The round-robin push — `DividendPaid` now also fires from inside an ordinary POOL TRADE.** Every
+transfer with the pool on one side AND the token itself on neither runs
+`DividendDistributionLogic.serviceDividendRing` after the balances have moved. (The exclusion matters
+for indexing V2: a taxed trade is two transfers, and the V2 swap-back is a third — only the leg that
+moves the trader's own tokens pushes, so a trade carries AT MOST ONE push however it is taxed.) It maintains `dividendRing` — holders are enrolled when a trade takes them at or
+above `DIVIDEND_RING_MIN_BALANCE` (0.01% of supply) and dropped when one takes them below — and then
+pays ONE member, chosen by `block.number % dividendRing.length`, for each configured asset that has ever
+distributed. A member with nothing owed emits nothing.
+
+So a swap's event sequence may carry, at the very END (after every event in §6.1 / §6.2 / §6.3, because
+the push runs after the transfer completes), up to one **`DividendPaid`** (`holder, asset, amount`) per
+configured asset, for a holder who is NOT a party to the trade. The whole call is a `delegatecall` whose
+result the token discards, so a push that reverts emits nothing and changes nothing, and the trade
+succeeds either way. Indexers must not assume a `DividendPaid` holder is related to the trade it
+follows, nor that a trade carries one at all.
+
+Two views back it, both on the token and neither needing a stub: **`dividendRing(uint256 i)`** (the
+member at that position) and **`dividendRingLength()`**.
+
+**`updateDividendRing(address account)`** — permissionless, emits nothing. Enrols `account` in the ring
+or drops it, from its balance at that moment. It exists because the trade hook only ever sees the two
+sides of a trade, so a holder who bought on the launchpad, or was airdropped, would otherwise never be
+in the rotation. Membership decides only who is paid WITHOUT ASKING; it never affects what anyone
+accrues, and `claimDividends()` pays a non-member in full as always.
 
 **`claimDividends()`** — the self-serve backstop, emitting one **`DividendPaid`** for `msg.sender` PER
 CONFIGURED ASSET that had anything accrued, in index order. It is the holder's one call for the whole

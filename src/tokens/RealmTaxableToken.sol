@@ -5,6 +5,7 @@ import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {EarningsAllocation} from "src/tokens/EarningsAllocation.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
+import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmTaxableToken, TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
@@ -427,6 +428,28 @@ abstract contract RealmTaxableToken is
     /// @inheritdoc RealmToken
     function _onBalanceChange(address from, address to, uint256) internal override {
         _onDividendTransfer(from, to);
+    }
+
+    /// @inheritdoc RealmToken
+    /// @dev The ring maintenance and the push itself are ~1.3 KB of bytecode in the extension, where
+    ///      there is room for them; the clone carries only this call. The extension's `serviceDividendRing`
+    ///      needs `_payHolder`, which is private to `DividendDistributionLogic` and has no business being
+    ///      anywhere else.
+    /// @dev THE RESULT IS DISCARDED, and that is the whole safety argument. A payout reverting, an
+    ///      extension running out of its 63/64 share, a member whose `receive()` misbehaves — none of it
+    ///      can revert the trade this is nested in. A failed push costs the trader gas and leaves every
+    ///      accrual exactly where it was, claimable as ever.
+    function _onPoolTransfer(address from, address to) internal override {
+        // `abi.encodeCall` against the real function rather than a hand-written selector: nothing here
+        // checks the call succeeded, so a signature that drifted would silently stop paying anyone and
+        // nothing would fail. The compiler is the only thing that can catch that.
+        address logic = dividendLogic();
+        bytes memory payload = abi.encodeCall(DividendDistributionLogic.serviceDividendRing, (from, to));
+        // Raw, and the returndata deliberately dropped on the floor: Solidity's `(bool, bytes memory)`
+        // form copies it at the TRADER's expense for a value nothing reads.
+        assembly ("memory-safe") {
+            pop(delegatecall(gas(), logic, add(payload, 32), mload(payload), 0, 0))
+        }
     }
 
     /// @inheritdoc DividendDistribution
