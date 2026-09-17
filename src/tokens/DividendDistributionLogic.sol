@@ -300,7 +300,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // has no swap to sandwich, and throttling it would delay real money for no security gain.
         uint256 spend =
             (asset != address(0) && buffered > MAX_DIVIDEND_PER_CONVERSION) ? MAX_DIVIDEND_PER_CONVERSION : buffered;
-        out = _acquireDividendAsset(asset, spend, minOut);
+        (out, nativeIn) = _acquireDividendAsset(asset, spend, minOut);
 
         if (out == 0) {
             // A conversion that did not happen must leave the buffer untouched, not burn it: the swap can
@@ -349,12 +349,13 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // so the common path (nothing on record) pays no SSTORE.
         if (a.failedConversionBlock != 0) a.failedConversionBlock = 0;
 
-        // Re-read rather than reuse `buffered`: the swap is an external call, and earnings that arrived
-        // during it (`_accrueDividends` is not behind the dividend lock) must survive this write.
+        // Debits only what the conversion CONSUMED: native a partial fill handed back stays owed to
+        // holders. Re-read rather than reuse `buffered`: the swap is an external call, and earnings that
+        // arrived during it (`_accrueDividends` is not behind the dividend lock) must survive this write.
         // Bounded by the value read, which is already a `uint88`.
         // forge-lint: disable-next-line(unsafe-typecast)
-        a.pendingNative = uint88(a.pendingNative - spend);
-        return (FundOutcome.Funded, spend, out);
+        a.pendingNative = uint88(a.pendingNative - nativeIn);
+        return (FundOutcome.Funded, nativeIn, out);
     }
 
     /// @dev Hands `amount` of unconvertible native to `DIVIDEND_TREASURY`. Bounded by
@@ -381,16 +382,17 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     /// @return out asset actually received, measured as a balance delta so a fee-on-transfer asset is
     ///         counted for what it delivered. 0 when the conversion did not happen — see
     ///         `_fundDividends`.
+    /// @return spent native the conversion consumed. The registry takes all of `nativeIn` or reverts.
     function _acquireDividendAsset(address asset, uint256 nativeIn, uint256 minOut)
         internal
         virtual
-        returns (uint256 out)
+        returns (uint256 out, uint256 spent)
     {
-        if (asset == address(0)) return nativeIn; // native: the buffer already IS the payout asset
+        if (asset == address(0)) return (nativeIn, nativeIn); // native: the buffer already IS the payout
 
         uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
-        if (!_swapNativeToDividendAsset(asset, nativeIn, minOut)) return 0;
-        return IERC20(asset).balanceOf(address(this)) - balanceBefore;
+        if (!_swapNativeToDividendAsset(asset, nativeIn, minOut)) return (0, 0);
+        return (IERC20(asset).balanceOf(address(this)) - balanceBefore, nativeIn);
     }
 
     /// @dev Hands the conversion to the registry, which re-checks eligibility, swaps and forwards the

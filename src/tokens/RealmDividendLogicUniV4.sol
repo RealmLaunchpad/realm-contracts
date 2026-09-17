@@ -73,13 +73,14 @@ contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLo
 
         bool cooldown = block.number <= asset.lastProcessBlock;
         uint256 spend;
+        uint256 spent;
         uint256 out;
-        if (!cooldown) (spend, out) = _fundFromQuote(assetIndex, quote, payout, minOut);
+        if (!cooldown) (spend, spent, out) = _fundFromQuote(assetIndex, quote, payout, minOut);
         if (out != 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
             asset.lastProcessBlock = uint40(block.number);
             _creditDividends(assetIndex, out);
-            emit DividendsFunded(quote, payout, spend, out);
+            emit DividendsFunded(quote, payout, spent, out);
         }
 
         if (holders.length != 0) {
@@ -99,18 +100,18 @@ contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLo
     ///      the spend; re-earmarked with `+=` on the live slot, so an accrual that landed during the swap
     ///      (`accrueFees` takes no lock) survives the write.
     /// @return spend what was attempted, 0 when nothing was buffered.
+    /// @return spent what the conversion consumed; the rest is back on the buffer.
     /// @return out payout-asset units actually acquired, 0 when the conversion did not happen.
     function _fundFromQuote(uint256 i, address quote, address payout, uint256 minOut)
         private
-        returns (uint256 spend, uint256 out)
+        returns (uint256 spend, uint256 spent, uint256 out)
     {
         uint128[MAX_DIVIDEND_ASSETS] storage pending = quoteBuffers[_quoteIndex(quote)].dividendPending;
         uint256 buffered = pending[i];
-        if (buffered == 0) return (0, 0);
+        if (buffered == 0) return (0, 0, 0);
         spend = payout == quote ? buffered : _maxSpend(quote, buffered);
         // forge-lint: disable-next-line(unsafe-typecast)
         pending[i] = uint128(buffered - spend);
-        uint256 spent;
         (out, spent) = _acquireFromQuote(quote, payout, spend, minOut);
         // forge-lint: disable-next-line(unsafe-typecast)
         if (spent < spend) pending[i] += uint128(spend - spent);
@@ -161,24 +162,16 @@ contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLo
     /// @dev Adds the SELF-TOKEN payout shape: a token paying dividends in itself buys itself back on its
     ///      own native pool — the same leg `_acquireFromQuote` runs for an ERC20 quote, with native as
     ///      the quote. Native and third-asset payouts fall through to the base.
-    /// @dev The base is about to debit the FULL `nativeIn`, so whatever the pool did not take — returned
-    ///      by the router's `SWEEP` on a partial fill — goes back on the dividend ledger. Without this it
-    ///      becomes stray and `sweepStrayEth` re-splits holders' money into the burn / liquidity / fund
-    ///      buckets. Asset 0 by construction: a self-token payout is only ever configured as the SOLE
-    ///      asset. Nothing bought: the base leaves the buffer alone or sweeps the whole `nativeIn`, and
-    ///      both already account for the native the router handed back.
+    /// @dev Reports what the pool actually took: the base debits only that, so whatever a partial fill
+    ///      handed back through the router's `SWEEP` stays on the dividend ledger instead of becoming
+    ///      stray that `sweepStrayEth` would re-split into the burn / liquidity / fund buckets.
     function _acquireDividendAsset(address asset, uint256 nativeIn, uint256 minOut)
         internal
         override
-        returns (uint256)
+        returns (uint256, uint256)
     {
         if (asset != address(this)) return super._acquireDividendAsset(asset, nativeIn, minOut);
-        (uint256 out, uint256 spent) = _acquireFromQuote(address(0), address(this), nativeIn, minOut);
-        if (out != 0 && spent < nativeIn) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            dividendAssets[0].pendingNative = uint88(dividendAssets[0].pendingNative + (nativeIn - spent));
-        }
-        return out;
+        return _acquireFromQuote(address(0), address(this), nativeIn, minOut);
     }
 
     ////////////////// NOT A TOKEN //////////////////

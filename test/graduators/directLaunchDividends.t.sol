@@ -444,6 +444,15 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         assertEq(IERC20(USDC).balanceOf(address(token)), _pending(token), "the unspent half is backed and earmarked");
     }
 
+    /// @dev `DividendsFunded.amountIn` is what the conversion CONSUMED: on a partial fill, the half that went
+    ///      back on the buffer is not reported as spent.
+    function test_quoteDividends_partialFillEventReportsWhatWasConsumed() public {
+        (RealmTaxableTokenUniV4 token,, uint256 spend) = _halfFilledSelfTokenBuyBack();
+        vm.expectEmit(true, true, false, true, address(token));
+        emit DividendDistribution.DividendsFunded(USDC, address(token), spend / 2, 1e18);
+        token.processDividends(0, USDC, 0, new address[](0));
+    }
+
     /////////////////////////// RESCUE VS COMMITTED QUOTE DIVIDENDS ///////////////////////////
 
     /// @dev USDC is both the quote and the payout. After a push that paid only alice, bob's share is

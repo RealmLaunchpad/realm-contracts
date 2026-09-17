@@ -742,6 +742,22 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertEq(token.pendingNative(), pending - spend / 2, "only the half the pool took left the buffer");
     }
 
+    /// @dev ...and `DividendsFunded.amountIn` reports what the pool CONSUMED, not what was offered.
+    function test_selfTokenBuyBack_partialFillEventReportsWhatWasConsumed() public {
+        RealmTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
+        _accrue(token, 1 ether);
+        uint256 pending = token.pendingNative();
+        uint256 cap = token.MAX_DIVIDEND_PER_CONVERSION();
+        uint256 spend = pending < cap ? pending : cap;
+        address router = token.UNIV4_UNIVERSAL_ROUTER();
+        deal(address(token), router, 1e18);
+        vm.etch(router, type(PartialFillRouterStub).runtimeCode);
+
+        vm.expectEmit(true, true, false, true, address(token));
+        emit DividendDistribution.DividendsFunded(address(0), address(token), spend / 2, 1e18);
+        token.processDividends(0, _noHolders());
+    }
+
     /// @dev Undelivered self-token dividends are the token's OWN balance, shared with the tax pool. They
     ///      must be invisible to the swap-back accounting, or holders' money would be re-processed as tax.
     function test_selfTokenDividends_areNotSweepableAsStray() public {
