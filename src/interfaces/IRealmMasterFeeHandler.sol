@@ -21,7 +21,7 @@ interface IRealmMasterFeeHandler is IRealmClaims {
     /// @notice Thrown when an ERC20 entry point is handed `address(0)`, which is the native sentinel
     ///         and belongs on the payable overload instead.
     error InvalidAsset();
-    /// @notice Thrown when a token has already been paid in `MAX_FEE_ASSETS` distinct currencies. Only
+    /// @notice Thrown when a token has already been paid in `MAX_FEE_ASSETS` distinct ERC20s. Only
     ///         the token itself can add one, so this bounds the `setShares` snapshot loop without being
     ///         reachable by anyone else.
     error TooManyFeeAssets();
@@ -103,7 +103,8 @@ interface IRealmMasterFeeHandler is IRealmClaims {
     /// @notice Returns whether `account` is currently a direct receiver for `token`.
     function isDirectReceiver(address token, address account) external view returns (bool);
 
-    /// @notice Every asset `token` has ever been paid fees in, native (`address(0)`) included.
+    /// @notice Every asset `token` may hold fees in: native (`address(0)`) first, always, then every ERC20
+    ///         it has been paid in.
     function assetsOf(address token) external view returns (address[] memory);
 
     /// @notice Claims accumulated fees for `msg.sender` in one ERC20 `asset` across the given tokens.

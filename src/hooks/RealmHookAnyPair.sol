@@ -54,6 +54,9 @@ import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 ///      On every one of those the QUOTE is the specified currency exactly when the fee is withheld
 ///      early, which is why the `beforeSwap` delta below is always on `deltaSpecified` — the same shape
 ///      the native hook uses, and the reason the matrix did not have to be rewritten per orientation.
+///
+/// @dev FEE-ON-TRANSFER QUOTES ARE NOT SUPPORTED: `settleFees` forwards the nominal amounts it redeemed,
+///      so a quote that delivers less makes it revert and leaves that token's fees claimed here.
 contract RealmHookAnyPair is BaseHook, IUnlockCallback {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;

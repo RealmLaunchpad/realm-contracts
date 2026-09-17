@@ -187,6 +187,43 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         assertApproxEqRel(IERC20(token).balanceOf(bob), total * 7 / 10, 1e12);
     }
 
+    /// @dev The seed remainder is burned on a launch WITH a dev buy too, not folded into what the buy
+    ///      hands the recipients.
+    function test_devBuy_seedRemainderIsBurnedNotPaidOut() public {
+        address token = _launch(0.05 ether, _devBuyTo(alice));
+
+        uint256 burned = IERC20(token).balanceOf(address(0xdEaD));
+        assertGt(burned, 0, "the seed remainder was burned");
+        assertEq(
+            IERC20(token).balanceOf(poolManagerAddress) + burned + IERC20(token).balanceOf(alice),
+            TOTAL_SUPPLY,
+            "every token is in the pool, burned, or bought"
+        );
+    }
+
+    /// @dev The graduator's launch markers live in transient storage, which a batched transaction
+    ///      (multicall, account-abstraction bundle) shares across launches. A finished launch must not
+    ///      block the next one.
+    function test_twoLaunchesInOneTransaction() public {
+        address first = _launch(0, _noDevBuy());
+        address second = _launch(0.05 ether, _devBuyTo(alice));
+
+        assertTrue(IRealmToken(first).graduated(), "first launched");
+        assertTrue(IRealmToken(second).graduated(), "second launched");
+        assertGt(IERC20(second).balanceOf(alice), 0, "second launch's dev buy delivered");
+    }
+
+    /// @dev ...and a later call in that transaction must not be able to drive a launch that already
+    ///      finished: the graduator's hand-back is exempt from the sniper caps.
+    function test_finishedLaunchCannotBeDrivenByALaterCall() public {
+        address token = _launch(0, _noDevBuy());
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        vm.expectRevert(RealmDirectGraduatorUniV4.LaunchNotPrepared.selector);
+        directGraduator.devBuy{value: 1 ether}(token, address(0));
+    }
+
     function test_afterLaunch_poolIsTradeableThroughTheHook() public {
         address token = _launch(0, _noDevBuy());
 
@@ -295,11 +332,13 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         );
     }
 
+    /// @dev At no quote decimals (0-36) does the edge of the usable band imply a market cap inside the
+    ///      launch-price bounds, so the factory's bound refuses it before the graduator's tick check.
     function test_revertsOnLaunchTickAtTheEdgeOfTheUsableBand() public {
         int24 maxUsable =
             (TickMath.MAX_TICK / UniswapV4PoolConstants.TICK_SPACING) * UniswapV4PoolConstants.TICK_SPACING;
         vm.prank(creator);
-        vm.expectRevert(RealmDirectGraduatorUniV4.InvalidLaunchTick.selector);
+        vm.expectRevert(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector);
         directFactory.createToken(
             _setup(false),
             _pairs(address(0), maxUsable),

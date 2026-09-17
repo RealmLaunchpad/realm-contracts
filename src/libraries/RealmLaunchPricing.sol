@@ -39,22 +39,29 @@ library RealmLaunchPricing {
     /// @dev The tick is a ratio of RAW units, so converting it to whole units is where the decimals
     ///      come in: a 6-decimal quote against an 18-decimal coin puts twelve orders of magnitude
     ///      between the two readings, which is exactly the mistake this function exists to surface.
+    /// @dev Reverts with an arithmetic panic when the market cap does not fit in 256 bits — only at
+    ///      prices far outside what the direct factory accepts, which bounds `pricePerCoin` instead.
     function priceAtTick(int24 launchTick, uint8 quoteDecimals)
         internal
         pure
         returns (uint256 priceX18, uint256 marketCapX18)
     {
+        priceX18 = pricePerCoin(launchTick, quoteDecimals);
+        marketCapX18 = priceX18 * WHOLE_SUPPLY;
+    }
+
+    /// @notice `priceAtTick`'s `priceX18` alone, which fits in 256 bits at every tick and decimals value.
+    function pricePerCoin(int24 launchTick, uint8 quoteDecimals) internal pure returns (uint256 priceX18) {
         require(quoteDecimals <= 36, UnsupportedDecimals());
 
-        // `1.0001^tick` in Q64.96, squared back out of its square root in two steps so neither
-        // intermediate leaves 256 bits: `sqrtPriceX96` reaches ~1.46e48, and its square alone is 2.1e96.
+        // `1.0001^tick` (raw quote per raw coin) in Q128. `sqrtPriceX96` is below 2^160, so its square
+        // over 2^64 always fits in 256 bits, and Q128 keeps precision down to the cheapest tick.
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(launchTick);
-        uint256 priceQ96 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 96);
-        uint256 rawPriceX18 = FullMath.mulDiv(priceQ96, 1e18, 1 << 96);
+        uint256 priceX128 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 64);
 
-        // Raw quote per raw coin -> whole quote per whole coin: multiply by the coin's units-per-whole
-        // and divide by the quote's.
-        priceX18 = FullMath.mulDiv(rawPriceX18, 10 ** COIN_DECIMALS, 10 ** uint256(quoteDecimals));
-        marketCapX18 = priceX18 * WHOLE_SUPPLY;
+        // Raw -> whole units, scaled by 1e18, in ONE step: times the coin's units-per-whole and 1e18,
+        // over the quote's units-per-whole. Scaling to 1e18 before dividing out the quote's decimals
+        // would round a cheap coin on a low-decimals quote down to zero.
+        priceX18 = FullMath.mulDiv(priceX128, 10 ** (COIN_DECIMALS + 18 - quoteDecimals), 1 << 128);
     }
 }

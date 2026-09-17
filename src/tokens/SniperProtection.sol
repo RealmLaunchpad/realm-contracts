@@ -21,6 +21,9 @@ struct AntiSniperConfigs {
 ///         per-tx cap fires only on buys — off the curve before graduation, out of the pool after it.
 /// @dev Inheriting tokens call `_initializeSniperProtection(cfg, launchTimestamp)` in their
 ///      initializer and `_checkSniperProtection(...)` at the top of `_update`.
+/// @dev The caps are per TRANSFER and per ADDRESS, so they stop a naive single-wallet snipe, not a
+///      determined one: a buyer can split one pool buy across many fresh recipients (several `TAKE`s in
+///      one router call), or keep a V4 pool's output as ERC-6909 claims, which moves no tokens at all.
 abstract contract SniperProtection {
     /// @notice Min allowed value for max-per-tx and max-wallet caps, in bps.
     uint16 public constant ANTI_SNIPER_MIN_BPS = 10; // 0.1%
@@ -121,6 +124,9 @@ abstract contract SniperProtection {
     ///        - `to == address(0)`: a burn. Nothing to snipe.
     ///        - `to == launchpadAddr`: sell back to the curve.
     ///        - `to == pairAddr`: sell into the pool, and every hop that seeds it.
+    ///        - `to == address(this)`: the token receiving its own tokens — a V2 tax leg, a buy-back
+    ///          before its burn, a self-token dividend purchase. Protocol plumbing, not a buyer; capped,
+    ///          a token whose own balance crossed the wallet cap would revert every taxed trade.
     ///        - `to == factoryAddr`: launchpad → factory deployer-buy hop.
     ///        - `to == graduatorAddr`: launchpad → graduator graduation hop (~80% of supply,
     ///          pre-`markGraduated()`; would otherwise revert).
@@ -152,6 +158,9 @@ abstract contract SniperProtection {
         // sells, into the curve or into the pool
         if (to == launchpadAddr) return;
         if (to == pairAddr) return;
+
+        // the token's own tax, buy-backs and self-token dividends
+        if (to == address(this)) return;
 
         // token creation / graduation / seeding hops
         if (to == factoryAddr) return;

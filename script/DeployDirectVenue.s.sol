@@ -26,7 +26,11 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 ///        to be redeployed and every graduator rewired to it.
 ///      - `TOKEN_IMPL` / `TAXABLE_TOKEN_V4_IMPL` — the clone masters. The taxable one now takes its two
 ///        extensions as constructor arguments, so it too is a redeploy (`RedeployTokenImpls`).
-///      - `MASTER_FEE_HANDLER`, `CREATOR_VAULT_FACTORY` — unchanged in shape, reused as they are.
+///      - `MASTER_FEE_HANDLER` — must be the ERC20-aware handler (per-asset accounting, the token-only
+///        `depositFees(token, asset, amount)`, `assetsOf`). An older one would refuse every ERC20-quoted
+///        token's fees, and the any-pair hook would silently route all of them to the treasury, so the
+///        script refuses to wire one (`DeployRealmStack` deploys the current handler).
+///      - `CREATOR_VAULT_FACTORY` — unchanged in shape, reused as it is.
 ///
 /// @dev The graduator names NO factory: a launch is authorised by `initialize`'s caller being the token
 ///      itself. That is what lets these two be deployed in either order, and what lets a future factory
@@ -49,6 +53,9 @@ contract DeployDirectVenue is Script {
 
         require(m.liquidityAdder != address(0), "manifest: UNIV4_LIQUIDITY_ADDER missing");
         require(m.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
+        // `assetsOf` shipped with the handler's ERC20 support: its absence means a handler that predates it.
+        (bool erc20Aware,) = m.masterFeeHandler.staticcall(abi.encodeWithSignature("assetsOf(address)", address(0)));
+        require(erc20Aware, "manifest: MASTER_FEE_HANDLER predates ERC20 fees, redeploy it");
         require(m.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
         require(m.taxTokenV4Impl != address(0), "manifest: TAXABLE_TOKEN_V4_IMPL missing");
         address creatorVaultFactory = ChainConfig.creatorVaultFactory();

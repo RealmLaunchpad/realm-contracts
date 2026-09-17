@@ -46,11 +46,10 @@ interface IRealmDirectGraduator {
 ///      `TokenCreated.launchpad` being zero is the on-chain marker that a token came from this venue —
 ///      and the supply is minted to the graduator instead (`RealmToken`'s mint-target fallback).
 ///
-/// @dev ABI note: `createToken` carries its FINAL shape from the first deploy, including the fields the
-///      later rollout phases activate — a `pairs` array (one entry today, up to `MAX_PAIRS` later), an
-///      ERC20 `quote` per pair (native only today) and a `route` for the dev-buy zap (empty today).
-///      Anything not yet supported is REJECTED rather than ignored, so a caller can never believe a
-///      field took effect when it did not, and the signature never has to change to turn one on.
+/// @dev ABI note: `createToken` carries its FINAL shape from the first deploy, including a `route` and a
+///      `minQuoteOut` for a dev-buy zap that is not supported yet: both must be empty/zero. Anything not
+///      supported is REJECTED rather than ignored, so a caller can never believe a field took effect
+///      when it did not, and the signature never has to change to turn one on.
 contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     using SafeERC20 for IERC20;
 
@@ -69,14 +68,14 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     }
 
     /// @notice One pool to launch the token into.
-    /// @param quote The currency the token trades against. `address(0)` is native, the only value
-    ///        supported today; ERC20 quotes are rejected until the money path is keyed by quote.
-    /// @param weightBps Share of the circulating supply seeded into THIS pool, in bps. Must be 10,000
-    ///        while a launch has exactly one pair; carried from the start so the multi-pair rollout adds
-    ///        no ABI break.
+    /// @param quote The currency the token trades against: `address(0)` for native, or an ERC20 (see
+    ///        `_validateQuote`).
+    /// @param weightBps Share of the circulating supply seeded into THIS pool, in bps. Non-zero; the
+    ///        weights of all pairs sum to 10,000.
     /// @param launchTick Opening price as QUOTE PER COIN (`price = 1.0001^launchTick`) — higher is
     ///        always a more expensive coin, whichever way the pair happens to sort. Must be a multiple
-    ///        of the pool's tick spacing and strictly inside the usable band. VALIDATED, never rounded.
+    ///        of the pool's tick spacing, strictly inside the usable band, and imply a market cap inside
+    ///        the launch bounds (`LaunchPriceOutOfBounds`). VALIDATED, never rounded.
     struct DirectPair {
         address quote;
         uint16 weightBps;
@@ -87,9 +86,8 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         Pass an all-zero struct (and no value) for none.
     /// @param pairIndex Which of `pairs` the buy executes on. The buy runs against ONE pool, the one the
     ///        creator picks — splitting it would just be several worse-priced buys.
-    /// @param route V4 hops taking native ETH to the pair's quote before the buy itself. Empty for a
-    ///        native pair, where there is nothing to convert; rejected as non-empty until ERC20 quotes
-    ///        are supported.
+    /// @param route V4 hops taking native ETH to the pair's quote before the buy itself. Not supported
+    ///        yet: must be empty — a creator buying on an ERC20 pair brings that currency instead.
     /// @param minQuoteOut Slippage floor for that conversion, in the quote's own decimals. The buy leg
     ///        itself needs none: the pool did not exist before this transaction and nobody else can have
     ///        traded it, so its output is a pure function of the launch tick and the supply seeded.
@@ -112,23 +110,39 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         walks the set, so it has to be small and impossible to grow after creation.
     uint256 public constant MAX_PAIRS = 3;
 
+    /// @notice Lowest opening market cap a pair may launch at: 0.001 WHOLE units of its quote, scaled by
+    ///         1e18. Whole units, so the bound means the same for a 6-, 18- or 27-decimal quote.
+    /// @dev With `MAX_LAUNCH_MARKET_CAP_X18` it admits $1k-$100B launches for quotes worth anywhere from
+    ///      ~$1e6 down to ~$1e-9 per unit, and rejects the prices only a mistake produces: a decimals slip
+    ///      (1e12x on a 6-decimal quote) or a tick near the ends of the range.
+    uint256 public constant MIN_LAUNCH_MARKET_CAP_X18 = 1e15;
+
+    /// @notice Highest opening market cap a pair may launch at: 1e20 WHOLE units of its quote, scaled by
+    ///         1e18. See `MIN_LAUNCH_MARKET_CAP_X18`.
+    /// @dev Uniswap's per-tick liquidity ceiling can bind first on a quote with more than ~22 decimals:
+    ///      that launch reverts `SeedLiquidityOutOfRange` in the graduator.
+    uint256 public constant MAX_LAUNCH_MARKET_CAP_X18 = 1e38;
+
     /// @notice The chain's wrapped native token, which a pair may NOT be quoted against. See
     ///         `_validateQuote`.
     address public immutable WRAPPED_NATIVE;
 
     error InvalidLpFeeBps();
-    /// @notice Thrown when `pairs` is empty, longer than `SUPPORTED_PAIRS`, carries a weight other than
-    ///         the full 10,000, or names the same quote twice.
+    /// @notice Thrown when `pairs` is empty, longer than `MAX_PAIRS`, carries a zero weight or weights
+    ///         that do not sum to 10,000, or names the same quote twice.
     error InvalidPairs();
     /// @notice Thrown when a pair names a quote the venue refuses: the chain's wrapped native (use the
     ///         native pair instead — two pools for the same value would split the token's own liquidity
-    ///         against itself), something with no `decimals()`, or a token that charges a transfer fee.
+    ///         against itself), or something with no `decimals()` (or more than 36).
     error QuoteNotSupported();
     /// @notice Thrown when the dev buy names a pair that does not exist, carries a conversion route
     ///         while no route is needed, or sets a floor for a conversion that will not happen.
     error InvalidDevBuy();
     /// @notice `quoteRoutes` names more entries than there are pairs, or a route for a native pair.
     error InvalidQuoteRoutes();
+    /// @notice A pair's `launchTick` implies an opening market cap outside
+    ///         [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] in whole units of its quote.
+    error LaunchPriceOutOfBounds();
 
     constructor(
         TokenImpls memory impls,
@@ -152,10 +166,12 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         `pairs[0].launchTick`), the creator vaults are funded, the fee split is registered, the
     ///         graduator seeds the remaining supply as a single-sided band, and `msg.value` — if any —
     ///         buys the first tokens and is split across `devBuy.recipients`.
-    /// @dev Event order, which indexers depend on: `TokenCreated` → the token's own init events
-    ///      (`PairInitialized`, `LaunchpadFeesInitialized`, `RealmTaxableTokenInitialized`,
-    ///      `SniperProtectionInitialized`) → `CreatorVaultsCreated` → `SharesUpdated` → `Graduated` →
-    ///      `PoolSeeded` → the dev buy's own swap events → `TokenGraduated` → `BuyOnDeploy` →
+    /// @dev Event order, which indexers depend on (full detail in `docs/events-per-entry-point.md` §1.3):
+    ///      `TokenCreated` → the token's own init events (`PairInitialized`, `PoolIdRegistered`,
+    ///      `LaunchpadFeesInitialized`, `RealmTaxableTokenInitialized`, `SniperProtectionInitialized`) →
+    ///      `QuotesRegistered` → `CreatorVaultsCreated` → `SharesUpdated` → `PoolIdRegistered` per extra
+    ///      pool → `Graduated` → `PoolSeeded` (first pool) → `TokenGraduated` → `PoolSeeded` per extra
+    ///      pool → the dev buy's own swap events → the seed-remainder burn → `BuyOnDeploy` →
     ///      `LpFeeBpsSet` → `TokenReferral`.
     /// @param referral Relayer that forwarded the creation, or `address(0)`. Emitted as an off-chain
     ///        signal only; nothing on-chain pays it.
@@ -439,9 +455,8 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         }
     }
 
-    /// @dev Runs the creator's own first buy on the pool they picked, then clears the seed remainder.
-    ///      In that order: a dev buy takes bought tokens into the graduator, and burning first would
-    ///      destroy them.
+    /// @dev Runs the creator's own first buy on the pool they picked, then burns the seed remainder,
+    ///      which also closes the launch on the graduator — so `burnSeedDust` is always its last call.
     function _settleDevBuy(address token, address quote, DevBuy calldata devBuy) private {
         IRealmDirectGraduator grad = IRealmDirectGraduator(address(GRADUATOR));
         uint256 spend = quote == address(0) ? msg.value : devBuy.quoteAmount;
@@ -481,7 +496,8 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
             for (uint256 j = i + 1; j < n; ++j) {
                 require(pairs[i].quote != pairs[j].quote, InvalidPairs());
             }
-            if (pairs[i].quote != address(0)) _validateQuote(pairs[i].quote);
+            uint8 quoteDecimals = pairs[i].quote == address(0) ? 18 : _validateQuote(pairs[i].quote);
+            _validateLaunchPrice(pairs[i].launchTick, quoteDecimals);
         }
         require(totalWeight == BASIS_POINTS, InvalidPairs());
 
@@ -503,19 +519,30 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///      - It must not be the chain's WRAPPED native token: a pool holding wrapped native and a pool
     ///        holding native are the same market, and a token with both would have its own liquidity
     ///        split across two pools for no gain. Creators use the native pair instead.
-    /// @dev A fee-on-transfer quote is NOT rejected here, and cannot usefully be: a transfer fee can be
-    ///      switched on after launch, so a creation-time probe proves nothing a creator could rely on.
-    ///      What actually holds is downstream — every buffer is credited from a MEASURED balance delta
-    ///      (`RealmMasterFeeHandler.depositFees`, `SwapLpFeeRouter.depositLpFees`,
-    ///      `RealmUniV4LiquidityAdder.addSingleSided`), so a currency that delivers less than it is sent
-    ///      is under-credited rather than over-committed.
-    function _validateQuote(address quote) internal view {
+    /// @dev FEE-ON-TRANSFER QUOTES ARE NOT SUPPORTED. `RealmHookAnyPair.settleFees` forwards the nominal
+    ///      amounts it redeemed and the token's `accrueFees` credits its buffers with the nominal amount,
+    ///      so a quote that delivers less than it is sent makes fee settlement revert and strands that
+    ///      token's fees in the hook. Not rejected here because it cannot usefully be: a transfer fee can
+    ///      be switched on after launch, so a creation-time probe proves nothing.
+    function _validateQuote(address quote) internal view returns (uint8 dec) {
         require(quote.code.length > 0 && quote != WRAPPED_NATIVE, QuoteNotSupported());
-        try IERC20Metadata(quote).decimals() returns (uint8 dec) {
-            require(dec <= 36, QuoteNotSupported());
+        try IERC20Metadata(quote).decimals() returns (uint8 d) {
+            dec = d;
         } catch {
             revert QuoteNotSupported();
         }
+        require(dec <= 36, QuoteNotSupported());
+    }
+
+    /// @dev Bounds the opening market cap in WHOLE quote units. Compared on the per-coin price, which
+    ///      stays inside 256 bits at every tick, rather than on the market cap, which does not.
+    function _validateLaunchPrice(int24 launchTick, uint8 quoteDecimals) internal pure {
+        uint256 priceX18 = RealmLaunchPricing.pricePerCoin(launchTick, quoteDecimals);
+        require(
+            priceX18 >= MIN_LAUNCH_MARKET_CAP_X18 / RealmLaunchPricing.WHOLE_SUPPLY
+                && priceX18 <= MAX_LAUNCH_MARKET_CAP_X18 / RealmLaunchPricing.WHOLE_SUPPLY,
+            LaunchPriceOutOfBounds()
+        );
     }
 
     /// @dev No launchpad, so no pre-graduation LP fee. The token still carries the field (every token

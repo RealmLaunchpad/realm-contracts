@@ -31,7 +31,7 @@ import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 contract QuoteCoin is ERC20 {
     constructor() ERC20("QuoteCoin", "QC") {}
 
-    function decimals() public pure override returns (uint8) {
+    function decimals() public pure virtual override returns (uint8) {
         return 6;
     }
 

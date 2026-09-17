@@ -38,6 +38,15 @@ contract RealmLaunchPricingTests is Test {
         assertApproxEqRel(mcap, 10e18, 0.01e18, "~10 whole native of market cap");
     }
 
+    /// @dev A cheap coin on a low-decimals quote keeps its precision: tick -552,600 on a 6-decimal quote is
+    ///      a raw price of ~1e-24 and a ~0.001-unit market cap. Rounding the raw price to 1e18 fixed point
+    ///      before dividing out the quote's decimals would read it as zero.
+    function test_cheapCoinOnASixDecimalQuoteKeepsItsPrecision() public pure {
+        (uint256 price, uint256 mcap) = RealmLaunchPricing.priceAtTick(-552_600, 6);
+        assertApproxEqRel(price, 1.0048e6, 0.001e18, "~1e-12 whole quote per whole coin");
+        assertApproxEqRel(mcap, 1.0048e15, 0.001e18, "~0.001 whole quote of market cap");
+    }
+
     /// @dev Monotonic, which is the whole reason the tick is defined as quote-per-coin rather than in
     ///      the pool's own orientation: a higher tick is ALWAYS a more expensive coin, whichever way the
     ///      pair happens to sort.

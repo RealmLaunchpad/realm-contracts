@@ -94,7 +94,8 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     ///      `graduateToken` — whose signature is `IRealmGraduator`'s and cannot grow — reports it.
     uint16 transient _pendingWeightBps;
 
-    /// @dev Set by `prepare`, cleared by nothing — the transient slot clears itself at end of tx.
+    /// @dev Set by `prepare`, cleared by `burnSeedDust` — the last call of every launch — so a batched
+    ///      transaction can run another launch, and nothing later in it can drive this one.
     bool transient _prepared;
 
     /// @dev The token `initialize` was called for: the launch in flight. EVERY other entry point
@@ -142,9 +143,8 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     /// @param token      The launched token.
     /// @param quote      The currency it trades against; `address(0)` for native.
     /// @param poolId     `PoolId` of the pool, the universal V4 join key.
-    /// @param weightBps  Share of the seeded supply this pool received, in bps. Always 10,000 while a
-    ///                   launch has exactly one pair; carried from the start so the multi-pair rollout
-    ///                   does not change the event signature.
+    /// @param weightBps  Share of the seeded supply this pool received, in bps; the weights of a
+    ///                   launch's pools sum to 10,000.
     /// @param tick       Launch price as QUOTE PER COIN, in ticks — the caller-supplied value, not the
     ///                   pool's internal orientation.
     /// @param liquidity  Uniswap V4 liquidity units the seed band minted.
@@ -284,22 +284,30 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
 
         PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, hookFor(quote));
         bool quoteIsC0 = Currency.unwrap(key.currency0) == quote;
-        UNIV4_POOL_MANAGER.unlock(abi.encode(key, amountIn, quoteIsC0));
-        IERC20(tokenAddress).safeTransfer(msg.sender, IERC20(tokenAddress).balanceOf(address(this)));
+        // Exactly what the swap delivered, not this contract's balance: the seed remainder is still
+        // here, waiting for `burnSeedDust`.
+        uint256 bought = abi.decode(UNIV4_POOL_MANAGER.unlock(abi.encode(key, amountIn, quoteIsC0)), (uint256));
+        IERC20(tokenAddress).safeTransfer(msg.sender, bought);
     }
 
     /// @notice Burns whatever supply the seed bands could not absorb, once every pool of the launch has
-    ///         been seeded. Same authorisation as the other factory-driven entry points.
+    ///         been seeded and the dev buy has run, and CLOSES the launch. Same authorisation as the
+    ///         other factory-driven entry points; the factory calls it last.
     /// @dev A SEPARATE call rather than something each seed does, because with several pools this
     ///      contract holds the later pools' share between seeds and "everything left over is dust" is
     ///      only true after the last one. Burned rather than held because a graduator balance is a
     ///      CONTINUOUS holder — see the `DEAD_ADDRESS` comment.
-    /// @dev A dev buy must run AFTER this: it takes bought tokens into this contract, and burning then
-    ///      would destroy them. The factory orders the two.
+    /// @dev Closing clears the transient launch markers. They would otherwise live to the end of the
+    ///      transaction, where a batched one (multicall, account-abstraction bundle) would find its next
+    ///      launch refused and could still drive this finished one — a `devBuy` hands its tokens over
+    ///      through the graduator's sniper-cap exemption.
     function burnSeedDust(address tokenAddress) external {
         require(tokenAddress == _initializedToken && _launched, LaunchNotPrepared());
         uint256 dust = IERC20(tokenAddress).balanceOf(address(this));
         if (dust > 0) IERC20(tokenAddress).safeTransfer(DEAD_ADDRESS, dust);
+        _prepared = false;
+        _initializedToken = address(0);
+        _launched = false;
     }
 
     /// @dev Seeds ONE pool with `tokenAmount`.
@@ -312,8 +320,8 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     }
 
     /// @notice The pool manager's re-entry into this contract for the dev buy. Does nothing a caller
-    ///         could steer: the only path that opens the lock is `graduateToken`, which encodes its own
-    ///         key and amount, and the callback refuses anyone but the manager.
+    ///         could steer: the only path that opens the lock is `devBuy`, which encodes its own key and
+    ///         amount, and the callback refuses anyone but the manager. Returns the tokens bought.
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
         require(msg.sender == address(UNIV4_POOL_MANAGER), OnlyPoolManager());
         (PoolKey memory key, uint256 amountIn, bool quoteIsC0) = abi.decode(data, (PoolKey, uint256, bool));
@@ -339,8 +347,9 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         require(uint256(uint128(-quoteDelta)) == amountIn, DevBuyNotFilled());
         _settleQuote(quoteIsC0 ? key.currency0 : key.currency1, amountIn);
         // forge-lint: disable-next-line(unsafe-typecast)
-        UNIV4_POOL_MANAGER.take(quoteIsC0 ? key.currency1 : key.currency0, address(this), uint256(uint128(coinDelta)));
-        return "";
+        uint256 bought = uint256(uint128(coinDelta));
+        UNIV4_POOL_MANAGER.take(quoteIsC0 ? key.currency1 : key.currency0, address(this), bought);
+        return abi.encode(bought);
     }
 
     /// @dev Pays the quote the swap owes. Native settles straight from the forwarded value; an ERC20

@@ -132,6 +132,7 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     address[MAX_QUOTES] public quotes;
 
     /// @notice `quotes` index of a currency, PLUS ONE, so that 0 reads as "not a quote of this token".
+    ///         Never written for native: index 0 is implicit (see `_quoteIndex`).
     ///         The gate on every asset-denominated earnings deposit: a currency this token was not
     ///         launched against has no pool, no buffer and no way to be spent, so accepting one would
     ///         strand it.
@@ -218,11 +219,10 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         swapLpFeeBps = params.swapLpFeeBps;
         emit LaunchpadFeesInitialized(params.lpFeeBps, params.treasuryShareBps);
 
-        // Every token quotes against the chain's native currency at index 0, always. A token launched
-        // only against native never touches anything else here, so the whole quote dimension costs it
-        // one SSTORE at creation and nothing afterwards.
+        // Every token quotes against the chain's native currency at index 0, always. That index is
+        // implicit rather than stored in `_quoteIndexPlusOne`, so a native-only token pays for the quote
+        // dimension with this one write into the already-dirty `pair` slot, and nothing afterwards.
         quoteCount = 1;
-        _quoteIndexPlusOne[address(0)] = 1;
 
         // Creation timestamp, set AFTER the initial mint so that mint still observes
         // `launchTimestamp == 0` (the sniper-window early-return relies on it; see the `tokenFactory`
@@ -308,7 +308,7 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         uint8 count = quoteCount;
         for (uint256 i = 0; i < n; ++i) {
             address q = extraQuotes[i];
-            // `address(0)` is index 0's, already taken; a repeat would give one currency two buffers.
+            // `address(0)` is index 0's, implicitly taken; a repeat would give one currency two buffers.
             require(q != address(0) && _quoteIndexPlusOne[q] == 0, InvalidQuotes());
             quotes[count] = q;
             ++count;
@@ -346,8 +346,9 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     }
 
     /// @dev Index of `quote` in `quotes`, reverting if it is not one of this token's. Native is always
-    ///      index 0, so a native-only token's callers never pay for the mapping read.
+    ///      index 0 and never in the mapping, so native callers pay no mapping read.
     function _quoteIndex(address quote) internal view returns (uint256) {
+        if (quote == address(0)) return 0;
         uint8 idx = _quoteIndexPlusOne[quote];
         require(idx != 0, UnknownQuote());
         return idx - 1;
@@ -355,7 +356,7 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
 
     /// @dev `_quoteIndex` without the return value, for the paths that only need the check.
     function _requireQuote(address quote) internal view {
-        require(_quoteIndexPlusOne[quote] != 0, UnknownQuote());
+        require(quote == address(0) || _quoteIndexPlusOne[quote] != 0, UnknownQuote());
     }
 
     //////////////////////// view functions ////////////////////////

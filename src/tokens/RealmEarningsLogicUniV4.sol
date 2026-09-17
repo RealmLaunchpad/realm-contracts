@@ -186,7 +186,7 @@ contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase, DividendInitLogic {
         int24 usedTickLower;
         (liquidity, usedId, usedTickLower) = IRealmUniV4LiquidityAdder(adder)
         .addOrTopUpSingleSided{value: quote == address(0) ? amountIn : 0}(
-            UniswapV4PoolConstants.realmPoolKey(address(this), quote, IRealmV4Graduator(graduator).HOOK_ADDRESS()),
+            UniswapV4PoolConstants.realmPoolKey(address(this), quote, IRealmV4Graduator(graduator).hookFor(quote)),
             WallParams({
                 currency: Currency.wrap(quote),
                 amount: amountIn,

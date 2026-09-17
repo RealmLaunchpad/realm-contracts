@@ -53,9 +53,9 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     ///         burns unbounded gas must return `false` here rather than take the swap down. Sized to be
     ///         unreachable by any honest ERC20 — a bomb bound, not an eligibility gate.
     uint256 internal constant DIRECT_FORWARD_GAS_ASSET = 400_000;
-    /// @notice Max distinct assets one token may ever be paid in. A ceiling on the `setShares` snapshot
-    ///         loop, which must visit every one of them. Comfortably above `MAX_PAIRS + 1` (its real
-    ///         bound: a token only accrues in the quotes it registered, plus native).
+    /// @notice Max distinct ERC20 assets one token may ever be paid in (native is implicit, on top). A
+    ///         ceiling on the `setShares` snapshot loop, which must visit every one of them. Comfortably
+    ///         above `MAX_PAIRS` (its real bound: a token only accrues in the quotes it registered).
     uint256 internal constant MAX_FEE_ASSETS = 8;
 
     mapping(address token => TokenFeeConfigLib.Config) internal _configs;
@@ -83,8 +83,9 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     ///         (claimable recipients) or from failed direct forwards (direct recipients).
     mapping(address token => mapping(address asset => mapping(address account => uint256))) internal _pendingClaims;
 
-    /// @notice True once `asset` has been recorded in `_configs[token].assets`. Keeps the first-payment
-    ///         bookkeeping O(1) instead of scanning the array on every deposit.
+    /// @notice True once ERC20 `asset` has been recorded in `_configs[token].assets`. Keeps the
+    ///         first-payment bookkeeping O(1) instead of scanning the array on every deposit. Never read
+    ///         for native, which is implicit.
     mapping(address token => mapping(address asset => bool)) internal _assetSeen;
 
     /// @notice Uniswap universal router `claimAsNative` swaps through.
@@ -155,7 +156,7 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     function _deposit(address token, address asset, uint256 amount) internal {
         TokenFeeConfigLib.Config storage cfg = _configs[token];
 
-        if (!_assetSeen[token][asset]) {
+        if (asset != address(0) && !_assetSeen[token][asset]) {
             require(cfg.assets.length < MAX_FEE_ASSETS, TooManyFeeAssets());
             _assetSeen[token][asset] = true;
             cfg.assets.push(asset);
@@ -297,10 +298,16 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
         }
     }
 
-    /// @notice Every asset `token` has ever been paid fees in, native (`address(0)`) included, in
-    ///         first-payment order. What a claimer iterates to find everything it is owed.
-    function assetsOf(address token) external view returns (address[] memory) {
-        return _configs[token].assets;
+    /// @notice Every asset `token` may hold fees in: native (`address(0)`) first, always, then every
+    ///         ERC20 it has been paid in, in first-payment order. What a claimer iterates to find
+    ///         everything it is owed.
+    function assetsOf(address token) external view returns (address[] memory assets) {
+        address[] storage erc20s = _configs[token].assets;
+        uint256 n = erc20s.length;
+        assets = new address[](n + 1);
+        for (uint256 i = 0; i < n; i++) {
+            assets[i + 1] = erc20s[i];
+        }
     }
 
     /// @notice Returns all current recipients and their BPS shares for `token`.
@@ -455,9 +462,12 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     function _snapshotClaimables(address token, TokenFeeConfigLib.Config storage cfg) private {
         address[] memory seenAssets = cfg.assets;
         uint256 nRecipients = cfg.claimableRecipients.length;
-        for (uint256 a = 0; a < seenAssets.length; a++) {
-            address asset = seenAssets[a];
+        // `a == 0` is native, which `cfg.assets` never stores.
+        for (uint256 a = 0; a <= seenAssets.length; a++) {
+            address asset = a == 0 ? address(0) : seenAssets[a - 1];
             uint256 cachedAccPerBps = _accPerBps[token][asset];
+            // Nothing accrued means nothing to bank: every checkpoint is at or below the accumulator.
+            if (cachedAccPerBps == 0) continue;
             for (uint256 i = 0; i < nRecipients; i++) {
                 address r = cfg.claimableRecipients[i];
                 _pendingClaims[token][asset][r] += (cachedAccPerBps - _claimedPerBps[token][asset][r])
@@ -599,9 +609,11 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     ///      Its own function for the same stack reason as `_snapshotClaimables`.
     function _checkpointNewClaimable(address token, TokenFeeConfigLib.Config storage cfg, address account) private {
         address[] memory seenAssets = cfg.assets;
-        for (uint256 a = 0; a < seenAssets.length; a++) {
-            uint256 acc = _accPerBps[token][seenAssets[a]];
-            if (acc != 0) _claimedPerBps[token][seenAssets[a]][account] = acc;
+        // `a == 0` is native, which `cfg.assets` never stores.
+        for (uint256 a = 0; a <= seenAssets.length; a++) {
+            address asset = a == 0 ? address(0) : seenAssets[a - 1];
+            uint256 acc = _accPerBps[token][asset];
+            if (acc != 0) _claimedPerBps[token][asset][account] = acc;
         }
     }
 

@@ -283,12 +283,17 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
     ) external payable returns (uint128 liquidity, uint256 usedTokenId, int24 usedTickLower) {
         require(p.amount > 0, NoEthProvided());
         require(msg.value == (p.currency.isAddressZero() ? p.amount : 0), CurrencyMismatch());
-        if (!p.currency.isAddressZero()) {
-            IERC20 asset = IERC20(Currency.unwrap(p.currency));
-            asset.safeTransferFrom(msg.sender, address(this), p.amount);
-            _approveForSettle(asset);
-        }
-        return _addOrTopUp(key, p, candidateIds, candidateTickLowers);
+        if (p.currency.isAddressZero()) return _addOrTopUp(key, p, candidateIds, candidateTickLowers);
+
+        IERC20 asset = IERC20(Currency.unwrap(p.currency));
+        asset.safeTransferFrom(msg.sender, address(this), p.amount);
+        _approveForSettle(asset);
+        // A fresh mint's `SETTLE_PAIR` pulls only what the position owes, so the rounding remainder is
+        // returned from the measured balance, as in `addSingleSided`.
+        uint256 balanceBefore = asset.balanceOf(address(this));
+        (liquidity, usedTokenId, usedTickLower) = _addOrTopUp(key, p, candidateIds, candidateTickLowers);
+        uint256 unspent = asset.balanceOf(address(this)) + p.amount - balanceBefore;
+        if (unspent > 0) asset.safeTransfer(p.receiver, unspent);
     }
 
     /// @dev Shared body: top one of the caller's remembered walls up when it is still usable, mint a
@@ -396,9 +401,10 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
                 uint8(Actions.SETTLE), uint8(Actions.INCREASE_LIQUIDITY_FROM_DELTAS), uint8(Actions.TAKE_PAIR)
             );
         bytes[] memory params = new bytes[](key.currency0.isAddressZero() ? 4 : 3);
-        // `payerIsUser` is false either way: native settles from the value forwarded below, and an ERC20
-        // settles from THIS contract's balance, which the caller's pull already funded.
-        params[0] = abi.encode(currency, amount, false);
+        // Native settles from the value forwarded below (`payerIsUser = false`: the position manager's
+        // own balance). An ERC20 must be pulled from THIS contract through Permit2 (`payerIsUser = true`):
+        // with `false` the position manager would pay out of its own, empty, balance.
+        params[0] = abi.encode(currency, amount, !currency.isAddressZero());
         // The deposited side's max is `amount` (slippage cap), the other side's is 0 — checked on the
         // principal delta. The cast is not cosmetic: the position manager decodes these fields with a
         // raw `calldataload`, so an over-wide value would be read back dirty rather than truncated.
@@ -544,12 +550,13 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
         );
     }
 
-    /// @dev Hands `amount` of the deposited side back to `excessReceiver`. The native leg is a raw call
-    ///      whose failure must revert — the caller's funds are in this contract and there is nowhere else
-    ///      for them to go.
+    /// @dev Hands `amount` of the deposited side back to `excessReceiver`, in that side's own currency —
+    ///      an ERC20 quote can sit at `currency0` too. The native leg is a raw call whose failure must
+    ///      revert: the caller's funds are in this contract and there is nowhere else for them to go.
     function _returnUnspent(PoolKey calldata key, bool isCurrency1, uint256 amount, address excessReceiver) internal {
-        if (isCurrency1) {
-            IERC20(Currency.unwrap(key.currency1)).safeTransfer(excessReceiver, amount);
+        Currency currency = isCurrency1 ? key.currency1 : key.currency0;
+        if (!currency.isAddressZero()) {
+            IERC20(Currency.unwrap(currency)).safeTransfer(excessReceiver, amount);
             return;
         }
         (bool returned,) = excessReceiver.call{value: amount}("");
