@@ -7,6 +7,8 @@ import {RealmTreasuryRouter} from "src/treasury/RealmTreasuryRouter.sol";
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 import {DeploymentAddressesEthereumMainnet as Mainnet} from "src/config/DeploymentAddresses.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
@@ -22,6 +24,14 @@ contract Sink {
 
     receive() external payable {
         calls++;
+    }
+}
+
+contract SweepAsset is ERC20 {
+    constructor() ERC20("Sweep", "SWP") {}
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
     }
 }
 
@@ -102,6 +112,45 @@ contract RealmTreasuryRouterTests is Test {
         router.upgradeToAndCall(address(newImpl), "");
         vm.prank(admin);
         router.upgradeToAndCall(address(newImpl), "");
+    }
+
+    /// @dev Only the owner may move the treasury's ERC20 balances.
+    function test_sweep_onlyOwner() public {
+        SweepAsset asset = new SweepAsset();
+        asset.mint(address(router), 100e18);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(this)));
+        router.sweep(address(asset));
+        assertEq(asset.balanceOf(address(router)), 100e18, "balance untouched");
+    }
+
+    /// @dev Native is routed on arrival, so the native sentinel is not sweepable.
+    function test_sweep_rejectsNativeSentinel() public {
+        vm.prank(admin);
+        vm.expectRevert(RealmTreasuryRouter.InvalidAsset.selector);
+        router.sweep(address(0));
+    }
+
+    /// @dev The whole balance goes to the multisig, none of it to the vote.
+    function test_sweep_sendsWholeBalanceToTreasury() public {
+        SweepAsset asset = new SweepAsset();
+        asset.mint(address(router), 100e18);
+        vm.expectEmit(address(router));
+        emit RealmTreasuryRouter.TreasuryAssetSwept(address(asset), 100e18);
+        vm.prank(admin);
+        router.sweep(address(asset));
+        assertEq(asset.balanceOf(address(treasury)), 100e18, "treasury got everything");
+        assertEq(asset.balanceOf(address(voting)), 0, "vote gets no ERC20");
+        assertEq(asset.balanceOf(address(router)), 0, "nothing left");
+    }
+
+    /// @dev A zero balance transfers nothing and emits nothing.
+    function test_sweep_zeroBalanceIsANoop() public {
+        SweepAsset asset = new SweepAsset();
+        vm.expectCall(address(asset), abi.encodeWithSelector(IERC20.transfer.selector), 0);
+        vm.recordLogs();
+        vm.prank(admin);
+        router.sweep(address(asset));
+        assertEq(vm.getRecordedLogs().length, 0, "no event");
     }
 }
 

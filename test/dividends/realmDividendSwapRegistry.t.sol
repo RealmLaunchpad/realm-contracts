@@ -12,6 +12,12 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 import {installDividendSwapRegistry, DEFAULT_DIVIDEND_POOL_LIQUIDITY} from "test/helpers/DividendRegistryHelpers.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
+import {Currency} from "lib/v4-core/src/types/Currency.sol";
+import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
+import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 
 contract Ghost is ERC20 {
     constructor() ERC20("Ghost", "GHOST") {
@@ -535,6 +541,85 @@ contract RealmDividendSwapRegistryTests is Test {
         vm.expectRevert();
         registry.swapAssetToAsset(USDC, DAI, 1_000e6, 2_000e18, recipient);
         assertEq(IERC20(USDC).balanceOf(address(this)), 1_000e6, "a refused conversion leaves the source whole");
+    }
+
+    /// @dev THE xStock SHAPE, BACKWARDS. The source's route is native -> USDC -> USDT, so the reverse leg
+    ///      runs USDT -> USDC on the stable pool and USDC -> native on the ETH pool: each hop outputs the
+    ///      currency BEFORE it, and the last one outputs native. A multi-hop path, so the router's
+    ///      `SWAP_EXACT_IN` branch runs rather than the single-pool one.
+    function test_swapAssetToAsset_walksAMultiHopSourceRouteBackwards() public {
+        Hop[] memory hops = new Hop[](2);
+        hops[0] = Hop({currency: USDC, fee: V4_FEE_005, tickSpacing: V4_SPACING_10, hooks: address(0)});
+        hops[1] = Hop({currency: USDT, fee: V4_FEE_001, tickSpacing: V4_SPACING_1, hooks: address(0)});
+        registry.registerRoute(USDT, DividendRouteLib.encodeV4(hops));
+        deal(USDT, address(this), 1_000e6);
+        // USDT's `approve` returns nothing, which a plain `IERC20.approve` call cannot decode.
+        SafeERC20.forceApprove(IERC20(USDT), address(registry), 1_000e6);
+
+        uint256 before = recipient.balance;
+        uint256 out = registry.swapAssetToAsset(USDT, address(0), 1_000e6, 0.1 ether, recipient);
+
+        assertEq(recipient.balance - before, out, "native delivered");
+        assertGt(out, 0.1 ether, "a thousand USDT crossed both pools at a sane price");
+        assertEq(IERC20(USDT).balanceOf(address(this)), 0, "the source was consumed whole");
+        assertEq(IERC20(USDT).balanceOf(address(registry)), 0, "the registry kept no source");
+        assertEq(IERC20(USDC).balanceOf(address(registry)), 0, "nor any of the intermediate");
+        assertEq(address(registry).balance, 0, "nor any native");
+    }
+
+    /// @dev Nothing to swap, no source, or a source that already IS the asset: refused before any pull.
+    function test_swapAssetToAsset_refusesDegenerateInputs() public {
+        vm.expectRevert(RealmDividendSwapRegistry.NothingToSwap.selector);
+        registry.swapAssetToAsset(USDC, DAI, 0, 1, recipient);
+
+        bytes memory malformed =
+            abi.encodeWithSelector(RealmDividendSwapRegistry.SwapNotSupported.selector, SwapRejection.MalformedRoute);
+        vm.expectRevert(malformed);
+        registry.swapAssetToAsset(address(0), DAI, 1_000e6, 1, recipient);
+
+        vm.expectRevert(malformed);
+        registry.swapAssetToAsset(USDC, USDC, 1_000e6, 1, recipient);
+    }
+
+    /// @dev A recipient that refuses native fails the whole conversion rather than leaving the native
+    ///      here, and the source goes back with the revert.
+    function test_swapAssetToAsset_revertsWhenTheRecipientRefusesNative() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+        deal(USDC, address(this), 1_000e6);
+        IERC20(USDC).approve(address(registry), 1_000e6);
+        address refuser = address(new Ghost()); // no `receive()`
+
+        vm.expectRevert(RealmDividendSwapRegistry.NativeDeliveryFailed.selector);
+        registry.swapAssetToAsset(USDC, address(0), 1_000e6, 0, refuser);
+        assertEq(IERC20(USDC).balanceOf(address(this)), 1_000e6, "the source never left");
+    }
+
+    /// @dev The source's route is re-validated on every conversion, as a payout asset's is: a source pool
+    ///      drained after registration is refused as dead rather than swapped against.
+    function test_swapAssetToAsset_refusesASourcePoolDrainedAfterRegistration() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+        registry.registerRoute(DAI, V2_ROUTE);
+        deal(USDC, address(this), 1_000e6);
+        IERC20(USDC).approve(address(registry), 1_000e6);
+
+        // Zero the pool's in-range liquidity, which is what `_validateV4` reads.
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(USDC),
+            fee: V4_FEE_005,
+            tickSpacing: V4_SPACING_10,
+            hooks: IHooks(address(0))
+        });
+        bytes32 state = keccak256(abi.encodePacked(PoolId.unwrap(PoolIdLibrary.toId(key)), StateLibrary.POOLS_SLOT));
+        vm.store(
+            DeploymentAddresses.UNIV4_POOL_MANAGER, bytes32(uint256(state) + StateLibrary.LIQUIDITY_OFFSET), bytes32(0)
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(RealmDividendSwapRegistry.SwapNotSupported.selector, SwapRejection.DeadPool)
+        );
+        registry.swapAssetToAsset(USDC, DAI, 1_000e6, 1, recipient);
+        assertEq(IERC20(USDC).balanceOf(address(this)), 1_000e6, "the source never left");
     }
 
     //////////////////////// helpers //////////////////////

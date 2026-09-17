@@ -13,6 +13,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
 import {RealmDividendLogicUniV2} from "src/tokens/RealmDividendLogicUniV2.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {RealmToken} from "src/tokens/RealmToken.sol";
 
 /// @notice Integration tests for holder dividends on Uniswap V2. Two things are V2-specific and get the
 ///         attention here: a leg paying the TOKEN ITSELF must be carved in token space (a V2 pair reverts
@@ -342,6 +343,23 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
         vm.expectRevert(RealmTaxableToken.NotAToken.selector);
         extension.rescueTokens(DAI);
+    }
+
+    /// @dev A V2 token earns in native only, so the quote-routes overload has nothing to configure: it is
+    ///      refused outright, on the extension and through a live token's delegatecall alike, before any
+    ///      caller check — never silently accepted as an empty list.
+    function test_extension_refusesTheQuoteRoutesOverload() public {
+        RealmDividendLogicUniV2 extension = RealmDividendLogicUniV2(payable(realmTaxTokenV2.DIVIDEND_LOGIC()));
+        vm.expectRevert(RealmToken.InvalidQuotes.selector);
+        extension.initializeEarningsAllocation(
+            0, 5_000, 0, new address[](0), new uint16[](0), new bytes[](0), new bytes[](0)
+        );
+
+        RealmTaxableTokenUniV2 token = RealmTaxableTokenUniV2(payable(_createDividendToken(5_000, address(0))));
+        vm.expectRevert(RealmToken.InvalidQuotes.selector);
+        token.initializeEarningsAllocation(
+            0, 5_000, 0, new address[](0), new uint16[](0), new bytes[](0), new bytes[](0)
+        );
     }
 
     ///////////////////////// the threshold /////////////////////////

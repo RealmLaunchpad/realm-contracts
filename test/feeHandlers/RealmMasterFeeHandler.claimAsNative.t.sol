@@ -11,6 +11,17 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
 import {MockMasterFeeToken} from "test/helpers/MasterFeeHandlerTestHelpers.sol";
+import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
+
+/// @dev An ERC20 with no market but the thin native pool a test gives it.
+contract ThinAsset is ERC20 {
+    constructor() ERC20("Thin", "THIN") {}
+}
 
 /// @dev The token double, able to pay its fees in an ERC20 as a real token's `accrueFees(asset, amount)` does.
 contract MockAssetFeeToken is MockMasterFeeToken {
@@ -41,14 +52,54 @@ contract RealmMasterFeeHandlerClaimAsNativeTests is Test {
         tokenB = _earning(bob, 1_000e6);
     }
 
+    /// @dev Refunds of the ETH `_thinPool` overpays for its position.
+    receive() external payable {}
+
     /// @dev A token whose whole fee stream belongs to `recipient`, with `amount` USDC already deposited.
     function _earning(address recipient, uint256 amount) internal returns (MockAssetFeeToken token) {
+        return _earningIn(USDC, recipient, amount);
+    }
+
+    /// @dev `_earning`, in any `asset`.
+    function _earningIn(address asset, address recipient, uint256 amount) internal returns (MockAssetFeeToken token) {
         token = new MockAssetFeeToken(handler);
         IRealmFactory.FeeShare[] memory shares = new IRealmFactory.FeeShare[](1);
         shares[0] = IRealmFactory.FeeShare({account: recipient, shares: 10_000, directFeesEnabled: false});
         token.registerFees(shares);
-        deal(USDC, address(token), amount);
-        token.accrueFees(USDC, amount);
+        deal(asset, address(token), amount);
+        token.accrueFees(asset, amount);
+    }
+
+    /// @dev A fresh ERC20 whose only native pool (1:1, 0.3%) holds ~3e15 of each side in +/-60 ticks, so
+    ///      any sale much larger than that runs out of liquidity. Returns the one-hop route to native.
+    function _thinPool() internal returns (ThinAsset asset, PathKey[] memory path) {
+        asset = new ThinAsset();
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(asset)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        IPoolManager manager = IPoolManager(Mainnet.UNIV4_POOL_MANAGER);
+        manager.initialize(key, uint160(1 << 96));
+
+        PoolModifyLiquidityTest lp = new PoolModifyLiquidityTest(manager);
+        deal(address(asset), address(this), 1e18);
+        asset.approve(address(lp), type(uint256).max);
+        vm.deal(address(this), 1 ether);
+        lp.modifyLiquidity{value: 1 ether}(
+            key, ModifyLiquidityParams({tickLower: -60, tickUpper: 60, liquidityDelta: 1e18, salt: 0}), ""
+        );
+
+        path = new PathKey[](1);
+        path[0] = PathKey({
+            intermediateCurrency: Currency.wrap(address(0)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0)),
+            hookData: ""
+        });
     }
 
     function _usdcToNative() internal pure returns (PathKey[] memory path) {
@@ -100,6 +151,72 @@ contract RealmMasterFeeHandlerClaimAsNativeTests is Test {
         handler.claimAsNative(_one(address(tokenA)), USDC, _usdcToNative(), 1_000 ether);
 
         assertEq(handler.getClaimable(_one(address(tokenA)), USDC, alice)[0], 1_000e6, "claim intact");
+    }
+
+    /// @dev Claims across several tokens are summed into ONE swap, paying exactly what a single claim of
+    ///      the same total would at the same pool state.
+    function test_claimAsNative_sumsAcrossTokensInOneSwap() public {
+        MockAssetFeeToken tokenC = _earning(alice, 500e6);
+
+        uint256 snapshot = vm.snapshotState();
+        MockAssetFeeToken combined = _earning(bob, 1_500e6);
+        vm.prank(bob);
+        uint256 expectedOut = handler.claimAsNative(_one(address(combined)), USDC, _usdcToNative(), 1);
+        vm.revertToState(snapshot);
+
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(tokenA);
+        tokens[1] = address(tokenC);
+        uint256 usdcBefore = IERC20(USDC).balanceOf(address(handler));
+
+        vm.expectCall(Mainnet.UNIV4_UNIVERSAL_ROUTER, abi.encodeWithSelector(IUniversalRouter.execute.selector), 1);
+        vm.expectEmit(address(handler));
+        emit IRealmMasterFeeHandler.CreatorAssetClaimed(address(tokenA), USDC, alice, 1_000e6);
+        vm.expectEmit(address(handler));
+        emit IRealmMasterFeeHandler.CreatorAssetClaimed(address(tokenC), USDC, alice, 500e6);
+        vm.expectEmit(address(handler));
+        emit IRealmMasterFeeHandler.CreatorAssetConvertedToNative(alice, USDC, 1_500e6, expectedOut);
+        vm.prank(alice);
+        uint256 out = handler.claimAsNative(tokens, USDC, _usdcToNative(), 1);
+
+        assertEq(out, expectedOut, "same as one claim of the sum");
+        assertEq(alice.balance, out, "paid to the claimer");
+        assertEq(usdcBefore - IERC20(USDC).balanceOf(address(handler)), 1_500e6, "exactly the sum sold");
+        assertEq(IERC20(USDC).balanceOf(address(handler)), 1_000e6, "bob's USDC untouched");
+        assertEq(handler.getClaimable(_one(address(tokenA)), USDC, alice)[0], 0, "ledger A closed");
+        assertEq(handler.getClaimable(_one(address(tokenC)), USDC, alice)[0], 0, "ledger C closed");
+    }
+
+    /// @dev A pool too thin to absorb the whole claim fills partially; the full-fill guard reverts, so the
+    ///      unsold remainder never lands unattributed in the handler and the claim stays intact.
+    function test_claimAsNative_partialFillRevertsAndKeepsTheClaim() public {
+        (ThinAsset thin, PathKey[] memory path) = _thinPool();
+        MockAssetFeeToken token = _earningIn(address(thin), alice, 1e18); // ~300x the pool's depth
+
+        vm.prank(alice);
+        vm.expectRevert(IRealmMasterFeeHandler.NativeConversionFailed.selector);
+        handler.claimAsNative(_one(address(token)), address(thin), path, 1);
+
+        assertEq(handler.getClaimable(_one(address(token)), address(thin), alice)[0], 1e18, "claim intact");
+        assertEq(thin.balanceOf(address(handler)), 1e18, "nothing sold");
+
+        // The same route fills a claim the pool can absorb, so the revert above is the partial fill.
+        MockAssetFeeToken small = _earningIn(address(thin), bob, 1e14);
+        vm.prank(bob);
+        assertGt(handler.claimAsNative(_one(address(small)), address(thin), path, 1), 0, "small claim fills");
+    }
+
+    /// @dev A sale that fills but delivers no native reverts even with a zero floor: the claim is not
+    ///      burned for nothing.
+    function test_claimAsNative_zeroProceedsRevertsEvenWithZeroFloor() public {
+        (ThinAsset thin, PathKey[] memory path) = _thinPool();
+        MockAssetFeeToken token = _earningIn(address(thin), alice, 1); // all of it goes to the 0.3% fee
+
+        vm.prank(alice);
+        vm.expectRevert(IRealmMasterFeeHandler.NativeConversionFailed.selector);
+        handler.claimAsNative(_one(address(token)), address(thin), path, 0);
+
+        assertEq(handler.getClaimable(_one(address(token)), address(thin), alice)[0], 1, "claim intact");
     }
 
     function test_claimAsNative_nothingClaimableIsANoop() public {
