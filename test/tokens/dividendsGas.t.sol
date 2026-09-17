@@ -7,12 +7,7 @@ import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {
-    TaxConfigsWithAllocation,
-    EarningsAllocationConfig,
-    TaxConfigsWithMultiAllocation,
-    EarningsAllocationMultiConfig
-} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice The hot-path gas measurement the dividends design hangs on.
@@ -36,7 +31,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: 400,
             taxDurationSeconds: uint32(14 days),
@@ -44,9 +39,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(0, dividendsBps, 0, address(0))
         });
         vm.prank(creator);
         address token = factoryTax.createToken(

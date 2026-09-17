@@ -28,7 +28,13 @@ contract E2E_FactoryTaxToken is
     function _createTestToken(bytes32 salt) internal override returns (address token) {
         vm.prank(creator);
         token = factoryTax.createToken(
-            "E2E", "E2E", salt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+            _setupTiered("E2E", "E2E", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -39,7 +45,13 @@ contract E2E_FactoryTaxToken is
     {
         vm.prank(creator);
         token = factoryTax.createToken(
-            "E2E", "E2E", salt, feeReceivers, _noSs(), false, _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+            _setupTiered("E2E", "E2E", salt, feeReceivers),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -51,14 +63,13 @@ contract E2E_FactoryTaxToken is
         vm.deal(creator, ethValue);
         vm.prank(creator);
         token = factoryTax.createToken{value: ethValue}(
-            "E2E",
-            "E2E",
-            salt,
-            _fs(creator),
+            _setupTiered("E2E", "E2E", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            _v4Cfg(false),
             supplyShares,
-            false,
-            _taxCfg(0, 400, uint32(7 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 

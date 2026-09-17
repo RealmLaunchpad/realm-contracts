@@ -113,14 +113,4 @@ abstract contract DividendInitLogic is DividendDistribution {
         // payout asset off this event. Emitted last so the per-asset events describe the whole set first.
         emit DividendsInitialized(dividendAssets[0].token);
     }
-
-    /// @dev Lifts a single payout asset into the one-entry set `_initializeDividends` consumes, so the
-    ///      original single-asset `initializeEarningsAllocation` overload and the multi-asset one run
-    ///      through exactly the same rules. A sole asset takes the whole dividends slice by definition.
-    function _soleAssetSet(address asset) internal pure returns (address[] memory tokens, uint16[] memory weights) {
-        tokens = new address[](1);
-        tokens[0] = asset;
-        weights = new uint16[](1);
-        weights[0] = uint16(DIVIDEND_BPS_TOTAL);
-    }
 }

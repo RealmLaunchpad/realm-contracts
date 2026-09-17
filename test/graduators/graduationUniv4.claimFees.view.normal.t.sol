@@ -17,14 +17,13 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
         // Create token with creator as msg.sender (owner), alice as feeReceiver
         vm.prank(creator);
         testToken = factoryV4.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(alice),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(alice)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         _graduateToken();
@@ -41,14 +40,13 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
         // Create token with creator as msg.sender (owner), alice as feeReceiver
         vm.prank(creator);
         testToken = factoryV4.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(alice),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(alice)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         _graduateToken();

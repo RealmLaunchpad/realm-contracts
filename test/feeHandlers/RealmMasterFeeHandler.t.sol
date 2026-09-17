@@ -66,14 +66,20 @@ contract RealmMasterFeeHandlerReentrancyTest is LaunchpadBaseTestsWithUniv4Gradu
         // Deploy a token with malicious as tokenOwner + direct fee receiver, EOA as claimable.
         vm.prank(address(malicious));
         address token = factoryV4Unified.createToken(
-            "AttackToken",
-            "ATTK",
-            _nextValidSalt(address(factoryV4Unified), address(realmToken), address(malicious)),
-            _feeShares(),
+            _setupTiered(
+                "AttackToken",
+                "ATTK",
+                _nextValidSalt(address(factoryV4Unified), address(realmToken), address(malicious)),
+                _feeShares()
+            ),
+            _noAlloc( // do NOT renounce — owner = msg.sender = malicious
+                _emptyTaxCfg()
+            ),
+            _v4Cfg(false),
             _noSs(),
-            false, // do NOT renounce — owner = msg.sender = malicious
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         malicious.setToken(token);
 
@@ -126,14 +132,15 @@ contract RealmMasterFeeHandlerAccessControlTest is LaunchpadBaseTestsWithUniv4Gr
 
         vm.prank(creator);
         token = factoryV4Unified.createToken(
-            "AccessToken",
-            "ACCS",
-            _nextValidSalt(address(factoryV4Unified), address(realmToken)),
-            _fs(creator),
+            _setupTiered(
+                "AccessToken", "ACCS", _nextValidSalt(address(factoryV4Unified), address(realmToken)), _fs(creator)
+            ),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -147,14 +154,15 @@ contract RealmMasterFeeHandlerAccessControlTest is LaunchpadBaseTestsWithUniv4Gr
     function _createRenouncedToken() internal returns (address renouncedToken) {
         vm.prank(creator);
         renouncedToken = factoryV4Unified.createToken(
-            "RenouncedToken",
-            "RNCD",
-            _nextValidSalt(address(factoryV4Unified), address(realmToken)),
-            _fs(creator),
+            _setupTiered(
+                "RenouncedToken", "RNCD", _nextValidSalt(address(factoryV4Unified), address(realmToken)), _fs(creator)
+            ),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(true),
             _noSs(),
-            true,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         assertEq(IRealmToken(renouncedToken).owner(), address(0), "renounced token owner");
     }
@@ -213,14 +221,15 @@ contract RealmMasterFeeHandlerDirectReceiverCapTest is LaunchpadBaseTestsWithUni
         // Plain V4 token, owner = creator, single claimable fee receiver.
         vm.prank(creator);
         token = factoryV4Unified.createToken(
-            "CapToken",
-            "CAP",
-            _nextValidSalt(address(factoryV4Unified), address(realmToken)),
-            _fs(creator),
+            _setupTiered(
+                "CapToken", "CAP", _nextValidSalt(address(factoryV4Unified), address(realmToken)), _fs(creator)
+            ),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -295,14 +304,13 @@ contract RealmMasterFeeHandlerReclassificationTest is LaunchpadBaseTestsWithUniv
 
         vm.prank(creator);
         token = factoryV4Unified.createToken(
-            "Reclass",
-            "RCL",
-            _nextValidSalt(address(factoryV4Unified), address(realmToken)),
-            fs,
+            _setupTiered("Reclass", "RCL", _nextValidSalt(address(factoryV4Unified), address(realmToken)), fs),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 

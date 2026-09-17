@@ -10,7 +10,12 @@ import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
-import {TaxConfigInit, TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
+import {
+    TaxConfigs,
+    TaxConfigsWithMultiAllocation,
+    TaxConfigsWithDirectAllocation,
+    EarningsAllocationMultiConfig
+} from "src/interfaces/IRealmTaxableToken.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
@@ -80,7 +85,7 @@ contract LaunchpadBaseTests is Test {
     // Two unified factories. Legacy aliases below point to these instances so existing call sites
     // that read `factoryV2`, `factoryV4`, `factoryTax`, `factoryV2Sniper`, `factorySniper`, and
     // `factoryTaxSniper` keep working. The unified factories dispatch implementations based on
-    // `TaxConfigInit`/`AntiSniperConfigs` sentinels.
+    // `TaxConfigs`/`AntiSniperConfigs` sentinels.
     RealmFactoryUniV2Unified public factoryV2Unified;
     RealmFactoryUniV4Unified public factoryV4Unified;
 
@@ -277,12 +282,12 @@ contract LaunchpadBaseTests is Test {
         arr[0] = IRealmFactory.SupplyShare({account: account, shares: 10_000});
     }
 
-    /// @dev Build a `TaxConfigInit` struct for passing to any tax-factory's `createToken`. Defaults to
-    ///      `startTaxFromLaunch: true` (creation-anchored), preserving every existing test's behavior.
+    /// @dev A static-tax `TaxConfigs` (no decay). Defaults to `startTaxFromLaunch: true`
+    ///      (creation-anchored), preserving every existing test's behavior.
     function _taxCfg(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds)
         internal
         pure
-        returns (TaxConfigInit memory)
+        returns (TaxConfigs memory)
     {
         return _taxCfg(buyTaxBps, sellTaxBps, taxDurationSeconds, true);
     }
@@ -291,18 +296,13 @@ contract LaunchpadBaseTests is Test {
     function _taxCfg(uint16 buyTaxBps, uint16 sellTaxBps, uint32 taxDurationSeconds, bool startTaxFromLaunch)
         internal
         pure
-        returns (TaxConfigInit memory)
+        returns (TaxConfigs memory)
     {
-        return TaxConfigInit({
-            buyTaxBps: buyTaxBps,
-            sellTaxBps: sellTaxBps,
-            taxDurationSeconds: taxDurationSeconds,
-            startTaxFromLaunch: startTaxFromLaunch
-        });
+        return _taxCfg(buyTaxBps, sellTaxBps, taxDurationSeconds, startTaxFromLaunch, 0, 0, 0);
     }
 
     /// @dev Full `_taxCfg` overload exposing the linear-decay fields too. Returns the superset
-    ///      `TaxConfigs` (decay lives only there); pass it to the new struct-based `createToken` overload.
+    ///      `TaxConfigs` (decay lives only there).
     function _taxCfg(
         uint16 buyTaxBps,
         uint16 sellTaxBps,
@@ -334,26 +334,70 @@ contract LaunchpadBaseTests is Test {
         return _taxCfg(0, 0, 0, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps, taxDecayDuration);
     }
 
-    /// @dev Lifts a legacy `TaxConfigInit` into the full `TaxConfigs` (decay fields zeroed). Mirrors the
-    ///      factory's `_toTaxConfigs`; use at the `initialize` / `previewTokenImplementation` /
-    ///      `quoteBuyOnDeploy` call-sites, which now take `TaxConfigs`, when the test already has a
-    ///      `TaxConfigInit` from `_taxCfg`/`_emptyTaxCfg`.
-    function _toCfgs(TaxConfigInit memory legacy) internal pure returns (TaxConfigs memory) {
-        return TaxConfigs({
-            buyTaxBps: legacy.buyTaxBps,
-            sellTaxBps: legacy.sellTaxBps,
-            taxDurationSeconds: legacy.taxDurationSeconds,
-            startTaxFromLaunch: legacy.startTaxFromLaunch,
-            buyTaxDecayStartBps: 0,
-            sellTaxDecayStartBps: 0,
-            taxDecayDuration: 0
+    /// @dev No tax at all — dispatches to the base implementation unless an allocation is set.
+    function _emptyTaxCfg() internal pure returns (TaxConfigs memory cfg) {}
+
+    /// @dev `tax` with no earnings allocation, in the shape the curve factories' `createToken` takes.
+    function _noAlloc(TaxConfigs memory tax) internal pure returns (TaxConfigsWithMultiAllocation memory c) {
+        c = TaxConfigsWithMultiAllocation({
+            buyTaxBps: tax.buyTaxBps,
+            sellTaxBps: tax.sellTaxBps,
+            taxDurationSeconds: tax.taxDurationSeconds,
+            startTaxFromLaunch: tax.startTaxFromLaunch,
+            buyTaxDecayStartBps: tax.buyTaxDecayStartBps,
+            sellTaxDecayStartBps: tax.sellTaxDecayStartBps,
+            taxDecayDuration: tax.taxDecayDuration,
+            earningsAllocation: _multiAlloc(0, 0, 0, address(0))
         });
     }
 
-    /// @dev Empty `TaxConfigInit` — sentinel for "no tax variant" (taxDurationSeconds == 0 and, once
-    ///      lifted into `TaxConfigs`, taxDecayDuration == 0 disable dispatch to the taxable impl).
-    function _emptyTaxCfg() internal pure returns (TaxConfigInit memory) {
-        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false});
+    /// @dev `tax` with no earnings allocation, in the shape the direct factory's `createToken` takes.
+    function _noDirectAlloc(TaxConfigs memory tax) internal pure returns (TaxConfigsWithDirectAllocation memory c) {
+        c.buyTaxBps = tax.buyTaxBps;
+        c.sellTaxBps = tax.sellTaxBps;
+        c.taxDurationSeconds = tax.taxDurationSeconds;
+        c.startTaxFromLaunch = tax.startTaxFromLaunch;
+        c.buyTaxDecayStartBps = tax.buyTaxDecayStartBps;
+        c.sellTaxDecayStartBps = tax.sellTaxDecayStartBps;
+        c.taxDecayDuration = tax.taxDecayDuration;
+    }
+
+    /// @dev An allocation paying dividends in ONE asset (`dividendToken`, empty route), or none when both
+    ///      `dividendsBps` and `dividendToken` are zero.
+    function _multiAlloc(uint16 burnBps, uint16 dividendsBps, uint16 liquidityBps, address dividendToken)
+        internal
+        pure
+        returns (EarningsAllocationMultiConfig memory a)
+    {
+        a.burnBps = burnBps;
+        a.dividendsBps = dividendsBps;
+        a.liquidityBps = liquidityBps;
+        if (dividendsBps != 0 || dividendToken != address(0)) {
+            a.dividendTokens = new address[](1);
+            a.dividendTokens[0] = dividendToken;
+            a.dividendWeightsBps = new uint16[](1);
+            a.dividendWeightsBps[0] = 10_000;
+        }
+    }
+
+    /// @dev A DEFAULT-tier token setup.
+    function _setupTiered(string memory name, string memory symbol, bytes32 salt, IRealmFactory.FeeShare[] memory fs)
+        internal
+        pure
+        returns (IRealmFactory.TokenSetupTiered memory)
+    {
+        return IRealmFactory.TokenSetupTiered({
+            name: name, symbol: symbol, salt: salt, feeShares: fs, liquidityTier: LiquidityTier.DEFAULT
+        });
+    }
+
+    /// @dev V4 configs at the 100-bps swap fee.
+    function _v4Cfg(bool renounceOwnership) internal pure returns (RealmFactoryUniV4Unified.UniV4Configs memory) {
+        return RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: renounceOwnership, lpFeeBps: 100});
+    }
+
+    function _noVaults() internal pure returns (IRealmFactory.CreatorVault[] memory) {
+        return new IRealmFactory.CreatorVault[](0);
     }
 
     /// @dev Empty `AntiSniperConfigs` — sentinel for "no sniper protection" (protectionWindowSeconds == 0).
@@ -587,36 +631,45 @@ contract LaunchpadBaseTests is Test {
         if (address(graduator) == address(graduatorV4)) {
             if (address(implementation) == address(realmTaxToken)) {
                 testToken = factoryV4Unified.createToken(
-                    "TestToken",
-                    "TEST",
-                    _nextValidSalt(address(factoryV4Unified), address(realmTaxToken)),
-                    _fs(creator),
+                    _setupTiered(
+                        "TestToken",
+                        "TEST",
+                        _nextValidSalt(address(factoryV4Unified), address(realmTaxToken)),
+                        _fs(creator)
+                    ),
+                    _noAlloc(_taxCfg(0, 400, uint32(14 days))),
+                    _v4Cfg(false),
                     _noSs(),
-                    false,
-                    _taxCfg(0, 400, uint32(14 days)),
-                    _emptyAntiSniperCfg()
+                    _emptyAntiSniperCfg(),
+                    _noVaults(),
+                    address(0)
                 );
             } else {
                 testToken = factoryV4Unified.createToken(
-                    "TestToken",
-                    "TEST",
-                    _nextValidSalt(address(factoryV4Unified), address(realmToken)),
-                    _fs(creator),
+                    _setupTiered(
+                        "TestToken",
+                        "TEST",
+                        _nextValidSalt(address(factoryV4Unified), address(realmToken)),
+                        _fs(creator)
+                    ),
+                    _noAlloc(_emptyTaxCfg()),
+                    _v4Cfg(false),
                     _noSs(),
-                    false,
-                    _emptyTaxCfg(),
-                    _emptyAntiSniperCfg()
+                    _emptyAntiSniperCfg(),
+                    _noVaults(),
+                    address(0)
                 );
             }
         } else {
             testToken = factoryV2Unified.createToken(
-                "TestToken",
-                "TEST",
-                _nextValidSalt(address(factoryV2Unified), address(realmToken)),
-                _fs(creator),
+                _setupTiered(
+                    "TestToken", "TEST", _nextValidSalt(address(factoryV2Unified), address(realmToken)), _fs(creator)
+                ),
+                _noAlloc(_emptyTaxCfg()),
                 _noSs(),
-                _emptyTaxCfg(),
-                _emptyAntiSniperCfg()
+                _emptyAntiSniperCfg(),
+                _noVaults(),
+                address(0)
             );
         }
         _;

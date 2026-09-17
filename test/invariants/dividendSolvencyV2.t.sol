@@ -7,7 +7,7 @@ import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
 import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Drives every path that can move a V2 dividend token's balances. Unlike the V4 handler, the
@@ -114,7 +114,7 @@ contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V
         });
         // A SELF-TOKEN dividend leg alongside a liquidity allocation, on purpose: those are the two
         // buckets that live in the token's own ERC20 balance next to the tax pool.
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: 500,
             taxDurationSeconds: uint32(365 days),
@@ -122,9 +122,7 @@ contract DividendSolvencyV2Invariants is LaunchpadBaseTestsWithUniv2Graduator, V
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 1_000, dividendsBps: 4_000, liquidityBps: 2_000, dividendToken: address(type(uint160).max)
-            })
+            earningsAllocation: _multiAlloc(1_000, 4_000, 2_000, address(type(uint160).max))
         });
         vm.prank(creator);
         address token = factoryV2Unified.createToken(

@@ -101,7 +101,7 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         token = directFactory.createToken(
             _setup(true),
             _pairs(quote, QC_LAUNCH_TICK),
-            _toCfgs(_taxCfg(uint16(TAX_BPS), uint16(TAX_BPS), uint32(14 days))),
+            _noDirectAlloc(_taxCfg(uint16(TAX_BPS), uint16(TAX_BPS), uint32(14 days))),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             devBuy,
@@ -558,7 +558,7 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         address token = directFactory.createToken(
             _setup(false),
             _twoPairs(),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),

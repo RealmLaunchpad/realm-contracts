@@ -8,7 +8,7 @@ import {ForkIntegrationCaseLib} from "test/integration/fork/base/ForkIntegration
 
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
-import {TaxConfigInit} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
@@ -25,22 +25,25 @@ contract SepoliaTaxableUniV2PairAddress is ForkIntegrationBase {
         IRealmFactory.FeeShare[] memory fees = new IRealmFactory.FeeShare[](1);
         fees[0] = IRealmFactory.FeeShare({account: creator, shares: 10_000, directFeesEnabled: false});
         IRealmFactory.SupplyShare[] memory supply = new IRealmFactory.SupplyShare[](0);
-        TaxConfigInit memory taxCfg = TaxConfigInit({
-            buyTaxBps: TAX_BUY_BPS,
-            sellTaxBps: TAX_SELL_BPS,
-            taxDurationSeconds: TAX_DURATION_SECONDS,
-            startTaxFromLaunch: true
-        });
+        TaxConfigsWithMultiAllocation memory taxCfg;
+        taxCfg.buyTaxBps = TAX_BUY_BPS;
+        taxCfg.sellTaxBps = TAX_SELL_BPS;
+        taxCfg.taxDurationSeconds = TAX_DURATION_SECONDS;
+        taxCfg.startTaxFromLaunch = true;
         AntiSniperConfigs memory noSniper = AntiSniperConfigs({
             maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)
         });
 
-        address impl = factoryV2.previewTokenImplementation(fees, supply, _toCfgs(taxCfg), noSniper);
+        IRealmFactory.CreatorVault[] memory noVaults = new IRealmFactory.CreatorVault[](0);
+        address impl = factoryV2.previewTokenImplementation(
+            _setup(fees, bytes32(0)), taxCfg, supply, noSniper, noVaults, address(0)
+        );
         _assertCode(impl, "v2 tax impl code missing");
         bytes32 salt = _nextValidSalt(address(factoryV2), impl, creator);
 
+        IRealmFactory.TokenSetupTiered memory setup = _setup(fees, salt);
         vm.prank(creator);
-        address token = factoryV2.createToken("Sepolia Tax V2", "STV2", salt, fees, supply, taxCfg, noSniper);
+        address token = factoryV2.createToken(setup, taxCfg, supply, noSniper, noVaults, address(0));
 
         IUniswapV2Factory uniV2Factory = IUniswapV2Factory(forkCfg.uniV2Factory);
         address predictedPair = IRealmToken(token).pair();

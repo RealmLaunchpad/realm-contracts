@@ -44,26 +44,26 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         sniperToken = factorySniper.createToken(
-            "SNIPER",
-            "SNIPER",
-            _nextValidSalt(address(factorySniper), address(realmTokenSniper)),
-            _fs(creator),
+            _setupTiered(
+                "SNIPER", "SNIPER", _nextValidSalt(address(factorySniper), address(realmTokenSniper)), _fs(creator)
+            ),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _sniperCfg()
+            _sniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         vm.prank(creator);
         baseToken = factoryV4.createToken(
-            "BASE",
-            "BASE",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(creator),
+            _setupTiered("BASE", "BASE", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -123,14 +123,13 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
     function test_consistency_buyExactEth_NONE_whitelistedBuyer() public {
         vm.prank(creator);
         address wlToken = factorySniper.createToken(
-            "WL",
-            "WL",
-            _nextValidSalt(address(factorySniper), address(realmTokenSniper)),
-            _fs(creator),
+            _setupTiered("WL", "WL", _nextValidSalt(address(factorySniper), address(realmTokenSniper)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _sniperCfgWithWhitelist(buyer)
+            _sniperCfgWithWhitelist(buyer),
+            _noVaults(),
+            address(0)
         );
         _quoteAndBuyExactEth(wlToken, buyer, 0.5 ether, LimitReason.NONE);
     }

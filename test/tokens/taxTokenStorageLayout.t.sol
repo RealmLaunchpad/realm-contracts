@@ -6,11 +6,7 @@ import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {
-    TaxConfigsWithAllocation,
-    EarningsAllocationConfig,
-    IRealmTaxableToken
-} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation, IRealmTaxableToken} from "src/interfaces/IRealmTaxableToken.sol";
 
 /// @notice Pins the storage packing the taxable tokens depend on for gas, and the creation-time-only
 ///         nature of the earnings allocation.
@@ -73,7 +69,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 300,
             sellTaxBps: 400,
             taxDurationSeconds: uint32(14 days),
@@ -81,9 +77,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
             buyTaxDecayStartBps: 900,
             sellTaxDecayStartBps: 1_100,
             taxDecayDuration: 600,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 1_000, dividendsBps: 2_000, liquidityBps: 1_500, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(1_000, 2_000, 1_500, address(0))
         });
         vm.prank(creator);
         address addr = factoryV2Unified.createToken(
@@ -212,9 +206,13 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     function test_dividendConfigCannotBeSetAfterCreation() public {
         RealmTaxableTokenUniV2 token = tok;
 
+        address[] memory assets = new address[](1);
+        uint16[] memory weights = new uint16[](1);
+        weights[0] = 10_000;
         vm.prank(creator);
         vm.expectRevert();
-        IRealmTaxableToken(payable(address(token))).initializeEarningsAllocation(0, 10_000, 0, address(0));
+        IRealmTaxableToken(payable(address(token)))
+            .initializeEarningsAllocation(0, 10_000, 0, assets, weights, new bytes[](0));
 
         assertEq(token.dividendsBps(), 2_000, "the creation-time dividend share is unchanged");
     }

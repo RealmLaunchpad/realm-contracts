@@ -20,8 +20,15 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
         vm.prank(creator);
-        address token =
-            factoryV4Unified.createToken("DF", "DF", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg());
+        address token = factoryV4Unified.createToken(
+            _setupTiered("DF", "DF", salt, fs),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         // Singleton handler has alice as the direct receiver for this token
         assertTrue(feeHandler.isDirectReceiver(token, alice));
@@ -66,8 +73,15 @@ contract E2E_DirectFees is V4SwapHelpers, LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
         vm.prank(creator);
-        address token =
-            factoryV4Unified.createToken("DFS", "DFS", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg());
+        address token = factoryV4Unified.createToken(
+            _setupTiered("DFS", "DFS", salt, fs),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         uint256 aliceBefore = alice.balance;
 

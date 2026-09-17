@@ -33,14 +33,13 @@ contract E2E_FactoryTaxTokenSniperProtected is
     function _createTestToken(bytes32 salt) internal override returns (address token) {
         vm.prank(creator);
         token = factoryTaxSniper.createToken(
-            "E2E",
-            "E2E",
-            salt,
-            _fs(creator),
+            _setupTiered("E2E", "E2E", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, 400, uint32(7 days)),
-            _defaultE2EAntiSniperCfg()
+            _defaultE2EAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -51,14 +50,13 @@ contract E2E_FactoryTaxTokenSniperProtected is
     {
         vm.prank(creator);
         token = factoryTaxSniper.createToken(
-            "E2E",
-            "E2E",
-            salt,
-            feeReceivers,
+            _setupTiered("E2E", "E2E", salt, feeReceivers),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, 400, uint32(7 days)),
-            _defaultE2EAntiSniperCfg()
+            _defaultE2EAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -70,14 +68,13 @@ contract E2E_FactoryTaxTokenSniperProtected is
         vm.deal(creator, ethValue);
         vm.prank(creator);
         token = factoryTaxSniper.createToken{value: ethValue}(
-            "E2E",
-            "E2E",
-            salt,
-            _fs(creator),
+            _setupTiered("E2E", "E2E", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            _v4Cfg(false),
             supplyShares,
-            false,
-            _taxCfg(0, 400, uint32(7 days)),
-            _defaultE2EAntiSniperCfg()
+            _defaultE2EAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 

@@ -19,7 +19,12 @@ import {IRealmQuoter2} from "src/interfaces/IRealmQuoter2.sol";
 import {LimitReason} from "src/interfaces/IRealmQuoter.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
-import {TaxConfigInit, TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
+import {
+    TaxConfigs,
+    TaxConfigsWithMultiAllocation,
+    EarningsAllocationMultiConfig
+} from "src/interfaces/IRealmTaxableToken.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 interface ISniperProtectionRead {
@@ -188,30 +193,31 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         return _isV4(c) ? address(factoryV4) : address(factoryV2);
     }
 
-    function _taxCfg(ForkIntegrationCaseLib.IntegrationCase memory c) internal pure returns (TaxConfigInit memory) {
-        if (_hasTax(c)) {
-            return TaxConfigInit({
-                buyTaxBps: TAX_BUY_BPS,
-                sellTaxBps: TAX_SELL_BPS,
-                taxDurationSeconds: TAX_DURATION_SECONDS,
-                startTaxFromLaunch: true
-            });
+    /// @dev The case's tax (none on V2) with no earnings allocation, as the factories' `createToken` takes it.
+    function _taxAllocCfg(ForkIntegrationCaseLib.IntegrationCase memory c)
+        internal
+        pure
+        returns (TaxConfigsWithMultiAllocation memory cfg)
+    {
+        if (_isV4(c) && _hasTax(c)) {
+            cfg.buyTaxBps = TAX_BUY_BPS;
+            cfg.sellTaxBps = TAX_SELL_BPS;
+            cfg.taxDurationSeconds = TAX_DURATION_SECONDS;
+            cfg.startTaxFromLaunch = true;
         }
-        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false});
     }
 
-    /// @dev Lift a legacy `TaxConfigInit` into the full `TaxConfigs` (decay fields zeroed) for the
-    ///      `previewTokenImplementation` view, which now takes `TaxConfigs`. Local copy because this base
-    ///      does not inherit the launchpad test base's `_toCfgs`.
-    function _toCfgs(TaxConfigInit memory legacy) internal pure returns (TaxConfigs memory) {
-        return TaxConfigs({
-            buyTaxBps: legacy.buyTaxBps,
-            sellTaxBps: legacy.sellTaxBps,
-            taxDurationSeconds: legacy.taxDurationSeconds,
-            startTaxFromLaunch: legacy.startTaxFromLaunch,
-            buyTaxDecayStartBps: 0,
-            sellTaxDecayStartBps: 0,
-            taxDecayDuration: 0
+    function _setup(IRealmFactory.FeeShare[] memory fees, bytes32 salt)
+        internal
+        pure
+        returns (IRealmFactory.TokenSetupTiered memory)
+    {
+        return IRealmFactory.TokenSetupTiered({
+            name: "Realm Integration",
+            symbol: "REALMI",
+            salt: salt,
+            feeShares: fees,
+            liquidityTier: LiquidityTier.DEFAULT
         });
     }
 
@@ -283,13 +289,23 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     ) internal view returns (address impl) {
         AntiSniperConfigs memory sniper = _antiSniperCfg(c);
         if (_isV4(c)) {
-            impl = factoryV4.previewTokenImplementation(fees, supply, _toCfgs(_taxCfg(c)), sniper);
+            impl = factoryV4.previewTokenImplementation(
+                _setup(fees, bytes32(0)),
+                _taxAllocCfg(c),
+                RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: _renouncesOwnership(c), lpFeeBps: 100}),
+                supply,
+                sniper,
+                new IRealmFactory.CreatorVault[](0),
+                address(0)
+            );
         } else {
             impl = factoryV2.previewTokenImplementation(
-                fees,
+                _setup(fees, bytes32(0)),
+                _taxAllocCfg(c),
                 supply,
-                _toCfgs(TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false})),
-                sniper
+                sniper,
+                new IRealmFactory.CreatorVault[](0),
+                address(0)
             );
         }
     }
@@ -350,24 +366,22 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         vm.prank(creator);
         if (_isV4(c)) {
             token = factoryV4.createToken{value: input.ethValue}(
-                "Realm Integration",
-                "REALMI",
-                input.salt,
-                input.fees,
+                _setup(input.fees, input.salt),
+                _taxAllocCfg(c),
+                RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: _renouncesOwnership(c), lpFeeBps: 100}),
                 input.supply,
-                _renouncesOwnership(c),
-                _taxCfg(c),
-                _antiSniperCfg(c)
+                _antiSniperCfg(c),
+                new IRealmFactory.CreatorVault[](0),
+                address(0)
             );
         } else {
             token = factoryV2.createToken{value: input.ethValue}(
-                "Realm Integration",
-                "REALMI",
-                input.salt,
-                input.fees,
+                _setup(input.fees, input.salt),
+                _taxAllocCfg(c),
                 input.supply,
-                TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false}),
-                _antiSniperCfg(c)
+                _antiSniperCfg(c),
+                new IRealmFactory.CreatorVault[](0),
+                address(0)
             );
         }
     }

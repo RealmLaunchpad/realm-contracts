@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
-import {TaxConfigs, TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigs, TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 
@@ -26,7 +26,12 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
     function test_dispatch_decayOnly_returnsTaxImpl() public view {
         // static tax all zero, only decay configured
         address impl = factoryV2Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _decayCfg(1000, 1000, MAX_DECAY_DURATION, true), _emptyAntiSniperCfg()
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(_decayCfg(1000, 1000, MAX_DECAY_DURATION, true)),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         assertEq(impl, address(realmTaxTokenV2), "decay-only must route to the taxable impl");
     }
@@ -40,7 +45,7 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
+            setup, _noAlloc(cfg), _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
         );
 
         RealmTaxableTokenUniV2 t = RealmTaxableTokenUniV2(payable(token));
@@ -62,14 +67,28 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
     function test_preview_revertsOnDecayDurationWithZeroBps() public {
         TaxConfigs memory cfg = _decayCfg(0, 0, MAX_DECAY_DURATION, true);
         vm.expectRevert(IRealmFactory.InvalidTaxConfig.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_revertsOnDecayBpsWithZeroDuration() public {
         // decay bps set but duration 0 — inconsistent
         TaxConfigs memory cfg = _taxCfg(0, 0, 0, true, 1000, 0, 0);
         vm.expectRevert(IRealmFactory.InvalidTaxConfig.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     // ───────────── Decay caps (combined buy + sell) ─────────────
@@ -77,37 +96,79 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
     function test_preview_acceptsBalancedDecayBpsAtMax() public view {
         // 10% / 10% — sums to exactly the combined cap
         TaxConfigs memory cfg = _decayCfg(MAX_DECAY_TOTAL_BPS / 2, MAX_DECAY_TOTAL_BPS / 2, MAX_DECAY_DURATION, true);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_acceptsAsymmetricSplitAtMax() public view {
         // 5% / 15% — rejected under the old per-direction 10% cap, allowed now (sum == 20%)
         TaxConfigs memory cfg = _decayCfg(500, 1500, MAX_DECAY_DURATION, true);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_acceptsSingleDirectionAtMax() public view {
         // 20% / 0% — whole combined budget on one direction
         TaxConfigs memory cfg = _decayCfg(MAX_DECAY_TOTAL_BPS, 0, MAX_DECAY_DURATION, true);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_revertsOnCombinedDecayBpsOverMax() public {
         // 10% + 10.01% = 20.01% combined, one bp over the cap
         TaxConfigs memory cfg = _decayCfg(1000, MAX_DECAY_TOTAL_BPS / 2 + 1, MAX_DECAY_DURATION, true);
         vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_acceptsDecayDurationAtMax() public view {
         TaxConfigs memory cfg = _decayCfg(1000, 1000, MAX_DECAY_DURATION, true);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_revertsOnDecayDurationOverMax() public {
         TaxConfigs memory cfg = _decayCfg(1000, 1000, MAX_DECAY_DURATION + 1, true);
         vm.expectRevert(IRealmFactory.InvalidTaxDuration.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     // ───────────── Decay composes with a long-term static tax ─────────────
@@ -122,7 +183,7 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
 
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
+            setup, _noAlloc(cfg), _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
         );
 
         assertEq(_tax(token, true), 1000, "at launch, decay 10% dominates static 5%");
@@ -135,13 +196,27 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
         // static tax would never effectively apply. Must revert.
         TaxConfigs memory cfg = _taxCfg(500, 500, 600, true, 1000, 1000, MAX_DECAY_DURATION);
         vm.expectRevert(IRealmFactory.InvalidTaxDuration.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_acceptsStaticDurationEqualToDecay() public view {
         // boundary: static window exactly equals the decay window
         TaxConfigs memory cfg = _taxCfg(500, 500, MAX_DECAY_DURATION, true, 1000, 1000, MAX_DECAY_DURATION);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     // ───────────── Decay start must exceed the static rate (per direction) ─────────────
@@ -154,34 +229,69 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
         // buy decay start (500) == buy static (500): inert decay, must revert
         TaxConfigs memory cfg = _taxCfg(500, 0, MAX_DECAY_DURATION, true, 500, 0, MAX_DECAY_DURATION);
         vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_revertsWhenBuyDecayStartBelowStatic() public {
         // buy decay start (400) < buy static (500): decay below the rate it decays toward, must revert
         TaxConfigs memory cfg = _taxCfg(500, 0, MAX_DECAY_DURATION, true, 400, 0, MAX_DECAY_DURATION);
         vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_revertsWhenSellDecayStartNotAboveStatic() public {
         // sell decay start (500) == sell static (500): inert decay, must revert
         TaxConfigs memory cfg = _taxCfg(0, 500, MAX_DECAY_DURATION, true, 0, 500, MAX_DECAY_DURATION);
         vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_acceptsDecayStartJustAboveStatic() public view {
         // boundary: one bp above the static rate, both directions
         TaxConfigs memory cfg = _taxCfg(500, 500, MAX_DECAY_DURATION, true, 501, 501, MAX_DECAY_DURATION);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_preview_acceptsSingleDirectionDecayWithStaticOnOther() public view {
         // buy decays (1000 > static 0); sell has no decay (start 0) but a flat static 400 — the guard
         // skips the zero-start sell direction, so this is still valid.
         TaxConfigs memory cfg = _taxCfg(0, 400, uint32(7 days), true, 1000, 0, MAX_DECAY_DURATION);
-        factoryV2Unified.previewTokenImplementation(_fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        factoryV2Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_createToken_revertsWhenDecayStartNotAboveStatic() public {
@@ -195,15 +305,19 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
         factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
+            setup, _noAlloc(cfg), _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
         );
     }
 
     // ───────────── Earnings allocation is gated on a long-term static tax ─────────────
 
-    /// @dev Builds a `TaxConfigsWithAllocation` from a plain `TaxConfigs` plus a burn share.
-    function _allocCfg(TaxConfigs memory t, uint16 burnBps) internal pure returns (TaxConfigsWithAllocation memory) {
-        return TaxConfigsWithAllocation({
+    /// @dev Builds a `TaxConfigsWithMultiAllocation` from a plain `TaxConfigs` plus a burn share.
+    function _allocCfg(TaxConfigs memory t, uint16 burnBps)
+        internal
+        pure
+        returns (TaxConfigsWithMultiAllocation memory)
+    {
+        return TaxConfigsWithMultiAllocation({
             buyTaxBps: t.buyTaxBps,
             sellTaxBps: t.sellTaxBps,
             taxDurationSeconds: t.taxDurationSeconds,
@@ -211,9 +325,7 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
             buyTaxDecayStartBps: t.buyTaxDecayStartBps,
             sellTaxDecayStartBps: t.sellTaxDecayStartBps,
             taxDecayDuration: t.taxDecayDuration,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: burnBps, dividendsBps: 0, liquidityBps: 0, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(burnBps, 0, 0, address(0))
         });
     }
 
@@ -229,7 +341,7 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
 
     function test_createToken_revertsOnAllocationForDecayOnlyToken() public {
         // decay-only: no long-term static tax, so no earnings stream worth splitting
-        TaxConfigsWithAllocation memory cfg = _allocCfg(_decayCfg(1000, 1000, MAX_DECAY_DURATION, true), 5000);
+        TaxConfigsWithMultiAllocation memory cfg = _allocCfg(_decayCfg(1000, 1000, MAX_DECAY_DURATION, true), 5000);
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.EarningsAllocationRequiresTax.selector);
         factoryV2Unified.createToken(
@@ -238,7 +350,7 @@ contract TaxDecayFactoryTests is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     function test_createToken_allowsAllocationWhenStaticTaxAccompaniesDecay() public {
-        TaxConfigsWithAllocation memory cfg =
+        TaxConfigsWithMultiAllocation memory cfg =
             _allocCfg(_taxCfg(0, 400, uint32(14 days), true, 0, 1000, MAX_DECAY_DURATION), 5000);
         vm.prank(creator);
         address token = factoryV2Unified.createToken(

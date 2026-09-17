@@ -7,12 +7,7 @@ import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.s
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {
-    TaxConfigsWithAllocation,
-    EarningsAllocationConfig,
-    TaxConfigsWithMultiAllocation,
-    EarningsAllocationMultiConfig
-} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
@@ -51,7 +46,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: 400,
             taxDurationSeconds: uint32(14 days),
@@ -59,9 +54,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: asset
-            })
+            earningsAllocation: _multiAlloc(0, dividendsBps, 0, asset)
         });
         vm.prank(creator);
         token = factoryTax.createToken(
@@ -116,8 +109,8 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     receive() external payable {}
 
-    /// @dev Creates a taxable V4 token paying holders in a SET of assets, through the multi-allocation
-    ///      `createToken` overload — the real creation path a frontend uses, not the token's initializer.
+    /// @dev Creates a taxable V4 token paying holders in a SET of assets, through
+    ///      `createToken` — the real creation path a frontend uses, not the token's initializer.
     function _createMultiAssetToken(address[] memory assets, uint16[] memory weights) internal returns (address token) {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "MultiDiv",

@@ -96,7 +96,7 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
         if (value > 0) vm.deal(creator, value);
         vm.prank(creator);
         token = factoryV4Unified.createToken{value: value}(
-            setup, _toCfgs(_emptyTaxCfg()), _cfg(), ss, _emptyAntiSniperCfg(), vaults, address(0)
+            setup, _noAlloc(_emptyTaxCfg()), _cfg(), ss, _emptyAntiSniperCfg(), vaults, address(0)
         );
     }
 
@@ -138,8 +138,7 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
         for (uint256 j; j < BPS_IDX.length; ++j) {
             uint256 i = BPS_IDX[j];
             string memory ctx = _ctx(tier, BPS[i]);
-            uint256 ethNeeded =
-                factoryV4Unified.quoteBuyOnDeploy(tier, tokenAmount, BPS[i], _toCfgs(_emptyTaxCfg()), _cfg());
+            uint256 ethNeeded = factoryV4Unified.quoteBuyOnDeploy(tier, tokenAmount, BPS[i], _emptyTaxCfg(), _cfg());
             address token = _create(tier, BPS[i], ethNeeded, _ss(creator));
             _assertWiring(token, tier, i);
             uint256 received = IRealmToken(token).balanceOf(creator);
@@ -157,8 +156,7 @@ contract TierLiquidityMatrixTest is LaunchpadBaseTestsWithUniv4Graduator {
             uint256 i = BPS_IDX[j];
             string memory ctx = _ctx(tier, BPS[i]);
             uint256 maxTokens = factoryV4Unified.maxBuyOnDeploy(tier, BPS[i]);
-            uint256 ethNeeded =
-                factoryV4Unified.quoteBuyOnDeploy(tier, maxTokens, BPS[i], _toCfgs(_emptyTaxCfg()), _cfg());
+            uint256 ethNeeded = factoryV4Unified.quoteBuyOnDeploy(tier, maxTokens, BPS[i], _emptyTaxCfg(), _cfg());
             address token = _create(tier, BPS[i], ethNeeded, _ss(creator));
             assertTrue(
                 launchpad.getTokenState(token).graduated, string.concat(ctx, "max creator buy must graduate the token")

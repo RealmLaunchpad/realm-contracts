@@ -7,12 +7,7 @@ import {RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {
-    TaxConfigsWithAllocation,
-    EarningsAllocationConfig,
-    TaxConfigsWithMultiAllocation,
-    EarningsAllocationMultiConfig
-} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
@@ -50,8 +45,8 @@ contract ReentrantDividendClaimer {
 
 /// @notice Integration tests for the V4 buy-back-and-burn earnings-allocation leg.
 contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
-    /// @dev Creates a taxable V4 token with a `burnBps` earnings allocation via the allocation-aware
-    ///      `createToken` overload. 4%-configurable sell tax, creation-anchored 14-day window.
+    /// @dev Creates a taxable V4 token with a `burnBps` earnings allocation via
+    ///      `createToken`. 4%-configurable sell tax, creation-anchored 14-day window.
     function _createBurnTaxToken(uint16 sellTaxBps, uint16 burnBps) internal returns (address token) {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "BurnToken",
@@ -60,7 +55,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: uint32(14 days),
@@ -68,9 +63,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: burnBps, dividendsBps: 0, liquidityBps: 0, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(burnBps, 0, 0, address(0))
         });
         vm.prank(creator);
         token = factoryTax.createToken(
@@ -86,7 +79,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     function test_burnBps_storedAtCreation() public {
         address token = _createBurnTaxToken(400, 5000);
-        assertEq(RealmTaxableTokenUniV4(payable(token)).burnBps(), 5000, "burnBps stored via new overload");
+        assertEq(RealmTaxableTokenUniV4(payable(token)).burnBps(), 5000, "burnBps stored at creation");
     }
 
     function test_v4Burn_accruesThenProcessBurnReducesSupply() public {
@@ -154,7 +147,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: 400,
             taxDurationSeconds: uint32(14 days),
@@ -162,9 +155,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: burnBps, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(burnBps, dividendsBps, 0, address(0))
         });
         vm.prank(creator);
         token = factoryTax.createToken(
@@ -324,7 +315,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: 0,
             taxDurationSeconds: 0,
@@ -332,9 +323,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 1000,
             sellTaxDecayStartBps: 1000,
             taxDecayDuration: 20 minutes,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 5000, dividendsBps: 0, liquidityBps: 0, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(5000, 0, 0, address(0))
         });
         vm.prank(creator);
         address token = factoryTax.createToken(
@@ -371,7 +360,15 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             })
         });
         assertEq(
-            factoryTax.previewTokenImplementation(cfg, _emptyAntiSniperCfg()),
+            factoryTax.previewTokenImplementation(
+                _setupTiered("", "", bytes32(0), new IRealmFactory.FeeShare[](0)),
+                cfg,
+                _v4Cfg(false),
+                new IRealmFactory.SupplyShare[](0),
+                _emptyAntiSniperCfg(),
+                _noVaults(),
+                address(0)
+            ),
             address(realmTaxToken),
             "an allocation alone selects the taxable implementation"
         );

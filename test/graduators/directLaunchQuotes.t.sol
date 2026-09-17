@@ -71,7 +71,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         token = directFactory.createToken(
             _setup(false),
             _quotePairs(QC_LAUNCH_TICK),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             devBuy,
@@ -202,7 +202,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         token = directFactory.createToken(
             _setup(true),
             _quotePairs(QC_LAUNCH_TICK),
-            _toCfgs(_taxCfg(300, 300, uint32(14 days))),
+            _noDirectAlloc(_taxCfg(300, 300, uint32(14 days))),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -282,7 +282,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         address token = directFactory.createToken(
             _setup(false),
             _twoPairs(),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -315,7 +315,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         directFactory.createToken(
             _setup(false),
             _twoPairs(),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -345,7 +345,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         directFactory.createToken(
             _setup(false),
             pairs,
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -361,7 +361,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         directFactory.createToken(
             _setup(false),
             pairs,
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -381,7 +381,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         directFactory.createToken(
             _setup(false),
             pairs,
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),

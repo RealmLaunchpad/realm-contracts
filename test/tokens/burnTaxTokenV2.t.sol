@@ -7,7 +7,7 @@ import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Integration tests for the V2 token-space burn earnings-allocation leg (no ETH→token round
@@ -17,8 +17,8 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
         super.setUp();
     }
 
-    /// @dev Creates an ownerless V2 tax token with a `burnBps` allocation via the allocation-aware
-    ///      `createToken` overload. 4%-configurable sell tax, creation-anchored 14-day window.
+    /// @dev Creates an ownerless V2 tax token with a `burnBps` allocation via
+    ///      `createToken`. 4%-configurable sell tax, creation-anchored 14-day window.
     function _createBurnV2Token(uint16 sellTaxBps, uint16 burnBps) internal returns (address token) {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "BurnV2",
@@ -27,7 +27,7 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: uint32(14 days),
@@ -35,9 +35,7 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: burnBps, dividendsBps: 0, liquidityBps: 0, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(burnBps, 0, 0, address(0))
         });
         vm.prank(creator);
         token = factoryV2Unified.createToken(
@@ -47,7 +45,7 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
 
     function test_burnBps_storedAtCreation() public {
         address token = _createBurnV2Token(400, 5000);
-        assertEq(RealmTaxableTokenUniV2(payable(token)).burnBps(), 5000, "burnBps stored via new overload");
+        assertEq(RealmTaxableTokenUniV2(payable(token)).burnBps(), 5000, "burnBps stored at creation");
     }
 
     function test_v2Burn_swapBackBurnsTokenShareInPlace() public {

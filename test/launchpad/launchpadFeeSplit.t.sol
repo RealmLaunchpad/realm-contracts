@@ -26,7 +26,7 @@ contract LaunchpadFeeSplitTest is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev Creates a fully-wired, tradeable taxable-V2 token with a custom fee config and a long tax
     ///      window: clone + initialize + registerFees(creator) + launchToken (pranked as a whitelisted
     ///      factory). A taxable token is used so the launchpad's tax routing (creation-anchored) can be
-    ///      exercised; the tax rate flows through `TaxConfigInit`, the LP fee through `InitializeParams`.
+    ///      exercised; the tax rate flows through `TaxConfigs`, the LP fee through `InitializeParams`.
     function _wireToken(uint16 lpFee, uint16 treasuryShare, uint16 taxBuy, uint16 taxSell)
         internal
         returns (RealmToken t)

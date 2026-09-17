@@ -54,14 +54,13 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     {
         vm.prank(creator);
         tokenAddress = factoryTax.createToken(
-            "TaxToken",
-            "TAX",
-            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
-            _fs(creator),
+            _setupTiered("TaxToken", "TAX", _nextValidSalt(address(factoryTax), address(realmTaxToken)), _fs(creator)),
+            _noAlloc(_taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -76,14 +75,13 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     {
         vm.prank(creator);
         tokenAddress = factoryTax.createToken(
-            "TaxToken",
-            "TAX",
-            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
-            _fs(creator),
+            _setupTiered("TaxToken", "TAX", _nextValidSalt(address(factoryTax), address(realmTaxToken)), _fs(creator)),
+            _noAlloc(_taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds), false)),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds), false),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -106,7 +104,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         vm.prank(creator);
         tokenAddress = factoryTax.createToken(
             setup,
-            _decayCfg(buyDecayStartBps, sellDecayStartBps, decayDuration, true),
+            _noAlloc(_decayCfg(buyDecayStartBps, sellDecayStartBps, decayDuration, true)),
             RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
             _noSs(),
             _emptyAntiSniperCfg(),

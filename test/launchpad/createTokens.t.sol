@@ -20,13 +20,12 @@ contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testDeployRealmToken_happyPath() public {
         vm.prank(creator);
         address deployedToken = factoryV2.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV2), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertTrue(deployedToken != address(0));
@@ -74,13 +73,12 @@ contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testTokenCreatedHasDifferentAddressThanImplementation() public {
         vm.prank(creator);
         address deployedToken = factoryV2.createToken(
-            "Sanitator",
-            "SANIT",
-            _nextValidSalt(address(factoryV2), address(realmToken)),
-            _fs(creator),
+            _setupTiered("Sanitator", "SANIT", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertTrue(deployedToken != address(0));
@@ -90,13 +88,27 @@ contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testCannotCreateTokenWithEmptyName() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidNameOrSymbol.selector));
-        factoryV2.createToken("", "TEST", "0x12", _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
+        factoryV2.createToken(
+            _setupTiered("", "TEST", "0x12", _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function testCannotCreateTokenWithEmptySymbol() public {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidNameOrSymbol.selector));
-        factoryV2.createToken("TestToken", "", "0x0", _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
+        factoryV2.createToken(
+            _setupTiered("TestToken", "", "0x0", _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function testCannotCreateTokenWithWrongEnding() public {
@@ -105,18 +117,22 @@ contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.startPrank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTokenAddress.selector));
         factoryV2.createToken(
-            "TestToken1",
-            "TEST",
-            bytes32(uint256(correctSalt) + 1),
-            _fs(creator),
+            _setupTiered("TestToken1", "TEST", bytes32(uint256(correctSalt) + 1), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         // with correct salt it should succeed
         factoryV2.createToken(
-            "TestToken1", "TEST", correctSalt, _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken1", "TEST", correctSalt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         vm.stopPrank();
     }
@@ -124,24 +140,22 @@ contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testCanCreateTokenWithDuplicateSymbol() public {
         vm.prank(creator);
         address token1 = factoryV2.createToken(
-            "TestToken1",
-            "TEST",
-            _nextValidSalt(address(factoryV2), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken1", "TEST", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         vm.prank(creator);
         address token2 = factoryV2.createToken(
-            "TestToken2",
-            "TEST",
-            _nextValidSalt(address(factoryV2), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken2", "TEST", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertTrue(token1 != address(0));
@@ -157,24 +171,22 @@ contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testCanCreateTokensWithDifferentSymbols() public {
         vm.prank(creator);
         address token1 = factoryV2.createToken(
-            "TestToken1",
-            "TEST1",
-            _nextValidSalt(address(factoryV2), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken1", "TEST1", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         vm.prank(creator);
         address token2 = factoryV2.createToken(
-            "TestToken2",
-            "TEST2",
-            _nextValidSalt(address(factoryV2), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken2", "TEST2", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertTrue(token1 != address(0));
@@ -191,7 +203,12 @@ contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidNameOrSymbol.selector));
         factoryV2.createToken(
-            "TestToken", longSymbol, "0x12", _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", longSymbol, "0x12", _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 }
@@ -205,21 +222,26 @@ contract RealmTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidFeeReceiver.selector));
         factoryV4.createToken(
-            "TestToken", "TEST", "0x12", zeroFs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", "0x12", zeroFs),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
     function test_createToken_v4_happyPath() public {
         vm.prank(creator);
         address deployedToken = factoryV4.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertTrue(deployedToken != address(0));
@@ -245,14 +267,13 @@ contract RealmTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
     function test_createToken_v4_renounceOwnership_setsOwnerToZero() public {
         vm.prank(creator);
         address deployedToken = factoryV4.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(true),
             _noSs(),
-            true,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         assertEq(RealmToken(deployedToken).owner(), address(0));
     }
@@ -261,14 +282,13 @@ contract RealmTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
     function test_createToken_v4_keepOwnership_setsOwnerToCaller() public {
         vm.prank(creator);
         address deployedToken = factoryV4.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         assertEq(RealmToken(deployedToken).owner(), creator);
     }
@@ -279,14 +299,13 @@ contract RealmTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4Graduato
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));
         factoryTax.createToken(
-            "TestToken",
-            "TEST",
-            "0x12",
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", "0x12", _fs(creator)),
+            _noAlloc(_taxCfg(0, 401, uint32(14 days))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, 401, uint32(14 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -295,14 +314,13 @@ contract RealmTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4Graduato
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxDuration.selector));
         factoryTax.createToken(
-            "TestToken",
-            "TEST",
-            "0x12",
-            _fs(alice),
+            _setupTiered("TestToken", "TEST", "0x12", _fs(alice)),
+            _noAlloc(_taxCfg(0, 400, uint32(120 * 365 days + 1))),
+            _v4Cfg(true),
             _noSs(),
-            true,
-            _taxCfg(0, 400, uint32(120 * 365 days + 1)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 }
@@ -314,14 +332,15 @@ contract RealmTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxa
 
         vm.prank(creator);
         address deployedToken = factoryTax.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
-            _fs(creator),
+            _setupTiered(
+                "TestToken", "TEST", _nextValidSalt(address(factoryTax), address(realmTaxToken)), _fs(creator)
+            ),
+            _noAlloc(_taxCfg(0, 400, uint32(14 days))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, 400, uint32(14 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertTrue(deployedToken != address(0));
@@ -332,14 +351,15 @@ contract RealmTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxa
 
         vm.prank(creator);
         address deployedToken = factoryTax.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
-            _fs(creator),
+            _setupTiered(
+                "TestToken", "TEST", _nextValidSalt(address(factoryTax), address(realmTaxToken)), _fs(creator)
+            ),
+            _noAlloc(_taxCfg(0, 400, uint32(14 days))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, 400, uint32(14 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         Vm.Log[] memory logs = vm.getRecordedLogs();

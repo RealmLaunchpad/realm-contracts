@@ -6,7 +6,7 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigInit} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
@@ -344,13 +344,14 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
             feeShares: _fs(creator),
             liquidityTier: tier
         });
-        TaxConfigInit memory taxCfg = _taxCfgFor(flavor);
+        TaxConfigs memory taxCfg = _taxCfgFor(flavor);
         AntiSniperConfigs memory sniperCfg = _sniperCfgFor(flavor);
         vm.prank(creator);
         if (isV4) {
-            token = factoryV4Unified.createToken(setup, _toCfgs(taxCfg), _cfg(), _noSs(), sniperCfg, vaults, address(0));
+            token =
+                factoryV4Unified.createToken(setup, _noAlloc(taxCfg), _cfg(), _noSs(), sniperCfg, vaults, address(0));
         } else {
-            token = factoryV2Unified.createToken(setup, _toCfgs(taxCfg), _noSs(), sniperCfg, vaults, address(0));
+            token = factoryV2Unified.createToken(setup, _noAlloc(taxCfg), _noSs(), sniperCfg, vaults, address(0));
         }
     }
 
@@ -375,7 +376,7 @@ contract TierGraduationPriceContinuityTest is BaseUniswapV4GraduationTests {
     }
 
     /// @dev A moderate static, creation-anchored 2%/2% tax for tax flavors; empty otherwise.
-    function _taxCfgFor(Flavor f) internal pure returns (TaxConfigInit memory) {
+    function _taxCfgFor(Flavor f) internal pure returns (TaxConfigs memory) {
         return _isTax(f) ? _taxCfg(200, 200, uint32(14 days)) : _emptyTaxCfg();
     }
 

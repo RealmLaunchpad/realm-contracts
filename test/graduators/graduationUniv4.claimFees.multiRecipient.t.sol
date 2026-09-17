@@ -37,14 +37,13 @@ abstract contract MultiRecipientV4BaseTests is BaseUniswapV4FeesTests {
     {
         vm.prank(creator);
         address token = factoryV4.createToken(
-            name,
-            symbol,
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _feeShares(),
+            _setupTiered(name, symbol, _nextValidSalt(address(factoryV4), address(realmToken)), _feeShares()),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         return token;
     }
@@ -173,14 +172,13 @@ contract UniswapV4ClaimFees_MultiRecipient_TaxToken is TaxTokenUniV4BaseTests, M
     {
         vm.prank(creator);
         address token = factoryTax.createToken(
-            name,
-            symbol,
-            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
-            _feeShares(),
+            _setupTiered(name, symbol, _nextValidSalt(address(factoryTax), address(realmTaxToken)), _feeShares()),
+            _noAlloc(_taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         return token;
     }

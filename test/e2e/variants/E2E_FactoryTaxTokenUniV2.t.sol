@@ -27,7 +27,12 @@ contract E2E_FactoryTaxTokenUniV2 is E2EHappyPath, E2EGraduationFlows, Launchpad
     function _createTestToken(bytes32 salt) internal override returns (address token) {
         vm.prank(creator);
         token = factoryV2.createToken(
-            "E2E", "E2E", salt, _fs(creator), _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+            _setupTiered("E2E", "E2E", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -38,7 +43,12 @@ contract E2E_FactoryTaxTokenUniV2 is E2EHappyPath, E2EGraduationFlows, Launchpad
     {
         vm.prank(creator);
         token = factoryV2.createToken(
-            "E2E", "E2E", salt, feeReceivers, _noSs(), _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+            _setupTiered("E2E", "E2E", salt, feeReceivers),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -50,7 +60,12 @@ contract E2E_FactoryTaxTokenUniV2 is E2EHappyPath, E2EGraduationFlows, Launchpad
         vm.deal(creator, ethValue);
         vm.prank(creator);
         token = factoryV2.createToken{value: ethValue}(
-            "E2E", "E2E", salt, _fs(creator), supplyShares, _taxCfg(0, 400, uint32(7 days)), _emptyAntiSniperCfg()
+            _setupTiered("E2E", "E2E", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            supplyShares,
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 

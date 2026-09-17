@@ -7,7 +7,7 @@ import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.s
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -46,8 +46,8 @@ contract RefundingLiquidityAdderStub {
 contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     using StateLibrary for IPoolManager;
 
-    /// @dev Creates a taxable V4 token with a `liquidityBps` earnings allocation via the allocation-aware
-    ///      `createToken` overload. Configurable buy/sell tax, creation-anchored 14-day window.
+    /// @dev Creates a taxable V4 token with a `liquidityBps` earnings allocation via
+    ///      `createToken`. Configurable buy/sell tax, creation-anchored 14-day window.
     function _createLiquidityTaxToken(uint16 buyTaxBps, uint16 sellTaxBps, uint16 liquidityBps)
         internal
         returns (address token)
@@ -59,7 +59,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: buyTaxBps,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: uint32(14 days),
@@ -67,9 +67,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0, dividendsBps: 0, liquidityBps: liquidityBps, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(0, 0, liquidityBps, address(0))
         });
         vm.prank(creator);
         token = factoryTax.createToken(
@@ -85,7 +83,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     function test_liquidityBps_storedAtCreation() public {
         address token = _createLiquidityTaxToken(0, 400, 5000);
-        assertEq(RealmTaxableTokenUniV4(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
+        assertEq(RealmTaxableTokenUniV4(payable(token)).liquidityBps(), 5000, "liquidityBps stored at creation");
     }
 
     function test_v4Liquidity_accruesThenProcessMintsPosition() public {

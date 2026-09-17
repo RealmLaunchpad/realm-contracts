@@ -33,13 +33,12 @@ contract BaseUniswapV2GraduationTests is LaunchpadBaseTestsWithUniv2Graduator {
     modifier createTestTokenWithPair() {
         vm.prank(creator);
         testToken = factoryV2.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV2), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         // Pair contract is not deployed at token creation; only the CREATE2 address is reserved
         // and stored on the token. The actual contract is deployed lazily at graduation.
@@ -147,13 +146,12 @@ contract UniswapV2GraduationTests is BaseUniswapV2GraduationTests {
     function test_pairNotDeployedAtCreation_canBePermissionlesslyDeployed() public {
         vm.prank(creator);
         testToken = factoryV2.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV2), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         address precomputed = RealmToken(testToken).pair();
@@ -682,7 +680,7 @@ contract TestGraduationWhileDecayActive is BaseUniswapV2GraduationTests {
         vm.prank(creator);
         testToken = factoryV2Unified.createToken(
             setup,
-            _decayCfg(1000, 1000, 20 minutes, true),
+            _noAlloc(_decayCfg(1000, 1000, 20 minutes, true)),
             _noSs(),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),

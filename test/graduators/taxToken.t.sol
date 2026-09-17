@@ -18,14 +18,13 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_deployTaxTokenWithTooHighSellTaxes() public {
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));
         factoryTax.createToken(
-            "TestToken",
-            "TEST",
-            "0x12",
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", "0x12", _fs(creator)),
+            _noAlloc(_taxCfg(0, 401, uint32(4 days))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, 401, uint32(4 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -33,14 +32,13 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         // Duration above the 120-year overflow-prevention cap — must revert with InvalidTaxDuration.
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxDuration.selector));
         factoryTax.createToken(
-            "TestToken",
-            "TEST",
-            "0x12",
-            _fs(alice),
+            _setupTiered("TestToken", "TEST", "0x12", _fs(alice)),
+            _noAlloc(_taxCfg(0, 400, uint32(120 * 365 days + 1))),
+            _v4Cfg(true),
             _noSs(),
-            true,
-            _taxCfg(0, 400, uint32(120 * 365 days + 1)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 

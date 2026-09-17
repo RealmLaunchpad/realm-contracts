@@ -599,14 +599,13 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));
         vm.prank(creator);
         factoryTax.createToken(
-            "InvalidToken",
-            "INV",
-            "0x003",
-            _fs(creator),
+            _setupTiered("InvalidToken", "INV", "0x003", _fs(creator)),
+            _noAlloc(_taxCfg(0, 401, uint32(14 days))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, 401, uint32(14 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -946,14 +945,13 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_deployTaxTokenWithTooHighSellTaxes() public {
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));
         factoryTax.createToken(
-            "TestToken",
-            "TEST",
-            "0x12",
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", "0x12", _fs(creator)),
+            _noAlloc(_taxCfg(0, 401, uint32(4 days))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, 401, uint32(4 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 

@@ -8,7 +8,7 @@ import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.s
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {TaxConfigInit} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigs, TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 
@@ -24,28 +24,77 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_dispatch_base_returnsBaseImpl() public view {
         address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _emptyAntiSniperCfg()
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         assertEq(impl, address(realmToken));
     }
 
+    /// @dev No tax but an earnings allocation: the preview names the TAXABLE implementation, and a salt
+    ///      mined against it is the one `createToken` accepts (the clone lands on the `0xeeaa` suffix).
+    function test_dispatch_zeroTaxWithAnAllocation_previewMatchesTheClone() public {
+        TaxConfigsWithMultiAllocation memory cfg = _noAlloc(_emptyTaxCfg());
+        cfg.earningsAllocation = _multiAlloc(5_000, 0, 0, address(0));
+        address impl = factoryV4Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            cfg,
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
+        assertEq(impl, address(realmTaxToken), "an allocation alone selects the taxable implementation");
+
+        IRealmFactory.TokenSetupTiered memory setup =
+            _setupTiered("T", "T", _nextValidSalt(address(factoryV4Unified), impl), _fs(creator));
+        vm.prank(creator);
+        address token = factoryV4Unified.createToken(
+            setup, cfg, _v4Cfg(false), _noSs(), _emptyAntiSniperCfg(), _noVaults(), address(0)
+        );
+        assertEq(RealmTaxableTokenUniV4(payable(token)).burnBps(), 5_000, "created from the previewed impl");
+    }
+
     function test_dispatch_antiSniper_returnsAntiSniperImpl() public view {
         address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _defaultAntiSniperCfg()
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _defaultAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         assertEq(impl, address(realmTokenSniper));
     }
 
     function test_dispatch_tax_returnsTaxImpl() public view {
         address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _toCfgs(_taxCfg(0, 400, uint32(7 days))), _emptyAntiSniperCfg()
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         assertEq(impl, address(realmTaxToken));
     }
 
     function test_dispatch_taxAntiSniper_returnsTaxAntiSniperImpl() public view {
         address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _toCfgs(_taxCfg(0, 400, uint32(7 days))), _defaultAntiSniperCfg()
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(7 days))),
+            _v4Cfg(false),
+            _noSs(),
+            _defaultAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         assertEq(impl, address(realmTaxTokenSniper));
     }
@@ -54,14 +103,26 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_dispatchMatchesPreview_base() public {
         address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _emptyAntiSniperCfg()
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
         address expected = _predictToken(address(factoryV4Unified), impl, creator, salt);
 
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "T", "T", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertEq(token, expected);
@@ -69,43 +130,83 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_createToken_dispatchMatchesPreview_antiSniper() public {
         address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), _defaultAntiSniperCfg()
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _defaultAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
         address expected = _predictToken(address(factoryV4Unified), impl, creator, salt);
 
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "T", "T", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _defaultAntiSniperCfg()
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _defaultAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertEq(token, expected);
     }
 
     function test_createToken_dispatchMatchesPreview_tax() public {
-        TaxConfigInit memory cfg = _taxCfg(100, 200, uint32(7 days));
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
+        TaxConfigs memory cfg = _taxCfg(100, 200, uint32(7 days));
+        address impl = factoryV4Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
         address expected = _predictToken(address(factoryV4Unified), impl, creator, salt);
 
         vm.prank(creator);
-        address token =
-            factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
+        address token = factoryV4Unified.createToken(
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(cfg),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         assertEq(token, expected);
     }
 
     function test_createToken_dispatchMatchesPreview_taxAntiSniper() public {
-        TaxConfigInit memory cfg = _taxCfg(100, 200, uint32(7 days));
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _defaultAntiSniperCfg());
+        TaxConfigs memory cfg = _taxCfg(100, 200, uint32(7 days));
+        address impl = factoryV4Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _v4Cfg(false),
+            _noSs(),
+            _defaultAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
         address expected = _predictToken(address(factoryV4Unified), impl, creator, salt);
 
         vm.prank(creator);
-        address token =
-            factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _defaultAntiSniperCfg());
+        address token = factoryV4Unified.createToken(
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(cfg),
+            _v4Cfg(false),
+            _noSs(),
+            _defaultAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         assertEq(token, expected);
     }
@@ -118,13 +219,27 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         wl[1] = bob;
         AntiSniperConfigs memory snipCfg = _antiSniperCfg(50, 100, 30 minutes, wl);
 
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(_emptyTaxCfg()), snipCfg);
+        address impl = factoryV4Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            snipCfg,
+            _noVaults(),
+            address(0)
+        );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        address token =
-            factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), snipCfg);
+        address token = factoryV4Unified.createToken(
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            snipCfg,
+            _noVaults(),
+            address(0)
+        );
 
         RealmToken t = RealmToken(token);
         assertEq(t.maxBuyPerTxBps(), 50);
@@ -136,14 +251,28 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     function test_createToken_tax_configFieldsStoredOnToken() public {
-        TaxConfigInit memory cfg = _taxCfg(150, 250, uint32(3 days));
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
+        TaxConfigs memory cfg = _taxCfg(150, 250, uint32(3 days));
+        address impl = factoryV4Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        address token =
-            factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
+        address token = factoryV4Unified.createToken(
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(cfg),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         RealmTaxableTokenUniV4 t = RealmTaxableTokenUniV4(payable(token));
         assertEq(t.buyTaxBps(), 150);
@@ -154,14 +283,30 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
     function test_createToken_taxAntiSniper_bothFieldsStored() public {
         address[] memory wl = new address[](1);
         wl[0] = alice;
-        TaxConfigInit memory taxCfg = _taxCfg(100, 200, uint32(1 days));
+        TaxConfigs memory taxCfg = _taxCfg(100, 200, uint32(1 days));
         AntiSniperConfigs memory snipCfg = _antiSniperCfg(25, 100, 2 hours, wl);
 
-        address impl = factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(taxCfg), snipCfg);
+        address impl = factoryV4Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(taxCfg),
+            _v4Cfg(false),
+            _noSs(),
+            snipCfg,
+            _noVaults(),
+            address(0)
+        );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        address token = factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, taxCfg, snipCfg);
+        address token = factoryV4Unified.createToken(
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(taxCfg),
+            _v4Cfg(false),
+            _noSs(),
+            snipCfg,
+            _noVaults(),
+            address(0)
+        );
 
         RealmTaxableTokenUniV4 t = RealmTaxableTokenUniV4(payable(token));
         assertEq(t.buyTaxBps(), 100);
@@ -176,27 +321,55 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
     // ───────────── Renounce ownership ─────────────
 
     function test_createToken_renounceOwnership_setsOwnerToZero_taxVariant() public {
-        TaxConfigInit memory cfg = _taxCfg(0, 400, uint32(14 days));
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
+        TaxConfigs memory cfg = _taxCfg(0, 400, uint32(14 days));
+        address impl = factoryV4Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        address token =
-            factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), true, cfg, _emptyAntiSniperCfg());
+        address token = factoryV4Unified.createToken(
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(cfg),
+            _v4Cfg(true),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         assertEq(RealmTaxableTokenUniV4(payable(token)).owner(), address(0));
     }
 
     function test_createToken_keepOwnership_setsOwnerToCaller_taxVariant() public {
-        TaxConfigInit memory cfg = _taxCfg(0, 400, uint32(14 days));
-        address impl =
-            factoryV4Unified.previewTokenImplementation(_fs(creator), _noSs(), _toCfgs(cfg), _emptyAntiSniperCfg());
+        TaxConfigs memory cfg = _taxCfg(0, 400, uint32(14 days));
+        address impl = factoryV4Unified.previewTokenImplementation(
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(cfg),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), impl);
 
         vm.prank(creator);
-        address token =
-            factoryV4Unified.createToken("T", "T", salt, _fs(creator), _noSs(), false, cfg, _emptyAntiSniperCfg());
+        address token = factoryV4Unified.createToken(
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(cfg),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         assertEq(RealmTaxableTokenUniV4(payable(token)).owner(), creator);
     }
@@ -206,7 +379,13 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
     function test_preview_revertsOnDisabledTaxWithNonZeroBps() public {
         vm.expectRevert(IRealmFactory.InvalidTaxConfig.selector);
         factoryV4Unified.previewTokenImplementation(
-            _fs(creator), _noSs(), _toCfgs(_taxCfg(100, 0, 0)), _emptyAntiSniperCfg()
+            _setupTiered("", "", bytes32(0), _fs(creator)),
+            _noAlloc(_taxCfg(100, 0, 0)),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -214,7 +393,13 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.InvalidTaxConfig.selector);
         factoryV4Unified.createToken(
-            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(100, 0, 0), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", "0x12", _fs(creator)),
+            _noAlloc(_taxCfg(100, 0, 0)),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -222,7 +407,13 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.InvalidTaxConfig.selector);
         factoryV4Unified.createToken(
-            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 0, uint32(1 days)), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", "0x12", _fs(creator)),
+            _noAlloc(_taxCfg(0, 0, uint32(1 days))),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -231,37 +422,63 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.InvalidAntiSniperConfig.selector);
-        factoryV4Unified.createToken("T", "T", "0x12", _fs(creator), _noSs(), false, _emptyTaxCfg(), cfg);
+        factoryV4Unified.createToken(
+            _setupTiered("T", "T", "0x12", _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            cfg,
+            _noVaults(),
+            address(0)
+        );
     }
 
     function test_createToken_revertsOnInvalidTaxBps() public {
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
         factoryV4Unified.createToken(
-            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(0, 401, uint32(14 days)), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", "0x12", _fs(creator)),
+            _noAlloc(_taxCfg(0, 401, uint32(14 days))),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
     // ───────────── Aggregate fee cap: LP fee + tax never exceeds 5% ─────────────
     //
-    // The fee a swapper pays is LP fee + tax. The positional overload always uses the 1% LP hook,
-    // so tax is capped at 4%. The struct overload exposes the 0.5% LP hook, where tax can go to 4.5%.
+    // The fee a swapper pays is LP fee + tax. With the 1% LP hook tax is capped at 4%; with the 0.5% LP
+    // hook it can go to 4.5%.
 
-    function test_createToken_positional_succeedsAtFourPercentTax() public {
+    function test_createToken_onePercentLp_succeedsAtFourPercentTax() public {
         // 1% LP + 4% tax (buy and sell) == 5% total, the boundary.
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmTaxToken));
         vm.prank(creator);
         factoryV4Unified.createToken(
-            "T", "T", salt, _fs(creator), _noSs(), false, _taxCfg(400, 400, uint32(14 days)), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(_taxCfg(400, 400, uint32(14 days))),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
-    function test_createToken_positional_revertsWhenBuyTaxExceedsFourPercent() public {
+    function test_createToken_onePercentLp_revertsWhenBuyTaxExceedsFourPercent() public {
         // 1% LP + 4.01% buy tax == 5.01% total > 5%.
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
         factoryV4Unified.createToken(
-            "T", "T", "0x12", _fs(creator), _noSs(), false, _taxCfg(401, 0, uint32(14 days)), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", "0x12", _fs(creator)),
+            _noAlloc(_taxCfg(401, 0, uint32(14 days))),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -277,7 +494,7 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         factoryV4Unified.createToken(
             setup,
-            _toCfgs(_taxCfg(450, 450, uint32(14 days))),
+            _noAlloc(_taxCfg(450, 450, uint32(14 days))),
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),
@@ -302,7 +519,7 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
             setup,
-            _toCfgs(_emptyTaxCfg()),
+            _noAlloc(_emptyTaxCfg()),
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),
@@ -329,7 +546,7 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
         factoryV4Unified.createToken(
             setup,
-            _toCfgs(_taxCfg(0, 451, uint32(14 days))),
+            _noAlloc(_taxCfg(0, 451, uint32(14 days))),
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),
@@ -350,7 +567,7 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
         factoryV4Unified.createToken(
             setup,
-            _toCfgs(_taxCfg(401, 0, uint32(14 days))),
+            _noAlloc(_taxCfg(401, 0, uint32(14 days))),
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),
@@ -363,14 +580,13 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.InvalidTaxDuration.selector);
         factoryV4Unified.createToken(
-            "T",
-            "T",
-            "0x12",
-            _fs(alice),
+            _setupTiered("T", "T", "0x12", _fs(alice)),
+            _noAlloc(_taxCfg(0, 400, uint32(120 * 365 days + 1))),
+            _v4Cfg(true),
             _noSs(),
-            true,
-            _taxCfg(0, 400, uint32(120 * 365 days + 1)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -385,7 +601,13 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "T", "T", salt, _fs(creator), _noSs(), true, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(365 days + 1))),
+            _v4Cfg(true),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 365 days + 1);
@@ -400,7 +622,13 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "T", "T", salt, two, _noSs(), true, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", salt, two),
+            _noAlloc(_taxCfg(0, 400, uint32(365 days + 1))),
+            _v4Cfg(true),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 365 days + 1);
@@ -411,7 +639,13 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "T", "T", salt, _fs(alice), _noSs(), false, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", salt, _fs(alice)),
+            _noAlloc(_taxCfg(0, 400, uint32(365 days + 1))),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 365 days + 1);
@@ -423,7 +657,13 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "T", "T", salt, _fs(alice), _noSs(), true, _taxCfg(0, 400, uint32(365 days + 1)), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", salt, _fs(alice)),
+            _noAlloc(_taxCfg(0, 400, uint32(365 days + 1))),
+            _v4Cfg(true),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 365 days + 1);
@@ -435,7 +675,13 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "T", "T", salt, _fs(alice), _noSs(), true, _taxCfg(0, 400, uint32(120 * 365 days)), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", salt, _fs(alice)),
+            _noAlloc(_taxCfg(0, 400, uint32(120 * 365 days))),
+            _v4Cfg(true),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).taxDurationSeconds()), 120 * 365 days);
@@ -444,7 +690,13 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
     function test_preview_returnsTaxImplForExtendedTax() public {
         vm.prank(creator);
         address impl = factoryV4Unified.previewTokenImplementation(
-            _fs(alice), _noSs(), _toCfgs(_taxCfg(0, 400, uint32(365 days + 1))), _emptyAntiSniperCfg()
+            _setupTiered("", "", bytes32(0), _fs(alice)),
+            _noAlloc(_taxCfg(0, 400, uint32(365 days + 1))),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertEq(impl, address(realmTaxToken));
@@ -467,11 +719,17 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.InvalidTokenAddress.selector);
         factoryV4Unified.createToken(
-            "T", "T", badSalt, _fs(creator), _noSs(), false, _taxCfg(0, 400, uint32(14 days)), _emptyAntiSniperCfg()
+            _setupTiered("T", "T", badSalt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(14 days))),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
-    // ───────────── Referral overload ─────────────
+    // ───────────── Referral ─────────────
 
     function test_createToken_referral_emitsTokenReferral() public {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
@@ -488,7 +746,7 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
             setup,
-            _toCfgs(_emptyTaxCfg()),
+            _noAlloc(_emptyTaxCfg()),
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),
@@ -511,7 +769,7 @@ contract RealmFactoryUniV4UnifiedTests is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         factoryV4Unified.createToken(
             setup,
-            _toCfgs(_emptyTaxCfg()),
+            _noAlloc(_emptyTaxCfg()),
             cfg,
             _noSs(),
             _emptyAntiSniperCfg(),

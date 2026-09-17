@@ -161,60 +161,31 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
 
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
-    /// @notice Deploys a Realm token straight onto a Uniswap V4 pool and opens it for trading, all in
-    ///         this call. In order: the token is cloned and initialized (which creates the pool at
-    ///         `pairs[0].launchTick`), the creator vaults are funded, the fee split is registered, the
-    ///         graduator seeds the remaining supply as a single-sided band, and `msg.value` — if any —
-    ///         buys the first tokens and is split across `devBuy.recipients`.
-    /// @dev Event order, which indexers depend on (full detail in `docs/events-per-entry-point.md` §1.3):
-    ///      `TokenCreated` → the token's own init events (`PairInitialized`, `PoolIdRegistered`,
-    ///      `LaunchpadFeesInitialized`, `RealmTaxableTokenInitialized`, `SniperProtectionInitialized`) →
-    ///      `QuotesRegistered` → `CreatorVaultsCreated` → `SharesUpdated` → `PoolIdRegistered` per extra
-    ///      pool → `Graduated` → `PoolSeeded` (first pool) → `TokenGraduated` → `PoolSeeded` per extra
-    ///      pool → the dev buy's own swap events → the seed-remainder burn → `BuyOnDeploy` →
-    ///      `LpFeeBpsSet` → `TokenReferral`.
-    /// @param referral Relayer that forwarded the creation, or `address(0)`. Emitted as an off-chain
-    ///        signal only; nothing on-chain pays it.
-    function createToken(
-        DirectTokenSetup calldata setup,
-        DirectPair[] calldata pairs,
-        TaxConfigs calldata taxConfigs,
-        AntiSniperConfigs calldata antiSniperConfigs,
-        CreatorVault[] calldata creatorVaults,
-        DevBuy calldata devBuy,
-        address referral
-    ) external payable returns (address token) {
-        _validateDirectInputs(setup, pairs, devBuy);
-        // The deploy buy is paid in the pair's own currency: `msg.value` on a native pair, and the
-        // pulled `quoteAmount` on an ERC20 one. `_validateDirectInputs` has already ruled out both at
-        // once, so either is the whole spend.
-        _validateInputs(
-            setup.name, setup.symbol, setup.feeShares, devBuy.recipients, msg.value > 0 ? msg.value : devBuy.quoteAmount
-        );
-        _validateAntiSniperConfig(antiSniperConfigs);
-        _validateTaxConfig(taxConfigs);
-        _validateTotalFee(setup.lpFeeBps, taxConfigs);
-
-        token = _launch(setup, pairs, taxConfigs, antiSniperConfigs, creatorVaults);
-        _open(token, pairs, devBuy);
-
-        emit LpFeeBpsSet(token, setup.lpFeeBps);
-        if (referral != address(0)) emit TokenReferral(token, referral);
-    }
-
-    /// @notice Allocation-aware overload: the same launch, with `TaxConfigsWithDirectAllocation` carrying
-    ///         the earnings-allocation split (burn / dividends / liquidity bps, the payout assets and
-    ///         their routes, and the routes of the token's ERC20 quotes). Any tax config is accepted,
-    ///         zero included: the creator's LP-fee share is a permanent earnings stream on this venue,
-    ///         and a token with an allocation is cloned from the taxable implementation whatever its
-    ///         tax — see `previewTokenImplementation(TaxConfigsWithDirectAllocation, AntiSniperConfigs)`.
+    /// @notice Deploys a Realm token straight onto Uniswap V4 pools and opens it for trading, all in this
+    ///         call. In order: the token is cloned and initialized (which creates the pool at
+    ///         `pairs[0].launchTick`), its extra quotes are registered, the creator vaults are funded, the
+    ///         fee split is registered, the earnings allocation is configured, the graduator opens and
+    ///         seeds every pool, and the creator's dev buy — if any — is settled and split across
+    ///         `devBuy.recipients`. `taxAllocationConfigs` carries the tax, the optional launch-tax decay,
+    ///         the earnings-allocation split (burn / dividends / liquidity bps, the payout assets and their
+    ///         routes) and the routes of the token's ERC20 quotes. Any tax config is accepted, zero
+    ///         included: the creator's LP-fee share is a permanent earnings stream on this venue, so a
+    ///         token with an allocation is cloned from the taxable implementation whatever its tax, and a
+    ///         token with neither tax nor allocation from the base one (see `previewTokenImplementation`).
     /// @dev The allocation is configured BEFORE the pools are seeded, so `markGraduated()` — which the
     ///      first seed triggers — activates the dividend machine the normal way. Configured after, the
     ///      token would graduate with `hasDividends` unset and only start accruing on its first earnings.
-    ///      Event order therefore inserts, after `SharesUpdated`: `EarningsAllocationInitialized`, one
-    ///      `DividendAssetInitialized` per payout asset, `DividendsInitialized`, and the registry's
-    ///      `DividendRouteRegistered` for each route the token registers (payout assets first, then the
-    ///      ERC20 quotes that need one); `DividendsActivated` lands with `Graduated`.
+    /// @dev Event order, which indexers depend on (full detail in `docs/events-per-entry-point.md` §1.3):
+    ///      `TokenCreated` → the token's own init events (`PairInitialized`, `PoolIdRegistered`,
+    ///      `LaunchpadFeesInitialized`, `RealmTaxableTokenInitialized`, `SniperProtectionInitialized`) →
+    ///      `QuotesRegistered` → `CreatorVaultsCreated` → `SharesUpdated` → the allocation's events
+    ///      (`EarningsAllocationInitialized`, `DividendAssetInitialized` per payout asset,
+    ///      `DividendsInitialized`, the registry's `DividendRouteRegistered` per route) →
+    ///      `PoolIdRegistered` per extra pool → `Graduated` → `PoolSeeded` (first pool) →
+    ///      `TokenGraduated` → `PoolSeeded` per extra pool → the dev buy's own swap events → the
+    ///      seed-remainder burn → `BuyOnDeploy` → `LpFeeBpsSet` → `TokenReferral`.
+    /// @param referral Relayer that forwarded the creation, or `address(0)`. Emitted as an off-chain
+    ///        signal only; nothing on-chain pays it.
     function createToken(
         DirectTokenSetup calldata setup,
         DirectPair[] calldata pairs,
@@ -239,34 +210,25 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         if (referral != address(0)) emit TokenReferral(token, referral);
     }
 
-    /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs,
-    ///         so a frontend can compute the initcode hash before mining a `0xeeaa` salt.
-    /// @dev Mirrors the dispatch-relevant inputs minus the identity fields, exactly as the unified
-    ///      factory's does. Today only `taxCfg` participates; `antiSniperCfg` is accepted so the ABI
-    ///      stays stable if that ever changes.
+    /// @notice Returns which token implementation `createToken` would clone for the same arguments, so a
+    ///         frontend can compute the initcode hash before mining a `0xeeaa` salt. Takes EXACTLY
+    ///         `createToken`'s arguments, so the ABI stays stable whichever inputs dispatch reads later;
+    ///         today only the tax config and whether any allocation bucket is set matter.
     /// @dev The salt is namespaced by the CALLER (`keccak256(msg.sender, salt)`), so a frontend mining
     ///      an address must apply the same derivation with the account that will send `createToken`.
-    function previewTokenImplementation(TaxConfigs calldata taxCfg, AntiSniperConfigs calldata antiSniperCfg)
-        external
-        view
-        returns (address)
-    {
-        _validateAntiSniperConfig(antiSniperCfg);
-        _validateTaxConfig(taxCfg);
-        return _previewTokenImplementation(taxCfg, antiSniperCfg);
-    }
-
-    /// @notice `previewTokenImplementation` for the allocation-aware overload. The allocation takes part
-    ///         in dispatch — a token with one is cloned from the taxable implementation whatever its
-    ///         tax — so a salt mined against the tax-only preview would name the wrong implementation.
     function previewTokenImplementation(
-        TaxConfigsWithDirectAllocation calldata taxCfg,
-        AntiSniperConfigs calldata antiSniperCfg
+        DirectTokenSetup calldata, /* setup */
+        DirectPair[] calldata, /* pairs */
+        TaxConfigsWithDirectAllocation calldata taxAllocationConfigs,
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata, /* creatorVaults */
+        DevBuy calldata, /* devBuy */
+        address /* referral */
     ) external view returns (address) {
-        _validateAntiSniperConfig(antiSniperCfg);
-        TaxConfigs memory cfg = _toTaxConfigs(taxCfg);
+        _validateAntiSniperConfig(antiSniperConfigs);
+        TaxConfigs memory cfg = _toTaxConfigs(taxAllocationConfigs);
         _validateTaxConfig(cfg);
-        EarningsAllocationMultiConfig calldata alloc = taxCfg.earningsAllocation;
+        EarningsAllocationMultiConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
         return _previewTokenImplementation(cfg, _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps));
     }
 

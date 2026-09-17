@@ -25,13 +25,14 @@ contract SniperTaxLegUniV2Tests is V2SwapHelpers, LaunchpadBaseTestsWithUniv2Gra
         });
         vm.prank(creator);
         testToken = factoryV2Unified.createToken(
-            "Taxed",
-            "TAX",
-            _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2)),
-            _fs(creator),
+            _setupTiered(
+                "Taxed", "TAX", _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2)), _fs(creator)
+            ),
+            _noAlloc(_taxCfg(500, 500, 14 days)),
             _noSs(),
-            _taxCfg(500, 500, 14 days),
-            caps
+            caps,
+            _noVaults(),
+            address(0)
         );
         _graduateToken();
 

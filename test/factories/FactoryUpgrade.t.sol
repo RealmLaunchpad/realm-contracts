@@ -114,7 +114,13 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "Upgraded", "UPG", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("Upgraded", "UPG", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         assertTrue(token != address(0));
     }

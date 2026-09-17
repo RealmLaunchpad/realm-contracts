@@ -26,7 +26,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
 
         vm.prank(creator);
         address token = factoryV2.createToken{value: ethToSpend}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _ss(creator),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         uint256 creatorBalance = RealmToken(token).balanceOf(creator);
@@ -46,7 +51,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
 
         vm.prank(creator);
         address token = factoryV2.createToken(
-            "TestToken", "TEST", salt, _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertEq(RealmToken(token).balanceOf(creator), 0);
@@ -64,7 +74,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
 
         vm.prank(creator);
         address token = factoryV2.createToken{value: ethToSpend}(
-            "TestToken", "TEST", salt, _fs(creator), ss, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            ss,
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         uint256 aliceBal = RealmToken(token).balanceOf(alice);
@@ -92,7 +107,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
 
         vm.prank(creator);
         address token = factoryV2.createToken{value: ethToSpend}(
-            "TestToken", "TEST", salt, _fs(creator), ss, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            ss,
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         uint256 aliceBal = RealmToken(token).balanceOf(alice);
@@ -120,7 +140,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidShares.selector));
         factoryV2.createToken{value: 0.01 ether}(
-            "TestToken", "TEST", salt, _fs(creator), ss, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            ss,
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -134,7 +159,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidShares.selector));
         factoryV2.createToken{value: 0.01 ether}(
-            "TestToken", "TEST", salt, _fs(creator), ss, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            ss,
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -147,7 +177,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidSupplyShares.selector));
         factoryV2.createToken{value: 0.01 ether}(
-            "TestToken", "TEST", salt, _fs(creator), ss, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            ss,
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -161,7 +196,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidSupplyShares.selector));
         factoryV2.createToken{value: 0.01 ether}(
-            "TestToken", "TEST", salt, _fs(creator), ss, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            ss,
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -172,7 +212,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidSupplyShares.selector));
         factoryV2.createToken(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _ss(creator),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -183,7 +228,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidSupplyShares.selector));
         factoryV2.createToken{value: 0.01 ether}(
-            "TestToken", "TEST", salt, _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -198,7 +248,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmBondingCurve.MaxEthReservesExceeded.selector));
         factoryV2.createToken{value: 10 ether}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _ss(creator),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -213,7 +268,12 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
         vm.expectEmit(false, true, false, false);
         emit IRealmFactory.BuyOnDeploy(address(0), creator, 0, 0, new address[](0), new uint256[](0));
         factoryV2.createToken{value: ethToSpend}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _ss(creator),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -222,14 +282,18 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
     /// @dev quoteBuyOnDeploy returns correct ETH that yields exactly tokenAmount
     function test_quoteBuyOnDeploy_roundTrip() public {
         uint256 tokenAmount = 50_000_000e18; // 5% of supply
-        uint256 totalEthNeeded =
-            factoryV2.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_emptyTaxCfg()));
+        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 0, _emptyTaxCfg());
 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(realmToken));
 
         vm.prank(creator);
         address token = factoryV2.createToken{value: totalEthNeeded}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _ss(creator),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         uint256 creatorBalance = RealmToken(token).balanceOf(creator);
@@ -241,14 +305,18 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
     ///      (no MaxEthReservesExceeded) and the token graduates in the same tx.
     function test_maxBuyOnDeploy_reachesGraduation() public {
         uint256 maxTokens = factoryV2.maxBuyOnDeploy(LiquidityTier.DEFAULT, 0);
-        uint256 totalEthNeeded =
-            factoryV2.quoteBuyOnDeploy(LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_emptyTaxCfg()));
+        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(LiquidityTier.DEFAULT, maxTokens, 0, _emptyTaxCfg());
 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(realmToken));
 
         vm.prank(creator);
         address token = factoryV2.createToken{value: totalEthNeeded}(
-            "TestToken", "TEST", salt, _fs(creator), _ss(creator), _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _ss(creator),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertGe(RealmToken(token).balanceOf(creator), maxTokens);
@@ -261,21 +329,19 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
     ///      token amount.
     function test_quoteBuyOnDeploy_graduationAnchoredTax_quoteIsTight() public {
         uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
-        uint256 totalEthNeeded = factoryV2.quoteBuyOnDeploy(
-            LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_taxCfg(400, 0, uint32(14 days), false))
-        );
+        uint256 totalEthNeeded =
+            factoryV2.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 0, _taxCfg(400, 0, uint32(14 days), false));
 
         bytes32 salt = _nextValidSalt(address(factoryV2), address(realmTaxTokenV2));
 
         vm.prank(creator);
         address token = factoryV2.createToken{value: totalEthNeeded}(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_taxCfg(400, 0, uint32(14 days), false)),
             _ss(creator),
-            _taxCfg(400, 0, uint32(14 days), false),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         uint256 creatorBalance = RealmToken(token).balanceOf(creator);
@@ -285,9 +351,8 @@ contract RealmFactoryUniV4DeployerBuyTest is LaunchpadBaseTestsWithUniv2Graduato
 }
 
 contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
-    /// @dev The V4 config these tests deploy with: 100-bps hook LP fee, ownership retained. The
-    ///      positional `createToken` overload they use hardcodes the same 100-bps fee, so passing this
-    ///      to `quoteBuyOnDeploy` matches the token's actual buy fee.
+    /// @dev The V4 config these tests deploy with: 100-bps hook LP fee, ownership retained — the same
+    ///      config `_v4Cfg(false)` passes to `createToken`, so the quote matches the token's actual buy fee.
     function _univ4Cfg100() internal pure returns (RealmFactoryUniV4Unified.UniV4Configs memory) {
         return RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
     }
@@ -301,14 +366,13 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
 
         vm.prank(creator);
         address token = factoryTax.createToken{value: ethToSpend}(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(14 days))),
+            _v4Cfg(false),
             _ss(creator),
-            false,
-            _taxCfg(0, 400, uint32(14 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         uint256 creatorBalance = RealmTaxableTokenUniV4(payable(token)).balanceOf(creator);
@@ -323,14 +387,13 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
 
         vm.prank(creator);
         address token = factoryTax.createToken(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(14 days))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, 400, uint32(14 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertEq(RealmTaxableTokenUniV4(payable(token)).balanceOf(creator), 0);
@@ -346,14 +409,13 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IRealmBondingCurve.MaxEthReservesExceeded.selector));
         factoryTax.createToken{value: 10 ether}(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(14 days))),
+            _v4Cfg(false),
             _ss(creator),
-            false,
-            _taxCfg(0, 400, uint32(14 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -363,21 +425,20 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
     function test_quoteBuyOnDeploy_roundTrip() public {
         uint256 tokenAmount = 50_000_000e18; // 5% of supply
         uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
-            LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_taxCfg(0, 400, uint32(14 days))), _univ4Cfg100()
+            LiquidityTier.DEFAULT, tokenAmount, 0, _taxCfg(0, 400, uint32(14 days)), _univ4Cfg100()
         );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(realmTaxToken));
 
         vm.prank(creator);
         address token = factoryTax.createToken{value: totalEthNeeded}(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(14 days))),
+            _v4Cfg(false),
             _ss(creator),
-            false,
-            _taxCfg(0, 400, uint32(14 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         uint256 creatorBalance = RealmTaxableTokenUniV4(payable(token)).balanceOf(creator);
@@ -392,21 +453,20 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
         uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
         uint16 buyTax = 300; // 3%; with the 100 bps V4 LP fee the deploy-buy fee is 400 bps
         uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
-            LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_taxCfg(buyTax, 0, uint32(14 days))), _univ4Cfg100()
+            LiquidityTier.DEFAULT, tokenAmount, 0, _taxCfg(buyTax, 0, uint32(14 days)), _univ4Cfg100()
         );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(realmTaxToken));
 
         vm.prank(creator);
         address token = factoryTax.createToken{value: totalEthNeeded}(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_taxCfg(buyTax, 0, uint32(14 days))),
+            _v4Cfg(false),
             _ss(creator),
-            false,
-            _taxCfg(buyTax, 0, uint32(14 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         uint256 creatorBalance = RealmTaxableTokenUniV4(payable(token)).balanceOf(creator);
@@ -431,7 +491,7 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
         vm.prank(creator);
         address token = factoryTax.createToken{value: totalEthNeeded}(
             setup,
-            _decayCfg(1000, 0, 20 minutes, true),
+            _noAlloc(_decayCfg(1000, 0, 20 minutes, true)),
             _univ4Cfg100(),
             _ss(creator),
             _emptyAntiSniperCfg(),
@@ -449,21 +509,20 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
     function test_maxBuyOnDeploy_reachesGraduation() public {
         uint256 maxTokens = factoryTax.maxBuyOnDeploy(LiquidityTier.DEFAULT, 0);
         uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
-            LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_taxCfg(0, 400, uint32(14 days))), _univ4Cfg100()
+            LiquidityTier.DEFAULT, maxTokens, 0, _taxCfg(0, 400, uint32(14 days)), _univ4Cfg100()
         );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(realmTaxToken));
 
         vm.prank(creator);
         address token = factoryTax.createToken{value: totalEthNeeded}(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_taxCfg(0, 400, uint32(14 days))),
+            _v4Cfg(false),
             _ss(creator),
-            false,
-            _taxCfg(0, 400, uint32(14 days)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertGe(RealmTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
@@ -477,21 +536,20 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
     function test_maxBuyOnDeploy_reachesGraduation_withLaunchBuyTax() public {
         uint256 maxTokens = factoryTax.maxBuyOnDeploy(LiquidityTier.DEFAULT, 0);
         uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
-            LiquidityTier.DEFAULT, maxTokens, 0, _toCfgs(_taxCfg(400, 0, uint32(14 days))), _univ4Cfg100()
+            LiquidityTier.DEFAULT, maxTokens, 0, _taxCfg(400, 0, uint32(14 days)), _univ4Cfg100()
         );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(realmTaxToken));
 
         vm.prank(creator);
         address token = factoryTax.createToken{value: totalEthNeeded}(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_taxCfg(400, 0, uint32(14 days))), // buyTax 400, startTaxFromLaunch defaults true
+            _v4Cfg(false),
             _ss(creator),
-            false,
-            _taxCfg(400, 0, uint32(14 days)), // buyTax 400, startTaxFromLaunch defaults true
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertGe(RealmTaxableTokenUniV4(payable(token)).balanceOf(creator), maxTokens);
@@ -515,7 +573,7 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
         vm.prank(creator);
         address token = factoryTax.createToken{value: totalEthNeeded}(
             setup,
-            _decayCfg(1000, 0, 20 minutes, true),
+            _noAlloc(_decayCfg(1000, 0, 20 minutes, true)),
             _univ4Cfg100(),
             _ss(creator),
             _emptyAntiSniperCfg(),
@@ -533,7 +591,7 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
     function test_maxBuyOnDeploy_reachesGraduation_withMaxVaultAndLaunchBuyTax() public {
         uint256 vaultBps = 3000; // 30% max
         uint256 maxTokens = factoryTax.maxBuyOnDeploy(LiquidityTier.DEFAULT, vaultBps);
-        TaxConfigs memory taxConfigs = _toCfgs(_taxCfg(400, 0, uint32(14 days)));
+        TaxConfigs memory taxConfigs = _taxCfg(400, 0, uint32(14 days));
         uint256 totalEthNeeded =
             factoryTax.quoteBuyOnDeploy(LiquidityTier.DEFAULT, maxTokens, vaultBps, taxConfigs, _univ4Cfg100());
 
@@ -575,7 +633,7 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
 
         vm.prank(creator);
         token = factoryTax.createToken{value: value}(
-            setup, taxConfigs, _univ4Cfg100(), _ss(creator), _emptyAntiSniperCfg(), vaults, address(0)
+            setup, _noAlloc(taxConfigs), _univ4Cfg100(), _ss(creator), _emptyAntiSniperCfg(), vaults, address(0)
         );
     }
 
@@ -587,21 +645,20 @@ contract RealmFactoryTaxTokenDeployerBuyTest is LaunchpadBaseTestsWithUniv4Gradu
         uint256 tokenAmount = 30_000_000e18; // 3% of supply, under the 10% cap
         uint16 buyTax = 400;
         uint256 totalEthNeeded = factoryTax.quoteBuyOnDeploy(
-            LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_taxCfg(buyTax, 0, uint32(14 days), false)), _univ4Cfg100()
+            LiquidityTier.DEFAULT, tokenAmount, 0, _taxCfg(buyTax, 0, uint32(14 days), false), _univ4Cfg100()
         );
 
         bytes32 salt = _nextValidSalt(address(factoryTax), address(realmTaxToken));
 
         vm.prank(creator);
         address token = factoryTax.createToken{value: totalEthNeeded}(
-            "TestToken",
-            "TEST",
-            salt,
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", salt, _fs(creator)),
+            _noAlloc(_taxCfg(buyTax, 0, uint32(14 days), false)),
+            _v4Cfg(false),
             _ss(creator),
-            false,
-            _taxCfg(buyTax, 0, uint32(14 days), false),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         uint256 creatorBalance = RealmTaxableTokenUniV4(payable(token)).balanceOf(creator);

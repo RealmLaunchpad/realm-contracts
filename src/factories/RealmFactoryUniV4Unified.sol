@@ -3,11 +3,8 @@ pragma solidity 0.8.28;
 
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {
-    TaxConfigInit,
     TaxConfigs,
-    TaxConfigsWithAllocation,
     TaxConfigsWithMultiAllocation,
-    EarningsAllocationConfig,
     EarningsAllocationMultiConfig,
     IRealmTaxableToken
 } from "src/interfaces/IRealmTaxableToken.sol";
@@ -22,7 +19,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///         Replaces `RealmFactoryUniV4`, `RealmFactoryTaxToken`, `RealmFactoryUniV4SniperProtected`,
 ///         and `RealmFactoryTaxTokenSniperProtected`.
 contract RealmFactoryUniV4Unified is RealmFactoryCurveAbstract {
-    /// @notice V4-specific config bundle for the struct-based `createToken` overload.
+    /// @notice V4-specific config bundle for `createToken`.
     /// @dev `lpFeeBps` is the per-swap LP fee `RealmSwapHook` charges post-graduation. It is stored on
     ///      the token (via `InitializeParams.swapLpFeeBps`) and read back by the hook through
     ///      `getSwapFees`. Only `100` (1%) and `50` (0.5%) are accepted; `_validateUniv4Configs`
@@ -99,131 +96,24 @@ contract RealmFactoryUniV4Unified is RealmFactoryCurveAbstract {
     // shared `_createToken` umbrella in `RealmFactoryAbstract`. The umbrella runs for V2 deploys
     // too, so emitting V4-only events from there would leak them onto V2 tokens and break indexers
     // that use the event as a V4 marker. When adding a new V4-only event, follow this same pattern
-    // (emit after `_createToken(...)` returns, in both overloads below).
+    // (emit after `_createToken(...)` returns, in `_createV4` below).
 
-    /// @notice Deploys a V4-family Realm token and registers it in the launchpad.
-    ///         Dispatches between four implementations based on `taxCfg` and `antiSniperCfg`.
-    ///         The per-token fee config is registered with the master fee handler at deploy time.
-    ///         If `msg.value > 0`, buys supply and distributes it across `supplyShares`.
-    /// @dev DEPRECATED: legacy positional overload, kept for backwards compatibility (unchanged
-    ///      signature). New integrations should use the struct-based overload that takes `creatorVaults`
-    ///      and the full `TaxConfigs`. Always deploys with the DEFAULT-tier graduator and a 100-bps swap
-    ///      fee, no creator vaults and no launch-tax decay — the `TaxConfigInit` is lifted into a
-    ///      `TaxConfigs` with the decay fields zeroed.
-    function createToken(
-        string calldata name,
-        string calldata symbol,
-        bytes32 salt,
-        FeeShare[] calldata feeReceivers,
-        SupplyShare[] calldata supplyShares,
-        bool renounceOwnership_,
-        TaxConfigInit calldata taxCfg,
-        AntiSniperConfigs calldata antiSniperCfg
-    ) external payable returns (address token) {
-        // Positional overload always uses the 100-bps swap fee — only the struct-based overloads below
-        // expose the 50-bps variant. See the "V4-only event-emission rule" comment above for why the
-        // emit lives here.
-        // Build `tokenSetup` first (consuming the deep `name`/`symbol`/`salt`/`feeReceivers` calldata
-        // params) before introducing the `taxConfigs` memory local, to keep the stack shallow enough
-        // to compile without `via_ir`.
-        // Legacy overload always uses the DEFAULT liquidity tier + the 100-bps swap fee.
-        TokenSetupTiered memory tokenSetup = TokenSetupTiered({
-            name: name, symbol: symbol, salt: salt, feeShares: feeReceivers, liquidityTier: LiquidityTier.DEFAULT
-        });
-        TaxConfigs memory taxConfigs = _toTaxConfigs(taxCfg);
-        _validateTotalFee(100, taxConfigs);
-        token = _createToken(
-            tokenSetup,
-            renounceOwnership_ ? address(0) : msg.sender,
-            address(GRADUATOR),
-            100, // default swap fee for the legacy overload
-            supplyShares,
-            taxConfigs,
-            antiSniperCfg,
-            new CreatorVault[](0)
-        );
-        emit LpFeeBpsSet(token, 100);
-    }
-
-    /// @notice Struct-based overload taking the full `TaxConfigs` (static tax + optional linear launch-tax
-    ///         decay), a `creatorVaults` array (pass empty for none) and a `TokenSetupTiered` selecting the
-    ///         liquidity tier. `univ4Configs.lpFeeBps` is the post-graduation swap fee stored on the token
-    ///         (100 or 50). Kept for backwards compatibility; new integrations should use the `referral`
-    ///         overload below (the current recommended overload).
-    function createToken(
-        TokenSetupTiered calldata tokenSetup,
-        TaxConfigs calldata taxConfigs,
-        UniV4Configs calldata univ4Configs,
-        SupplyShare[] calldata buyOnDeployShares,
-        AntiSniperConfigs calldata antiSniperConfigs,
-        CreatorVault[] calldata creatorVaults
-    ) external payable returns (address token) {
-        token = _createV4(tokenSetup, univ4Configs, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults);
-    }
-
-    /// @notice Recommended overload: same as the `TokenSetupTiered` overload plus a `referral` address for
-    ///         relayers that forward the creation and are entitled to a cut of the fees. When `referral` is
-    ///         non-zero a `TokenReferral(token, referral)` event is emitted; no token storage or on-chain
-    ///         payout is wired to it yet — it is purely an off-chain signal for now.
-    function createToken(
-        TokenSetupTiered calldata tokenSetup,
-        TaxConfigs calldata taxConfigs,
-        UniV4Configs calldata univ4Configs,
-        SupplyShare[] calldata buyOnDeployShares,
-        AntiSniperConfigs calldata antiSniperConfigs,
-        CreatorVault[] calldata creatorVaults,
-        address referral
-    ) external payable returns (address token) {
-        token = _createV4(tokenSetup, univ4Configs, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults);
-        if (referral != address(0)) emit TokenReferral(token, referral);
-    }
-
-    /// @notice Allocation-aware overload: the recommended `referral` overload plus a
-    ///         `TaxConfigsWithAllocation` that also carries the earnings-allocation split (burn /
-    ///         dividends / liquidity bps; the fund wallets take the remainder). The split is stored on
-    ///         the token at creation via `initializeEarningsAllocation`. Any tax config is accepted, a
-    ///         zero one included: the creator's share of the LP fee is a permanent earnings stream on
-    ///         this venue, so a no-tax token with an allocation is a revenue-share token and is cloned
-    ///         from the taxable implementation (see `previewTokenImplementation`).
-    ///         A non-zero `dividendsBps` must name a payout asset in `dividendToken`; the token asks
-    ///         `RealmDividendSwapRegistry` whether it can be bought and reverts at creation otherwise. The
-    ///         registry answers yes either because the asset has a Uniswap V2 pair that is deep enough
-    ///         right now — the permissionless rule, no whitelist and no per-asset approval — or because
-    ///         an admin has given it a curated Uniswap V4 route, which is how V4-only assets qualify.
-    function createToken(
-        TokenSetupTiered calldata tokenSetup,
-        TaxConfigsWithAllocation calldata taxAllocationConfigs,
-        UniV4Configs calldata univ4Configs,
-        SupplyShare[] calldata buyOnDeployShares,
-        AntiSniperConfigs calldata antiSniperConfigs,
-        CreatorVault[] calldata creatorVaults,
-        address referral
-    ) external payable returns (address token) {
-        EarningsAllocationConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
-        bool hasAllocation = _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps);
-        // Naming a payout asset with a zero share would leave dividends silently OFF, forever: clones
-        // are not upgradeable and `initializeEarningsAllocation` only ever runs here, at creation.
-        require(alloc.dividendToken == address(0) || alloc.dividendsBps != 0, DividendAssetWithoutShare());
-
-        TaxConfigs memory taxConfigs = _toTaxConfigs(taxAllocationConfigs);
-        _allocationPending = hasAllocation;
-        token = _createV4(tokenSetup, univ4Configs, buyOnDeployShares, taxConfigs, antiSniperConfigs, creatorVaults);
-        if (hasAllocation) {
-            IRealmTaxableToken(payable(token))
-                .initializeEarningsAllocation(
-                    alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps, alloc.dividendToken
-                );
-        }
-        if (referral != address(0)) emit TokenReferral(token, referral);
-    }
-
-    /// @notice Multi-asset dividends overload: identical to the `TaxConfigsWithAllocation` one above,
-    ///         except the dividends slice may name UP TO THREE payout assets and the bps split between
-    ///         them. Every rule the single-asset path enforces still applies to each member of the set,
-    ///         and a few more that only a set can break — distinct assets, non-zero weights summing to
-    ///         10,000, and `DIVIDEND_SELF_TOKEN` only on its own. See `EarningsAllocationMultiConfig`.
-    /// @dev A one-entry set weighted 10,000 is exactly the single-asset overload; the two produce
-    ///      identical tokens, so there is nothing an integrator loses by moving to this one.
+    /// @notice Deploys a V4-family Realm token and registers it in the launchpad. The ONE entry point:
+    ///         `taxAllocationConfigs` carries the static tax, the optional linear launch-tax decay and the
+    ///         earnings-allocation split (burn / dividends / liquidity bps; the fund wallets take the
+    ///         remainder), paid out in up to three dividend assets. An all-zero allocation deploys a
+    ///         token with no split, and one with no tax and no allocation is cloned from the base
+    ///         implementation. `univ4Configs.lpFeeBps` is the post-graduation swap fee (100 or 50),
+    ///         `creatorVaults` may be empty, and `referral` (or `address(0)`) is only emitted as an
+    ///         off-chain signal. If `msg.value > 0`, buys supply and splits it across
+    ///         `buyOnDeployShares`.
+    /// @dev Any tax config is accepted with an allocation, a zero one included: the creator's share of
+    ///      the LP fee is a permanent earnings stream on this venue, so a no-tax token with an allocation
+    ///      is a revenue-share token cloned from the taxable implementation (see
+    ///      `previewTokenImplementation`). A non-zero `dividendsBps` must name its payout assets; each is
+    ///      checked with `RealmDividendSwapRegistry` at creation. Every rule of
+    ///      `EarningsAllocationMultiConfig` applies: distinct assets, non-zero weights summing to 10,000,
+    ///      and `DIVIDEND_SELF_TOKEN` only on its own.
     function createToken(
         TokenSetupTiered calldata tokenSetup,
         TaxConfigsWithMultiAllocation calldata taxAllocationConfigs,
@@ -258,10 +148,10 @@ contract RealmFactoryUniV4Unified is RealmFactoryCurveAbstract {
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
 
-    /// @dev Shared tail of the two struct-based `createToken` overloads: validates the V4 config, resolves
-    ///      the tier's graduator, deploys via the shared umbrella storing `univ4Configs.lpFeeBps` on the
-    ///      token, and emits the V4-only `LpFeeBpsSet` marker. Factored out to keep each overload's stack
-    ///      shallow enough to compile without `via_ir`. `tokenOwner`/`graduator` are inlined for the same
+    /// @dev The deploy half of `createToken`: validates the V4 config, resolves the tier's graduator,
+    ///      deploys via the shared umbrella storing `univ4Configs.lpFeeBps` on the token, and emits the
+    ///      V4-only `LpFeeBpsSet` marker. Factored out to keep `createToken`'s stack shallow enough to
+    ///      compile without `via_ir`. `tokenOwner`/`graduator` are inlined for the same
     ///      reason. Private to this V4 factory, so the "V4-only event-emission rule" above still holds —
     ///      the emit never runs for a V2 deploy.
     function _createV4(
@@ -323,37 +213,23 @@ contract RealmFactoryUniV4Unified is RealmFactoryCurveAbstract {
         return V4_LAUNCHPAD_TREASURY_SHARE_BPS;
     }
 
-    /// @notice Returns which token implementation `createToken(...)` would clone for the given inputs.
-    /// @dev Mirrors the dispatch-relevant `createToken` inputs minus the identity fields (`name`,
-    ///      `symbol`, `salt`) and ownership flag so the ABI stays stable when future features change
-    ///      which inputs participate in dispatch. Today `taxCfg.taxDurationSeconds`,
-    ///      `taxCfg.taxDecayDuration` (a decay-only token still clones the taxable impl) and
-    ///      `antiSniperCfg.protectionWindowSeconds` matter for dispatch; disabled configs must
-    ///      have all other tax/anti-sniper fields
-    ///      empty/zero. Used by frontends to compute the initcode hash before mining a salt.
+    /// @notice Returns which token implementation `createToken` would clone for the same arguments, so a
+    ///         frontend can compute the initcode hash before mining a `0xeeaa` salt. Takes EXACTLY
+    ///         `createToken`'s arguments, so the ABI stays stable whichever inputs dispatch reads later;
+    ///         today only the tax config and whether any allocation bucket is set matter.
     function previewTokenImplementation(
-        FeeShare[] calldata, /* feeReceivers */
-        SupplyShare[] calldata, /* supplyShares */
-        TaxConfigs calldata taxCfg,
-        AntiSniperConfigs calldata antiSniperCfg
+        TokenSetupTiered calldata, /* tokenSetup */
+        TaxConfigsWithMultiAllocation calldata taxAllocationConfigs,
+        UniV4Configs calldata, /* univ4Configs */
+        SupplyShare[] calldata, /* buyOnDeployShares */
+        AntiSniperConfigs calldata antiSniperConfigs,
+        CreatorVault[] calldata, /* creatorVaults */
+        address /* referral */
     ) external view returns (address) {
-        _validateAntiSniperConfig(antiSniperCfg);
-        _validateTaxConfig(taxCfg);
-        return _previewTokenImplementation(taxCfg, antiSniperCfg);
-    }
-
-    /// @notice `previewTokenImplementation` for the allocation-aware `createToken` overloads. The
-    ///         allocation participates in dispatch — a token with one is cloned from the taxable
-    ///         implementation whatever its tax — so a salt mined against the tax-only preview would
-    ///         name the wrong implementation for such a token.
-    function previewTokenImplementation(
-        TaxConfigsWithMultiAllocation calldata taxCfg,
-        AntiSniperConfigs calldata antiSniperCfg
-    ) external view returns (address) {
-        _validateAntiSniperConfig(antiSniperCfg);
-        TaxConfigs memory cfg = _toTaxConfigs(taxCfg);
+        _validateAntiSniperConfig(antiSniperConfigs);
+        TaxConfigs memory cfg = _toTaxConfigs(taxAllocationConfigs);
         _validateTaxConfig(cfg);
-        EarningsAllocationMultiConfig calldata alloc = taxCfg.earningsAllocation;
+        EarningsAllocationMultiConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
         return _previewTokenImplementation(cfg, _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps));
     }
 

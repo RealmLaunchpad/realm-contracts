@@ -16,9 +16,7 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmCreatorVaultFactory} from "src/interfaces/IRealmCreatorVaultFactory.sol";
 import {
     IRealmTaxableToken,
-    TaxConfigInit,
     TaxConfigs,
-    TaxConfigsWithAllocation,
     TaxConfigsWithMultiAllocation,
     TaxConfigsWithDirectAllocation
 } from "src/interfaces/IRealmTaxableToken.sol";
@@ -387,34 +385,9 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         });
     }
 
-    /// @dev Lifts a legacy `TaxConfigInit` (static tax only) into the full `TaxConfigs`, leaving the three
-    ///      launch-decay fields zeroed. The two backwards-compatible `createToken` overloads call this so
-    ///      the whole internal pipeline (`_validateTotalFee`, `_createToken` and everything below it)
-    ///      operates on a single `TaxConfigs` type; launch-tax decay is reachable only via the new overload
-    ///      that takes a `TaxConfigs` directly.
-    function _toTaxConfigs(TaxConfigInit calldata legacy) internal pure returns (TaxConfigs memory cfg) {
-        cfg.buyTaxBps = legacy.buyTaxBps;
-        cfg.sellTaxBps = legacy.sellTaxBps;
-        cfg.taxDurationSeconds = legacy.taxDurationSeconds;
-        cfg.startTaxFromLaunch = legacy.startTaxFromLaunch;
-        // buyTaxDecayStartBps / sellTaxDecayStartBps / taxDecayDuration stay 0 — no decay on the legacy path.
-    }
-
-    /// @dev Strips the `earningsAllocation` split off a `TaxConfigsWithAllocation`, returning the plain
-    ///      `TaxConfigs` the shared creation pipeline consumes. The allocation bps are read separately by
-    ///      the allocation-aware overload and forwarded to `initializeEarningsAllocation`.
-    function _toTaxConfigs(TaxConfigsWithAllocation calldata c) internal pure returns (TaxConfigs memory cfg) {
-        cfg.buyTaxBps = c.buyTaxBps;
-        cfg.sellTaxBps = c.sellTaxBps;
-        cfg.taxDurationSeconds = c.taxDurationSeconds;
-        cfg.startTaxFromLaunch = c.startTaxFromLaunch;
-        cfg.buyTaxDecayStartBps = c.buyTaxDecayStartBps;
-        cfg.sellTaxDecayStartBps = c.sellTaxDecayStartBps;
-        cfg.taxDecayDuration = c.taxDecayDuration;
-    }
-
-    /// @dev Same, for the multi-asset allocation variant. The two structs share their leading fields by
-    ///      construction; only the nested allocation differs, and that is read by the overload itself.
+    /// @dev Strips the `earningsAllocation` split off a `TaxConfigsWithMultiAllocation`, returning the
+    ///      plain `TaxConfigs` the shared creation pipeline consumes. The allocation is read separately by
+    ///      `createToken` and forwarded to `initializeEarningsAllocation`.
     function _toTaxConfigs(TaxConfigsWithMultiAllocation calldata c) internal pure returns (TaxConfigs memory cfg) {
         cfg.buyTaxBps = c.buyTaxBps;
         cfg.sellTaxBps = c.sellTaxBps;
@@ -436,13 +409,13 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         cfg.taxDecayDuration = c.taxDecayDuration;
     }
 
-    /// @dev Whether an allocation configures any bucket at all. Shared by every allocation-aware
-    ///      `createToken` overload, and the flag that routes the token to the taxable implementation.
+    /// @dev Whether an allocation configures any bucket at all. Shared by every factory's `createToken`
+    ///      and preview, and the flag that routes the token to the taxable implementation.
     function _hasAllocation(uint16 burnBps, uint16 dividendsBps, uint16 liquidityBps) internal pure returns (bool) {
         return burnBps != 0 || dividendsBps != 0 || liquidityBps != 0;
     }
 
-    /// @dev Raised by an allocation-aware `createToken` overload for the length of its call and consumed
+    /// @dev Raised by `createToken` when an allocation is set, for the length of its call, and consumed
     ///      by `_dispatchAndInitialize`, which routes the token to the taxable implementation on it. A
     ///      TRANSIENT marker rather than a parameter: the creation pipeline's stack is already at the
     ///      limit without `via_ir`, and this is the one input that only the dispatch reads. Cleared by
@@ -547,30 +520,15 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         return decayBps > staticBps ? decayBps : staticBps;
     }
 
-    /// @dev Single source of truth for which implementation `createToken` will clone for a given
-    ///      `taxCfg`. Both the public `previewTokenImplementation` (used by frontends to mine a
-    ///      `0xeeaa`-suffixed salt) and `_dispatchAndInitialize` (the path that actually clones the
-    ///      impl) read from this function — so a salt that previews to a vanity-suffixed address is
-    ///      guaranteed to also produce one at create time.
-    /// @dev Anti-sniper is deliberately NOT a dispatch input: it is a gated feature of both impls, so
-    ///      the impl (and therefore the pre-generated token address) depends only on whether the token
-    ///      is taxable. `antiSniperCfg` is still accepted so the preview signature mirrors the full
-    ///      `createToken` input set and stays ABI-stable if that changes.
-    function _previewTokenImplementation(
-        TaxConfigs memory taxCfg,
-        AntiSniperConfigs calldata /* antiSniperCfg */
-    )
-        internal
-        view
-        returns (address)
-    {
-        return _previewTokenImplementation(taxCfg, false);
-    }
-
-    /// @dev The general form. An earnings allocation lives on the taxable implementation — the base
-    ///      token has no split, no buffers and no dividend machine — so a token that configures one is
-    ///      cloned from it even with no tax at all: on the V4 venues the creator's LP-fee share is a
-    ///      permanent earnings stream in its own right.
+    /// @dev Single source of truth for which implementation `createToken` will clone. Both the public
+    ///      `previewTokenImplementation` (used by frontends to mine a `0xeeaa`-suffixed salt) and
+    ///      `_dispatchAndInitialize` (the path that actually clones the impl) read from this function — so
+    ///      a salt that previews to a vanity-suffixed address is guaranteed to also produce one at create
+    ///      time. An earnings allocation lives on the taxable implementation — the base token has no
+    ///      split, no buffers and no dividend machine — so a token that configures one is cloned from it
+    ///      even with no tax at all: on the V4 venues the creator's LP-fee share is a permanent earnings
+    ///      stream in its own right. Anti-sniper is deliberately NOT a dispatch input: it is a gated
+    ///      feature of both impls.
     function _previewTokenImplementation(TaxConfigs memory taxCfg, bool hasAllocation) internal view returns (address) {
         return (hasAllocation || _isTaxConfigured(taxCfg)) ? TOKEN_IMPL_TAX : TOKEN_IMPL_BASE;
     }

@@ -127,13 +127,12 @@ contract QuoteInverseTests_Univ2 is QuoteInverseTests, LaunchpadBaseTestsWithUni
     modifier createTestToken() override(LaunchpadBaseTests) {
         vm.prank(creator);
         testToken = factoryV2.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV2), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         _;
     }
@@ -147,14 +146,13 @@ contract QuoteInverseTests_Univ4 is QuoteInverseTests, LaunchpadBaseTestsWithUni
     modifier createTestToken() override(LaunchpadBaseTests) {
         vm.prank(creator);
         testToken = factoryV4.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         _;
     }

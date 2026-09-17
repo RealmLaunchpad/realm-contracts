@@ -71,6 +71,12 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         });
     }
 
+    /// @dev A setup for the preview view, which ignores the identity fields.
+    function _previewSetup() internal view returns (RealmFactoryUniV4Direct.DirectTokenSetup memory s) {
+        s.feeShares = _fs(creator);
+        s.lpFeeBps = 100;
+    }
+
     function _pairs(address quote, int24 tick) internal pure returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
         p = new RealmFactoryUniV4Direct.DirectPair[](1);
         p[0] = RealmFactoryUniV4Direct.DirectPair({quote: quote, weightBps: 10_000, launchTick: tick});
@@ -98,7 +104,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         token = directFactory.createToken{value: value}(
             _setup(false),
             _pairs(address(0), LAUNCH_TICK),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             devBuy,
@@ -245,7 +251,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         address token = directFactory.createToken(
             _setup(false),
             _pairs(address(0), LAUNCH_TICK),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             vaults,
             _noDevBuy(),
@@ -267,7 +273,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         address token = directFactory.createToken(
             setup,
             _pairs(address(0), LAUNCH_TICK),
-            _toCfgs(_taxCfg(300, 300, uint32(14 days))),
+            _noDirectAlloc(_taxCfg(300, 300, uint32(14 days))),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -298,7 +304,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         address token = directFactory.createToken(
             _setup(false),
             _pairs(address(0), LAUNCH_TICK),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             cfg,
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -324,7 +330,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directFactory.createToken(
             _setup(false),
             _pairs(address(0), LAUNCH_TICK + 1),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -342,7 +348,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directFactory.createToken(
             _setup(false),
             _pairs(address(0), maxUsable),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -359,7 +365,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directFactory.createToken(
             _setup(false),
             _pairs(address(WETH), LAUNCH_TICK),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -373,7 +379,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directFactory.createToken(
             _setup(false),
             _pairs(address(directGraduator), LAUNCH_TICK), // a contract, but not an ERC20
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -389,7 +395,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directFactory.createToken(
             _setup(false),
             pairs,
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -405,7 +411,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directFactory.createToken{value: 0.01 ether}(
             _setup(false),
             _pairs(address(0), LAUNCH_TICK),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             devBuy,
@@ -421,7 +427,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directFactory.createToken(
             setup,
             _pairs(address(0), LAUNCH_TICK),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),

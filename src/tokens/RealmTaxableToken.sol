@@ -248,7 +248,7 @@ abstract contract RealmTaxableToken is
     ///      and buffered into `pendingNative` with nothing to credit it and no `processDividends` that
     ///      does not revert `DividendsNotActive`. Worse, `_reservedNative()` returns 0 without
     ///      `hasDividends`, so the permissionless `sweepStrayEth()` would keep recycling that buffer
-    ///      through the split. A dividends allocation must come in through the 5-argument overload.
+    ///      through the split. A dividends allocation must come in through the multi-asset overload.
     function initializeEarningsAllocation(uint16 _burnBps, uint16 _dividendsBps, uint16 _liquidityBps)
         external
         virtual
@@ -258,33 +258,14 @@ abstract contract RealmTaxableToken is
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
     }
 
-    /// @notice Same as the three-bps overload, plus the single asset the dividends slice buys. Kept as a
-    ///         separate overload so the original signature stays untouched.
+    /// @notice Same as the three-bps overload, plus the dividend payout: UP TO `MAX_DIVIDEND_ASSETS`
+    ///         assets, the bps split of the dividends slice between them, and the swap route each asset is
+    ///         bought through. `dividendWeightsBps` must sum to 10,000 and hold no zero; the assets must
+    ///         be distinct; `DIVIDEND_SELF_TOKEN` is only legal on its own.
     /// @dev `hasDividends` is what actually turns the feature on. It lives on `RealmToken`, packed into
     ///      the `pair` slot `_update` already loads, so a token that leaves `_dividendsBps` at 0 pays
-    ///      nothing for the feature on any transfer.
-    function initializeEarningsAllocation(
-        uint16 _burnBps,
-        uint16 _dividendsBps,
-        uint16 _liquidityBps,
-        address _dividendToken
-    ) external virtual {
-        // Named for the ABI, unread here: the extension decodes them straight out of calldata.
-        _burnBps;
-        _dividendsBps;
-        _liquidityBps;
-        _dividendToken;
-        // Runs in the extension: the payout configuration is validated once, at creation, and the
-        // validation is the same ~0.9 KB of bytecode a clone would otherwise carry forever. Delegated
-        // rather than duplicated, so there is exactly one copy of the rules.
-        _delegateTo(_allocationLogic());
-    }
-
-    /// @notice Same again, for a token paying in UP TO `MAX_DIVIDEND_ASSETS` assets: the payout set, the
-    ///         bps split of the dividends slice between its members, and the swap route each asset is
-    ///         bought through. `dividendWeightsBps` must sum to 10,000 and hold no zero; the assets must
-    ///         be distinct; `DIVIDEND_SELF_TOKEN` is only legal on its own. The single-asset overload
-    ///         above is exactly this with a one-entry set and no route.
+    ///      nothing for the feature on any transfer. The body runs in the extension: the payout
+    ///      configuration is validated once, at creation, with exactly one copy of the rules.
     /// @dev The routes are the creator's choice and are fixed here for the token's life — the registry
     ///      records them against this token and refuses to rewrite them. It checks the pools they name
     ///      exist and hold liquidity; it cannot check the price those pools quote is the asset's real

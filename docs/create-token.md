@@ -1,42 +1,38 @@
-# Deploying a token: the recommended `createToken` overload (V2 & V4)
+# Deploying a token: `createToken` (V2 & V4 curve factories)
 
-This documents the **struct-based `createToken` overload with `referral`** — the current
-recommended entry point on both unified factories:
+Each curve factory has exactly ONE `createToken`:
 
 - `RealmFactoryUniV2Unified` (graduates to Uniswap V2)
 - `RealmFactoryUniV4Unified` (graduates to Uniswap V4)
 
-> **Which overload is "the third one"?** ABI order ≠ source order. In
-> `src/factories/RealmFactoryUniV2Unified.sol` this `referral` overload is literally the 3rd
-> `createToken`. In `abis/RealmFactoryUniV4Unified.json` the same overload is listed **first**;
-> the ABI's 3rd entry is this signature **minus** the trailing `referral`. Documenting the
-> `referral` variant covers both — `referral` is just an optional trailing arg (pass
-> `address(0)` for "none", which behaves exactly like the non-referral overload).
+The direct-launch venue (`RealmFactoryUniV4Direct`) is documented in `docs/events-per-entry-point.md` §1.3.
 
 ## Signatures
 
 ```solidity
 // V2 — RealmFactoryUniV2Unified
 function createToken(
-    TokenSetupTiered   tokenSetup,
-    TaxConfigs         taxConfigs,
-    SupplyShare[]      buyOnDeployShares,
-    AntiSniperConfigs  antiSniperConfigs,
-    CreatorVault[]     creatorVaults,
-    address            referral
+    TokenSetupTiered              tokenSetup,
+    TaxConfigsWithMultiAllocation taxAllocationConfigs,
+    SupplyShare[]                 buyOnDeployShares,
+    AntiSniperConfigs             antiSniperConfigs,
+    CreatorVault[]                creatorVaults,
+    address                       referral
 ) external payable returns (address token);
 
 // V4 — RealmFactoryUniV4Unified  (identical, plus `univ4Configs` in position 3)
 function createToken(
-    TokenSetupTiered   tokenSetup,
-    TaxConfigs         taxConfigs,
-    UniV4Configs       univ4Configs,   // V4 only
-    SupplyShare[]      buyOnDeployShares,
-    AntiSniperConfigs  antiSniperConfigs,
-    CreatorVault[]     creatorVaults,
-    address            referral
+    TokenSetupTiered              tokenSetup,
+    TaxConfigsWithMultiAllocation taxAllocationConfigs,
+    UniV4Configs                  univ4Configs,   // V4 only
+    SupplyShare[]                 buyOnDeployShares,
+    AntiSniperConfigs             antiSniperConfigs,
+    CreatorVault[]                creatorVaults,
+    address                       referral
 ) external payable returns (address token);
 ```
+
+`previewTokenImplementation` takes exactly the same arguments.
 
 `TOTAL_SUPPLY` is always `1_000_000_000e18`. All bps values are basis points (`10_000` = 100%).
 
@@ -62,7 +58,9 @@ function createToken(
 | `shares` | `uint256` | bps, `> 0`; the array must sum to exactly `10_000`. |
 | `directFeesEnabled` | `bool` | At most **one** entry may be `true`. |
 
-### `taxConfigs` — `TaxConfigs`
+### `taxAllocationConfigs` — `TaxConfigsWithMultiAllocation`
+
+The tax fields below, flattened, plus a nested `earningsAllocation` (next section).
 
 Static tax and the optional linear launch-tax decay are configured **independently**: set
 either, both, or neither. A "decay-only" token (static fields zero, decay fields set) is valid.
@@ -82,6 +80,23 @@ Effective rate a trade pays per direction is `max(decay, static)`.
 **Total-fee cap** (static bps only): `lpFeeBps + buyTaxBps ≤ 500` and `lpFeeBps + sellTaxBps ≤ 500`.
 - V2: post-graduation LP fee is `0`, so **each direction's static tax ≤ 500 bps (5%)**.
 - V4: `lpFeeBps` is `univ4Configs.lpFeeBps`, so **static tax ≤ `500 − lpFeeBps`** → **400 bps** with the 100-bps hook, **450 bps** with the 50-bps hook.
+
+### `taxAllocationConfigs.earningsAllocation` — `EarningsAllocationMultiConfig`
+
+Routes post-graduation earnings (swap tax + the creator's LP-fee share) to buy-back-and-burn, holder
+dividends and liquidity; the fee receivers take the remainder. All zero = no allocation.
+
+| field | type | expected value |
+|---|---|---|
+| `burnBps` | `uint16` | Share bought back and burned. |
+| `dividendsBps` | `uint16` | Share paid to holders. `burnBps + dividendsBps + liquidityBps ≤ 10_000`. |
+| `liquidityBps` | `uint16` | Share added as single-sided pool depth. |
+| `dividendTokens` | `address[]` | 1..3 distinct payout assets when `dividendsBps != 0`, else empty (`DividendAssetWithoutShare`). `address(0)` = native; `DIVIDEND_SELF_TOKEN` = the token itself, only as the sole entry. |
+| `dividendWeightsBps` | `uint16[]` | Each asset's share of the dividends slice, non-zero, summing to `10_000`. |
+| `dividendRoutes` | `bytes[]` | Per-asset swap route (`DividendRouteLib` format); empty or missing = the asset's Uniswap V2 pair. Checked by `RealmDividendSwapRegistry` at creation. |
+
+- V2: a non-zero allocation requires a long-term static tax (`taxDurationSeconds != 0`), else `EarningsAllocationRequiresTax`.
+- V4: any tax config, zero included. A token with an allocation is always cloned from the taxable implementation.
 
 ### `univ4Configs` — `UniV4Configs` *(V4 only)*
 
@@ -109,8 +124,8 @@ Rules:
   that reaches the threshold **graduates the token in the same tx**.
 - Use `maxBuyOnDeploy(liquidityTier, totalLockedInVaultsBps)` for the max token amount that reaches
   graduation without tripping that revert, then
-  `quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg[, univ4Configs])`
-  to compute the `msg.value` for a target token amount.
+  `quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg[, univ4Configs])` (`taxCfg` is the tax
+  fields as a `TaxConfigs`) to compute the `msg.value` for a target token amount.
 
 ### `antiSniperConfigs` — `AntiSniperConfigs`
 
@@ -187,10 +202,10 @@ The token is a `Clones.cloneDeterministic` proxy; its address is a function of
 Two things to get right:
 
 1. **Impl** — dispatch clones one of two impls: `TOKEN_IMPL_TAX` if the token is taxable
-   (`taxDurationSeconds != 0` **or** `taxDecayDuration != 0`), else `TOKEN_IMPL_BASE`. Anti-sniper
-   does **not** change the impl. Get the exact impl from
-   `previewTokenImplementation(feeShares, buyOnDeployShares, taxConfigs, antiSniperConfigs)` (view;
-   it runs the same tax/anti-sniper validation and returns the impl to mine against).
+   (`taxDurationSeconds != 0` **or** `taxDecayDuration != 0`) or configures an earnings allocation,
+   else `TOKEN_IMPL_BASE`. Anti-sniper does **not** change the impl. Get the exact impl from
+   `previewTokenImplementation(...)` called with the same arguments as `createToken` (view; it runs
+   the same tax/anti-sniper validation and returns the impl to mine against).
 2. **Deployer namespacing** — the effective CREATE2 salt is `keccak256(abi.encodePacked(msg.sender, salt))`.
    Mine with the exact account that will send `createToken`. A salt mined for one sender yields a
    different address for another (this is the front-run defense — a salt lifted from a pending tx is
@@ -224,8 +239,8 @@ address won't match and the call reverts with `InvalidTokenAddress`.
 
 ## Minimal call flow
 
-1. Build `(tokenSetup, taxConfigs[, univ4Configs], buyOnDeployShares, antiSniperConfigs, creatorVaults, referral)`.
-2. `impl = previewTokenImplementation(feeShares, buyOnDeployShares, taxConfigs, antiSniperConfigs)`.
+1. Build `(tokenSetup, taxAllocationConfigs[, univ4Configs], buyOnDeployShares, antiSniperConfigs, creatorVaults, referral)`.
+2. `impl = previewTokenImplementation(<the same arguments>)`.
 3. Mine `salt` against `(factory, impl, deployer)` → address ending in `0xeeaa`.
 4. *(optional)* `value = quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg[, univ4Configs])`.
 5. `createToken(...)` with `value` (`0` if not buying on deploy).

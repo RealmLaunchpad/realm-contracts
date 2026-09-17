@@ -23,6 +23,14 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
     mapping(address => uint256) public balances;
     uint256 public eligibleSupply;
 
+    /// @dev A one-asset payout set taking the whole dividends slice.
+    function _soleAssetSet(address asset) internal pure returns (address[] memory assets, uint16[] memory weights) {
+        assets = new address[](1);
+        assets[0] = asset;
+        weights = new uint16[](1);
+        weights[0] = 10_000;
+    }
+
     function configure(address asset) external {
         (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
         assetCount = _initializeDividends(assets, weights, new bytes[](0));

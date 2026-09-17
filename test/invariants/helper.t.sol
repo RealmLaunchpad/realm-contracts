@@ -7,7 +7,8 @@ import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
-import {TaxConfigInit} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
+import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {EnumerableSet} from "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
@@ -140,24 +141,39 @@ contract InvariantsHelperLaunchpad is Test {
         IRealmFactory.SupplyShare[] memory noSs = new IRealmFactory.SupplyShare[](0);
         IRealmFactory.FeeShare[] memory creatorFs = new IRealmFactory.FeeShare[](1);
         creatorFs[0] = IRealmFactory.FeeShare({account: currentActor, shares: 10_000, directFeesEnabled: false});
+        IRealmFactory.CreatorVault[] memory noVaults = new IRealmFactory.CreatorVault[](0);
         if (seed % 2 == 0) {
             bytes32 salt = _nextValidSalt(address(factoryV2), tokenImpl, currentActor);
+            IRealmFactory.TokenSetupTiered memory setup = _setup(salt, creatorFs);
             vm.prank(currentActor);
-            token = factoryV2.createToken(
-                "TestToken", "TEST", salt, creatorFs, noSs, _emptyTaxCfg(), _emptyAntiSniperCfg()
-            );
+            token = factoryV2.createToken(setup, _emptyTaxCfg(), noSs, _emptyAntiSniperCfg(), noVaults, address(0));
         } else {
             bytes32 salt = _nextValidSalt(address(factoryV4), tokenImpl, currentActor);
+            IRealmFactory.TokenSetupTiered memory setup = _setup(salt, creatorFs);
             vm.prank(currentActor);
             token = factoryV4.createToken(
-                "TestToken", "TEST", salt, creatorFs, noSs, false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+                setup,
+                _emptyTaxCfg(),
+                RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
+                noSs,
+                _emptyAntiSniperCfg(),
+                noVaults,
+                address(0)
             );
         }
         _tokens.add(token);
     }
 
-    function _emptyTaxCfg() internal pure returns (TaxConfigInit memory) {
-        return TaxConfigInit({buyTaxBps: 0, sellTaxBps: 0, taxDurationSeconds: 0, startTaxFromLaunch: false});
+    function _emptyTaxCfg() internal pure returns (TaxConfigsWithMultiAllocation memory cfg) {}
+
+    function _setup(bytes32 salt, IRealmFactory.FeeShare[] memory fs)
+        internal
+        pure
+        returns (IRealmFactory.TokenSetupTiered memory)
+    {
+        return IRealmFactory.TokenSetupTiered({
+            name: "TestToken", symbol: "TEST", salt: salt, feeShares: fs, liquidityTier: LiquidityTier.DEFAULT
+        });
     }
 
     function _emptyAntiSniperCfg() internal pure returns (AntiSniperConfigs memory) {

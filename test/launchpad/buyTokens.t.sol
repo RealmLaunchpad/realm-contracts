@@ -296,24 +296,26 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         vm.prank(creator);
         if (address(graduator) == address(graduatorV2)) {
             testToken2 = factoryV2.createToken(
-                "Test Token 2",
-                "TT2",
-                _nextValidSalt(address(factoryV2), address(realmToken)),
-                _fs(creator),
+                _setupTiered(
+                    "Test Token 2", "TT2", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)
+                ),
+                _noAlloc(_emptyTaxCfg()),
                 _noSs(),
-                _emptyTaxCfg(),
-                _emptyAntiSniperCfg()
+                _emptyAntiSniperCfg(),
+                _noVaults(),
+                address(0)
             );
         } else {
             testToken2 = factoryV4.createToken(
-                "Test Token 2",
-                "TT2",
-                _nextValidSalt(address(factoryV4), address(realmToken)),
-                _fs(creator),
+                _setupTiered(
+                    "Test Token 2", "TT2", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(creator)
+                ),
+                _noAlloc(_emptyTaxCfg()),
+                _v4Cfg(false),
                 _noSs(),
-                false,
-                _emptyTaxCfg(),
-                _emptyAntiSniperCfg()
+                _emptyAntiSniperCfg(),
+                _noVaults(),
+                address(0)
             );
         }
 

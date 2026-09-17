@@ -17,7 +17,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @notice Stand-in for the universal router on a PARTIAL fill of an ERC20-quoted buy-back: the pool
@@ -168,7 +168,15 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         cfg.sellTaxBps = 0;
         cfg.taxDurationSeconds = 0;
         assertEq(
-            directFactory.previewTokenImplementation(cfg, _emptyAntiSniperCfg()),
+            directFactory.previewTokenImplementation(
+                _previewSetup(),
+                _pairs(address(0), LAUNCH_TICK),
+                cfg,
+                _emptyAntiSniperCfg(),
+                _noVaults(),
+                _noDevBuy(),
+                address(0)
+            ),
             address(realmTaxToken),
             "an allocation alone selects the taxable implementation"
         );
@@ -629,7 +637,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: 400,
             taxDurationSeconds: uint32(14 days),
@@ -637,9 +645,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0, dividendsBps: 5_000, liquidityBps: 0, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(0, 5_000, 0, address(0))
         });
         vm.prank(creator);
         RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(

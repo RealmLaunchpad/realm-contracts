@@ -28,7 +28,13 @@ contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.MultipleDirectFeeReceivers.selector);
         factoryV4Unified.createToken(
-            "DirectFees", "DF", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("DirectFees", "DF", salt, fs),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -39,7 +45,13 @@ contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "DirectFees", "DF", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("DirectFees", "DF", salt, fs),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertTrue(feeHandler.isDirectReceiver(token, creator), "direct receiver registered");
@@ -51,8 +63,14 @@ contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(realmToken));
         vm.prank(creator);
-        address token =
-            factoryV2Unified.createToken("DirectFees", "DF", salt, fs, _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
+        address token = factoryV2Unified.createToken(
+            _setupTiered("DirectFees", "DF", salt, fs),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         assertTrue(feeHandler.isDirectReceiver(token, creator), "direct receiver registered (V2)");
     }
@@ -63,8 +81,15 @@ contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
 
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
         vm.prank(creator);
-        address token =
-            factoryV4Unified.createToken("Plain", "P", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg());
+        address token = factoryV4Unified.createToken(
+            _setupTiered("Plain", "P", salt, fs),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         assertFalse(feeHandler.isDirectReceiver(token, creator), "no direct registration when not opted in");
     }
@@ -76,7 +101,13 @@ contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
         bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
         vm.prank(creator);
         address token = factoryV4Unified.createToken(
-            "MultiReceiver", "MR", salt, fs, _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("MultiReceiver", "MR", salt, fs),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertTrue(feeHandler.isDirectReceiver(token, alice), "alice is direct receiver");
@@ -94,7 +125,13 @@ contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
         // immediately after token init, before any fee can possibly flow.
         vm.prank(creator);
         address token = factoryV4Unified.createToken{value: 0.05 ether}(
-            "DirectBuy", "DB", salt, fs, ss, false, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("DirectBuy", "DB", salt, fs),
+            _noAlloc(_emptyTaxCfg()),
+            _v4Cfg(false),
+            ss,
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         assertTrue(feeHandler.isDirectReceiver(token, creator), "registered before deployer-buy fees flow");

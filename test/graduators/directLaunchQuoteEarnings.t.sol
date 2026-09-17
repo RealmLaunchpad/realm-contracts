@@ -90,7 +90,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         directFactory.createToken(
             setup,
             pairs,
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -198,7 +198,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         address token = directFactory.createToken(
             _setup(false),
             _pairs(quote, 20_000),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -303,7 +303,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         directFactory.createToken{value: value}(
             setup,
             pairs,
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             devBuy,
@@ -395,16 +395,30 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         );
     }
 
-    /// @dev The tax-only preview: no allocation to consider, so the tax alone picks the implementation.
-    function test_previewTokenImplementation_taxOnlyOverloadFollowsTheTax() public view {
+    /// @dev With no allocation, the tax alone picks the implementation.
+    function test_previewTokenImplementation_withoutAnAllocationFollowsTheTax() public view {
         assertEq(
-            directFactory.previewTokenImplementation(_toCfgs(_emptyTaxCfg()), _emptyAntiSniperCfg()),
+            directFactory.previewTokenImplementation(
+                _previewSetup(),
+                _pairs(address(0), LAUNCH_TICK),
+                _noDirectAlloc(_emptyTaxCfg()),
+                _emptyAntiSniperCfg(),
+                _noVaults(),
+                _noDevBuy(),
+                address(0)
+            ),
             address(realmToken),
             "no tax: base implementation"
         );
         assertEq(
             directFactory.previewTokenImplementation(
-                _toCfgs(_taxCfg(300, 300, uint32(14 days))), _emptyAntiSniperCfg()
+                _previewSetup(),
+                _pairs(address(0), LAUNCH_TICK),
+                _noDirectAlloc(_taxCfg(300, 300, uint32(14 days))),
+                _emptyAntiSniperCfg(),
+                _noVaults(),
+                _noDevBuy(),
+                address(0)
             ),
             address(realmTaxToken),
             "a tax: taxable implementation"
@@ -426,7 +440,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         address token = directFactory.createToken(
             setup,
             _twoPairs(),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             devBuy,
@@ -498,7 +512,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         address token = directFactory.createToken(
             setup,
             pairs,
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),
@@ -615,7 +629,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(false);
         vm.prank(creator);
         token = directFactory.createToken{value: native ? spend : 0}(
-            setup, pairs, _toCfgs(_emptyTaxCfg()), caps, new IRealmFactory.CreatorVault[](0), devBuy, address(0)
+            setup, pairs, _noDirectAlloc(_emptyTaxCfg()), caps, new IRealmFactory.CreatorVault[](0), devBuy, address(0)
         );
     }
 
@@ -688,7 +702,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         address token = directFactory.createToken(
             _setup(false),
             _quotePairs(QC_LAUNCH_TICK),
-            _toCfgs(_emptyTaxCfg()),
+            _noDirectAlloc(_emptyTaxCfg()),
             _caps(10, 300),
             new IRealmFactory.CreatorVault[](0),
             _noDevBuy(),

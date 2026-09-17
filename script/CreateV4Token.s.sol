@@ -6,7 +6,7 @@ import {VmSafe} from "forge-std/Vm.sol";
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
-import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
@@ -17,7 +17,7 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///         wired to a new graduator/hook) — the factory is NOT read from the manifest, since a
 ///         scratch factory deliberately isn't tracked there. The token itself is an ordinary V4
 ///         token; only the factory it's created through differs. Mines the required
-///         `0xeeaa`-suffixed salt off-chain, then calls the tiered `createToken` overload with the
+///         `0xeeaa`-suffixed salt off-chain, then calls `createToken` with the
 ///         selected liquidity tier (THIN by default), empty tax/anti-sniper config, no creator vaults
 ///         and no deployer buy.
 ///
@@ -83,21 +83,30 @@ contract CreateV4Token is Script {
                 IRealmFactory.TokenSetupTiered({
                     name: name, symbol: symbol, salt: salt, feeShares: feeShares, liquidityTier: tier
                 }),
-                TaxConfigs({
+                TaxConfigsWithMultiAllocation({
                     buyTaxBps: 0,
                     sellTaxBps: 0,
                     taxDurationSeconds: 0,
                     startTaxFromLaunch: false,
                     buyTaxDecayStartBps: 0,
                     sellTaxDecayStartBps: 0,
-                    taxDecayDuration: 0
+                    taxDecayDuration: 0,
+                    earningsAllocation: EarningsAllocationMultiConfig({
+                        burnBps: 0,
+                        dividendsBps: 0,
+                        liquidityBps: 0,
+                        dividendTokens: new address[](0),
+                        dividendWeightsBps: new uint16[](0),
+                        dividendRoutes: new bytes[](0)
+                    })
                 }),
                 RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: lpFeeBps}),
                 new IRealmFactory.SupplyShare[](0),
                 AntiSniperConfigs({
                     maxBuyPerTxBps: 0, maxWalletBps: 0, protectionWindowSeconds: 0, whitelist: new address[](0)
                 }),
-                new IRealmFactory.CreatorVault[](0)
+                new IRealmFactory.CreatorVault[](0),
+                address(0)
             );
         vm.stopBroadcast();
 

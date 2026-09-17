@@ -885,14 +885,15 @@ contract UniswapV4GraduationTests_TaxToken is TaxTokenUniV4BaseTests, UniswapV4G
     modifier createTestToken() override {
         vm.prank(creator);
         testToken = factoryTax.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
-            _fs(creator),
+            _setupTiered(
+                "TestToken", "TEST", _nextValidSalt(address(factoryTax), address(realmTaxToken)), _fs(creator)
+            ),
+            _noAlloc(_taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION))),
+            _v4Cfg(false),
             _noSs(),
-            false,
-            _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         _;
     }

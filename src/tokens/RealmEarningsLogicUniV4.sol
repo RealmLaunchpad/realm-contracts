@@ -204,26 +204,8 @@ contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase, DividendInitLogic {
     //////////////////////// CREATION-TIME CONFIGURATION (delegated from the token) //////////////////////
 
     /// @notice Creation-time dividend configuration, executed here on the token's storage. Guarded by
-    ///         the transient `tokenFactory`, which the `delegatecall` shares with the token.
-    function initializeEarningsAllocation(
-        uint16 _burnBps,
-        uint16 _dividendsBps,
-        uint16 _liquidityBps,
-        address _dividendToken
-    ) external override {
-        require(msg.sender == tokenFactory, Unauthorized());
-        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
-        if (_dividendsBps != 0) {
-            (address[] memory tokens, uint16[] memory weights) = _soleAssetSet(_dividendToken);
-            // No routes: the legacy single-asset shape predates them, and an empty route is exactly the
-            // permissionless V2 pair it always meant.
-            dividendAssetCount = _initializeDividends(tokens, weights, new bytes[](0));
-            hasDividends = true;
-        }
-    }
-
-    /// @notice Multi-asset creation-time dividend configuration. See
-    ///         `RealmTaxableToken.initializeEarningsAllocation(uint16,uint16,uint16,address[],uint16[])`.
+    ///         the transient `tokenFactory`, which the `delegatecall` shares with the token. See
+    ///         `RealmTaxableToken.initializeEarningsAllocation(uint16,uint16,uint16,address[],uint16[],bytes[])`.
     function initializeEarningsAllocation(
         uint16 _burnBps,
         uint16 _dividendsBps,

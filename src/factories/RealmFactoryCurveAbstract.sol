@@ -166,9 +166,8 @@ abstract contract RealmFactoryCurveAbstract is RealmFactoryAbstract {
         if (msg.value > 0) _buyAndDistribute(token, supplyShares);
     }
 
-    /// @dev Single shared `createToken` body called by both `createToken` overloads on each unified
-    ///      factory (legacy positional + tiered struct-based). Centralises validation → dispatch →
-    ///      launch → finalize so both signatures emit the exact same events in the same order.
+    /// @dev The shared `createToken` body of both curve factories. Centralises validation → dispatch →
+    ///      launch → finalize so both venues emit the exact same events in the same order.
     ///      Takes structs (not flat args) so future fields can be added to `TokenSetupTiered`/configs
     ///      without growing this function's stack frame. Callers derive `tokenOwner` per their
     ///      venue policy (V2: always `address(0)`; V4: `msg.sender` unless renounced).
@@ -179,12 +178,10 @@ abstract contract RealmFactoryCurveAbstract is RealmFactoryAbstract {
     ///      post-graduation `RealmSwapHook` charges, stored on the token and surfaced via `getSwapFees`:
     ///      0 for V2 (no hook LP fee), 50 or 100 for V4. A single hook reads it from the token, so one
     ///      V4 graduator per tier serves both fee tiers.
-    /// @dev `tokenSetup` is `memory` so the legacy positional overload — whose ABI takes flat
-    ///      calldata args — can build a `TokenSetupTiered` in memory and call this same umbrella. The
-    ///      string/`FeeShare[]` propagation forces `_validateInputs`/`_validateNameSymbol`/
-    ///      `_validateFeeShares`/`_dispatchAndInitialize`/`_cloneAndCreateToken`/`_finalizeCreation`
-    ///      to accept `memory` for those fields too. Once the legacy overload is removed, switch
-    ///      `tokenSetup` (and the cascaded fields) back to `calldata` to skip the one-time copy
+    /// @dev `tokenSetup` is `memory`, a leftover of the removed positional overload that built one in
+    ///      memory; the string/`FeeShare[]` fields cascade into `_validateInputs`/`_validateNameSymbol`/
+    ///      `_validateFeeShares`/`_dispatchAndInitialize`/`_cloneAndCreateToken`/`_finalizeCreation`.
+    ///      Switching it (and the cascaded fields) to `calldata` would skip a one-time copy
     ///      (~100–250 gas/deploy).
     function _createToken(
         TokenSetupTiered memory tokenSetup,
