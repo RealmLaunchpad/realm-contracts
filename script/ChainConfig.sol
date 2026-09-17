@@ -27,6 +27,8 @@ library ChainConfig {
         address univ4PoolManager;
         address univ4PositionManager;
         address permit2;
+        address univ4UniversalRouter;
+        address keepersRegistry;
     }
 
     /// @notice The manifest slots the factory constructors consume. Only populated once the stack is
@@ -75,7 +77,9 @@ library ChainConfig {
                 univ2PairInitCodeHash: DeploymentAddressesEthereumSepolia.UNIV2_PAIR_INIT_CODE_HASH,
                 univ4PoolManager: DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER,
                 univ4PositionManager: DeploymentAddressesEthereumSepolia.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesEthereumSepolia.PERMIT2
+                permit2: DeploymentAddressesEthereumSepolia.PERMIT2,
+                univ4UniversalRouter: DeploymentAddressesEthereumSepolia.UNIV4_UNIVERSAL_ROUTER,
+                keepersRegistry: DeploymentAddressesEthereumSepolia.REALM_KEEPERS_REGISTRY
             });
         } else if (isRobinhood()) {
             i = Infra({
@@ -84,7 +88,9 @@ library ChainConfig {
                 univ2PairInitCodeHash: DeploymentAddressesRobinhoodMainnet.UNIV2_PAIR_INIT_CODE_HASH,
                 univ4PoolManager: DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER,
                 univ4PositionManager: DeploymentAddressesRobinhoodMainnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesRobinhoodMainnet.PERMIT2
+                permit2: DeploymentAddressesRobinhoodMainnet.PERMIT2,
+                univ4UniversalRouter: DeploymentAddressesRobinhoodMainnet.UNIV4_UNIVERSAL_ROUTER,
+                keepersRegistry: DeploymentAddressesRobinhoodMainnet.REALM_KEEPERS_REGISTRY
             });
         } else if (isRobinhoodTestnet()) {
             i = Infra({
@@ -93,7 +99,9 @@ library ChainConfig {
                 univ2PairInitCodeHash: DeploymentAddressesRobinhoodTestnet.UNIV2_PAIR_INIT_CODE_HASH,
                 univ4PoolManager: DeploymentAddressesRobinhoodTestnet.UNIV4_POOL_MANAGER,
                 univ4PositionManager: DeploymentAddressesRobinhoodTestnet.UNIV4_POSITION_MANAGER,
-                permit2: DeploymentAddressesRobinhoodTestnet.PERMIT2
+                permit2: DeploymentAddressesRobinhoodTestnet.PERMIT2,
+                univ4UniversalRouter: DeploymentAddressesRobinhoodTestnet.UNIV4_UNIVERSAL_ROUTER,
+                keepersRegistry: DeploymentAddressesRobinhoodTestnet.REALM_KEEPERS_REGISTRY
             });
         } else {
             revert(UNSUPPORTED);

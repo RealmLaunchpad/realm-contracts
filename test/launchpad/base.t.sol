@@ -482,7 +482,7 @@ contract LaunchpadBaseTests is Test {
         );
         anyPairHook = RealmHookAnyPair(payable(TEST_ANYPAIR_HOOK_ADDRESS));
 
-        feeHandler = new RealmMasterFeeHandler();
+        feeHandler = new RealmMasterFeeHandler(universalRouter, permit2Address);
 
         // Single shared liquidity adder, mirroring the production topology (deployed once, all graduators
         // and taxable tokens point at the same one).

@@ -79,6 +79,13 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
     ///         gas and starve the fallback.
     uint256 private constant ROUTER_GAS_LIMIT = 1_000_000;
 
+    /// @notice Gas budget forwarded to the token's `accrueFees` on `settleFees`, capped for the same reason.
+    uint256 private constant TOKEN_GAS_LIMIT = 1_000_000;
+
+    /// @notice Headroom `settleFees` requires on top of a capped call's budget before making it: covers
+    ///         the ABI encoding between the check and the CALL, and the EIP-150 1/64 retention.
+    uint256 private constant GAS_CHECK_MARGIN = 50_000;
+
     /// @notice What this hook resolved about a pool the first time it was swapped.
     /// @dev `token` doubles as the "resolved yet?" flag: it is never `address(0)` once written.
     struct PoolInfo {
@@ -107,6 +114,9 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
     mapping(address token => mapping(address quote => uint256)) public pendingTaxes;
 
     /// @notice LP fee withheld on the quote leg in `beforeSwap`, carried to `afterSwap`.
+    /// @dev Shared by every pool this hook serves, so it is only sound while nothing between the two
+    ///      callbacks can start another swap. Keep it that way: no external call to untrusted code (the
+    ///      quote token included) inside the swap callbacks.
     uint256 private transient _cachedLpFee;
 
     /// @notice Tax withheld on the quote leg in `beforeSwap`, carried to `afterSwap`.
@@ -128,6 +138,9 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
     error TreasuryTransferFailed();
     /// @notice Thrown when `unlockCallback` is reached from anywhere but the pool manager.
     error OnlyPoolManager();
+    /// @notice Thrown when `settleFees` is called with too little gas to give a capped call its full
+    ///         budget, so a caller cannot starve that call into its treasury fallback.
+    error InsufficientGas();
 
     /// @notice Emitted when swap taxes are forwarded to the token, which splits them across its
     ///         earnings allocation and its fee receivers.
@@ -156,6 +169,10 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
     ///         itself was already reported, at the trade that produced it, by `LpFeesForwarded` /
     ///         `CreatorTaxesAccrued`; this records the (later, batched) moment the currency moved.
     event FeesSettled(address indexed token, address indexed quote, uint256 lpFee, uint256 tax);
+    /// @notice Emitted by `settleFees`, before `FeesSettled`, when part of the redemption went to the
+    ///         treasury instead of its destination: `lpFee` because the router reverted, `tax` because the
+    ///         token's `accrueFees` did. Zero for a leg that was delivered normally.
+    event TreasuryFallback(address indexed token, address indexed quote, uint256 lpFee, uint256 tax);
     /// @notice Emitted on every sell. See `RealmQuoteSwapBuy`.
     event RealmQuoteSwapSell(
         address indexed token,
@@ -402,9 +419,14 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
     /// @dev Separate from the swap because a claim can only become currency once the pool manager is
     ///      actually holding some — see `pendingLpFees`. By the time anyone calls this the swaps that
     ///      produced the fee have settled their inputs, so the redemption is funded by construction.
-    /// @dev Hardened exactly as `RealmSwapHook._route` is: a capped-gas `try` on the router, with the LP
-    ///      fee falling through to the treasury on any failure so it stays under protocol control and
-    ///      never strands here.
+    /// @dev Both legs are a capped-gas `try` with a treasury fallback, as `RealmSwapHook._route` does for
+    ///      the LP fee: this hook cannot be upgraded, so a destination that reverts for good must not
+    ///      strand the ledger. The fallback keeps the money under protocol control and says so in
+    ///      `TreasuryFallback`.
+    /// @dev Each capped call first requires enough gas to receive its WHOLE budget. Without that a
+    ///      caller — this function is permissionless — could starve the call into its `catch` on
+    ///      purpose and divert a creator's fees to the treasury. With it, a revert means the
+    ///      destination really failed.
     function settleFees(address token, address quote) public {
         uint256 lpFee = pendingLpFees[token][quote];
         uint256 tax = pendingTaxes[token][quote];
@@ -416,7 +438,10 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
         // Turns the claims into the currency itself, which needs the manager unlocked.
         poolManager.unlock(abi.encode(quote, total));
 
+        uint256 lpFallback;
+        uint256 taxFallback;
         if (lpFee > 0) {
+            _requireGasFor(ROUTER_GAS_LIMIT);
             IERC20(quote).forceApprove(address(FEE_ROUTER), lpFee);
             try FEE_ROUTER.depositLpFees{gas: ROUTER_GAS_LIMIT}(token, quote, lpFee, 0, 0) {
             // happy path — the router emitted its own `LpAssetFeesRouted` with the breakdown.
@@ -426,13 +451,26 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
                 // to the token's fee receivers, keeping it under protocol control.
                 IERC20(quote).forceApprove(address(FEE_ROUTER), 0);
                 IERC20(quote).safeTransfer(TREASURY, lpFee);
+                lpFallback = lpFee;
             }
         }
         if (tax > 0) {
+            _requireGasFor(TOKEN_GAS_LIMIT);
             IERC20(quote).forceApprove(token, tax);
-            IRealmToken(token).accrueFees(quote, tax);
+            try IRealmToken(token).accrueFees{gas: TOKEN_GAS_LIMIT}(quote, tax) {}
+            catch {
+                IERC20(quote).forceApprove(token, 0);
+                IERC20(quote).safeTransfer(TREASURY, tax);
+                taxFallback = tax;
+            }
         }
+        if (lpFallback + taxFallback > 0) emit TreasuryFallback(token, quote, lpFallback, taxFallback);
         emit FeesSettled(token, quote, lpFee, tax);
+    }
+
+    /// @dev Reverts unless a call capped at `budget` would receive all of it (EIP-150 keeps 1/64 back).
+    function _requireGasFor(uint256 budget) private view {
+        require(gasleft() >= budget * 64 / 63 + GAS_CHECK_MARGIN, InsufficientGas());
     }
 
     /// @notice The pool manager's re-entry for `settleFees`. Burns the claims and takes the currency.

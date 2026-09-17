@@ -49,7 +49,12 @@ contract DeployRealmTreasuryRouter is Script {
         vm.startBroadcast();
         (, address broadcaster,) = vm.readCallers();
         console.log("Deployer/owner:  ", broadcaster);
-        address routerImpl = address(new RealmTreasuryRouter(teamTreasury, voting));
+        ChainConfig.Infra memory infra = ChainConfig.infra();
+        address routerImpl = address(
+            new RealmTreasuryRouter(
+                teamTreasury, voting, infra.univ4UniversalRouter, infra.permit2, infra.keepersRegistry
+            )
+        );
         address routerProxy = address(new ERC1967Proxy(routerImpl, abi.encodeCall(RealmTreasuryRouter.initialize, ())));
         address lpImpl = address(new SwapLpFeeRouter(routerProxy));
         UUPSUpgradeable(lpFeeRouter).upgradeToAndCall(lpImpl, "");

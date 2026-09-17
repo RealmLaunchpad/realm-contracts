@@ -196,6 +196,50 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         assertGt(quoteCoin.balanceOf(treasury) - before, 0, "treasury slice must arrive in the quote");
     }
 
+    /// @dev A taxed token on the QuoteCoin pool, with alice's buy already booked in the hook.
+    function _taxedTokenWithPendingFees() internal returns (address token) {
+        vm.prank(creator);
+        token = directFactory.createToken(
+            _setup(true),
+            _quotePairs(QC_LAUNCH_TICK),
+            _toCfgs(_taxCfg(300, 300, uint32(14 days))),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+        quoteCoin.mintTo(alice, 1_000e6);
+        _swapQuotePool(alice, token, true, 100e6);
+    }
+
+    /// @dev The hook cannot be upgraded, so a token whose `accrueFees` reverts must not strand the ledger.
+    ///      The router reaches the creator through the same `accrueFees`, so both legs fall through to the
+    ///      treasury here, and the event says how much of each.
+    function test_settleFees_fallsBackToTreasuryWhenTheTokenReverts() public {
+        address token = _taxedTokenWithPendingFees();
+        uint256 lpFee = anyPairHook.pendingLpFees(token, address(quoteCoin));
+        uint256 tax = anyPairHook.pendingTaxes(token, address(quoteCoin));
+        assertGt(tax, 0, "the buy booked a tax");
+        vm.mockCallRevert(token, abi.encodeWithSignature("accrueFees(address,uint256)"), "");
+
+        uint256 treasuryBefore = quoteCoin.balanceOf(treasury);
+        vm.expectEmit(address(anyPairHook));
+        emit RealmHookAnyPair.TreasuryFallback(token, address(quoteCoin), lpFee, tax);
+        anyPairHook.settleFees(token, address(quoteCoin));
+
+        assertEq(quoteCoin.balanceOf(treasury) - treasuryBefore, lpFee + tax, "everything reached the treasury");
+        assertEq(anyPairHook.pendingTaxes(token, address(quoteCoin)), 0, "ledger cleared");
+        assertEq(quoteCoin.balanceOf(address(anyPairHook)), 0, "hook keeps nothing");
+    }
+
+    /// @dev `settleFees` is permissionless: a caller must not be able to starve a destination's call into
+    ///      its fallback and divert the creator's fees to the treasury.
+    function test_settleFees_refusesToRunWithoutGasForTheCappedCalls() public {
+        address token = _taxedTokenWithPendingFees();
+        vm.expectRevert(RealmHookAnyPair.InsufficientGas.selector);
+        anyPairHook.settleFees{gas: 600_000}(token, address(quoteCoin));
+    }
+
     function test_erc20Quote_sellWorksInTheOtherDirection() public {
         address token = _launchAgainstQuoteCoin(_noDevBuy());
         quoteCoin.mintTo(alice, 1_000e6);

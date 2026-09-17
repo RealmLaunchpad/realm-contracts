@@ -86,7 +86,7 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         quoter = RealmQuoter(forkCfg.quoter);
         factoryV2 = RealmFactoryUniV2Unified(forkCfg.factoryV2Unified);
         factoryV4 = RealmFactoryUniV4Unified(forkCfg.factoryV4Unified);
-        feeHandler = RealmMasterFeeHandler(forkCfg.masterFeeHandler);
+        feeHandler = RealmMasterFeeHandler(payable(forkCfg.masterFeeHandler));
 
         _assertDeployedAddressConfig();
     }

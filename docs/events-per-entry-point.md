@@ -56,6 +56,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 6. [V4 post-graduation swaps](#6-v4-post-graduation-swaps)
 6b. [ERC20-quoted V4 swaps](#61-erc20-quoted-v4-swaps-realmhookanypair)
 7. [`RealmMasterFeeHandler.claim`](#7-realmmasterfeehandlerclaimaddress-tokens)
+7b. [`RealmMasterFeeHandler.claimAsNative`](#71-realmmasterfeehandlerclaimasnativeaddress-tokens-address-asset-pathkey-path-uint256-minout)
 8. [`RealmMasterFeeHandler.setShares`](#8-realmmasterfeehandlersetsharesaddress-token-feeshare-feeshares)
 9. [Direct-fee behavior](#9-direct-fee-behavior)
 10. [`RealmTaxableToken.setTaxBps`](#10-realmtaxabletokensettaxbpsuint16-newbuytaxbps-uint16-newselltaxbps)
@@ -369,9 +370,13 @@ Per swap leg, in order:
 Then, on any later `settleFees(token, quote)` call:
 
 5. `PoolManager` `Transfer` (the 6909 burn) and the ERC20 `Transfer` out of the manager, then **`SwapLpFeeRouter.LpAssetFeesRouted`** (`token, asset, creatorShare, treasuryShare, liquidityShare`) — or, on the router-failure fallback, no such event and the whole LP fee transferred to the treasury. The creator share reaches the token through `accrueFees(asset, amount)`, which routes it through the earnings split and then **`RealmMasterFeeHandler.CreatorAssetFeesDeposited`** (`token, asset, amount`), with an optional **`CreatorAssetClaimed`** on a successful direct forward.
-6. **`RealmHookAnyPair.FeesSettled`** (`token, quote, lpFee, tax`) — records the (batched) moment the currency moved. The fees themselves were already reported, at the trades that produced them, in steps 2–3.
+6. The tax: the token's `accrueFees(quote, tax)`, with the same earnings split and **`CreatorAssetFeesDeposited`** / optional **`CreatorAssetClaimed`** — or, if that call reverts, no such events and the tax transferred to the treasury.
+7. **`RealmHookAnyPair.TreasuryFallback`** (`token, quote, lpFee, tax`) — only when step 5 and/or step 6 fell back; each field is the amount of that leg that went to the treasury, 0 for a leg delivered normally.
+8. **`RealmHookAnyPair.FeesSettled`** (`token, quote, lpFee, tax`) — records the (batched) moment the currency moved. The fees themselves were already reported, at the trades that produced them, in steps 2–3.
 
-The treasury slice of an ERC20 LP fee ACCUMULATES on `RealmTreasuryRouter` — an ERC20 has no `receive()` to route it on arrival — until an owner calls `sweep(asset)`, which forwards the whole balance to the multisig and emits **`RealmTreasuryRouter.TreasuryAssetSwept`** (`asset, amount`). Voting stays native-only, so an ERC20 is never split into it.
+`settleFees` reverts `InsufficientGas` (no events) when the caller did not supply enough gas for the router and token calls to receive their full capped budgets, so a fallback is always a genuine destination failure, never a starved call.
+
+The treasury slice of an ERC20 LP fee ACCUMULATES on `RealmTreasuryRouter` — an ERC20 has no `receive()` to route it on arrival — until an owner calls `sweep(asset)`, which forwards the whole balance to the multisig and emits **`RealmTreasuryRouter.TreasuryAssetSwept`** (`asset, amount`), or a keeper converts it to native with `convert` (§11). Voting stays native-only, so an ERC20 is never split into it; only the native a conversion produces is.
 
 ---
 
@@ -386,6 +391,18 @@ For each token in `tokens` where `msg.sender` has a non-zero claimable balance:
 After iterating all tokens, a single native ETH transfer pays the sum to `msg.sender`. If the sum is zero, no events are emitted and no ETH transfer is attempted.
 
 Duplicate token entries do not double-pay because the first matching entry clears the caller's claimable balance for that token.
+
+---
+
+## 7.1 `RealmMasterFeeHandler.claimAsNative(address[] tokens, address asset, PathKey[] path, uint256 minOut)`
+
+Claims `msg.sender`'s fees in one ERC20 `asset` across `tokens` and pays them out as native, sold along the caller's `path` (`asset -> ... -> native`) in the same call. The asset is never delivered.
+
+1. **`RealmMasterFeeHandler.CreatorAssetClaimed`** (`token, asset, account=msg.sender, amount`) — once per token with a non-zero claimable balance, in the ASSET's units, exactly as `claim(tokens, asset)` emits them.
+2. Universal-router swap events (Permit2 / ERC20 `Transfer`s, `PoolManager.Swap`).
+3. **`RealmMasterFeeHandler.CreatorAssetConvertedToNative`** (`account, asset, amountIn, nativeOut`) — `amountIn` is the sum of step 1; `nativeOut` is what was paid to `msg.sender`, in native.
+
+Nothing claimable: no events, returns 0. A reverted swap, a partial fill or `nativeOut < minOut` reverts `NativeConversionFailed` and leaves the claim intact.
 
 ---
 
@@ -447,6 +464,14 @@ nests the following inside the paying entry point, at the point of the push:
    (launchpad / graduator / LP fee router). `votingShare == 0` and no step-1 events when the voting call
    reverted: the whole amount then went to the multisig (fail-safe so a voting bug cannot brick trading),
    or when `msg.value < 3`.
+
+**`convert(address asset, uint256 amountIn, uint256 minOut)`** — keeper-gated (`RealmKeepersRegistry`). Sells an ERC20 the router holds for native along the owner-set route, then routes the proceeds:
+
+1. Universal-router swap events.
+2. **`RealmTreasuryRouter.TreasuryAssetConverted`** (`asset, amountIn, nativeOut`) — both measured as balance deltas.
+3. The §11 sequence above for `nativeOut`, with `TreasuryEthRouted.from` = the router itself.
+
+**`setConversionRoute(address asset, PathKey[] path)`** — owner. **`RealmTreasuryRouter.ConversionRouteSet`** (`asset, route`), `route` = `abi.encode(path)`.
 
 The multisig transfer emits nothing. `DividendBufferSweptToTreasury` (dividends section) pushes to the
 token impl's compile-time `DIVIDEND_TREASURY`, which follows `DeploymentAddresses.REALM_TREASURY` at

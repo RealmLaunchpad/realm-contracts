@@ -90,7 +90,9 @@ contract LaunchpadInvariants is Test {
             abi.encode(poolManagerAddress, makeAddr("lpFeeRouterDummy"), treasury),
             TEST_HOOK_ADDRESS
         );
-        feeHandler = new RealmMasterFeeHandler();
+        feeHandler = new RealmMasterFeeHandler(
+            DeploymentAddressesEthereumMainnet.UNIV4_UNIVERSAL_ROUTER, DeploymentAddressesEthereumMainnet.PERMIT2
+        );
 
         address univ4LiquidityAdder =
             address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress, permit2Address));

@@ -9,13 +9,17 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
+import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
+import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
+import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
 
 /// @title RealmMasterFeeHandler
 /// @notice Unified singleton fee handler for all Realm tokens. Supports single and multi-receiver
 ///         configs with optional synchronous ETH forwarding (direct fees) per receiver.
 ///
-///         All ETH enters through `depositFees` — there is no `receive()` fallback and no excess
-///         ETH can accumulate. Every wei is attributed to a specific token at arrival.
+///         All ETH enters through `depositFees` — `receive()` accepts native only mid-`claimAsNative`,
+///         where it is paid straight back out, so no excess ETH can accumulate. Every wei is attributed
+///         to a specific token at arrival.
 ///
 ///         Two recipient classes coexist:
 ///           - **direct** recipients have their slice forwarded synchronously on every `depositFees`,
@@ -83,7 +87,24 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     ///         bookkeeping O(1) instead of scanning the array on every deposit.
     mapping(address token => mapping(address asset => bool)) internal _assetSeen;
 
-    constructor() Ownable(msg.sender) {}
+    /// @notice Uniswap universal router `claimAsNative` swaps through.
+    address public immutable UNIVERSAL_ROUTER;
+    /// @notice Permit2, through which the universal router pulls the asset `claimAsNative` sells.
+    address public immutable PERMIT2;
+
+    /// @dev True only while `claimAsNative` swaps, the one moment `receive` accepts native.
+    bool private transient _awaitingNative;
+
+    constructor(address universalRouter_, address permit2_) Ownable(msg.sender) {
+        UNIVERSAL_ROUTER = universalRouter_;
+        PERMIT2 = permit2_;
+    }
+
+    /// @dev The proceeds of `claimAsNative`'s swap. Refused at any other time, so native still only ever
+    ///      enters through `depositFees`.
+    receive() external payable {
+        require(_awaitingNative, Unauthorized());
+    }
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
@@ -204,24 +225,51 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     ///      a matrix would either need a transfer per asset anyway or an inner loop whose gas nobody can
     ///      bound. `assetsOf(token)` tells a caller which assets a token has paid in.
     function claim(address[] calldata tokens, address asset) external nonReentrant {
-        require(asset != address(0), InvalidAsset());
-        uint256 total;
-        uint256 nTokens = tokens.length;
-
-        for (uint256 i = 0; i < nTokens; i++) {
-            address token = tokens[i];
-            TokenFeeConfigLib.Config storage cfg = _configs[token];
-            if (!cfg.isRegistered()) continue;
-
-            uint256 claimable = _getAndClearClaimable(token, cfg, asset, msg.sender);
-            if (claimable == 0) continue;
-
-            total += claimable;
-            emit CreatorAssetClaimed(token, asset, msg.sender, claimable);
-        }
-
+        uint256 total = _claimAsset(tokens, asset);
         if (total == 0) return;
         IERC20(asset).safeTransfer(msg.sender, total);
+    }
+
+    /// @notice Claims `msg.sender`'s fees in ONE ERC20 `asset` across `tokens`, sells them for native along
+    ///         `path` in the same call, and pays the native out. The asset is never delivered.
+    /// @dev Emits exactly what `claim(tokens, asset)` emits — one `CreatorAssetClaimed` per token, in the
+    ///      ASSET's units, so the asset ledgers close as they always do — then one
+    ///      `CreatorAssetConvertedToNative` for the swap.
+    /// @dev `path` and `minOut` are the caller's: only their own claim is at stake. This contract holds
+    ///      every creator's balances, so the swap is fenced to exactly that claim: Permit2 is approved for
+    ///      the claimed amount only, and a partial fill reverts rather than leaving the unsold remainder
+    ///      here, where no ledger would attribute it to anyone.
+    /// @param path `asset -> ... -> native`, in the universal router's `PathKey` form. One hop means a
+    ///        native/`asset` pool.
+    /// @param minOut Floor on the native received.
+    /// @return nativeOut native paid to `msg.sender`; 0 when nothing was claimable.
+    function claimAsNative(address[] calldata tokens, address asset, PathKey[] calldata path, uint256 minOut)
+        external
+        nonReentrant
+        returns (uint256 nativeOut)
+    {
+        uint256 total = _claimAsset(tokens, asset);
+        if (total == 0) return 0;
+
+        IERC20(asset).forceApprove(PERMIT2, total);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        IAllowanceTransfer(PERMIT2).approve(asset, UNIVERSAL_ROUTER, uint160(total), uint48(block.timestamp));
+        uint256 assetBefore = IERC20(asset).balanceOf(address(this));
+        uint256 nativeBefore = address(this).balance;
+        _awaitingNative = true;
+        // The venue refuses an amount above uint128, so the uint160 approval above cannot have truncated
+        // a swap that goes through.
+        bool ok = UniversalRouterVenue.swapAssetToNativeV4Path(UNIVERSAL_ROUTER, asset, path, total, minOut);
+        _awaitingNative = false;
+        nativeOut = address(this).balance - nativeBefore;
+        require(
+            ok && nativeOut != 0 && nativeOut >= minOut
+                && assetBefore - IERC20(asset).balanceOf(address(this)) == total,
+            NativeConversionFailed()
+        );
+
+        emit CreatorAssetConvertedToNative(msg.sender, asset, total, nativeOut);
+        _transferEth(msg.sender, nativeOut);
     }
 
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
@@ -564,6 +612,25 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
             for (uint256 j = i + 1; j < len; j++) {
                 require(feeShares[i].account != feeShares[j].account, InvalidFeeShares());
             }
+        }
+    }
+
+    /// @dev Clears `msg.sender`'s claimable `asset` across `tokens`, emitting `CreatorAssetClaimed` per
+    ///      token, and returns the total. The caller delivers it.
+    function _claimAsset(address[] calldata tokens, address asset) internal returns (uint256 total) {
+        require(asset != address(0), InvalidAsset());
+        uint256 nTokens = tokens.length;
+
+        for (uint256 i = 0; i < nTokens; i++) {
+            address token = tokens[i];
+            TokenFeeConfigLib.Config storage cfg = _configs[token];
+            if (!cfg.isRegistered()) continue;
+
+            uint256 claimable = _getAndClearClaimable(token, cfg, asset, msg.sender);
+            if (claimable == 0) continue;
+
+            total += claimable;
+            emit CreatorAssetClaimed(token, asset, msg.sender, claimable);
         }
     }
 
