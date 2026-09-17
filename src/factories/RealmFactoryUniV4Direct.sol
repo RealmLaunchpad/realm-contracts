@@ -105,9 +105,9 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         SupplyShare[] recipients;
     }
 
-    /// @notice Max pools one token may launch into, and therefore max currencies it may earn in. A
-    ///         FIXED compile-time bound matching `RealmToken.MAX_QUOTES`: the token's earnings path
-    ///         walks the set, so it has to be small and impossible to grow after creation.
+    /// @notice Max pools one token may launch into, any mix of native and ERC20 quotes. One less than
+    ///         `RealmToken.MAX_QUOTES`, whose index 0 is native on every token, so three ERC20 pairs fit
+    ///         with no native pair at all.
     uint256 public constant MAX_PAIRS = 3;
 
     /// @notice Lowest opening market cap a pair may launch at: 0.001 WHOLE units of its quote, scaled by

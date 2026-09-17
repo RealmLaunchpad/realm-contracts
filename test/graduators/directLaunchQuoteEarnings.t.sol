@@ -442,6 +442,45 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         assertEq(IERC20(token).balanceOf(address(directFactory)), 0, "factory keeps no tokens");
     }
 
+    /// @dev Three ERC20 pairs and no native one: the token holds native at index 0 plus all three quotes,
+    ///      each pool trades, and the LAST quote's earnings buffers work like the first's.
+    function test_multiPair_threeErc20QuotesWithoutANativePair() public {
+        address third = address(new QuoteCoin());
+        RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](3);
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({
+            quote: address(quoteCoin), weightBps: 5_000, launchTick: QC_LAUNCH_TICK
+        });
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({
+            quote: address(new QuoteCoin18()), weightBps: 3_000, launchTick: LAUNCH_TICK
+        });
+        pairs[2] = RealmFactoryUniV4Direct.DirectPair({quote: third, weightBps: 2_000, launchTick: QC_LAUNCH_TICK});
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(true);
+
+        vm.prank(creator);
+        RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(
+            payable(directFactory.createToken(
+                    setup,
+                    pairs,
+                    _burnAndLiquidityAlloc(),
+                    _emptyAntiSniperCfg(),
+                    new IRealmFactory.CreatorVault[](0),
+                    _noDevBuy(),
+                    address(0)
+                ))
+        );
+
+        assertEq(token.quoteCount(), 4, "native plus three ERC20 quotes");
+        assertEq(token.quotes(3), third, "the third ERC20 is the last quote");
+        QuoteCoin(third).mintTo(alice, 1_000e6);
+        _swapQuotePool(alice, address(token), third, true, 100e6);
+        assertGt(token.balanceOf(alice), 0, "the third pool trades");
+
+        _accrue(token, third, 4_000e6);
+        token.processLiquidity(third);
+        (uint256[2] memory ids,) = token.getLiquidityWalls(third);
+        assertGt(ids[0], 0, "the last quote's liquidity buffer placed a wall");
+    }
+
     /// @dev The `MAX_PAIRS` launch: native plus two ERC20s, one `PoolSeeded` per pool in pair order with
     ///      its own weight, and the supply fully seeded or burned.
     function test_multiPair_threePoolsAreAllSeeded() public {

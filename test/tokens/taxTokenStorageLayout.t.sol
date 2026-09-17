@@ -40,15 +40,16 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     ///      15 -> 19 when the quote registry (`quotes[3]` + its index mapping) landed ahead of it,
     ///      `dividendAccounts` 24 and `dividendWeightsBps` 25. `failedConversionBlock` no longer needs a
     ///      word of its own — inside a struct array it cannot leak into the head of this slot — but the
-    ///      arrays that replaced it occupy whole slots, so the effect is the same.
-    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 30;
+    ///      arrays that replaced it occupy whole slots, so the effect is the same. Then 30 -> 31 when
+    ///      `quotes` grew to four entries (native + three ERC20s), pushing everything after it by a slot.
+    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 31;
 
     /// @dev The V2 swap-back counters, which the packing above pushes into the following slot.
-    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 31;
+    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 32;
 
     /// @dev First `DivAsset` of the payout set. Three slots each: the hot slot (accumulator + the three
     ///      clocks + the precision exponent), then `token` + `rate`, then the ledger + the buffer.
-    uint256 internal constant DIVIDEND_ASSETS_SLOT = 19;
+    uint256 internal constant DIVIDEND_ASSETS_SLOT = 20;
 
     RealmTaxableTokenUniV2 internal tok;
 

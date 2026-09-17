@@ -120,10 +120,12 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     /// @notice Token symbol
     string internal _tokenSymbol;
 
-    /// @notice Max currencies a token's pools may be quoted in — one per pool, and the bound on the
-    ///         pools themselves. A FIXED compile-time bound, not a policy knob: the earnings path walks
-    ///         the set, so it has to be small and impossible to grow after creation.
-    uint256 public constant MAX_QUOTES = 3;
+    /// @notice Max currencies a token can earn in: native, always at index 0, plus up to three ERC20
+    ///         quotes, one per pool. A FIXED compile-time bound, not a policy knob: the earnings path
+    ///         walks the set, so it has to be small and impossible to grow after creation. Unused
+    ///         entries cost nothing: the arrays sized by it are never initialized and every loop stops at
+    ///         `quoteCount`.
+    uint256 public constant MAX_QUOTES = 4;
 
     /// @notice The currencies this token's pools are quoted in, in registration order. Index 0 is
     ///         ALWAYS the chain's native currency (`address(0)`), set at initialization, so a token that
