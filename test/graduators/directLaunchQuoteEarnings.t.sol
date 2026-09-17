@@ -18,6 +18,7 @@ import {Currency, CurrencyLibrary} from "lib/v4-core/src/types/Currency.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
+import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {SniperProtection} from "src/tokens/SniperProtection.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {PoolKey as CorePoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -141,6 +142,9 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         _accrue(token, quote, 4_000e6);
         IPositionManager posm = IPositionManager(positionManagerAddress);
 
+        // The wall's currency is on the event, so its amount is never read as native.
+        vm.expectEmit(true, false, false, false, address(token));
+        emit RealmTaxableToken.LiquidityAdded(quote, 0, 0, 0);
         token.processLiquidity(quote);
         (uint256[2] memory ids,) = token.getLiquidityWalls(quote);
         assertGt(ids[0], 0, "a wall was minted");
@@ -173,6 +177,11 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         _accrue(token, quote, 4_000e6);
         uint256 supply = token.totalSupply();
 
+        // Both the precursor and the burn name the quote the buy-back spent.
+        vm.expectEmit(true, false, false, false, address(token));
+        emit RealmTaxableTokenUniV4Base.BuyBackInitiated(quote, 0);
+        vm.expectEmit(true, false, false, false, address(token));
+        emit RealmTaxableToken.CreatorTaxBurn(quote, 0, 0);
         token.processBurn(quote, 1);
 
         assertLt(token.totalSupply(), supply, "bought back on the quote pool and burned");

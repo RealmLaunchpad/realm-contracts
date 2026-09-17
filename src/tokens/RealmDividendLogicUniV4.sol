@@ -137,7 +137,7 @@ contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLo
             uint256 quoteBefore = _quoteHoldings(quote);
             uint256 reservedBefore = _quoteReserved(quote);
             // Precursor marker, BEFORE the swap: see the native override below.
-            emit DividendBuyBackInitiated(amountIn);
+            emit DividendBuyBackInitiated(quote, amountIn);
             if (!_buyBackTokens(IRealmV4Graduator(graduator).hookFor(quote), quote, amountIn, minOut)) return (0, 0);
             out = balanceOf(address(this)) - balanceBefore;
             if (out == 0) return (0, 0);

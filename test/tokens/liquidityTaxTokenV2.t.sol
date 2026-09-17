@@ -164,9 +164,10 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     /// @dev Decodes the `ethIn`/`tokensAdded` fields of the last `LiquidityAdded` in `logs`.
     function _liquidityAddedAmounts(Vm.Log[] memory logs) internal pure returns (uint256 ethIn, uint256 tokensAdded) {
-        bytes32 sig = keccak256("LiquidityAdded(uint256,uint256,uint256)");
+        bytes32 sig = keccak256("LiquidityAdded(address,uint256,uint256,uint256)");
         for (uint256 i = logs.length; i > 0; --i) {
             if (logs[i - 1].topics[0] == sig) {
+                assertEq(logs[i - 1].topics[1], bytes32(0), "V2 liquidity is native-quoted");
                 (ethIn, tokensAdded,) = abi.decode(logs[i - 1].data, (uint256, uint256, uint256));
                 return (ethIn, tokensAdded);
             }

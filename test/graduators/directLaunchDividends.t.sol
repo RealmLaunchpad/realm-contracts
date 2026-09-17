@@ -298,8 +298,8 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         uint256 buffered = _pending(token);
         uint256 bag = IERC20(address(token)).balanceOf(alice);
 
-        vm.expectEmit(false, false, false, true, address(token));
-        emit RealmTaxableTokenUniV4Base.DividendBuyBackInitiated(buffered / 4);
+        vm.expectEmit(true, false, false, true, address(token));
+        emit RealmTaxableTokenUniV4Base.DividendBuyBackInitiated(USDC, buffered / 4);
         token.processDividends(0, USDC, 0, _one(alice));
 
         assertGt(IERC20(address(token)).balanceOf(alice), bag, "alice was paid in the token");

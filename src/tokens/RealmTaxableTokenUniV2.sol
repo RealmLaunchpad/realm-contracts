@@ -191,7 +191,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
 
         _inSwap = false;
 
-        emit LiquidityAdded(ethAdded, tokensAdded, liquidity);
+        emit LiquidityAdded(address(0), ethAdded, tokensAdded, liquidity);
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////
@@ -313,7 +313,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
         if (burnAmount > 0) {
             _burn(address(this), burnAmount);
             // `ethSpent` is 0: the burn happens in token-space, with no ETH→token round trip.
-            emit CreatorTaxBurn(0, burnAmount);
+            emit CreatorTaxBurn(address(0), 0, burnAmount);
         }
 
         // Set aside the liquidity-share as TOKENS — kept on this contract (tracked by

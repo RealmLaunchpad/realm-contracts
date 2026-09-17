@@ -71,9 +71,9 @@ contract BurnTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2SwapHelp
 
         // Manual swap-back by the launchpad owner (V2 tokens are ownerless). Burns the burn share as
         // tokens in-place (no ETH→token round trip), then swaps the rest.
-        // Shared two-field signature; V2 spends no ETH to burn (token-space burn), so `ethSpent` is 0.
+        // Shared signature; V2 spends nothing to burn (token-space burn), so `amountSpent` is 0 in native.
         vm.expectEmit(true, true, true, true, address(burnToken));
-        emit RealmTaxableToken.CreatorTaxBurn(0, expectedBurn);
+        emit RealmTaxableToken.CreatorTaxBurn(address(0), 0, expectedBurn);
         vm.prank(admin);
         burnToken.swapBack(accrued, 0);
 

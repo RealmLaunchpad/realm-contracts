@@ -697,7 +697,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         token.processDividends(0, _noHolders());
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        bytes32 marker = keccak256("DividendBuyBackInitiated(uint256)");
+        bytes32 marker = keccak256("DividendBuyBackInitiated(address,uint256)");
         bytes32 swapBuy = keccak256("RealmSwapBuy(address,address,uint256,uint256,uint256)");
         uint256 markerAt = type(uint256).max;
         uint256 swapAt = type(uint256).max;

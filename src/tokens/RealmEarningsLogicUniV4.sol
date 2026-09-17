@@ -64,7 +64,7 @@ contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase, DividendInitLogic {
         uint256 reservedBefore = _quoteReserved(quote);
         // Precursor marker: must stay BEFORE the swap so indexers can classify the resulting
         // `RealmSwapHook.RealmSwapBuy` as a protocol buy-back rather than a trade by `tx.origin`.
-        emit BuyBackInitiated(amountIn);
+        emit BuyBackInitiated(quote, amountIn);
         require(_buyBackTokens(hook, quote, amountIn, minTokensOut), BuyBackFailed());
         uint256 tokensBought = balanceOf(address(this)) - balanceBefore;
 
@@ -84,7 +84,7 @@ contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase, DividendInitLogic {
         // token, so `msg.sender` is the token and `ERC20Burnable.burn` burns exactly this balance.
         if (tokensBought > 0) ERC20Burnable(address(this)).burn(tokensBought);
         // Reports what the pool ACTUALLY took, as `processLiquidity` does with `added`.
-        emit CreatorTaxBurn(spent, tokensBought);
+        emit CreatorTaxBurn(quote, spent, tokensBought);
     }
 
     /// @notice The native-pool buy-back, for callers that predate quotes.
@@ -170,7 +170,7 @@ contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase, DividendInitLogic {
 
         // Shared event signature; reports what the pool ACTUALLY took, as the V2 processor does. The
         // token side is always 0 for a single-sided quote wall.
-        emit LiquidityAdded(added, 0, liquidity);
+        emit LiquidityAdded(quote, added, 0, liquidity);
     }
 
     /// @dev The adder call itself, split out of `_addWall` purely to keep both inside the stack limit

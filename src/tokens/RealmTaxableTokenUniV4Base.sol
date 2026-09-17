@@ -151,7 +151,9 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     ///      flag the buy as protocol-internal as it arrives, whereas `CreatorTaxBurn` lands after the
     ///      swap, once the PnL update has already been applied. Mirrors the V2 swap-back, which is
     ///      pre-flagged by the token's transfer to the pair.
-    event BuyBackInitiated(uint256 ethIn);
+    /// @param quote The pool the buy-back swaps on, and the currency `amountIn` is in: `address(0)` for
+    ///        native (the precursor of a `RealmSwapBuy`), an ERC20 otherwise (of a `RealmQuoteSwapBuy`).
+    event BuyBackInitiated(address indexed quote, uint256 amountIn);
 
     /// @notice Emitted immediately BEFORE the buy-back swap that funds a SELF-TOKEN dividend pot. Same
     ///         job as `BuyBackInitiated`, for the same reason: the swap is an ordinary pool swap, so
@@ -159,7 +161,8 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     ///         `processDividends` — and without a precursor marker an indexer credits that keeper with a
     ///         buy it never made. Kept as its own event rather than reusing `BuyBackInitiated` so the two
     ///         protocol buy-backs stay distinguishable off-chain (one shrinks supply, one pays holders).
-    event DividendBuyBackInitiated(uint256 ethIn);
+    /// @param quote Same as `BuyBackInitiated`'s: the pool swapped on and the currency of `amountIn`.
+    event DividendBuyBackInitiated(address indexed quote, uint256 amountIn);
 
     /// @notice A quote route was given, or found already registered, in a venue the registry cannot
     ///         walk backwards (only V4 routes can be), for a quote a dividends leg has to be bought

@@ -115,21 +115,24 @@ abstract contract RealmTaxableToken is
     /// @notice Emitted when a token's liquidity earnings allocation is turned into a locked LP position by
     ///         `processLiquidity`. Shared by both venues; a few fields carry a slightly venue-specific
     ///         meaning:
-    ///         - V4: `ethIn` is the ETH deposited single-sided just below the price, `tokensAdded` is
-    ///           always 0 (an ETH-only bid wall), and `liquidity` is the Uniswap-V4 liquidity units minted.
-    ///         - V2: `ethIn`/`tokensAdded` are the ETH and tokens paired into the V2 LP (half the buffered
-    ///           tokens are sold for the ETH side), and `liquidity` is the V2 LP tokens minted (locked at
-    ///           the dead address).
-    event LiquidityAdded(uint256 ethIn, uint256 tokensAdded, uint256 liquidity);
+    ///         - `quote` is the currency `amountIn` is denominated in, and the pool the position sits in:
+    ///           `address(0)` for native (always, on V2), an ERC20 for a V4 pool quoted in one.
+    ///         - V4: `amountIn` is the quote deposited single-sided just below the price, `tokensAdded` is
+    ///           always 0 (a quote-only bid wall), and `liquidity` is the Uniswap-V4 liquidity units minted.
+    ///         - V2: `amountIn`/`tokensAdded` are the ETH and tokens paired into the V2 LP (half the
+    ///           buffered tokens are sold for the ETH side), and `liquidity` is the V2 LP tokens minted
+    ///           (locked at the dead address).
+    event LiquidityAdded(address indexed quote, uint256 amountIn, uint256 tokensAdded, uint256 liquidity);
 
     /// @notice Emitted when a token's burn earnings allocation removes supply. Shared by both venues;
-    ///         `ethSpent` is venue-specific:
-    ///         - V4: the buffered ETH spent buying the tokens back before burning them (`processBurn`).
-    ///         - V2: always 0 — the burn share is taken in TOKEN-space during the swap-back, before the
-    ///           sell, so no ETH round trip happens and no ETH is spent to burn.
-    ///         Summing `ethSpent` across both venues therefore gives the protocol-wide ETH actually
-    ///         spent on buy-backs.
-    event CreatorTaxBurn(uint256 ethSpent, uint256 tokensBurned);
+    ///         `amountSpent` is venue-specific:
+    ///         - V4: the buffered `quote` spent buying the tokens back on that quote's pool before burning
+    ///           them (`processBurn`). `quote` is `address(0)` for native.
+    ///         - V2: always 0, with `quote == address(0)` — the burn share is taken in TOKEN-space during
+    ///           the swap-back, before the sell, so no round trip happens and nothing is spent to burn.
+    ///         Amounts in different quotes have different units: sum `amountSpent` per `quote`, never
+    ///         across them.
+    event CreatorTaxBurn(address indexed quote, uint256 amountSpent, uint256 tokensBurned);
 
     //////////////////////// Errors //////////////////////
 
