@@ -64,9 +64,14 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
     ///      that is 1e-4 * 1e6 / 1e18 = 1e-16, i.e. tick ln(1e-16)/ln(1.0001) ≈ -368,400 (spacing-aligned).
     int24 internal constant QC_LAUNCH_TICK = -368_400;
 
+    /// @dev QC's whitelist rate, as if it were a dollar stable with ETH at $3,500: `QC_LAUNCH_TICK`'s 1e5
+    ///      QC market cap is ~28.6 ETH.
+    uint256 internal constant QC_PER_ETH = 3_500e18;
+
     function setUp() public virtual override {
         super.setUp();
         quoteCoin = new QuoteCoin();
+        _whitelist(address(quoteCoin), QC_PER_ETH);
     }
 
     /////////////////////////// HELPERS ///////////////////////////
@@ -362,6 +367,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
     /// @dev A `symbol()` that is not an ABI string labels nothing, and must not block the launch.
     function test_poolSeeded_nonStringSymbolIsEmptyAndTheLaunchSucceeds() public {
         quoteCoin = new Bytes32SymbolCoin();
+        _whitelist(address(quoteCoin), QC_PER_ETH);
         vm.recordLogs();
         _launchAgainstQuoteCoin(_noDevBuy());
         (,, uint8 decimals, string memory symbol) = _poolSeededTail();

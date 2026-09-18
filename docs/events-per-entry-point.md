@@ -42,6 +42,7 @@ Unified factories register fee config automatically during token creation:
 - `RealmMasterFeeHandler`
 - `RealmSwapHook`
 - `RealmDividendSwapRegistry` — one shared upgradeable proxy per chain, not a per-token contract
+- `RealmAssetsWhitelist` — one per chain, the ERC20 quotes the direct venue accepts
 - `RealmTreasuryRouter` / `RealmVoting` — one upgradeable proxy each per chain; the router IS the treasury address every push below lands on (§11)
 
 External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this file focuses on Realm-owned events and notes the main external-operation points.
@@ -152,8 +153,8 @@ Realm event order:
 Notes:
 
 - The rounding remainder the bands cannot absorb is burned (step 9), never held: the graduator must not become a continuous holder, or it would accrue dividends nobody can claim.
-- A launch takes 1 to `MAX_PAIRS` (3) pairs with distinct quotes and weights summing to 10000 (`InvalidPairs`); an ERC20 quote needs `decimals()` ≤ 36 and must not be the wrapped native (`QuoteNotSupported`). Fee-on-transfer quotes are not supported. `DevBuy.route` and `DevBuy.minQuoteOut` exist in the ABI but must be empty/zero, and the dev buy's currency must match its pair (`InvalidDevBuy`).
-- Every pair's `launchTick` must imply an opening market cap between `MIN_LAUNCH_MARKET_CAP_X18` (0.001) and `MAX_LAUNCH_MARKET_CAP_X18` (1e20) WHOLE units of its quote on an ERC20 pair, whatever the quote's decimals, and between `MIN_NATIVE_LAUNCH_MARKET_CAP_X18` (1 ETH) and `MAX_NATIVE_LAUNCH_MARKET_CAP_X18` (250 ETH) on a native pair (`LaunchPriceOutOfBounds`).
+- A launch takes 1 to `MAX_PAIRS` (3) pairs with distinct quotes and weights summing to 10000 (`InvalidPairs`); an ERC20 quote must be whitelisted in `RealmAssetsWhitelist` (`ASSETS_WHITELIST()`), have `decimals()` ≤ 36 and not be the wrapped native (`QuoteNotSupported`). Fee-on-transfer quotes are not supported. `DevBuy.route` and `DevBuy.minQuoteOut` exist in the ABI but must be empty/zero, and the dev buy's currency must match its pair (`InvalidDevBuy`).
+- Every pair's `launchTick` must imply an opening market cap worth between `MIN_LAUNCH_MARKET_CAP_X18` (1 ETH) and `MAX_LAUNCH_MARKET_CAP_X18` (250 ETH) (`LaunchPriceOutOfBounds`). An ERC20 pair's bounds are those times the quote's whitelist rate `unitsPerNativeX18`, in WHOLE units, whatever its decimals.
 - An earnings allocation on this venue needs NO tax: the creator's LP-fee share is a permanent stream here, so a zero-tax token with an allocation is a revenue-share token. It is cloned from the TAXABLE implementation, which `previewTokenImplementation` (same arguments as `createToken`) reports, so a salt mined against it names the right initcode. The V4 unified factory follows the same rule; only the V2 factory still requires a static tax, because V2 LP fees never reach the token.
 - On an ERC20-quoted pool the dividends slice buffers IN THE QUOTE (`quoteDividendPending(quote)`), per payout asset, and is serviced by `processDividends(assetIndex, quote, minOut, holders)` — see Holder dividends.
 - `previewLaunchPrice(launchTick, quoteDecimals)` is a pure view returning the opening price of one whole coin and the implied market cap, both scaled by 1e18. A tick is a ratio of RAW units, so the answer depends on the quote's decimals — the conversion a creator is most likely to get wrong by a factor of ten.
@@ -693,6 +694,17 @@ own, rarely, and are not attributable to any token.
 - **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the one below.
 - **`KeeperSet`** (`account`, `allowed`) — admin-level; a keeper key being rotated in or out. Revocation
   takes effect in the next transaction.
+
+### `RealmAssetsWhitelist` (one per chain)
+
+The ERC20 quotes `RealmFactoryUniV4Direct` accepts, each with its rate in native. Only ever read by the
+factory, so its events appear on their own and are not attributable to any token. Delisting refuses new
+launches only; live pools are untouched.
+
+- **`ApproverSet`** (`account` indexed, `allowed`) — owner-only; manages who may emit the one below. The
+  owner cannot whitelist itself.
+- **`WhitelistUpdated`** (`asset` indexed, `unitsPerNativeX18`) — approver-only; `asset` listed, repriced,
+  or delisted when `unitsPerNativeX18 == 0`.
 
 ### `RealmDividendSwapRegistry` (one per chain)
 

@@ -7,6 +7,7 @@ import {V4SwapHelpers} from "test/e2e/base/V4SwapHelpers.t.sol";
 import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
+import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
@@ -32,6 +33,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
 
     RealmDirectGraduatorUniV4 internal directGraduator;
     RealmFactoryUniV4Direct internal directFactory;
+    RealmAssetsWhitelist internal assetsWhitelist;
 
     /// @dev Launch price as QUOTE PER COIN: 1.0001^-184200 ≈ 1.0e-8 ETH/token, a ~10 ETH market cap
     ///      across the 1e27 supply. Spacing-aligned (200), well inside the usable band.
@@ -44,19 +46,28 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directGraduator = new RealmDirectGraduatorUniV4(
             poolManagerAddress, TEST_HOOK_ADDRESS, TEST_ANYPAIR_HOOK_ADDRESS, graduatorV4.LIQUIDITY_ADDER()
         );
+        assetsWhitelist = new RealmAssetsWhitelist(admin);
         address impl = address(
             new RealmFactoryUniV4Direct(
                 IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxToken)}),
                 address(directGraduator),
                 address(feeHandler),
                 address(creatorVaultFactory),
-                address(WETH)
+                address(WETH),
+                address(assetsWhitelist)
             )
         );
         directFactory = RealmFactoryUniV4Direct(
             address(new ERC1967Proxy(impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
         );
+        assetsWhitelist.setApprover(admin, true);
         vm.stopPrank();
+    }
+
+    /// @dev Whitelists `quote` at `unitsPerNativeX18` whole units per ETH.
+    function _whitelist(address quote, uint256 unitsPerNativeX18) internal {
+        vm.prank(admin);
+        assetsWhitelist.setWhitelisted(quote, unitsPerNativeX18);
     }
 
     /////////////////////////// HELPERS ///////////////////////////

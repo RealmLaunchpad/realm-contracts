@@ -54,6 +54,13 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     int24 internal constant V4_SPACING_10 = 10;
     address internal stranger = makeAddr("stranger");
 
+    function setUp() public virtual override {
+        super.setUp();
+        _whitelist(USDC, QC_PER_ETH);
+        // 1:1 with ETH only so `LAUNCH_TICK`'s 10-unit market cap fits the bounds.
+        _whitelist(DAI, 1e18);
+    }
+
     /////////////////////////// HELPERS ///////////////////////////
 
     function _v4Route(address currency) internal pure returns (bytes memory) {

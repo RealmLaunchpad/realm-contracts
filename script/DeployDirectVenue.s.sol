@@ -9,6 +9,7 @@ import {BuildTarget} from "script/BuildTarget.sol";
 import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
+import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 /// @title Deploy the DIRECT-launch venue
@@ -38,6 +39,10 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 ///
 /// @dev This venue has no launchpad, so there is nothing to whitelist afterwards — unlike the curve
 ///      factories, which `DeployRealmStack` registers with `RealmLaunchpad`.
+///
+/// @dev Also deploys `RealmAssetsWhitelist`, owned by the broadcaster, with NO approvers: ERC20 pairs are
+///      refused until the owner adds one (`setApprover`) and it whitelists quotes. The factory exposes it
+///      as `ASSETS_WHITELIST()`.
 ///
 /// Usage (dry run): forge script DeployDirectVenue --rpc-url rh-testnet --account realm.dev \
 ///                      --sender <realm.dev address>
@@ -70,7 +75,11 @@ contract DeployDirectVenue is Script {
         console.log("TAXABLE_TOKEN_V4_IMPL:", m.taxTokenV4Impl);
         console.log("");
 
+        (, address owner,) = vm.readCallers();
+
         vm.startBroadcast();
+
+        RealmAssetsWhitelist whitelist = new RealmAssetsWhitelist(owner);
 
         RealmDirectGraduatorUniV4 graduator =
             new RealmDirectGraduatorUniV4(infra.univ4PoolManager, hook, anyPairHook, m.liquidityAdder);
@@ -81,7 +90,8 @@ contract DeployDirectVenue is Script {
                 address(graduator),
                 m.masterFeeHandler,
                 creatorVaultFactory,
-                wrappedNative
+                wrappedNative,
+                address(whitelist)
             )
         );
         address factoryProxy =
@@ -93,6 +103,7 @@ contract DeployDirectVenue is Script {
         console.log("GRADUATOR_UNIV4_DIRECT:    %s", address(graduator));
         console.log("FACTORY_UNIV4_DIRECT_IMPL: %s", factoryImpl);
         console.log("FACTORY_UNIV4_DIRECT:      %s", factoryProxy);
+        console.log("ASSETS_WHITELIST:          %s (owner %s, no approvers yet)", address(whitelist), owner);
         console.log("");
         console.log("Paste the three into src/config/manifest.%s.sol, then:", ChainConfig.name());
         console.log("  just export-deployments");

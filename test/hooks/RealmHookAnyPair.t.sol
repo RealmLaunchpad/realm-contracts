@@ -89,6 +89,7 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
     /// @dev A `QuoteCoin` etched at `where`, so its sort order against the token is fixed.
     function _placeQuote(address where) internal returns (address) {
         vm.etch(where, address(new QuoteCoin()).code);
+        _whitelist(where, QC_PER_ETH);
         return where;
     }
 
