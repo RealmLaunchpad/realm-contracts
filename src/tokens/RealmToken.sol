@@ -333,11 +333,17 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     /// @dev The asset must be one of this token's registered `quotes`. Anything else has no pool here,
     ///      so it could never be spent, distributed or swept — accepting it would strand it. `virtual`
     ///      for the same reason the payable overload is: taxable variants carve the allocation slices.
+    /// @dev Deposits what was actually RECEIVED, not the nominal `amount`: a fee-on-transfer quote would
+    ///      otherwise over-credit this token's buffers past what it holds, as every other ERC20-spending
+    ///      path here (buy-back settlement, dividend acquisition) already guards against.
     function accrueFees(address asset, uint256 amount) external virtual {
         _requireQuote(asset);
         if (amount == 0) return;
+        uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
         IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
-        _depositAssetToFund(asset, amount);
+        uint256 received = IERC20(asset).balanceOf(address(this)) - balanceBefore;
+        if (received == 0) return;
+        _depositAssetToFund(asset, received);
     }
 
     /// @dev Hands `amount` of `asset` to the fee handler, approving it to pull exactly that much. The

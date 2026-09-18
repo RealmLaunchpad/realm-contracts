@@ -61,6 +61,18 @@ contract QuoteCoin37 is QuoteCoin {
     }
 }
 
+/// @notice An 18-decimal quote that burns 10% of every transfer. `accrueFees` must split what it
+///         RECEIVED, not the nominal amount the caller named, or its buffers claim more than the token
+///         actually holds.
+contract QuoteCoin18FeeOnTransfer is QuoteCoin18 {
+    function _update(address from, address to, uint256 value) internal override {
+        if (from == address(0) || to == address(0)) return super._update(from, to, value);
+        uint256 fee = value / 10;
+        super._update(from, address(0xdEaD), fee);
+        super._update(from, to, value - fee);
+    }
+}
+
 /// @notice The burn and liquidity earnings legs on an ERC20-quoted direct-launch pool, with the quote
 ///         placed on BOTH sides of the token's address: which side of the pair the quote sorts on flips
 ///         every orientation-dependent branch (wall side, top-up candidate check, refund leg).
@@ -253,6 +265,30 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         token.processBurn(0);
 
         assertLt(token.totalSupply(), supply, "the buy-back went through inside the window");
+    }
+
+    /////////////////////////// fee-on-transfer quote ///////////////////////////
+
+    /// @dev `accrueFees(asset, amount)` must book the balance delta, not the caller's nominal `amount` —
+    ///      every other ERC20-spending path here (buy-back settlement, dividend acquisition) already
+    ///      measures the delta; this is the one entry point that used to trust the caller instead.
+    function test_accrueFees_feeOnTransferQuoteDoesNotOvercredit() public {
+        address quote = address(new QuoteCoin18FeeOnTransfer());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, LAUNCH_TICK, _emptyAntiSniperCfg());
+
+        QuoteCoin(quote).mintTo(address(this), 4_000e18);
+        IERC20(quote).approve(address(token), 4_000e18);
+        token.accrueFees(quote, 4_000e18);
+
+        uint256 received = 4_000e18 - 4_000e18 / 10; // 10% burned on the pull
+        (uint256 burnPending, uint256 liquidityPending,,) = token.quoteBufferOf(quote);
+        assertEq(burnPending, received / 2, "half of what ARRIVED, not of the nominal amount");
+        assertEq(liquidityPending, received / 2, "and half for liquidity");
+        assertEq(
+            IERC20(quote).balanceOf(address(token)),
+            burnPending + liquidityPending,
+            "the buffers never claim more than the token actually holds"
+        );
     }
 
     /////////////////////////// launch-price bounds ///////////////////////////
