@@ -4,35 +4,33 @@
 
 The Realm factories deploy tokens using `Clones.cloneDeterministic()` (CREATE2 under the hood). The factory enforces that every token address must end in `0xeeaa` (last 2 bytes). The frontend/backend must pre-compute a valid `salt` before calling `createToken()`.
 
-Since the consolidation, the launchpad whitelists **two unified factories** instead of six:
+The launchpad venues are served by three factories, each exposing ONE `createToken` and one `previewTokenImplementation` taking the exact same arguments:
 
-- `RealmFactoryUniV2Unified` — V2 family. Dispatches between four token implementations
-  (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`)
-  based on the tax config and whether an earnings allocation is set. V2 creation is
-  always ownerless and has no `renounceOwnership` argument.
-- `RealmFactoryUniV4Unified` — V4 family. Dispatches between four token implementations
-  (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`)
-  based on the tax config and whether an earnings allocation is set.
+- `RealmFactoryUniV2Unified`: bonding curve, graduates to Uniswap V2. `salt` lives in `TokenSetupTiered`.
+- `RealmFactoryUniV4Unified`: bonding curve, graduates to Uniswap V4. `salt` lives in `TokenSetupTiered`.
+- `RealmFactoryUniV4Direct`: direct V4 launch (no curve, 1-3 pools). `salt` lives in `DirectTokenSetup`.
 
-**Critical**: pick the right token implementation **before** mining the salt. Each factory exposes a `previewTokenImplementation(...)` view that mirrors the dispatch-relevant `createToken` inputs and returns the implementation address that will be cloned. Always call it first, then use that returned address as `TOKEN_IMPLEMENTATION` in the CREATE2 calculation below.
+Each factory holds **two** token implementations, `TOKEN_IMPL_BASE` and `TOKEN_IMPL_TAX`. A token is cloned from `TOKEN_IMPL_TAX` if it configures a tax (static or decaying) **or** an earnings allocation (any non-zero burn / dividends / liquidity bps), and from `TOKEN_IMPL_BASE` otherwise. Anti-sniper is not a dispatch input; both implementations carry it.
 
-## How CREATE2 Addresses Work
+**Critical**: resolve the implementation **before** mining the salt. Call `factory.previewTokenImplementation(...)` with the arguments you will pass to `createToken` and use the returned address as `TOKEN_IMPLEMENTATION` below. Preview runs the same anti-sniper and tax validation as creation, so it reverts on a config `createToken` would reject.
 
-The deployed address is deterministic, computed as:
+## How the Address Is Derived
+
+The factory does not use your `salt` directly: it namespaces it by the caller.
 
 ```
-address = keccak256(0xff ++ deployer ++ salt ++ keccak256(initcode))[12:]
+effectiveSalt = keccak256(abi.encodePacked(msg.sender, salt))   // 20-byte address ++ 32-byte salt
+address       = keccak256(0xff ++ factory ++ effectiveSalt ++ keccak256(initcode))[12:]
 ```
-
-Three factors control the final address:
 
 | Factor | Value | Variable? |
 |--------|-------|-----------|
-| `deployer` | Factory contract address | Fixed per factory |
-| `salt` | `bytes32` passed to `createToken()` | User-controlled |
-| `initcode` | ERC-1167 minimal proxy bytecode (depends on the dispatched token implementation) | Fixed per `(factory, dispatch path)` pair |
+| `factory` | Factory **proxy** address (the factories are UUPS proxies; never use the implementation address) | Fixed per factory |
+| `msg.sender` | Account that will send `createToken` | Fixed per deployer |
+| `salt` | `bytes32` passed in the token setup struct | User-controlled |
+| `initcode` | ERC-1167 minimal proxy bytecode for the dispatched implementation | Fixed per `(factory, implementation)` |
 
-Since `deployer` and `initcode` are fixed for a given factory + dispatch path, **the only variable is `salt`**. The dispatch path is determined by the arguments you intend to pass to `createToken` — call `previewTokenImplementation(...)`, which takes exactly the same arguments, to get the implementation address. For tax durations above 365 days, preview runs the same tax validation as creation: it requires a single fee receiver distinct from the deployer (`msg.sender` of the preview call). Preview assumes the renounced-ownership path is taken at creation; if you do not renounce, `createToken` will still revert with `CharityModeOwnerNotRenounced()`.
+The namespacing is the front-run defense: a salt lifted from a pending `createToken` tx yields a different address for any other sender, so a reserved address is only reachable by the account that mined it. The corollary: **mine with the exact account that will send the tx**. If a relayer or contract forwards the call, that forwarder is `msg.sender`, not the end user.
 
 ## The Initcode
 
@@ -46,62 +44,43 @@ The ERC-1167 minimal proxy initcode is 55 bytes, deterministic given the impleme
 
 This is the bytecode that CREATE2 hashes. It comes directly from [OpenZeppelin's Clones.sol](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/proxy/Clones.sol).
 
-### Recommended flow
+## Recommended Flow
 
-1. Build the `createToken` arguments you want to submit:
-   - V2: `feeReceivers`, `supplyShares`, `taxCfg`, `antiSniperCfg`.
-   - V4: `feeReceivers`, `supplyShares`, `renounceOwnership`, `taxCfg`, `antiSniperCfg`.
-2. Call `factory.previewTokenImplementation(...)` with the same arguments as `createToken` — returns the implementation address.
-3. Compute `initcode = 0x3d…73 ++ <impl> ++ 0x5af4…5bf3` and `initcodeHash = keccak256(initcode)`.
-4. Mine `salt` against `(factory, initcodeHash)` until `last 2 bytes == 0xeeaa`.
-5. Submit `factory.createToken(name, symbol, salt, ...)` with the same arguments.
+1. Build the `createToken` arguments you want to submit (see [`create-token.md`](create-token.md) for the per-factory argument lists).
+2. Call `factory.previewTokenImplementation(...)` with those same arguments; it returns the implementation address.
+3. Compute `initcodeHash = keccak256(0x3d…73 ++ <impl> ++ 0x5af4…5bf3)`.
+4. Mine `salt` against `(factory, deployer, initcodeHash)` until the address ends in `0xeeaa`.
+5. Put `salt` in the setup struct and submit `createToken(...)` from `deployer`.
 
-If steps 2 and 5 use the same dispatch inputs, the deployed address is guaranteed to match the predicted one. If you change `taxCfg` or `antiSniperCfg` between preview and submit, the dispatched implementation may differ and the salt becomes invalid (the call reverts with `InvalidTokenAddress`).
+If steps 2 and 5 use the same tax / earnings-allocation inputs and the same sender, the deployed address matches the prediction. Toggling tax or allocation on or off between preview and submit can switch the implementation and invalidate the salt (the call reverts with `InvalidTokenAddress`).
 
 ## The Constraint
-
-The unified factories enforce:
 
 ```solidity
 require(uint16(uint160(token)) == 0xeeaa, InvalidTokenAddress());
 ```
 
-This means the last 2 bytes of the token address must be `0xeeaa`. Statistically, **1 in 65,536 salts** will produce a valid address, so brute-forcing is near-instant.
+Statistically, **1 in 65,536 salts** produces a valid address, so brute-forcing is near-instant.
 
 ## Implementation (TypeScript with viem)
 
 ```typescript
-import { getCreate2Address, keccak256, concat, toHex, pad } from "viem";
+import { concat, encodePacked, getCreate2Address, keccak256, pad, toHex, type Address, type Hex } from "viem";
 
-// These are fixed per factory deployment — read from your config/env
-const FACTORY_ADDRESS = "0x...";
-const TOKEN_IMPLEMENTATION = "0x...";
-
-// Compute initcode hash once (constant for a given factory)
-const initcode = concat([
-  "0x3d602d80600a3d3981f3363d3d373d3d3d363d73",
-  TOKEN_IMPLEMENTATION as `0x${string}`,
-  "0x5af43d82803e903d91602b57fd5bf3",
-]);
-const INITCODE_HASH = keccak256(initcode);
+const PROXY_PREFIX = "0x3d602d80600a3d3981f3363d3d373d3d3d363d73";
+const PROXY_SUFFIX = "0x5af43d82803e903d91602b57fd5bf3";
 
 /**
  * Finds a salt that produces a token address ending in 0xeeaa.
- * Typically completes in < 100ms (brute-forces ~65k iterations on average).
+ * `impl` comes from `previewTokenImplementation`; `deployer` is the account that sends `createToken`.
  */
-function findValidSalt(): { salt: `0x${string}`; tokenAddress: string } {
+function findValidSalt(factory: Address, impl: Address, deployer: Address): { salt: Hex; tokenAddress: Address } {
+  const bytecodeHash = keccak256(concat([PROXY_PREFIX, impl, PROXY_SUFFIX]));
   for (let i = 0n; ; i++) {
     const salt = pad(toHex(i), { size: 32 });
-
-    const addr = getCreate2Address({
-      from: FACTORY_ADDRESS as `0x${string}`,
-      salt,
-      bytecodeHash: INITCODE_HASH,
-    });
-
-    if (addr.toLowerCase().endsWith("eeaa")) {
-      return { salt, tokenAddress: addr };
-    }
+    const effectiveSalt = keccak256(encodePacked(["address", "bytes32"], [deployer, salt]));
+    const addr = getCreate2Address({ from: factory, salt: effectiveSalt, bytecodeHash });
+    if (addr.toLowerCase().endsWith("eeaa")) return { salt, tokenAddress: addr };
   }
 }
 ```
@@ -111,31 +90,23 @@ function findValidSalt(): { salt: `0x${string}`; tokenAddress: string } {
 ```typescript
 import { ethers } from "ethers";
 
-const FACTORY_ADDRESS = "0x...";
-const TOKEN_IMPLEMENTATION = "0x...";
+const PROXY_PREFIX = "0x3d602d80600a3d3981f3363d3d373d3d3d363d73";
+const PROXY_SUFFIX = "0x5af43d82803e903d91602b57fd5bf3";
 
-const initcode = ethers.concat([
-  "0x3d602d80600a3d3981f3363d3d373d3d3d363d73",
-  TOKEN_IMPLEMENTATION,
-  "0x5af43d82803e903d91602b57fd5bf3",
-]);
-const INITCODE_HASH = ethers.keccak256(initcode);
-
-function findValidSalt(): { salt: string; tokenAddress: string } {
+function findValidSalt(factory: string, impl: string, deployer: string): { salt: string; tokenAddress: string } {
+  const initcodeHash = ethers.keccak256(ethers.concat([PROXY_PREFIX, impl, PROXY_SUFFIX]));
   for (let i = 0n; ; i++) {
     const salt = ethers.zeroPadValue(ethers.toBeHex(i), 32);
-    const addr = ethers.getCreate2Address(FACTORY_ADDRESS, salt, INITCODE_HASH);
-
-    if (addr.toLowerCase().endsWith("eeaa")) {
-      return { salt, tokenAddress: addr };
-    }
+    const effectiveSalt = ethers.solidityPackedKeccak256(["address", "bytes32"], [deployer, salt]);
+    const addr = ethers.getCreate2Address(factory, effectiveSalt, initcodeHash);
+    if (addr.toLowerCase().endsWith("eeaa")) return { salt, tokenAddress: addr };
   }
 }
 ```
 
 ## Important Notes
 
-- **`INITCODE_HASH` is constant** for a given `(factory, dispatch path)` pair — compute it once per dispatch path at startup, not per call. If your UI lets users toggle anti-sniper / tax options, recompute the hash whenever the toggles change.
-- **Each unified factory has multiple token implementations**. `RealmFactoryUniV2Unified` and `RealmFactoryUniV4Unified` each have 4 (`TOKEN_IMPL_BASE`, `TOKEN_IMPL_ANTISNIPER`, `TOKEN_IMPL_TAX`, `TOKEN_IMPL_TAX_ANTISNIPER`). The dispatch is fully determined by the `taxCfg` / `antiSniperCfg` you pass — always call `previewTokenImplementation(...)` with the **same dispatch inputs** you intend to submit, and use its return value as `TOKEN_IMPLEMENTATION`.
-- **Salt uniqueness**: each salt can only be used once per `(factory, implementation)` pair. If a salt has already been used (token deployed), `create2` will revert. If you need to handle retries, start iterating from a random offset.
-- **On-chain verification**: you can call `Clones.predictDeterministicAddress(implementation, salt, factory)` via a static call to double-check your off-chain computation before submitting.
+- **Cache per `(factory, implementation, deployer)`**: the initcode hash depends only on the implementation, but every mined salt is specific to the sender. Re-mine when the wallet changes or when the user toggles tax / earnings allocation on or off.
+- **Factory upgrades**: `TOKEN_IMPL_BASE` / `TOKEN_IMPL_TAX` are immutables of the factory implementation, so a factory upgrade can change them. Always resolve the implementation through `previewTokenImplementation` at mining time, never from a hard-coded address.
+- **Salt uniqueness**: a salt can be used once per `(factory, implementation, deployer)`; reusing it makes CREATE2 revert. For retries, start iterating from a random offset.
+- **Verification before submit**: `Clones.predictDeterministicAddress(impl, effectiveSalt, factory)` returns the same address (pass the namespaced salt, not the raw one). It is a library function, not a factory view, so run it from a script or test rather than as an RPC call.
