@@ -17,6 +17,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionInfo, PositionInfoLibrary} from "lib/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import {Currency} from "lib/v4-core/src/types/Currency.sol";
 
 /// @notice Unit tests for the shared single-sided-ETH liquidity helper. It is called by the V4
 ///         graduator AND by every taxable token's liquidity earnings leg, so a mistake in the tick
@@ -78,6 +79,40 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
         vm.deal(address(this), 1 ether);
         vm.expectRevert(RealmUniV4LiquidityAdder.InvalidTickWidth.selector);
         adder.addSingleSidedEthBelowPrice{value: 1 ether}(_key(), -SPACING, nftHolder, dustHolder);
+    }
+
+    /// @dev The general entry point's own guards. Every caller in the repo passes well-formed inputs, so
+    ///      these branches are only reachable from a future one — and each protects against funds settling
+    ///      on the wrong side or stranding here, which this contract has no withdrawal path to undo.
+    function test_addSingleSided_revertsOnCurrencyMismatch() public {
+        CorePoolKey memory key = _key();
+        int24 tick = _currentTick();
+        int24 lower = ((tick / SPACING) * SPACING) + SPACING;
+
+        // Neither side of the pair.
+        vm.deal(address(this), 1 ether);
+        vm.expectRevert(RealmUniV4LiquidityAdder.CurrencyMismatch.selector);
+        adder.addSingleSided{value: 1 ether}(
+            key, Currency.wrap(makeAddr("elsewhere")), 1 ether, lower, lower + SPACING, nftHolder, dustHolder
+        );
+
+        // Native, but the value sent does not match the amount it must settle.
+        vm.expectRevert(RealmUniV4LiquidityAdder.CurrencyMismatch.selector);
+        adder.addSingleSided{value: 1 ether}(
+            key, key.currency0, 0.5 ether, lower, lower + SPACING, nftHolder, dustHolder
+        );
+
+        // An ERC20 side settles from a PULL, so any value sent alongside would strand in the adder.
+        vm.expectRevert(RealmUniV4LiquidityAdder.CurrencyMismatch.selector);
+        adder.addSingleSided{value: 1 wei}(key, key.currency1, 1e18, lower, lower + SPACING, nftHolder, dustHolder);
+    }
+
+    /// @dev A zero deposit is caught before any currency check, so it never reaches the pool manager.
+    function test_addSingleSided_revertsOnZeroAmount() public {
+        int24 tick = _currentTick();
+        int24 lower = ((tick / SPACING) * SPACING) + SPACING;
+        vm.expectRevert(RealmUniV4LiquidityAdder.NoEthProvided.selector);
+        adder.addSingleSided(_key(), _key().currency0, 0, lower, lower + SPACING, nftHolder, dustHolder);
     }
 
     ///////////////////////// tick placement /////////////////////////

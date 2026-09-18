@@ -665,6 +665,45 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         token.processDividends(0, USDC, 0, _one(alice));
     }
 
+    /// @dev The registry is a proxy at a constant address the token was compiled against; if it ever had
+    ///      no code, a raw `call` to it would "succeed" with empty returndata. The quote path must read
+    ///      that as "not converted" and leave the debited buffer whole, exactly as the native path does —
+    ///      otherwise holders' pending balance is written off with no revert, no payout and no re-earmark.
+    function test_quoteDividends_codelessRegistryFailsClosed() public {
+        RealmTaxableTokenUniV4 token = _earningToken(DAI, "", _one(_v4Route(USDC)));
+        uint256 buffered = _pending(token);
+        assertGt(buffered, 0, "a buffer to convert");
+
+        vm.etch(token.DIVIDEND_SWAP_REGISTRY(), "");
+
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
+        token.processDividends(0, USDC, 0, new address[](0));
+        assertEq(_pending(token), buffered, "the debited slice was re-earmarked, not written off");
+        assertEq(token.dividendsOwed(), 0, "and nothing was credited to holders");
+    }
+
+    /// @dev One route per payout asset; a longer array is a caller mistake, not silently trailing data —
+    ///      it almost certainly means the routes and the assets are misaligned.
+    function test_multiAsset_routesLongerThanAssetsIsRejected() public {
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(USDC, _v4Route(USDC), new bytes[](0));
+        bytes[] memory routes = new bytes[](2);
+        routes[0] = _v4Route(USDC);
+        routes[1] = _v4Route(USDC);
+        cfg.earningsAllocation.dividendRoutes = routes;
+
+        vm.prank(creator);
+        vm.expectRevert(DividendDistribution.InvalidDividendAssetSet.selector);
+        directFactory.createToken(
+            _setup(true),
+            _usdcPair(),
+            cfg,
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+    }
+
     /////////////////////////// OWNER-ONLY ADMIN ///////////////////////////
 
     /// @dev A direct token has no launchpad, so its owner is its only admin: a stranger and the protocol

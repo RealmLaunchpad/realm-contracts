@@ -182,19 +182,13 @@ library UniversalRouterVenue {
         ok = _executeAndRequireFullFill(router, inputs, nativeIn);
     }
 
-    /// @dev Runs a single `V4_SWAP` command and reports a PARTIAL FILL as a failure.
-    ///      `SETTLE_ALL` settles the debt the swap actually incurred, not `nativeIn`: a pool whose
-    ///      liquidity runs out mid-swap fills only part of it and the rest stays in the router, which
-    ///      never refunds on its own and which anyone may sweep — while the caller has already debited
-    ///      the full spend. Returning `false` reverts the registry, so nothing is stranded: the native
-    ///      goes back to the caller with its buffer untouched, and the next call retries.
-    /// @dev Measured as a DELTA on the router's own native balance, never an absolute — dust somebody
-    ///      else left there is not ours to fail on.
     /// @dev The reverse leg: `amountIn` of `source` -> native along `path`, which is a native-anchored
     ///      route already REVERSED by the caller (each hop's `intermediateCurrency` is that hop's OUTPUT,
     ///      the last one native). The router pulls `source` through Permit2, so the caller must have
     ///      granted `ensureRouterPull` first. Same `uint128` rule and the same one-hop special case as
-    ///      the forward legs, and the same full-fill rule: `source` left in the router fails the swap.
+    ///      the forward legs. NOT the same full-fill rule: Permit2 pulls straight from the caller only
+    ///      what the swap owes, so a partial fill's remainder stays with the CALLER and `ok` stays true.
+    ///      A caller that needs a full fill measures its own `source` balance delta.
     function swapAssetToNativeV4Path(
         address router,
         address source,
@@ -264,6 +258,14 @@ library UniversalRouterVenue {
         }
     }
 
+    /// @dev Runs a single `V4_SWAP` command and reports a PARTIAL FILL as a failure.
+    ///      `SETTLE_ALL` settles the debt the swap actually incurred, not `nativeIn`: a pool whose
+    ///      liquidity runs out mid-swap fills only part of it and the rest stays in the router, which
+    ///      never refunds on its own and which anyone may sweep — while the caller has already debited
+    ///      the full spend. Returning `false` reverts the registry, so nothing is stranded: the native
+    ///      goes back to the caller with its buffer untouched, and the next call retries.
+    /// @dev Measured as a DELTA on the router's own native balance, never an absolute — dust somebody
+    ///      else left there is not ours to fail on.
     function _executeAndRequireFullFill(address router, bytes[] memory inputs, uint256 nativeIn)
         private
         returns (bool ok)

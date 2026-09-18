@@ -550,6 +550,123 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         assertEq(hookLogs[0].topics[0], RealmHookAnyPair.FeesSettled.selector);
     }
 
+    /////////////////////////// OVERALL FEE CAP ///////////////////////////
+
+    /// @dev The ERC20 twin of `RealmSwapHookLpFees.test_swapReverts_whenCombinedFeeExceedsCap`: the hook
+    ///      caps LP fee + tax at `MAX_OVERALL_FEE_BPS` (20%). The factory cannot configure a token above
+    ///      5%, so the over-cap config is injected with `vm.mockCall` to reach the runtime backstop.
+    function test_resolve_feeAboveCapRevertsFeeTooHigh() public {
+        address quote = address(quoteCoin);
+        address token = _launchTaxed(quote, _noDevBuy());
+        quoteCoin.mintTo(alice, 1_000e6);
+
+        // Exactly at the cap (0 + 2000): allowed.
+        _mockFees(token, 0, 2000);
+        _swapLeg(alice, token, quote, true, true, 10e6, 0);
+
+        // One bps over (1 + 2000): refused. The approvals above still stand, so only the router call
+        // itself is under `expectRevert`.
+        _mockFees(token, 1, 2000);
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = abi.encode(
+            abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL)),
+            _legParams(token, quote, true, true, 10e6, 0)
+        );
+        vm.prank(alice, alice);
+        vm.expectRevert(_wrappedBeforeSwapError(RealmHookAnyPair.FeeTooHigh.selector));
+        IUniversalRouter(universalRouter).execute(abi.encodePacked(uint8(0x10)), inputs, block.timestamp);
+    }
+
+    /// @dev Forces `token.getSwapFees(isBuy)` to report an arbitrary split, bypassing the factory's
+    ///      `MAX_TOTAL_FEE_BPS` validation.
+    function _mockFees(address token, uint16 lpFeeBps, uint16 taxBps) internal {
+        vm.mockCall(
+            token,
+            abi.encodeWithSelector(IRealmToken.getSwapFees.selector),
+            abi.encode(IRealmToken.RealmTradeFees({taxBps: taxBps, lpFeeBps: lpFeeBps}))
+        );
+    }
+
+    /////////////////////////// UNLOCK CALLBACK ///////////////////////////
+
+    /// @dev The hook's only unlock is the one `settleFees` opens; anything else reaching this entry
+    ///      point could `burn`+`take` out of band and desync the ledger from the hook's claim balance.
+    function test_unlockCallback_revertsForNonPoolManagerCaller() public {
+        vm.expectRevert(RealmHookAnyPair.OnlyPoolManager.selector);
+        anyPairHook.unlockCallback("");
+
+        vm.prank(alice);
+        vm.expectRevert(RealmHookAnyPair.OnlyPoolManager.selector);
+        anyPairHook.unlockCallback(abi.encode(address(quoteCoin), uint256(1)));
+    }
+
+    /////////////////////////// LEDGER ACCUMULATION ///////////////////////////
+
+    /// @dev The ledger ADDS up: three trades before one redemption must settle the sum, not the last
+    ///      one's fee. An accidental `=` for `+=` would pass every settle-after-each-swap test.
+    function test_settleFees_sumsFeesAcrossMultipleSwapsBeforeRedemption() public {
+        address quote = address(quoteCoin);
+        address token = _launchTaxed(quote, _noDevBuy());
+        quoteCoin.mintTo(alice, 1_000e6);
+
+        _swapLeg(alice, token, quote, true, true, 100e6, 0);
+        (uint256 lpFirst, uint256 taxFirst) = _pendingFees(token, quote);
+        _swapLeg(alice, token, quote, true, true, 100e6, 0);
+        uint256 bag = IERC20(token).balanceOf(alice);
+        _swapLeg(alice, token, quote, false, true, bag / 2, 0);
+
+        (uint256 lpFee, uint256 tax) = _pendingFees(token, quote);
+        assertGt(lpFee, 2 * lpFirst, "three legs' LP fees, not the last one's");
+        assertGt(tax, 2 * taxFirst, "three legs' taxes, not the last one's");
+        assertApproxEqRel(lpFee * TAX_BPS, tax * LP_BPS, 1e12, "both ledgers grew, each at its own rate");
+
+        _settleAndAssertDelivered(token, quote);
+    }
+
+    /// @dev Two ERC20 pools of the SAME token keep separate ledgers and separate identity caches:
+    ///      trading one must leave the other's pending fees at zero and settle only its own.
+    function test_resolve_secondErc20PoolOfSameTokenIsIndependent() public {
+        address low = _placeQuote(LOW_QUOTE);
+        address high = _placeQuote(HIGH_QUOTE);
+        RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: low, weightBps: 5_000, launchTick: QC_LAUNCH_TICK});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: high, weightBps: 5_000, launchTick: QC_LAUNCH_TICK});
+
+        vm.prank(creator);
+        address token = directFactory.createToken(
+            _setup(true),
+            pairs,
+            _noDirectAlloc(_taxCfg(uint16(TAX_BPS), uint16(TAX_BPS), uint32(14 days))),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+
+        QuoteCoin(low).mintTo(alice, 1_000e6);
+        _swapLeg(alice, token, low, true, true, 100e6, 0);
+
+        (uint256 lpLow, uint256 taxLow) = _pendingFees(token, low);
+        assertEq(lpLow, 100e6 * LP_BPS / BPS, "the traded pool booked its fee");
+        (uint256 lpHigh, uint256 taxHigh) = _pendingFees(token, high);
+        assertEq(lpHigh + taxHigh, 0, "the untraded pool booked nothing");
+
+        // The second pool trades on its own terms, and settling the first leaves it untouched.
+        QuoteCoin(high).mintTo(alice, 1_000e6);
+        _swapLeg(alice, token, high, true, true, 50e6, 0);
+        assertEq(anyPairHook.pendingLpFees(token, high), 50e6 * LP_BPS / BPS, "and its own fee when it does");
+        assertEq(anyPairHook.pendingLpFees(token, low), lpLow, "the first pool's ledger is unchanged by it");
+
+        anyPairHook.settleFees(token, low);
+        assertEq(anyPairHook.pendingLpFees(token, low) + anyPairHook.pendingTaxes(token, low), 0, "the first cleared");
+        assertEq(
+            anyPairHook.pendingLpFees(token, high) + anyPairHook.pendingTaxes(token, high),
+            50e6 * (LP_BPS + TAX_BPS) / BPS,
+            "and only the first"
+        );
+        assertEq(taxLow, 100e6 * TAX_BPS / BPS, "the traded pool's tax was its own too");
+    }
+
     /// @dev The token announces its ERC20 quotes once, at creation, native excluded; a native-only launch
     ///      announces none.
     function test_events_quotesRegisteredAtCreation() public {

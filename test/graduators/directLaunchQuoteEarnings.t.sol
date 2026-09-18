@@ -31,6 +31,7 @@ import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+import {HalfFillQuoteBuyBackRouterStub} from "test/graduators/directLaunchDividends.t.sol";
 
 /// @notice An 18-decimal `QuoteCoin`, for prices where a 6-decimal quote would fall outside the venue's
 ///         launch-price bounds.
@@ -249,22 +250,95 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         assertEq(IERC20(quote).balanceOf(address(this)), 1, "the deposit came back as the quote");
     }
 
-    /////////////////////////// sniper window ///////////////////////////
+    /////////////////////////// LP-FEE SHARE THROUGH THE ALLOCATION ///////////////////////////
 
-    /// @dev The buy-back's pool -> token leg lands on the token's OWN balance. That is protocol plumbing,
-    ///      not a sniper, so the caps must not apply to it inside the window.
-    function test_sniperWindow_buyBackIntoTheTokenIsNotCapped() public {
-        AntiSniperConfigs memory caps = AntiSniperConfigs({
-            maxBuyPerTxBps: 10, maxWalletBps: 10, protectionWindowSeconds: 1 days, whitelist: new address[](0)
-        });
-        RealmTaxableTokenUniV4 token = _launchEarning(address(0), LAUNCH_TICK, caps);
-        vm.deal(address(this), 1 ether);
-        token.accrueFees{value: 1 ether}();
+    /// @dev The whole point of routing the LP-fee creator share through the TOKEN rather than straight to
+    ///      the fee handler: an allocation-configured token must carve its burn / liquidity slices out of
+    ///      that share too, not just out of the swap tax. Driven by a real swap through the hook and a
+    ///      real `settleFees`, so the router's ERC20 leg is the thing under test, not a direct `accrueFees`.
+    function test_erc20Quote_lpFeeCreatorShareIsCarvedByEarningsAllocation() public {
+        address quote = _placeQuote(LOW_QUOTE, false);
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        QuoteCoin(quote).mintTo(alice, 1_000e6);
+
+        _swapQuotePool(alice, address(token), quote, true, 100e6);
+        uint256 lpFee = anyPairHook.pendingLpFees(address(token), quote);
+        assertEq(lpFee, 100e6 / 100, "a 1% LP fee on the input");
+        assertEq(anyPairHook.pendingTaxes(address(token), quote), 0, "and no tax: the LP fee is all there is");
+
+        anyPairHook.settleFees(address(token), quote);
+
+        uint256 creatorShare = lpFee - lpFee * LP_TREASURY_BPS / 10_000;
+        (uint256 burnPending, uint256 liquidityPending,,) = token.quoteBufferOf(quote);
+        assertEq(burnPending, creatorShare / 2, "half the LP-fee creator share was carved for the burn");
+        assertEq(liquidityPending, creatorShare / 2, "and half for liquidity");
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(token);
+        assertEq(
+            feeHandler.getClaimable(tokens, quote, creator)[0],
+            creatorShare - 2 * (creatorShare / 2),
+            "nothing but the rounding dust reached the fund wallets"
+        );
+        assertEq(IERC20(quote).balanceOf(address(token)), creatorShare, "and the token holds what it booked");
+    }
+
+    /////////////////////////// per-call spend cap ///////////////////////////
+
+    /// @dev `MAX_QUOTE_SPEND_BPS`: one call spends a QUARTER of the buffer, not the lot. The native leg
+    ///      has an absolute ceiling instead, which means nothing in a currency nobody calibrated.
+    function test_processBurn_quote_capsSpendAt25PercentOfBuffer() public {
+        address quote = _placeQuote(LOW_QUOTE, false);
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        _accrue(token, quote, 4_000e6);
+
+        (uint256 buffered,,,) = token.quoteBufferOf(quote);
+        assertEq(buffered, 2_000e6, "half the accrual is earmarked for burning");
+
+        token.processBurn(quote, 1);
+
+        (uint256 left,,,) = token.quoteBufferOf(quote);
+        assertEq(left, buffered - buffered / 4, "three quarters stay buffered for later calls");
+    }
+
+    /// @dev The same cap on the liquidity leg, which reads `_maxSpend` through its own entry point.
+    function test_processLiquidity_quote_capsSpendAt25PercentOfBuffer() public {
+        address quote = _placeQuote(LOW_QUOTE, false);
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        _accrue(token, quote, 4_000e6);
+
+        (, uint256 buffered,,) = token.quoteBufferOf(quote);
+        token.processLiquidity(quote);
+
+        (, uint256 left,,) = token.quoteBufferOf(quote);
+        assertEq(left, buffered - buffered / 4, "three quarters stay buffered");
+    }
+
+    /// @dev A pool that only half-fills the buy-back: the unspent quote must go back on the BURN buffer,
+    ///      not fall into the stray pool where `sweepStrayEth` would re-split it into other buckets. The
+    ///      native leg has this; the quote leg is a different path (orientation-dependent, Permit2-settled).
+    function test_processBurn_quote_partialFillRefundsUnspentToBuffer() public {
+        address quote = _placeQuote(LOW_QUOTE, false);
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        _accrue(token, quote, 4_000e6);
+        (uint256 buffered,,,) = token.quoteBufferOf(quote);
+        uint256 spend = buffered / 4;
+
+        address router = token.UNIV4_UNIVERSAL_ROUTER();
+        deal(address(token), router, 1e18);
+        vm.etch(router, address(new HalfFillQuoteBuyBackRouterStub(address(token), quote, token.PERMIT2())).code);
+
         uint256 supply = token.totalSupply();
+        token.processBurn(quote, 1);
 
-        token.processBurn(0);
-
-        assertLt(token.totalSupply(), supply, "the buy-back went through inside the window");
+        (uint256 left,,,) = token.quoteBufferOf(quote);
+        assertEq(left, buffered - spend / 2, "only the half the pool took left the buffer");
+        assertEq(supply - token.totalSupply(), 1e18, "what the pool did deliver was burned");
+        // The liquidity buffer is untouched, so the token's holdings back BOTH buffers exactly.
+        (, uint256 liquidityPending,,) = token.quoteBufferOf(quote);
+        assertEq(
+            IERC20(quote).balanceOf(address(token)), left + liquidityPending, "the unspent half is backed and earmarked"
+        );
     }
 
     /////////////////////////// fee-on-transfer quote ///////////////////////////
@@ -289,6 +363,145 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
             burnPending + liquidityPending,
             "the buffers never claim more than the token actually holds"
         );
+    }
+
+    /////////////////////////// unregistered quote / cooldown independence ///////////////////////////
+
+    /// @dev `accrueFees` and `processDividends` both refuse a currency this token has no pool for; so must
+    ///      the two earnings processors, which would otherwise index a buffer that belongs to nobody.
+    function test_processBurnAndLiquidity_unregisteredQuoteReverts() public {
+        address quote = _placeQuote(LOW_QUOTE, false);
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+
+        vm.expectRevert(RealmToken.UnknownQuote.selector);
+        token.processBurn(address(quoteCoin), 1);
+        vm.expectRevert(RealmToken.UnknownQuote.selector);
+        token.processLiquidity(address(quoteCoin));
+    }
+
+    /// @dev The once-per-block cooldown is the QUOTE's, not the token's: a native buy-back and an ERC20
+    ///      one in the same block must both go through. Same-quote-twice is what `_secondProcessInABlock`
+    ///      already pins.
+    function test_processBurn_nativeAndQuoteCooldownsAreIndependent() public {
+        address quote = _placeQuote(LOW_QUOTE, false);
+        RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000, launchTick: LAUNCH_TICK});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: quote, weightBps: 5_000, launchTick: QC_LAUNCH_TICK});
+
+        vm.prank(creator);
+        RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(
+            payable(directFactory.createToken(
+                    _setup(true),
+                    pairs,
+                    _burnAndLiquidityAlloc(),
+                    _emptyAntiSniperCfg(),
+                    new IRealmFactory.CreatorVault[](0),
+                    _noDevBuy(),
+                    address(0)
+                ))
+        );
+        _accrue(token, quote, 4_000e6);
+        vm.deal(address(this), 1 ether);
+        token.accrueFees{value: 1 ether}();
+
+        uint256 supply = token.totalSupply();
+        token.processBurn(quote, 1);
+        uint256 afterQuote = token.totalSupply();
+        assertLt(afterQuote, supply, "the ERC20 pool's buy-back ran");
+
+        // No `vm.roll`: the native leg's cooldown slot is its own.
+        token.processBurn(address(0), 1);
+        assertLt(token.totalSupply(), afterQuote, "and the native one ran in the same block");
+    }
+
+    /////////////////////////// registerQuotes' own validation ///////////////////////////
+
+    /// @dev The factory pre-checks the pair list, so these rules are only ever reached through the token's
+    ///      own defence in depth. Exercised by pranking as the creating factory — the one caller the
+    ///      function admits.
+    function test_registerQuotes_rejectsAnInvalidSet() public {
+        address token = _launchAgainstQuoteCoin(_noDevBuy());
+        address factory = address(directFactory);
+
+        // `MAX_QUOTES` slots, of which index 0 is always native.
+        address[] memory tooMany = new address[](RealmToken(payable(token)).MAX_QUOTES());
+        for (uint256 i; i < tooMany.length; ++i) {
+            tooMany[i] = address(new QuoteCoin18());
+        }
+        vm.prank(factory);
+        vm.expectRevert(RealmToken.InvalidQuotes.selector);
+        IRealmToken(token).registerQuotes(tooMany);
+
+        vm.prank(factory);
+        vm.expectRevert(RealmToken.InvalidQuotes.selector);
+        IRealmToken(token).registerQuotes(new address[](0));
+
+        // Already registered at creation: a second slot for the same currency would give it two buffers.
+        address[] memory duplicate = new address[](1);
+        duplicate[0] = address(quoteCoin);
+        vm.prank(factory);
+        vm.expectRevert(RealmToken.InvalidQuotes.selector);
+        IRealmToken(token).registerQuotes(duplicate);
+
+        // Native is index 0's, implicitly.
+        address[] memory native = new address[](1);
+        native[0] = address(0);
+        vm.prank(factory);
+        vm.expectRevert(RealmToken.InvalidQuotes.selector);
+        IRealmToken(token).registerQuotes(native);
+
+        assertEq(IRealmToken(token).quoteCount(), 2, "the quote set is unchanged");
+    }
+
+    /////////////////////////// front-running a pending launch ///////////////////////////
+
+    /// @dev ⚠️ A GRIEFING VECTOR, pinned rather than fixed. The graduator's caller guard stops anyone
+    ///      driving `initialize` for someone else's token, but nothing stops them creating the exact pool
+    ///      key straight on the pool manager: a pending `createToken` is public in the mempool, the salt
+    ///      is namespaced by the creator so the token address is precomputable from it, and the real
+    ///      launch then reverts inside `poolManager.initialize`. Cost to the griefer is one pool
+    ///      initialization; cost to the creator is a wasted mined `0xeeaa` salt.
+    function test_frontRun_preInitializedPoolBlocksTheRealLaunch() public {
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(false);
+        address predicted = _predictToken(address(directFactory), address(realmToken), creator, setup.salt);
+
+        vm.prank(alice);
+        IPoolManager(poolManagerAddress)
+            .initialize(
+                UniswapV4PoolConstants.realmPoolKey(predicted, address(quoteCoin), TEST_ANYPAIR_HOOK_ADDRESS),
+                TickMath.getSqrtPriceAtTick(0)
+            );
+
+        vm.prank(creator);
+        vm.expectRevert();
+        directFactory.createToken(
+            setup,
+            _quotePairs(QC_LAUNCH_TICK),
+            _noDirectAlloc(_emptyTaxCfg()),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+        assertEq(predicted.code.length, 0, "the launch is dead: nothing was deployed at the mined address");
+    }
+
+    /////////////////////////// sniper window ///////////////////////////
+
+    /// @dev The buy-back's pool -> token leg lands on the token's OWN balance. That is protocol plumbing,
+    ///      not a sniper, so the caps must not apply to it inside the window.
+    function test_sniperWindow_buyBackIntoTheTokenIsNotCapped() public {
+        AntiSniperConfigs memory caps = AntiSniperConfigs({
+            maxBuyPerTxBps: 10, maxWalletBps: 10, protectionWindowSeconds: 1 days, whitelist: new address[](0)
+        });
+        RealmTaxableTokenUniV4 token = _launchEarning(address(0), LAUNCH_TICK, caps);
+        vm.deal(address(this), 1 ether);
+        token.accrueFees{value: 1 ether}();
+        uint256 supply = token.totalSupply();
+
+        token.processBurn(0);
+
+        assertLt(token.totalSupply(), supply, "the buy-back went through inside the window");
     }
 
     /////////////////////////// launch-price bounds ///////////////////////////
