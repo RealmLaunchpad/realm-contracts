@@ -40,6 +40,16 @@ contract QuoteCoin is ERC20 {
     }
 }
 
+/// @notice A quote with the legacy `bytes32` symbol (MKR-style): 32 raw bytes, not an ABI string.
+contract Bytes32SymbolCoin is QuoteCoin {
+    function symbol() public pure override returns (string memory) {
+        assembly {
+            mstore(0, "B32")
+            return(0, 32)
+        }
+    }
+}
+
 /// @notice The direct venue launched against an ERC20 rather than the chain's native currency, and
 ///         against SEVERAL currencies at once. What these cover that `DirectLaunchUniV4Tests` does not:
 ///         the pool sorting either way, the fee arriving in the quote, and the supply splitting by
@@ -335,6 +345,44 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         assertEq(found, 2, "one PoolSeeded per pool");
         assertEq(weights[0], 6_000);
         assertEq(weights[1], 4_000);
+    }
+
+    /// @dev The quote's metadata rides in `PoolSeeded` so an indexer needs no RPC, and the market caps are
+    ///      in its RAW units: 1e-4 QC per coin across 1e9 coins is 1e5 QC, i.e. 1e11 at 6 decimals.
+    function test_poolSeeded_carriesTheQuoteMetadataAndRawMarketCaps() public {
+        vm.recordLogs();
+        _launchAgainstQuoteCoin(_noDevBuy());
+        (uint256 launchCap, uint256 targetCap, uint8 decimals, string memory symbol) = _poolSeededTail();
+        assertEq(decimals, 6);
+        assertEq(symbol, "QC");
+        assertApproxEqRel(launchCap, 1e11, 0.01e18, "launch market cap in raw QC units");
+        assertEq(targetCap, launchCap * 5);
+    }
+
+    /// @dev A `symbol()` that is not an ABI string labels nothing, and must not block the launch.
+    function test_poolSeeded_nonStringSymbolIsEmptyAndTheLaunchSucceeds() public {
+        quoteCoin = new Bytes32SymbolCoin();
+        vm.recordLogs();
+        _launchAgainstQuoteCoin(_noDevBuy());
+        (,, uint8 decimals, string memory symbol) = _poolSeededTail();
+        assertEq(decimals, 6);
+        assertEq(symbol, "");
+    }
+
+    /// @dev The first `PoolSeeded` in the recorded logs, fields after `liquidity`.
+    function _poolSeededTail()
+        internal
+        returns (uint256 launchCap, uint256 targetCap, uint8 decimals, string memory symbol)
+    {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics.length == 3 && logs[i].topics[0] == RealmDirectGraduatorUniV4.PoolSeeded.selector) {
+                (,,,, launchCap, targetCap, decimals, symbol) =
+                    abi.decode(logs[i].data, (bytes32, uint16, int24, uint128, uint256, uint256, uint8, string));
+                return (launchCap, targetCap, decimals, symbol);
+            }
+        }
+        revert("PoolSeeded not emitted");
     }
 
     function test_multiPair_rejectsADuplicateQuote() public {

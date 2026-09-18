@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
@@ -159,6 +160,10 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     /// @param launchMarketCap Market cap `tick` implies across the whole supply, in the quote's RAW units
     ///                   (wei for native, no decimals applied).
     /// @param targetMarketCap `launchMarketCap * GRADUATION_TARGET_MULTIPLE`, same units.
+    /// @param quoteDecimals The quote's decimals (18 for native), so an indexer can normalise the raw
+    ///                   amounts above without an RPC call.
+    /// @param quoteSymbol The quote's `symbol()`, for display. Empty for native, and for a quote whose
+    ///                   `symbol()` reverts or is not a short ABI string (see `_quoteMetadata`).
     event PoolSeeded(
         address indexed token,
         address indexed quote,
@@ -167,7 +172,9 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         int24 tick,
         uint128 liquidity,
         uint256 launchMarketCap,
-        uint256 targetMarketCap
+        uint256 targetMarketCap,
+        uint8 quoteDecimals,
+        string quoteSymbol
     );
 
     //////////////////////////////////////////////////////
@@ -438,6 +445,7 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         uint128 liquidity
     ) internal {
         uint256 launchMarketCap = RealmLaunchPricing.rawMarketCapAtTick(launchTick);
+        (uint8 quoteDecimals, string memory quoteSymbol) = _quoteMetadata(quote);
         emit PoolSeeded(
             token,
             quote,
@@ -446,8 +454,24 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
             launchTick,
             liquidity,
             launchMarketCap,
-            launchMarketCap * GRADUATION_TARGET_MULTIPLE
+            launchMarketCap * GRADUATION_TARGET_MULTIPLE,
+            quoteDecimals,
+            quoteSymbol
         );
+    }
+
+    /// @dev Display metadata for `PoolSeeded`. `decimals()` cannot fail here: the factory validated it
+    ///      earlier in this same transaction. `symbol()` is read defensively, as it only labels things:
+    ///      a quote whose call reverts, returns the legacy `bytes32` form, or returns anything but an ABI
+    ///      string of at most 32 bytes gets an empty symbol rather than blocking the launch.
+    function _quoteMetadata(address quote) internal view returns (uint8 decimals, string memory symbol) {
+        if (quote == address(0)) return (18, "");
+        decimals = IERC20Metadata(quote).decimals();
+        (bool ok, bytes memory data) = quote.staticcall{gas: 50_000}(abi.encodeCall(IERC20Metadata.symbol, ()));
+        if (!ok || data.length < 64) return (decimals, "");
+        (uint256 offset, uint256 length) = abi.decode(data, (uint256, uint256));
+        if (offset != 32 || length > 32 || data.length < 64 + length) return (decimals, "");
+        symbol = abi.decode(data, (string));
     }
 
     /// @dev The launch tick in the POOL's orientation. `launchTick` is quote-per-coin; a V4 tick is
