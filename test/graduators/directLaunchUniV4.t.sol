@@ -14,6 +14,7 @@ import {RealmToken} from "src/tokens/RealmToken.sol";
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs, SniperProtection} from "src/tokens/SniperProtection.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {RealmLaunchPricing} from "src/libraries/RealmLaunchPricing.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {PoolKey as CorePoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -166,6 +167,13 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
                 assertEq(weightBps, 10_000);
                 assertEq(tick, LAUNCH_TICK, "PoolSeeded reports the caller's tick, not the pool's");
                 assertGt(liquidity, 0);
+                (,,,, uint256 launchCap, uint256 targetCap) =
+                    abi.decode(logs[i].data, (bytes32, uint16, int24, uint128, uint256, uint256));
+                // Native has 18 decimals, so the raw (wei) market cap IS the whole-units X18 one, up to
+                // `priceAtTick` flooring the per-coin price before scaling by the supply.
+                (, uint256 capX18) = RealmLaunchPricing.priceAtTick(LAUNCH_TICK, 18);
+                assertApproxEqAbs(launchCap, capX18, 1e9, "launch market cap in wei");
+                assertEq(targetCap, launchCap * directGraduator.GRADUATION_TARGET_MULTIPLE(), "target = 5x launch");
                 found = true;
             }
         }

@@ -17,6 +17,7 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
+import {RealmLaunchPricing} from "src/libraries/RealmLaunchPricing.sol";
 // Self-aliased so the `chain-*` recipes can import-swap it for the target chain's pool constants.
 import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
@@ -56,6 +57,13 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     /// @notice Sink for the token dust left over after the seed deposit. Never the graduator itself: a
     ///         graduator balance is a CONTINUOUS holder and would accrue dividends nobody can claim.
     address internal constant DEAD_ADDRESS = address(0xdEaD);
+
+    /// @notice A pool's graduation target as a multiple of its opening market cap, reported in
+    ///         `PoolSeeded`. On-chain a direct-launched token is graduated from birth; indexers show it
+    ///         graduated once its largest pool (highest `weightBps`, the first seeded on a tie) trades
+    ///         at this multiple. A display milestone only: nothing here enforces it.
+    /// @dev 5x is the DEFAULT curve's own run, from its 2.25 ETH opening to its 12.25 ETH graduation.
+    uint256 public constant GRADUATION_TARGET_MULTIPLE = 5;
 
     /// @notice Uniswap V4 pool manager. Also the `pair` every direct-launched token records, so the
     ///         token's own pre-graduation transfer guard points at the same place the curve venue's does.
@@ -148,8 +156,18 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     /// @param tick       Launch price as QUOTE PER COIN, in ticks — the caller-supplied value, not the
     ///                   pool's internal orientation.
     /// @param liquidity  Uniswap V4 liquidity units the seed band minted.
+    /// @param launchMarketCap Market cap `tick` implies across the whole supply, in the quote's RAW units
+    ///                   (wei for native, no decimals applied).
+    /// @param targetMarketCap `launchMarketCap * GRADUATION_TARGET_MULTIPLE`, same units.
     event PoolSeeded(
-        address indexed token, address indexed quote, bytes32 poolId, uint16 weightBps, int24 tick, uint128 liquidity
+        address indexed token,
+        address indexed quote,
+        bytes32 poolId,
+        uint16 weightBps,
+        int24 tick,
+        uint128 liquidity,
+        uint256 launchMarketCap,
+        uint256 targetMarketCap
     );
 
     //////////////////////////////////////////////////////
@@ -407,7 +425,29 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         liquidity = IRealmUniV4LiquidityAdder(LIQUIDITY_ADDER)
             .addSingleSided(key, Currency.wrap(token), amount, tickLower, tickUpper, address(this), address(this));
 
-        emit PoolSeeded(token, quote, PoolId.unwrap(key.toId()), weightBps, launchTick, liquidity);
+        _emitPoolSeeded(token, quote, PoolId.unwrap(key.toId()), weightBps, launchTick, liquidity);
+    }
+
+    /// @dev Split out of `_seed`, whose stack is already full.
+    function _emitPoolSeeded(
+        address token,
+        address quote,
+        bytes32 poolId,
+        uint16 weightBps,
+        int24 launchTick,
+        uint128 liquidity
+    ) internal {
+        uint256 launchMarketCap = RealmLaunchPricing.rawMarketCapAtTick(launchTick);
+        emit PoolSeeded(
+            token,
+            quote,
+            poolId,
+            weightBps,
+            launchTick,
+            liquidity,
+            launchMarketCap,
+            launchMarketCap * GRADUATION_TARGET_MULTIPLE
+        );
     }
 
     /// @dev The launch tick in the POOL's orientation. `launchTick` is quote-per-coin; a V4 tick is

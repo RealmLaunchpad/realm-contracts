@@ -50,6 +50,16 @@ library RealmLaunchPricing {
         marketCapX18 = priceX18 * WHOLE_SUPPLY;
     }
 
+    /// @notice The market cap `launchTick` implies in the quote's RAW units (wei for native): the whole
+    ///         supply at that price, no decimals applied. The same units an indexer derives from a pool's
+    ///         `sqrtPriceX96`, so the two compare without knowing the quote's decimals.
+    /// @dev Fits in 256 bits at every tick: `1.0001^tick` is below 2^128 and the raw supply is 1e27.
+    function rawMarketCapAtTick(int24 launchTick) internal pure returns (uint256) {
+        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(launchTick);
+        uint256 priceX128 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 64);
+        return FullMath.mulDiv(priceX128, WHOLE_SUPPLY * 10 ** COIN_DECIMALS, 1 << 128);
+    }
+
     /// @notice `priceAtTick`'s `priceX18` alone, which fits in 256 bits at every tick and decimals value.
     function pricePerCoin(int24 launchTick, uint8 quoteDecimals) internal pure returns (uint256 priceX18) {
         require(quoteDecimals <= 36, UnsupportedDecimals());
