@@ -205,9 +205,11 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         require(tokenAddress != quote, TokenEqualsQuote());
 
         _initializedToken = tokenAddress;
+        // Before `_openPool`'s `PoolIdRegistered`: the same order `RealmGraduatorUniswapV4` emits, which
+        // indexers depend on.
+        emit PairInitialized(tokenAddress, address(UNIV4_POOL_MANAGER));
         _openPool(tokenAddress, quote, _pendingLaunchTick);
 
-        emit PairInitialized(tokenAddress, address(UNIV4_POOL_MANAGER));
         return address(UNIV4_POOL_MANAGER);
     }
 

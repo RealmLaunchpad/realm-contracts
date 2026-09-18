@@ -134,7 +134,7 @@ Each `DirectPair` names a `quote` (`address(0)` for the chain's native currency,
 Realm event order:
 
 1. **`RealmFactory.TokenCreated`** (`token, name, symbol, tokenOwner, launchpad=address(0), graduator=RealmDirectGraduatorUniV4, feeHandler`).
-2. Graduator initialization, from inside the token's `initialize`: **`RealmDirectGraduatorUniV4.PoolIdRegistered`** (`token, poolId, swapHookAddress`) then **`RealmGraduator.PairInitialized`** (`token, pair=PoolManager`) — the REVERSE of the unified V4 graduator's order (§1.1 step 2), because the pool is created before the pair is announced. The pool is created at `pairs[0].launchTick`, interpreted as QUOTE PER COIN; the pool's own `slot0.tick` is its reciprocal (`-launchTick`) whenever the coin sorts as `currency1`, which it always does against native.
+2. Graduator initialization, from inside the token's `initialize`: **`RealmGraduator.PairInitialized`** (`token, pair=PoolManager`) then **`RealmDirectGraduatorUniV4.PoolIdRegistered`** (`token, poolId, swapHookAddress`) — the same order as the unified V4 graduator (§1.1 step 2). The pool is created at `pairs[0].launchTick`, interpreted as QUOTE PER COIN; the pool's own `slot0.tick` is its reciprocal (`-launchTick`) whenever the coin sorts as `currency1`, which it always does against native.
 3. Implementation initializer events, exactly as §1.1 step 3 — **`RealmToken.LaunchpadFeesInitialized`** (both fields `0`: there is no pre-graduation fee to charge or split), then **`RealmTaxableTokenInitialized`** and/or **`SniperProtectionInitialized`** when configured.
 3a. Any ERC20 quotes only: **`RealmToken.QuotesRegistered`** (`quotes[]`) — the currencies beyond the native one the token will earn in. `quotes[0]` on the token is ALWAYS `address(0)`, so this event carries only the extras and is absent on a native-only launch. It is what tells an indexer which currencies to expect in that token's `CreatorAssetFeesDeposited` / `LpAssetFeesRouted`.
 4. Creator vaults, when configured: the §1.1 step 4b sequence unchanged (`CreatorVaultDeployed` per vault, then **`RealmFactory.CreatorVaultsCreated`**).
@@ -179,9 +179,8 @@ When the buy does not graduate the token:
 5. Treasury share pushed to the treasury address → the §11 router/voting events.
 6. **`RealmLaunchpad.RealmTokenBuy`** (`token, buyer, ethAmount=msg.value, tokenAmount, ethFee`) — `ethFee` is the total (LP fee + tax).
 
-A token with `treasuryShareBps = 100%` and no tax (the launchpad's legacy-equivalent default) has
-`creatorShare == 0` and no tax, so steps 3–4 are skipped; its only addition vs. the legacy flow is
-the `LpFeesAccrued` in step 2.
+Both curve factories create every token with `treasuryShareBps = 3000` (30% treasury / 70% creator of
+the 1% LP fee), so step 4 fires on every buy that takes a fee; only step 3 depends on an active tax.
 
 If the buy crosses the graduation threshold, append the relevant graduation sequence from §3 or §4.
 

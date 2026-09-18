@@ -172,6 +172,26 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         assertTrue(found, "PoolSeeded not emitted");
     }
 
+    /// @dev Same order as `RealmGraduatorUniswapV4`, which indexers depend on.
+    function test_launch_emitsPairInitializedBeforePoolIdRegistered() public {
+        vm.recordLogs();
+        _launch(0, _noDevBuy());
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 pairAt = type(uint256).max;
+        uint256 poolAt = type(uint256).max;
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].emitter != address(directGraduator)) continue;
+            bytes32 topic = logs[i].topics[0];
+            if (topic == IRealmGraduator.PairInitialized.selector && pairAt == type(uint256).max) pairAt = i;
+            if (topic == RealmDirectGraduatorUniV4.PoolIdRegistered.selector && poolAt == type(uint256).max) {
+                poolAt = i;
+            }
+        }
+        assertLt(poolAt, logs.length, "PoolIdRegistered not emitted");
+        assertLt(pairAt, poolAt, "PairInitialized must precede PoolIdRegistered");
+    }
+
     function test_devBuy_deliversTokensToTheRecipients() public {
         address token = _launch(0.05 ether, _devBuyTo(alice));
 
