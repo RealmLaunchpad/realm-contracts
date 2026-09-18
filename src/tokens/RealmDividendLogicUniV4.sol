@@ -152,7 +152,11 @@ contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLo
                 IRealmDividendSwapRegistry.swapAssetToAsset, (quote, payout, amountIn, minOut, address(this))
             )
         );
-        if (!ok) return (0, 0);
+        if (!ok) {
+            // No standing allowance to an upgradeable registry for a spend that never happened.
+            IERC20(quote).forceApprove(DIVIDEND_SWAP_REGISTRY, 0);
+            return (0, 0);
+        }
         uint256 after_ = payout == address(0) ? address(this).balance : IERC20(payout).balanceOf(address(this));
         return (after_ - before, amountIn);
     }

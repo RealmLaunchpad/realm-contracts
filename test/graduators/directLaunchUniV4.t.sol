@@ -435,6 +435,38 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         );
     }
 
+    /// @dev This venue trades from the first second, so a decay start the hook's 20% cap cannot fit next
+    ///      to the LP fee would make every buy revert `FeeTooHigh` until it decayed. Refused at creation;
+    ///      exactly at the cap it launches and trades.
+    function test_revertsWhenLpFeePlusDecayStartExceedsTheHookCap() public {
+        TaxConfigs memory overCap = _decayCfg(1901, 0, 20 minutes, true); // + 100 bps LP fee = 2001
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(true);
+        vm.prank(creator);
+        vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
+        directFactory.createToken(
+            setup,
+            _pairs(address(0), LAUNCH_TICK),
+            _noDirectAlloc(overCap),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+
+        vm.prank(creator);
+        address token = directFactory.createToken(
+            setup,
+            _pairs(address(0), LAUNCH_TICK),
+            _noDirectAlloc(_decayCfg(1900, 0, 20 minutes, true)),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+        _swapBuyV4(alice, token, 0.02 ether, 0, true);
+        assertGt(IERC20(token).balanceOf(alice), 0, "a buy at the cap goes through");
+    }
+
     /// @dev The graduator authorises a launch by WHO calls `initialize` — the token, on itself. A
     ///      front-runner who staged a `prepare` cannot pre-create someone else's pool with it.
     function test_graduatorInitialize_rejectsAnyCallerButTheToken() public {

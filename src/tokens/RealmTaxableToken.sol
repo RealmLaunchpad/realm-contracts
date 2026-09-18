@@ -332,11 +332,7 @@ abstract contract RealmTaxableToken is
     ///      `asset` to be one of this token's registered `quotes`.
     /// @dev Splits what was actually RECEIVED, not the nominal `amount` — see `RealmToken.accrueFees`.
     function accrueFees(address asset, uint256 amount) external virtual override(IRealmToken, RealmToken) {
-        _requireQuote(asset);
-        if (amount == 0) return;
-        uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
-        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
-        uint256 received = IERC20(asset).balanceOf(address(this)) - balanceBefore;
+        uint256 received = _pullQuote(asset, amount);
         if (received == 0) return;
         _allocateEarnings(asset, received, burnBps, liquidityBps);
     }

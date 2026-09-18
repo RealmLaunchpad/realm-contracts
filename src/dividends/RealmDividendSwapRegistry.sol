@@ -522,8 +522,12 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         }
         UniversalRouterVenue.ensureRouterPull(PERMIT2, UNIV4_UNIVERSAL_ROUTER, source);
         uint256 before = address(this).balance;
+        uint256 sourceBefore = IERC20(source).balanceOf(address(this));
+        // All of `amountIn` or nothing: a partial fill would leave the rest here, where nothing can sweep
+        // it, while the caller books the whole spend.
         require(
-            UniversalRouterVenue.swapAssetToNativeV4Path(UNIV4_UNIVERSAL_ROUTER, source, path, amountIn, minOut),
+            UniversalRouterVenue.swapAssetToNativeV4Path(UNIV4_UNIVERSAL_ROUTER, source, path, amountIn, minOut)
+                && sourceBefore - IERC20(source).balanceOf(address(this)) == amountIn,
             SwapFailed()
         );
         native = address(this).balance - before;

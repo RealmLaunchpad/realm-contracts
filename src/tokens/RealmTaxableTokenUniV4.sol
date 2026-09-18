@@ -162,16 +162,22 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     ///      SSTORE into a slot the sibling slice shares) and consumes the slice fully — returns 0, so
     ///      nothing folds back to the fund wallets. Overrides the base fallback in `EarningsAllocation`.
     function _handleBurn(address asset, uint256 amount) internal override returns (uint256) {
+        QuoteBuffers storage buf = quoteBuffers[_quoteIndex(asset)];
+        uint256 updated = buf.burnPending + amount;
+        require(updated <= type(uint128).max, DividendBufferOverflow());
         // forge-lint: disable-next-line(unsafe-typecast)
-        quoteBuffers[_quoteIndex(asset)].burnPending += uint128(amount);
+        buf.burnPending = uint128(updated);
         return 0;
     }
 
     /// @dev The liquidity slice, same shape: buffered per quote and deposited out-of-band by
     ///      `processLiquidity` as a single-sided wall on that quote's own pool.
     function _handleLiquidity(address asset, uint256 amount) internal override returns (uint256) {
+        QuoteBuffers storage buf = quoteBuffers[_quoteIndex(asset)];
+        uint256 updated = buf.liquidityPending + amount;
+        require(updated <= type(uint128).max, DividendBufferOverflow());
         // forge-lint: disable-next-line(unsafe-typecast)
-        quoteBuffers[_quoteIndex(asset)].liquidityPending += uint128(amount);
+        buf.liquidityPending = uint128(updated);
         return 0;
     }
 

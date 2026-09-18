@@ -81,6 +81,9 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ///         100 bps in LP fees, leaving 450 or 400 bps for tax.
     uint256 public constant MAX_TOTAL_FEE_BPS = 500;
 
+    /// @dev The V4 hooks' `MAX_OVERALL_FEE_BPS`: a swap whose LP fee + active tax exceeds it reverts.
+    uint256 internal constant HOOK_MAX_OVERALL_FEE_BPS = 2_000;
+
     /// @notice Total token supply minted per token. Mirrors `RealmToken.TOTAL_SUPPLY`; used to size
     ///         creator-vault allocations from their bps.
     uint256 internal constant TOTAL_SUPPLY = 1_000_000_000e18;
@@ -430,9 +433,10 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ///        overflow-prevention bound from `uint32` packing); the static-bps ceiling is venue-dependent
     ///        and enforced separately by `_validateTotalFee`.
     ///      - Decay: combined start bps (`buy + sell`) capped at `MAX_TAX_DECAY_START_COMBINED_BPS` (20%) and duration at
-    ///        `MAX_TAX_DECAY_DURATION_SECONDS` (20 min). The decay bps are NOT part of `_validateTotalFee`
-    ///        (the effective rate is `max(decay, static)`, not their sum); the launchpad's own per-trade
-    ///        `MAX_TRADING_FEE_BPS` backstops the LP fee + decay total. Each configured decay start must be
+    ///        `MAX_TAX_DECAY_DURATION_SECONDS` (20 min). The decay bps are NOT part of the 5% cap in
+    ///        `_validateTotalFee` (the effective rate is `max(decay, static)`, not their sum), only of its
+    ///        hook-cap check; pre-graduation the launchpad's own per-trade `MAX_TRADING_FEE_BPS`
+    ///        backstops the LP fee + decay total. Each configured decay start must be
     ///        strictly above its direction's static rate (`buyTaxDecayStartBps > buyTaxBps`, same for sell) —
     ///        the decay interpolates down to the static rate, so a start at or below it would never decay.
     ///        Checked per direction and only when that start is set, so single-direction and decay-only
@@ -482,9 +486,14 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ///      additionally charges its own LP fee on top of the tax; that transient total is bounded by
     ///      the launchpad's (looser) `MAX_TRADING_FEE_BPS`, not here. `taxCfg` bps are unbounded here, so
     ///      the sum is widened to `uint256` to avoid a spurious overflow revert before this check fires.
+    /// @dev A decay can still be running once the pool trades on a V4 hook (from the first second on the
+    ///      direct venue, after an early graduation on the curve ones), so LP fee + decay start must also
+    ///      fit under the hook's own cap, or every swap in that direction reverts `FeeTooHigh`.
     function _validateTotalFee(uint256 lpFeeBps, TaxConfigs memory taxCfg) internal pure {
         require(
-            lpFeeBps + taxCfg.buyTaxBps <= MAX_TOTAL_FEE_BPS && lpFeeBps + taxCfg.sellTaxBps <= MAX_TOTAL_FEE_BPS,
+            lpFeeBps + taxCfg.buyTaxBps <= MAX_TOTAL_FEE_BPS && lpFeeBps + taxCfg.sellTaxBps <= MAX_TOTAL_FEE_BPS
+                && lpFeeBps + taxCfg.buyTaxDecayStartBps <= HOOK_MAX_OVERALL_FEE_BPS
+                && lpFeeBps + taxCfg.sellTaxDecayStartBps <= HOOK_MAX_OVERALL_FEE_BPS,
             InvalidTaxBps()
         );
     }

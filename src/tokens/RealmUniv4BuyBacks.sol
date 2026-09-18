@@ -12,9 +12,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
-import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
+import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode) — see the justfile `_taxtoken` recipe.
@@ -29,8 +27,6 @@ import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/co
 ///      fiddly universal-router encoding in one place, reusable by every ETH→token buy-back use case
 ///      (burn today; dividends/liquidity later).
 abstract contract RealmUniv4BuyBacks {
-    using SafeERC20 for IERC20;
-
     /// @notice Universal router used for buy-back swaps.
     address public constant UNIV4_UNIVERSAL_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
 
@@ -87,7 +83,7 @@ abstract contract RealmUniv4BuyBacks {
         (Currency currencyIn, Currency currencyOut) =
             quoteIsC0 ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
 
-        if (quote != address(0)) _approveRouterPull(quote);
+        if (quote != address(0)) UniversalRouterVenue.ensureRouterPull(PERMIT2, UNIV4_UNIVERSAL_ROUTER, quote);
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
@@ -117,18 +113,5 @@ abstract contract RealmUniv4BuyBacks {
                 IUniversalRouter.execute, (abi.encodePacked(V4_SWAP_COMMAND, SWEEP_COMMAND), inputs, block.timestamp)
             )
         );
-    }
-
-    /// @dev Grants Permit2, and through it the universal router, the standing allowance an ERC20 settle
-    ///      needs. Read-then-write: after the first buy-back in a given quote both allowances are
-    ///      already at their maximum, and re-issuing them would cost two SSTOREs and two logs per call.
-    function _approveRouterPull(address quote) private {
-        if (IERC20(quote).allowance(address(this), PERMIT2) == 0) {
-            IERC20(quote).forceApprove(PERMIT2, type(uint256).max);
-        }
-        (uint160 allowed,,) = IAllowanceTransfer(PERMIT2).allowance(address(this), quote, UNIV4_UNIVERSAL_ROUTER);
-        if (allowed == 0) {
-            IAllowanceTransfer(PERMIT2).approve(quote, UNIV4_UNIVERSAL_ROUTER, type(uint160).max, type(uint48).max);
-        }
     }
 }

@@ -725,4 +725,49 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         token.setTaxBps(0, 0);
         assertEq(uint256(token.sellTaxBps()), 0, "the owner still can");
     }
+
+    /////////////////////////// REVIEW FIXES ///////////////////////////
+
+    /// @dev A burn-only allocation (no dividends share) with `quoteRoutes` positional to the pairs.
+    function _burnOnlyCfg(bytes[] memory quoteRoutes) internal pure returns (TaxConfigsWithDirectAllocation memory c) {
+        c = _cfg(USDC, "", quoteRoutes);
+        c.earningsAllocation.burnBps = 5_000;
+        c.earningsAllocation.dividendsBps = 0;
+        c.earningsAllocation.dividendTokens = new address[](0);
+        c.earningsAllocation.dividendWeightsBps = new uint16[](0);
+        c.earningsAllocation.dividendRoutes = new bytes[](0);
+    }
+
+    /// @dev The token only registers quote routes for a dividends leg, so a route with no dividends
+    ///      share would be dropped silently; refused instead, like every other unsupported input.
+    function test_directAlloc_rejectsQuoteRoutesWithoutADividendsShare() public {
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(true);
+        TaxConfigsWithDirectAllocation memory cfg = _burnOnlyCfg(_one(_v4Route(USDC)));
+        vm.prank(creator);
+        vm.expectRevert(RealmFactoryUniV4Direct.InvalidQuoteRoutes.selector);
+        directFactory.createToken(
+            setup, _usdcPair(), cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), _noDevBuy(), address(0)
+        );
+    }
+
+    /// @dev A burn slice past `uint128` reverts rather than being truncated into stray balance.
+    function test_quoteBurnBuffer_overflowRevertsInsteadOfTruncating() public {
+        RealmTaxableTokenUniV4 token = _launch(_usdcPair(), _burnOnlyCfg(new bytes[](0)));
+        uint256 amount = 2 * uint256(type(uint128).max) + 4; // half of it is 2^128 + 1
+        deal(USDC, stranger, amount);
+        vm.startPrank(stranger);
+        IERC20(USDC).approve(address(token), amount);
+        vm.expectRevert(DividendDistribution.DividendBufferOverflow.selector);
+        token.accrueFees(USDC, amount);
+        vm.stopPrank();
+    }
+
+    /// @dev A registry conversion that fails leaves no standing allowance to the (upgradeable) registry.
+    function test_quoteDividends_failedConversionClearsTheRegistryAllowance() public {
+        RealmTaxableTokenUniV4 token = _earningToken(DAI, "", _one(_v4Route(USDC)));
+        assertGt(_pending(token), 0, "a buffer to convert");
+        token.processDividends(0, USDC, type(uint128).max, _one(alice));
+        assertGt(_pending(token), 0, "the conversion failed and kept the buffer");
+        assertEq(IERC20(USDC).allowance(address(token), address(dividendSwapRegistry)), 0, "no allowance left");
+    }
 }

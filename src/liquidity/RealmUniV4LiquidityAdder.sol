@@ -13,7 +13,7 @@ import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
-import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
+import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
 
 /// @notice Everything `addOrTopUpSingleSided` needs beyond the pool and the caller's wall memory.
 ///         Grouped into a struct so the call fits the stack without `via_ir`.
@@ -473,13 +473,7 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
     ///      allowance is unbounded but harmless — this contract only ever holds an asset WITHIN a call,
     ///      and the position manager can only pull what a mint it is executing actually owes.
     function _approveForSettle(IERC20 asset) internal {
-        if (asset.allowance(address(this), PERMIT2) == 0) asset.forceApprove(PERMIT2, type(uint256).max);
-        (uint160 allowed,,) =
-            IAllowanceTransfer(PERMIT2).allowance(address(this), address(asset), address(UNIV4_POSITION_MANAGER));
-        if (allowed == 0) {
-            IAllowanceTransfer(PERMIT2)
-                .approve(address(asset), address(UNIV4_POSITION_MANAGER), type(uint160).max, type(uint48).max);
-        }
+        UniversalRouterVenue.ensureRouterPull(PERMIT2, address(UNIV4_POSITION_MANAGER), address(asset));
     }
 
     /// @dev Sizes single-sided liquidity for `[tickLower, tickUpper]` from `amount` of ONE side and mints
@@ -563,10 +557,6 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
         require(returned, EthReturnFailed());
     }
 
-    /// @dev Smallest multiple of `spacing` that is `>= tick`. Solidity `%` keeps the dividend's sign, so a
-    ///      positive remainder means truncation rounded down (positive ticks) and we bump up; a
-    ///      non-positive remainder already left us at or above `tick` (exact, or negative ticks where
-    ///      truncation rounds toward zero).
     /// @dev Largest multiple of `spacing` that is `<= tick`. The mirror of `_ceilToSpacing`: Solidity
     ///      `%` keeps the dividend's sign, so a negative remainder means truncation rounded UP (negative
     ///      ticks) and we push back down.
@@ -576,6 +566,10 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
         if (tick % spacing < 0) rounded -= spacing;
     }
 
+    /// @dev Smallest multiple of `spacing` that is `>= tick`. Solidity `%` keeps the dividend's sign, so a
+    ///      positive remainder means truncation rounded down (positive ticks) and we bump up; a
+    ///      non-positive remainder already left us at or above `tick` (exact, or negative ticks where
+    ///      truncation rounds toward zero).
     function _ceilToSpacing(int24 tick, int24 spacing) internal pure returns (int24 rounded) {
         // Floor-to-grid then correct up: the divide-before-multiply is the intent (snap to a spacing grid).
         // forge-lint: disable-next-line(divide-before-multiply)

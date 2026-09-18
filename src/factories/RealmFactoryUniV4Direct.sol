@@ -138,7 +138,8 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     /// @notice Thrown when the dev buy names a pair that does not exist, carries a conversion route
     ///         while no route is needed, or sets a floor for a conversion that will not happen.
     error InvalidDevBuy();
-    /// @notice `quoteRoutes` names more entries than there are pairs, or a route for a native pair.
+    /// @notice `quoteRoutes` names more entries than there are pairs, a route for a native pair, or a
+    ///         route while the allocation has no dividends share.
     error InvalidQuoteRoutes();
     /// @notice A pair's `launchTick` implies an opening market cap outside
     ///         [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] in whole units of its quote.
@@ -345,9 +346,13 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         require(alloc.dividendTokens.length == 0 || alloc.dividendsBps != 0, DividendAssetWithoutShare());
         uint256 n = c.quoteRoutes.length;
         require(n <= pairs.length, InvalidQuoteRoutes());
-        // A route on a native pair is a caller who believes something is being converted that is not.
+        // A route on a native pair, or with no dividends to convert into, is a caller who believes
+        // something is being converted that is not: the token only registers routes for a dividends leg.
         for (uint256 i = 0; i < n; ++i) {
-            require(pairs[i].quote != address(0) || c.quoteRoutes[i].length == 0, InvalidQuoteRoutes());
+            require(
+                c.quoteRoutes[i].length == 0 || (pairs[i].quote != address(0) && alloc.dividendsBps != 0),
+                InvalidQuoteRoutes()
+            );
         }
     }
 

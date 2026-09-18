@@ -337,13 +337,19 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     ///      otherwise over-credit this token's buffers past what it holds, as every other ERC20-spending
     ///      path here (buy-back settlement, dividend acquisition) already guards against.
     function accrueFees(address asset, uint256 amount) external virtual {
-        _requireQuote(asset);
-        if (amount == 0) return;
-        uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
-        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
-        uint256 received = IERC20(asset).balanceOf(address(this)) - balanceBefore;
+        uint256 received = _pullQuote(asset, amount);
         if (received == 0) return;
         _depositAssetToFund(asset, received);
+    }
+
+    /// @dev `accrueFees(asset, amount)`'s intake, shared by every override: checks `asset` is one of this
+    ///      token's quotes, pulls `amount` from the caller and returns what actually arrived.
+    function _pullQuote(address asset, uint256 amount) internal returns (uint256 received) {
+        _requireQuote(asset);
+        if (amount == 0) return 0;
+        uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+        received = IERC20(asset).balanceOf(address(this)) - balanceBefore;
     }
 
     /// @dev Hands `amount` of `asset` to the fee handler, approving it to pull exactly that much. The

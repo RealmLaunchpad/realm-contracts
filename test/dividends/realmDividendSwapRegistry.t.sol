@@ -18,6 +18,7 @@ import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
+import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 
 contract Ghost is ERC20 {
     constructor() ERC20("Ghost", "GHOST") {
@@ -37,6 +38,21 @@ contract PartialFillV4RouterStub {
         (bool spent,) = SINK.call{value: msg.value / 2}("");
         require(spent, "sink failed");
         IERC20(USDC).transfer(msg.sender, 1e6);
+    }
+}
+
+/// @notice Stand-in for the universal router on a PARTIAL fill of the REVERSE leg: Permit2 pulls only half
+///         the source straight from the caller into the pool (here a sink), and the native side pays for
+///         that half. Nothing lands in the router, so only the caller's own balance shows the shortfall.
+contract PartialPullV4RouterStub {
+    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    address internal constant SINK = 0x000000000000000000000000000000000000dEaD;
+
+    function execute(bytes calldata, bytes[] calldata, uint256) external payable {
+        IAllowanceTransfer(PERMIT2).transferFrom(msg.sender, SINK, 500e6, USDC);
+        (bool paid,) = msg.sender.call{value: 0.1 ether}("");
+        require(paid, "pay failed");
     }
 }
 
@@ -579,6 +595,24 @@ contract RealmDividendSwapRegistryTests is Test {
 
         vm.expectRevert(malformed);
         registry.swapAssetToAsset(USDC, USDC, 1_000e6, 1, recipient);
+    }
+
+    /// @dev A partial fill of the reverse leg fails the conversion. Permit2 pulls only what the swap owed,
+    ///      so the unsold source would stay HERE, where nothing can sweep it, while the calling token books
+    ///      the whole `amountIn` as spent.
+    function test_swapAssetToAsset_refusesAPartiallyFilledSourceLeg() public {
+        registry.registerRoute(USDC, _v4(USDC, V4_FEE_005, V4_SPACING_10));
+        deal(USDC, address(this), 1_000e6);
+        IERC20(USDC).approve(address(registry), 1_000e6);
+        address router = registry.UNIV4_UNIVERSAL_ROUTER();
+        vm.etch(router, address(new PartialPullV4RouterStub()).code);
+        vm.deal(router, 1 ether);
+
+        vm.expectRevert(RealmDividendSwapRegistry.SwapFailed.selector);
+        registry.swapAssetToAsset(USDC, address(0), 1_000e6, 0, recipient);
+
+        assertEq(IERC20(USDC).balanceOf(address(this)), 1_000e6, "the source went back whole");
+        assertEq(IERC20(USDC).balanceOf(address(registry)), 0, "and none of it stranded in the registry");
     }
 
     /// @dev A recipient that refuses native fails the whole conversion rather than leaving the native

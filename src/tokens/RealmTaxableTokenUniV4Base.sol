@@ -89,7 +89,7 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     /// @dev Per quote, not per token, because each quote has its OWN pool. A buy-back funded by fees
     ///      collected on the USDC pool has to be spent on the USDC pool; routing it through native
     ///      would pay two sets of pool fees to end up where it started.
-    /// @dev THREE SLOTS, packed so the two processors each touch two of them: the buffers in slot 0, and
+    /// @dev FIVE SLOTS, packed so the two processors each touch two of them: the buffers in slot 0, and
     ///      the cooldown marker each one dirties anyway sharing slot 1 with the first wall — which is
     ///      why that wall costs no extra slot at all, and only the second takes one of its own.
     struct QuoteBuffers {
@@ -254,8 +254,6 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     function quoteDividendPending(address quote) external view returns (uint128[MAX_DIVIDEND_ASSETS] memory) {
         return quoteBuffers[_quoteIndex(quote)].dividendPending;
     }
-
-    //////////////////////// LIQUIDITY-WALL MEMORY //////////////////////
 
     //////////////////////// LIQUIDITY-WALL MEMORY //////////////////////
 
