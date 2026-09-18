@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTests} from "test/launchpad/base.t.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {stdStorage, StdStorage} from "forge-std/StdStorage.sol";
 import {V4SwapHelpers} from "test/e2e/base/V4SwapHelpers.t.sol";
 import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
@@ -28,6 +29,7 @@ import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 ///         circulating supply seeded as a single-sided band, the dev buy settled in the same
 ///         transaction, and the resulting token behaving like any other graduated Realm token.
 contract DirectLaunchUniV4Tests is V4SwapHelpers {
+    using stdStorage for StdStorage;
     using PoolIdLibrary for CorePoolKey;
     using StateLibrary for IPoolManager;
 
@@ -46,7 +48,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directGraduator = new RealmDirectGraduatorUniV4(
             poolManagerAddress, TEST_HOOK_ADDRESS, TEST_ANYPAIR_HOOK_ADDRESS, graduatorV4.LIQUIDITY_ADDER()
         );
-        assetsWhitelist = new RealmAssetsWhitelist(admin);
+        assetsWhitelist = new RealmAssetsWhitelist(admin, poolManagerAddress);
         address impl = address(
             new RealmFactoryUniV4Direct(
                 IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxToken)}),
@@ -60,14 +62,15 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directFactory = RealmFactoryUniV4Direct(
             address(new ERC1967Proxy(impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
         );
-        assetsWhitelist.setApprover(admin, true);
         vm.stopPrank();
     }
 
-    /// @dev Whitelists `quote` at `unitsPerNativeX18` whole units per ETH.
+    /// @dev Whitelists `quote` at `unitsPerNativeX18` whole units per ETH by writing the rate a listing
+    ///      would snapshot, so factory tests need no price pool per test quote. Listing itself is covered
+    ///      in `realmAssetsWhitelist.t.sol`.
     function _whitelist(address quote, uint256 unitsPerNativeX18) internal {
-        vm.prank(admin);
-        assetsWhitelist.setWhitelisted(quote, unitsPerNativeX18);
+        stdstore.target(address(assetsWhitelist)).sig(assetsWhitelist.unitsPerNativeX18.selector).with_key(quote)
+            .checked_write(unitsPerNativeX18);
     }
 
     /////////////////////////// HELPERS ///////////////////////////

@@ -697,14 +697,16 @@ own, rarely, and are not attributable to any token.
 
 ### `RealmAssetsWhitelist` (one per chain)
 
-The ERC20 quotes `RealmFactoryUniV4Direct` accepts, each with its rate in native. Only ever read by the
-factory, so its events appear on their own and are not attributable to any token. Delisting refuses new
-launches only; live pools are untouched.
+The ERC20 quotes `RealmFactoryUniV4Direct` accepts, each with the V4 pool that prices it and its rate in
+native. Only ever read by the factory, so its events appear on their own and are not attributable to any
+token. Delisting refuses new launches only; live pools are untouched.
 
 - **`ApproverSet`** (`account` indexed, `allowed`) — owner-only; manages who may emit the one below. The
   owner cannot whitelist itself.
-- **`WhitelistUpdated`** (`asset` indexed, `unitsPerNativeX18`) — approver-only; `asset` listed, repriced,
-  or delisted when `unitsPerNativeX18 == 0`.
+- **`WhitelistUpdated`** (`asset` indexed, `unitsPerNativeX18`, `pricePool`) — approver-only, from
+  `setWhitelisted(asset, key)`: `asset` listed or repriced from `pricePool` (a full `PoolKey` against
+  native, or against an asset itself listed against native), with the rate snapshotted from its spot
+  price; or delisted by an all-zero key, emitting `unitsPerNativeX18 == 0`.
 
 ### `RealmDividendSwapRegistry` (one per chain)
 

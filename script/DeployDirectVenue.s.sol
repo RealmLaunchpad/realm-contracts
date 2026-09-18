@@ -41,8 +41,8 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 ///      factories, which `DeployRealmStack` registers with `RealmLaunchpad`.
 ///
 /// @dev Also deploys `RealmAssetsWhitelist`, owned by the broadcaster, with NO approvers: ERC20 pairs are
-///      refused until the owner adds one (`setApprover`) and it whitelists quotes. The factory exposes it
-///      as `ASSETS_WHITELIST()`.
+///      refused until the owner adds one (`setApprover`) and it lists quotes, each with its V4 price pool.
+///      The factory exposes it as `ASSETS_WHITELIST()`.
 ///
 /// Usage (dry run): forge script DeployDirectVenue --rpc-url rh-testnet --account realm.dev \
 ///                      --sender <realm.dev address>
@@ -79,7 +79,7 @@ contract DeployDirectVenue is Script {
 
         vm.startBroadcast();
 
-        RealmAssetsWhitelist whitelist = new RealmAssetsWhitelist(owner);
+        RealmAssetsWhitelist whitelist = new RealmAssetsWhitelist(owner, infra.univ4PoolManager);
 
         RealmDirectGraduatorUniV4 graduator =
             new RealmDirectGraduatorUniV4(infra.univ4PoolManager, hook, anyPairHook, m.liquidityAdder);
