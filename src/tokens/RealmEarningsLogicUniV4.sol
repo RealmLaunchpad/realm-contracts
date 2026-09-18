@@ -163,8 +163,9 @@ contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase, DividendInitLogic {
         // is 0 (the hook charges the fee instead, so these positions accrue nothing), but a non-zero or
         // dynamic pool fee would turn a bare subtraction into a panic that bricks `processLiquidity` on
         // the reuse path until the price moved far enough to force a fresh mint. Clamping degrades that
-        // into "nothing was placed": the full amount is re-earmarked and the surplus becomes stray,
-        // which the sweep routes correctly.
+        // into "nothing was placed": the full amount is re-earmarked and the surplus becomes stray —
+        // which `sweepStrayEth` routes back into the split on the native pool, but which on an ERC20
+        // quote only `rescueTokens` reaches (to the owner). Revisit if the pool fee ever becomes non-zero.
         uint256 after_ = _quoteHoldings(quote);
         added = before > after_ ? before - after_ : 0;
 

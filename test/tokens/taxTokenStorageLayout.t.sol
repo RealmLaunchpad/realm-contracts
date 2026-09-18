@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
@@ -21,7 +22,7 @@ import {TaxConfigsWithMultiAllocation, IRealmTaxableToken} from "src/interfaces/
 ///      added ahead of these, the slot index moves and this test fails — which is exactly the moment a
 ///      human should look at it, so update the constants deliberately rather than reflexively.
 contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
-    /// @dev `pair` + `graduated` + `hasSniperProt` + `hasDividends` + `dividendAssetCount`. `_update`
+    /// @dev `pair` + `graduated` + `protectionWindowEnd` + `hasDividends` + `dividendAssetCount`. `_update`
     ///      loads this slot on every transfer, which is the entire reason `hasDividends` and the payout
     ///      count live on `RealmToken` instead of beside the rest of the dividend state — the transfer
     ///      hook learns how many assets to settle without a cold read.
@@ -56,12 +57,12 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     ///      the guard trivially satisfiable.
     function setUp() public override {
         super.setUp();
-        tok = _token();
+        tok = _token(_emptyAntiSniperCfg());
     }
 
     /// @dev A token with every packed field set to a DISTINCT non-zero value, so a field landing at the
     ///      wrong offset cannot coincidentally still match.
-    function _token() internal returns (RealmTaxableTokenUniV2 token) {
+    function _token(AntiSniperConfigs memory sniper) internal returns (RealmTaxableTokenUniV2 token) {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "Layout",
             symbol: "LAY",
@@ -80,9 +81,8 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
             earningsAllocation: _multiAlloc(1_000, 2_000, 1_500, address(0))
         });
         vm.prank(creator);
-        address addr = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
-        );
+        address addr =
+            factoryV2Unified.createToken(setup, cfg, _noSs(), sniper, new IRealmFactory.CreatorVault[](0), address(0));
         return RealmTaxableTokenUniV2(payable(addr));
     }
 
@@ -116,14 +116,16 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev `hasDividends` must ride in the slot `_update` already loads. If it slips into a slot of its
     ///      own, every transfer of every token — dividend-paying or not — pays for a cold SLOAD.
     function test_hasDividendsPacksIntoTheWarmFlagsSlot() public {
-        RealmTaxableTokenUniV2 token = tok;
+        // Anti-sniper on, so the window end is non-zero and its offset observable.
+        RealmTaxableTokenUniV2 token = _token(_defaultAntiSniperCfg());
         uint256 word = _slot(address(token), WARM_FLAGS_SLOT);
 
         assertEq(address(uint160(word)), token.pair(), "pair at byte 0");
         assertEq((word >> 160) & 0xff, token.graduated() ? 1 : 0, "graduated at byte 20");
-        assertEq((word >> 168) & 0xff, token.hasSniperProt() ? 1 : 0, "hasSniperProt at byte 21");
-        assertEq((word >> 176) & 0xff, token.hasDividends() ? 1 : 0, "hasDividends at byte 22");
-        assertEq((word >> 184) & 0xff, token.dividendAssetCount(), "dividendAssetCount at byte 23");
+        assertEq(uint40(word >> 168), token.protectionWindowEnd(), "protectionWindowEnd at byte 21");
+        assertEq((word >> 208) & 0xff, token.hasDividends() ? 1 : 0, "hasDividends at byte 26");
+        assertEq((word >> 216) & 0xff, token.dividendAssetCount(), "dividendAssetCount at byte 27");
+        assertGt(token.protectionWindowEnd(), 0, "fixture opted into anti-sniper, so the window end is observable");
         assertTrue(token.hasDividends(), "fixture opted into dividends, so the flag is observable");
         assertEq(token.dividendAssetCount(), 1, "the fixture pays in one asset, and says so");
     }

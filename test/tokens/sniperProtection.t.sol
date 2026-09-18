@@ -256,6 +256,31 @@ abstract contract SniperProtectionBaseTest is Test {
         assertEq(_token().balanceOf(buyer2), MAX_WALLET * 2);
     }
 
+    /// @dev The caps live in `SniperProtection`'s own slot (`maxBuyPerTxBps` & co.); the window end sits in
+    ///      the `pair` slot `_update` already loads. A buy inside the window reads the caps; once the
+    ///      window has closed it must not — that cold read on every transfer is what the move saved.
+    function test_closedWindow_transferNeverReadsTheCapsSlot() public {
+        bytes32 capsSlot = bytes32(uint256(5));
+
+        vm.record();
+        _curveBuy(buyer, 1e18);
+        (bytes32[] memory reads,) = vm.accesses(address(_token()));
+        assertTrue(_contains(reads, capsSlot), "control: an open window reads the caps");
+
+        vm.warp(uint256(IRealmToken(address(_token())).launchTimestamp()) + DEFAULT_WINDOW);
+        vm.record();
+        _curveBuy(buyer, 1e18);
+        (reads,) = vm.accesses(address(_token()));
+        assertFalse(_contains(reads, capsSlot), "a closed window leaves the caps slot cold");
+    }
+
+    function _contains(bytes32[] memory list, bytes32 item) internal pure returns (bool) {
+        for (uint256 i; i < list.length; ++i) {
+            if (list[i] == item) return true;
+        }
+        return false;
+    }
+
     /// Whitelisted recipient bypasses caps on wallet-to-wallet transfers too, not just on curve
     /// buys.
     function test_walletToWallet_whitelistedRecipient_bypassesCaps() public {

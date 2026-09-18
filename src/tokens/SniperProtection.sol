@@ -19,8 +19,11 @@ struct AntiSniperConfigs {
 ///         venue (which graduates in its creation transaction) could have.
 ///         Per-wallet cap fires on every incoming transfer (blocks sybil → consolidate);
 ///         per-tx cap fires only on buys — off the curve before graduation, out of the pool after it.
-/// @dev Inheriting tokens call `_initializeSniperProtection(cfg, launchTimestamp)` in their
-///      initializer and `_checkSniperProtection(...)` at the top of `_update`.
+/// @dev Inheriting tokens call `_initializeSniperProtection(cfg)` in their initializer and
+///      `_checkSniperProtection(...)` at the top of `_update`. The WINDOW is the host's: it keeps the
+///      window end in the slot its `_update` already loads and calls the check functions here only
+///      while the window is open, so a closed or never-opened window costs no read of this contract's
+///      storage at all.
 /// @dev The caps are per TRANSFER and per ADDRESS, so they stop a naive single-wallet snipe, not a
 ///      determined one: a buyer can split one pool buy across many fresh recipients (several `TAKE`s in
 ///      one router call), or keep a V4 pool's output as ERC-6909 claims, which moves no tokens at all.
@@ -55,13 +58,6 @@ abstract contract SniperProtection {
     /// @notice Duration the protection remains active after the host token's `launchTimestamp`.
     uint40 public protectionWindowSeconds;
 
-    /// @notice Absolute timestamp at which the protection window closes: the host token's
-    ///         `launchTimestamp + protectionWindowSeconds`, cached at init so the hot-path window
-    ///         check is a single SLOAD from this slot (no read of the base `launchTimestamp` slot).
-    ///         Reads 0 until `_initializeSniperProtection` runs (after the initial mint), so the
-    ///         mint observes a closed window and stays uncapped. Packs into this slot.
-    uint40 public protectionWindowEnd;
-
     /// @notice Dev-supplied addresses that bypass the caps during the protection window.
     mapping(address account => bool isWhitelisted) public sniperBypass;
 
@@ -80,11 +76,9 @@ abstract contract SniperProtection {
         uint16 maxBuyPerTxBps, uint16 maxWalletBps, uint40 protectionWindowSeconds, address[] whitelist
     );
 
-    /// @dev Validates configs and records the whitelist. `launchTimestamp` is the host token's
-    ///      creation timestamp (set by `RealmToken._initializeRealmToken`, which runs first); it is
-    ///      cached here as the absolute `protectionWindowEnd` so the check functions below read a
-    ///      single slot instead of also touching the base `launchTimestamp` slot.
-    function _initializeSniperProtection(AntiSniperConfigs memory cfg, uint40 launchTimestamp) internal {
+    /// @dev Validates configs and records the caps and the whitelist. The window end is the host's to
+    ///      store (see the contract docs).
+    function _initializeSniperProtection(AntiSniperConfigs memory cfg) internal {
         require(cfg.maxBuyPerTxBps >= ANTI_SNIPER_MIN_BPS, MaxBuyPerTxBpsTooLow());
         require(cfg.maxBuyPerTxBps <= ANTI_SNIPER_MAX_BPS, MaxBuyPerTxBpsTooHigh());
         require(cfg.maxWalletBps >= ANTI_SNIPER_MIN_BPS, MaxWalletBpsTooLow());
@@ -97,7 +91,6 @@ abstract contract SniperProtection {
         maxBuyPerTxBps = cfg.maxBuyPerTxBps;
         maxWalletBps = cfg.maxWalletBps;
         protectionWindowSeconds = cfg.protectionWindowSeconds;
-        protectionWindowEnd = launchTimestamp + cfg.protectionWindowSeconds;
 
         uint256 n = cfg.whitelist.length;
         for (uint256 i; i < n; ++i) {
@@ -138,6 +131,7 @@ abstract contract SniperProtection {
     ///          graduation, which is what made this exemption unnecessary before.
     ///        - `sniperBypass[to]`: dev-supplied whitelist.
     /// @dev Launchpad fees are ignored in the cap math.
+    /// @dev Call only while the window is open: this does not check it.
     function _checkSniperProtection(
         address from,
         address to,
@@ -148,8 +142,6 @@ abstract contract SniperProtection {
         address graduatorAddr,
         uint256 toBalance
     ) internal view {
-        if (block.timestamp >= protectionWindowEnd) return;
-
         // Mints and burns, in that order: the mint check also guarantees the `from == launchpadAddr`
         // branch below cannot fire on a zero `launchpadAddr` (the direct venue has no launchpad).
         if (from == address(0)) return;
@@ -183,8 +175,8 @@ abstract contract SniperProtection {
     }
 
     /// @notice Largest token amount `buyer` may acquire in one purchase right now without tripping the
-    ///         sniper caps. Returns `type(uint256).max` when no cap applies (window closed, or
-    ///         whitelisted).
+    ///         sniper caps, while the window is open (the host answers for a closed one). Returns
+    ///         `type(uint256).max` for a whitelisted buyer.
     /// @dev Graduation is NOT an exemption: the window runs to its configured end on both venues, so a
     ///      post-graduation pool buy is capped exactly like a curve buy was.
     /// @dev Doesn't model launchpad-side limits; callers should `min()` with
@@ -193,7 +185,6 @@ abstract contract SniperProtection {
     ///      here: none of those addresses ever buys on its own account.
     function _maxTokenPurchase(address buyer, uint256 buyerBalance) internal view returns (uint256) {
         if (sniperBypass[buyer]) return type(uint256).max;
-        if (block.timestamp >= protectionWindowEnd) return type(uint256).max;
 
         uint256 maxTx = (_ANTI_SNIPER_TOTAL_SUPPLY * maxBuyPerTxBps) / 10_000;
         uint256 maxWallet = (_ANTI_SNIPER_TOTAL_SUPPLY * maxWalletBps) / 10_000;

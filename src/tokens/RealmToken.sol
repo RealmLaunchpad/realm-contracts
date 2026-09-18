@@ -14,10 +14,9 @@ import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// @dev Anti-sniper protection is folded into every token as a gated feature: `SniperProtection`
-///      supplies the caps + window logic, and the warm-slot `hasSniperProt` flag (packed into the
-///      `pair`/`graduated` slot the hot path already loads) gates it. Tokens that don't opt in pay
-///      no extra SLOAD and behave identically to a plain token — the caps code is present but never
-///      reached. Tax variants (`RealmTaxableToken*`) inherit this same gated feature.
+///      supplies the caps, and the warm-slot `protectionWindowEnd` (packed into the `pair`/`graduated`
+///      slot the hot path already loads) gates it. Tokens that don't opt in, and protected tokens once
+///      their window has closed, pay no extra SLOAD — the caps code is present but never reached. Tax variants (`RealmTaxableToken*`) inherit this same gated feature.
 contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperProtection {
     using SafeERC20 for IERC20;
 
@@ -38,18 +37,19 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     address public graduator;
 
     /// @notice Uniswap pair. Token transfers to this address are blocked before graduation
-    /// @dev Packed with `graduated` and `hasSniperProt` so the hot-path read of all three fields in
-    ///      `_update` costs a single SLOAD.
+    /// @dev Packed with `graduated` and `protectionWindowEnd` so the hot-path read of all three fields
+    ///      in `_update` costs a single SLOAD.
     address public pair;
 
     /// @notice Whether the token has graduated already or not
     bool public graduated;
 
-    /// @notice Whether anti-sniper protection is enabled for this token. Set once at initialization
-    ///         when an `AntiSniperConfigs` with a non-zero window is supplied. Packs into the `pair`
-    ///         slot so `_update` reads it for free while it already loads `pair`/`graduated`; gates the
-    ///         `SniperProtection` caps so non-opted-in tokens skip the check entirely.
-    bool public hasSniperProt;
+    /// @notice Absolute timestamp at which the anti-sniper window closes: `launchTimestamp` plus the
+    ///         configured window. 0 on a token that did not opt in — and during the initial mint, which
+    ///         runs before it is set, so the mint is never capped.
+    /// @dev Packs into the `pair` slot so `_update` gates the caps on it for free: once the window has
+    ///      closed, a protected token's transfer costs what an unprotected one's does.
+    uint40 public protectionWindowEnd;
 
     /// @notice Whether holder dividends are enabled for this token. Set once at creation, by the taxable
     ///         variant, when the earnings allocation routes a non-zero share to dividends. Lives HERE,
@@ -188,8 +188,8 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
 
         // Defensive ordering: set `launchpad` before `_mint` so any future `_update()` override that
         // reads it sees the real value. The mint itself is not gated by the sniper-protection check:
-        // `protectionWindowEnd` is cached only later by `_initializeSniperProtection`, so it reads 0
-        // during the mint and the check's window-active early-return (`block.timestamp >= 0`) covers it.
+        // `protectionWindowEnd` is set only later by `_initializeAntiSniper`, so it reads 0 during the
+        // mint and `_update`'s window gate (`block.timestamp < 0`) skips the check.
         launchpad = RealmLaunchpad(params.launchpad);
 
         // Creator-vault tokens lock `vaultAllocation` of the supply: only `TOTAL_SUPPLY - vaultAllocation`
@@ -235,13 +235,13 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     /// @dev Opt-in gate for anti-sniper protection, called by every token's `initialize`. A zero
     ///      protection window means "not configured" (the factory's `_validateAntiSniperConfig`
     ///      guarantees the rest of the config is then also empty), so this no-ops and leaves
-    ///      `hasSniperProt` false — a plain token. Otherwise it validates + stores the caps and window
-    ///      and flips the warm-slot `hasSniperProt` gate so `_update` / `maxTokenPurchase` enforce them.
+    ///      `protectionWindowEnd` 0 — a plain token. Otherwise it validates + stores the caps and sets
+    ///      the warm-slot window end that `_update` / `maxTokenPurchase` gate on.
     ///      Must run AFTER `_initializeRealmToken` (which sets `launchTimestamp`, the window anchor).
     function _initializeAntiSniper(AntiSniperConfigs memory antiSniperCfg) internal onlyInitializing {
         if (antiSniperCfg.protectionWindowSeconds == 0) return;
-        _initializeSniperProtection(antiSniperCfg, launchTimestamp);
-        hasSniperProt = true;
+        _initializeSniperProtection(antiSniperCfg);
+        protectionWindowEnd = launchTimestamp + antiSniperCfg.protectionWindowSeconds;
     }
 
     //////////////////////// restricted access functions ////////////////////////
@@ -403,12 +403,17 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         return IRealmToken.LaunchpadFees({lpFeeBps: lpFeeBps, treasuryShareBps: treasuryShareBps, taxBps: 0});
     }
 
+    /// @notice Whether this token opted into anti-sniper protection. Stays true after the window closes.
+    function hasSniperProt() external view returns (bool) {
+        return protectionWindowEnd != 0;
+    }
+
     /// @notice Largest amount `buyer` may acquire in one purchase right now. No cap unless the token
     ///         opted into anti-sniper protection (`hasSniperProt`), in which case the per-tx /
     ///         per-wallet caps apply for the whole protection window — on bonding-curve buys and,
     ///         since the window no longer ends at graduation, on pool buys too.
     function maxTokenPurchase(address buyer) external view virtual returns (uint256) {
-        if (!hasSniperProt) return type(uint256).max;
+        if (block.timestamp >= protectionWindowEnd) return type(uint256).max;
         return _maxTokenPurchase(buyer, balanceOf(buyer));
     }
 
@@ -437,21 +442,21 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     function _onBalanceChange(address from, address to, uint256 amount) internal virtual {}
 
     function _update(address from, address to, uint256 amount) internal virtual override {
-        // Load `pair`/`graduated`/`hasSniperProt`/`hasDividends` (one packed slot) with a single SLOAD,
-        // reused for every check below instead of re-reading the slot up to four times.
-        (address _pair, bool _graduated, bool _hasSniperProt, bool _hasDividends) =
-            (pair, graduated, hasSniperProt, hasDividends);
+        // Load `pair`/`graduated`/`protectionWindowEnd`/`hasDividends` (one packed slot) with a single
+        // SLOAD, reused for every check below instead of re-reading the slot up to four times.
+        (address _pair, bool _graduated, uint40 _windowEnd, bool _hasDividends) =
+            (pair, graduated, protectionWindowEnd, hasDividends);
 
         // Dividend round minima, gated by the warm-slot flag so a non-dividend token pays nothing.
         if (_hasDividends) _onBalanceChange(from, to, amount);
 
-        // Anti-sniper caps, gated by the warm-slot flag — which short-circuits for the common
-        // non-protected token. Enforced for the WHOLE configured window, before and after graduation
+        // Anti-sniper caps, gated by the warm-slot window end — 0 on a non-protected token, so one
+        // comparison skips both that and a closed window. Enforced for the WHOLE configured window, before and after graduation
         // alike: the direct-launch venue graduates a token in the same transaction that creates it, so
         // a rule that stopped at graduation would be a rule that never applied there at all. On the
         // curve venues this extends the caps over post-graduation DEX buys, which is the same
         // protection the creator asked for against the same snipers.
-        if (_hasSniperProt) {
+        if (block.timestamp < _windowEnd) {
             _checkSniperProtection(
                 from, to, amount, address(launchpad), _pair, tokenFactory, address(graduator), balanceOf(to)
             );
