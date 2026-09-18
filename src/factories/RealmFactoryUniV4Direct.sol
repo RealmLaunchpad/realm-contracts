@@ -110,18 +110,34 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         with no native pair at all.
     uint256 public constant MAX_PAIRS = 3;
 
-    /// @notice Lowest opening market cap a pair may launch at: 0.001 WHOLE units of its quote, scaled by
-    ///         1e18. Whole units, so the bound means the same for a 6-, 18- or 27-decimal quote.
+    /// @notice Lowest opening market cap an ERC20 pair may launch at: 0.001 WHOLE units of its quote,
+    ///         scaled by 1e18. Whole units, so the bound means the same for a 6-, 18- or 27-decimal quote.
+    ///         Native pairs are held to `MIN_NATIVE_LAUNCH_MARKET_CAP_X18` instead.
     /// @dev With `MAX_LAUNCH_MARKET_CAP_X18` it admits $1k-$100B launches for quotes worth anywhere from
     ///      ~$1e6 down to ~$1e-9 per unit, and rejects the prices only a mistake produces: a decimals slip
-    ///      (1e12x on a 6-decimal quote) or a tick near the ends of the range.
+    ///      (1e12x on a 6-decimal quote) or a tick near the ends of the range. Only a typo guard: an
+    ///      ERC20's value is unknown on-chain, so no economic bound fits every quote.
     uint256 public constant MIN_LAUNCH_MARKET_CAP_X18 = 1e15;
 
-    /// @notice Highest opening market cap a pair may launch at: 1e20 WHOLE units of its quote, scaled by
-    ///         1e18. See `MIN_LAUNCH_MARKET_CAP_X18`.
+    /// @notice Highest opening market cap an ERC20 pair may launch at: 1e20 WHOLE units of its quote,
+    ///         scaled by 1e18. See `MIN_LAUNCH_MARKET_CAP_X18`.
     /// @dev Uniswap's per-tick liquidity ceiling can bind first on a quote with more than ~22 decimals:
     ///      that launch reverts `SeedLiquidityOutOfRange` in the graduator.
     uint256 public constant MAX_LAUNCH_MARKET_CAP_X18 = 1e38;
+
+    /// @notice Lowest opening market cap a NATIVE pair may launch at: 1 ETH.
+    /// @dev The seed is single-sided, so the opening market cap is the pool's virtual quote reserve: the
+    ///      price 4x's after buys of about that much. A tiny one hands the dev buy most of the supply for
+    ///      almost nothing. 1 ETH sits just under the THIN curve's own opening (~1.1 ETH) and ~6x under
+    ///      its 6.125 ETH graduation, so no direct launch sells cheaper than the curve venue's first buy.
+    ///      Native is ETH on every chain this venue deploys to; one with another native needs its own.
+    uint256 public constant MIN_NATIVE_LAUNCH_MARKET_CAP_X18 = 1 ether;
+
+    /// @notice Highest opening market cap a NATIVE pair may launch at: 250 ETH, ~10x the THICK tier's
+    ///         24.5 ETH graduation market cap.
+    /// @dev Harmless on-chain (nobody has to buy), but aggregators display it as a market cap from block
+    ///      zero, with no volume behind it. See `MIN_NATIVE_LAUNCH_MARKET_CAP_X18`.
+    uint256 public constant MAX_NATIVE_LAUNCH_MARKET_CAP_X18 = 250 ether;
 
     /// @notice The chain's wrapped native token, which a pair may NOT be quoted against. See
     ///         `_validateQuote`.
@@ -142,7 +158,8 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         route while the allocation has no dividends share.
     error InvalidQuoteRoutes();
     /// @notice A pair's `launchTick` implies an opening market cap outside
-    ///         [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] in whole units of its quote.
+    ///         [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] in whole units of its quote, or
+    ///         outside [`MIN_NATIVE_LAUNCH_MARKET_CAP_X18`, `MAX_NATIVE_LAUNCH_MARKET_CAP_X18`] on a native pair.
     error LaunchPriceOutOfBounds();
 
     constructor(
@@ -463,8 +480,18 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
             for (uint256 j = i + 1; j < n; ++j) {
                 require(pairs[i].quote != pairs[j].quote, InvalidPairs());
             }
-            uint8 quoteDecimals = pairs[i].quote == address(0) ? 18 : _validateQuote(pairs[i].quote);
-            _validateLaunchPrice(pairs[i].launchTick, quoteDecimals);
+            if (pairs[i].quote == address(0)) {
+                _validateLaunchPrice(
+                    pairs[i].launchTick, 18, MIN_NATIVE_LAUNCH_MARKET_CAP_X18, MAX_NATIVE_LAUNCH_MARKET_CAP_X18
+                );
+            } else {
+                _validateLaunchPrice(
+                    pairs[i].launchTick,
+                    _validateQuote(pairs[i].quote),
+                    MIN_LAUNCH_MARKET_CAP_X18,
+                    MAX_LAUNCH_MARKET_CAP_X18
+                );
+            }
         }
         require(totalWeight == BASIS_POINTS, InvalidPairs());
 
@@ -501,13 +528,17 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         require(dec <= 36, QuoteNotSupported());
     }
 
-    /// @dev Bounds the opening market cap in WHOLE quote units. Compared on the per-coin price, which
-    ///      stays inside 256 bits at every tick, rather than on the market cap, which does not.
-    function _validateLaunchPrice(int24 launchTick, uint8 quoteDecimals) internal pure {
+    /// @dev Bounds the opening market cap to [`minCapX18`, `maxCapX18`] WHOLE quote units. Compared on
+    ///      the per-coin price, which stays inside 256 bits at every tick, rather than on the market cap,
+    ///      which does not.
+    function _validateLaunchPrice(int24 launchTick, uint8 quoteDecimals, uint256 minCapX18, uint256 maxCapX18)
+        internal
+        pure
+    {
         uint256 priceX18 = RealmLaunchPricing.pricePerCoin(launchTick, quoteDecimals);
         require(
-            priceX18 >= MIN_LAUNCH_MARKET_CAP_X18 / RealmLaunchPricing.WHOLE_SUPPLY
-                && priceX18 <= MAX_LAUNCH_MARKET_CAP_X18 / RealmLaunchPricing.WHOLE_SUPPLY,
+            priceX18 >= minCapX18 / RealmLaunchPricing.WHOLE_SUPPLY
+                && priceX18 <= maxCapX18 / RealmLaunchPricing.WHOLE_SUPPLY,
             LaunchPriceOutOfBounds()
         );
     }

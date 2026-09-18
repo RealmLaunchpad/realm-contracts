@@ -505,18 +505,19 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     }
 
     /////////////////////////// launch-price bounds ///////////////////////////
-    // Market cap in WHOLE quote units must sit in [0.001, 1e20]. The ticks below straddle each bound by
-    // one or two spacings; the comment on each is the market cap it implies.
+    // Market cap in WHOLE quote units must sit in [0.001, 1e20] on an ERC20 pair, [1, 250] ETH on a native
+    // one. The ticks below straddle each bound by one or two spacings; the comment on each is the market
+    // cap it implies.
 
     function _outOfBounds() internal pure returns (bytes memory) {
         return abi.encodeWithSelector(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector);
     }
 
     function test_launchPrice_nativeBounds() public {
-        _launchAt(address(0), -270_000, ""); // 1.9e-3 ETH
-        _launchAt(address(0), -280_000, _outOfBounds()); // 6.9e-4 ETH
-        _launchAt(address(0), 250_000, ""); // 7.2e19 ETH
-        _launchAt(address(0), 260_000, _outOfBounds()); // 2.0e20 ETH
+        _launchAt(address(0), -207_200, ""); // 1.004 ETH
+        _launchAt(address(0), -207_400, _outOfBounds()); // 0.984 ETH
+        _launchAt(address(0), -152_200, ""); // 245.7 ETH
+        _launchAt(address(0), -152_000, _outOfBounds()); // 250.6 ETH
     }
 
     /// @dev Six decimals: the same whole-unit bounds, twelve orders of magnitude away in ticks.
