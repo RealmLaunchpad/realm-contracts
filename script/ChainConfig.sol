@@ -130,6 +130,23 @@ library ChainConfig {
         revert(UNSUPPORTED);
     }
 
+    /// @notice The chain's Uniswap V2 and V3 factories, which `RealmAssetsWhitelist` validates price
+    ///         pools against. Zero where the venue is not deployed.
+    function univ2And3Factories() internal view returns (address v2, address v3) {
+        if (isSepolia()) {
+            return (DeploymentAddressesEthereumSepolia.UNIV2_FACTORY, DeploymentAddressesEthereumSepolia.UNIV3_FACTORY);
+        }
+        if (isRobinhood()) {
+            return
+                (DeploymentAddressesRobinhoodMainnet.UNIV2_FACTORY, DeploymentAddressesRobinhoodMainnet.UNIV3_FACTORY);
+        }
+        if (isRobinhoodTestnet()) {
+            return
+                (DeploymentAddressesRobinhoodTestnet.UNIV2_FACTORY, DeploymentAddressesRobinhoodTestnet.UNIV3_FACTORY);
+        }
+        revert(UNSUPPORTED);
+    }
+
     function swapHook() internal view returns (address hook) {
         if (isSepolia()) hook = DeploymentsEthereumSepolia.SWAP_HOOK;
         else if (isRobinhood()) hook = DeploymentsRobinhoodMainnet.SWAP_HOOK;

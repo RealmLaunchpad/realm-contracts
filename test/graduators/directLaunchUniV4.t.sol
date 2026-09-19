@@ -9,6 +9,7 @@ import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
+import {DeploymentAddressesEthereumMainnet as Mainnet} from "src/config/DeploymentAddresses.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
@@ -48,7 +49,18 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directGraduator = new RealmDirectGraduatorUniV4(
             poolManagerAddress, TEST_HOOK_ADDRESS, TEST_ANYPAIR_HOOK_ADDRESS, graduatorV4.LIQUIDITY_ADDER()
         );
-        assetsWhitelist = new RealmAssetsWhitelist(admin, poolManagerAddress);
+        assetsWhitelist = RealmAssetsWhitelist(
+            address(
+                new ERC1967Proxy(
+                    address(
+                        new RealmAssetsWhitelist(
+                            poolManagerAddress, address(WETH), Mainnet.UNIV2_FACTORY, Mainnet.UNIV3_FACTORY
+                        )
+                    ),
+                    abi.encodeCall(RealmAssetsWhitelist.initialize, (admin))
+                )
+            )
+        );
         address impl = address(
             new RealmFactoryUniV4Direct(
                 IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxToken)}),

@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Ownable2Step, Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
+import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
+import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
+import {
+    Ownable2StepUpgradeable
+} from "lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -9,34 +14,80 @@ import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {FullMath} from "lib/v4-core/src/libraries/FullMath.sol";
+import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
+import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
+
+/// @dev The slice of Uniswap V3 this contract reads.
+interface IUniswapV3PoolState {
+    function token0() external view returns (address);
+    function token1() external view returns (address);
+    function fee() external view returns (uint24);
+    function liquidity() external view returns (uint128);
+    function slot0() external view returns (uint160 sqrtPriceX96, int24, uint16, uint16, uint16, uint8, bool);
+}
+
+interface IUniswapV3FactoryPools {
+    function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address);
+}
 
 /// @title RealmAssetsWhitelist
-/// @notice The ERC20 assets the protocol has vetted, each with the Uniswap V4 pool that prices it and its
-///         value in the chain's native currency. An asset is whitelisted while its `unitsPerNativeX18` is
-///         non-zero.
+/// @notice The ERC20 assets the protocol has vetted, each with the Uniswap pool that prices it — V2, V3
+///         or V4 — and its value in the chain's native currency. An asset is whitelisted while its
+///         `unitsPerNativeX18` is non-zero.
 ///
 /// @dev TWO TIERS, like every operational allowlist here, but stricter at the top: the owner is a cold
-///      multisig that manages APPROVERS and cannot whitelist anything itself. Approvers are hot keys
-///      (an agent reviewing listing requests) doing the frequent, low-stakes work.
+///      multisig that manages APPROVERS (and upgrades) and cannot whitelist anything itself. Approvers
+///      are hot keys (an agent reviewing listing requests) doing the frequent, low-stakes work.
 ///
-/// @dev PRICED BY ITS POOL. An approver lists an asset with the one V4 pool holding its main liquidity,
-///      against native or against a REFERENCE asset — one already listed directly against native, such
-///      as a main stablecoin. The rate is read from that pool (and the reference's rate) at listing time
-///      and stored, so the approver never types a number, and so decimals cannot slip: they come from
-///      the tokens. Integrators read `pricePool` to price the asset live.
+/// @dev PRICED BY ITS POOL. An approver lists an asset with the pool holding its main liquidity, against
+///      native (WETH counts as native) or against a REFERENCE asset — one already listed directly
+///      against native, such as a main stablecoin. V2 pairs and V3 pools must be the ones Uniswap's own
+///      factory returns for their tokens, so a lookalike contract cannot be listed. The rate is read
+///      from that pool (and the reference's rate) at listing time and stored, so the approver never
+///      types a number and decimals cannot slip: they come from the tokens. Integrators read
+///      `priceSource` to price the asset live.
 ///
 /// @dev THE RATE IS A SNAPSHOT, deliberately. A live read at the consumer would let anyone push the pool
 ///      and unwind it around their own call for the price of two swap fees. Approvers refresh it by
 ///      listing the asset again; on a chain with a public mempool, through private orderflow, since a
-///      sandwiched listing would snapshot a pushed price.
+///      sandwiched listing would snapshot a pushed price. Re-listing a reference does not reprice the
+///      assets listed against it.
 ///
-/// @dev NOT UPGRADEABLE: two mappings, a role and two setters.
-contract RealmAssetsWhitelist is Ownable2Step {
+/// @dev UPGRADEABLE (UUPS, owner-authorised) because its pricing rules are expected to grow, and the
+///      direct factory bakes this address in: an upgrade keeps every listing and the factory untouched.
+///      The Uniswap addresses are implementation immutables, set per chain by the deploy script; a zero
+///      factory means that venue does not exist on the chain and its listings are refused.
+contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
-    /// @notice The Uniswap V4 pool manager every `pricePool` lives on.
+    /// @notice Where a price comes from. `NONE` delists.
+    enum Venue {
+        NONE,
+        V2,
+        V3,
+        V4
+    }
+
+    /// @notice A listing's price pool: `pool` is the V2 pair or V3 pool, `key` the V4 pool. The unused
+    ///         field is zero.
+    struct PriceSource {
+        Venue venue;
+        address pool;
+        PoolKey key;
+    }
+
+    /// @notice The Uniswap V4 pool manager every V4 source lives on.
     IPoolManager public immutable POOL_MANAGER;
+
+    /// @notice The chain's wrapped native, which prices as native.
+    address public immutable WETH;
+
+    /// @notice Uniswap's V2 factory, or zero where V2 is not deployed.
+    address public immutable UNIV2_FACTORY;
+
+    /// @notice Uniswap's V3 factory, or zero where V3 is not deployed.
+    address public immutable UNIV3_FACTORY;
 
     /// @notice Addresses allowed to whitelist assets. Managed by the owner.
     mapping(address account => bool) public isApprover;
@@ -46,21 +97,34 @@ contract RealmAssetsWhitelist is Ownable2Step {
     ///         `3500e18`, whatever the asset's decimals.
     mapping(address asset => uint256) public unitsPerNativeX18;
 
-    /// @notice The V4 pool `asset` was priced from: against native, or against a reference asset that is
-    ///         itself priced against native.
-    mapping(address asset => PoolKey) public pricePool;
+    /// @notice The asset `asset` was priced against: zero for native (or WETH), else the reference.
+    mapping(address asset => address) public referenceOf;
+
+    mapping(address asset => PriceSource) internal _priceSources;
 
     event ApproverSet(address indexed account, bool allowed);
-    event WhitelistUpdated(address indexed asset, uint256 unitsPerNativeX18, PoolKey pricePool);
+    event WhitelistUpdated(address indexed asset, uint256 unitsPerNativeX18, PriceSource source);
 
     error NotApprover();
-    /// @notice The pool does not hold `asset`, is not live with in-range liquidity, or its other side is
-    ///         neither native nor an asset listed directly against native.
-    error InvalidPricePool();
+    /// @notice The source's venue is unavailable here, its pool is not Uniswap's, does not hold `asset`,
+    ///         is not live with liquidity, or its other side is neither native (nor WETH) nor an asset
+    ///         listed directly against native.
+    error InvalidPriceSource();
 
-    /// @param initialOwner cold multisig: manages approvers, nothing else
-    constructor(address initialOwner, address poolManager) Ownable(initialOwner) {
+    /// @dev Implementation immutables: the proxy reads them from the implementation's bytecode.
+    constructor(address poolManager, address weth, address univ2Factory, address univ3Factory) {
         POOL_MANAGER = IPoolManager(poolManager);
+        WETH = weth;
+        UNIV2_FACTORY = univ2Factory;
+        UNIV3_FACTORY = univ3Factory;
+        _disableInitializers();
+    }
+
+    /// @param initialOwner cold multisig: manages approvers and upgrades, nothing else
+    function initialize(address initialOwner) external initializer {
+        __Ownable_init(initialOwner);
+        __Ownable2Step_init();
+        __UUPSUpgradeable_init();
     }
 
     /// @notice Allow or revoke an approver. Owner only.
@@ -69,44 +133,82 @@ contract RealmAssetsWhitelist is Ownable2Step {
         emit ApproverSet(account, allowed);
     }
 
-    /// @notice Whitelist `asset`, or refresh its rate, priced from `key`. An all-zero `key` removes it.
+    /// @notice Whitelist `asset`, or refresh its rate, priced from `source`. A `NONE` source removes it.
     ///         Approvers only.
-    function setWhitelisted(address asset, PoolKey calldata key) external {
+    function setWhitelisted(address asset, PriceSource calldata source) external {
         require(isApprover[msg.sender], NotApprover());
-        // Native always sorts first, so a real pool never has native as `currency1`.
-        uint256 rate = Currency.unwrap(key.currency1) == address(0) ? 0 : _rateFrom(asset, key);
+        uint256 rate;
+        address ref;
+        if (source.venue != Venue.NONE) (rate, ref) = _rateFrom(asset, source);
         unitsPerNativeX18[asset] = rate;
-        pricePool[asset] = key;
-        emit WhitelistUpdated(asset, rate, key);
+        referenceOf[asset] = ref;
+        _priceSources[asset] = source;
+        emit WhitelistUpdated(asset, rate, source);
     }
 
-    /// @dev `asset`'s whole units per whole native, scaled by 1e18, from `key`'s spot price.
-    function _rateFrom(address asset, PoolKey calldata key) private view returns (uint256 rate) {
-        address c0 = Currency.unwrap(key.currency0);
-        address c1 = Currency.unwrap(key.currency1);
-        require(asset == c0 || asset == c1, InvalidPricePool());
-        address other = asset == c0 ? c1 : c0;
+    /// @notice The pool `asset` was priced from, for integrators pricing it live.
+    function priceSource(address asset) external view returns (PriceSource memory) {
+        return _priceSources[asset];
+    }
+
+    /// @dev `asset`'s whole units per whole native, scaled by 1e18, from `source`'s spot price, and the
+    ///      reference it was priced against (zero for native).
+    function _rateFrom(address asset, PriceSource calldata source) private view returns (uint256 rate, address ref) {
+        (address t0, address t1, uint256 priceX128) = _spot(source);
+        require(asset == t0 || asset == t1, InvalidPriceSource());
+        ref = asset == t0 ? t1 : t0;
+        if (ref == WETH) ref = address(0);
 
         // The other side's own rate and decimals: native is one per native at 18.
-        (uint256 otherRate, uint256 otherDecimals) = (1e18, 18);
-        if (other != address(0)) {
-            otherRate = unitsPerNativeX18[other];
+        (uint256 refRate, uint256 refDecimals) = (1e18, 18);
+        if (ref != address(0)) {
+            refRate = unitsPerNativeX18[ref];
             // One hop from native at most: the reference must itself be priced against native.
-            require(otherRate != 0 && Currency.unwrap(pricePool[other].currency0) == address(0), InvalidPricePool());
-            otherDecimals = IERC20Metadata(other).decimals();
+            require(refRate != 0 && referenceOf[ref] == address(0), InvalidPriceSource());
+            refDecimals = IERC20Metadata(ref).decimals();
         }
 
-        PoolId id = key.toId();
-        (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(id);
-        require(sqrtPriceX96 != 0 && POOL_MANAGER.getLiquidity(id) != 0, InvalidPricePool());
-
-        // Raw currency1 per raw currency0 in Q128, then raw `asset` per raw `other`.
-        uint256 priceX128 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 64);
-        uint256 rawPerOtherX128 = asset == c1 ? priceX128 : FullMath.mulDiv(1 << 128, 1 << 128, priceX128);
-
-        // Whole asset per whole native = raw ratio * 10^otherDecimals / 10^assetDecimals * otherRate.
+        // Raw `asset` per raw reference, Q128.
+        uint256 rawPerRefX128 = asset == t1 ? priceX128 : FullMath.mulDiv(1 << 128, 1 << 128, priceX128);
+        // Whole asset per whole native = raw ratio * 10^refDecimals / 10^assetDecimals * refRate.
         uint256 assetDecimals = IERC20Metadata(asset).decimals();
-        rate = FullMath.mulDiv(rawPerOtherX128, otherRate * 10 ** otherDecimals, (1 << 128) * 10 ** assetDecimals);
-        require(rate != 0, InvalidPricePool());
+        rate = FullMath.mulDiv(rawPerRefX128, refRate * 10 ** refDecimals, (1 << 128) * 10 ** assetDecimals);
+        require(rate != 0, InvalidPriceSource());
     }
+
+    /// @dev The source pool's two tokens (zero for native) and its spot price as raw token1 per raw
+    ///      token0 in Q128, after checking it is Uniswap's and live with liquidity.
+    function _spot(PriceSource calldata source) private view returns (address t0, address t1, uint256 priceX128) {
+        uint160 sqrtPriceX96;
+        if (source.venue == Venue.V4) {
+            (t0, t1) = (Currency.unwrap(source.key.currency0), Currency.unwrap(source.key.currency1));
+            PoolId id = source.key.toId();
+            (sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(id);
+            require(sqrtPriceX96 != 0 && POOL_MANAGER.getLiquidity(id) != 0, InvalidPriceSource());
+        } else if (source.venue == Venue.V3) {
+            IUniswapV3PoolState pool = IUniswapV3PoolState(source.pool);
+            (t0, t1) = (pool.token0(), pool.token1());
+            require(
+                UNIV3_FACTORY != address(0)
+                    && IUniswapV3FactoryPools(UNIV3_FACTORY).getPool(t0, t1, pool.fee()) == source.pool,
+                InvalidPriceSource()
+            );
+            (sqrtPriceX96,,,,,,) = pool.slot0();
+            require(sqrtPriceX96 != 0 && pool.liquidity() != 0, InvalidPriceSource());
+        } else {
+            IUniswapV2Pair pair = IUniswapV2Pair(source.pool);
+            (t0, t1) = (pair.token0(), pair.token1());
+            require(
+                UNIV2_FACTORY != address(0) && IUniswapV2Factory(UNIV2_FACTORY).getPair(t0, t1) == source.pool,
+                InvalidPriceSource()
+            );
+            (uint112 r0, uint112 r1,) = pair.getReserves();
+            require(r0 != 0 && r1 != 0, InvalidPriceSource());
+            return (t0, t1, FullMath.mulDiv(r1, 1 << 128, r0));
+        }
+        // Raw token1 per raw token0 = sqrtPrice^2 / 2^192; in Q128 that is sqrtPrice^2 / 2^64.
+        priceX128 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 64);
+    }
+
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 }

@@ -118,6 +118,7 @@ contract DeployRealmStack is Script {
     }
 
     struct Direct {
+        address whitelistImpl;
         address whitelist;
         address graduator;
         address factoryImpl;
@@ -328,7 +329,12 @@ contract DeployRealmStack is Script {
         address vaultFactory,
         address deployer
     ) internal returns (Direct memory d) {
-        d.whitelist = address(new RealmAssetsWhitelist(deployer, infra.univ4PoolManager));
+        (address univ2Factory, address univ3Factory) = ChainConfig.univ2And3Factories();
+        d.whitelistImpl = address(
+            new RealmAssetsWhitelist(infra.univ4PoolManager, ChainConfig.wrappedNative(), univ2Factory, univ3Factory)
+        );
+        d.whitelist =
+            address(new ERC1967Proxy(d.whitelistImpl, abi.encodeCall(RealmAssetsWhitelist.initialize, (deployer))));
         d.graduator =
             address(new RealmDirectGraduatorUniV4(infra.univ4PoolManager, hook, anyPairHook, c.liquidityAdder));
         d.factoryImpl = address(
@@ -410,7 +416,8 @@ contract DeployRealmStack is Script {
         _slot("FACTORY_UNIV4_DIRECT", d.factory);
         _slot("FACTORY_UNIV4_DIRECT_IMPL", d.factoryImpl);
         console.log("");
-        console.log("RealmAssetsWhitelist (the direct factory's ASSETS_WHITELIST):", d.whitelist);
+        console.log("RealmAssetsWhitelist proxy (the direct factory's ASSETS_WHITELIST):", d.whitelist);
+        console.log("  implementation", d.whitelistImpl);
         console.log("  owner", deployer, "- no approvers yet: ERC20 pairs are refused until one is added");
     }
 

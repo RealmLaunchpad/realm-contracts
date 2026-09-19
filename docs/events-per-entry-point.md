@@ -42,7 +42,7 @@ Unified factories register fee config automatically during token creation:
 - `RealmMasterFeeHandler`
 - `RealmSwapHook`
 - `RealmDividendSwapRegistry` — one shared upgradeable proxy per chain, not a per-token contract
-- `RealmAssetsWhitelist` — one per chain, the ERC20 quotes the direct venue accepts
+- `RealmAssetsWhitelist` — one upgradeable proxy per chain, the ERC20 quotes the direct venue accepts
 - `RealmTreasuryRouter` / `RealmVoting` — one upgradeable proxy each per chain; the router IS the treasury address every push below lands on (§11)
 
 External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this file focuses on Realm-owned events and notes the main external-operation points.
@@ -695,18 +695,21 @@ own, rarely, and are not attributable to any token.
 - **`KeeperSet`** (`account`, `allowed`) — admin-level; a keeper key being rotated in or out. Revocation
   takes effect in the next transaction.
 
-### `RealmAssetsWhitelist` (one per chain)
+### `RealmAssetsWhitelist` (one upgradeable proxy per chain)
 
-The ERC20 quotes `RealmFactoryUniV4Direct` accepts, each with the V4 pool that prices it and its rate in
-native. Only ever read by the factory, so its events appear on their own and are not attributable to any
-token. Delisting refuses new launches only; live pools are untouched.
+The ERC20 quotes `RealmFactoryUniV4Direct` accepts, each with the Uniswap V2, V3 or V4 pool that prices it
+and its rate in native. Only ever read by the factory, so its events appear on their own and are not
+attributable to any token. Delisting refuses new launches only; live pools are untouched. A UUPS proxy:
+deployment emits the proxy's `Upgraded`, `OwnershipTransferred` and `Initialized`, and every owner-only
+upgrade another `Upgraded`.
 
 - **`ApproverSet`** (`account` indexed, `allowed`) — owner-only; manages who may emit the one below. The
   owner cannot whitelist itself.
-- **`WhitelistUpdated`** (`asset` indexed, `unitsPerNativeX18`, `pricePool`) — approver-only, from
-  `setWhitelisted(asset, key)`: `asset` listed or repriced from `pricePool` (a full `PoolKey` against
-  native, or against an asset itself listed against native), with the rate snapshotted from its spot
-  price; or delisted by an all-zero key, emitting `unitsPerNativeX18 == 0`.
+- **`WhitelistUpdated`** (`asset` indexed, `unitsPerNativeX18`, `source`) — approver-only, from
+  `setWhitelisted(asset, source)`. `source` is `(venue, pool, key)`: venue `V2`/`V3` with the pair/pool
+  address in `pool`, or `V4` with the full `PoolKey` in `key`, against native (WETH counts as native) or
+  against an asset itself listed against native. `asset` is listed or repriced with the rate snapshotted
+  from that pool's spot price, or delisted by venue `NONE`, emitting `unitsPerNativeX18 == 0`.
 
 ### `RealmDividendSwapRegistry` (one per chain)
 

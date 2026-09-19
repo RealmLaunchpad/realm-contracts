@@ -42,9 +42,9 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 /// @dev This venue has no launchpad, so there is nothing to whitelist afterwards — unlike the curve
 ///      factories, which `DeployRealmStack` registers with `RealmLaunchpad`.
 ///
-/// @dev Also deploys `RealmAssetsWhitelist`, owned by the broadcaster, with NO approvers: ERC20 pairs are
-///      refused until the owner adds one (`setApprover`) and it lists quotes, each with its V4 price pool.
-///      The factory exposes it as `ASSETS_WHITELIST()`.
+/// @dev Also deploys `RealmAssetsWhitelist` (implementation + UUPS proxy), owned by the broadcaster,
+///      with NO approvers: ERC20 pairs are refused until the owner adds one (`setApprover`) and it lists
+///      quotes, each with its V2/V3/V4 price pool. The factory exposes the proxy as `ASSETS_WHITELIST()`.
 ///
 /// Usage (dry run): forge script DeployDirectVenue --rpc-url rh-testnet --account realm.dev \
 ///                      --sender <realm.dev address>
@@ -84,7 +84,7 @@ contract DeployDirectVenue is Script {
         // Inside the broadcast: only there does `readCallers` report the real `--account` broadcaster.
         (, address owner,) = vm.readCallers();
 
-        RealmAssetsWhitelist whitelist = new RealmAssetsWhitelist(owner, infra.univ4PoolManager);
+        address whitelist = _deployWhitelist(infra.univ4PoolManager, wrappedNative, owner);
 
         RealmDirectGraduatorUniV4 graduator =
             new RealmDirectGraduatorUniV4(infra.univ4PoolManager, hook, anyPairHook, m.liquidityAdder);
@@ -96,7 +96,7 @@ contract DeployDirectVenue is Script {
                 m.masterFeeHandler,
                 creatorVaultFactory,
                 wrappedNative,
-                address(whitelist)
+                whitelist
             )
         );
         address factoryProxy =
@@ -108,9 +108,20 @@ contract DeployDirectVenue is Script {
         console.log("GRADUATOR_UNIV4_DIRECT:    %s", address(graduator));
         console.log("FACTORY_UNIV4_DIRECT_IMPL: %s", factoryImpl);
         console.log("FACTORY_UNIV4_DIRECT:      %s", factoryProxy);
-        console.log("ASSETS_WHITELIST:          %s (owner %s, no approvers yet)", address(whitelist), owner);
+        console.log("ASSETS_WHITELIST:          %s (owner %s, no approvers yet)", whitelist, owner);
         console.log("");
         console.log("Paste the three into src/config/manifest.%s.sol, then:", ChainConfig.name());
         console.log("  just export-deployments");
+    }
+
+    /// @dev The assets whitelist behind its UUPS proxy. Separate from `run` for the stack.
+    function _deployWhitelist(address poolManager, address wrappedNative, address owner)
+        internal
+        returns (address proxy)
+    {
+        (address univ2Factory, address univ3Factory) = ChainConfig.univ2And3Factories();
+        address impl = address(new RealmAssetsWhitelist(poolManager, wrappedNative, univ2Factory, univ3Factory));
+        proxy = address(new ERC1967Proxy(impl, abi.encodeCall(RealmAssetsWhitelist.initialize, (owner))));
+        console.log("ASSETS_WHITELIST_IMPL:     %s", impl);
     }
 }

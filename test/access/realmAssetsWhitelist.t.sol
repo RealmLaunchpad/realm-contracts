@@ -3,7 +3,9 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
@@ -25,11 +27,30 @@ contract Coin is ERC20 {
     }
 }
 
-/// @notice The assets whitelist on a mainnet fork: the owner appoints approvers and nothing else,
-///         approvers list assets with a V4 price pool, and the rate is derived from that pool.
-/// @dev Test pools open at tick 0 (one raw unit per raw unit), so every expected rate is exact.
+/// @dev Answers every V2 and V3 pool read like the real USDC/WETH pool, but no Uniswap factory knows it.
+contract LookalikePool {
+    address public constant token0 = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address public constant token1 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    uint24 public constant fee = 500;
+    uint128 public constant liquidity = 1e18;
+
+    function getReserves() external pure returns (uint112, uint112, uint32) {
+        return (1e13, 3e21, 0);
+    }
+
+    function slot0() external pure returns (uint160, int24, uint16, uint16, uint16, uint8, bool) {
+        return (uint160(1 << 96), 0, 0, 0, 0, 0, true);
+    }
+}
+
+/// @notice The assets whitelist on a mainnet fork: the owner appoints approvers and upgrades, approvers
+///         list assets with a V2, V3 or V4 price pool, and the rate is derived from that pool.
+/// @dev Test pools open at tick 0 (one raw unit per raw unit), so their expected rates are exact.
 contract RealmAssetsWhitelistTest is Test {
     address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    /// @dev The real USDC/WETH pools on V2 and on V3 (0.05%).
+    address constant USDC_WETH_V2 = 0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc;
+    address constant USDC_WETH_V3 = 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640;
     uint256 constant BLOCKNUMBER = 23327777;
 
     RealmAssetsWhitelist internal whitelist;
@@ -42,18 +63,46 @@ contract RealmAssetsWhitelistTest is Test {
 
     function setUp() public {
         vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), BLOCKNUMBER);
-        whitelist = new RealmAssetsWhitelist(owner, address(manager));
+        whitelist = _deploy(Mainnet.UNIV2_FACTORY, Mainnet.UNIV3_FACTORY);
         lp = new PoolModifyLiquidityTest(manager);
-        vm.prank(owner);
-        whitelist.setApprover(approver, true);
     }
 
     /// @dev Refunds of the native `_pool` overpays.
     receive() external payable {}
 
-    /// @dev The real USDC/ETH 0.05% pool.
-    function _usdcKey() internal pure returns (PoolKey memory) {
-        return PoolKey(Currency.wrap(address(0)), Currency.wrap(USDC), 500, 10, IHooks(address(0)));
+    function _impl(address v2Factory, address v3Factory) internal returns (address) {
+        return address(new RealmAssetsWhitelist(address(manager), Mainnet.WETH, v2Factory, v3Factory));
+    }
+
+    /// @dev A proxied whitelist with `approver` appointed.
+    function _deploy(address v2Factory, address v3Factory) internal returns (RealmAssetsWhitelist w) {
+        w = RealmAssetsWhitelist(
+            address(
+                new ERC1967Proxy(_impl(v2Factory, v3Factory), abi.encodeCall(RealmAssetsWhitelist.initialize, (owner)))
+            )
+        );
+        vm.prank(owner);
+        w.setApprover(approver, true);
+    }
+
+    function _v2(address pair) internal pure returns (RealmAssetsWhitelist.PriceSource memory s) {
+        s.venue = RealmAssetsWhitelist.Venue.V2;
+        s.pool = pair;
+    }
+
+    function _v3(address pool) internal pure returns (RealmAssetsWhitelist.PriceSource memory s) {
+        s.venue = RealmAssetsWhitelist.Venue.V3;
+        s.pool = pool;
+    }
+
+    function _v4(PoolKey memory key) internal pure returns (RealmAssetsWhitelist.PriceSource memory s) {
+        s.venue = RealmAssetsWhitelist.Venue.V4;
+        s.key = key;
+    }
+
+    /// @dev The real USDC/ETH 0.05% V4 pool.
+    function _usdcV4() internal pure returns (RealmAssetsWhitelist.PriceSource memory) {
+        return _v4(PoolKey(Currency.wrap(address(0)), Currency.wrap(USDC), 500, 10, IHooks(address(0))));
     }
 
     function _key(address a, address b) internal pure returns (PoolKey memory) {
@@ -61,44 +110,54 @@ contract RealmAssetsWhitelistTest is Test {
         return PoolKey(Currency.wrap(c0), Currency.wrap(c1), 3000, 60, IHooks(address(0)));
     }
 
-    /// @dev A pool of `a` and `b` opened at tick 0, with in-range liquidity when `funded`.
-    function _pool(address a, address b, bool funded) internal returns (PoolKey memory key) {
-        key = _key(a, b);
+    /// @dev A V4 pool of `a` and `b` opened at tick 0, with in-range liquidity when `funded`.
+    function _pool(address a, address b, bool funded) internal returns (RealmAssetsWhitelist.PriceSource memory) {
+        PoolKey memory key = _key(a, b);
         manager.initialize(key, uint160(1 << 96));
-        if (!funded) return key;
-        for (uint256 i; i < 2; ++i) {
-            address c = i == 0 ? a : b;
-            if (c == address(0)) continue;
-            deal(c, address(this), 1e30);
-            ERC20(c).approve(address(lp), type(uint256).max);
+        if (funded) {
+            for (uint256 i; i < 2; ++i) {
+                address c = i == 0 ? a : b;
+                if (c == address(0)) continue;
+                deal(c, address(this), 1e30);
+                ERC20(c).approve(address(lp), type(uint256).max);
+            }
+            vm.deal(address(this), 1 ether);
+            uint256 value = Currency.unwrap(key.currency0) == address(0) ? 1 ether : 0;
+            lp.modifyLiquidity{value: value}(
+                key,
+                IPoolManager.ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: 1e18, salt: 0}),
+                ""
+            );
         }
-        vm.deal(address(this), 1 ether);
-        uint256 value = Currency.unwrap(key.currency0) == address(0) ? 1 ether : 0;
-        lp.modifyLiquidity{value: value}(
-            key,
-            IPoolManager.ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: 1e18, salt: 0}),
-            ""
-        );
+        return _v4(key);
     }
 
-    function _list(address asset, PoolKey memory key) internal {
+    function _list(address asset, RealmAssetsWhitelist.PriceSource memory source) internal {
         vm.prank(approver);
-        whitelist.setWhitelisted(asset, key);
+        whitelist.setWhitelisted(asset, source);
     }
 
-    function _expectListingReverts(address asset, PoolKey memory key) internal {
+    function _expectListingReverts(address asset, RealmAssetsWhitelist.PriceSource memory source) internal {
         vm.prank(approver);
-        vm.expectRevert(RealmAssetsWhitelist.InvalidPricePool.selector);
-        whitelist.setWhitelisted(asset, key);
+        vm.expectRevert(RealmAssetsWhitelist.InvalidPriceSource.selector);
+        whitelist.setWhitelisted(asset, source);
     }
 
     /////////////////////////// access control ///////////////////////////
 
-    function test_startsEmpty() public {
-        RealmAssetsWhitelist fresh = new RealmAssetsWhitelist(owner, address(manager));
-        assertEq(fresh.unitsPerNativeX18(USDC), 0, "nothing is whitelisted by default");
-        assertFalse(fresh.isApprover(approver), "nobody is an approver by default");
-        assertEq(fresh.owner(), owner, "owner set in the constructor");
+    function test_startsEmpty() public view {
+        assertEq(whitelist.unitsPerNativeX18(USDC), 0, "nothing is whitelisted by default");
+        assertFalse(whitelist.isApprover(stranger), "nobody else is an approver");
+        assertEq(whitelist.owner(), owner, "owner set in the initializer");
+    }
+
+    function test_cannotBeInitializedTwiceNorThroughTheImplementation() public {
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        whitelist.initialize(stranger);
+
+        RealmAssetsWhitelist impl = RealmAssetsWhitelist(_impl(Mainnet.UNIV2_FACTORY, Mainnet.UNIV3_FACTORY));
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        impl.initialize(stranger);
     }
 
     function test_theOwnerAppointsApprovers() public {
@@ -119,13 +178,13 @@ contract RealmAssetsWhitelistTest is Test {
     function test_theOwnerCannotWhitelist() public {
         vm.prank(owner);
         vm.expectRevert(RealmAssetsWhitelist.NotApprover.selector);
-        whitelist.setWhitelisted(USDC, _usdcKey());
+        whitelist.setWhitelisted(USDC, _usdcV4());
     }
 
     function test_aStrangerCannotWhitelist() public {
         vm.prank(stranger);
         vm.expectRevert(RealmAssetsWhitelist.NotApprover.selector);
-        whitelist.setWhitelisted(USDC, _usdcKey());
+        whitelist.setWhitelisted(USDC, _usdcV4());
     }
 
     function test_aRevokedApproverCannotWhitelist() public {
@@ -133,26 +192,55 @@ contract RealmAssetsWhitelistTest is Test {
         whitelist.setApprover(approver, false);
         vm.prank(approver);
         vm.expectRevert(RealmAssetsWhitelist.NotApprover.selector);
-        whitelist.setWhitelisted(USDC, _usdcKey());
+        whitelist.setWhitelisted(USDC, _usdcV4());
+    }
+
+    /////////////////////////// upgrades ///////////////////////////
+
+    /// @dev Only the owner upgrades, and every listing survives it.
+    function test_onlyTheOwnerUpgradesAndListingsSurvive() public {
+        _list(USDC, _usdcV4());
+        uint256 rate = whitelist.unitsPerNativeX18(USDC);
+        address next = _impl(Mainnet.UNIV2_FACTORY, Mainnet.UNIV3_FACTORY);
+
+        for (uint256 i; i < 2; ++i) {
+            address caller = i == 0 ? approver : stranger;
+            vm.prank(caller);
+            vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, caller));
+            whitelist.upgradeToAndCall(next, "");
+        }
+
+        vm.prank(owner);
+        whitelist.upgradeToAndCall(next, "");
+        assertEq(whitelist.unitsPerNativeX18(USDC), rate, "rate survives");
+        assertEq(uint8(whitelist.priceSource(USDC).venue), uint8(RealmAssetsWhitelist.Venue.V4), "source survives");
+        assertTrue(whitelist.isApprover(approver), "approvers survive");
     }
 
     /////////////////////////// pricing ///////////////////////////
 
-    /// @dev Real USDC against real ETH liquidity: thousands of dollars per ETH, whatever USDC's 6 decimals.
-    function test_listsRealUsdcAgainstNative() public {
+    /// @dev Real USDC on each venue: V4 against native, V2 and V3 against WETH, which prices as native.
+    ///      The three spot prices agree within 1%, and the source is stored whole.
+    function test_listsRealUsdcOnEveryVenue() public {
         vm.expectEmit(false, true, false, false, address(whitelist));
-        emit RealmAssetsWhitelist.WhitelistUpdated(USDC, 0, _usdcKey());
-        _list(USDC, _usdcKey());
+        emit RealmAssetsWhitelist.WhitelistUpdated(USDC, 0, _usdcV4());
+        _list(USDC, _usdcV4());
+        uint256 v4Rate = whitelist.unitsPerNativeX18(USDC);
+        assertGt(v4Rate, 1_000e18, "more than 1,000 USDC per ETH");
+        assertLt(v4Rate, 10_000e18, "less than 10,000 USDC per ETH");
+        RealmAssetsWhitelist.PriceSource memory stored = whitelist.priceSource(USDC);
+        assertEq(Currency.unwrap(stored.key.currency1), USDC, "full V4 key stored");
+        assertEq(stored.key.fee, 500);
+        assertEq(stored.key.tickSpacing, 10);
 
-        uint256 rate = whitelist.unitsPerNativeX18(USDC);
-        assertGt(rate, 1_000e18, "more than 1,000 USDC per ETH");
-        assertLt(rate, 10_000e18, "less than 10,000 USDC per ETH");
-        (Currency c0, Currency c1, uint24 fee, int24 spacing, IHooks hooks) = whitelist.pricePool(USDC);
-        assertEq(Currency.unwrap(c0), address(0), "full key stored: currency0");
-        assertEq(Currency.unwrap(c1), USDC, "full key stored: currency1");
-        assertEq(fee, 500, "full key stored: fee");
-        assertEq(spacing, 10, "full key stored: tick spacing");
-        assertEq(address(hooks), address(0), "full key stored: hooks");
+        _list(USDC, _v3(USDC_WETH_V3));
+        assertApproxEqRel(whitelist.unitsPerNativeX18(USDC), v4Rate, 0.01e18, "V3 agrees with V4");
+        assertEq(whitelist.priceSource(USDC).pool, USDC_WETH_V3, "V3 pool stored");
+        assertEq(whitelist.referenceOf(USDC), address(0), "WETH prices as native");
+
+        _list(USDC, _v2(USDC_WETH_V2));
+        assertApproxEqRel(whitelist.unitsPerNativeX18(USDC), v4Rate, 0.01e18, "V2 agrees with V4");
+        assertEq(uint8(whitelist.priceSource(USDC).venue), uint8(RealmAssetsWhitelist.Venue.V2), "venue stored");
     }
 
     /// @dev One raw unit per raw native: 1 per ETH at 18 decimals, 1e12 per ETH at 6. Decimals come from
@@ -166,10 +254,10 @@ contract RealmAssetsWhitelistTest is Test {
         assertEq(whitelist.unitsPerNativeX18(coin6), 1e30);
     }
 
-    /// @dev Against a reference priced from native: one raw unit per raw USDC is USDC's own rate at 6
-    ///      decimals, and 1e12 times fewer whole units at 18.
+    /// @dev Against a reference priced from native (here through V3 and WETH): one raw unit per raw USDC
+    ///      is USDC's own rate at 6 decimals, and 1e12 times fewer whole units at 18.
     function test_listsAgainstAReference() public {
-        _list(USDC, _usdcKey());
+        _list(USDC, _v3(USDC_WETH_V3));
         uint256 usdcRate = whitelist.unitsPerNativeX18(USDC);
 
         address coin6 = address(new Coin(6));
@@ -178,10 +266,29 @@ contract RealmAssetsWhitelistTest is Test {
         _list(coin18, _pool(coin18, USDC, true));
         assertEq(whitelist.unitsPerNativeX18(coin6), usdcRate, "6 decimals: same whole units as USDC");
         assertEq(whitelist.unitsPerNativeX18(coin18), usdcRate / 1e12, "18 decimals: 1e12 raw per whole");
+        assertEq(whitelist.referenceOf(coin6), USDC, "reference recorded");
+    }
+
+    /// @dev A contract answering like the real pool, which neither Uniswap factory knows.
+    function test_rejectsALookalikePool() public {
+        address fake = address(new LookalikePool());
+        _expectListingReverts(USDC, _v2(fake));
+        _expectListingReverts(USDC, _v3(fake));
+    }
+
+    /// @dev A chain without V2 or V3 refuses those sources, even for real pools.
+    function test_rejectsAVenueNotDeployedHere() public {
+        whitelist = _deploy(address(0), address(0));
+        _expectListingReverts(USDC, _v2(USDC_WETH_V2));
+        _expectListingReverts(USDC, _v3(USDC_WETH_V3));
+        _list(USDC, _usdcV4());
+        assertGt(whitelist.unitsPerNativeX18(USDC), 0, "V4 still lists");
     }
 
     function test_rejectsAPoolWithoutTheAsset() public {
-        _expectListingReverts(address(new Coin(18)), _usdcKey());
+        _expectListingReverts(address(new Coin(18)), _usdcV4());
+        _expectListingReverts(address(new Coin(18)), _v3(USDC_WETH_V3));
+        _expectListingReverts(address(new Coin(18)), _v2(USDC_WETH_V2));
     }
 
     function test_rejectsAnUnlistedReference() public {
@@ -191,7 +298,7 @@ contract RealmAssetsWhitelistTest is Test {
 
     /// @dev One hop from native at most: a reference priced against another reference is refused.
     function test_rejectsAReferenceNotPricedAgainstNative() public {
-        _list(USDC, _usdcKey());
+        _list(USDC, _usdcV4());
         address ref = address(new Coin(18));
         _list(ref, _pool(ref, USDC, true));
 
@@ -201,7 +308,7 @@ contract RealmAssetsWhitelistTest is Test {
 
     function test_rejectsAPoolThatDoesNotExist() public {
         address coin = address(new Coin(18));
-        _expectListingReverts(coin, _key(coin, address(0)));
+        _expectListingReverts(coin, _v4(_key(coin, address(0))));
     }
 
     function test_rejectsAPoolWithoutLiquidity() public {
@@ -209,16 +316,15 @@ contract RealmAssetsWhitelistTest is Test {
         _expectListingReverts(coin, _pool(coin, address(0), false));
     }
 
-    /// @dev An all-zero key removes the asset; the next listing brings it back.
-    function test_anEmptyKeyDelists() public {
-        _list(USDC, _usdcKey());
-        PoolKey memory empty;
-        _list(USDC, empty);
+    /// @dev A `NONE` source removes the asset; the next listing brings it back.
+    function test_aNoneSourceDelists() public {
+        _list(USDC, _v3(USDC_WETH_V3));
+        RealmAssetsWhitelist.PriceSource memory none;
+        _list(USDC, none);
         assertEq(whitelist.unitsPerNativeX18(USDC), 0, "delisted");
-        (, Currency c1,,,) = whitelist.pricePool(USDC);
-        assertEq(Currency.unwrap(c1), address(0), "price pool cleared");
+        assertEq(whitelist.priceSource(USDC).pool, address(0), "price source cleared");
 
-        _list(USDC, _usdcKey());
+        _list(USDC, _usdcV4());
         assertGt(whitelist.unitsPerNativeX18(USDC), 0, "relisted");
     }
 }

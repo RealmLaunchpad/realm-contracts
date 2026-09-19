@@ -37,6 +37,9 @@ library DeploymentAddressesEthereumMainnet {
     /// @dev Creates and manages V2 pair contracts
     address public constant UNIV2_FACTORY = 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f;
 
+    /// @notice Uniswap V3 factory. `RealmAssetsWhitelist` validates V3 price pools against it.
+    address public constant UNIV3_FACTORY = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
+
     /// @notice keccak256 of the UniswapV2Pair contract creation code used by UNIV2_FACTORY
     /// @dev Required by `RealmGraduatorUniswapV2` to predict the CREATE2 pair address without
     ///      deploying the pair upfront. Canonical stock UniswapV2 value.
@@ -143,6 +146,9 @@ library DeploymentAddressesEthereumSepolia {
     /// @notice Uniswap V2 Factory contract
     address public constant UNIV2_FACTORY = 0x7E0987E5b3a30e3f2828572Bb659A548460a3003;
 
+    /// @notice Uniswap V3 factory. `RealmAssetsWhitelist` validates V3 price pools against it.
+    address public constant UNIV3_FACTORY = 0x0227628f3F023bb0B980b67D528571c95c6DaC1c;
+
     /// @notice keccak256 of the UniswapV2Pair contract creation code used by UNIV2_FACTORY
     /// @dev Required by `RealmGraduatorUniswapV2` to predict the CREATE2 pair address without
     ///      deploying the pair upfront. The Sepolia factory at `UNIV2_FACTORY` is NOT Uniswap's
@@ -245,6 +251,9 @@ library DeploymentAddressesRobinhoodMainnet {
 
     /// @notice Uniswap V2 Factory contract
     address public constant UNIV2_FACTORY = 0x8bcEaA40B9AcdfAedF85AdF4FF01F5Ad6517937f;
+
+    /// @notice Uniswap V3 factory. `RealmAssetsWhitelist` validates V3 price pools against it.
+    address public constant UNIV3_FACTORY = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
 
     /// @notice keccak256 of the UniswapV2Pair contract creation code used by UNIV2_FACTORY
     /// @dev Robinhood's official V2 factory uses the CANONICAL UniswapV2 pair init code hash
@@ -362,6 +371,10 @@ library DeploymentAddressesRobinhoodTestnet {
 
     /// @notice Uniswap V2 Factory — Realm-deployed stock UniswapV2Factory (canonical bytecode)
     address public constant UNIV2_FACTORY = 0x7766e3a6A8C98a76308CFb4040E330c3308F7C73;
+
+    /// @notice No Uniswap V3 on this testnet (none published by Uniswap or Robinhood): V3 price pools
+    ///         are refused by `RealmAssetsWhitelist`.
+    address public constant UNIV3_FACTORY = address(0);
 
     /// @notice keccak256 of the UniswapV2Pair creation code used by UNIV2_FACTORY.
     /// @dev The factory was deployed from Uniswap's canonical bytecode, so this is the canonical
