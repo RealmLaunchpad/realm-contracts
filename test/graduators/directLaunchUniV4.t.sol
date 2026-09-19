@@ -519,6 +519,16 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         directGraduator.initialize(token);
     }
 
+    /// @dev `graduateToken` spends no native — the dev buy is `devBuy` — so value sent to it is refused
+    ///      rather than stranded in this ownerless contract.
+    function test_graduatorGraduate_refusesNativeValue() public {
+        address token = _launch(0, _noDevBuy());
+
+        vm.deal(address(this), 1 ether);
+        vm.expectRevert(RealmDirectGraduatorUniV4.UnexpectedValue.selector);
+        directGraduator.graduateToken{value: 1 ether}(token, 1);
+    }
+
     /// @dev And `graduateToken` only ever works on the token the same transaction initialized, which
     ///      transient storage makes unreachable from any later one.
     function test_graduatorGraduate_rejectsAStaleToken() public {

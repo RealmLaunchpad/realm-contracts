@@ -191,11 +191,18 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
 
     /// @dev Splits `tokensBought` across `supplyShares` proportionally and emits `BuyOnDeploy`.
     ///      Rounding dust goes to the last recipient so no tokens remain in the factory.
+    /// @param spent What the buy cost, in the pair's quote: wei on a native pair, the ERC20's raw units
+    ///        otherwise. Reported as `BuyOnDeploy.ethSpent`.
     /// @dev Shared by both venues because the split — and the event an indexer reads it from — must be
     ///      identical however the tokens were acquired: off a bonding curve on the curve factories, out
     ///      of the launch pool on the direct one.
     /// @dev deployer-buy receivers bypass the sniper-protection features (`from == tokenFactory`).
-    function _distributeDeployBuy(address token, SupplyShare[] calldata supplyShares, uint256 tokensBought) internal {
+    function _distributeDeployBuy(
+        address token,
+        SupplyShare[] calldata supplyShares,
+        uint256 tokensBought,
+        uint256 spent
+    ) internal {
         uint256 len = supplyShares.length;
         address[] memory recipients = new address[](len);
         uint256[] memory amounts = new uint256[](len);
@@ -218,7 +225,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         amounts[lastIdx] = lastAmount;
         IERC20(token).safeTransfer(supplyShares[lastIdx].account, lastAmount);
 
-        emit BuyOnDeploy(token, msg.sender, msg.value, tokensBought, recipients, amounts);
+        emit BuyOnDeploy(token, msg.sender, spent, tokensBought, recipients, amounts);
     }
 
     /// @dev Shared preamble for every factory's `createToken`: validates name/symbol and the fee

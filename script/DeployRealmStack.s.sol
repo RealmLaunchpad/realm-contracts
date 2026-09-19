@@ -22,6 +22,9 @@ import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
+import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
+import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
@@ -32,7 +35,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 import {BuildTarget} from "script/BuildTarget.sol";
 
 /// @title Phase 1 — deploy the whole Realm stack on a fresh chain, in one broadcast
-/// @notice Everything Realm owns except the phase-0 prerequisites and the `RealmSwapHook`:
+/// @notice Everything Realm owns except the phase-0 prerequisites and the two V4 hooks:
 ///
 ///           core      `RealmMasterFeeHandler`, `RealmLaunchpad`, `RealmQuoter`,
 ///                     `RealmUniV4LiquidityAdder`
@@ -42,24 +45,29 @@ import {BuildTarget} from "script/BuildTarget.sol";
 ///                     plus 21 `ConstantProductBondingCurveConfigurable` — six DEFAULT vault curves
 ///                     (5%..30%) and a base + six vault curves for each of THIN and THICK
 ///           vaults    `RealmCreatorVault` impl, `RealmCreatorVaultFactory` impl + UUPS proxy
-///           tokens    `RealmToken`, `RealmTaxableTokenUniV2`, `RealmTaxableTokenUniV4` (clone masters;
-///                     the taxable pair each deploy their own dividend-logic extension in their
-///                     constructor, so those need no script)
+///           tokens    `RealmToken`, `RealmTaxableTokenUniV2` (which deploys its own dividend-logic
+///                     extension), and `RealmTaxableTokenUniV4` with its two extensions deployed first
 ///           factories `RealmFactoryUniV2Unified` + `RealmFactoryUniV4Unified`, impl + UUPS proxy each,
 ///                     then whitelisted on the launchpad
+///           direct    the direct-launch venue: `RealmAssetsWhitelist` (no approvers yet),
+///                     `RealmDirectGraduatorUniV4`, `RealmFactoryUniV4Direct` impl + UUPS proxy. No
+///                     launchpad, so nothing to whitelist
 ///
-///         Nothing is read back from the manifest except `SWAP_HOOK` — every address is passed in
-///         memory within the single run, so there is no paste-and-rebuild round trip between steps.
-///         Paste the printed block into the manifest once, at the end.
+///         Nothing is read back from the manifest except the two hooks — every address is passed in
+///         memory within the single run, so there is no paste-and-rebuild round trip between steps, and
+///         nothing can be wired to a stale manifest entry. Paste the printed block into the manifest
+///         once, at the end.
 ///
-///         The broadcaster becomes the launchpad owner (it whitelists the two factories here) and the
-///         owner of both factory proxies and the vault factory proxy. Hand those over afterwards.
+///         The broadcaster becomes the launchpad owner (it whitelists the two factories here), the
+///         owner of the three factory proxies and the vault factory proxy, and the assets whitelist's
+///         owner. Hand those over afterwards.
 ///
 /// @dev    PRE-FLIGHT, in order — the script refuses to broadcast otherwise:
 ///           1. `just chain-sepolia` / `just chain-rh`, then `forge build`.
 ///           2. `DeployRealmPrereqs` must have run and its two addresses pasted into
 ///              `src/config/DeploymentAddresses.sol` (they are baked into the taxable token bytecode).
-///           3. `SWAP_HOOK` must be set in the manifest for this chain.
+///           3. `SWAP_HOOK` (`RealmHook`) and `SWAP_HOOK_ANY_PAIR` (`DeployRealmHookAnyPair`) must be set
+///              in the manifest for this chain.
 ///
 ///         Run: forge script DeployRealmStack --rpc-url <sepolia|rh-mainnet> \
 ///                  --account realm.dev --slow --broadcast --verify
@@ -109,9 +117,17 @@ contract DeployRealmStack is Script {
         address v4;
     }
 
+    struct Direct {
+        address whitelist;
+        address graduator;
+        address factoryImpl;
+        address factory;
+    }
+
     function run() public {
         ChainConfig.Infra memory infra = ChainConfig.infra();
         address hook = ChainConfig.swapHook();
+        address anyPairHook = ChainConfig.swapHookAnyPair();
         _preflight();
 
         vm.startBroadcast();
@@ -125,6 +141,7 @@ contract DeployRealmStack is Script {
         console.log("Deployer: ", deployer);
         console.log("Treasury: ", infra.treasury);
         console.log("Swap hook:", hook);
+        console.log("Any-pair hook:", anyPairHook);
         console.log("");
 
         Core memory core = _deployCore(infra, hook, deployer);
@@ -134,6 +151,7 @@ contract DeployRealmStack is Script {
         Vaults memory vaults = _deployVaults();
         Tokens memory tokens = _deployTokenImpls();
         Factories memory factories = _deployFactories(core, def, thin, thick, vaults.factory, tokens);
+        Direct memory direct = _deployDirectVenue(infra, hook, anyPairHook, core, tokens, vaults.factory, deployer);
 
         RealmLaunchpad(core.launchpad).whitelistFactory(factories.v2);
         RealmLaunchpad(core.launchpad).whitelistFactory(factories.v4);
@@ -141,6 +159,7 @@ contract DeployRealmStack is Script {
         vm.stopBroadcast();
 
         _report(core, def, thin, thick, vaults, tokens, factories);
+        _reportDirect(direct, deployer);
     }
 
     /////////////////////////////// DEPLOY ///////////////////////////////
@@ -299,6 +318,32 @@ contract DeployRealmStack is Script {
         );
     }
 
+    /// @dev The direct venue, wired to this run's own adder, token impls, fee handler and vault factory.
+    function _deployDirectVenue(
+        ChainConfig.Infra memory infra,
+        address hook,
+        address anyPairHook,
+        Core memory c,
+        Tokens memory t,
+        address vaultFactory,
+        address deployer
+    ) internal returns (Direct memory d) {
+        d.whitelist = address(new RealmAssetsWhitelist(deployer, infra.univ4PoolManager));
+        d.graduator =
+            address(new RealmDirectGraduatorUniV4(infra.univ4PoolManager, hook, anyPairHook, c.liquidityAdder));
+        d.factoryImpl = address(
+            new RealmFactoryUniV4Direct(
+                IRealmFactory.TokenImpls({base: t.token, tax: t.taxV4}),
+                d.graduator,
+                c.feeHandler,
+                vaultFactory,
+                ChainConfig.wrappedNative(),
+                d.whitelist
+            )
+        );
+        d.factory = address(new ERC1967Proxy(d.factoryImpl, abi.encodeCall(RealmFactoryAbstract.initialize, ())));
+    }
+
     /// @dev Drops the base curve at index 0, leaving the six vault curves the factories expect.
     function _vaultsOf(address[7] memory curves) internal pure returns (address[6] memory v) {
         for (uint256 i = 0; i < 6; ++i) {
@@ -356,6 +401,17 @@ contract DeployRealmStack is Script {
         console.log("Both factory proxies are already whitelisted on the launchpad.");
         console.log("Next: paste the block above, `just export-deployments`, mirror the addresses in");
         console.log("      ../indexer config.yaml + config.{dev,prod}.yaml, and hand over ownerships.");
+    }
+
+    function _reportDirect(Direct memory d, address deployer) internal pure {
+        console.log("");
+        console.log("=== Direct venue (same manifest file) ===");
+        _slot("GRADUATOR_UNIV4_DIRECT", d.graduator);
+        _slot("FACTORY_UNIV4_DIRECT", d.factory);
+        _slot("FACTORY_UNIV4_DIRECT_IMPL", d.factoryImpl);
+        console.log("");
+        console.log("RealmAssetsWhitelist (the direct factory's ASSETS_WHITELIST):", d.whitelist);
+        console.log("  owner", deployer, "- no approvers yet: ERC20 pairs are refused until one is added");
     }
 
     /// @dev Index 0 of a tier's curve array is its base curve, 1..6 the 5%..30% vault curves. DEFAULT

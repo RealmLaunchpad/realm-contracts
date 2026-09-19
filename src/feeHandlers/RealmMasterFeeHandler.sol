@@ -574,6 +574,9 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
         shares = new uint256[](len);
         uint256 total;
         uint256 directSum;
+        // Read once for every incoming claimable recipient: nothing in this loop can grow `cfg.assets`
+        // (only a fee deposit does, and no external call is made here), so the copy stays exact.
+        address[] memory seenAssets = cfg.assets;
 
         for (uint256 i = 0; i < len; i++) {
             address acc = feeShares[i].account;
@@ -593,7 +596,7 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
                 directSum += sh;
             } else {
                 cfg.claimableRecipients.push(acc);
-                _checkpointNewClaimable(token, cfg, acc);
+                _checkpointNewClaimable(token, seenAssets, acc);
             }
         }
         require(total == BPS_TOTAL, InvalidShares());
@@ -607,8 +610,8 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     ///      part of. A token that has never been paid — always the case at `registerToken` — writes
     ///      nothing, which is what keeps a fresh token's registration free of cold 0→0 writes.
     ///      Its own function for the same stack reason as `_snapshotClaimables`.
-    function _checkpointNewClaimable(address token, TokenFeeConfigLib.Config storage cfg, address account) private {
-        address[] memory seenAssets = cfg.assets;
+    /// @param seenAssets `cfg.assets`, read once by the caller for the whole batch.
+    function _checkpointNewClaimable(address token, address[] memory seenAssets, address account) private {
         // `a == 0` is native, which `cfg.assets` never stores.
         for (uint256 a = 0; a <= seenAssets.length; a++) {
             address asset = a == 0 ? address(0) : seenAssets[a - 1];

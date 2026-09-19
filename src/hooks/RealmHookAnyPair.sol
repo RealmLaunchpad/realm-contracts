@@ -125,6 +125,17 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
     /// @notice Tax withheld on the quote leg in `beforeSwap`, carried to `afterSwap`.
     uint256 private transient _cachedTax;
 
+    /// @notice The token `beforeSwap` resolved for the pool being swapped, carried to `afterSwap` so it
+    ///         neither re-hashes the key nor re-reads `poolInfo`. The pool's orientation follows from
+    ///         it: the quote is `currency0` exactly when the token is `currency1`.
+    /// @dev Written only after `beforeSwap`'s last call into the token. A "token" is whatever answered
+    ///      `_resolve`, so such a call can start a nested swap on another pool, which would overwrite
+    ///      anything cached before it. Nothing between the two callbacks calls out.
+    address private transient _cachedToken;
+
+    /// @notice The id of that same pool, for `RealmPoolState`. See `_cachedToken`.
+    PoolId private transient _cachedPoolId;
+
     /////////////////////////// ERRORS & EVENTS ///////////////////////////
 
     error NoSwapsBeforeGraduation();
@@ -225,26 +236,30 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        (address token, bool quoteIsC0) = _resolve(key);
+        (address token, bool quoteIsC0, PoolId id) = _resolve(key);
         if (!IRealmToken(token).graduated()) revert NoSwapsBeforeGraduation();
 
         // A buy moves quote -> token, so its direction is whichever way the QUOTE sorted.
         bool isBuy = params.zeroForOne == quoteIsC0;
+        // Only the legs whose quote amount is known here are charged here: an exact-input buy and an
+        // exact-output sell. The other two do not know it yet and settle in `afterSwap`.
+        bool chargedHere = isBuy ? params.amountSpecified < 0 : params.amountSpecified > 0;
         uint256 lpFee;
         uint256 tax;
-        if (isBuy) {
-            // Only exact-input is charged here; exact-output does not know the quote input yet.
-            if (params.amountSpecified >= 0) {
-                return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-            }
-            (lpFee, tax) = _computeFees(_exactInputAmount(params.amountSpecified), token, true);
-        } else {
-            // Only exact-output is charged here; exact-input does not know the quote output yet.
-            if (params.amountSpecified <= 0) {
-                return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-            }
-            (lpFee, tax) = _grossedUpSellFee(token, _exactOutputAmount(params.amountSpecified));
+        if (chargedHere) {
+            // Known and accepted, as on the native hook: an exact-input buy is charged on its WHOLE
+            // input, and `RealmQuoteSwapBuy.quoteIn` reports all of it, even when a `sqrtPriceLimitX96`
+            // stops the swap short of spending it. Routers leave the limit open; a swapper who sets one
+            // tight pays for the unfilled part.
+            (lpFee, tax) = isBuy
+                ? _computeFees(_exactInputAmount(params.amountSpecified), token, true)
+                : _grossedUpSellFee(token, _exactOutputAmount(params.amountSpecified));
         }
+
+        // After the last call into the token — see `_cachedToken`.
+        _cachedToken = token;
+        _cachedPoolId = id;
+        if (!chargedHere) return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
 
         uint256 totalFee = lpFee + tax;
         _cachedLpFee = lpFee;
@@ -266,7 +281,7 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
         returns (bytes4, int128)
     {
         Leg memory leg = _leg(key, params, delta);
-        _emitPoolState(key, leg.token);
+        _emitPoolState(leg.token);
         return (IHooks.afterSwap.selector, _settle(key, leg));
     }
 
@@ -289,9 +304,11 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
 
     function _leg(PoolKey calldata key, SwapParams calldata params, BalanceDelta delta)
         private
+        view
         returns (Leg memory leg)
     {
-        (leg.token, leg.quoteIsC0) = _resolve(key);
+        leg.token = _cachedToken;
+        leg.quoteIsC0 = Currency.unwrap(key.currency1) == leg.token;
         (int128 quoteDelta, int128 tokenDelta) =
             leg.quoteIsC0 ? (delta.amount0(), delta.amount1()) : (delta.amount1(), delta.amount0());
         leg.isBuy = params.zeroForOne == leg.quoteIsC0;
@@ -304,8 +321,8 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
 
     /// @dev Post-swap price and active liquidity, emitted BEFORE the buy/sell event so an indexer has
     ///      fresh reserves in hand when it processes the trade — the ordering `PoolManager.Swap` had.
-    function _emitPoolState(PoolKey calldata key, address token) private {
-        PoolId id = key.toId();
+    function _emitPoolState(address token) private {
+        PoolId id = _cachedPoolId;
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(id);
         emit RealmPoolState(token, PoolId.unwrap(id), sqrtPriceX96, poolManager.getLiquidity(id));
     }
@@ -492,10 +509,10 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
 
     /// @dev Which side of `key` is the Realm token, cached after the first swap. See the contract
     ///      docstring for why both halves of the test are needed.
-    function _resolve(PoolKey calldata key) private returns (address token, bool quoteIsC0) {
-        PoolId id = key.toId();
+    function _resolve(PoolKey calldata key) private returns (address token, bool quoteIsC0, PoolId id) {
+        id = key.toId();
         PoolInfo memory info = poolInfo[id];
-        if (info.token != address(0)) return (info.token, info.quoteIsC0);
+        if (info.token != address(0)) return (info.token, info.quoteIsC0, id);
 
         address c0 = Currency.unwrap(key.currency0);
         address c1 = Currency.unwrap(key.currency1);

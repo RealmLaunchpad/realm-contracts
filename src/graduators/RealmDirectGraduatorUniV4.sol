@@ -87,8 +87,8 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     // takes nothing but the token address, so the launch price cannot be an argument. The factory
     // stages it here immediately before cloning the token and it is read back a few frames later, in
     // the same transaction. Transient storage is what makes that safe to do on a shared contract:
-    // the slots are wiped at the end of the transaction, so a launch can never inherit a stale price,
-    // and `prepare` is factory-only, so nobody else can stage one.
+    // the slots are wiped at the end of the transaction, so a launch can never inherit a stale price.
+    // `prepare` itself is open, but a staging only ever reaches the token `initialize` is called by.
 
     /// @dev Quote currency of the pool being launched; `address(0)` is native. Ambiguous on its own
     ///      (native and "nothing staged" read the same), hence `_prepared`.
@@ -140,6 +140,8 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     error DevBuyNotFilled();
     /// @notice Thrown when `unlockCallback` is reached from anywhere but the pool manager.
     error OnlyPoolManager();
+    /// @notice Thrown when `graduateToken` is sent native. It spends none; the dev buy is `devBuy`.
+    error UnexpectedValue();
 
     /////////////////////// Events ///////////////////////
 
@@ -221,10 +223,11 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     ///         blocks until graduation.
     function initialize(address tokenAddress) external override returns (address) {
         // The token, and only the token, calling this on itself from inside its own initializer. This
-        // is what makes `prepare` safe to leave open: a pool key is `(currencies, fee, spacing, hook)`,
-        // so anyone able to drive `initialize` for someone else's address could FRONT-RUN a pending
-        // launch by creating that exact pool first, at a price of their choosing, and the real launch
-        // would revert `PoolAlreadyInitialized`. Nobody can be an address that has no code yet.
+        // is what makes `prepare` safe to leave open: nobody can drive a launch for an address that has
+        // no code yet. It does NOT stop a front-run of the pool itself: the key is predictable from the
+        // pending `createToken`, and `PoolManager.initialize` is permissionless, so a mempool watcher
+        // could open it first and make the launch revert `PoolAlreadyInitialized`. Accepted: the venue
+        // targets Robinhood, which has no public mempool.
         require(_prepared && msg.sender == tokenAddress, LaunchNotPrepared());
         address quote = _pendingQuote;
         require(tokenAddress != quote, TokenEqualsQuote());
@@ -260,19 +263,20 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         emit PoolIdRegistered(tokenAddress, PoolId.unwrap(key.toId()), hook);
     }
 
-    /// @notice Opens the token for trading and seeds its pool: marks it graduated, deposits `tokenAmount`
-    ///         as a single-sided band covering the whole usable range on the coin's side of the launch
-    ///         price, and — if the factory forwarded any — spends `msg.value` on the creator's dev buy.
-    ///         Whatever that buy acquires is handed to the factory, which splits it across the
-    ///         creator's recipients.
+    /// @notice Opens the token for trading and seeds its pool: marks it graduated and deposits
+    ///         `tokenAmount` as a single-sided band covering the whole usable range on the coin's side of
+    ///         the launch price. The creator's dev buy is NOT here: it is `devBuy`, a separate call.
     /// @dev Called by the FACTORY, not a launchpad: the direct venue has no pre-graduation phase, so
     ///      "graduation" and "launch" are the same instant. The name and signature are `IRealmGraduator`'s
     ///      so every other contract keeps seeing an ordinary graduated Realm token.
+    /// @dev `payable` only because `IRealmGraduator` is, and an override cannot drop it. Nothing here
+    ///      spends native, so any value sent is refused rather than stranded in this ownerless contract.
     /// @param tokenAmount Supply to seed. This contract holds it already — the token minted it here.
     function graduateToken(address tokenAddress, uint256 tokenAmount) external payable override {
         // Reachable only in the same transaction as the `initialize` that staged it — the marker lives
         // in transient storage — and `createToken` hands control to nothing untrusted in between, so
         // "the caller is the factory mid-`createToken`" needs no separate check to be true.
+        require(msg.value == 0, UnexpectedValue());
         require(tokenAddress == _initializedToken && !_launched, LaunchNotPrepared());
         _launched = true;
         require(tokenAmount > 0, NoTokensToGraduate());
@@ -281,7 +285,7 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         IRealmToken(tokenAddress).markGraduated();
 
         uint128 liquidity = _seedPool(tokenAddress, _pendingQuote, _pendingLaunchTick, tokenAmount, _pendingWeightBps);
-        emit TokenGraduated(tokenAddress, tokenAmount, msg.value, liquidity);
+        emit TokenGraduated(tokenAddress, tokenAmount, 0, liquidity);
     }
 
     /// @notice Seeds ANOTHER of the launch's pools. Same authorisation as `initializePool`.
@@ -304,6 +308,9 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     ///      which is why no slippage bound is taken for this leg.
     /// @dev Native arrives as `msg.value`; an ERC20 quote is transferred here by the factory first, and
     ///      the whole balance is spent. Either way nothing is left behind: a partial fill reverts.
+    /// @dev Known and accepted: "the whole balance" includes any of `quote` sent here by mistake, which
+    ///      the next dev buy on that quote then spends for its creator. Nothing else can reach it — this
+    ///      contract is ownerless — so the alternative is leaving it stranded forever.
     function devBuy(address tokenAddress, address quote) external payable {
         require(tokenAddress == _initializedToken && _launched, LaunchNotPrepared());
         uint256 amountIn = quote == address(0) ? msg.value : IERC20(quote).balanceOf(address(this));
@@ -494,14 +501,11 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
 
     /// @dev Lowest spacing-aligned tick a position may use.
     function _minUsableTick() internal pure returns (int24) {
-        // Snapping to the spacing grid is the intent here, not an accident of ordering.
-        // forge-lint: disable-next-line(divide-before-multiply)
-        return (TickMath.MIN_TICK / UniswapV4PoolConstants.TICK_SPACING) * UniswapV4PoolConstants.TICK_SPACING;
+        return TickMath.minUsableTick(UniswapV4PoolConstants.TICK_SPACING);
     }
 
     /// @dev Highest spacing-aligned tick a position may use.
     function _maxUsableTick() internal pure returns (int24) {
-        // forge-lint: disable-next-line(divide-before-multiply)
-        return (TickMath.MAX_TICK / UniswapV4PoolConstants.TICK_SPACING) * UniswapV4PoolConstants.TICK_SPACING;
+        return TickMath.maxUsableTick(UniswapV4PoolConstants.TICK_SPACING);
     }
 }

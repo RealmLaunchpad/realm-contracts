@@ -138,6 +138,12 @@ abstract contract RealmV4ExtensionBase is RealmTaxableTokenUniV4Base {
         revert NotAToken();
     }
 
+    /// @dev The ERC20 twin of `accrueFees()`, stubbed for the same reason: live, it links
+    ///      `_allocateEarnings` and the fee-handler deposit back into this contract's bytecode.
+    function accrueFees(address, uint256) external pure override {
+        revert NotAToken();
+    }
+
     /// @dev The second entry point into the earnings split, stubbed for the same reason `accrueFees` is:
     ///      an extension holds no balance, so it has no stray native — and leaving it live would link
     ///      `_allocateEthEarnings` and everything under it back into this contract's bytecode.

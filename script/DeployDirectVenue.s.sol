@@ -17,6 +17,8 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 ///         creator picks, with no bonding curve and no launchpad in between. Deploys
 ///         `RealmDirectGraduatorUniV4` and `RealmFactoryUniV4Direct` (implementation + UUPS proxy) and
 ///         wires them to the infrastructure already on the chain.
+/// @notice Only for adding the venue to a stack that is already live. A full redeploy gets it from
+///         `DeployRealmStack`, which wires it in memory instead of through the manifest.
 ///
 /// @dev WHAT MUST EXIST FIRST, and why each one:
 ///      - `SWAP_HOOK` — `RealmHook`, for native-quoted pools. Already live; never redeployed.
@@ -57,6 +59,9 @@ contract DeployDirectVenue is Script {
         address wrappedNative = ChainConfig.wrappedNative();
 
         require(m.liquidityAdder != address(0), "manifest: UNIV4_LIQUIDITY_ADDER missing");
+        // `PERMIT2` shipped with the adder's ERC20 `addSingleSided`, which every direct launch seeds through.
+        (bool ok, bytes memory ret) = m.liquidityAdder.staticcall(abi.encodeWithSignature("PERMIT2()"));
+        require(ok && ret.length == 32, "manifest: UNIV4_LIQUIDITY_ADDER predates ERC20 settlement, redeploy it");
         require(m.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         // `assetsOf` shipped with the handler's ERC20 support: its absence means a handler that predates it.
         (bool erc20Aware,) = m.masterFeeHandler.staticcall(abi.encodeWithSignature("assetsOf(address)", address(0)));
@@ -75,9 +80,9 @@ contract DeployDirectVenue is Script {
         console.log("TAXABLE_TOKEN_V4_IMPL:", m.taxTokenV4Impl);
         console.log("");
 
-        (, address owner,) = vm.readCallers();
-
         vm.startBroadcast();
+        // Inside the broadcast: only there does `readCallers` report the real `--account` broadcaster.
+        (, address owner,) = vm.readCallers();
 
         RealmAssetsWhitelist whitelist = new RealmAssetsWhitelist(owner, infra.univ4PoolManager);
 

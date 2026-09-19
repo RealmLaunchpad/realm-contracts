@@ -85,7 +85,7 @@ contract UpgradeRealmFactories is Script {
 
     /// @dev A zero in any of these means the manifest was not refreshed after the last deploy; the
     ///      resulting implementation would be permanently mis-wired, so refuse before broadcasting.
-    function _require(ChainConfig.Manifest memory m) internal pure {
+    function _require(ChainConfig.Manifest memory m) internal view {
         require(m.launchpad != address(0), "manifest: LAUNCHPAD missing");
         require(m.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(m.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
@@ -98,5 +98,32 @@ contract UpgradeRealmFactories is Script {
         require(m.taxTokenV4Impl != address(0), "manifest: TAXABLE_TOKEN_V4_IMPL missing");
         require(m.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
         require(m.factoryV4Proxy != address(0), "manifest: FACTORY_UNIV4_UNIFIED missing");
+        _requireCurrentGraduatorV4(m.graduatorV4, "GRADUATOR_UNIV4");
+        _requireCurrentGraduatorV4(m.graduatorV4Thin, "GRADUATOR_UNIV4_THIN");
+        _requireCurrentGraduatorV4(m.graduatorV4Thick, "GRADUATOR_UNIV4_THICK");
+    }
+
+    /// @dev The V4 token impl calls `hookFor` on its graduator and tops liquidity up through the
+    ///      graduator's `LIQUIDITY_ADDER` with the ERC20-aware `addOrTopUpSingleSided` (which shipped
+    ///      with `PERMIT2`). Wiring either from before that change bricks every clone's burn, liquidity
+    ///      and self-token dividend paths for good, so refuse it here.
+    function _requireCurrentGraduatorV4(address graduator, string memory slot) internal view {
+        require(
+            _answers(graduator, abi.encodeWithSignature("hookFor(address)", address(0))),
+            string.concat("manifest: ", slot, " predates hookFor, redeploy it")
+        );
+        (, bytes memory ret) = graduator.staticcall(abi.encodeWithSignature("LIQUIDITY_ADDER()"));
+        require(ret.length == 32, string.concat("manifest: ", slot, " has no LIQUIDITY_ADDER"));
+        require(
+            _answers(abi.decode(ret, (address)), abi.encodeWithSignature("PERMIT2()")),
+            string.concat("manifest: ", slot, "'s liquidity adder predates ERC20 settlement, redeploy it")
+        );
+    }
+
+    /// @dev True when `target` returns a word for `data`. A code-less address "succeeds" with no data,
+    ///      so success alone would pass it.
+    function _answers(address target, bytes memory data) internal view returns (bool) {
+        (bool ok, bytes memory ret) = target.staticcall(data);
+        return ok && ret.length >= 32;
     }
 }

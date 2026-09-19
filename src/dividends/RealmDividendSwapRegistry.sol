@@ -49,8 +49,9 @@ import {IHooks as ICoreHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 ///      grief a popular asset by registering a rotten route for it globally.
 ///
 /// @dev CUSTODIES NOTHING. `swapNativeToAsset` receives, swaps and forwards inside one call, and holds
-///      no balance between calls. There is deliberately no `receive()`, so the only native that can
-///      reach it is native someone is actively converting. The one exception is ARC, where the venue
+///      no balance between calls. Its `receive()` exists only for the native a reverse V4 leg takes out
+///      of the pool manager mid-`swapAssetToAsset`, which moves on in the same call; anything else sent
+///      there is a donation nobody can recover. The one exception is ARC, where the venue
 ///      floors the 18-dec native amount to 6-dec USDC and leaves sub-1e-6 dust behind; it is unreachable
 ///      rather than owed to anyone, and a sweep for it would buy less than it costs to review.
 contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable, OwnableUpgradeable, UUPSUpgradeable {

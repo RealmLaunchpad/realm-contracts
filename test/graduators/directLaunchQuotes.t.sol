@@ -175,6 +175,29 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         assertEq(IERC20(token).balanceOf(address(directFactory)), 0, "factory keeps no tokens");
     }
 
+    /// @dev `BuyOnDeploy` reports what the dev buy cost in the pair's own quote, not `msg.value` (zero on
+    ///      an ERC20 pair).
+    function test_erc20Quote_buyOnDeployReportsTheQuoteSpent() public {
+        quoteCoin.mintTo(creator, 1_000e6);
+        vm.prank(creator);
+        quoteCoin.approve(address(directFactory), type(uint256).max);
+        RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
+        devBuy.quoteAmount = 100e6;
+
+        vm.recordLogs();
+        _launchAgainstQuoteCoin(devBuy);
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool found;
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].topics.length == 0 || logs[i].topics[0] != IRealmFactory.BuyOnDeploy.selector) continue;
+            (uint256 spent,,,) = abi.decode(logs[i].data, (uint256, uint256, address[], uint256[]));
+            assertEq(spent, 100e6, "cost in the quote's raw units");
+            found = true;
+        }
+        assertTrue(found, "no BuyOnDeploy");
+    }
+
     /// @dev The whole point of the any-pair hook: the fee is collected in the pool's own currency and
     ///      reaches the creator as that currency, never converted on the way.
     function test_erc20Quote_swapFeesReachTheCreatorInTheQuote() public {

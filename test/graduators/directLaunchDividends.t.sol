@@ -576,10 +576,40 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         uint16[] memory weights = new uint16[](2);
         weights[0] = 5_000;
         weights[1] = 5_000;
+        // No quote route passed for USDC: one given for a payout quote is refused on its own (see below).
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(USDC, "", new bytes[](0));
+        cfg.earningsAllocation.dividendTokens = assets;
+        cfg.earningsAllocation.dividendWeightsBps = weights;
+        cfg.earningsAllocation.dividendRoutes = new bytes[](2);
+
+        vm.prank(creator);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.QuoteRouteUnsupported.selector);
+        directFactory.createToken(
+            _setup(true),
+            _usdcPair(),
+            cfg,
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+    }
+
+    /// @dev A route the token would never register is refused, not silently dropped: USDC is a payout
+    ///      here, so the DAI leg converts out of USDC through USDC's PAYOUT route, and a quote route for it
+    ///      would be ignored.
+    function test_quoteRoutes_refusesARouteForAPayoutQuote() public {
+        address[] memory assets = new address[](2);
+        assets[0] = USDC;
+        assets[1] = DAI;
+        uint16[] memory weights = new uint16[](2);
+        weights[0] = 5_000;
+        weights[1] = 5_000;
         TaxConfigsWithDirectAllocation memory cfg = _cfg(USDC, "", _one(_v4Route(USDC)));
         cfg.earningsAllocation.dividendTokens = assets;
         cfg.earningsAllocation.dividendWeightsBps = weights;
         cfg.earningsAllocation.dividendRoutes = new bytes[](2);
+        cfg.earningsAllocation.dividendRoutes[0] = _v4Route(USDC);
 
         vm.prank(creator);
         vm.expectRevert(RealmTaxableTokenUniV4Base.QuoteRouteUnsupported.selector);

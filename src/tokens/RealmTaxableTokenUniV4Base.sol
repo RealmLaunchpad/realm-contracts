@@ -166,7 +166,7 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
 
     /// @notice A quote route was given, or found already registered, in a venue the registry cannot
     ///         walk backwards (only V4 routes can be), for a quote a dividends leg has to be bought
-    ///         out of.
+    ///         out of — or a route was given for a quote that uses none (see `_registerQuoteRoutes`).
     error QuoteRouteUnsupported();
     error NothingToBurn();
 

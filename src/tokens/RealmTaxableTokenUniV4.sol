@@ -19,9 +19,10 @@ import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/co
 ///      Tax accounting on swaps lives in `RealmSwapHook`; the token exposes the tax config via
 ///      `getTaxConfig()`. The earnings-allocation burn bucket is buffered here as ETH
 ///      (`burnPendingEth`) and processed out-of-band by `processBurn`.
-/// @dev EVERY out-of-band keeper entry point (`processBurn`, `processLiquidity`, `processDividends`,
-///      `claimDividends`) is a thin `delegatecall` stub into `DIVIDEND_LOGIC`; only their bodies live
-///      elsewhere, and nothing on the swap hot path does. See `RealmDividendLogicUniV4`.
+/// @dev EVERY out-of-band keeper entry point is a thin `delegatecall` stub: `processDividends` and
+///      `claimDividends` into `DIVIDEND_LOGIC`, `processBurn` and `processLiquidity` into
+///      `EARNINGS_LOGIC`. Only their bodies live elsewhere, and nothing on the swap hot path does. See
+///      `RealmDividendLogicUniV4` and `RealmEarningsLogicUniV4`.
 contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     /// @notice The `RealmDividendLogicUniV4` extension the dividend entry points `delegatecall` into.
     /// @dev Immutable, so clones read it straight from the implementation.

@@ -152,7 +152,7 @@ abstract contract RealmFactoryCurveAbstract is RealmFactoryAbstract {
     ///      `maxBuyOnDeploy` to size a buy up to the instant-graduation point without risking that revert.
     function _buyAndDistribute(address token, SupplyShare[] calldata supplyShares) internal {
         _distributeDeployBuy(
-            token, supplyShares, LAUNCHPAD.buyTokensWithExactEth{value: msg.value}(token, 0, block.timestamp)
+            token, supplyShares, LAUNCHPAD.buyTokensWithExactEth{value: msg.value}(token, 0, block.timestamp), msg.value
         );
     }
 

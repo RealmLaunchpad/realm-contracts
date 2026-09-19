@@ -450,7 +450,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         grad.burnSeedDust(token);
 
         // The graduator hands the dev buy back here; the split and its event are the curve venue's.
-        _distributeDeployBuy(token, devBuy.recipients, IERC20(token).balanceOf(address(this)));
+        _distributeDeployBuy(token, devBuy.recipients, IERC20(token).balanceOf(address(this)), spend);
     }
 
     /// @dev Venue-specific validation: the V4 fee tier, the pair set, and the dev buy's consistency

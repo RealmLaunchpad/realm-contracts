@@ -449,11 +449,8 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
         pure
         returns (int24 tickLower, int24 tickUpper)
     {
-        // Snapping to the spacing grid is the intent, not an accident of ordering.
-        // forge-lint: disable-next-line(divide-before-multiply)
-        int24 maxUsableTick = (TickMath.MAX_TICK / spacing) * spacing;
-        // forge-lint: disable-next-line(divide-before-multiply)
-        int24 minUsableTick = (TickMath.MIN_TICK / spacing) * spacing;
+        int24 maxUsableTick = TickMath.maxUsableTick(spacing);
+        int24 minUsableTick = TickMath.minUsableTick(spacing);
 
         if (isCurrency1) {
             tickUpper = _floorToSpacing(currentTick - 1, spacing);

@@ -252,6 +252,8 @@ contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase, DividendInitLogic {
     ///      creation, rather than failing every conversion out of that quote for the token's life.
     ///      `_quoteRoutes` is positional to `quotes` from index 1; a missing entry is empty, which the
     ///      registry reads as the permissionless V2 pair — and which therefore fails this venue check.
+    ///      A non-empty entry for a quote that needs no route, or that is itself a payout asset, reverts
+    ///      rather than being silently dropped.
     function _registerQuoteRoutes(bytes[] calldata routes) private {
         uint256 nq = quoteCount;
         uint256 na = dividendAssetCount;
@@ -265,9 +267,12 @@ contract RealmEarningsLogicUniV4 is RealmV4ExtensionBase, DividendInitLogic {
                 if (a == quote) isPayout = true;
                 else if (a != address(this)) needed = true;
             }
+            // A route this token would not register is one the creator believes is in use; refuse it.
+            bool supplied = q - 1 < routes.length && routes[q - 1].length != 0;
+            require(!supplied || (needed && !isPayout), QuoteRouteUnsupported());
             if (!needed) continue;
             bytes memory route =
-                isPayout ? registry.routeOf(address(this), quote) : (q - 1 < routes.length ? routes[q - 1] : bytes(""));
+                isPayout ? registry.routeOf(address(this), quote) : (supplied ? routes[q - 1] : bytes(""));
             require(DividendRouteLib.venue(route) == DividendRouteLib.VENUE_V4, QuoteRouteUnsupported());
             if (!isPayout) registry.registerRoute(quote, route);
         }
