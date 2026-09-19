@@ -37,7 +37,8 @@ interface IUniswapV3FactoryPools {
 ///
 /// @dev TWO TIERS, like every operational allowlist here, but stricter at the top: the owner is a cold
 ///      multisig that manages APPROVERS (and upgrades) and cannot whitelist anything itself. Approvers
-///      are hot keys (an agent reviewing listing requests) doing the frequent, low-stakes work.
+///      are hot keys (the team reviewing listing requests by hand, an agent later) doing the frequent,
+///      low-stakes work.
 ///
 /// @dev PRICED BY ITS POOL. An approver lists an asset with the pool holding its main liquidity, against
 ///      native (WETH counts as native) or against a REFERENCE asset — one already listed directly

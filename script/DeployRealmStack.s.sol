@@ -169,7 +169,7 @@ contract DeployRealmStack is Script {
         internal
         returns (Core memory c)
     {
-        c.feeHandler = address(new RealmMasterFeeHandler(infra.univ4UniversalRouter, infra.permit2));
+        c.feeHandler = address(new RealmMasterFeeHandler());
         // CREATE2 so the launchpad address carries the same `0xeeaa` suffix the tokens do.
         bytes32 salt =
             _mineSalt(abi.encodePacked(type(RealmLaunchpad).creationCode, abi.encode(infra.treasury, deployer)));

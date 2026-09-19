@@ -58,7 +58,6 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 6. [V4 post-graduation swaps](#6-v4-post-graduation-swaps)
 6b. [ERC20-quoted V4 swaps](#61-erc20-quoted-v4-swaps-realmhookanypair)
 7. [`RealmMasterFeeHandler.claim`](#7-realmmasterfeehandlerclaimaddress-tokens)
-7b. [`RealmMasterFeeHandler.claimAsNative`](#71-realmmasterfeehandlerclaimasnativeaddress-tokens-address-asset-pathkey-path-uint256-minout)
 8. [`RealmMasterFeeHandler.setShares`](#8-realmmasterfeehandlersetsharesaddress-token-feeshare-feeshares)
 9. [Direct-fee behavior](#9-direct-fee-behavior)
 10. [`RealmTaxableToken.setTaxBps`](#10-realmtaxabletokensettaxbpsuint16-newbuytaxbps-uint16-newselltaxbps)
@@ -394,18 +393,6 @@ For each token in `tokens` where `msg.sender` has a non-zero claimable balance:
 After iterating all tokens, a single native ETH transfer pays the sum to `msg.sender`. If the sum is zero, no events are emitted and no ETH transfer is attempted.
 
 Duplicate token entries do not double-pay because the first matching entry clears the caller's claimable balance for that token.
-
----
-
-## 7.1 `RealmMasterFeeHandler.claimAsNative(address[] tokens, address asset, PathKey[] path, uint256 minOut)`
-
-Claims `msg.sender`'s fees in one ERC20 `asset` across `tokens` and pays them out as native, sold along the caller's `path` (`asset -> ... -> native`) in the same call. The asset is never delivered.
-
-1. **`RealmMasterFeeHandler.CreatorAssetClaimed`** (`token, asset, account=msg.sender, amount`) — once per token with a non-zero claimable balance, in the ASSET's units, exactly as `claim(tokens, asset)` emits them.
-2. Universal-router swap events (Permit2 / ERC20 `Transfer`s, `PoolManager.Swap`).
-3. **`RealmMasterFeeHandler.CreatorAssetConvertedToNative`** (`account, asset, amountIn, nativeOut`) — `amountIn` is the sum of step 1; `nativeOut` is what was paid to `msg.sender`, in native.
-
-Nothing claimable: no events, returns 0. A reverted swap, a partial fill or `nativeOut < minOut` reverts `NativeConversionFailed` and leaves the claim intact.
 
 ---
 

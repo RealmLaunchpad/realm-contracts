@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {IRealmClaims} from "src/interfaces/IRealmClaims.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
-import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
 
 /// @notice Unified singleton fee handler supporting single and multi-receiver tokens, with optional
 ///         synchronous ETH forwarding (direct fees) per receiver. Replaces both `RealmFeeHandler`
@@ -25,9 +24,6 @@ interface IRealmMasterFeeHandler is IRealmClaims {
     ///         the token itself can add one, so this bounds the `setShares` snapshot loop without being
     ///         reachable by anyone else.
     error TooManyFeeAssets();
-    /// @notice Thrown by `claimAsNative` when the swap reverted, filled only partially, or delivered less
-    ///         than `minOut`.
-    error NativeConversionFailed();
 
     ////////////////// Events //////////////////
 
@@ -45,13 +41,6 @@ interface IRealmMasterFeeHandler is IRealmClaims {
     ///         either by a successful direct forward or by claiming. Same reasoning as
     ///         `CreatorAssetFeesDeposited` for why it is a separate event.
     event CreatorAssetClaimed(address indexed token, address indexed asset, address indexed account, uint256 amount);
-
-    /// @notice Emitted by `claimAsNative` after its per-token `CreatorAssetClaimed` events: `amountIn` of
-    ///         `asset` (their sum) was sold and `nativeOut` paid to `account` instead. A payout, not new
-    ///         earnings — the fees were already accounted in `asset`.
-    event CreatorAssetConvertedToNative(
-        address indexed account, address indexed asset, uint256 amountIn, uint256 nativeOut
-    );
 
     /// @notice Emitted when shares are (re)configured via `registerToken` or `setShares`. `token`
     ///         distinguishes per-token configs since this is a singleton handler.
@@ -109,12 +98,6 @@ interface IRealmMasterFeeHandler is IRealmClaims {
 
     /// @notice Claims accumulated fees for `msg.sender` in one ERC20 `asset` across the given tokens.
     function claim(address[] calldata tokens, address asset) external;
-
-    /// @notice Claims `msg.sender`'s fees in `asset` across `tokens` and pays them out as native, sold
-    ///         along `path` (`asset -> ... -> native`) with a floor of `minOut`.
-    function claimAsNative(address[] calldata tokens, address asset, PathKey[] calldata path, uint256 minOut)
-        external
-        returns (uint256 nativeOut);
 
     /// @notice Returns the pending claimable `asset` fees for `account` across the given tokens.
     function getClaimable(address[] calldata tokens, address asset, address account)

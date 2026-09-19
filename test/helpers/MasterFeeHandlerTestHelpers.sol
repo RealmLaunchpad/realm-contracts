@@ -47,8 +47,7 @@ abstract contract MasterFeeHandlerTestHelpers is Test {
 
     function setUp() public virtual {
         vm.prank(owner);
-        // No swap is exercised here; `claimAsNative` has its own fork suite.
-        handler = new RealmMasterFeeHandler(makeAddr("universalRouter"), makeAddr("permit2"));
+        handler = new RealmMasterFeeHandler();
         vm.deal(address(this), 1_000 ether);
     }
 
