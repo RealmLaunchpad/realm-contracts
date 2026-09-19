@@ -1,0 +1,2 @@
+# The CoinGecko ranking, cached for a day so a re-run does not wait on the free tier.
+.universe.cache.json

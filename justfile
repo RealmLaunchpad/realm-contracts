@@ -438,6 +438,21 @@ pick-dividend-routes:
     just chain-rh
     forge script PickDividendRoutes --rpc-url rh-mainnet
 
+# Re-pick, from live state, the Uniswap pool that prices each of Robinhood Chain's 300 biggest coins,
+# into script/operations/assets-whitelist/listings.robinhood.mainnet.json. Review that file: it is what
+# the whitelisting script below broadcasts, and the rate each listing stores is read when it runs.
+discover-whitelist-assets:
+    uv run script/operations/assets-whitelist/discover_whitelist_assets.py
+
+# Lists those coins in RealmAssetsWhitelist as direct-venue quotes. ASSETS_WHITELIST is the proxy (the
+# direct factory's `ASSETS_WHITELIST()`) and the signer must already be an approver on it. Re-run
+# `discover-whitelist-assets` first: the rates are snapshots. The script simulates every listing before
+# broadcasting anything and skips the ones a pool no longer supports.
+whitelist-assets-rh:
+    just chain-rh
+    forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS
 # implementation — the 2nd-to-last on-chain `Upgraded` event, i.e. Etherscan's
