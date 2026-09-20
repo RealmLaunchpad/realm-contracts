@@ -102,11 +102,20 @@ REALM token, which is created through the stack. So the order is stack → REALM
 redeploy them first (`just redeploy-token-impls-<chain>` covers all three masters and rewires the
 factories) and only then create the REALM token.
 
+Voting and the router deploy in ONE broadcast: `DeployRealmTreasuryRouter` inherits `DeployRealmVoting`
+and runs it first whenever the manifest's `VOTING` is still zero, keeping that address in memory rather
+than through a paste-and-rebuild round trip — the router holds it as an immutable. Paste the REALM token
+into the manifest's `REALM_TOKEN` first (or prefix `REALM_TOKEN=<address>`).
+
 ```bash
-just deploy-voting-rh <REALM token>  # paste VOTING / VOTING_IMPL into the manifest
 just deploy-treasury-router-rh       # or: -sepolia / -rh-testnet; dry-run without --broadcast first
-just export-deployments              # after pasting TREASURY_ROUTER, TREASURY_ROUTER_IMPL, LP_FEE_ROUTER_IMPL
+just export-deployments              # after pasting VOTING(+_IMPL), TREASURY_ROUTER(+_IMPL), LP_FEE_ROUTER_IMPL
 ```
+
+`just deploy-voting-<chain>` stays as a standalone step for the case where the two have to be deployed
+apart: the router leg needs the broadcaster to own the launchpad and the LP router proxy, and voting
+does not, so a chain whose launchpad already belongs to the multisig deploys voting with `realm.dev`
+and the router through the multisig.
 
 Then set `REALM_TREASURY = TREASURY_ROUTER` in that chain's `DeploymentAddresses` library: token impls bake
 it as `DIVIDEND_TREASURY`, so impls deployed before this step keep sweeping to the multisig until redeployed.

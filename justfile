@@ -259,28 +259,32 @@ upgrade-lp-fee-router-rh-testnet: chain-rh-testnet
     forge script UpgradeSwapLpFeeRouter --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Deploys RealmVoting (impl + UUPS proxy) for an existing REALM token: round 1 opens at deploy, 3-day
+# Deploys RealmVoting (impl + UUPS proxy) for the manifest's REALM_TOKEN: round 1 opens at deploy, 3-day
 # rounds (override with VOTING_ROUND_DURATION seconds), VOTE_BUYBACK_WALLET appointed admin where the
 # chain names one. The token's master must have burnFrom (redeploy-token-impls first if it predates it).
-# Paste the printed VOTING / VOTING_IMPL into the manifest, then deploy-treasury-router. Dry-run first:
-# same command without --broadcast, plus --sender <realm.dev address>.
-deploy-voting-sepolia realm_token: chain-sepolia
-    REALM_TOKEN={{realm_token}} forge script DeployRealmVoting --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+# Prefix REALM_TOKEN=<address> to deploy against a token that is not pasted into the manifest yet.
+# ONLY needed to deploy voting apart from the treasury router — deploy-treasury-router below deploys it
+# in its own broadcast when VOTING is still zero. Paste the printed VOTING / VOTING_IMPL into the
+# manifest. Dry-run first: same command without --broadcast, plus --sender <realm.dev address>.
+deploy-voting-sepolia: chain-sepolia
+    forge script DeployRealmVoting --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
-deploy-voting-rh realm_token: chain-rh
-    REALM_TOKEN={{realm_token}} forge script DeployRealmVoting --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+deploy-voting-rh: chain-rh
+    forge script DeployRealmVoting --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
-deploy-voting-rh-testnet realm_token: chain-rh-testnet
-    REALM_TOKEN={{realm_token}} forge script DeployRealmVoting --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+deploy-voting-rh-testnet: chain-rh-testnet
+    forge script DeployRealmVoting --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Puts RealmTreasuryRouter in front of the treasury: deploys its impl + proxy (2/3 to the team treasury,
-# 1/3 to the manifest's VOTING, which must be live), then a SwapLpFeeRouter impl pointing at the new
-# proxy, upgrades LP_FEE_ROUTER onto it and repoints LAUNCHPAD.treasury(). Broadcaster must own the
-# launchpad and the LP router proxy. Paste the printed slots into the manifest, set REALM_TREASURY to
-# the proxy in DeploymentAddresses, `just export-deployments`. Dry-run first: same command without
-# --broadcast, plus --sender <realm.dev address>.
+# Puts RealmTreasuryRouter in front of the treasury, in ONE broadcast: RealmVoting first when the
+# manifest has no VOTING yet (the router bakes it in as an immutable), then the router impl + proxy
+# (2/3 to the team treasury, 1/3 to voting), then a SwapLpFeeRouter impl pointing at the new proxy,
+# upgrades LP_FEE_ROUTER onto it and repoints LAUNCHPAD.treasury(). Needs the manifest's REALM_TOKEN
+# (or REALM_TOKEN=<address>) whenever it deploys voting. Broadcaster must own the launchpad and the LP
+# router proxy. Paste the printed slots into the manifest, set REALM_TREASURY to the proxy in
+# DeploymentAddresses, `just export-deployments`. Dry-run first: same command without --broadcast,
+# plus --sender <realm.dev address>.
 deploy-treasury-router-sepolia: chain-sepolia
     forge script DeployRealmTreasuryRouter --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 

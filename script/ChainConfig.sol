@@ -211,6 +211,15 @@ library ChainConfig {
         revert(UNSUPPORTED);
     }
 
+    /// @notice The REALM token from the manifest — a launchpad token like any other, and the one
+    ///         `RealmVoting` burns. `address(0)` until it is launched on this chain.
+    function realmToken() internal view returns (address) {
+        if (isSepolia()) return DeploymentsEthereumSepolia.REALM_TOKEN;
+        if (isRobinhood()) return DeploymentsRobinhoodMainnet.REALM_TOKEN;
+        if (isRobinhoodTestnet()) return DeploymentsRobinhoodTestnet.REALM_TOKEN;
+        revert(UNSUPPORTED);
+    }
+
     /// @notice The keeper lambda's EOA from the manifest: appointed on `RealmKeepersRegistry` and set as
     ///         the `RealmDividendSwapRegistry`'s keeper-funding wallet by `ConfigureRegistries`.
     function realmKeeper() internal view returns (address keeper) {
