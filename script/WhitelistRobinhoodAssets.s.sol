@@ -8,10 +8,14 @@ import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 
 /// @title Whitelist Robinhood Chain's biggest coins as direct-venue quotes
-/// @notice Lists the coins in `script/operations/assets-whitelist/listings.robinhood.mainnet.json`,
+/// @notice Lists the coins in `script/operations/assets-whitelist/listings.robinhood.<chain>.json`,
 ///         each with the Uniswap pool that prices it. That file is generated — and the pools re-picked
 ///         against live state — by `discover_whitelist_assets.py` beside it; the README there explains
 ///         what qualifies as a price pool and why most of CoinGecko's top 300 is not in it.
+///
+/// @notice Both Robinhood chains, one script: mainnet lists the top coins by market cap, the testnet
+///         the three dummy xStocks the dividend feature is exercised against. The file is chosen by
+///         chain id, and names its own chain so a mismatched one cannot be broadcast.
 ///
 /// @dev RE-GENERATE THE FILE FIRST (`just discover-whitelist-assets`). A listing's rate is a snapshot
 ///      taken now, from the pool named in the file, and both the pool choice and the price in it age.
@@ -26,10 +30,8 @@ import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 ///
 /// Usage (dry run): ASSETS_WHITELIST=0x… forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet \
 ///                      --account realm.dev --sender <realm.dev address>
-/// Usage (list):    ASSETS_WHITELIST=0x… just whitelist-assets-rh
+/// Usage (list):    ASSETS_WHITELIST=0x… just whitelist-assets-rh   (or -rh-testnet)
 contract WhitelistRobinhoodAssets is Script {
-    string internal constant LISTINGS = "script/operations/assets-whitelist/listings.robinhood.mainnet.json";
-
     function run() public {
         RealmAssetsWhitelist whitelist = RealmAssetsWhitelist(vm.envAddress("ASSETS_WHITELIST"));
         require(whitelist.isApprover(msg.sender), "sender is not an approver: the owner must add it first");
@@ -75,6 +77,12 @@ contract WhitelistRobinhoodAssets is Script {
         vm.revertToState(snapshot);
     }
 
+    function _listingsPath() internal view returns (string memory) {
+        if (block.chainid == 4663) return "script/operations/assets-whitelist/listings.robinhood.mainnet.json";
+        if (block.chainid == 46630) return "script/operations/assets-whitelist/listings.robinhood.testnet.json";
+        revert("no listings file for this chain");
+    }
+
     /// @dev The generated file, as the arguments `setWhitelisted` takes. Parallel arrays because
     ///      `vm.parseJson` decodes one JSON value per call, so an array of objects would have to be
     ///      read field by field, entry by entry.
@@ -83,7 +91,7 @@ contract WhitelistRobinhoodAssets is Script {
         view
         returns (string[] memory symbols, address[] memory assets, RealmAssetsWhitelist.PriceSource[] memory sources)
     {
-        string memory json = vm.readFile(LISTINGS);
+        string memory json = vm.readFile(_listingsPath());
         require(vm.parseJsonUint(json, ".chainId") == block.chainid, "listings are for another chain");
 
         assets = vm.parseJsonAddressArray(json, ".assets");

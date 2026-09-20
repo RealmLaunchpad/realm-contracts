@@ -1,0 +1,85 @@
+{
+ "chainId": 46630,
+ "reference": null,
+ "referencePerNative": null,
+ "assets": [
+  "0x1a86eaa7645a7fc846d5f9629719d499b3b0625f",
+  "0x08054ebb21056959317ca59da4b2063fa386253d",
+  "0x0a4d26b99a124bb08bc335764b6c2a1ee4c3e85c"
+ ],
+ "symbols": [
+  "AAPL",
+  "GOOGL",
+  "MSFT"
+ ],
+ "venues": [
+  3,
+  3,
+  3
+ ],
+ "pools": [
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000"
+ ],
+ "currency0": [
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000"
+ ],
+ "currency1": [
+  "0x1a86eaa7645a7fc846d5f9629719d499b3b0625f",
+  "0x08054ebb21056959317ca59da4b2063fa386253d",
+  "0x0a4d26b99a124bb08bc335764b6c2a1ee4c3e85c"
+ ],
+ "fees": [
+  50000,
+  10000,
+  10000
+ ],
+ "tickSpacings": [
+  1000,
+  200,
+  200
+ ],
+ "hooks": [
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000"
+ ],
+ "readable": [
+  {
+   "symbol": "AAPL",
+   "asset": "0x1a86eaa7645a7fc846d5f9629719d499b3b0625f",
+   "marketCapUsd": 0,
+   "venue": "v4",
+   "quote": "native",
+   "depthNative": 1.3796,
+   "priceUsd": null,
+   "perNative": 4.00399013,
+   "coingeckoUsd": null
+  },
+  {
+   "symbol": "GOOGL",
+   "asset": "0x08054ebb21056959317ca59da4b2063fa386253d",
+   "marketCapUsd": 0,
+   "venue": "v4",
+   "quote": "native",
+   "depthNative": 1.0,
+   "priceUsd": null,
+   "perNative": 7.3333,
+   "coingeckoUsd": null
+  },
+  {
+   "symbol": "MSFT",
+   "asset": "0x0a4d26b99a124bb08bc335764b6c2a1ee4c3e85c",
+   "marketCapUsd": 0,
+   "venue": "v4",
+   "quote": "native",
+   "depthNative": 1.0,
+   "priceUsd": null,
+   "perNative": 5.052,
+   "coingeckoUsd": null
+  }
+ ]
+}

@@ -8,6 +8,9 @@ from.
 ```
 just discover-whitelist-assets    # re-pick every pool from live state
 ASSETS_WHITELIST=0x… just whitelist-assets-rh     # list them
+
+just discover-whitelist-assets-rh-testnet         # and the same two steps for 46630
+ASSETS_WHITELIST=0x… just whitelist-assets-rh-testnet
 ```
 
 `discover_whitelist_assets.py` takes the universe from CoinGecko — every coin it knows to be deployed
@@ -15,6 +18,20 @@ on chain 4663, ranked by market cap, since on chain there is no such thing as "t
 answers, for each one, which pool should price it. It writes `listings.robinhood.mainnet.json`, which
 `WhitelistRobinhoodAssets` reads and broadcasts — the arrays it parses, plus a `readable` section that
 exists for whoever reviews the list and is never read on chain.
+
+## The testnet
+
+Robinhood testnet gets the same file and the same forge script, from a much shorter list: the three
+dummy xStocks `DeployDummyXStocks.s.sol` seeds native-quoted V4 pools for, which is all that chain has
+worth quoting a launch in. Their addresses are named in the `just` recipe, since nothing off chain
+ranks a testnet token — update them there if the dummies are ever redeployed.
+
+Two things work differently there, both forced by the chain rather than chosen. Pools are **probed by
+key** (a handful of standard fee/tick-spacing shapes against native, WETH and the V2 pair) instead of
+discovered from logs, because that RPC caps `eth_getLogs` at 10k blocks and the chain is 122M blocks
+long; a pool at an unusual shape, or behind a hook, would have to be added by hand. And the **price
+check does not apply** — a dummy has no market price to compare against — so the caller naming the
+assets is the whole of the vetting.
 
 ## What qualifies as a price pool
 

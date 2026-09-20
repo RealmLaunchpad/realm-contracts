@@ -453,6 +453,20 @@ whitelist-assets-rh:
     forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
+# The testnet's quote assets: the three dummy xStocks `DeployDummyXStocks` seeds native-quoted V4 pools
+# for, which is everything on that chain worth quoting a launch in. Nothing there has a market price, so
+# the price sanity check does not apply and the addresses are named here — update them if the dummies
+# are ever redeployed. The pools are probed by key rather than scanned: that RPC caps eth_getLogs at
+# 10k blocks.
+discover-whitelist-assets-rh-testnet:
+    uv run script/operations/assets-whitelist/discover_whitelist_assets.py --chain testnet --min-depth 0.05 \
+        --assets 0x1a86eaa7645a7fc846d5f9629719d499b3b0625f,0x08054ebb21056959317ca59da4b2063fa386253d,0x0a4d26b99a124bb08bc335764b6c2a1ee4c3e85c
+
+whitelist-assets-rh-testnet:
+    just chain-rh-testnet
+    forge script WhitelistRobinhoodAssets --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS
 # implementation — the 2nd-to-last on-chain `Upgraded` event, i.e. Etherscan's
