@@ -35,6 +35,8 @@ contract ExportDeployments is Script {
         address graduatorUniV4Direct;
         address factoryUniV4Direct;
         address factoryUniV4DirectImpl;
+        address assetsWhitelist;
+        address assetsWhitelistImpl;
         address dividendLogicV4;
         address earningsLogicV4;
         address lpFeeRouter;
@@ -109,6 +111,8 @@ contract ExportDeployments is Script {
         d.graduatorUniV4Direct = DeploymentsEthereumSepolia.GRADUATOR_UNIV4_DIRECT;
         d.factoryUniV4Direct = DeploymentsEthereumSepolia.FACTORY_UNIV4_DIRECT;
         d.factoryUniV4DirectImpl = DeploymentsEthereumSepolia.FACTORY_UNIV4_DIRECT_IMPL;
+        d.assetsWhitelist = DeploymentsEthereumSepolia.ASSETS_WHITELIST;
+        d.assetsWhitelistImpl = DeploymentsEthereumSepolia.ASSETS_WHITELIST_IMPL;
         d.dividendLogicV4 = DeploymentsEthereumSepolia.DIVIDEND_LOGIC_V4;
         d.earningsLogicV4 = DeploymentsEthereumSepolia.EARNINGS_LOGIC_V4;
         d.lpFeeRouter = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
@@ -165,6 +169,8 @@ contract ExportDeployments is Script {
         d.graduatorUniV4Direct = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_DIRECT;
         d.factoryUniV4Direct = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_DIRECT;
         d.factoryUniV4DirectImpl = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_DIRECT_IMPL;
+        d.assetsWhitelist = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST;
+        d.assetsWhitelistImpl = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST_IMPL;
         d.dividendLogicV4 = DeploymentsRobinhoodMainnet.DIVIDEND_LOGIC_V4;
         d.earningsLogicV4 = DeploymentsRobinhoodMainnet.EARNINGS_LOGIC_V4;
         d.lpFeeRouter = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
@@ -224,6 +230,8 @@ contract ExportDeployments is Script {
         d.graduatorUniV4Direct = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_DIRECT;
         d.factoryUniV4Direct = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_DIRECT;
         d.factoryUniV4DirectImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_DIRECT_IMPL;
+        d.assetsWhitelist = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST;
+        d.assetsWhitelistImpl = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST_IMPL;
         d.dividendLogicV4 = DeploymentsRobinhoodTestnet.DIVIDEND_LOGIC_V4;
         d.earningsLogicV4 = DeploymentsRobinhoodTestnet.EARNINGS_LOGIC_V4;
         d.lpFeeRouter = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
@@ -289,6 +297,8 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmDirectGraduatorUniV4", d.graduatorUniV4Direct));
         s = string.concat(s, _row("RealmFactoryUniV4Direct (proxy)", d.factoryUniV4Direct));
         s = string.concat(s, _row("RealmFactoryUniV4Direct (impl)", d.factoryUniV4DirectImpl));
+        s = string.concat(s, _row("RealmAssetsWhitelist (proxy)", d.assetsWhitelist));
+        s = string.concat(s, _row("RealmAssetsWhitelist (impl)", d.assetsWhitelistImpl));
         s = string.concat(s, _row("RealmDividendLogicUniV4", d.dividendLogicV4));
         s = string.concat(s, _row("RealmEarningsLogicUniV4", d.earningsLogicV4));
         s = string.concat(s, _row("SwapLpFeeRouter (proxy)", d.lpFeeRouter));

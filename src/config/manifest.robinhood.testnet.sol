@@ -46,6 +46,14 @@ library DeploymentsRobinhoodTestnet {
     /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
     address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x0000000000000000000000000000000000000000;
 
+    /// @notice `RealmAssetsWhitelist` proxy (UUPS): the quote currencies the direct venue will launch
+    ///         against, each with the native rate derived from its price pool. `FACTORY_UNIV4_DIRECT`
+    ///         holds it as an immutable, so replacing it means a new factory implementation.
+    address public constant ASSETS_WHITELIST = 0x0000000000000000000000000000000000000000;
+
+    /// @notice Implementation behind `ASSETS_WHITELIST`. Tracked for verification and audit trails only.
+    address public constant ASSETS_WHITELIST_IMPL = 0x0000000000000000000000000000000000000000;
+
     /// @notice `RealmDividendLogicUniV4`: the V4 token's dividend extension. Passed to the token impl's
     ///         constructor and reached only by `delegatecall`; recorded here so it can be verified.
     address public constant DIVIDEND_LOGIC_V4 = 0x0000000000000000000000000000000000000000;

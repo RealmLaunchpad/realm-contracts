@@ -17,6 +17,8 @@
 | RealmDirectGraduatorUniV4                    | _(not deployed)_                             |
 | RealmFactoryUniV4Direct (proxy)              | _(not deployed)_                             |
 | RealmFactoryUniV4Direct (impl)               | _(not deployed)_                             |
+| RealmAssetsWhitelist (proxy)                 | _(not deployed)_                             |
+| RealmAssetsWhitelist (impl)                  | _(not deployed)_                             |
 | RealmDividendLogicUniV4                      | _(not deployed)_                             |
 | RealmEarningsLogicUniV4                      | _(not deployed)_                             |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
