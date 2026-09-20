@@ -444,8 +444,8 @@ pick-dividend-routes:
 discover-whitelist-assets:
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py
 
-# Lists those coins in RealmAssetsWhitelist as direct-venue quotes. ASSETS_WHITELIST is the proxy (the
-# direct factory's `ASSETS_WHITELIST()`) and the signer must already be an approver on it. Re-run
+# Lists those coins in RealmAssetsWhitelist as direct-venue quotes. The proxy comes from the chain's
+# manifest (ASSETS_WHITELIST) and the signer must already be an approver on it. Re-run
 # `discover-whitelist-assets` first: the rates are snapshots. The script simulates every listing before
 # broadcasting anything and skips the ones a pool no longer supports.
 whitelist-assets-rh:

@@ -6,6 +6,7 @@ import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
+import {ChainConfig} from "script/ChainConfig.sol";
 
 /// @title Whitelist Robinhood Chain's biggest coins as direct-venue quotes
 /// @notice Lists the coins in `script/operations/assets-whitelist/listings.robinhood.<chain>.json`,
@@ -28,12 +29,12 @@ import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 ///      the scan, a rate that no longer computes — are reported and skipped, so one dead pool costs
 ///      one coin instead of the whole broadcast.
 ///
-/// Usage (dry run): ASSETS_WHITELIST=0x… forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet \
+/// Usage (dry run): forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet \
 ///                      --account realm.dev --sender <realm.dev address>
-/// Usage (list):    ASSETS_WHITELIST=0x… just whitelist-assets-rh   (or -rh-testnet)
+/// Usage (list):    just whitelist-assets-rh   (or whitelist-assets-rh-testnet)
 contract WhitelistRobinhoodAssets is Script {
     function run() public {
-        RealmAssetsWhitelist whitelist = RealmAssetsWhitelist(vm.envAddress("ASSETS_WHITELIST"));
+        RealmAssetsWhitelist whitelist = RealmAssetsWhitelist(ChainConfig.assetsWhitelist());
         require(whitelist.isApprover(msg.sender), "sender is not an approver: the owner must add it first");
 
         (string[] memory symbols, address[] memory assets, RealmAssetsWhitelist.PriceSource[] memory sources) =

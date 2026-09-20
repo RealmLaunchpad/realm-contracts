@@ -122,6 +122,17 @@ library ChainConfig {
         require(hook != address(0), "manifest: SWAP_HOOK_ANY_PAIR missing; run DeployRealmHookAnyPair first");
     }
 
+    /// @notice `RealmAssetsWhitelist` for the active chain: the quote currencies the direct venue
+    ///         accepts. Deployed with the venue (`DeployRealmStack` / `DeployDirectVenue`), which is why
+    ///         this is a manifest read rather than a constant.
+    function assetsWhitelist() internal view returns (address whitelist) {
+        if (isSepolia()) whitelist = DeploymentsEthereumSepolia.ASSETS_WHITELIST;
+        else if (isRobinhood()) whitelist = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST;
+        else if (isRobinhoodTestnet()) whitelist = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST;
+        else revert(UNSUPPORTED);
+        require(whitelist != address(0), "manifest: ASSETS_WHITELIST missing; deploy the direct venue first");
+    }
+
     /// @notice The chain's wrapped native token, which the direct venue refuses as a pair quote.
     function wrappedNative() internal view returns (address) {
         if (isSepolia()) return DeploymentAddressesEthereumSepolia.WETH;
