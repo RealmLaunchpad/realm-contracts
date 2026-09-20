@@ -74,15 +74,15 @@ library DeploymentsRobinhoodTestnet {
     ///         does that repointing; `address(0)` until then.
     address internal constant TREASURY_ROUTER = 0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B;
     /// @notice Implementation behind `TREASURY_ROUTER`. Tracked for verification and audit trails only.
-    address internal constant TREASURY_ROUTER_IMPL = 0x89d1ac70eF1D58C5F0a3aA0d461445A6A66F75D7;
+    address internal constant TREASURY_ROUTER_IMPL = 0xa0b8C32A90fFec610191981B4EE51455be71Ebc9;
     /// @notice The REALM token (a launchpad token like any other; the one `VOTING` burns). `address(0)`
     ///         until it is launched on this chain.
-    address internal constant REALM_TOKEN = 0x6DE743Cc3CC7b283C4Dc80A35160fD07a937EeAa;
+    address internal constant REALM_TOKEN = 0xedcA28e57E99379B3B4dc2c6C0BF0812a13cEEaA;
     /// @notice `RealmVoting` proxy (UUPS): REALM burn-to-vote rounds. Needs the REALM token, so it is
     ///         deployed after the first token; `TREASURY_ROUTER` bakes it in, so it comes BEFORE that.
-    address internal constant VOTING = 0x18398f02fFB990B62A2371fD67f40cE24cDeCB38;
+    address internal constant VOTING = 0xd1fDE1598C7617fc6D987f1C93717aEE17735Fa5;
     /// @notice Implementation behind `VOTING`. Tracked for verification and audit trails only.
-    address internal constant VOTING_IMPL = 0x51c98aD61B155399E18540aAaCcB7421b808f45b;
+    address internal constant VOTING_IMPL = 0x110A9EB4A1B1913a705652Da1BA185D3398e1f8F;
     address internal constant QUOTER = 0xDD6C23cc9fD2113eDD11139d9BC695dD02d51883;
 
     // --- Token implementations (cloned by factories) ---

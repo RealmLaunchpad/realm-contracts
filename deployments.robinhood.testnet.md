@@ -24,10 +24,10 @@
 | SwapLpFeeRouter (proxy)                      | `0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0` |
 | SwapLpFeeRouter (impl)                       | `0xf3cFa580922c9266199818bFf756cC6E5C1bF826` |
 | RealmTreasuryRouter (proxy)                  | `0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B` |
-| RealmTreasuryRouter (impl)                   | `0x89d1ac70eF1D58C5F0a3aA0d461445A6A66F75D7` |
-| REALM token                                  | `0x6DE743Cc3CC7b283C4Dc80A35160fD07a937EeAa` |
-| RealmVoting (proxy)                          | `0x18398f02fFB990B62A2371fD67f40cE24cDeCB38` |
-| RealmVoting (impl)                           | `0x51c98aD61B155399E18540aAaCcB7421b808f45b` |
+| RealmTreasuryRouter (impl)                   | `0xa0b8C32A90fFec610191981B4EE51455be71Ebc9` |
+| REALM token                                  | `0xedcA28e57E99379B3B4dc2c6C0BF0812a13cEEaA` |
+| RealmVoting (proxy)                          | `0xd1fDE1598C7617fc6D987f1C93717aEE17735Fa5` |
+| RealmVoting (impl)                           | `0x110A9EB4A1B1913a705652Da1BA185D3398e1f8F` |
 | RealmQuoter                                  | `0xDD6C23cc9fD2113eDD11139d9BC695dD02d51883` |
 | RealmKeepersRegistry                         | `0x2B466c7d6C7Dcc3e8a9649154020F5cfAF227959` |
 | RealmDividendSwapRegistry (proxy)            | `0xAF6Ac909330edE7fEd2080714241F6Baa7fC6aE4` |
