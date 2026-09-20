@@ -29,17 +29,25 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///      the scan, a rate that no longer computes — are reported and skipped, so one dead pool costs
 ///      one coin instead of the whole broadcast.
 ///
-/// Usage (dry run): forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet \
-///                      --account realm.dev --sender <realm.dev address>
-/// Usage (list):    just whitelist-assets-rh   (or whitelist-assets-rh-testnet)
+/// Usage (dry run): forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --account realm.dev
+/// Usage (list):    just whitelist-assets-rh   (or whitelist-assets-rh-testnet), which broadcasts and
+///                  then reads the result back off the chain with `verify()` below.
 contract WhitelistRobinhoodAssets is Script {
     function run() public {
         RealmAssetsWhitelist whitelist = RealmAssetsWhitelist(ChainConfig.assetsWhitelist());
-        require(whitelist.isApprover(msg.sender), "sender is not an approver: the owner must add it first");
+        require(address(whitelist).code.length != 0, "no contract at the manifest ASSETS_WHITELIST on this chain");
+
+        // NOT `msg.sender`: forge leaves that as its own DEFAULT_SENDER unless `--sender` is passed, so an
+        // `--account realm.dev` run would gate — and dry-run — against an address that signs nothing.
+        // `readCallers` reports the account that will actually sign, but only inside an open broadcast.
+        vm.startBroadcast();
+        (, address approver,) = vm.readCallers();
+        vm.stopBroadcast();
+        require(whitelist.isApprover(approver), "signer is not an approver: the owner must add it first");
 
         (string[] memory symbols, address[] memory assets, RealmAssetsWhitelist.PriceSource[] memory sources) =
             _listings();
-        bool[] memory live = _dryRun(whitelist, symbols, assets, sources);
+        bool[] memory live = _dryRun(whitelist, approver, symbols, assets, sources);
 
         vm.startBroadcast();
         uint256 listed;
@@ -51,6 +59,30 @@ contract WhitelistRobinhoodAssets is Script {
         vm.stopBroadcast();
 
         console.log("=== Listed %d of %d ===", listed, assets.length);
+        require(listed != 0, "not one listing survived the dry run: nothing was whitelisted");
+    }
+
+    /// @notice Reads back what the chain actually stores: every asset the file names either prices or is
+    ///         printed as MISSING. Reverts if none of them price — the broadcast never landed.
+    /// @dev A SEPARATE invocation on purpose. A script's own post-broadcast reads see the state its
+    ///      simulation produced, not the chain's, so a run that was sent nowhere (a local fork, a stale
+    ///      proxy address) still reports success from inside itself. Only a fresh read against the live
+    ///      RPC can tell the difference. The `just whitelist-assets-rh*` recipes run this for you.
+    ///
+    /// Usage: forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --sig 'verify()'
+    function verify() public view {
+        RealmAssetsWhitelist whitelist = RealmAssetsWhitelist(ChainConfig.assetsWhitelist());
+        require(address(whitelist).code.length != 0, "no contract at the manifest ASSETS_WHITELIST on this chain");
+
+        (string[] memory symbols, address[] memory assets,) = _listings();
+        uint256 live;
+        for (uint256 i; i < assets.length; ++i) {
+            if (whitelist.unitsPerNativeX18(assets[i]) != 0) ++live;
+            else console.log("  MISSING %s (%s)", symbols[i], assets[i]);
+        }
+
+        console.log("=== Live on chain: %d of %d ===", live, assets.length);
+        require(live != 0, "no listing is live on chain: the broadcast never reached it");
     }
 
     /// @dev Lists everything against forked state, in file order, then rolls back. In order because a
@@ -58,6 +90,7 @@ contract WhitelistRobinhoodAssets is Script {
     ///      the same dependency the broadcast has.
     function _dryRun(
         RealmAssetsWhitelist whitelist,
+        address approver,
         string[] memory symbols,
         address[] memory assets,
         RealmAssetsWhitelist.PriceSource[] memory sources
@@ -65,7 +98,7 @@ contract WhitelistRobinhoodAssets is Script {
         live = new bool[](assets.length);
         uint256 snapshot = vm.snapshotState();
 
-        vm.startPrank(msg.sender);
+        vm.startPrank(approver);
         for (uint256 i; i < assets.length; ++i) {
             try whitelist.setWhitelisted(assets[i], sources[i]) {
                 live[i] = whitelist.unitsPerNativeX18(assets[i]) != 0;

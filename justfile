@@ -468,11 +468,14 @@ discover-whitelist-assets:
 # Lists those coins in RealmAssetsWhitelist as direct-venue quotes. The proxy comes from the chain's
 # manifest (ASSETS_WHITELIST) and the signer must already be an approver on it. Re-run
 # `discover-whitelist-assets` first: the rates are snapshots. The script simulates every listing before
-# broadcasting anything and skips the ones a pool no longer supports.
+# broadcasting anything and skips the ones a pool no longer supports. The second invocation reads the
+# listings back off the live chain: a broadcast that never reached it (wrong RPC, stale proxy) fails here
+# instead of looking like a success.
 whitelist-assets-rh:
     just chain-rh
     forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
+    forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --sig 'verify()'
 
 # The testnet's quote assets: the three dummy xStocks `DeployDummyXStocks` seeds native-quoted V4 pools
 # for, which is everything on that chain worth quoting a launch in. Nothing there has a market price, so
@@ -487,6 +490,7 @@ whitelist-assets-rh-testnet:
     just chain-rh-testnet
     forge script WhitelistRobinhoodAssets --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
+    forge script WhitelistRobinhoodAssets --rpc-url rh-testnet --sig 'verify()'
 
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS

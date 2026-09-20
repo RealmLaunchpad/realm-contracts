@@ -126,11 +126,17 @@ library ChainConfig {
     ///         accepts. Deployed with the venue (`DeployRealmStack` / `DeployDirectVenue`), which is why
     ///         this is a manifest read rather than a constant.
     function assetsWhitelist() internal view returns (address whitelist) {
-        if (isSepolia()) whitelist = DeploymentsEthereumSepolia.ASSETS_WHITELIST;
-        else if (isRobinhood()) whitelist = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST;
-        else if (isRobinhoodTestnet()) whitelist = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST;
-        else revert(UNSUPPORTED);
+        whitelist = assetsWhitelistOrZero();
         require(whitelist != address(0), "manifest: ASSETS_WHITELIST missing; deploy the direct venue first");
+    }
+
+    /// @notice As `assetsWhitelist()`, but zero instead of a revert on a chain where the direct venue is
+    ///         not deployed yet. For callers that configure it if it exists and move on if it does not.
+    function assetsWhitelistOrZero() internal view returns (address) {
+        if (isSepolia()) return DeploymentsEthereumSepolia.ASSETS_WHITELIST;
+        if (isRobinhood()) return DeploymentsRobinhoodMainnet.ASSETS_WHITELIST;
+        if (isRobinhoodTestnet()) return DeploymentsRobinhoodTestnet.ASSETS_WHITELIST;
+        revert(UNSUPPORTED);
     }
 
     /// @notice The chain's wrapped native token, which the direct venue refuses as a pair quote.

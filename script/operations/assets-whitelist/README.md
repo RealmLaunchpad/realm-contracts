@@ -7,11 +7,18 @@ from.
 
 ```
 just discover-whitelist-assets    # re-pick every pool from live state
-ASSETS_WHITELIST=0x… just whitelist-assets-rh     # list them
+just whitelist-assets-rh          # list them, then read them back off the chain
 
 just discover-whitelist-assets-rh-testnet         # and the same two steps for 46630
-ASSETS_WHITELIST=0x… just whitelist-assets-rh-testnet
+just whitelist-assets-rh-testnet
 ```
+
+The whitelist proxy comes from the chain's manifest (`ASSETS_WHITELIST`), and the signer must already be
+an approver on it — the owner cannot list, so `setApprover` comes first. Listing is two forge runs: the
+broadcast, then `--sig 'verify()'`, which re-reads the live chain. That second run is what makes the
+recipe mean what it says: a script only ever sees the state its own simulation produced, so a broadcast
+that went nowhere — a local fork, an RPC alias whose env var is unset, a proxy that has since been
+redeployed — reports success from inside itself and lists nothing. `verify()` fails instead.
 
 `discover_whitelist_assets.py` takes the universe from CoinGecko — every coin it knows to be deployed
 on chain 4663, ranked by market cap, since on chain there is no such thing as "the top 300" — and then
