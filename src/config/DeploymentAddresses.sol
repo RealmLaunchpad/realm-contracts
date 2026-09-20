@@ -443,6 +443,14 @@ library DeploymentAddressesRobinhoodTestnet {
     ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
     ///         2026-09-14; the `realm.dev` EOA before that.
     address public constant REALM_TREASURY = 0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B;
+
+    /// @notice The wallet on the 2/3 leg of `RealmTreasuryRouter`. Separate from `REALM_TREASURY`, which
+    ///         became the router proxy itself once the router went live: resolving the leg from that would
+    ///         have the router forwarding to its own address.
+    /// @dev The dev deployer on this chain, not a multisig — Robinhood mainnet is the only chain with a
+    ///      dedicated one. Rotated from `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb`, which the router
+    ///      implementation deployed 2026-09-14 still pays; an upgrade moves it here.
+    address public constant TEAM_TREASURY = 0x81f7D06a88223f5a2850411E72256AacC9E27035;
 }
 
 /// @title Deployment Address Constants for ARC Chain Mainnet (chain id 5042)

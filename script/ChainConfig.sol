@@ -182,7 +182,7 @@ library ChainConfig {
     function teamTreasury() internal view returns (address t) {
         if (isSepolia()) t = DeploymentAddressesEthereumSepolia.REALM_TREASURY;
         else if (isRobinhood()) t = DeploymentAddressesRobinhoodMainnet.TEAM_TREASURY;
-        else if (isRobinhoodTestnet()) t = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
+        else if (isRobinhoodTestnet()) t = DeploymentAddressesRobinhoodTestnet.TEAM_TREASURY;
         else revert(UNSUPPORTED);
         require(t != address(0), "team treasury missing");
     }
