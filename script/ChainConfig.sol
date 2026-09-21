@@ -209,6 +209,16 @@ library ChainConfig {
         revert(UNSUPPORTED);
     }
 
+    /// @notice `RealmFactoryUniV4Direct` proxy from the manifest: the direct-launch venue's entry point.
+    ///         Deployed with the venue (`DeployRealmStack` / `DeployDirectVenue`), which is why this is a
+    ///         manifest read. `address(0)` on a chain where the venue is not live.
+    function directFactory() internal view returns (address) {
+        if (isSepolia()) return DeploymentsEthereumSepolia.FACTORY_UNIV4_DIRECT;
+        if (isRobinhood()) return DeploymentsRobinhoodMainnet.FACTORY_UNIV4_DIRECT;
+        if (isRobinhoodTestnet()) return DeploymentsRobinhoodTestnet.FACTORY_UNIV4_DIRECT;
+        revert(UNSUPPORTED);
+    }
+
     /// @notice `RealmVoting` proxy from the manifest; `address(0)` until deployed.
     function voting() internal view returns (address) {
         if (isSepolia()) return DeploymentsEthereumSepolia.VOTING;

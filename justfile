@@ -313,6 +313,22 @@ upgrade-treasury-router-rh-testnet: chain-rh-testnet
     forge script UpgradeRealmTreasuryRouter --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Deploys a new RealmVoting implementation for the manifest's CURRENT REALM_TOKEN (the token it burns is
+# an implementation immutable) and repoints the live VOTING proxy at it. The proxy never moves, so the
+# treasury router that bakes it and the indexer that subscribes to it are untouched. Round state lives in
+# proxy storage and survives, so check currentRound() first on a chain where voting has seen real use.
+# Paste the printed VOTING_IMPL into the manifest and `just export-deployments`. Dry-run first.
+upgrade-voting-sepolia: chain-sepolia
+    forge script UpgradeRealmVoting --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+upgrade-voting-rh: chain-rh
+    forge script UpgradeRealmVoting --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+upgrade-voting-rh-testnet: chain-rh-testnet
+    forge script UpgradeRealmVoting --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
 # Redeploys the V2 graduator and the three per-tier V4 graduators from the current build and rewires
 # the live factories to them (new factory impls, proxies repointed) in ONE run — for a graduation policy
 # change on a chain whose stack is already live. Paste the six printed slots into the manifest and
@@ -432,6 +448,22 @@ deploy-direct-venue-sepolia: chain-sepolia
 deploy-direct-venue-rh: chain-rh
     forge script DeployDirectVenue --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+# Step 2b. Repoints the LIVE direct venue after redeploying RealmHookAnyPair: a fresh graduator (it bakes
+# both hooks) plus a fresh factory implementation, with FACTORY_UNIV4_DIRECT upgraded in place. Reuses the
+# existing ASSETS_WHITELIST, so no quote has to be re-listed, and the factory proxy never moves, so the
+# frontend and the indexer are untouched. Tokens launched before this keep trading on the OLD hook. Paste
+# the two printed slots into the manifest and `just export-deployments`. Dry-run first.
+upgrade-direct-venue-sepolia: chain-sepolia
+    forge script UpgradeDirectVenue --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+upgrade-direct-venue-rh: chain-rh
+    forge script UpgradeDirectVenue --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+upgrade-direct-venue-rh-testnet: chain-rh-testnet
+    forge script UpgradeDirectVenue --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Regenerates deployments.{ethereum.sepolia,robinhood.mainnet,robinhood.testnet}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
