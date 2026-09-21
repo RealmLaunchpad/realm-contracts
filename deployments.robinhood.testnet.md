@@ -13,10 +13,10 @@
 | RealmMasterFeeHandler                        | `0xA0cbcF47Eb58D56f480047465C8f52aa984Fdd88` |
 | RealmUniV4LiquidityAdder                     | `0x20129911e18C775BBBC7388cfBe8D88F0371E96E` |
 | RealmHook                                    | `0xCb31DF4846fd7aFaF4Ffdb074c733DE216F340Cc` |
-| RealmHookAnyPair                             | `0xb5F540E401b8A3f00A2DcF302Dec5f193f20C0cc` |
-| RealmDirectGraduatorUniV4                    | `0xF44efA6a8EccbdBAeF9FeE554745F3A8A086544C` |
+| RealmHookAnyPair                             | `0xc3AE3cD20Eca03749674dCF2Fd48CEa6Ef6AC0Cc` |
+| RealmDirectGraduatorUniV4                    | `0x269c4277d923b57EF55703Eba39044706FcDF59C` |
 | RealmFactoryUniV4Direct (proxy)              | `0x3307857e113E9fF6D53Cf5478F9320407232574E` |
-| RealmFactoryUniV4Direct (impl)               | `0xfeAC7F3Ef833bB569fd48Fee67c736bA29B7B04D` |
+| RealmFactoryUniV4Direct (impl)               | `0x55a0755e4D28d205BAb0A477c94d870078179d3C` |
 | RealmAssetsWhitelist (proxy)                 | `0x0f3629Bd715C17373d7E401eB3f0ed94B46991d5` |
 | RealmAssetsWhitelist (impl)                  | `0xD20c180eec4F6909F3A2A0F7CBD6F55A0c7Bfd10` |
 | RealmDividendLogicUniV4                      | `0x94b47E09ee228d1Cc3558B8849239E49b8b83B92` |

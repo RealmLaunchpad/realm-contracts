@@ -34,17 +34,17 @@ library DeploymentsRobinhoodTestnet {
     /// @notice `RealmHookAnyPair`: the hook every ERC20-quoted Realm pool is bound to. A SECOND hook
     ///         beside `SWAP_HOOK`, which is whitelisted by Uniswap and keeps every native pool. Mined
     ///         with the same permission bits; deployed by `DeployRealmHookAnyPair`.
-    address public constant SWAP_HOOK_ANY_PAIR = 0xb5F540E401b8A3f00A2DcF302Dec5f193f20C0cc;
+    address public constant SWAP_HOOK_ANY_PAIR = 0xc3AE3cD20Eca03749674dCF2Fd48CEa6Ef6AC0Cc;
 
     /// @notice `RealmDirectGraduatorUniV4`: the direct-launch venue's graduator. Non-upgradeable, holds
     ///         every launch's seed position NFTs forever.
-    address public constant GRADUATOR_UNIV4_DIRECT = 0xF44efA6a8EccbdBAeF9FeE554745F3A8A086544C;
+    address public constant GRADUATOR_UNIV4_DIRECT = 0x269c4277d923b57EF55703Eba39044706FcDF59C;
 
     /// @notice `RealmFactoryUniV4Direct` proxy — the direct-launch venue's entry point.
     address public constant FACTORY_UNIV4_DIRECT = 0x3307857e113E9fF6D53Cf5478F9320407232574E;
 
     /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
-    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0xfeAC7F3Ef833bB569fd48Fee67c736bA29B7B04D;
+    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x55a0755e4D28d205BAb0A477c94d870078179d3C;
 
     /// @notice `RealmAssetsWhitelist` proxy (UUPS): the quote currencies the direct venue will launch
     ///         against, each with the native rate derived from its price pool. `FACTORY_UNIV4_DIRECT`
