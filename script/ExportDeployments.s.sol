@@ -47,6 +47,7 @@ contract ExportDeployments is Script {
         address voting;
         address votingImpl;
         address quoter;
+        address keeperLens;
         address keepersRegistry;
         address dividendSwapRegistry;
         address tokenImpl;
@@ -123,6 +124,7 @@ contract ExportDeployments is Script {
         d.voting = DeploymentsEthereumSepolia.VOTING;
         d.votingImpl = DeploymentsEthereumSepolia.VOTING_IMPL;
         d.quoter = DeploymentsEthereumSepolia.QUOTER;
+        d.keeperLens = DeploymentsEthereumSepolia.KEEPER_LENS;
         d.keepersRegistry = DeploymentAddressesEthereumSepolia.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesEthereumSepolia.DIVIDEND_SWAP_REGISTRY;
         d.tokenImpl = DeploymentsEthereumSepolia.TOKEN_IMPL;
@@ -181,6 +183,7 @@ contract ExportDeployments is Script {
         d.voting = DeploymentsRobinhoodMainnet.VOTING;
         d.votingImpl = DeploymentsRobinhoodMainnet.VOTING_IMPL;
         d.quoter = DeploymentsRobinhoodMainnet.QUOTER;
+        d.keeperLens = DeploymentsRobinhoodMainnet.KEEPER_LENS;
         d.keepersRegistry = DeploymentAddressesRobinhoodMainnet.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesRobinhoodMainnet.DIVIDEND_SWAP_REGISTRY;
         d.tokenImpl = DeploymentsRobinhoodMainnet.TOKEN_IMPL;
@@ -242,6 +245,7 @@ contract ExportDeployments is Script {
         d.voting = DeploymentsRobinhoodTestnet.VOTING;
         d.votingImpl = DeploymentsRobinhoodTestnet.VOTING_IMPL;
         d.quoter = DeploymentsRobinhoodTestnet.QUOTER;
+        d.keeperLens = DeploymentsRobinhoodTestnet.KEEPER_LENS;
         d.keepersRegistry = DeploymentAddressesRobinhoodTestnet.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesRobinhoodTestnet.DIVIDEND_SWAP_REGISTRY;
         d.tokenImpl = DeploymentsRobinhoodTestnet.TOKEN_IMPL;
@@ -309,6 +313,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmVoting (proxy)", d.voting));
         s = string.concat(s, _row("RealmVoting (impl)", d.votingImpl));
         s = string.concat(s, _row("RealmQuoter", d.quoter));
+        s = string.concat(s, _row("RealmKeeperLens", d.keeperLens));
         s = string.concat(s, _row("RealmKeepersRegistry", d.keepersRegistry));
         s = string.concat(s, _row("RealmDividendSwapRegistry (proxy)", d.dividendSwapRegistry));
         s = string.concat(s, _row("RealmToken (impl)", d.tokenImpl));

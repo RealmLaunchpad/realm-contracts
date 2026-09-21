@@ -84,6 +84,10 @@ library DeploymentsRobinhoodTestnet {
     /// @notice Implementation behind `VOTING`. Tracked for verification and audit trails only.
     address internal constant VOTING_IMPL = 0x110A9EB4A1B1913a705652Da1BA185D3398e1f8F;
     address internal constant QUOTER = 0xDD6C23cc9fD2113eDD11139d9BC695dD02d51883;
+    /// @notice `RealmKeeperLens`: the stateless, view-only batch reader the dividend keeper drives its
+    ///         per-token reads through. Consumed OFF chain only — no Realm contract references it — so it
+    ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
+    address internal constant KEEPER_LENS = address(0);
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0x4349fdFfAe2243f6EE90a96F5f4E657A6D7b9c18;

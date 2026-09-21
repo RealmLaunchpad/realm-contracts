@@ -394,6 +394,21 @@ deploy-realm-hook-rh-testnet:
     forge script DeployRealmHook --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Deploys `RealmKeeperLens`: the stateless, view-only batch reader the dividend keeper drives its
+# per-token reads through. No constructor args, nothing on chain points at it, and redeploying it is
+# its upgrade path — so unlike the deploy-once scripts this one never refuses to run. Paste the address
+# into the chain's manifest as KEEPER_LENS, `just export-deployments`, then repoint the keeper secret.
+deploy-keeper-lens-sepolia: chain-sepolia
+    forge script DeployRealmKeeperLens --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+deploy-keeper-lens-rh: chain-rh
+    forge script DeployRealmKeeperLens --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+deploy-keeper-lens-rh-testnet: chain-rh-testnet
+    forge script DeployRealmKeeperLens --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
 # Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded
 # with liquidity — replicating the symbols, fee tiers, tick spacings and prices of the real xStock pools
 # on Robinhood mainnet. Exists so third-asset dividends can be exercised on a chain the indexer runs on.

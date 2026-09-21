@@ -84,6 +84,10 @@ library DeploymentsEthereumSepolia {
     /// @notice Implementation behind `VOTING`. Tracked for verification and audit trails only.
     address internal constant VOTING_IMPL = address(0);
     address internal constant QUOTER = 0x5606c6EDF892FEd317c60C95a1BCcDA5c1c5f551;
+    /// @notice `RealmKeeperLens`: the stateless, view-only batch reader the dividend keeper drives its
+    ///         per-token reads through. Consumed OFF chain only — no Realm contract references it — so it
+    ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
+    address internal constant KEEPER_LENS = address(0);
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0xa5498948245b1D3CDda08B9324e22c709CE9bDE7;
