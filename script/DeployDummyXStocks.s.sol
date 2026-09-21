@@ -56,8 +56,8 @@ contract DummyXStock is ERC20 {
 ///      it can never fall out of range, whatever the price does afterwards. The default is sized off the
 ///      conversions the pool has to absorb rather than off what a pool costs: both testnets' dividend
 ///      buffers convert between `DIVIDEND_THRESHOLD` (0.001 ETH) and `MAX_EARNINGS_PER_PROCESS` (0.2
-///      ETH) at a time, so 1 ETH keeps even a max-size conversion inside ~44% impact and an ordinary one
-///      inside a few percent. Raise `ETH_PER_POOL` further if the max-size case needs to price
+///      ETH) at a time, so 2 ETH keeps even a max-size conversion inside ~21% impact and an ordinary one
+///      well under one percent. Raise `ETH_PER_POOL` further if the max-size case needs to price
 ///      realistically.
 ///
 /// @dev The position NFT goes to the BROADCASTER, not to a locked contract like graduation does, so the
@@ -73,14 +73,20 @@ contract DummyXStock is ERC20 {
 ///      Sepolia:           AAPL 0xCCA257A1Cc2Ad0095C00F45b3B1F66F1D69D918C, TSLA 0x9A73B68D68765a9B91960F02e14C1476f6b9fB0B,
 ///                         AMZN 0xBdBE7787dC565843d4a447Ba7326f2d01C60ACAB, GOOGL 0x3cc238b3A058CE4BE7867C93DeaB113065EA2abc,
 ///                         MSFT 0x0be29D6B7CA6eB7a779Ac01a7d0D784626d4E998
-///      Robinhood testnet: AAPL 0x1a86eAa7645a7FC846D5F9629719D499B3b0625f, GOOGL 0x08054EBb21056959317cA59da4B2063fA386253d,
-///                         MSFT 0x0a4d26B99a124Bb08bc335764b6C2A1ee4C3E85c
+///      Robinhood testnet: AAPL 0xaB04eC65d7F7cc9A83a5a9b7f498f952B4f848d3, TSLA 0x656B6560b6ADa6bB12a15931a6a0F8bd6370414B,
+///                         AMZN 0xe0B058D16920bC542BBc83A3dCF5c7aFcA541464, GOOGL 0x089a31AF9EC4f18ecDD2404313a679F5f9d01A5B,
+///                         META 0xd4Ad8bf17341758b3466C7c7429A1c50c7100d43, NVDA 0xd2Bc8D4d0d0E50F201b26176daa7c24592c98E99
+///                         (deployed 2026-09-21, 2 ETH per pool. Supersedes an AAPL/GOOGL/MSFT set at
+///                         0x1a86eAa7…, 0x08054EBb… and 0x0a4d26B9…, plus a same-day redeploy of it at
+///                         0x4b8B412f…, 0xE456E445… and 0x3b80B1a4… — all six are abandoned, their pool
+///                         NFTs still held by the deployer.)
 ///
 /// Usage (dry run):  forge script DeployDummyXStocks --rpc-url <sepolia|rh-testnet> --account realm.dev
 /// Usage (deploy):   just deploy-dummy-xstocks-sepolia   /   just deploy-dummy-xstocks-rh-testnet
 ///
 /// Env:
-///   ETH_PER_POOL   (optional) native seeded into each pool, in wei. Default 1 ETH (5 ETH total).
+///   ETH_PER_POOL   (optional) native seeded into each pool, in wei. Default 2 ETH, so 10 ETH on
+///                  Sepolia and 12 on Robinhood testnet. Lower it if the deployer is thin.
 contract DeployDummyXStocks is Script {
     /// @notice One dummy stock: its identity, its pool's shape, and the price the pool opens at.
     /// @param tokensPerEth 18-decimal price as `currency1 per currency0` — how many of the stock one ETH
@@ -97,7 +103,7 @@ contract DeployDummyXStocks is Script {
     ///         hand to test wallets.
     uint256 internal constant SUPPLY = 1_000_000e18;
 
-    uint256 internal constant DEFAULT_ETH_PER_POOL = 1 ether;
+    uint256 internal constant DEFAULT_ETH_PER_POOL = 2 ether;
 
     function run() external {
         require(ChainConfig.isSepolia() || ChainConfig.isRobinhoodTestnet(), "Sepolia or Robinhood testnet only");
@@ -150,17 +156,26 @@ contract DeployDummyXStocks is Script {
     ///      hookless static-fee pools, which is the majority shape there — the dynamic-fee, hooked pools
     ///      some xStocks use (NVDA, SPY) are deliberately left out: a dynamic fee needs the hook deployed
     ///      too, and it changes nothing about the dividend path being tested.
-    /// @dev ROBINHOOD TESTNET GETS THREE, and deliberately not tickers that already exist there: that
-    ///      chain carries Robinhood's own official TSLA, AMZN, PLTR, NFLX and AMD, and a dummy sharing
-    ///      one of those symbols would sit next to the real asset in the payout picker and trip its
-    ///      ticker-impersonation warning. Its prices are a fresher read of the same mainnet pools than
-    ///      the Sepolia set below, which is why they differ slightly.
+    /// @dev ROBINHOOD TESTNET GETS SIX, and the set is dictated by the frontend: the pair artwork in
+    ///      `frontend-next/public/imgs/pairs/` is looked up by ticker, so a quote asset without a
+    ///      matching image renders blank. AAPL, TSLA, AMZN, GOOGL, META and NVDA are the six it ships
+    ///      (the seventh, `eth.webp`, is native and needs no token). TSLA and AMZN COLLIDE with
+    ///      Robinhood's own official testnet tokens of the same ticker — the earlier three-stock set
+    ///      avoided that on purpose — so the picker can show two assets named TSLA and the
+    ///      impersonation warning may fire. Accepted: matching the artwork is what this set is for.
+    /// @dev NVDA has no hookless pool on mainnet to copy (its real one is dynamic-fee and hooked), so it
+    ///      takes the same static tier as the other stocks. META, TSLA and AMZN mirror theirs.
     function _stocks() internal view returns (XStock[] memory stocks) {
         if (ChainConfig.isRobinhoodTestnet()) {
-            stocks = new XStock[](3);
+            stocks = new XStock[](6);
             stocks[0] = XStock("Apple xStock", "AAPL", 7.621e18, 50000, 1000);
-            stocks[1] = XStock("Alphabet xStock", "GOOGL", 7.3333e18, 10000, 200);
-            stocks[2] = XStock("Microsoft xStock", "MSFT", 5.052e18, 10000, 200);
+            stocks[1] = XStock("Tesla xStock", "TSLA", 6.7662e18, 50000, 1000);
+            // 50000, not mainnet's 50950: the quote whitelist's discovery script finds testnet pools by
+            // probing a fixed list of fee tiers, and 50950 is not on it, so that pool could never be listed.
+            stocks[2] = XStock("Amazon xStock", "AMZN", 9.5949e18, 50000, 1000);
+            stocks[3] = XStock("Alphabet xStock", "GOOGL", 7.3333e18, 10000, 200);
+            stocks[4] = XStock("Meta xStock", "META", 2.6435e18, 50000, 1000);
+            stocks[5] = XStock("NVIDIA xStock", "NVDA", 10.916e18, 50000, 1000);
             return stocks;
         }
 

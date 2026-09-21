@@ -3,11 +3,23 @@
  "reference": null,
  "referencePerNative": null,
  "assets": [
+  "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
+  "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
+  "0xe0b058d16920bc542bbc83a3dcf5c7afca541464",
+  "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
+  "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
+  "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
   "0x1a86eaa7645a7fc846d5f9629719d499b3b0625f",
   "0x08054ebb21056959317ca59da4b2063fa386253d",
   "0x0a4d26b99a124bb08bc335764b6c2a1ee4c3e85c"
  ],
  "symbols": [
+  "AAPL",
+  "TSLA",
+  "AMZN",
+  "GOOGL",
+  "META",
+  "NVDA",
   "AAPL",
   "GOOGL",
   "MSFT"
@@ -15,9 +27,21 @@
  "venues": [
   3,
   3,
-  3
+  3,
+  3,
+  3,
+  3,
+  0,
+  0,
+  0
  ],
  "pools": [
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000"
@@ -25,24 +49,54 @@
  "currency0": [
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000"
  ],
  "currency1": [
-  "0x1a86eaa7645a7fc846d5f9629719d499b3b0625f",
-  "0x08054ebb21056959317ca59da4b2063fa386253d",
-  "0x0a4d26b99a124bb08bc335764b6c2a1ee4c3e85c"
+  "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
+  "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
+  "0xe0b058d16920bc542bbc83a3dcf5c7afca541464",
+  "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
+  "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
+  "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000"
  ],
  "fees": [
   50000,
+  50000,
+  50000,
   10000,
-  10000
+  50000,
+  50000,
+  0,
+  0,
+  0
  ],
  "tickSpacings": [
   1000,
+  1000,
+  1000,
   200,
-  200
+  1000,
+  1000,
+  0,
+  0,
+  0
  ],
  "hooks": [
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000"
@@ -50,36 +104,91 @@
  "readable": [
   {
    "symbol": "AAPL",
-   "asset": "0x1a86eaa7645a7fc846d5f9629719d499b3b0625f",
+   "asset": "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
    "marketCapUsd": 0,
+   "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 1.3796,
+   "depthNative": 2.0,
    "priceUsd": null,
-   "perNative": 4.00399013,
+   "perNative": 7.621,
+   "coingeckoUsd": null
+  },
+  {
+   "symbol": "TSLA",
+   "asset": "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
+   "marketCapUsd": 0,
+   "xstock": false,
+   "venue": "v4",
+   "quote": "native",
+   "depthNative": 2.0,
+   "priceUsd": null,
+   "perNative": 6.7662,
+   "coingeckoUsd": null
+  },
+  {
+   "symbol": "AMZN",
+   "asset": "0xe0b058d16920bc542bbc83a3dcf5c7afca541464",
+   "marketCapUsd": 0,
+   "xstock": false,
+   "venue": "v4",
+   "quote": "native",
+   "depthNative": 2.0,
+   "priceUsd": null,
+   "perNative": 9.5949,
    "coingeckoUsd": null
   },
   {
    "symbol": "GOOGL",
-   "asset": "0x08054ebb21056959317ca59da4b2063fa386253d",
+   "asset": "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
    "marketCapUsd": 0,
+   "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 1.0,
+   "depthNative": 2.0,
    "priceUsd": null,
    "perNative": 7.3333,
    "coingeckoUsd": null
   },
   {
-   "symbol": "MSFT",
-   "asset": "0x0a4d26b99a124bb08bc335764b6c2a1ee4c3e85c",
+   "symbol": "META",
+   "asset": "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
    "marketCapUsd": 0,
+   "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 1.0,
+   "depthNative": 2.0,
    "priceUsd": null,
-   "perNative": 5.052,
+   "perNative": 2.6435,
    "coingeckoUsd": null
+  },
+  {
+   "symbol": "NVDA",
+   "asset": "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
+   "marketCapUsd": 0,
+   "xstock": false,
+   "venue": "v4",
+   "quote": "native",
+   "depthNative": 2.0,
+   "priceUsd": null,
+   "perNative": 10.916,
+   "coingeckoUsd": null
+  },
+  {
+   "symbol": "AAPL",
+   "asset": "0x1a86eaa7645a7fc846d5f9629719d499b3b0625f",
+   "action": "DELIST"
+  },
+  {
+   "symbol": "GOOGL",
+   "asset": "0x08054ebb21056959317ca59da4b2063fa386253d",
+   "action": "DELIST"
+  },
+  {
+   "symbol": "MSFT",
+   "asset": "0x0a4d26b99a124bb08bc335764b6c2a1ee4c3e85c",
+   "action": "DELIST"
   }
- ]
+ ],
+ "rejected": []
 }

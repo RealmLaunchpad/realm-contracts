@@ -397,20 +397,21 @@ deploy-realm-hook-rh-testnet:
 # Deploys 5 dummy xStocks on Sepolia — an ERC20 each, plus a Uniswap V4 pool against native ETH seeded
 # with liquidity — replicating the symbols, fee tiers, tick spacings and prices of the real xStock pools
 # on Robinhood mainnet. Exists so third-asset dividends can be exercised on a chain the indexer runs on.
-# Costs ETH_PER_POOL (default 1) of testnet ETH per pool, so 5 ETH for the five. Dry-run it first —
+# Costs ETH_PER_POOL (default 2) of testnet ETH per pool, so 10 ETH for the five. Dry-run it first —
 # the same command without --broadcast simulates it against live Sepolia state, and IS the check:
 #   forge script DeployDummyXStocks --rpc-url sepolia --account realm.dev
 deploy-dummy-xstocks-sepolia:
     forge script DeployDummyXStocks --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
-# The six-stock set on Robinhood testnet (AAPL, TSLA, AMZN, GOOGL, META, NVDA), 6 ETH of pool liquidity
-# by default — pass ETH_PER_POOL (wei) to seed less. That chain DOES carry Robinhood's own official stock
+# The six-stock set on Robinhood testnet (AAPL, TSLA, AMZN, GOOGL, META, NVDA), 12 ETH of pool liquidity
+# by default (2 per pool) — pass ETH_PER_POOL (wei) to seed less. That chain DOES carry Robinhood's own official stock
 # tokens (TSLA, AMZN, PLTR, NFLX, AMD), but none of them can be bought with native ETH — no V2 pair,
 # nothing in the V4 pool manager, and the only depth is a third-party V3 DEX quoted in USDC — so they are
 # unusable as dividend payout assets or as quote assets. These dummies stand in, and their tickers match
 # the pair artwork the frontend ships, which is why TSLA and AMZN now overlap the official ones.
-# AFTER RUNNING THIS: paste the six addresses into `discover-whitelist-assets-rh-testnet` below, then run
-# it and `whitelist-assets-rh-testnet` — the old dummies are delisted automatically. Dry run:
+# AFTER RUNNING THIS: `just discover-whitelist-assets-rh-testnet` then `just whitelist-assets-rh-testnet`.
+# No addresses to paste — discovery reads them from this recipe's broadcast log, and the dummies these
+# replace are delisted automatically. Dry run:
 #   forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev
 deploy-dummy-xstocks-rh-testnet:
     forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev --slow --broadcast \
@@ -514,14 +515,23 @@ whitelist-assets-rh:
         --gas-estimate-multiplier 300
     forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --sig 'verify()'
 
-# The testnet's quote assets: the three dummy xStocks `DeployDummyXStocks` seeds native-quoted V4 pools
-# for, which is everything on that chain worth quoting a launch in. Nothing there has a market price, so
-# the price sanity check does not apply and the addresses are named here — update them if the dummies
-# are ever redeployed. The pools are probed by key rather than scanned: that RPC caps eth_getLogs at
-# 10k blocks.
+# The testnet's quote assets: the dummy xStocks `DeployDummyXStocks` seeds native-quoted V4 pools for,
+# which is everything on that chain worth quoting a launch in. Nothing there has a market price, so the
+# price sanity check does not apply. The pools are probed by key rather than scanned: that RPC caps
+# eth_getLogs at 10k blocks.
+#
+# The addresses come from the LAST `deploy-dummy-xstocks-rh-testnet` broadcast, so a redeploy needs no
+# edit here — but it does mean this always follows the newest run. The dummies it replaced are retired
+# automatically: they are still in the listings file this overwrites, so they come back as NONE entries.
 discover-whitelist-assets-rh-testnet:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    RUN=broadcast/DeployDummyXStocks.s.sol/46630/run-latest.json
+    ASSETS=$(jq -r '[.transactions[] | select(.contractName=="DummyXStock" and .transactionType=="CREATE") | .contractAddress] | join(",")' "$RUN")
+    [ -n "$ASSETS" ] || { echo "no DummyXStock deploys in $RUN"; exit 1; }
+    echo "assets from $RUN: $ASSETS"
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py --chain testnet --min-depth 0.05 \
-        --assets 0x1a86eaa7645a7fc846d5f9629719d499b3b0625f,0x08054ebb21056959317ca59da4b2063fa386253d,0x0a4d26b99a124bb08bc335764b6c2a1ee4c3e85c
+        --assets "$ASSETS"
 
 whitelist-assets-rh-testnet:
     just chain-rh-testnet
