@@ -403,11 +403,14 @@ deploy-realm-hook-rh-testnet:
 deploy-dummy-xstocks-sepolia:
     forge script DeployDummyXStocks --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
-# The same three-stock set on Robinhood testnet (AAPL, GOOGL, MSFT), 3 ETH of pool liquidity by default.
-# That chain DOES carry Robinhood's own official stock tokens (TSLA, AMZN, PLTR, NFLX, AMD), but none of
-# them can be bought with native ETH — no V2 pair, nothing in the V4 pool manager, and the only depth is a
-# third-party V3 DEX quoted in USDC — so they are unusable as dividend payout assets. These dummies stand
-# in, with the tickers the real ones do NOT use so the payout picker cannot confuse the two. Dry run:
+# The six-stock set on Robinhood testnet (AAPL, TSLA, AMZN, GOOGL, META, NVDA), 6 ETH of pool liquidity
+# by default — pass ETH_PER_POOL (wei) to seed less. That chain DOES carry Robinhood's own official stock
+# tokens (TSLA, AMZN, PLTR, NFLX, AMD), but none of them can be bought with native ETH — no V2 pair,
+# nothing in the V4 pool manager, and the only depth is a third-party V3 DEX quoted in USDC — so they are
+# unusable as dividend payout assets or as quote assets. These dummies stand in, and their tickers match
+# the pair artwork the frontend ships, which is why TSLA and AMZN now overlap the official ones.
+# AFTER RUNNING THIS: paste the six addresses into `discover-whitelist-assets-rh-testnet` below, then run
+# it and `whitelist-assets-rh-testnet` — the old dummies are delisted automatically. Dry run:
 #   forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev
 deploy-dummy-xstocks-rh-testnet:
     forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev --slow --broadcast \
@@ -491,18 +494,20 @@ pick-dividend-routes:
     just chain-rh
     forge script PickDividendRoutes --rpc-url rh-mainnet
 
-# Re-pick, from live state, the Uniswap pool that prices each of Robinhood Chain's 300 biggest coins,
-# into script/operations/assets-whitelist/listings.robinhood.mainnet.json. Review that file: it is what
-# the whitelisting script below broadcasts, and the rate each listing stores is read when it runs.
+# Re-pick, from live state, the Uniswap pool that prices each of Robinhood Chain's 300 biggest coins
+# AND every one of Robinhood's own xStocks, into
+# script/operations/assets-whitelist/listings.robinhood.mainnet.json. This is the maintenance loop, not
+# a one-off: re-running refreshes every rate, re-picks every pool, and delists what stopped qualifying
+# but is still live on chain. Review the git diff of that file: it is what the script below broadcasts.
 discover-whitelist-assets:
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py
 
-# Lists those coins in RealmAssetsWhitelist as direct-venue quotes. The proxy comes from the chain's
-# manifest (ASSETS_WHITELIST) and the signer must already be an approver on it. Re-run
-# `discover-whitelist-assets` first: the rates are snapshots. The script simulates every listing before
-# broadcasting anything and skips the ones a pool no longer supports. The second invocation reads the
-# listings back off the live chain: a broadcast that never reached it (wrong RPC, stale proxy) fails here
-# instead of looking like a success.
+# Lists those coins in RealmAssetsWhitelist as direct-venue quotes, and retires the entries the file
+# marks NONE. The proxy comes from the chain's manifest (ASSETS_WHITELIST) and the signer must already be
+# an approver on it. Re-run `discover-whitelist-assets` first: the rates are snapshots. The script
+# simulates every entry before broadcasting anything and skips the ones a pool no longer supports. The
+# second invocation reads the result back off the live chain: a broadcast that never reached it (wrong
+# RPC, stale proxy) fails here instead of looking like a success.
 whitelist-assets-rh:
     just chain-rh
     forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --account realm.dev --slow --broadcast \

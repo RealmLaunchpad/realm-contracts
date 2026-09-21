@@ -23,8 +23,22 @@ redeployed — reports success from inside itself and lists nothing. `verify()` 
 `discover_whitelist_assets.py` takes the universe from CoinGecko — every coin it knows to be deployed
 on chain 4663, ranked by market cap, since on chain there is no such thing as "the top 300" — and then
 answers, for each one, which pool should price it. It writes `listings.robinhood.mainnet.json`, which
-`WhitelistRobinhoodAssets` reads and broadcasts — the arrays it parses, plus a `readable` section that
-exists for whoever reviews the list and is never read on chain.
+`WhitelistRobinhoodAssets` reads and broadcasts — the arrays it parses, plus `readable` and `rejected`
+sections that exist for whoever reviews the list and are never read on chain.
+
+## Robinhood's own xStocks
+
+The ~195 stock tokens Robinhood issues on this chain come from its own asset API
+(`api.robinhood.com/rhj/assets`) and are considered **on top of** the market-cap ranking, exempt from
+`--limit`. They have to be: a stock token with a $15k on-chain float ranks below several hundred
+memecoins, and market cap is not what should decide whether the chain's flagship assets can quote a
+launch. A handful of them are not on CoinGecko at all, so there is no market price to check their pool
+against — their address comes from Robinhood rather than from a ranking, so identity needs no vouching,
+and `--min-depth` is the only filter they face.
+
+Thin ones are still refused, which is the point: an xStock whose deepest Uniswap pool holds less than
+`--min-depth` of native does not get listed, and the `rejected` section of the output says so with the
+depth it measured. That section is the list to review when retuning the threshold.
 
 ## The testnet
 
@@ -57,13 +71,34 @@ assets is the whole of the vetting.
 
 Of the pools that qualify, the deepest wins.
 
-## Re-run it before every broadcast
+## Keeping the list curated
+
+The list of quote assets is not a one-off. It decides what a creator may launch against, and a coin
+that qualified last month can have had its pool drained, moved its liquidity to a DEX the contract
+cannot read, or drifted away from its market price since. So the same two commands are the maintenance
+loop, run as often as the list is worth trusting:
+
+```
+just discover-whitelist-assets    # re-pick from live state
+git diff script/operations/assets-whitelist/listings.robinhood.mainnet.json   # review
+just whitelist-assets-rh          # apply
+```
+
+Re-running does three things at once. It **refreshes** every rate, because listing an asset again
+overwrites it. It **re-picks** every pool, so a coin whose liquidity has moved gets a different one. And
+it **delists**: an asset the previous file listed that no longer qualifies, and that the live whitelist
+still prices, comes back as a `Venue.NONE` entry, which is how `setWhitelisted` retires an asset. Without
+that last step the whitelist would only ever grow.
+
+The script prints what it is retiring and which xStocks did not make it; the git diff of the file is the
+rest of the review. The delisting candidates come from the file being overwritten, so an asset an
+approver listed **by hand** — never in a generated file — is invisible to this and has to be retired by
+hand too.
 
 The stored rate is a **snapshot**, read when `WhitelistRobinhoodAssets` runs, out of a pool picked when
-the generator ran. Both age. Re-running is also how a rate is refreshed later — listing an
-asset again overwrites its rate — and how the list self-corrects: a coin whose liquidity has moved gets
-a different pool, or drops out.
+the generator ran. Both age, which is the reason to re-run before every broadcast and not only when the
+list changes.
 
-The script never trusts the file: it simulates every listing against forked state first and skips the
-ones the contract would refuse, so a pool drained since the scan costs one skipped coin rather than the
-whole broadcast.
+The script never trusts the file: it simulates every entry against forked state first and skips the ones
+the contract would refuse, so a pool drained since the scan costs one skipped coin rather than the whole
+broadcast.

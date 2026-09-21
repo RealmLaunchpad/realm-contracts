@@ -14,9 +14,14 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         against live state — by `discover_whitelist_assets.py` beside it; the README there explains
 ///         what qualifies as a price pool and why most of CoinGecko's top 300 is not in it.
 ///
-/// @notice Both Robinhood chains, one script: mainnet lists the top coins by market cap, the testnet
-///         the three dummy xStocks the dividend feature is exercised against. The file is chosen by
-///         chain id, and names its own chain so a mismatched one cannot be broadcast.
+/// @notice Both Robinhood chains, one script: mainnet lists the top coins by market cap plus every one
+///         of Robinhood's own xStocks, the testnet the three dummy xStocks the dividend feature is
+///         exercised against. The file is chosen by chain id, and names its own chain so a mismatched
+///         one cannot be broadcast.
+///
+/// @notice The file also DELISTS. An entry whose venue is `NONE` is an asset an earlier run listed and
+///         this one dropped — a drained pool, a price that walked away — and the broadcast retires it.
+///         Curation in both directions is what keeps the list from only ever growing.
 ///
 /// @dev RE-GENERATE THE FILE FIRST (`just discover-whitelist-assets`). A listing's rate is a snapshot
 ///      taken now, from the pool named in the file, and both the pool choice and the price in it age.
@@ -51,19 +56,21 @@ contract WhitelistRobinhoodAssets is Script {
 
         vm.startBroadcast();
         uint256 listed;
+        uint256 delisted;
         for (uint256 i; i < assets.length; ++i) {
             if (!live[i]) continue;
             whitelist.setWhitelisted(assets[i], sources[i]);
-            ++listed;
+            if (_isDelisting(sources[i])) ++delisted;
+            else ++listed;
         }
         vm.stopBroadcast();
 
-        console.log("=== Listed %d of %d ===", listed, assets.length);
-        require(listed != 0, "not one listing survived the dry run: nothing was whitelisted");
+        console.log("=== Listed %d, delisted %d, of %d entries ===", listed, delisted, assets.length);
+        require(listed + delisted != 0, "not one entry survived the dry run: the chain was not touched");
     }
 
-    /// @notice Reads back what the chain actually stores: every asset the file names either prices or is
-    ///         printed as MISSING. Reverts if none of them price — the broadcast never landed.
+    /// @notice Reads back what the chain actually stores: every asset the file lists must price, every
+    ///         asset it delists must not, and anything else is printed. Reverts if not one entry landed.
     /// @dev A SEPARATE invocation on purpose. A script's own post-broadcast reads see the state its
     ///      simulation produced, not the chain's, so a run that was sent nowhere (a local fork, a stale
     ///      proxy address) still reports success from inside itself. Only a fresh read against the live
@@ -74,15 +81,22 @@ contract WhitelistRobinhoodAssets is Script {
         RealmAssetsWhitelist whitelist = RealmAssetsWhitelist(ChainConfig.assetsWhitelist());
         require(address(whitelist).code.length != 0, "no contract at the manifest ASSETS_WHITELIST on this chain");
 
-        (string[] memory symbols, address[] memory assets,) = _listings();
-        uint256 live;
+        (string[] memory symbols, address[] memory assets, RealmAssetsWhitelist.PriceSource[] memory sources) =
+            _listings();
+        uint256 asExpected;
         for (uint256 i; i < assets.length; ++i) {
-            if (whitelist.unitsPerNativeX18(assets[i]) != 0) ++live;
+            bool priced = whitelist.unitsPerNativeX18(assets[i]) != 0;
+            if (priced != _isDelisting(sources[i])) ++asExpected;
+            else if (priced) console.log("  STILL LISTED %s (%s)", symbols[i], assets[i]);
             else console.log("  MISSING %s (%s)", symbols[i], assets[i]);
         }
 
-        console.log("=== Live on chain: %d of %d ===", live, assets.length);
-        require(live != 0, "no listing is live on chain: the broadcast never reached it");
+        console.log("=== As the file says: %d of %d entries ===", asExpected, assets.length);
+        require(asExpected != 0, "no entry is live on chain: the broadcast never reached it");
+    }
+
+    function _isDelisting(RealmAssetsWhitelist.PriceSource memory source) internal pure returns (bool) {
+        return source.venue == RealmAssetsWhitelist.Venue.NONE;
     }
 
     /// @dev Lists everything against forked state, in file order, then rolls back. In order because a
@@ -101,7 +115,8 @@ contract WhitelistRobinhoodAssets is Script {
         vm.startPrank(approver);
         for (uint256 i; i < assets.length; ++i) {
             try whitelist.setWhitelisted(assets[i], sources[i]) {
-                live[i] = whitelist.unitsPerNativeX18(assets[i]) != 0;
+                // A delisting succeeds by leaving the asset unpriced, a listing by pricing it.
+                live[i] = (whitelist.unitsPerNativeX18(assets[i]) != 0) != _isDelisting(sources[i]);
             } catch {
                 console.log("  %s (%s): its pool no longer prices it - skipped", symbols[i], assets[i]);
             }
