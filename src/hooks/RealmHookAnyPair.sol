@@ -77,13 +77,22 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
     ///         misconfigured token can never overcharge users. Identical to `RealmSwapHook`'s.
     uint16 private constant MAX_OVERALL_FEE_BPS = 2000; // 20%
 
-    /// @notice Gas budget forwarded to the router on `depositLpFees`. Sized as `RealmSwapHook`'s is, and
-    ///         capped for the same reason: a misbehaving router must not be able to drain the remaining
-    ///         gas and starve the fallback.
-    uint256 private constant ROUTER_GAS_LIMIT = 1_000_000;
+    /// @notice Gas budget forwarded to the router on `depositLpFees`. Strictly above `TOKEN_GAS_LIMIT`:
+    ///         the router calls the token's `accrueFees` itself and adds a quote `transferFrom`, the
+    ///         treasury transfer and an approval on top, so the nested call must still receive its own
+    ///         full budget (EIP-150 forwards 63/64) out of what is left of this one.
+    uint256 private constant ROUTER_GAS_LIMIT = 3_000_000;
 
-    /// @notice Gas budget forwarded to the token's `accrueFees` on `settleFees`, capped for the same reason.
-    uint256 private constant TOKEN_GAS_LIMIT = 1_000_000;
+    /// @notice Gas budget forwarded to the token's `accrueFees` on `settleFees`. Sized against what the
+    ///         destination is PERMITTED to spend, not what it spends today (~200k): earnings end at
+    ///         `RealmMasterFeeHandler`, which forwards up to `MAX_DIRECT_RECEIVERS` (4) direct payouts at
+    ///         `DIRECT_FORWARD_GAS_ASSET` (400k) each — 1.6M — plus the quote transfers around them. Both
+    ///         budgets are caps, not reservations, so an honest settle still costs what it costs; a budget
+    ///         under that ceiling would instead make an expensive quote fall into the treasury fallback,
+    ///         which is irreversible (`_drain` has already emptied the ledger and this hook cannot be
+    ///         upgraded). Capped at all for the original reason: a misbehaving destination must not be
+    ///         able to drain the remaining gas and starve that same fallback.
+    uint256 private constant TOKEN_GAS_LIMIT = 2_500_000;
 
     /// @notice Headroom `settleFees` requires on top of a capped call's budget before making it: covers
     ///         the ABI encoding between the check and the CALL, and the EIP-150 1/64 retention.

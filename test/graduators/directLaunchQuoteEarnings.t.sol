@@ -430,8 +430,17 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     /// @dev The factory pre-checks the pair list, so these rules are only ever reached through the token's
     ///      own defence in depth. Exercised by pranking as the creating factory — the one caller the
     ///      function admits.
+    /// @dev IN ONE EXTERNAL SELF-CALL because `tokenFactory` is transient: the factory is the admitted
+    ///      caller only INSIDE the creation transaction, and under `--isolate` (which `--gas-report`
+    ///      implies) every top-level call from a test is its own transaction, so a launch and a
+    ///      `registerQuotes` made as two of them would see the slot already cleared. The salt is mined
+    ///      OUTSIDE that call — the loop is memory-hungry enough to exhaust a single transaction's gas.
     function test_registerQuotes_rejectsAnInvalidSet() public {
-        address token = _launchAgainstQuoteCoin(_noDevBuy());
+        this.rejectsAnInvalidSetBody(_setup(false));
+    }
+
+    function rejectsAnInvalidSetBody(RealmFactoryUniV4Direct.DirectTokenSetup calldata setup) external {
+        address token = _launchAgainstQuoteCoin(setup, _noDevBuy());
         address factory = address(directFactory);
 
         // `MAX_QUOTES` slots, of which index 0 is always native.

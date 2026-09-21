@@ -82,9 +82,18 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
     }
 
     function _launchAgainstQuoteCoin(RealmFactoryUniV4Direct.DevBuy memory devBuy) internal returns (address token) {
+        return _launchAgainstQuoteCoin(_setup(false), devBuy);
+    }
+
+    /// @dev The same, on a setup prepared by the caller — for a test that must mine its salt outside the
+    ///      transaction the launch runs in. See `test_registerQuotes_rejectsAnInvalidSet`.
+    function _launchAgainstQuoteCoin(
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup,
+        RealmFactoryUniV4Direct.DevBuy memory devBuy
+    ) internal returns (address token) {
         vm.prank(creator);
         token = directFactory.createToken(
-            _setup(false),
+            setup,
             _quotePairs(QC_LAUNCH_TICK),
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
@@ -272,10 +281,12 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
 
     /// @dev `settleFees` is permissionless: a caller must not be able to starve a destination's call into
     ///      its fallback and divert the creator's fees to the treasury.
+    /// @dev The 2M also pins the SIZE of the budgets: it clears the floor the old 1M ones imposed, so a
+    ///      budget shrunk back under what `RealmMasterFeeHandler` may spend stops this reverting.
     function test_settleFees_refusesToRunWithoutGasForTheCappedCalls() public {
         address token = _taxedTokenWithPendingFees();
         vm.expectRevert(RealmHookAnyPair.InsufficientGas.selector);
-        anyPairHook.settleFees{gas: 600_000}(token, address(quoteCoin));
+        anyPairHook.settleFees{gas: 2_000_000}(token, address(quoteCoin));
     }
 
     function test_erc20Quote_sellWorksInTheOtherDirection() public {
