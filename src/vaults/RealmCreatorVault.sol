@@ -7,16 +7,16 @@ import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/In
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 
 /// @title RealmCreatorVault
-/// @notice Minimal-proxy-clonable vesting vault for creator-locked token supply. Each vault holds a
+/// @notice Minimal-proxy-clonable vesting vault for locked token supply: creator allocations locked
+///         at launch by the token factory, or tokens any holder locks later. Each vault holds a
 ///         fixed token allocation for a single `owner`, who can claim it on a linear vesting
 ///         schedule with an initial cliff. Nothing can be claimed until the token graduates.
 ///
 /// @dev    Vesting clock: the cliff + linear vesting both start at `startTimestamp`, which is set to
-///         `block.timestamp` at initialization, i.e. at TOKEN CREATION (the factory creates and
-///         funds the vault in the same tx that deploys the token). This keeps the vault fully
-///         self-contained: it never needs to be wired to the graduation process. Claims are simply
-///         gated on `token.graduated()`, so a creator cannot pull tokens out of a token that never
-///         went live.
+///         `block.timestamp` at initialization, i.e. at VAULT CREATION (token creation for launch
+///         vaults). This keeps the vault fully self-contained: it never needs to be wired to the
+///         graduation process. Claims are simply gated on `token.graduated()`, so nobody can pull
+///         tokens out of a token that never went live.
 ///
 ///         Schedule (cliff is a pure lock-up; linear vesting begins AFTER the cliff):
 ///           t <  cliffEnd                       -> 0
@@ -45,7 +45,7 @@ contract RealmCreatorVault is Initializable {
     /// @notice Linear vesting duration in seconds, starting after the cliff.
     uint256 public vestingSeconds;
 
-    /// @notice The vesting-clock anchor: `block.timestamp` at initialization (token creation).
+    /// @notice The vesting-clock anchor: `block.timestamp` at initialization (vault creation).
     uint256 public startTimestamp;
 
     /// @notice Cumulative amount already claimed by the owner.
@@ -74,8 +74,8 @@ contract RealmCreatorVault is Initializable {
     }
 
     /// @notice Initializes a vault clone. Called by `RealmCreatorVaultFactory` right after cloning.
-    /// @dev The vesting clock starts now (token-creation time). The vault is funded with `amount`
-    ///      tokens by the caller AFTER this call returns.
+    /// @dev The vesting clock starts now. The factory funds the vault with `amount` tokens right
+    ///      AFTER this call returns.
     function initialize(address token_, address owner_, uint256 amount, uint256 cliffSeconds_, uint256 vestingSeconds_)
         external
         initializer

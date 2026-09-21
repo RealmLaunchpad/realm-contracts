@@ -2,6 +2,8 @@
 pragma solidity 0.8.28;
 
 import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
@@ -14,12 +16,14 @@ import {RealmCreatorVault} from "src/vaults/RealmCreatorVault.sol";
 ///         implementation is baked into this factory's bytecode as an immutable; upgrading the
 ///         factory (new impl + `upgradeTo`) is the mechanism to point FUTURE vaults at a new
 ///         implementation. Already-deployed clones keep their implementation forever.
-/// @dev    `createVault` is permissionless by design: a vault deployed without funding is inert (it
-///         only ever vests whatever tokens are transferred into it, and only its configured owner
-///         can claim), so there is no spam/abuse surface that warrants a caller allowlist. In the
-///         normal flow the Realm token factory calls `createVault` and then funds the vault in the
-///         same transaction.
+/// @dev    `createVault` is permissionless by design and funds the vault itself, pulling `amount`
+///         from the caller. That makes every `CreatorVaultDeployed` a funded vault by construction,
+///         so off-chain consumers (the indexer) can trust the event's `amount` without a caller
+///         allowlist. The Realm token factory uses it at launch for creator-locked supply; any
+///         holder can use it later to lock their own tokens.
 contract RealmCreatorVaultFactory is IRealmCreatorVaultFactory, Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    using SafeERC20 for IERC20;
+
     /// @notice The `RealmCreatorVault` implementation cloned for every new vault.
     address public immutable VAULT_IMPLEMENTATION;
 
@@ -46,6 +50,8 @@ contract RealmCreatorVaultFactory is IRealmCreatorVaultFactory, Initializable, O
     {
         vault = Clones.clone(VAULT_IMPLEMENTATION);
         RealmCreatorVault(payable(vault)).initialize(token, owner, amount, cliffSeconds, vestingSeconds);
+        // Fund before emitting so the event never describes an empty vault.
+        IERC20(token).safeTransferFrom(msg.sender, vault, amount);
         emit CreatorVaultDeployed(vault, token, owner, amount, cliffSeconds, vestingSeconds);
     }
 

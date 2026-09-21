@@ -298,10 +298,11 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         vaultAllocation = TOTAL_SUPPLY * totalBps / BASIS_POINTS;
     }
 
-    /// @dev Deploys one `RealmCreatorVault` per entry via the vault factory and funds each with its
-    ///      token allocation from the supply minted to this factory during token init. Asserts the
-    ///      factory ends with zero token balance, i.e. the per-vault amounts summed to exactly
-    ///      `vaultAllocation` (they do by construction; the check guards against future drift).
+    /// @dev Deploys one `RealmCreatorVault` per entry via the vault factory, which pulls each vault's
+    ///      allocation from the supply minted to this factory during token init (hence the one-shot
+    ///      approval). Asserts the factory ends with zero token balance, i.e. the per-vault amounts
+    ///      summed to exactly `vaultAllocation` (they do by construction; the check guards against
+    ///      future drift).
     function _deployAndFundVaults(address token, CreatorVault[] memory creatorVaults, uint256 vaultAllocation)
         internal
     {
@@ -309,11 +310,11 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         address[] memory vaults = new address[](len);
         uint256[] memory amounts = new uint256[](len);
 
+        IERC20(token).forceApprove(address(CREATOR_VAULT_FACTORY), vaultAllocation);
         for (uint256 i = 0; i < len;) {
             CreatorVault memory v = creatorVaults[i];
             uint256 amount = TOTAL_SUPPLY * v.supplyBps / BASIS_POINTS;
             address vault = CREATOR_VAULT_FACTORY.createVault(token, v.owner, amount, v.cliffSeconds, v.vestingSeconds);
-            IERC20(token).safeTransfer(vault, amount);
             vaults[i] = vault;
             amounts[i] = amount;
             unchecked {
