@@ -383,28 +383,37 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertEq(token.pendingNative(), 0.5 ether, "half of the earnings buffered for holders");
     }
 
-    function test_processDividends_revertsBelowThreshold() public {
+    /// @dev Funding has no size floor: a 0.005 ETH slice, far under the 0.1 ETH `DIVIDEND_THRESHOLD`,
+    ///      converts and credits like any other. Only an EMPTY buffer reports nothing to fund.
+    function test_processDividends_fundsASubThresholdSlice() public {
         RealmTaxableTokenUniV4 token = _graduatedDividendToken();
-        _accrue(token, 0.01 ether); // 0.005 ETH to dividends, well under the 0.1 ETH threshold
+        _accrue(token, 0.01 ether); // 0.005 ETH to dividends
+        token.processDividends(0, _noHolders());
+        assertEq(token.dividendsOwed(), 0.005 ether, "the short slice distributed");
+
+        vm.roll(block.number + 1);
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
         token.processDividends(0, _noHolders());
     }
 
-    /// @dev Staleness is the only escape from the threshold, and V4 needs it: LP fees keep arriving
-    ///      while the pool is live, so "the earnings source is finished" is never true here. Without it
-    ///      a dead V4 token strands everything under `DIVIDEND_THRESHOLD` (0.1 ETH on mainnet), owed to
-    ///      holders and unreachable by them.
-    function test_staleTokenPaysItsSubThresholdResidual() public {
+    /// @dev V4 needs the staleness hatch: LP fees keep arriving while the pool is live, so "the earnings
+    ///      source is finished" is never true here. Without it a dead V4 token's residual is owed to
+    ///      holders and unreachable by them once the keepers stop coming. A native payout has no swap to
+    ///      sandwich, so the hatch opens to anyone at any size.
+    function test_staleTokenPaysItsResidualWithoutAKeeper() public {
         RealmTaxableTokenUniV4 token = _graduatedDividendToken();
-        _accrue(token, 0.01 ether); // 0.005 ETH to dividends, well under the threshold
+        _accrue(token, 0.01 ether);
         uint256 residual = token.pendingNative();
         assertGt(residual, 0, "a residual is buffered");
 
-        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        address stranger = makeAddr("stranger");
+        vm.prank(stranger);
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
         token.processDividends(0, _noHolders());
 
         // Nothing happens to the token for a month — no trades, no distributions.
         skip(token.STALE_DIVIDEND_WINDOW() + 1);
+        vm.prank(stranger);
         token.processDividends(0, _noHolders());
         assertEq(token.dividendsOwed(), residual, "the stranded residual was finally distributed");
 

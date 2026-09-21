@@ -540,11 +540,11 @@ removes one, or re-weights the split, so an indexer reads the whole configuratio
 event below identifies WHICH member of that set the event is about, and is always one of them.
 
 The assets are independent machines sharing only the token's eligible supply. Each has its own native
-buffer, its own `DIVIDEND_THRESHOLD` to cross, its own conversion, its own accumulator, its own
-per-block funding cooldown and its own staleness clock. So the events below interleave freely ACROSS
-assets, and nothing may be inferred about asset `j` from an event carrying asset `i` — a 20/80 split
-converts the 20% leg roughly four times less often, and one leg can go stale and be swept while the
-other is distributing normally.
+buffer, its own conversion, its own accumulator, its own per-block funding cooldown and its own
+staleness clock. So the events below interleave freely ACROSS assets, and nothing may be inferred about
+asset `j` from an event carrying asset `i` — a 20/80 split fills the 20% leg roughly four times more
+slowly and is serviced that much less often, and one leg can go stale and be swept while the other is
+distributing normally.
 
 Each distribution is credited INSTANTLY, pro rata to the balances held when it lands, against a global
 `rewardPerToken` accumulator that moves only then. (It used to drip over a 15-minute stream; that is
@@ -561,9 +561,10 @@ ONE exception to the timing: a deploy buy large enough to graduate the token ins
 first earnings instead.
 
 **`processDividends(uint8 assetIndex, uint256 minOut, address[] holders)`** — KEEPER-GATED, and the
-keeper entry point for the NATIVE buffer. It services ONE payout asset per call: each asset crosses its threshold on its own
+keeper entry point for the NATIVE buffer. It services ONE payout asset per call: each asset fills on its own
 schedule, prices its floor against its own pool and holds its own cooldown, so a keeper calls it once
-per asset and the assets never contend. `assetIndex` past `dividendAssetCount()` reverts
+per asset and the assets never contend. There is NO minimum buffer size — any non-zero buffer converts,
+and whether a conversion earns its gas is the keeper's judgement, not a contract rule. `assetIndex` past `dividendAssetCount()` reverts
 `DividendAssetOutOfRange`. The pre-existing two-argument form
 **`processDividends(uint256 minOut, address[] holders)`** is still there and services asset 0, so a
 keeper written for a single-asset token needs no change. Reverts `NotAKeeper` unless `msg.sender` is on
@@ -577,7 +578,8 @@ opening a caller-supplied-floor swap there every month is a sandwich, not a resc
 been convertible all along and still was not converted is the reading that actually evidences an absent
 keeper. Assets whose funding does not swap (native, and the Uniswap-V2 self-token leg) keep the wide
 bypass — there is nothing there for a caller to extract, so stranding is their only failure mode. A
-sub-threshold residual on a swapping asset stays keeper-only. Holders
+sub-threshold residual on a swapping asset stays keeper-only. This is the ONLY thing
+`DIVIDEND_THRESHOLD` still governs: it no longer gates funding. Holders
 are never gated — `claimDividends()` stays open to everyone.
 
 **`processDividends(uint8 assetIndex, address quote, uint256 minOut, address[] holders)`** (V4 tokens
@@ -587,8 +589,9 @@ decides the gate: the payout asset IS the quote (nothing is swapped; the whole b
 anyone may call once the asset is stale), the payout asset is the token itself (a buy-back on that
 quote's own pool, the `processBurn` primitive, capped at `MAX_QUOTE_SPEND_BPS` of the buffer per call
 and keeper-only however stale), or anything else (the registry's `swapAssetToAsset`, same cap, same
-gate). There is NO `DIVIDEND_THRESHOLD` on a quote leg — it is native-denominated and means nothing in
-a currency the creator picked; the keeper decides when a buffer is worth its gas — and NO treasury sweep:
+gate). As on the native leg there is no minimum buffer — the keeper decides when a buffer is worth its
+gas — and `DIVIDEND_THRESHOLD` does not even apply here, being native-denominated and meaningless in a
+currency the creator picked, so the staleness bypass never opens a quote leg that swaps. NO treasury sweep either:
 a quote pool nobody can swap on strands that quote's buffer, as it strands `processBurn`'s. The
 once-per-block cooldown is the ASSET's, shared across its native leg and every quote. `quote` not one
 of the token's reverts `UnknownQuote`. Nothing about the gate changes the EVENT
@@ -605,13 +608,12 @@ actually moved the buffer skips straight to the payouts, and reverts `DividendPr
 was given no holders either. Pushing payouts is never rate-limited, so splitting a large holder set
 across several transactions in one block works exactly as before.
 
-1. Only if the buffer cleared `DIVIDEND_THRESHOLD` (native leg) or held anything at all (quote leg):
+1. Only if the buffer held anything at all, on either leg — there is no size floor, so an indexer must
+   expect distributions of any magnitude, including dust:
    **`DividendsFunded`** (`quote, asset, amountIn, assetOut`). `quote` is the currency the buffer was held
    in — `address(0)` for native, else the ERC20 quote — and `amountIn` how much of it was consumed, in
    THAT currency's units; `assetOut` was split across the eligible supply at this instant. Reverts `NoDividendSupply`
-   instead, leaving the buffer untouched, if the eligible supply is under one whole token. The
-   threshold stops applying in exactly one case, so a residual that can no longer grow is never
-   stranded: the token has gone `STALE_DIVIDEND_WINDOW` (30 days) without a distribution.
+   instead, leaving the buffer untouched, if the eligible supply is under one whole token.
 1b. Instead of `DividendsFunded`, when a zero-floor conversion came back empty AND the token has gone
    `STALE_DIVIDEND_WINDOW` without a distribution: **`DividendBufferSweptToTreasury`**
    (`asset, nativeAmount`). The pool cannot produce a single wei at any price and has been unable to for

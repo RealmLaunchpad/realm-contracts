@@ -205,23 +205,24 @@ contract DividendsMultiAssetTests is Test {
 
     //////////////////////// independence //////////////////////
 
-    /// @dev THE HEADLINE PROPERTY. With a 20/80 split the small asset reaches `DIVIDEND_THRESHOLD` four
-    ///      times more slowly, so there is a window in which one asset is fundable and the other is not.
-    ///      Each must answer for itself.
-    function test_multiAsset_thresholdIsCrossedPerAsset() public {
+    /// @dev THE HEADLINE PROPERTY. Each leg funds out of its OWN buffer and answers for itself: with a
+    ///      20/80 split the two hold very different amounts, and servicing one must leave the other
+    ///      exactly where it was. Neither size gates the other — funding has no floor at all.
+    function test_multiAsset_eachLegFundsFromItsOwnBuffer() public {
         _activateWith(1_000e18);
-        // Sized so the 80% leg clears the threshold and the 20% leg does not.
         _accrue(h.DIVIDEND_THRESHOLD() * 2);
 
-        assertLt(h.bufferOf(0), h.DIVIDEND_THRESHOLD(), "precondition: the small leg is short");
-        assertGe(h.bufferOf(1), h.DIVIDEND_THRESHOLD(), "precondition: the big leg qualifies");
-
-        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
-        h.processDividends(0, 0, _noHolders());
+        uint256 small = h.bufferOf(0);
+        uint256 big = h.bufferOf(1);
+        assertLt(small, big, "precondition: the 20% leg holds a quarter of the 80% leg");
 
         h.processDividends(1, 0, _noHolders());
         assertGt(h.owedOf(1), 0, "the big leg distributed");
-        assertEq(h.owedOf(0), 0, "the small leg is untouched");
+        assertEq(h.owedOf(0), 0, "and the small leg is untouched");
+        assertEq(h.bufferOf(0), small, "its buffer too");
+
+        h.processDividends(0, 0, _noHolders());
+        assertGt(h.owedOf(0), 0, "the small leg distributes on its own terms, whatever its size");
     }
 
     /// @dev The per-block funding cooldown is per asset because the manipulation it bounds is of ONE

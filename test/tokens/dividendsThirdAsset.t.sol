@@ -411,16 +411,30 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.dividendsOwed(), 0, "nothing was distributed");
     }
 
-    /// @dev A token that simply has not earned enough yet reports the OTHER error: the keeper is told to
-    ///      wait, not sent looking for a broken pool.
-    function test_aBelowThresholdBufferReportsBelowDividendThreshold() public {
+    /// @dev A token that has earned NOTHING yet reports the OTHER error: the keeper is told to wait, not
+    ///      sent looking for a broken pool. With no size floor left, that is the only thing
+    ///      `BelowDividendThreshold` means.
+    function test_anEmptyBufferReportsBelowDividendThreshold() public {
+        harness.setBalance(holder, 1_000e18);
+        harness.activate();
+
+        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        harness.processDividends(0, _noHolders());
+    }
+
+    /// @dev The floor is gone all the way down: ONE WEI converts and credits. Whether that is worth the
+    ///      gas is the keeper's call, not the contract's — and the keeper is the only one who can make
+    ///      it, which is what keeps this from becoming a dust stream anyone can drive.
+    function test_aOneWeiBufferConverts() public {
         harness.setBalance(holder, 1_000e18);
         harness.activate();
         vm.deal(address(this), 1 wei);
         harness.accrue{value: 1 wei}();
 
-        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
         harness.processDividends(0, _noHolders());
+
+        assertGt(harness.dividendsOwed(), 0, "a one-wei buffer bought and credited some payout asset");
+        assertEq(harness.pendingNative(), 0, "buffer drained");
     }
 
     /// @dev A payout asset that returns a non-boolean word from `transfer` must be TOLERATED, not

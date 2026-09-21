@@ -31,9 +31,10 @@ contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLo
     ///         the holders, and pushes `holders` their accruals. `quote == address(0)` is the shared
     ///         native machine, exactly `processDividends(uint8,uint256,address[])`.
     /// @dev What differs from the native path, and why:
-    ///      - NO absolute threshold: `DIVIDEND_THRESHOLD` is native-denominated and means nothing in a
-    ///        currency the creator picked. The keeper pays the gas and decides when a buffer is worth
-    ///        converting, as it does for `processBurn(quote, …)`.
+    ///      - Like the native path, no funding floor: the keeper pays the gas and decides when a buffer
+    ///        is worth converting, as it does for `processBurn(quote, …)`. This path never had one —
+    ///        `DIVIDEND_THRESHOLD` is native-denominated and means nothing in a currency the creator
+    ///        picked — and the native path has since dropped its own.
     ///      - The per-call cap is `_maxSpend`'s FRACTION of the buffer, for the same units reason, and
     ///        only on a leg that SWAPS. A payout that IS the quote has no swap: nothing to sandwich, the
     ///        whole buffer credits at once.

@@ -131,10 +131,15 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // low-volume token may simply never buffer `DIVIDEND_THRESHOLD` inside one window, with every
         // keeper present and working. Opening the gate there would hand any caller a zero-floor
         // conversion of a real buffer, every month, on every quiet token — the exact sandwich the
-        // keeper set exists to prevent. So the bypass ALSO requires the buffer to have been convertible
-        // all along: keepers are paid per conversion and fire as soon as the threshold is crossed, so
-        // `DIVIDEND_THRESHOLD` left sitting for `STALE_DIVIDEND_WINDOW` is what actually evidences a
-        // keeper set that is gone. A sub-threshold residual stays keeper-only — the smaller loss.
+        // keeper set exists to prevent. So the bypass ALSO requires the buffer to have been worth
+        // converting all along: `DIVIDEND_THRESHOLD` is the size a keeper is expected to act on, so a
+        // buffer that has held it for `STALE_DIVIDEND_WINDOW` is what actually evidences a keeper set
+        // that is gone. A sub-threshold residual stays keeper-only — the smaller loss.
+        // THIS IS THE CONSTANT'S ONLY REMAINING JOB. Funding itself has no floor: a keeper may convert
+        // any non-zero buffer, because it pays the gas and is better placed than a compile-time
+        // constant to judge when a conversion earns it (`RealmDividendLogicUniV4`'s quote path, which
+        // never had one, is where that reasoning came from). The constant survives only as the yardstick
+        // this gate measures an absent keeper against.
         // Assets whose funding does NOT swap keep the wide hatch (native, and the V2 self-token leg,
         // which is carved in token space and merely credits a buffer): there is nothing
         // for a caller to sandwich, so stranding is their only failure mode.
@@ -185,6 +190,8 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
             // Two different situations, two different errors: a keeper that sees `BelowDividendThreshold`
             // has to wait for earnings, one that sees `DividendConversionFailed` has the earnings and a
             // swap problem — a `minOut` the pool has moved past, or a pool that is gone.
+            // ⚠️ The name predates the funding floor's removal and is kept for the keepers and scripts
+            // that decode it: with no floor left, "nothing to fund" now means an EMPTY buffer.
             revert BelowDividendThreshold();
         } else if (outcome == FundOutcome.ConversionFailed) {
             revert DividendConversionFailed();
@@ -285,13 +292,15 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         uint256 buffered = a.pendingNative;
         if (buffered == 0) return (FundOutcome.NotReady, 0, 0);
 
-        // The threshold exists so a distribution only fires when it is worth its gas, and staleness is
-        // its ONLY bypass: a residual below the threshold on an asset nobody has converted for
-        // `STALE_DIVIDEND_WINDOW` would otherwise strand forever. There is nothing to grief here any
-        // more — a dust distribution just credits dust, it cannot stall anything.
+        // NO SIZE FLOOR. Any non-zero buffer converts. "Is this worth its gas" is the caller's question,
+        // not the contract's: the ordinary path is keeper-gated, so the only party this could restrain
+        // is a keeper spending its own gas on a call whose whole cost it can see. `DIVIDEND_THRESHOLD`
+        // survives as the staleness gate's yardstick (see `_processDividends`) and nothing else.
+        // ⚠️ What a floor DID bound, and no longer does: a keeper converting dust repeatedly pays the
+        // pool fee on each conversion out of holders' money, and every success resets `lastDistribution`
+        // and so pushes the staleness hatch out another `STALE_DIVIDEND_WINDOW`. Both are keeper
+        // misbehaviour, not caller griefing — `RealmKeepersRegistry` is what bounds them now.
         bool stale = dividendsStale(i);
-        if (buffered < DIVIDEND_THRESHOLD && !stale) return (FundOutcome.NotReady, 0, 0);
-
         address asset = a.token;
         // Only a payout that SWAPS is capped. Native is already denominated in the payout asset, so it
         // has no swap to sandwich, and throttling it would delay real money for no security gain.

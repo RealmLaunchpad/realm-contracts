@@ -14,6 +14,7 @@ import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.so
 import {RealmDividendLogicUniV2} from "src/tokens/RealmDividendLogicUniV2.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @notice Integration tests for holder dividends on Uniswap V2. Two things are V2-specific and get the
 ///         attention here: a leg paying the TOKEN ITSELF must be carved in token space (a V2 pair reverts
@@ -360,15 +361,14 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         );
     }
 
-    ///////////////////////// the threshold /////////////////////////
+    ///////////////////////// dust cannot force a distribution /////////////////////////
 
-    /// @dev The threshold used to stop applying the moment the V2 tax window closed, on the theory that
-    ///      no further earnings could arrive. They can: `accrueFees` and `sweepStrayEth` are both
-    ///      permissionless. Staleness is the only bypass now, and reaching it costs 30 days of a
-    ///      completely idle token.
-    /// @dev Under the drip a dust distribution could no longer stall anything even if it went through —
-    ///      it would just set a dust slope. The threshold is a gas floor now, not a safety one; this
-    ///      pins that it still holds.
+    /// @dev `accrueFees` and `sweepStrayEth` are both permissionless, so anyone can push dust into the
+    ///      buffer at any time — including after the tax window has closed and no honest earnings can
+    ///      ever arrive again. What stops that becoming a dust stream is the KEEPER GATE, not a size
+    ///      floor: the griefer can fill the buffer but cannot make anyone convert it.
+    /// @dev And if a keeper does convert it, nothing breaks. Credit is instant (the drip that a dust
+    ///      distribution could once stall is long gone), so a dust distribution credits dust and ends.
     function test_aWeiPushedInAfterTheTaxWindowCannotForceADistribution() public {
         RealmTaxableTokenUniV2 token = _nativeToken();
         skip(uint256(token.taxDurationSeconds()) + 1); // no fresh tax can ever accrue
@@ -376,16 +376,16 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         vm.deal(address(token), address(token).balance + 2 wei);
         token.sweepStrayEth();
         assertGt(token.pendingNative(), 0, "the attacker's dust did reach the buffer");
+        assertFalse(token.dividendsStale(0), "precondition: the hatch is shut on a live token");
 
-        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        vm.prank(makeAddr("griefer"));
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
         token.processDividends(0, _noHolders());
         assertEq(token.dividendsOwed(), 0, "no dust stream was funded");
     }
 
-    /// @dev The SELF-TOKEN counterpart of the grief above, which the native fix did not reach: the
-    ///      token-space funding kept "the tax window has closed" as its bypass. Donate dust TOKENS to
-    ///      the contract and the post-window drain in `_update` carves a dividend slice out of them.
-    ///      Staleness is the only bypass here too.
+    /// @dev The SELF-TOKEN counterpart: donate dust TOKENS to the contract and the post-window drain in
+    ///      `_update` carves a dividend slice out of them. Same answer — the keeper gate, not a floor.
     function test_dustDonatedAfterTheTaxWindowCannotForceASelfTokenDistribution() public {
         RealmTaxableTokenUniV2 token = _selfToken();
         skip(uint256(token.taxDurationSeconds()) + 1); // no fresh tax can ever accrue
@@ -396,11 +396,10 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         // ...and any sell drains it through the split, dividend slice included.
         _swapSellV2(buyer, address(token), IERC20(address(token)).balanceOf(buyer) / 100, 0, true);
 
-        uint256 buffered = token.dividendPendingTokens();
-        assertGt(buffered, 0, "the dust did reach the dividend buffer");
-        assertLt(buffered, token.SWAP_THRESHOLD(), "and it is far below the threshold");
+        assertGt(token.dividendPendingTokens(), 0, "the dust did reach the dividend buffer");
 
-        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        vm.prank(makeAddr("griefer"));
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
         token.processDividends(0, _noHolders());
         assertEq(token.dividendsOwed(), 0, "no dust stream was funded on the self-token leg either");
     }

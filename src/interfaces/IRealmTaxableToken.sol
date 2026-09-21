@@ -39,8 +39,8 @@ struct TaxConfigs {
 ///      - the assets DISTINCT (a repeat would make the token under-report what it owes holders);
 ///      - `DividendDistribution.DIVIDEND_SELF_TOKEN` only as the sole entry;
 ///      - every non-native, non-self entry reachable by `RealmDividendSwapRegistry` right now.
-/// @dev Each asset is independent from there on: its own native buffer, its own conversion threshold,
-///      its own stream. A 20/80 split converts the 20% asset roughly four times less often.
+/// @dev Each asset is independent from there on: its own native buffer, its own conversion, its own
+///      accumulator. A 20/80 split fills the 20% asset roughly four times more slowly.
 struct EarningsAllocationMultiConfig {
     uint16 burnBps;
     uint16 dividendsBps;

@@ -19,11 +19,12 @@ import {ERC20, IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ER
 ///      Pinned by `just check-dividend-layout`.
 contract RealmDividendLogicUniV2 is RealmTaxableTokenUniV2Base, DividendDistributionLogic, DividendInitLogic {
     /// @dev Funds a self-token payout straight out of its token buffer — no conversion, no slippage,
-    ///      and so no way for it to fail. Its threshold is `SWAP_THRESHOLD` (the same 0.05%-of-supply
-    ///      size the swap-back amortises against) because the buffer is denominated in tokens, not
-    ///      native. Every other payout asset is native-buffered and goes through the base.
-    /// @dev Staleness is the threshold's ONLY bypass, for the reason the base spells out: a residual
-    ///      below the threshold on a token nobody trades would otherwise strand forever.
+    ///      and so no way for it to fail. Every other payout asset is native-buffered and goes through
+    ///      the base.
+    /// @dev NO SIZE FLOOR, matching the base: any non-zero buffer credits. This leg never carried a
+    ///      security floor to begin with — it is carved in token space and merely moves a buffer, so
+    ///      there is no swap for anyone to sandwich — and "is this worth its gas" belongs to whoever
+    ///      pays that gas. The per-block cooldown still applies.
     /// @dev A self-token payout is only ever configured as the SOLE asset, so `i` is 0 whenever this
     ///      branch is taken; the index is still threaded through so the base's asset-agnostic path stays
     ///      the one that decides.
@@ -32,7 +33,6 @@ contract RealmDividendLogicUniV2 is RealmTaxableTokenUniV2Base, DividendDistribu
 
         uint256 buffered = dividendPendingTokens;
         if (buffered == 0) return (FundOutcome.NotReady, 0, 0);
-        if (buffered < SWAP_THRESHOLD && !dividendsStale(i)) return (FundOutcome.NotReady, 0, 0);
 
         dividendPendingTokens = 0;
         return (FundOutcome.Funded, 0, buffered);
