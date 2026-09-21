@@ -187,6 +187,23 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         return (anyPairHook.pendingLpFees(token, quote), anyPairHook.pendingTaxes(token, quote));
     }
 
+    function _pendingTotal(address token, address quote) internal view returns (uint256) {
+        (uint256 lpFee, uint256 tax) = _pendingFees(token, quote);
+        return lpFee + tax;
+    }
+
+    /// @dev How many ERC20 `Transfer`s of `quote` left the pool manager in `logs`: one per `take`, which
+    ///      is the cost a batched settlement exists to pay only once.
+    function _managerTakes(Vm.Log[] memory logs, address quote) internal view returns (uint256 n) {
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (
+                logs[i].emitter == quote && logs[i].topics.length == 3
+                    && logs[i].topics[0] == keccak256("Transfer(address,address,uint256)")
+                    && address(uint160(uint256(logs[i].topics[1]))) == poolManagerAddress
+            ) ++n;
+        }
+    }
+
     /// @dev Settles `token`'s ledger in `quote` and asserts where it went: the treasury gets the router's
     ///      30% of the LP fee, the creator the rest plus the whole tax, both in the quote, and the hook is
     ///      left with no quote and no claims.
@@ -622,6 +639,95 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         assertApproxEqRel(lpFee * TAX_BPS, tax * LP_BPS, 1e12, "both ledgers grew, each at its own rate");
 
         _settleAndAssertDelivered(token, quote);
+    }
+
+    /////////////////////////// BATCHED REDEMPTION ///////////////////////////
+
+    /// @dev The batched overload's whole point: N tokens sharing one quote leave the pool manager on ONE
+    ///      `take`, not N. Delivery must be unchanged — each token's own creator and the treasury are
+    ///      credited exactly what a per-token settle would have given them.
+    function test_settleFees_batchTakesOnceForEveryTokenSharingTheQuote() public {
+        address quote = address(quoteCoin);
+        address first = _launchTaxed(quote, _noDevBuy());
+        address second = _launchTaxed(quote, _noDevBuy());
+        quoteCoin.mintTo(alice, 1_000e6);
+        _swapLeg(alice, first, quote, true, true, 100e6, 0);
+        _swapLeg(alice, second, quote, true, true, 60e6, 0);
+
+        (uint256 lpFirst, uint256 taxFirst) = _pendingFees(first, quote);
+        (uint256 lpSecond, uint256 taxSecond) = _pendingFees(second, quote);
+        assertGt(lpSecond, 0, "both pools traded");
+        assertEq(_claims(quote), lpFirst + taxFirst + lpSecond + taxSecond, "both ledgers are claim-backed");
+        uint256 treasuryBefore = IERC20(quote).balanceOf(treasury);
+        uint256 firstBefore = _creatorClaimable(first, quote);
+        uint256 secondBefore = _creatorClaimable(second, quote);
+
+        address[] memory tokens = new address[](2);
+        (tokens[0], tokens[1]) = (first, second);
+        vm.recordLogs();
+        anyPairHook.settleFees(tokens, quote);
+
+        assertEq(_managerTakes(vm.getRecordedLogs(), quote), 1, "one take out of the manager, not two");
+        assertEq(
+            IERC20(quote).balanceOf(treasury) - treasuryBefore,
+            lpFirst * LP_TREASURY_BPS / BPS + lpSecond * LP_TREASURY_BPS / BPS,
+            "both LP treasury shares, in the quote"
+        );
+        assertApproxEqAbs(
+            _creatorClaimable(first, quote) - firstBefore,
+            lpFirst - lpFirst * LP_TREASURY_BPS / BPS + taxFirst,
+            2,
+            "the first token's creator, credited against its own token"
+        );
+        assertApproxEqAbs(
+            _creatorClaimable(second, quote) - secondBefore,
+            lpSecond - lpSecond * LP_TREASURY_BPS / BPS + taxSecond,
+            2,
+            "and the second's, against its own"
+        );
+        assertEq(_pendingTotal(first, quote) + _pendingTotal(second, quote), 0, "both ledgers cleared");
+        assertEq(IERC20(quote).balanceOf(address(anyPairHook)), 0, "hook holds no quote");
+        assertEq(_claims(quote), 0, "hook holds no claims");
+    }
+
+    /// @dev A batch may carry entries that settle nothing: an untraded token and a repeated one must
+    ///      neither revert nor pay twice. The repeat is also the reentrancy shape — every ledger is
+    ///      already zero by the time any destination is called, so a second pass finds nothing.
+    function test_settleFees_batchSkipsEmptyAndDuplicatedEntries() public {
+        address quote = address(quoteCoin);
+        address traded = _launchTaxed(quote, _noDevBuy());
+        address untraded = _launchTaxed(quote, _noDevBuy());
+        quoteCoin.mintTo(alice, 1_000e6);
+        _swapLeg(alice, traded, quote, true, true, 100e6, 0);
+
+        (uint256 lpFee, uint256 tax) = _pendingFees(traded, quote);
+        uint256 treasuryBefore = IERC20(quote).balanceOf(treasury);
+        uint256 creatorBefore = _creatorClaimable(traded, quote);
+
+        address[] memory tokens = new address[](3);
+        (tokens[0], tokens[1], tokens[2]) = (traded, untraded, traded);
+        vm.recordLogs();
+        anyPairHook.settleFees(tokens, quote);
+
+        assertEq(_managerTakes(vm.getRecordedLogs(), quote), 1, "still a single take");
+        assertEq(
+            IERC20(quote).balanceOf(treasury) - treasuryBefore,
+            lpFee * LP_TREASURY_BPS / BPS,
+            "the treasury was paid once, not twice"
+        );
+        assertApproxEqAbs(
+            _creatorClaimable(traded, quote) - creatorBefore,
+            lpFee - lpFee * LP_TREASURY_BPS / BPS + tax,
+            2,
+            "and so was the creator"
+        );
+        assertEq(_pendingTotal(traded, quote) + _pendingTotal(untraded, quote), 0, "nothing left pending");
+        assertEq(IERC20(quote).balanceOf(address(anyPairHook)), 0, "nothing stranded in the hook");
+
+        // Re-running the same batch is now an all-empty one: no unlock, no take, no revert.
+        vm.recordLogs();
+        anyPairHook.settleFees(tokens, quote);
+        assertEq(_managerTakes(vm.getRecordedLogs(), quote), 0, "an all-empty batch touches nothing");
     }
 
     /// @dev Two ERC20 pools of the SAME token keep separate ledgers and separate identity caches:

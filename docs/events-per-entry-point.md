@@ -378,6 +378,8 @@ Then, on any later `settleFees(token, quote)` call:
 
 `settleFees` reverts `InsufficientGas` (no events) when the caller did not supply enough gas for the router and token calls to receive their full capped budgets, so a fallback is always a genuine destination failure, never a starved call.
 
+**A batched overload settles many tokens in one call.** `settleFees(address[] tokens, address quote)` empties every listed token's ledger in that one quote under a SINGLE pool-manager unlock and a single `take`, then runs steps 5-8 once per token, in list order. The events are exactly the per-token ones — nothing is aggregated — just interleaved within one transaction; every one of them carries its own `token` and `quote`, so an indexer reads them as it always did. An entry whose ledger is empty emits nothing, which includes a token listed twice (it settles on its first appearance) and an all-empty batch, which is a silent no-op with no `PoolManager` `Transfer` at all. `InsufficientGas` is still checked per delivery but reverts the WHOLE batch, so a batch either settles all of its non-empty entries or none of them.
+
 The treasury slice of an ERC20 LP fee ACCUMULATES on `RealmTreasuryRouter` — an ERC20 has no `receive()` to route it on arrival — until an owner calls `sweep(asset)`, which forwards the whole balance to the multisig and emits **`RealmTreasuryRouter.TreasuryAssetSwept`** (`asset, amount`), or a keeper converts it to native with `convert` (§11). Voting stays native-only, so an ERC20 is never split into it; only the native a conversion produces is.
 
 ---

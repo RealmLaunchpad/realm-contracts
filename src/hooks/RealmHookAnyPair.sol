@@ -439,25 +439,72 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
     /// @dev Separate from the swap because a claim can only become currency once the pool manager is
     ///      actually holding some — see `pendingLpFees`. By the time anyone calls this the swaps that
     ///      produced the fee have settled their inputs, so the redemption is funded by construction.
+    function settleFees(address token, address quote) public {
+        (uint256 lpFee, uint256 tax) = _drain(token, quote);
+        uint256 total = lpFee + tax;
+        if (total == 0) return;
+
+        // Turns the claims into the currency itself, which needs the manager unlocked.
+        poolManager.unlock(abi.encode(quote, total));
+        _deliver(token, quote, lpFee, tax);
+    }
+
+    /// @notice The same redemption for many tokens that share one `quote`, under a single unlock.
+    ///
+    /// @dev WHY ONE QUOTE AND NOT A LIST OF PAIRS. The only costs a batch can actually share are the
+    ///      `unlock` and the `burn` + `take` inside it, and those are per-CURRENCY: the ledger reads, the
+    ///      approvals and the two destination calls all happen once per token however the call is
+    ///      packaged. Pinning the quote is what lets a whole batch leave the pool manager on ONE ERC20
+    ///      transfer; a pair list would have to dedupe quotes to manage the same. The per-call overhead a
+    ///      plain loop pays is not a reason on its own — this function is permissionless, so any caller
+    ///      could already loop it from a contract of their own.
+    ///
+    /// @dev EVERY LEDGER IS EMPTIED BEFORE ANY DESTINATION IS CALLED. The destinations are untrusted and
+    ///      may re-enter here; draining up front means a re-entrant call finds this batch's ledgers
+    ///      already at zero and returns without moving anything twice. A token listed twice is the same
+    ///      case and settles once.
+    ///
+    /// @dev ALL OR NOTHING ON GAS. Every delivery still demands the full budget for its capped calls, so
+    ///      a token whose destination genuinely consumes its whole budget can push a later one under the
+    ///      bar and revert the WHOLE batch, deliveries that already succeeded included. That is the price
+    ///      of one unlock; the caller retries with a shorter list, or per token.
+    function settleFees(address[] calldata tokens, address quote) external {
+        uint256 n = tokens.length;
+        uint256[] memory lpFees = new uint256[](n);
+        uint256[] memory taxes = new uint256[](n);
+        uint256 total;
+        for (uint256 i = 0; i < n; ++i) {
+            (lpFees[i], taxes[i]) = _drain(tokens[i], quote);
+            total += lpFees[i] + taxes[i];
+        }
+        if (total == 0) return;
+
+        poolManager.unlock(abi.encode(quote, total));
+        for (uint256 i = 0; i < n; ++i) {
+            if (lpFees[i] + taxes[i] > 0) _deliver(tokens[i], quote, lpFees[i], taxes[i]);
+        }
+    }
+
+    /// @dev Empties one `(token, quote)` ledger and reports what it held. An empty one is left untouched
+    ///      so a batch carrying stale entries does not pay to rewrite zeros.
+    function _drain(address token, address quote) private returns (uint256 lpFee, uint256 tax) {
+        lpFee = pendingLpFees[token][quote];
+        tax = pendingTaxes[token][quote];
+        if (lpFee + tax == 0) return (0, 0);
+        pendingLpFees[token][quote] = 0;
+        pendingTaxes[token][quote] = 0;
+    }
+
+    /// @dev Forwards one token's already-redeemed fees, which this hook is holding as currency by now.
     /// @dev Both legs are a capped-gas `try` with a treasury fallback, as `RealmSwapHook._route` does for
     ///      the LP fee: this hook cannot be upgraded, so a destination that reverts for good must not
     ///      strand the ledger. The fallback keeps the money under protocol control and says so in
     ///      `TreasuryFallback`.
     /// @dev Each capped call first requires enough gas to receive its WHOLE budget. Without that a
-    ///      caller — this function is permissionless — could starve the call into its `catch` on
-    ///      purpose and divert a creator's fees to the treasury. With it, a revert means the
-    ///      destination really failed.
-    function settleFees(address token, address quote) public {
-        uint256 lpFee = pendingLpFees[token][quote];
-        uint256 tax = pendingTaxes[token][quote];
-        uint256 total = lpFee + tax;
-        if (total == 0) return;
-        pendingLpFees[token][quote] = 0;
-        pendingTaxes[token][quote] = 0;
-
-        // Turns the claims into the currency itself, which needs the manager unlocked.
-        poolManager.unlock(abi.encode(quote, total));
-
+    ///      caller — `settleFees` is permissionless — could starve the call into its `catch` on purpose
+    ///      and divert a creator's fees to the treasury. With it, a revert means the destination really
+    ///      failed.
+    function _deliver(address token, address quote, uint256 lpFee, uint256 tax) private {
         uint256 lpFallback;
         uint256 taxFallback;
         if (lpFee > 0) {
@@ -494,7 +541,7 @@ contract RealmHookAnyPair is BaseHook, IUnlockCallback {
     }
 
     /// @notice The pool manager's re-entry for `settleFees`. Burns the claims and takes the currency.
-    /// @dev Steers nothing a caller chose beyond which (token, quote) ledger to empty: the amount comes
+    /// @dev Steers nothing a caller chose beyond which ledgers to empty: the amount comes
     ///      from this contract's own storage, and the recipient is this contract.
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
         require(msg.sender == address(poolManager), OnlyPoolManager());
