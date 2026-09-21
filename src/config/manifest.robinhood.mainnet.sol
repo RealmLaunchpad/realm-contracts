@@ -34,7 +34,7 @@ library DeploymentsRobinhoodMainnet {
     /// @notice `RealmHookAnyPair`: the hook every ERC20-quoted Realm pool is bound to. A SECOND hook
     ///         beside `SWAP_HOOK`, which is whitelisted by Uniswap and keeps every native pool. Mined
     ///         with the same permission bits; deployed by `DeployRealmHookAnyPair`.
-    address public constant SWAP_HOOK_ANY_PAIR = 0x0000000000000000000000000000000000000000;
+    address public constant SWAP_HOOK_ANY_PAIR = 0x24d9308561c322a603370A0c3BeAD39E05DA00CC;
 
     /// @notice `RealmDirectGraduatorUniV4`: the direct-launch venue's graduator. Non-upgradeable, holds
     ///         every launch's seed position NFTs forever.
@@ -67,7 +67,7 @@ library DeploymentsRobinhoodMainnet {
     address internal constant LP_FEE_ROUTER = 0x823ca5B8041217Df052D9e64AC6E7c16A62FA957;
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
-    address internal constant LP_FEE_ROUTER_IMPL = 0x7480e46B8f6B3a8d9137F72b3006f7FBfA088ECf;
+    address internal constant LP_FEE_ROUTER_IMPL = 0xA53a42561D85255C0dbDc73a27626FCb71bA48EA;
     /// @notice `RealmTreasuryRouter` proxy (UUPS): the treasury address every push lands on once live —
     ///         `LAUNCHPAD.treasury()` and the `SwapLpFeeRouter` impl's `TREASURY` point here. Forwards 1/3
     ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryRouter`, which also
