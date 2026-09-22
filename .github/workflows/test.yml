@@ -44,11 +44,11 @@ jobs:
           forge fmt --check
         id: fmt
 
-      # The token impls bake one chain's addresses; the committed tree may be left retargeted at a
-      # deploy chain, so pin the build (and the mainnet-forked tests below) to the test default.
+      # The token impls bake one chain's addresses; the unit suites fork Robinhood mainnet, so pin the
+      # build to it (the committed tree may be retargeted at another chain).
       - name: Forge build
         run: |
-          just chain-mainnet
+          just chain-rh
           forge build --sizes
         id: build
 
@@ -70,6 +70,8 @@ jobs:
         run: |
           sed -i 's/runs = [0-9]*/runs = 1/' foundry.toml
           sed -i 's/depth = [0-9]*/depth = 5/' foundry.toml
+          # The invariant suite still forks Ethereum mainnet.
+          just chain-mainnet
           forge test --match-contract Invariants
         id: invariants
 
