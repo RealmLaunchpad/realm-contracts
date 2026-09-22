@@ -44,27 +44,35 @@ contract HalfFillQuoteBuyBackRouterStub {
 
 /// @notice Dividends on the direct venue, on every quote: the allocation-aware `createToken`, and a
 ///         dividends slice that arrives in an ERC20 quote and is paid out in that quote, in the token
-///         itself, in native, or in a third asset. Quoted against real mainnet USDC so the registry legs
-///         cross real pools: USDC -> ETH on V4, ETH -> DAI on the V2 pair.
+///         itself, in native, or in a third asset. Quoted against real Robinhood AAPL so the registry
+///         legs cross real pools: AAPL -> ETH on V4, ETH -> MSFT on the V2 pair. AAPL is the quote
+///         because its native V4 pool is the one hookless, static-fee pool with live liquidity at the
+///         pinned block; USDG would mirror USDC's 6 decimals but its pool is empty there.
 contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
-    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-    uint24 internal constant V4_FEE_005 = 500;
-    int24 internal constant V4_SPACING_10 = 10;
+    address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
+    address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
+    /// @dev AAPL's real native V4 pool on Robinhood: hookless, static fee.
+    uint24 internal constant V4_FEE_AAPL = 8_000;
+    int24 internal constant V4_SPACING_AAPL = 80;
     address internal stranger = makeAddr("stranger");
 
     function setUp() public virtual override {
         super.setUp();
-        _whitelist(USDC, QC_PER_ETH);
-        // Priced 1:1 with ETH: the launch opens at 2.25 DAI of market cap.
-        _whitelist(DAI, 1e18);
+        _whitelist(AAPL, QC_PER_ETH);
+        // Priced 1:1 with ETH: the launch opens at 2.25 MSFT of market cap.
+        _whitelist(MSFT, 1e18);
+        // Robinhood's V2 pairs are thin — the xStock/WETH pairs hold ~0.005 ETH a side, far under the
+        // default depth floor of 10x MAX_EARNINGS_PER_PROCESS. The floor is per-chain configurable for
+        // exactly this reason; drop it so the V2 leg is exercised rather than rejected as too shallow.
+        vm.prank(admin);
+        dividendSwapRegistry.setDefaultThreshold(0.001 ether);
     }
 
     /////////////////////////// HELPERS ///////////////////////////
 
     function _v4Route(address currency) internal pure returns (bytes memory) {
         Hop[] memory hops = new Hop[](1);
-        hops[0] = Hop({currency: currency, fee: V4_FEE_005, tickSpacing: V4_SPACING_10, hooks: address(0)});
+        hops[0] = Hop({currency: currency, fee: V4_FEE_AAPL, tickSpacing: V4_SPACING_AAPL, hooks: address(0)});
         return DividendRouteLib.encodeV4(hops);
     }
 
@@ -125,31 +133,31 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         );
     }
 
-    function _usdcPair() internal pure returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
+    function _aaplPair() internal pure returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
         p = new RealmFactoryUniV4Direct.DirectPair[](1);
-        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 10_000});
+        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: AAPL, weightBps: 10_000});
     }
 
-    /// @dev A USDC-paired token paying in `asset`, with alice holding a bag and the dividends slice of
-    ///      her buy's LP fee buffered in USDC.
+    /// @dev A AAPL-paired token paying in `asset`, with alice holding a bag and the dividends slice of
+    ///      her buy's LP fee buffered in AAPL.
     function _earningToken(address asset, bytes memory assetRoute, bytes[] memory quoteRoutes)
         internal
         returns (RealmTaxableTokenUniV4 token)
     {
-        token = _launch(_usdcPair(), _cfg(asset, assetRoute, quoteRoutes));
-        _buyAndSettle(address(token), 10_000e6);
+        token = _launch(_aaplPair(), _cfg(asset, assetRoute, quoteRoutes));
+        _buyAndSettle(address(token), 10_000e18);
     }
 
-    /// @dev Alice buys on the USDC pool and the hook's claimed fees are redeemed, which is what pushes
+    /// @dev Alice buys on the AAPL pool and the hook's claimed fees are redeemed, which is what pushes
     ///      the LP-fee creator share through the allocation split.
-    function _buyAndSettle(address token, uint256 usdcIn) internal {
-        deal(USDC, alice, usdcIn);
-        _swapQuotePool(alice, token, USDC, true, usdcIn);
-        anyPairHook.settleFees(token, USDC);
+    function _buyAndSettle(address token, uint256 aaplIn) internal {
+        deal(AAPL, alice, aaplIn);
+        _swapQuotePool(alice, token, AAPL, true, aaplIn);
+        anyPairHook.settleFees(token, AAPL);
     }
 
     function _pending(RealmTaxableTokenUniV4 token) internal view returns (uint256) {
-        return token.quoteDividendPending(USDC)[0];
+        return token.quoteDividendPending(AAPL)[0];
     }
 
     function _active(RealmTaxableTokenUniV4 token) internal view returns (bool) {
@@ -160,9 +168,9 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     /////////////////////////// THE ALLOCATION OVERLOAD ///////////////////////////
 
     function test_directAlloc_configuresAndActivatesAtGraduation() public {
-        RealmTaxableTokenUniV4 token = _launch(_usdcPair(), _cfg(USDC, _v4Route(USDC), new bytes[](0)));
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), _cfg(AAPL, _v4Route(AAPL), new bytes[](0)));
         assertEq(uint256(token.dividendsBps()), 5_000, "allocation stored");
-        assertEq(token.dividendToken(), USDC, "payout asset stored");
+        assertEq(token.dividendToken(), AAPL, "payout asset stored");
         assertTrue(_active(token), "activated by the graduation the seed triggered");
         assertTrue(IRealmToken(address(token)).graduated());
     }
@@ -170,7 +178,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     /// @dev No tax at all: the LP-fee share is the whole earnings stream, and the allocation alone
     ///      routes the clone to the taxable implementation — as the preview must also say.
     function test_directAlloc_zeroTaxRevenueShareTokenClonesTheTaxableImpl() public {
-        TaxConfigsWithDirectAllocation memory cfg = _cfg(USDC, _v4Route(USDC), new bytes[](0));
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(AAPL, _v4Route(AAPL), new bytes[](0));
         cfg.sellTaxBps = 0;
         cfg.taxDurationSeconds = 0;
         assertEq(
@@ -180,15 +188,15 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
             address(realmTaxToken),
             "an allocation alone selects the taxable implementation"
         );
-        RealmTaxableTokenUniV4 token = _launch(_usdcPair(), cfg);
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), cfg);
         assertEq(uint256(token.sellTaxBps()), 0, "no tax");
-        _buyAndSettle(address(token), 10_000e6);
+        _buyAndSettle(address(token), 10_000e18);
         assertGt(_pending(token), 0, "the LP-fee share alone feeds the dividends buffer");
     }
 
     function test_directAlloc_rejectsARouteOnANativePair() public {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = _pairs(address(0));
-        TaxConfigsWithDirectAllocation memory cfg = _cfg(address(0), "", _one(_v4Route(USDC)));
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(address(0), "", _one(_v4Route(AAPL)));
         vm.prank(creator);
         vm.expectRevert(RealmFactoryUniV4Direct.InvalidQuoteRoutes.selector);
         directFactory.createToken(
@@ -203,14 +211,14 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     }
 
     function test_directAlloc_rejectsAPayoutAssetWithoutAShare() public {
-        TaxConfigsWithDirectAllocation memory cfg = _cfg(USDC, _v4Route(USDC), new bytes[](0));
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(AAPL, _v4Route(AAPL), new bytes[](0));
         cfg.earningsAllocation.dividendsBps = 0;
         cfg.earningsAllocation.burnBps = 1_000;
         vm.prank(creator);
         vm.expectRevert(IRealmFactory.DividendAssetWithoutShare.selector);
         directFactory.createToken(
             _setup(true),
-            _usdcPair(),
+            _aaplPair(),
             cfg,
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -222,12 +230,12 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     /// @dev A leg that has to leave the quote needs the quote's route, and the venue check happens at
     ///      creation: an empty entry means the V2 pair, which cannot be walked backwards.
     function test_directAlloc_refusesAMissingQuoteRouteAtCreation() public {
-        TaxConfigsWithDirectAllocation memory cfg = _cfg(DAI, "", new bytes[](0));
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(MSFT, "", new bytes[](0));
         vm.prank(creator);
         vm.expectRevert(RealmTaxableTokenUniV4Base.QuoteRouteUnsupported.selector);
         directFactory.createToken(
             _setup(true),
-            _usdcPair(),
+            _aaplPair(),
             cfg,
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -256,39 +264,39 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
 
     /// @dev Payout IS the quote: no swap, no cap, no keeper needed once stale; the whole buffer credits.
     function test_quoteDividends_passthroughPaysTheQuoteItself() public {
-        RealmTaxableTokenUniV4 token = _earningToken(USDC, _v4Route(USDC), new bytes[](0));
+        RealmTaxableTokenUniV4 token = _earningToken(AAPL, _v4Route(AAPL), new bytes[](0));
         uint256 buffered = _pending(token);
-        assertGt(buffered, 0, "the dividends slice arrived in USDC");
+        assertGt(buffered, 0, "the dividends slice arrived in AAPL");
 
         vm.expectEmit(true, true, false, true, address(token));
-        emit DividendDistribution.DividendsFunded(USDC, USDC, buffered, buffered);
-        uint256 before = IERC20(USDC).balanceOf(alice);
-        token.processDividends(0, USDC, 0, _one(alice));
+        emit DividendDistribution.DividendsFunded(AAPL, AAPL, buffered, buffered);
+        uint256 before = IERC20(AAPL).balanceOf(alice);
+        token.processDividends(0, AAPL, 0, _one(alice));
 
         assertEq(_pending(token), 0, "the whole buffer was credited at once");
-        assertApproxEqRel(IERC20(USDC).balanceOf(alice) - before, buffered, 0.01e18, "alice was paid in USDC");
-        assertEq(token.committedDividends(USDC), token.dividendsOwed(), "what is still owed is committed");
+        assertApproxEqRel(IERC20(AAPL).balanceOf(alice) - before, buffered, 0.01e18, "alice was paid in AAPL");
+        assertEq(token.committedDividends(AAPL), token.dividendsOwed(), "what is still owed is committed");
     }
 
     function test_quoteDividends_passthroughOpensToAnyoneOnceStale() public {
-        RealmTaxableTokenUniV4 token = _earningToken(USDC, _v4Route(USDC), new bytes[](0));
+        RealmTaxableTokenUniV4 token = _earningToken(AAPL, _v4Route(AAPL), new bytes[](0));
         vm.prank(stranger);
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
-        token.processDividends(0, USDC, 0, _one(alice));
+        token.processDividends(0, AAPL, 0, _one(alice));
 
         vm.warp(block.timestamp + token.STALE_DIVIDEND_WINDOW());
         vm.prank(stranger);
-        token.processDividends(0, USDC, 0, _one(alice));
+        token.processDividends(0, AAPL, 0, _one(alice));
         assertEq(_pending(token), 0, "a stale passthrough is anyone's to trigger");
     }
 
     /// @dev The buffer is money holders are owed: `rescueTokens` sees none of it as stray.
     function test_quoteDividends_bufferIsOutOfTheOwnersReach() public {
-        RealmTaxableTokenUniV4 token = _earningToken(USDC, _v4Route(USDC), new bytes[](0));
-        uint256 held = IERC20(USDC).balanceOf(address(token));
+        RealmTaxableTokenUniV4 token = _earningToken(AAPL, _v4Route(AAPL), new bytes[](0));
+        uint256 held = IERC20(AAPL).balanceOf(address(token));
         vm.prank(creator);
-        token.rescueTokens(USDC);
-        assertEq(IERC20(USDC).balanceOf(address(token)), held, "nothing left the token");
+        token.rescueTokens(AAPL);
+        assertEq(IERC20(AAPL).balanceOf(address(token)), held, "nothing left the token");
     }
 
     /// @dev Payout in the token itself: a buy-back on the QUOTE's pool, capped at a quarter of the
@@ -299,8 +307,8 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         uint256 bag = IERC20(address(token)).balanceOf(alice);
 
         vm.expectEmit(true, false, false, true, address(token));
-        emit RealmTaxableTokenUniV4Base.DividendBuyBackInitiated(USDC, buffered / 4);
-        token.processDividends(0, USDC, 0, _one(alice));
+        emit RealmTaxableTokenUniV4Base.DividendBuyBackInitiated(AAPL, buffered / 4);
+        token.processDividends(0, AAPL, 0, _one(alice));
 
         assertGt(IERC20(address(token)).balanceOf(alice), bag, "alice was paid in the token");
         uint256 left = _pending(token);
@@ -311,86 +319,86 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         vm.roll(block.number + 1);
         vm.prank(stranger);
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
-        token.processDividends(0, USDC, 0, _one(alice));
+        token.processDividends(0, AAPL, 0, _one(alice));
     }
 
-    /// @dev Payout in native from a USDC pool: the registry walks USDC's route backwards. The keeper's
+    /// @dev Payout in native from a AAPL pool: the registry walks AAPL's route backwards. The keeper's
     ///      cut comes out of that native, as it does on every registry conversion.
     function test_quoteDividends_nativePayoutFromAnErc20Quote() public {
         address keeperWallet = makeAddr("keeperWallet");
         vm.prank(admin);
         dividendSwapRegistry.setKeeperFunding(keeperWallet);
-        RealmTaxableTokenUniV4 token = _earningToken(address(0), "", _one(_v4Route(USDC)));
+        RealmTaxableTokenUniV4 token = _earningToken(address(0), "", _one(_v4Route(AAPL)));
 
         uint256 before = alice.balance;
-        token.processDividends(0, USDC, 0, _one(alice));
+        token.processDividends(0, AAPL, 0, _one(alice));
 
         assertGt(alice.balance - before, 0, "alice was paid in native");
         assertGt(keeperWallet.balance, 0, "the keeper was funded in native");
         assertGt(_pending(token), 0, "only a slice of the buffer was spent");
     }
 
-    /// @dev Payout in a third asset from a USDC pool: USDC -> ETH on V4, ETH -> DAI on the V2 pair.
+    /// @dev Payout in a third asset from a AAPL pool: AAPL -> ETH on V4, ETH -> MSFT on the V2 pair.
     function test_quoteDividends_thirdAssetFromAnErc20Quote() public {
-        RealmTaxableTokenUniV4 token = _earningToken(DAI, "", _one(_v4Route(USDC)));
-        uint256 before = IERC20(DAI).balanceOf(alice);
-        token.processDividends(0, USDC, 0, _one(alice));
-        assertGt(IERC20(DAI).balanceOf(alice) - before, 0, "alice was paid in DAI");
-        assertEq(token.committedDividends(DAI), token.dividendsOwed(), "the DAI still owed is committed");
+        RealmTaxableTokenUniV4 token = _earningToken(MSFT, "", _one(_v4Route(AAPL)));
+        uint256 before = IERC20(MSFT).balanceOf(alice);
+        token.processDividends(0, AAPL, 0, _one(alice));
+        assertGt(IERC20(MSFT).balanceOf(alice) - before, 0, "alice was paid in MSFT");
+        assertEq(token.committedDividends(MSFT), token.dividendsOwed(), "the MSFT still owed is committed");
     }
 
     /// @dev A quote that is itself the payout asset needs no second route; its own is walked backwards
-    ///      when a SIBLING asset has to leave it. Here USDC pays half in USDC and half in DAI.
+    ///      when a SIBLING asset has to leave it. Here AAPL pays half in AAPL and half in MSFT.
     function test_quoteDividends_quoteRouteReusedWhenTheQuoteIsAPayoutAsset() public {
         uint16[] memory weights = new uint16[](2);
         weights[0] = 5_000;
         weights[1] = 5_000;
         address[] memory assets = new address[](2);
-        assets[0] = USDC;
-        assets[1] = DAI;
+        assets[0] = AAPL;
+        assets[1] = MSFT;
         bytes[] memory routes = new bytes[](1);
-        routes[0] = _v4Route(USDC);
-        TaxConfigsWithDirectAllocation memory cfg = _cfg(USDC, _v4Route(USDC), new bytes[](0));
+        routes[0] = _v4Route(AAPL);
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(AAPL, _v4Route(AAPL), new bytes[](0));
         cfg.earningsAllocation.dividendTokens = assets;
         cfg.earningsAllocation.dividendWeightsBps = weights;
         cfg.earningsAllocation.dividendRoutes = routes;
-        RealmTaxableTokenUniV4 token = _launch(_usdcPair(), cfg);
-        _buyAndSettle(address(token), 10_000e6);
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), cfg);
+        _buyAndSettle(address(token), 10_000e18);
 
-        uint128[3] memory pending = token.quoteDividendPending(USDC);
-        assertGt(pending[0], 0, "USDC leg buffered");
+        uint128[3] memory pending = token.quoteDividendPending(AAPL);
+        assertGt(pending[0], 0, "AAPL leg buffered");
         assertApproxEqAbs(uint256(pending[0]), uint256(pending[1]), 1, "split evenly");
 
-        uint256 dai = IERC20(DAI).balanceOf(alice);
-        token.processDividends(1, USDC, 0, _one(alice));
-        assertGt(IERC20(DAI).balanceOf(alice) - dai, 0, "the DAI leg left USDC through USDC's own route");
+        uint256 dai = IERC20(MSFT).balanceOf(alice);
+        token.processDividends(1, AAPL, 0, _one(alice));
+        assertGt(IERC20(MSFT).balanceOf(alice) - dai, 0, "the MSFT leg left AAPL through AAPL's own route");
     }
 
-    /// @dev Two pools, one payout: the native pool's slice takes the shared machine, the USDC pool's the
-    ///      quote path, and both pay USDC.
+    /// @dev Two pools, one payout: the native pool's slice takes the shared machine, the AAPL pool's the
+    ///      quote path, and both pay AAPL.
     function test_quoteDividends_mixedPairsBothPayTheSameAsset() public {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
         pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 5_000});
-        RealmTaxableTokenUniV4 token = _launch(pairs, _cfg(USDC, _v4Route(USDC), new bytes[](0)));
-        _buyAndSettle(address(token), 10_000e6);
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: AAPL, weightBps: 5_000});
+        RealmTaxableTokenUniV4 token = _launch(pairs, _cfg(AAPL, _v4Route(AAPL), new bytes[](0)));
+        _buyAndSettle(address(token), 10_000e18);
         vm.deal(address(this), 2 ether);
         token.accrueFees{value: 2 ether}();
 
-        uint256 before = IERC20(USDC).balanceOf(alice);
-        token.processDividends(0, USDC, 0, _one(alice));
-        uint256 fromUsdcPool = IERC20(USDC).balanceOf(alice) - before;
-        assertGt(fromUsdcPool, 0, "the USDC pool's slice paid as-is");
+        uint256 before = IERC20(AAPL).balanceOf(alice);
+        token.processDividends(0, AAPL, 0, _one(alice));
+        uint256 fromUsdcPool = IERC20(AAPL).balanceOf(alice) - before;
+        assertGt(fromUsdcPool, 0, "the AAPL pool's slice paid as-is");
 
         vm.roll(block.number + 1);
         token.processDividends(0, address(0), 0, _one(alice));
-        assertGt(IERC20(USDC).balanceOf(alice) - before, fromUsdcPool, "the native pool's slice was converted to USDC");
+        assertGt(IERC20(AAPL).balanceOf(alice) - before, fromUsdcPool, "the native pool's slice was converted to AAPL");
     }
 
     function test_quoteDividends_unknownQuoteReverts() public {
-        RealmTaxableTokenUniV4 token = _earningToken(USDC, _v4Route(USDC), new bytes[](0));
+        RealmTaxableTokenUniV4 token = _earningToken(AAPL, _v4Route(AAPL), new bytes[](0));
         vm.expectRevert(RealmToken.UnknownQuote.selector);
-        token.processDividends(0, DAI, 0, _one(alice));
+        token.processDividends(0, MSFT, 0, _one(alice));
     }
 
     /////////////////////////// CONVERSION FAILURES ///////////////////////////
@@ -403,24 +411,24 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         assertGt(buffered, 0, "a buffer to convert");
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        token.processDividends(0, USDC, type(uint128).max, new address[](0));
+        token.processDividends(0, AAPL, type(uint128).max, new address[](0));
         assertEq(_pending(token), buffered, "a refused conversion leaves the buffer untouched");
 
-        token.processDividends(0, USDC, type(uint128).max, _one(alice));
+        token.processDividends(0, AAPL, type(uint128).max, _one(alice));
         assertEq(_pending(token), buffered, "a push call swallows the failure and keeps the buffer whole");
 
-        token.processDividends(0, USDC, 0, new address[](0));
+        token.processDividends(0, AAPL, 0, new address[](0));
         assertLt(_pending(token), buffered, "the failure claimed no cooldown: a sane floor converts this block");
     }
 
     /// @dev The registry's reverse leg misses the floor on the way to native.
     function test_quoteDividends_unreachableFloorOnANativePayoutKeepsTheBuffer() public {
-        _assertUnreachableFloorKeepsTheBuffer(_earningToken(address(0), "", _one(_v4Route(USDC))));
+        _assertUnreachableFloorKeepsTheBuffer(_earningToken(address(0), "", _one(_v4Route(AAPL))));
     }
 
     /// @dev The registry's forward leg misses the floor after the reverse one already swapped.
     function test_quoteDividends_unreachableFloorOnAThirdAssetPayoutKeepsTheBuffer() public {
-        _assertUnreachableFloorKeepsTheBuffer(_earningToken(DAI, "", _one(_v4Route(USDC))));
+        _assertUnreachableFloorKeepsTheBuffer(_earningToken(MSFT, "", _one(_v4Route(AAPL))));
     }
 
     /// @dev The buy-back on the quote's own pool misses the floor.
@@ -428,7 +436,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         _assertUnreachableFloorKeepsTheBuffer(_earningToken(realmTaxToken.DIVIDEND_SELF_TOKEN(), "", new bytes[](0)));
     }
 
-    /// @dev A self-token token with a USDC buffer whose next buy-back the pool only half-fills. Returns
+    /// @dev A self-token token with a AAPL buffer whose next buy-back the pool only half-fills. Returns
     ///      the buffer before that call and the quarter of it the call attempts to spend.
     function _halfFilledSelfTokenBuyBack()
         internal
@@ -439,17 +447,17 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         spend = buffered * 2_500 / 10_000;
         address router = token.UNIV4_UNIVERSAL_ROUTER();
         deal(address(token), router, 1e18);
-        vm.etch(router, address(new HalfFillQuoteBuyBackRouterStub(address(token), USDC, token.PERMIT2())).code);
+        vm.etch(router, address(new HalfFillQuoteBuyBackRouterStub(address(token), AAPL, token.PERMIT2())).code);
     }
 
     /// @dev Whatever the pool did not take goes back on the dividend buffer, not into the stray pool.
     function test_quoteDividends_partialFillReturnsTheUnspentQuoteToTheBuffer() public {
         (RealmTaxableTokenUniV4 token, uint256 buffered, uint256 spend) = _halfFilledSelfTokenBuyBack();
-        token.processDividends(0, USDC, 0, new address[](0));
+        token.processDividends(0, AAPL, 0, new address[](0));
 
         assertEq(_pending(token), buffered - spend / 2, "only the half the pool took left the buffer");
         assertEq(token.dividendsOwed(), 1e18, "what the pool delivered was credited");
-        assertEq(IERC20(USDC).balanceOf(address(token)), _pending(token), "the unspent half is backed and earmarked");
+        assertEq(IERC20(AAPL).balanceOf(address(token)), _pending(token), "the unspent half is backed and earmarked");
     }
 
     /// @dev `DividendsFunded.amountIn` is what the conversion CONSUMED: on a partial fill, the half that went
@@ -457,70 +465,70 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     function test_quoteDividends_partialFillEventReportsWhatWasConsumed() public {
         (RealmTaxableTokenUniV4 token,, uint256 spend) = _halfFilledSelfTokenBuyBack();
         vm.expectEmit(true, true, false, true, address(token));
-        emit DividendDistribution.DividendsFunded(USDC, address(token), spend / 2, 1e18);
-        token.processDividends(0, USDC, 0, new address[](0));
+        emit DividendDistribution.DividendsFunded(AAPL, address(token), spend / 2, 1e18);
+        token.processDividends(0, AAPL, 0, new address[](0));
     }
 
     /////////////////////////// RESCUE VS COMMITTED QUOTE DIVIDENDS ///////////////////////////
 
-    /// @dev USDC is both the quote and the payout. After a push that paid only alice, bob's share is
-    ///      still owed in USDC and a fresh buffer sits on top: `rescueTokens` takes the stray above both
+    /// @dev AAPL is both the quote and the payout. After a push that paid only alice, bob's share is
+    ///      still owed in AAPL and a fresh buffer sits on top: `rescueTokens` takes the stray above both
     ///      and nothing else.
     function test_quoteDividends_rescueTakesOnlyTheStrayAboveBuffersAndCommittedDividends() public {
-        RealmTaxableTokenUniV4 token = _launch(_usdcPair(), _cfg(USDC, _v4Route(USDC), new bytes[](0)));
-        _buyAndSettle(address(token), 10_000e6);
-        deal(USDC, bob, 10_000e6);
-        _swapQuotePool(bob, address(token), USDC, true, 10_000e6);
-        token.processDividends(0, USDC, 0, _one(alice));
-        uint256 committed = token.committedDividends(USDC);
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), _cfg(AAPL, _v4Route(AAPL), new bytes[](0)));
+        _buyAndSettle(address(token), 10_000e18);
+        deal(AAPL, bob, 10_000e18);
+        _swapQuotePool(bob, address(token), AAPL, true, 10_000e18);
+        token.processDividends(0, AAPL, 0, _one(alice));
+        uint256 committed = token.committedDividends(AAPL);
         assertGt(committed, 0, "bob's share is still owed after a push that skipped him");
 
-        _buyAndSettle(address(token), 1_000e6);
+        _buyAndSettle(address(token), 1_000e18);
         uint256 buffered = _pending(token);
         assertGt(buffered, 0, "and a fresh buffer sits on top");
 
-        uint256 stray = 777e6;
-        deal(USDC, address(token), IERC20(USDC).balanceOf(address(token)) + stray);
-        uint256 before = IERC20(USDC).balanceOf(creator);
+        uint256 stray = 777e18;
+        deal(AAPL, address(token), IERC20(AAPL).balanceOf(address(token)) + stray);
+        uint256 before = IERC20(AAPL).balanceOf(creator);
         vm.prank(creator);
-        token.rescueTokens(USDC);
+        token.rescueTokens(AAPL);
 
-        assertEq(IERC20(USDC).balanceOf(creator) - before, stray, "only the stray left");
-        assertEq(IERC20(USDC).balanceOf(address(token)), committed + buffered, "owed dividends and the buffer stayed");
+        assertEq(IERC20(AAPL).balanceOf(creator) - before, stray, "only the stray left");
+        assertEq(IERC20(AAPL).balanceOf(address(token)), committed + buffered, "owed dividends and the buffer stayed");
 
         address[] memory holders = new address[](2);
         holders[0] = alice;
         holders[1] = bob;
-        uint256 bobBefore = IERC20(USDC).balanceOf(bob);
-        token.processDividends(0, USDC, 0, holders);
-        assertGt(IERC20(USDC).balanceOf(bob) - bobBefore, 0, "bob is still paid after the rescue");
+        uint256 bobBefore = IERC20(AAPL).balanceOf(bob);
+        token.processDividends(0, AAPL, 0, holders);
+        assertGt(IERC20(AAPL).balanceOf(bob) - bobBefore, 0, "bob is still paid after the rescue");
     }
 
     /////////////////////////// POSITIONAL QUOTE ROUTES ///////////////////////////
 
-    /// @dev The native/DAI V4 pool live at the fork block: 0.3%, spacing 60, hookless.
+    /// @dev The native/MSFT V4 pool live at the fork block: 0.3%, spacing 60, hookless.
     function _daiRoute() internal pure returns (bytes memory) {
         Hop[] memory hops = new Hop[](1);
-        hops[0] = Hop({currency: DAI, fee: 3_000, tickSpacing: 60, hooks: address(0)});
+        hops[0] = Hop({currency: MSFT, fee: 3_000, tickSpacing: 60, hooks: address(0)});
         return DividendRouteLib.encodeV4(hops);
     }
 
-    /// @dev `quoteRoutes` is per PAIR; the token takes it per ERC20 QUOTE. A native pair ahead of USDC
-    ///      moves USDC's route from pair slot 1 to quote slot 0, and the DAI leg converts through it.
+    /// @dev `quoteRoutes` is per PAIR; the token takes it per ERC20 QUOTE. A native pair ahead of AAPL
+    ///      moves AAPL's route from pair slot 1 to quote slot 0, and the MSFT leg converts through it.
     function test_quoteRoutes_nativePairFirstShiftsTheErc20RouteIntoPlace() public {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
         pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 5_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: AAPL, weightBps: 5_000});
         bytes[] memory quoteRoutes = new bytes[](2);
-        quoteRoutes[1] = _v4Route(USDC);
+        quoteRoutes[1] = _v4Route(AAPL);
 
-        RealmTaxableTokenUniV4 token = _launch(pairs, _cfg(DAI, "", quoteRoutes));
-        assertEq(dividendSwapRegistry.routeOf(address(token), USDC), _v4Route(USDC), "USDC registered its own route");
+        RealmTaxableTokenUniV4 token = _launch(pairs, _cfg(MSFT, "", quoteRoutes));
+        assertEq(dividendSwapRegistry.routeOf(address(token), AAPL), _v4Route(AAPL), "AAPL registered its own route");
 
-        _buyAndSettle(address(token), 10_000e6);
-        uint256 before = IERC20(DAI).balanceOf(alice);
-        token.processDividends(0, USDC, 0, _one(alice));
-        assertGt(IERC20(DAI).balanceOf(alice) - before, 0, "the DAI leg left USDC through that route");
+        _buyAndSettle(address(token), 10_000e18);
+        uint256 before = IERC20(MSFT).balanceOf(alice);
+        token.processDividends(0, AAPL, 0, _one(alice));
+        assertGt(IERC20(MSFT).balanceOf(alice) - before, 0, "the MSFT leg left AAPL through that route");
     }
 
     /// @dev Three pairs, two of them ERC20: each quote registers the route in its own slot and converts
@@ -528,49 +536,49 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     function test_quoteRoutes_twoErc20QuotesEachConvertThroughTheirOwnRoute() public {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](3);
         pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 4_000});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 3_000});
-        // 1e-8 DAI per coin: a 10 DAI opening market cap, inside the launch bounds.
-        pairs[2] = RealmFactoryUniV4Direct.DirectPair({quote: DAI, weightBps: 3_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: AAPL, weightBps: 3_000});
+        // 1e-8 MSFT per coin: a 10 MSFT opening market cap, inside the launch bounds.
+        pairs[2] = RealmFactoryUniV4Direct.DirectPair({quote: MSFT, weightBps: 3_000});
         bytes[] memory quoteRoutes = new bytes[](3);
-        quoteRoutes[1] = _v4Route(USDC);
+        quoteRoutes[1] = _v4Route(AAPL);
         quoteRoutes[2] = _daiRoute();
 
         RealmTaxableTokenUniV4 token = _launch(pairs, _cfg(address(0), "", quoteRoutes));
-        assertEq(dividendSwapRegistry.routeOf(address(token), USDC), _v4Route(USDC), "USDC's route");
-        assertEq(dividendSwapRegistry.routeOf(address(token), DAI), _daiRoute(), "DAI's route");
+        assertEq(dividendSwapRegistry.routeOf(address(token), AAPL), _v4Route(AAPL), "AAPL's route");
+        assertEq(dividendSwapRegistry.routeOf(address(token), MSFT), _daiRoute(), "MSFT's route");
 
-        _buyAndSettle(address(token), 10_000e6);
-        deal(DAI, alice, 1_000e18);
-        _swapQuotePool(alice, address(token), DAI, true, 1_000e18);
-        anyPairHook.settleFees(address(token), DAI);
-        uint256 usdcBuffered = token.quoteDividendPending(USDC)[0];
-        uint256 daiBuffered = token.quoteDividendPending(DAI)[0];
-        assertGt(daiBuffered, 0, "the DAI pool's slice arrived in DAI");
+        _buyAndSettle(address(token), 10_000e18);
+        deal(MSFT, alice, 1_000e18);
+        _swapQuotePool(alice, address(token), MSFT, true, 1_000e18);
+        anyPairHook.settleFees(address(token), MSFT);
+        uint256 usdcBuffered = token.quoteDividendPending(AAPL)[0];
+        uint256 daiBuffered = token.quoteDividendPending(MSFT)[0];
+        assertGt(daiBuffered, 0, "the MSFT pool's slice arrived in MSFT");
 
         uint256 before = alice.balance;
-        token.processDividends(0, USDC, 0, _one(alice));
+        token.processDividends(0, AAPL, 0, _one(alice));
         uint256 fromUsdc = alice.balance - before;
-        assertGt(fromUsdc, 0, "the USDC buffer paid native");
-        assertLt(token.quoteDividendPending(USDC)[0], usdcBuffered, "out of the USDC buffer");
+        assertGt(fromUsdc, 0, "the AAPL buffer paid native");
+        assertLt(token.quoteDividendPending(AAPL)[0], usdcBuffered, "out of the AAPL buffer");
 
         vm.roll(block.number + 1);
-        token.processDividends(0, DAI, 0, _one(alice));
-        assertGt(alice.balance - before, fromUsdc, "the DAI buffer paid native too");
-        assertLt(token.quoteDividendPending(DAI)[0], daiBuffered, "out of the DAI buffer");
+        token.processDividends(0, MSFT, 0, _one(alice));
+        assertGt(alice.balance - before, fromUsdc, "the MSFT buffer paid native too");
+        assertLt(token.quoteDividendPending(MSFT)[0], daiBuffered, "out of the MSFT buffer");
     }
 
     /// @dev A quote that is itself a payout is checked against the route it registered AS A PAYOUT, not
-    ///      the one passed for it as a quote: USDC paid through its V2 pair cannot be walked backwards for
-    ///      the DAI leg, whatever V4 route the creator also supplies.
+    ///      the one passed for it as a quote: AAPL paid through its V2 pair cannot be walked backwards for
+    ///      the MSFT leg, whatever V4 route the creator also supplies.
     function test_quoteRoutes_refusesAPayoutQuoteWhoseOwnRouteIsNotV4() public {
         address[] memory assets = new address[](2);
-        assets[0] = USDC;
-        assets[1] = DAI;
+        assets[0] = AAPL;
+        assets[1] = MSFT;
         uint16[] memory weights = new uint16[](2);
         weights[0] = 5_000;
         weights[1] = 5_000;
-        // No quote route passed for USDC: one given for a payout quote is refused on its own (see below).
-        TaxConfigsWithDirectAllocation memory cfg = _cfg(USDC, "", new bytes[](0));
+        // No quote route passed for AAPL: one given for a payout quote is refused on its own (see below).
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(AAPL, "", new bytes[](0));
         cfg.earningsAllocation.dividendTokens = assets;
         cfg.earningsAllocation.dividendWeightsBps = weights;
         cfg.earningsAllocation.dividendRoutes = new bytes[](2);
@@ -579,7 +587,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         vm.expectRevert(RealmTaxableTokenUniV4Base.QuoteRouteUnsupported.selector);
         directFactory.createToken(
             _setup(true),
-            _usdcPair(),
+            _aaplPair(),
             cfg,
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -588,27 +596,27 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         );
     }
 
-    /// @dev A route the token would never register is refused, not silently dropped: USDC is a payout
-    ///      here, so the DAI leg converts out of USDC through USDC's PAYOUT route, and a quote route for it
+    /// @dev A route the token would never register is refused, not silently dropped: AAPL is a payout
+    ///      here, so the MSFT leg converts out of AAPL through AAPL's PAYOUT route, and a quote route for it
     ///      would be ignored.
     function test_quoteRoutes_refusesARouteForAPayoutQuote() public {
         address[] memory assets = new address[](2);
-        assets[0] = USDC;
-        assets[1] = DAI;
+        assets[0] = AAPL;
+        assets[1] = MSFT;
         uint16[] memory weights = new uint16[](2);
         weights[0] = 5_000;
         weights[1] = 5_000;
-        TaxConfigsWithDirectAllocation memory cfg = _cfg(USDC, "", _one(_v4Route(USDC)));
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(AAPL, "", _one(_v4Route(AAPL)));
         cfg.earningsAllocation.dividendTokens = assets;
         cfg.earningsAllocation.dividendWeightsBps = weights;
         cfg.earningsAllocation.dividendRoutes = new bytes[](2);
-        cfg.earningsAllocation.dividendRoutes[0] = _v4Route(USDC);
+        cfg.earningsAllocation.dividendRoutes[0] = _v4Route(AAPL);
 
         vm.prank(creator);
         vm.expectRevert(RealmTaxableTokenUniV4Base.QuoteRouteUnsupported.selector);
         directFactory.createToken(
             _setup(true),
-            _usdcPair(),
+            _aaplPair(),
             cfg,
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -624,20 +632,20 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     function test_quoteDividends_cooldownIsSharedAcrossQuotes() public {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
         pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 5_000});
-        RealmTaxableTokenUniV4 token = _launch(pairs, _cfg(USDC, _v4Route(USDC), new bytes[](0)));
-        _buyAndSettle(address(token), 10_000e6);
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: AAPL, weightBps: 5_000});
+        RealmTaxableTokenUniV4 token = _launch(pairs, _cfg(AAPL, _v4Route(AAPL), new bytes[](0)));
+        _buyAndSettle(address(token), 10_000e18);
         vm.deal(address(this), 2 ether);
         token.accrueFees{value: 2 ether}();
         uint256 buffered = _pending(token);
 
         token.processDividends(0, address(0), 0, new address[](0));
         vm.expectRevert(DividendDistribution.DividendProcessCooldown.selector);
-        token.processDividends(0, USDC, 0, new address[](0));
-        assertEq(_pending(token), buffered, "the native conversion locked the USDC buffer for the block");
+        token.processDividends(0, AAPL, 0, new address[](0));
+        assertEq(_pending(token), buffered, "the native conversion locked the AAPL buffer for the block");
 
         vm.roll(block.number + 1);
-        token.processDividends(0, USDC, 0, new address[](0));
+        token.processDividends(0, AAPL, 0, new address[](0));
         assertEq(_pending(token), 0, "the next block converts it");
         vm.expectRevert(DividendDistribution.DividendProcessCooldown.selector);
         token.processDividends(0, address(0), 0, new address[](0));
@@ -645,16 +653,16 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
 
     /// @dev An empty quote buffer means "wait for earnings", not "the swap is broken".
     function test_quoteDividends_emptyBufferRevertsBelowThreshold() public {
-        RealmTaxableTokenUniV4 token = _launch(_usdcPair(), _cfg(USDC, _v4Route(USDC), new bytes[](0)));
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), _cfg(AAPL, _v4Route(AAPL), new bytes[](0)));
         assertEq(_pending(token), 0, "nothing traded yet");
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
-        token.processDividends(0, USDC, 0, new address[](0));
+        token.processDividends(0, AAPL, 0, new address[](0));
     }
 
     function test_quoteDividends_assetIndexPastTheSetReverts() public {
-        RealmTaxableTokenUniV4 token = _earningToken(USDC, _v4Route(USDC), new bytes[](0));
+        RealmTaxableTokenUniV4 token = _earningToken(AAPL, _v4Route(AAPL), new bytes[](0));
         vm.expectRevert(DividendDistribution.DividendAssetOutOfRange.selector);
-        token.processDividends(1, USDC, 0, _one(alice));
+        token.processDividends(1, AAPL, 0, _one(alice));
     }
 
     /// @dev The registry is a proxy at a constant address the token was compiled against; if it ever had
@@ -662,14 +670,14 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     ///      that as "not converted" and leave the debited buffer whole, exactly as the native path does —
     ///      otherwise holders' pending balance is written off with no revert, no payout and no re-earmark.
     function test_quoteDividends_codelessRegistryFailsClosed() public {
-        RealmTaxableTokenUniV4 token = _earningToken(DAI, "", _one(_v4Route(USDC)));
+        RealmTaxableTokenUniV4 token = _earningToken(MSFT, "", _one(_v4Route(AAPL)));
         uint256 buffered = _pending(token);
         assertGt(buffered, 0, "a buffer to convert");
 
         vm.etch(token.DIVIDEND_SWAP_REGISTRY(), "");
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        token.processDividends(0, USDC, 0, new address[](0));
+        token.processDividends(0, AAPL, 0, new address[](0));
         assertEq(_pending(token), buffered, "the debited slice was re-earmarked, not written off");
         assertEq(token.dividendsOwed(), 0, "and nothing was credited to holders");
     }
@@ -677,17 +685,17 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     /// @dev One route per payout asset; a longer array is a caller mistake, not silently trailing data —
     ///      it almost certainly means the routes and the assets are misaligned.
     function test_multiAsset_routesLongerThanAssetsIsRejected() public {
-        TaxConfigsWithDirectAllocation memory cfg = _cfg(USDC, _v4Route(USDC), new bytes[](0));
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(AAPL, _v4Route(AAPL), new bytes[](0));
         bytes[] memory routes = new bytes[](2);
-        routes[0] = _v4Route(USDC);
-        routes[1] = _v4Route(USDC);
+        routes[0] = _v4Route(AAPL);
+        routes[1] = _v4Route(AAPL);
         cfg.earningsAllocation.dividendRoutes = routes;
 
         vm.prank(creator);
         vm.expectRevert(DividendDistribution.InvalidDividendAssetSet.selector);
         directFactory.createToken(
             _setup(true),
-            _usdcPair(),
+            _aaplPair(),
             cfg,
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -701,12 +709,12 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     /// @dev A direct token has no launchpad, so its owner is its only admin: a stranger and the protocol
     ///      admin who owns the curve venue's launchpad both get `NotTokenOwner`, not an empty revert.
     function test_directToken_onlyItsOwnerMayRescueOrLowerTheTax() public {
-        RealmTaxableTokenUniV4 token = _launch(_usdcPair(), _cfg(USDC, _v4Route(USDC), new bytes[](0)));
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), _cfg(AAPL, _v4Route(AAPL), new bytes[](0)));
         address[2] memory callers = [stranger, admin];
         for (uint256 i; i < callers.length; ++i) {
             vm.prank(callers[i]);
             vm.expectRevert(RealmTaxableToken.NotTokenOwner.selector);
-            token.rescueTokens(USDC);
+            token.rescueTokens(AAPL);
 
             vm.prank(callers[i]);
             vm.expectRevert(RealmTaxableToken.NotTokenOwner.selector);
@@ -722,7 +730,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
 
     /// @dev A burn-only allocation (no dividends share) with `quoteRoutes` positional to the pairs.
     function _burnOnlyCfg(bytes[] memory quoteRoutes) internal pure returns (TaxConfigsWithDirectAllocation memory c) {
-        c = _cfg(USDC, "", quoteRoutes);
+        c = _cfg(AAPL, "", quoteRoutes);
         c.earningsAllocation.burnBps = 5_000;
         c.earningsAllocation.dividendsBps = 0;
         c.earningsAllocation.dividendTokens = new address[](0);
@@ -734,32 +742,32 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     ///      share would be dropped silently; refused instead, like every other unsupported input.
     function test_directAlloc_rejectsQuoteRoutesWithoutADividendsShare() public {
         RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(true);
-        TaxConfigsWithDirectAllocation memory cfg = _burnOnlyCfg(_one(_v4Route(USDC)));
+        TaxConfigsWithDirectAllocation memory cfg = _burnOnlyCfg(_one(_v4Route(AAPL)));
         vm.prank(creator);
         vm.expectRevert(RealmFactoryUniV4Direct.InvalidQuoteRoutes.selector);
         directFactory.createToken(
-            setup, _usdcPair(), cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), _noDevBuy(), address(0)
+            setup, _aaplPair(), cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), _noDevBuy(), address(0)
         );
     }
 
     /// @dev A burn slice past `uint128` reverts rather than being truncated into stray balance.
     function test_quoteBurnBuffer_overflowRevertsInsteadOfTruncating() public {
-        RealmTaxableTokenUniV4 token = _launch(_usdcPair(), _burnOnlyCfg(new bytes[](0)));
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), _burnOnlyCfg(new bytes[](0)));
         uint256 amount = 2 * uint256(type(uint128).max) + 4; // half of it is 2^128 + 1
-        deal(USDC, stranger, amount);
+        deal(AAPL, stranger, amount);
         vm.startPrank(stranger);
-        IERC20(USDC).approve(address(token), amount);
+        IERC20(AAPL).approve(address(token), amount);
         vm.expectRevert(DividendDistribution.DividendBufferOverflow.selector);
-        token.accrueFees(USDC, amount);
+        token.accrueFees(AAPL, amount);
         vm.stopPrank();
     }
 
     /// @dev A registry conversion that fails leaves no standing allowance to the (upgradeable) registry.
     function test_quoteDividends_failedConversionClearsTheRegistryAllowance() public {
-        RealmTaxableTokenUniV4 token = _earningToken(DAI, "", _one(_v4Route(USDC)));
+        RealmTaxableTokenUniV4 token = _earningToken(MSFT, "", _one(_v4Route(AAPL)));
         assertGt(_pending(token), 0, "a buffer to convert");
-        token.processDividends(0, USDC, type(uint128).max, _one(alice));
+        token.processDividends(0, AAPL, type(uint128).max, _one(alice));
         assertGt(_pending(token), 0, "the conversion failed and kept the buffer");
-        assertEq(IERC20(USDC).allowance(address(token), address(dividendSwapRegistry)), 0, "no allowance left");
+        assertEq(IERC20(AAPL).allowance(address(token), address(dividendSwapRegistry)), 0, "no allowance left");
     }
 }

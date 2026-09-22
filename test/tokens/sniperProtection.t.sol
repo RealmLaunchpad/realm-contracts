@@ -12,7 +12,7 @@ import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet} from "src/config/DeploymentAddresses.sol";
 
 /// @dev Minimal graduator mock — returns a caller-chosen `pair` address from `initialize()`
 ///      and lets the test drive `markGraduated` on the token.
@@ -717,12 +717,12 @@ contract RealmTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
     RealmTaxableTokenUniV4 internal impl;
 
     function setUp() public {
-        vm.chainId(DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID);
+        vm.chainId(DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID);
 
         launchpadMock = new MockLaunchpad();
         launchpad = address(launchpadMock);
 
-        graduator = new MockGraduator(DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER);
+        graduator = new MockGraduator(DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER);
         impl =
             new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
         token = RealmTaxableTokenUniV4(payable(Clones.clone(address(impl))));

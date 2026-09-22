@@ -682,7 +682,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
     /////////////////////////// dev-buy zap: native -> quote ///////////////////////////
 
-    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
 
     /// @dev Lists `asset` from `key` as a real approver would, then pins the rate to `QC_PER_ETH` so
     ///      `QC_LAUNCH_TICK` stays inside the launch bounds whatever the pool's spot.
@@ -696,9 +696,11 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         _whitelist(asset, QC_PER_ETH);
     }
 
-    /// @dev The real USDC/ETH 0.05% V4 pool.
-    function _usdcEthKey() internal pure returns (CorePoolKey memory) {
-        return CorePoolKey(Currency.wrap(address(0)), Currency.wrap(USDC), 500, 10, IHooks(address(0)));
+    /// @dev AAPL's real native V4 pool on Robinhood: hookless, static 0.8% fee. The one native pool
+    ///      among the chain's listable assets that is both hookless and actually holds liquidity at the
+    ///      pinned block, which `RealmAssetsWhitelist` requires of a price source.
+    function _aaplEthKey() internal pure returns (CorePoolKey memory) {
+        return CorePoolKey(Currency.wrap(address(0)), Currency.wrap(AAPL), 8_000, 80, IHooks(address(0)));
     }
 
     /// @dev A funded no-hook V4 pool of two ERC20s opened at tick 0.
@@ -763,23 +765,23 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     }
 
     function test_zap_nativeBuysOnAQuoteListedAgainstNative() public {
-        _listV4(USDC, _usdcEthKey());
-        address token = _zapLaunch(USDC, 0.1 ether, 1);
-        (uint256 quoteSpent, uint256 converted) = _zapLogs(_usdcEthKey());
+        _listV4(AAPL, _aaplEthKey());
+        address token = _zapLaunch(AAPL, 0.1 ether, 1);
+        (uint256 quoteSpent, uint256 converted) = _zapLogs(_aaplEthKey());
 
         assertGt(IERC20(token).balanceOf(alice), 0, "dev buy delivered nothing");
         assertGt(converted, 0, "no conversion");
         assertEq(quoteSpent, converted, "quoteSpent is the converted quote, not the native sent");
         assertEq(IERC20(token).balanceOf(address(directFactory)), 0, "factory keeps no tokens");
-        _assertNoLeftovers(USDC);
+        _assertNoLeftovers(AAPL);
     }
 
-    /// @dev Two hops: native -> USDC (the reference) -> QC, whose listing is against USDC.
+    /// @dev Two hops: native -> AAPL (the reference) -> QC, whose listing is against AAPL.
     function test_zap_nativeBuysThroughAReferenceListedQuote() public {
-        _listV4(USDC, _usdcEthKey());
-        CorePoolKey memory qcUsdc = _erc20Pool(address(quoteCoin), USDC);
+        _listV4(AAPL, _aaplEthKey());
+        CorePoolKey memory qcUsdc = _erc20Pool(address(quoteCoin), AAPL);
         _listV4(address(quoteCoin), qcUsdc);
-        assertEq(assetsWhitelist.referenceOf(address(quoteCoin)), USDC, "listed against the reference");
+        assertEq(assetsWhitelist.referenceOf(address(quoteCoin)), AAPL, "listed against the reference");
 
         address token = _zapLaunch(address(quoteCoin), 0.1 ether, 0);
         (uint256 quoteSpent, uint256 converted) = _zapLogs(qcUsdc);
@@ -788,15 +790,15 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         assertGt(converted, 0, "no conversion");
         assertEq(quoteSpent, converted, "quoteSpent is the last hop's output");
         _assertNoLeftovers(address(quoteCoin));
-        _assertNoLeftovers(USDC);
+        _assertNoLeftovers(AAPL);
     }
 
     function test_zap_floorAboveTheConversionReverts() public {
-        _listV4(USDC, _usdcEthKey());
+        _listV4(AAPL, _aaplEthKey());
         RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
         devBuy.minQuoteOut = 1e30;
         vm.deal(creator, 0.1 ether);
-        _expectCreateRevert(_pairs(USDC), devBuy, 0.1 ether, RealmDirectGraduatorUniV4.InsufficientQuoteOut.selector);
+        _expectCreateRevert(_pairs(AAPL), devBuy, 0.1 ether, RealmDirectGraduatorUniV4.InsufficientQuoteOut.selector);
     }
 
     /// @dev `source` stands in for QC's whitelist listing; QC itself is whitelisted by rate in `setUp`.

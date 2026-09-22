@@ -31,7 +31,18 @@ contract PartialFillRouterStub {
 }
 
 contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
-    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+    function setUp() public virtual override {
+        super.setUp();
+        // Robinhood's xStock/WETH V2 pairs hold ~0.005 ETH a side, under the default depth floor of
+        // 10x MAX_EARNINGS_PER_PROCESS. The floor is per-chain configurable; drop it so the V2 route
+        // is exercised rather than rejected as too shallow.
+        vm.prank(admin);
+        dividendSwapRegistry.setDefaultThreshold(0.001 ether);
+    }
+
+    /// @dev A second dividend asset reached over the empty (V2) route. Robinhood xStock, so the
+    ///      WETH pair it needs actually exists on this chain.
+    address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
 
     address internal holder2 = makeAddr("holder2");
 
@@ -138,7 +149,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function _nativeAndDaiToken() internal returns (RealmTaxableTokenUniV4 token) {
         address[] memory assets = new address[](2);
         assets[0] = address(0);
-        assets[1] = DAI;
+        assets[1] = MSFT;
         uint16[] memory weights = new uint16[](2);
         weights[0] = 2_000;
         weights[1] = 8_000;
@@ -161,9 +172,9 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         (,,,, address first,,,) = token.dividendAssets(0);
         (,,,, address second,,,) = token.dividendAssets(1);
         assertEq(first, address(0), "asset 0 is native");
-        assertEq(second, DAI, "asset 1 is DAI");
+        assertEq(second, MSFT, "asset 1 is MSFT");
         assertEq(token.dividendWeightsBps(0), 2_000, "20% to the native leg");
-        assertEq(token.dividendWeightsBps(1), 8_000, "80% to the DAI leg");
+        assertEq(token.dividendWeightsBps(1), 8_000, "80% to the MSFT leg");
     }
 
     /// @dev Graduation activates EVERY asset at once, so no leg silently misses the seconds between
@@ -195,7 +206,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         token.claimDividends();
 
         assertGt(buyer.balance, ethBefore, "the holder was paid in native");
-        assertGt(IERC20(DAI).balanceOf(buyer), 0, "and in DAI");
+        assertGt(IERC20(MSFT).balanceOf(buyer), 0, "and in MSFT");
     }
 
     /// @dev The undelivered pot of EVERY asset has to stay out of every sweep path. `_reservedNative`
@@ -226,15 +237,15 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         _accrue(token, 1 ether);
         token.processDividends(1, 0, _noHolders());
 
-        uint256 pot = IERC20(DAI).balanceOf(address(token));
-        assertGt(pot, 0, "precondition: a DAI pot exists");
-        assertEq(token.committedDividends(DAI), pot, "and all of it is owed to holders");
+        uint256 pot = IERC20(MSFT).balanceOf(address(token));
+        assertGt(pot, 0, "precondition: a MSFT pot exists");
+        assertEq(token.committedDividends(MSFT), pot, "and all of it is owed to holders");
 
         vm.prank(creator);
-        token.rescueTokens(DAI);
+        token.rescueTokens(MSFT);
 
-        assertEq(IERC20(DAI).balanceOf(address(token)), pot, "the pot is untouched");
-        assertEq(IERC20(DAI).balanceOf(creator), 0, "and the owner got nothing");
+        assertEq(IERC20(MSFT).balanceOf(address(token)), pot, "the pot is untouched");
+        assertEq(IERC20(MSFT).balanceOf(creator), 0, "and the owner got nothing");
     }
 
     ///////////////////////// the keeper gate /////////////////////////
@@ -340,12 +351,12 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_blacklistedThirdAssetRejected() public {
         // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
         vm.prank(admin);
-        dividendSwapRegistry.setBlacklisted(DAI, true);
+        dividendSwapRegistry.setBlacklisted(MSFT, true);
 
         vm.expectRevert(
             abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.Blacklisted)
         );
-        _createDividendToken(5_000, DAI);
+        _createDividendToken(5_000, MSFT);
     }
 
     ///////////////////////// activation and funding /////////////////////////
