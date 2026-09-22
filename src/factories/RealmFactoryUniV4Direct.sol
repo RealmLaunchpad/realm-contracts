@@ -120,22 +120,20 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     uint256 public constant LAUNCH_MARKET_CAP_X18 = 2.25 ether;
 
     /// @notice Lowest opening market cap any pair may launch at: 1 whole native coin (ETH), scaled by
-    ///         1e18, checked on the derived `LAUNCH_MARKET_CAP_X18` opening re-valued at the quote's
-    ///         `ASSETS_WHITELIST` SNAPSHOT rate. A live rate more than 2.25x below the listed one (1/2.25)
-    ///         refuses the launch.
-    /// @dev The two caps bound how far a live (or pushed) price pool can move the opening away from the
-    ///      listed price: within [1/2.25, 5/2.25] of the snapshot and no further. Ticks round to the
-    ///      nearest multiple of 200, so the realised opening carries ~±1% of slack on either edge.
+    ///         1e18, checked on the derived opening at the quote's LIVE `ASSETS_WHITELIST` rate, the same
+    ///         rate that prices the tick. A pushed price pool moves the opening in quote terms, not in
+    ///         native terms: accepted, not worth guarding against.
     /// @dev The seed is single-sided, so the opening market cap is the pool's virtual quote reserve: the
     ///      price 4x's after buys of about that much. A tiny one hands the dev buy most of the supply for
     ///      almost nothing. Native is ETH on every chain this venue deploys to; one with another native
     ///      needs its own.
     uint256 public constant MIN_LAUNCH_MARKET_CAP_X18 = 1 ether;
 
-    /// @notice Highest opening market cap any pair may launch at: 5 ETH, scaled by 1e18, checked like
-    ///         `MIN_LAUNCH_MARKET_CAP_X18`. A live rate more than ~2.22x above the listed one (5/2.25)
-    ///         refuses the launch.
-    uint256 public constant MAX_LAUNCH_MARKET_CAP_X18 = 5 ether;
+    /// @notice Highest opening market cap any pair may launch at: 250 ETH, scaled by 1e18, checked like
+    ///         `MIN_LAUNCH_MARKET_CAP_X18`.
+    /// @dev Harmless on-chain (nobody has to buy), but aggregators display it as a market cap from block
+    ///      zero, with no volume behind it.
+    uint256 public constant MAX_LAUNCH_MARKET_CAP_X18 = 250 ether;
 
     /// @notice The chain's wrapped native token, which a pair may NOT be quoted against. See
     ///         `_validateQuote`.
@@ -165,7 +163,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     error InvalidQuoteRoutes();
     /// @notice A pair's derived launch tick implies an opening market cap outside
     ///         [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] of native value at the quote's
-    ///         snapshot rate, i.e. its live rate has moved too far from the listed one.
+    ///         live rate.
     error LaunchPriceOutOfBounds();
 
     constructor(
@@ -560,10 +558,9 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///      so a quote that delivers less than it is sent makes fee settlement revert and strands that
     ///      token's fees in the hook. Not rejected here because it cannot usefully be: a transfer fee can
     ///      be switched on after launch, so a creation-time probe proves nothing.
-    function _validateQuote(address quote) internal view returns (uint8 dec, uint256 unitsPerNativeX18) {
+    function _validateQuote(address quote) internal view returns (uint8 dec) {
         require(quote.code.length > 0 && quote != WRAPPED_NATIVE, QuoteNotSupported());
-        unitsPerNativeX18 = ASSETS_WHITELIST.unitsPerNativeX18(quote);
-        require(unitsPerNativeX18 != 0, QuoteNotSupported());
+        require(ASSETS_WHITELIST.unitsPerNativeX18(quote) != 0, QuoteNotSupported());
         try IERC20Metadata(quote).decimals() returns (uint8 d) {
             dec = d;
         } catch {
@@ -575,18 +572,16 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     /// @dev The launch tick (QUOTE PER COIN) of a pair against `quote`: the tick whose price puts the
     ///      whole supply at `LAUNCH_MARKET_CAP_X18` of native value, at the quote's LIVE whitelist rate
     ///      (native: 18 decimals, one per native). A live pool read can be pushed within the transaction;
-    ///      accepted, and bounded by `_validateLaunchPrice` against the SNAPSHOT rate, so the opening
-    ///      market cap stays inside the launch bounds of the listed price whatever the pool says.
+    ///      accepted: the listed snapshot rate goes stale, so it bounds nothing here.
     function _launchTick(address quote) internal view returns (int24 tick, uint8 quoteDecimals) {
-        uint256 snapshotRate = 1e18;
         uint256 liveRate = 1e18;
         quoteDecimals = 18;
         if (quote != address(0)) {
-            (quoteDecimals, snapshotRate) = _validateQuote(quote);
+            quoteDecimals = _validateQuote(quote);
             liveRate = ASSETS_WHITELIST.liveUnitsPerNativeX18(quote);
         }
         tick = RealmLaunchPricing.tickForMarketCap(LAUNCH_MARKET_CAP_X18, liveRate, quoteDecimals);
-        _validateLaunchPrice(tick, quoteDecimals, snapshotRate);
+        _validateLaunchPrice(tick, quoteDecimals, liveRate);
     }
 
     /// @dev Bounds the opening market cap to [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] of
