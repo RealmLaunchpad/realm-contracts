@@ -3,14 +3,13 @@ pragma solidity 0.8.28;
 
 // Self-aliased so the `chain-arc-*` recipes can import-swap it for the ARC pool constants.
 import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
-import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 // The repo vendors TWO v4-core copies: lib/v4-core (used by all Realm contracts, incl.
-// `UniswapV4PoolConstants.realmPoolKey`) and v4-periphery's own pin (which types `IV4Router`).
+// `UniswapV4PoolConstants.realmPoolKey`) and v4-periphery's own pin (which types the router's params).
 // The structs are field-identical but nominally distinct, so the canonical key is converted at
 // this periphery boundary via an abi round-trip (see `_buyBackTokensWithEth`).
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
 
@@ -87,11 +86,12 @@ abstract contract RealmUniv4BuyBacks {
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
+            IV4RouterSwaps.ExactInputSingleParams({
                 poolKey: key,
                 zeroForOne: quoteIsC0, // quote -> token, whichever way the pair sorted
                 amountIn: uint128(amountIn),
                 amountOutMinimum: uint128(minTokensOut),
+                minHopPriceX36: 0,
                 hookData: bytes("")
             })
         );

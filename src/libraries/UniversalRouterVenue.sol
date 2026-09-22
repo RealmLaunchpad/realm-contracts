@@ -2,14 +2,13 @@
 pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
-// The universal router is v4-periphery's client, so its `PoolKey` pin is the one `IV4Router` types
+import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+// The universal router is v4-periphery's client, so its `PoolKey` pin is the one the router's params type
 // against — building the key from this import avoids the abi round-trip `RealmUniv4BuyBacks` needs for
 // the canonical `lib/v4-core` key it gets from `UniswapV4PoolConstants`.
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -106,11 +105,12 @@ library UniversalRouterVenue {
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
+            IV4RouterSwaps.ExactInputSingleParams({
                 poolKey: key,
                 zeroForOne: true, // native (currency0) -> asset (currency1)
                 amountIn: uint128(nativeIn),
                 amountOutMinimum: uint128(minOut),
+                minHopPriceX36: 0,
                 hookData: bytes("")
             })
         );
@@ -164,9 +164,10 @@ library UniversalRouterVenue {
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
-            IV4Router.ExactInputParams({
+            IV4RouterSwaps.ExactInputParams({
                 currencyIn: Currency.wrap(NATIVE),
                 path: path,
+                minHopPriceX36: new uint256[](path.length),
                 amountIn: uint128(nativeIn),
                 amountOutMinimum: uint128(minOut)
             })
@@ -210,19 +211,21 @@ library UniversalRouterVenue {
                 hooks: only.hooks
             });
             params[0] = abi.encode(
-                IV4Router.ExactInputSingleParams({
+                IV4RouterSwaps.ExactInputSingleParams({
                     poolKey: key,
                     zeroForOne: false,
                     amountIn: uint128(amountIn),
                     amountOutMinimum: uint128(minOut),
+                    minHopPriceX36: 0,
                     hookData: bytes("")
                 })
             );
         } else {
             params[0] = abi.encode(
-                IV4Router.ExactInputParams({
+                IV4RouterSwaps.ExactInputParams({
                     currencyIn: Currency.wrap(source),
                     path: path,
+                    minHopPriceX36: new uint256[](path.length),
                     amountIn: uint128(amountIn),
                     amountOutMinimum: uint128(minOut)
                 })
