@@ -530,8 +530,9 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
     /////////////////////////// launch price ///////////////////////////
     // Every pair opens at `LAUNCH_MARKET_CAP_X18` (2.25 ETH) of native value, an ERC20 quote converted at
-    // its LIVE whitelist rate. The [1, 250] ETH bounds are checked at the SNAPSHOT rate, so they cap how
-    // far the live rate may have drifted from the listed one: live / snapshot in ~[0.44, 111].
+    // its LIVE whitelist rate. The [1, 5] ETH bounds are checked at the SNAPSHOT rate, so they cap how
+    // far the live rate may have drifted from the listed one: live / snapshot in ~[0.44, 2.22]. Every
+    // case below keeps well clear of the ~1% the tick rounding can add or remove.
 
     function _outOfBounds() internal pure returns (bytes memory) {
         return abi.encodeWithSelector(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector);
@@ -568,26 +569,39 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     /// @dev The live rate may not stray below ~0.44x the snapshot (a < 1 ETH cap at the listed price)...
     function test_launchPrice_liveRateFarBelowTheSnapshotIsRejected() public {
         address quote = address(quoteCoin);
-        _mockLiveRate(quote, QC_PER_ETH * 46 / 100); // ~1.035 ETH at the snapshot rate
+        _mockLiveRate(quote, QC_PER_ETH / 2); // ~1.125 ETH at the snapshot rate
         _launchAt(quote, "");
-        _mockLiveRate(quote, QC_PER_ETH * 42 / 100); // ~0.945 ETH
+        _mockLiveRate(quote, QC_PER_ETH * 4 / 10); // ~0.9 ETH
         _launchAt(quote, _outOfBounds());
     }
 
-    /// @dev ...nor above ~111x (a > 250 ETH cap at the listed price).
+    /// @dev ...nor above ~2.22x (a > 5 ETH cap at the listed price).
     function test_launchPrice_liveRateFarAboveTheSnapshotIsRejected() public {
         address quote = address(quoteCoin);
-        _mockLiveRate(quote, QC_PER_ETH * 108); // ~243 ETH at the snapshot rate
+        _mockLiveRate(quote, QC_PER_ETH * 2); // ~4.5 ETH at the snapshot rate
         _launchAt(quote, "");
-        _mockLiveRate(quote, QC_PER_ETH * 114); // ~256.5 ETH
+        _mockLiveRate(quote, QC_PER_ETH * 24 / 10); // ~5.4 ETH
         _launchAt(quote, _outOfBounds());
     }
 
-    /// @dev The preview reverts exactly where `createToken` does.
+    /// @dev The preview reverts exactly where `createToken` does, on both sides of the band, and answers
+    ///      inside it.
     function test_previewLaunchTick_revertsWhereTheLaunchWould() public {
-        _mockLiveRate(address(quoteCoin), QC_PER_ETH * 114);
+        address quote = address(quoteCoin);
+        _mockLiveRate(quote, QC_PER_ETH * 24 / 10);
         vm.expectRevert(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector);
-        directFactory.previewLaunchTick(address(quoteCoin));
+        directFactory.previewLaunchTick(quote);
+
+        _mockLiveRate(quote, QC_PER_ETH * 4 / 10);
+        vm.expectRevert(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector);
+        directFactory.previewLaunchTick(quote);
+
+        _mockLiveRate(quote, QC_PER_ETH * 2);
+        (,, uint256 capAbove) = directFactory.previewLaunchTick(quote);
+        assertApproxEqRel(capAbove, 15_750e18, 0.0101e18, "2x the rate: 4.5 ETH worth of QC");
+        _mockLiveRate(quote, QC_PER_ETH / 2);
+        (,, uint256 capBelow) = directFactory.previewLaunchTick(quote);
+        assertApproxEqRel(capBelow, 3_937.5e18, 0.0101e18, "half the rate: 1.125 ETH worth of QC");
     }
 
     /// @dev Twenty-seven decimals at 1:1 with ETH: 2.25 units, as for native.

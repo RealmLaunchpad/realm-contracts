@@ -120,20 +120,22 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     uint256 public constant LAUNCH_MARKET_CAP_X18 = 2.25 ether;
 
     /// @notice Lowest opening market cap any pair may launch at: 1 whole native coin (ETH), scaled by
-    ///         1e18. An ERC20 pair's bound is this converted at its `ASSETS_WHITELIST` SNAPSHOT rate, so it
-    ///         caps how far the live rate that prices the launch can have drifted from the listed one.
+    ///         1e18, checked on the derived `LAUNCH_MARKET_CAP_X18` opening re-valued at the quote's
+    ///         `ASSETS_WHITELIST` SNAPSHOT rate. A live rate more than 2.25x below the listed one (1/2.25)
+    ///         refuses the launch.
+    /// @dev The two caps bound how far a live (or pushed) price pool can move the opening away from the
+    ///      listed price: within [1/2.25, 5/2.25] of the snapshot and no further. Ticks round to the
+    ///      nearest multiple of 200, so the realised opening carries ~±1% of slack on either edge.
     /// @dev The seed is single-sided, so the opening market cap is the pool's virtual quote reserve: the
     ///      price 4x's after buys of about that much. A tiny one hands the dev buy most of the supply for
-    ///      almost nothing. 1 ETH sits just under the THIN curve's own opening (~1.1 ETH) and ~6x under
-    ///      its 6.125 ETH graduation, so no direct launch sells cheaper than the curve venue's first buy.
-    ///      Native is ETH on every chain this venue deploys to; one with another native needs its own.
+    ///      almost nothing. Native is ETH on every chain this venue deploys to; one with another native
+    ///      needs its own.
     uint256 public constant MIN_LAUNCH_MARKET_CAP_X18 = 1 ether;
 
-    /// @notice Highest opening market cap any pair may launch at: 250 ETH, ~10x the THICK tier's 24.5 ETH
-    ///         graduation market cap. Converted like `MIN_LAUNCH_MARKET_CAP_X18`.
-    /// @dev Harmless on-chain (nobody has to buy), but aggregators display it as a market cap from block
-    ///      zero, with no volume behind it.
-    uint256 public constant MAX_LAUNCH_MARKET_CAP_X18 = 250 ether;
+    /// @notice Highest opening market cap any pair may launch at: 5 ETH, scaled by 1e18, checked like
+    ///         `MIN_LAUNCH_MARKET_CAP_X18`. A live rate more than ~2.22x above the listed one (5/2.25)
+    ///         refuses the launch.
+    uint256 public constant MAX_LAUNCH_MARKET_CAP_X18 = 5 ether;
 
     /// @notice The chain's wrapped native token, which a pair may NOT be quoted against. See
     ///         `_validateQuote`.
