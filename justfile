@@ -398,14 +398,16 @@ deploy-realm-hook-rh-testnet:
 # per-token reads through. No constructor args, nothing on chain points at it, and redeploying it is
 # its upgrade path — so unlike the deploy-once scripts this one never refuses to run. Paste the address
 # into the chain's manifest as KEEPER_LENS, `just export-deployments`, then repoint the keeper secret.
-deploy-keeper-lens-sepolia: chain-sepolia
+# No `chain-*` prerequisite, unlike the impl deploys: the lens bakes no DeploymentAddresses constant,
+# so its bytecode is identical on every chain and the recipe leaves the tree's build target alone.
+deploy-keeper-lens-sepolia:
     forge script DeployRealmKeeperLens --rpc-url sepolia --verify --account realm.dev --slow --broadcast
 
-deploy-keeper-lens-rh: chain-rh
+deploy-keeper-lens-rh:
     forge script DeployRealmKeeperLens --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
-deploy-keeper-lens-rh-testnet: chain-rh-testnet
+deploy-keeper-lens-rh-testnet:
     forge script DeployRealmKeeperLens --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 

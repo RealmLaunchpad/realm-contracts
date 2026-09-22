@@ -87,7 +87,7 @@ library DeploymentsRobinhoodTestnet {
     /// @notice `RealmKeeperLens`: the stateless, view-only batch reader the dividend keeper drives its
     ///         per-token reads through. Consumed OFF chain only — no Realm contract references it — so it
     ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
-    address internal constant KEEPER_LENS = address(0);
+    address internal constant KEEPER_LENS = 0x3101f0F56708ef2b57559849a6A31218d1a17260;
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0x4349fdFfAe2243f6EE90a96F5f4E657A6D7b9c18;

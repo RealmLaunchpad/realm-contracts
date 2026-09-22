@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 
 import {RealmKeeperLens} from "src/RealmKeeperLens.sol";
-import {ChainConfig} from "script/ChainConfig.sol";
 
 /// @title Deploy `RealmKeeperLens`
 /// @notice One broadcast, one contract, no arguments: the stateless read lens the dividend keeper
@@ -39,7 +38,9 @@ contract DeployRealmKeeperLens is Script {
         require(lens.MAX_DIVIDEND_ASSETS() == 3, "post: asset cap drifted");
 
         console.log("");
-        console.log("=== Done. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
+        // Chain id rather than `ChainConfig.name()`: the lens is the one deploy that is chain-agnostic,
+        // and a dry-run on the default local chain should not fail on a log line.
+        console.log("=== Done. Paste KEEPER_LENS into this chain's src/config/manifest.*.sol ===");
         console.log("  KEEPER_LENS          =", address(lens));
         console.log("");
         console.log("Then `just export-deployments`, and set the keeper's `keeperLens` to this address");
