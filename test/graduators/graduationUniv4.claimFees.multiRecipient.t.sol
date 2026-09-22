@@ -35,16 +35,7 @@ abstract contract MultiRecipientV4BaseTests is BaseUniswapV4FeesTests {
         override
         returns (address)
     {
-        vm.prank(creator);
-        address token = factoryV4.createToken(
-            _setupTiered(name, symbol, _nextValidSalt(address(factoryV4), address(realmToken)), _feeShares()),
-            _noAlloc(_emptyTaxCfg()),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
+        address token = _createDirectTokenAs(creator, name, symbol, _feeShares(), false, _emptyTaxCfg());
         return token;
     }
 
@@ -77,7 +68,7 @@ contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTe
 
     /// @notice Graduation succeeds with multi-recipient master fee config
     function test_graduation_withMultiRecipientFees() public createAndGraduateToken {
-        assertTrue(launchpad.getTokenState(testToken).graduated, "token should be graduated");
+        assertTrue(IRealmToken(testToken).graduated(), "token should be graduated");
     }
 
     /// @notice After graduation + buy swap, shareholders can claim LP fees
@@ -106,13 +97,9 @@ contract UniswapV4ClaimFees_MultiRecipient_NormalToken is MultiRecipientV4BaseTe
 
         uint256 totalShareholderFees = (shareholder1.balance - s1Before) + (shareholder2.balance - s2Before);
 
-        // The graduation compensation AND the creator's share of the pre-graduation LP fee on the
-        // graduating buy are both routed through the master handler to shareholders.
-        uint256 gradMissing = (GRADUATION_THRESHOLD * 10000) / (10000 - BASE_BUY_FEE_BPS);
-        uint256 gradTradingFee = (gradMissing * BASE_BUY_FEE_BPS) / 10000;
-        uint256 graduationDeposits =
-            CREATOR_GRADUATION_COMPENSATION + (gradTradingFee - _treasuryShareOf(gradTradingFee));
-        uint256 lpFeesOnly = totalShareholderFees - graduationDeposits;
+        // No graduation fee on the direct venue: the stand-in graduating buy only paid its LP fee, whose
+        // creator share reached the shareholders too.
+        uint256 lpFeesOnly = totalShareholderFees - _lpCreatorShare(GRADUATION_THRESHOLD);
 
         // Treasury LP share sent during swap by hook; shareholders get the creator's share
         assertApproxEqAbs(lpFeesOnly, _lpCreatorShare(1 ether), 2, "shareholder LP fees should be the creator share");
@@ -170,22 +157,15 @@ contract UniswapV4ClaimFees_MultiRecipient_TaxToken is TaxTokenUniV4BaseTests, M
         override
         returns (address)
     {
-        vm.prank(creator);
-        address token = factoryTax.createToken(
-            _setupTiered(name, symbol, _nextValidSalt(address(factoryTax), address(realmTaxToken)), _feeShares()),
-            _noAlloc(_taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION))),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
+        address token = _createDirectTokenAs(
+            creator, name, symbol, _feeShares(), false, _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION))
         );
         return token;
     }
 
     /// @notice Graduation succeeds with multi-recipient fees + tax token
     function test_graduation_withMultiRecipientFees_taxToken() public createAndGraduateToken {
-        assertTrue(launchpad.getTokenState(testToken).graduated, "token should be graduated");
+        assertTrue(IRealmToken(testToken).graduated(), "token should be graduated");
     }
 
     /// @notice Shareholders can claim LP fees from buy swaps

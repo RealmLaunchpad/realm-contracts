@@ -18,16 +18,17 @@ from the Livo deployment.
 | 6 | `RealmQuoter` | |
 | 7 | `RealmUniV4LiquidityAdder` | chain-shared singleton |
 | 8 | `RealmGraduatorUniswapV2` | |
-| 9 | `RealmGraduatorUniswapV4` ×3 | DEFAULT / THIN / THICK, all pointed at `SWAP_HOOK` |
-| 10 | `ConstantProductBondingCurve` | the DEFAULT tier's no-vault base curve |
-| 11 | `ConstantProductBondingCurveConfigurable` ×21 | 6 DEFAULT vault curves + (base + 6 vault) × THIN, THICK |
-| 12 | `RealmCreatorVault` | clone master |
-| 13 | `RealmCreatorVaultFactory` | impl + UUPS proxy |
-| 14 | `RealmToken` | clone master |
-| 15 | `RealmTaxableTokenUniV2` | clone master; deploys `RealmDividendLogicUniV2` in its constructor |
-| 16 | `RealmTaxableTokenUniV4` | clone master; deploys `RealmDividendLogicUniV4` in its constructor |
-| 17 | `RealmFactoryUniV2Unified` | impl + UUPS proxy, whitelisted on the launchpad by the script |
-| 18 | `RealmFactoryUniV4Unified` | impl + UUPS proxy, whitelisted on the launchpad by the script |
+| 9 | `ConstantProductBondingCurve` | the DEFAULT tier's no-vault base curve |
+| 10 | `ConstantProductBondingCurveConfigurable` ×21 | 6 DEFAULT vault curves + (base + 6 vault) × THIN, THICK |
+| 11 | `RealmCreatorVault` | clone master |
+| 12 | `RealmCreatorVaultFactory` | impl + UUPS proxy |
+| 13 | `RealmToken` | clone master |
+| 14 | `RealmTaxableTokenUniV2` | clone master; deploys `RealmDividendLogicUniV2` in its constructor |
+| 15 | `RealmTaxableTokenUniV4` | clone master; deploys `RealmDividendLogicUniV4` in its constructor |
+| 16 | `RealmFactoryUniV2Unified` | impl + UUPS proxy, whitelisted on the launchpad by the script |
+| 17 | `RealmAssetsWhitelist` | direct venue's ERC20-quote whitelist, no approvers yet |
+| 18 | `RealmDirectGraduatorUniV4` | direct venue's graduator, bound to `SWAP_HOOK` / `SWAP_HOOK_ANY_PAIR` |
+| 19 | `RealmFactoryUniV4Direct` | impl + UUPS proxy; no launchpad, so nothing to whitelist |
 
 Not deployed by `DeployRealmStack`: the hook (its own script, above) and the dividend-logic extensions
 (self-deployed by the taxable token constructors).
@@ -56,8 +57,8 @@ just export-deployments
 #    broadcasting account; REALM_KEEPER comes from the manifest. Idempotent.
 just configure-registries-sepolia     # or: just configure-registries-rh[-testnet]
 
-# 6. Smoke test: create a token through the V4 factory.
-FACTORY_ADDRESS=<factoryV4 proxy> forge script CreateV4Token --rpc-url sepolia --account realm.dev --slow --broadcast
+# 6. Smoke test: create a token through `RealmFactoryUniV2Unified` and `RealmFactoryUniV4Direct`
+#    (no dedicated script).
 ```
 
 Verification on Robinhood uses Blockscout, not Etherscan — the `*-robinhood*` recipes pass

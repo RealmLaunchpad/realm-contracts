@@ -5,20 +5,22 @@ import {Script, console} from "forge-std/Script.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 
-/// @title Rewire the unified factories to whatever the manifest currently says
-/// @notice Deploys a fresh implementation for each unified factory from the CURRENT manifest and points
-///         the two live proxies at them. This is the one upgrade path for the factory layer: every
-///         dependency a factory holds — launchpad, bonding curves, graduators, master fee handler, token
-///         implementations, creator-vault factory, tier config — is a constructor immutable, so changing
-///         any of them means a new implementation and this script.
+/// @title Rewire the factories to whatever the manifest currently says
+/// @notice Deploys a fresh implementation for `RealmFactoryUniV2Unified` and `RealmFactoryUniV4Direct`
+///         from the CURRENT manifest and points the two live proxies at them. This is the one upgrade
+///         path for the factory layer: every dependency a factory holds — launchpad, bonding curves,
+///         graduators, master fee handler, token implementations, creator-vault factory, tier config,
+///         assets whitelist — is a constructor immutable, so changing any of them means a new
+///         implementation and this script.
 ///
 ///         Typical use: deploy new token implementations or new graduators with their own one-off
 ///         script, paste them into `src/config/manifest.<chain>.sol`, run `just export-deployments`,
-///         then run this. The proxy addresses never move, so integrators need no changes.
+///         then run this. The proxy addresses never move, so integrators need no changes. To redeploy
+///         the direct graduator itself (e.g. after a hook redeploy), use `UpgradeDirectVenue`.
 ///
 ///         Deploys nothing but the two implementations, and touches no other contract. The broadcaster
 ///         must own both proxies.
@@ -30,18 +32,18 @@ contract UpgradeRealmFactories is Script {
         ChainConfig.Manifest memory m = ChainConfig.manifest();
         _require(m);
 
-        console.log("=== Upgrade the unified factories ===");
+        console.log("=== Upgrade the factories ===");
         console.log("Chain ID: ", block.chainid);
         console.log("Deployer: ", msg.sender);
         console.log("");
 
         vm.startBroadcast();
-        (address v2Impl, address v4Impl) = _upgradeFactories(m);
+        (address v2Impl, address directImpl) = _upgradeFactories(m);
         vm.stopBroadcast();
 
         console.log("=== Upgraded. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
         console.log("  FACTORY_UNIV2_UNIFIED_IMPL =", v2Impl);
-        console.log("  FACTORY_UNIV4_UNIFIED_IMPL =", v4Impl);
+        console.log("  FACTORY_UNIV4_DIRECT_IMPL  =", directImpl);
         console.log("");
         console.log("Then: just export-deployments");
     }
@@ -49,11 +51,7 @@ contract UpgradeRealmFactories is Script {
     /// @dev Deploys both factory implementations from `m` and repoints the proxies. Inside a broadcast.
     ///      Takes the manifest as a parameter so a caller can substitute freshly deployed dependencies
     ///      (see `RedeployTokenImpls`) without a paste-and-rerun in between.
-    function _upgradeFactories(ChainConfig.Manifest memory m) internal returns (address v2Impl, address v4Impl) {
-        RealmFactoryUniV4Unified.V4TierConfig memory v4Tier = ChainConfig.v4TierConfig();
-        v4Tier.graduators =
-            RealmFactoryUniV4Unified.TierGraduators({thin: m.graduatorV4Thin, thick: m.graduatorV4Thick});
-
+    function _upgradeFactories(ChainConfig.Manifest memory m) internal returns (address v2Impl, address directImpl) {
         v2Impl = address(
             new RealmFactoryUniV2Unified(
                 m.launchpad,
@@ -66,21 +64,19 @@ contract UpgradeRealmFactories is Script {
                 ChainConfig.tierCurves()
             )
         );
-        v4Impl = address(
-            new RealmFactoryUniV4Unified(
-                m.launchpad,
+        directImpl = address(
+            new RealmFactoryUniV4Direct(
                 IRealmFactory.TokenImpls({base: m.tokenImpl, tax: m.taxTokenV4Impl}),
-                m.bondingCurve,
-                m.graduatorV4,
+                m.graduatorV4Direct,
                 m.masterFeeHandler,
                 ChainConfig.creatorVaultFactory(),
-                ChainConfig.defaultVaultCurves(),
-                v4Tier
+                ChainConfig.wrappedNative(),
+                ChainConfig.assetsWhitelist()
             )
         );
 
         UUPSUpgradeable(m.factoryV2Proxy).upgradeToAndCall(v2Impl, "");
-        UUPSUpgradeable(m.factoryV4Proxy).upgradeToAndCall(v4Impl, "");
+        UUPSUpgradeable(m.factoryV4DirectProxy).upgradeToAndCall(directImpl, "");
     }
 
     /// @dev A zero in any of these means the manifest was not refreshed after the last deploy; the
@@ -89,18 +85,14 @@ contract UpgradeRealmFactories is Script {
         require(m.launchpad != address(0), "manifest: LAUNCHPAD missing");
         require(m.bondingCurve != address(0), "manifest: BONDING_CURVE missing");
         require(m.graduatorV2 != address(0), "manifest: GRADUATOR_UNIV2 missing");
-        require(m.graduatorV4 != address(0), "manifest: GRADUATOR_UNIV4 missing");
-        require(m.graduatorV4Thin != address(0), "manifest: GRADUATOR_UNIV4_THIN missing");
-        require(m.graduatorV4Thick != address(0), "manifest: GRADUATOR_UNIV4_THICK missing");
+        require(m.graduatorV4Direct != address(0), "manifest: GRADUATOR_UNIV4_DIRECT missing");
         require(m.masterFeeHandler != address(0), "manifest: MASTER_FEE_HANDLER missing");
         require(m.tokenImpl != address(0), "manifest: TOKEN_IMPL missing");
         require(m.taxTokenV2Impl != address(0), "manifest: TAXABLE_TOKEN_V2_IMPL missing");
         require(m.taxTokenV4Impl != address(0), "manifest: TAXABLE_TOKEN_V4_IMPL missing");
         require(m.factoryV2Proxy != address(0), "manifest: FACTORY_UNIV2_UNIFIED missing");
-        require(m.factoryV4Proxy != address(0), "manifest: FACTORY_UNIV4_UNIFIED missing");
-        _requireCurrentGraduatorV4(m.graduatorV4, "GRADUATOR_UNIV4");
-        _requireCurrentGraduatorV4(m.graduatorV4Thin, "GRADUATOR_UNIV4_THIN");
-        _requireCurrentGraduatorV4(m.graduatorV4Thick, "GRADUATOR_UNIV4_THICK");
+        require(m.factoryV4DirectProxy != address(0), "manifest: FACTORY_UNIV4_DIRECT missing");
+        _requireCurrentGraduatorV4(m.graduatorV4Direct, "GRADUATOR_UNIV4_DIRECT");
     }
 
     /// @dev The V4 token impl calls `hookFor` on its graduator and tops liquidity up through the

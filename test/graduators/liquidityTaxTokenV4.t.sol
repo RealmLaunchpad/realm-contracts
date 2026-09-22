@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
@@ -55,7 +54,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "LiqToken",
             symbol: "LIQ",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -69,16 +68,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             taxDecayDuration: 0,
             earningsAllocation: _multiAlloc(0, 0, liquidityBps, address(0))
         });
-        vm.prank(creator);
-        token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
     }
 
     function test_liquidityBps_storedAtCreation() public {
@@ -92,8 +82,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 liqToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
 
         // Sell to accrue tax: hook -> accrueFees -> _allocateEthEarnings -> liquidity slice buffered as ETH.
@@ -129,8 +118,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 liqToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
         _swapSell(buyer, IERC20(token).balanceOf(buyer) / 2, 0, true);
 
@@ -171,8 +159,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         testToken = token;
         liqToken = RealmTaxableTokenUniV4(payable(token));
         vm.deal(buyer, 100 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
     }
 

@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {console} from "forge-std/console.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
@@ -27,7 +26,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "GasTok",
             symbol: "GAS",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -41,18 +40,9 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
             taxDecayDuration: 0,
             earningsAllocation: _multiAlloc(0, dividendsBps, 0, address(0))
         });
-        vm.prank(creator);
-        address token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        address token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
         testToken = token;
-        _launchpadBuy(token, 2 ether);
+        _poolBuy(token, 2 ether);
         _graduateToken();
 
         // Route one lot of earnings through both tokens, identically, so both set-ups are symmetric
@@ -232,7 +222,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "GasTok",
             symbol: "GAS",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -253,18 +243,9 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
                 dividendRoutes: new bytes[](0)
             })
         });
-        vm.prank(creator);
-        address token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        address token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
         testToken = token;
-        _launchpadBuy(token, 2 ether);
+        _poolBuy(token, 2 ether);
         _graduateToken();
         vm.deal(address(this), 3 ether);
         RealmTaxableTokenUniV4(payable(token)).accrueFees{value: 3 ether}();

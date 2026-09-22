@@ -2,7 +2,6 @@
 pragma solidity 0.8.28;
 
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {
     DeploymentAddressesEthereumSepolia,
     DeploymentAddressesRobinhoodMainnet,
@@ -37,16 +36,14 @@ library ChainConfig {
         address launchpad;
         address bondingCurve;
         address graduatorV2;
-        address graduatorV4;
-        address graduatorV4Thin;
-        address graduatorV4Thick;
+        address graduatorV4Direct;
         address liquidityAdder;
         address masterFeeHandler;
         address tokenImpl;
         address taxTokenV2Impl;
         address taxTokenV4Impl;
         address factoryV2Proxy;
-        address factoryV4Proxy;
+        address factoryV4DirectProxy;
     }
 
     function isSepolia() internal view returns (bool) {
@@ -252,48 +249,42 @@ library ChainConfig {
                 launchpad: DeploymentsEthereumSepolia.LAUNCHPAD,
                 bondingCurve: DeploymentsEthereumSepolia.BONDING_CURVE,
                 graduatorV2: DeploymentsEthereumSepolia.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsEthereumSepolia.GRADUATOR_UNIV4,
-                graduatorV4Thin: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN,
-                graduatorV4Thick: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK,
+                graduatorV4Direct: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_DIRECT,
                 liquidityAdder: DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER,
                 masterFeeHandler: DeploymentsEthereumSepolia.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsEthereumSepolia.TOKEN_IMPL,
                 taxTokenV2Impl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL,
                 taxTokenV4Impl: DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL,
                 factoryV2Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED
+                factoryV4DirectProxy: DeploymentsEthereumSepolia.FACTORY_UNIV4_DIRECT
             });
         } else if (isRobinhood()) {
             m = Manifest({
                 launchpad: DeploymentsRobinhoodMainnet.LAUNCHPAD,
                 bondingCurve: DeploymentsRobinhoodMainnet.BONDING_CURVE,
                 graduatorV2: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4,
-                graduatorV4Thin: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN,
-                graduatorV4Thick: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK,
+                graduatorV4Direct: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_DIRECT,
                 liquidityAdder: DeploymentsRobinhoodMainnet.UNIV4_LIQUIDITY_ADDER,
                 masterFeeHandler: DeploymentsRobinhoodMainnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsRobinhoodMainnet.TOKEN_IMPL,
                 taxTokenV2Impl: DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL,
                 taxTokenV4Impl: DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V4_IMPL,
                 factoryV2Proxy: DeploymentsRobinhoodMainnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsRobinhoodMainnet.FACTORY_UNIV4_UNIFIED
+                factoryV4DirectProxy: DeploymentsRobinhoodMainnet.FACTORY_UNIV4_DIRECT
             });
         } else if (isRobinhoodTestnet()) {
             m = Manifest({
                 launchpad: DeploymentsRobinhoodTestnet.LAUNCHPAD,
                 bondingCurve: DeploymentsRobinhoodTestnet.BONDING_CURVE,
                 graduatorV2: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2,
-                graduatorV4: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4,
-                graduatorV4Thin: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN,
-                graduatorV4Thick: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK,
+                graduatorV4Direct: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_DIRECT,
                 liquidityAdder: DeploymentsRobinhoodTestnet.UNIV4_LIQUIDITY_ADDER,
                 masterFeeHandler: DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER,
                 tokenImpl: DeploymentsRobinhoodTestnet.TOKEN_IMPL,
                 taxTokenV2Impl: DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL,
                 taxTokenV4Impl: DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL,
                 factoryV2Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED,
-                factoryV4Proxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED
+                factoryV4DirectProxy: DeploymentsRobinhoodTestnet.FACTORY_UNIV4_DIRECT
             });
         } else {
             revert(UNSUPPORTED);
@@ -340,29 +331,6 @@ library ChainConfig {
             c.thick = IRealmFactory.TierCurves({
                 base: DeploymentsRobinhoodTestnet.THICK_CURVE_BASE,
                 vaults: DeploymentsRobinhoodTestnet.thickVaultCurves()
-            });
-        } else {
-            revert(UNSUPPORTED);
-        }
-    }
-
-    /// @notice THIN/THICK curves + their per-tier V4 graduators from the manifest.
-    function v4TierConfig() internal view returns (RealmFactoryUniV4Unified.V4TierConfig memory v4) {
-        v4.curves = tierCurves();
-        if (isSepolia()) {
-            v4.graduators = RealmFactoryUniV4Unified.TierGraduators({
-                thin: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN,
-                thick: DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK
-            });
-        } else if (isRobinhood()) {
-            v4.graduators = RealmFactoryUniV4Unified.TierGraduators({
-                thin: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN,
-                thick: DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK
-            });
-        } else if (isRobinhoodTestnet()) {
-            v4.graduators = RealmFactoryUniV4Unified.TierGraduators({
-                thin: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN,
-                thick: DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK
             });
         } else {
             revert(UNSUPPORTED);

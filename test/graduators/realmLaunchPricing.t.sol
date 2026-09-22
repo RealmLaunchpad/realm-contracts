@@ -30,7 +30,7 @@ contract RealmLaunchPricingTests is Test {
         assertEq(price, 1e18 * 1e12);
     }
 
-    /// @dev The tick the direct-launch suite uses for its native pair: ~1e-8 native per coin, i.e. a
+    /// @dev Tick -184,200 against native: ~1e-8 native per coin, i.e. a
     ///      ~10-unit market cap across the whole supply.
     function test_nativeLaunchTick_impliesATenUnitMarketCap() public pure {
         (uint256 price, uint256 mcap) = RealmLaunchPricing.priceAtTick(-184_200, 18);
@@ -63,5 +63,46 @@ contract RealmLaunchPricingTests is Test {
         PricingHarness h = new PricingHarness();
         vm.expectRevert(RealmLaunchPricing.UnsupportedDecimals.selector);
         h.priceAtTick(0, 37);
+    }
+
+    /// @dev `tickForMarketCap` is the inverse the direct factory prices every launch with: the tick it
+    ///      returns must read back, through `priceAtTick`, as the target native market cap to within the
+    ///      half spacing step (~1%) the rounding allows.
+    function _assertRoundTrip(uint256 rateX18, uint8 dec) internal pure {
+        uint256 target = 2.25 ether;
+        int24 tick = RealmLaunchPricing.tickForMarketCap(target, rateX18, dec);
+        assertEq(tick % 200, 0, "spacing-aligned");
+        (, uint256 capInQuoteX18) = RealmLaunchPricing.priceAtTick(tick, dec);
+        assertApproxEqRel(capInQuoteX18 * 1e18 / rateX18, target, 0.0101e18, "reads back as the target cap");
+    }
+
+    function test_tickForMarketCap_native() public pure {
+        _assertRoundTrip(1e18, 18);
+    }
+
+    function test_tickForMarketCap_roundTripsAcrossDecimalsAndRates() public pure {
+        uint8[3] memory decs = [uint8(6), 8, 18];
+        uint256[6] memory rates = [uint256(1e15), 1e17, 1e18, 10e18, 3_500e18, 1e24];
+        for (uint256 d; d < decs.length; ++d) {
+            for (uint256 r; r < rates.length; ++r) {
+                _assertRoundTrip(rates[r], decs[d]);
+            }
+        }
+    }
+
+    function testFuzz_tickForMarketCap_roundTrips(uint256 rateX18, uint8 dec) public pure {
+        _assertRoundTrip(bound(rateX18, 1e15, 1e24), uint8(bound(dec, 6, 18)));
+    }
+
+    /// @dev Nearest, not floor: the target sits within half a spacing step (100 ticks, plus the one tick
+    ///      `getTickAtSqrtPrice` floors away) of the returned tick, in tick (log-price) space.
+    function testFuzz_tickForMarketCap_isTheNearestSpacingMultiple(uint256 rateX18) public pure {
+        rateX18 = bound(rateX18, 1e15, 1e24);
+        int24 tick = RealmLaunchPricing.tickForMarketCap(2.25 ether, rateX18, 18);
+        uint256 target = 2.25 ether * rateX18 / 1e18;
+        (, uint256 lo) = RealmLaunchPricing.priceAtTick(tick - 101, 18);
+        (, uint256 hi) = RealmLaunchPricing.priceAtTick(tick + 101, 18);
+        assertLe(lo, target, "not more than half a step above the target");
+        assertGe(hi, target, "not more than half a step below the target");
     }
 }

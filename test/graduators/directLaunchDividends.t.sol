@@ -15,7 +15,6 @@ import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -57,7 +56,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     function setUp() public virtual override {
         super.setUp();
         _whitelist(USDC, QC_PER_ETH);
-        // 1:1 with ETH only so `LAUNCH_TICK`'s 10-unit market cap fits the bounds.
+        // Priced 1:1 with ETH: the launch opens at 2.25 DAI of market cap.
         _whitelist(DAI, 1e18);
     }
 
@@ -128,7 +127,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
 
     function _usdcPair() internal pure returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
         p = new RealmFactoryUniV4Direct.DirectPair[](1);
-        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 10_000, launchTick: QC_LAUNCH_TICK});
+        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 10_000});
     }
 
     /// @dev A USDC-paired token paying in `asset`, with alice holding a bag and the dividends slice of
@@ -176,13 +175,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         cfg.taxDurationSeconds = 0;
         assertEq(
             directFactory.previewTokenImplementation(
-                _previewSetup(),
-                _pairs(address(0), LAUNCH_TICK),
-                cfg,
-                _emptyAntiSniperCfg(),
-                _noVaults(),
-                _noDevBuy(),
-                address(0)
+                _previewSetup(), _pairs(address(0)), cfg, _emptyAntiSniperCfg(), _noVaults(), _noDevBuy(), address(0)
             ),
             address(realmTaxToken),
             "an allocation alone selects the taxable implementation"
@@ -194,7 +187,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     }
 
     function test_directAlloc_rejectsARouteOnANativePair() public {
-        RealmFactoryUniV4Direct.DirectPair[] memory pairs = _pairs(address(0), LAUNCH_TICK);
+        RealmFactoryUniV4Direct.DirectPair[] memory pairs = _pairs(address(0));
         TaxConfigsWithDirectAllocation memory cfg = _cfg(address(0), "", _one(_v4Route(USDC)));
         vm.prank(creator);
         vm.expectRevert(RealmFactoryUniV4Direct.InvalidQuoteRoutes.selector);
@@ -246,7 +239,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     /// @dev The native pair on this venue is the shared machine, untouched: earnings buffer as native
     ///      and `processDividends(0, …)` pays native.
     function test_directAlloc_nativePairPaysNativeDividends() public {
-        RealmTaxableTokenUniV4 token = _launch(_pairs(address(0), LAUNCH_TICK), _cfg(address(0), "", new bytes[](0)));
+        RealmTaxableTokenUniV4 token = _launch(_pairs(address(0)), _cfg(address(0), "", new bytes[](0)));
         _swapBuyV4(alice, address(token), 1 ether, 0, true);
         vm.deal(address(this), 1 ether);
         token.accrueFees{value: 1 ether}();
@@ -377,8 +370,8 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     ///      quote path, and both pay USDC.
     function test_quoteDividends_mixedPairsBothPayTheSameAsset() public {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
-        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000, launchTick: LAUNCH_TICK});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 5_000, launchTick: QC_LAUNCH_TICK});
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 5_000});
         RealmTaxableTokenUniV4 token = _launch(pairs, _cfg(USDC, _v4Route(USDC), new bytes[](0)));
         _buyAndSettle(address(token), 10_000e6);
         vm.deal(address(this), 2 ether);
@@ -516,8 +509,8 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     ///      moves USDC's route from pair slot 1 to quote slot 0, and the DAI leg converts through it.
     function test_quoteRoutes_nativePairFirstShiftsTheErc20RouteIntoPlace() public {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
-        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000, launchTick: LAUNCH_TICK});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 5_000, launchTick: QC_LAUNCH_TICK});
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 5_000});
         bytes[] memory quoteRoutes = new bytes[](2);
         quoteRoutes[1] = _v4Route(USDC);
 
@@ -534,10 +527,10 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     ///      its own buffer into native through it.
     function test_quoteRoutes_twoErc20QuotesEachConvertThroughTheirOwnRoute() public {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](3);
-        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 4_000, launchTick: LAUNCH_TICK});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 3_000, launchTick: QC_LAUNCH_TICK});
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 4_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 3_000});
         // 1e-8 DAI per coin: a 10 DAI opening market cap, inside the launch bounds.
-        pairs[2] = RealmFactoryUniV4Direct.DirectPair({quote: DAI, weightBps: 3_000, launchTick: LAUNCH_TICK});
+        pairs[2] = RealmFactoryUniV4Direct.DirectPair({quote: DAI, weightBps: 3_000});
         bytes[] memory quoteRoutes = new bytes[](3);
         quoteRoutes[1] = _v4Route(USDC);
         quoteRoutes[2] = _daiRoute();
@@ -630,8 +623,8 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
     ///      the other.
     function test_quoteDividends_cooldownIsSharedAcrossQuotes() public {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
-        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000, launchTick: LAUNCH_TICK});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 5_000, launchTick: QC_LAUNCH_TICK});
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: USDC, weightBps: 5_000});
         RealmTaxableTokenUniV4 token = _launch(pairs, _cfg(USDC, _v4Route(USDC), new bytes[](0)));
         _buyAndSettle(address(token), 10_000e6);
         vm.deal(address(this), 2 ether);
@@ -662,44 +655,6 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         RealmTaxableTokenUniV4 token = _earningToken(USDC, _v4Route(USDC), new bytes[](0));
         vm.expectRevert(DividendDistribution.DividendAssetOutOfRange.selector);
         token.processDividends(1, USDC, 0, _one(alice));
-    }
-
-    /// @dev Checked before the quote is resolved: a curve-venue token that has not graduated, and has no
-    ///      ERC20 quote at all, answers `DividendsNotActive` rather than `UnknownQuote`.
-    function test_quoteDividends_revertsBeforeDividendsAreActive() public {
-        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
-            name: "Curve",
-            symbol: "CRV",
-            salt: _nextValidSalt(address(factoryV4Unified), address(realmTaxToken)),
-            feeShares: _fs(creator),
-            liquidityTier: LiquidityTier.DEFAULT
-        });
-        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
-            buyTaxBps: 0,
-            sellTaxBps: 400,
-            taxDurationSeconds: uint32(14 days),
-            startTaxFromLaunch: true,
-            buyTaxDecayStartBps: 0,
-            sellTaxDecayStartBps: 0,
-            taxDecayDuration: 0,
-            earningsAllocation: _multiAlloc(0, 5_000, 0, address(0))
-        });
-        vm.prank(creator);
-        RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(
-            payable(factoryV4Unified.createToken(
-                    setup,
-                    cfg,
-                    RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-                    _noSs(),
-                    _emptyAntiSniperCfg(),
-                    new IRealmFactory.CreatorVault[](0),
-                    address(0)
-                ))
-        );
-        assertFalse(_active(token), "a curve token is not active before graduation");
-
-        vm.expectRevert(DividendDistribution.DividendsNotActive.selector);
-        token.processDividends(0, USDC, 0, _one(alice));
     }
 
     /// @dev The registry is a proxy at a constant address the token was compiled against; if it ever had

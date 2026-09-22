@@ -27,14 +27,14 @@ This displays also coverage for the /script/ files, which are out of scope (and 
 
 # Realm Launchpad
 
-Realm Launchpad is a decentralized token launch platform that enables fair token distribution through a bonding curve mechanism, with automatic liquidity provision to either Uniswap V2 or Uniswap V4 upon reaching graduation criteria.
+Realm Launchpad is a decentralized token launch platform that enables fair token distribution through a bonding curve mechanism, with automatic liquidity provision to Uniswap V2 upon reaching graduation criteria. A separate direct venue (`RealmFactoryUniV4Direct`) launches tokens straight into Uniswap V4 pools, with no bonding curve.
 
 ## Meta info
 
 - Deployment chain: **Ethereum mainnet**
 - Integrations:
   - Uniswap v2 (liquidity addition)
-  - Uniswap V4 (liquidity addition)
+  - Uniswap V4 (direct-launch pools)
 
 ## Protocol Overview
 
@@ -43,15 +43,11 @@ The Realm Launchpad protocol is a token factory and trading system that enables 
 1. **Token Creation**: Anyone can create an ERC20 token with a fixed supply of 1 billion tokens using a minimal proxy pattern for gas-efficient deployment
 2. **Bonding Curve Trading**: Users buy/sell tokens from the launchpad through a constant product bonding curve until graduation
 3. **Automatic Graduation**: When ETH reserves reach 8.5 ETH, tokens automatically graduate to Uniswap
-4. **Liquidity Provision**: All collected ETH (minus fees) is used to create a permanent, locked liquidity pool in Uniswap:
-   - Uniswap V2: LP tokens sent to dead address
-   - Uniswap V4: NFT liquidity position locked in a Liquidity Lock contract
+4. **Liquidity Provision**: All collected ETH (minus fees) is used to create a permanent, locked liquidity pool in Uniswap V2 (LP tokens sent to dead address)
 5. **Creator Rewards**: Token creators receive 1% of supply (10M tokens) at graduation
 6. **Fair Launch**: No pre-mines or pre-allocations. All supply is minted to the launchpad where it can be purchased.
 7. **Pre-Graduation Trading Fees**: 1% fee on buys/sells, allocated to Realm treasury.
-8. **Post-Graduation Trading Fees**:
-   - Uniswap V2: No additional fees
-   - Uniswap V4: 1% LP fees with ETH fees split 50/50 between creator and Realm treasury; token fees locked
+8. **Post-Graduation Trading Fees**: Uniswap V2: no additional fees
 9. **Graduation Fee**: 0.5 ETH paid to treasury at graduation (configurable by admin)
 
 ## Architecture
@@ -97,25 +93,14 @@ Handles graduation to Uniswap V2:
 - Handles edge case of ETH donations to pair before graduation preventing graduation DOS
 - **No creator fees** - all LP fees go to LP token holders (which are locked in the `0xdEaD` address)
 
-#### `RealmGraduatorUniswapV4.sol`
+#### `RealmDirectGraduatorUniV4.sol`
 
-Handles graduation to Uniswap V4:
+Direct V4 launch venue (called by `RealmFactoryUniV4Direct`, no launchpad or bonding curve):
 
-- Initializes Uniswap V4 pool at token creation via `initialize()`
-- Adds concentrated liquidity position via `graduateToken()`
-- Locks liquidity NFT in `LiquidityLockUniv4WithFees` contract
-- **Creator ETH fees enabled**
-  - LP Fees collected as tokens are left locked in the univ4 graduator
-  - LP Fees collected as ETH are split 50/50% between the token creator and Realm treasury
-- Collects and distributes fees via `collectEthFees()`
-
-#### `LiquidityLockUniv4WithFees.sol`
-
-Custody contract for Uniswap V4 liquidity positions:
-
-- Holds the UniV4 NFTs representing liquidity positions of all graduated tokens
-- Allows fee collection via `claimUniV4PositionFees()` without withdrawing liquidity
-- Prevents withdrawal of locked position NFT
+- Creates 1-3 Uniswap V4 pools at creator-chosen prices in the token's creation tx
+- Seeds the supply as single-sided token bands and executes the optional dev buy
+- Holds the position NFTs forever (the liquidity lock); no graduation fee
+- LP fees and taxes are taken by the swap hook (`RealmHook` for native pools, `RealmHookAnyPair` for ERC20-quoted pools)
 
 ### Token Data Structures
 
@@ -178,9 +163,7 @@ Tokens sold: ~799,000,000 tokens
 Tokens to liquidity: ~191,000,000 tokens
 ```
 
-## Uniswap V2 vs Uniswap V4 Graduation
-
-### Uniswap V2 Graduation
+## Uniswap V2 Graduation
 
 **Characteristics:**
 
@@ -188,26 +171,6 @@ Tokens to liquidity: ~191,000,000 tokens
 - **LP tokens burned**: Sent to `0xdEaD` address, liquidity permanently locked
 - **No creator fees**: Uniswap V2 trading accumulate as LP, which are locked in the `0xdEaD` address.
 - **Invariant**: Uniswap price ≥ bonding curve price at graduation
-
-### Uniswap V4 Graduation
-
-**Characteristics:**
-
-- **Lower gas costs at token creation**: pair is initialized in the pool manager, no contract deployment.
-- **Liquidity NFT locked**: Held in `LiquidityLockUniv4WithFees` contract
-- **Invariant**: Uniswap price ≥ bonding curve price at graduation
-- **Fee tier**: 1% (10,000 pips)
-- **Tick spacing**: 200
-- // todo review these two below:
-- **Position spans** from 0.497 to 694,694,034 tokens per ETH
-- **Starting price**: ~39,011,306,440 tokens per ETH
-
-**Fee Collection:**
-Anyone can call `RealmGraduatorUniswapV4.collectEthFees()` to:
-
-1. Claim accumulated fees from Uniswap V4 positions of an array of graduated tokens
-2. Split ETH fees 50/50 between creator and Realm treasury
-3. Token fees remain in graduator contract (effectively burned)
 
 ## Deployment & Setup
 
@@ -243,27 +206,7 @@ The launchpad price when X tokens are in circulation before graduation does not 
 
 This is accepted, as not all the eth used for purchases is used in reserves (eth fees) and not all the eth reserves are used for liquidity (graduation fees).
 
-#### 3. **Capitalization differences between uniV2 and uniV4**
-
-Because the price in univ2 and univ4 will be slightly different at graduation, so will the market capitalization and the eth worth of liquidity deposited.
-
-Here we calculate the maximum difference between the two (when the graduation is exact):
-
-**Uniswap V2 graduator**:
-
-- Token price: 39181184229 wei/token = 0.00000003918 ETH
-- Market cap = 39.18 ETH
-
-**Uniswap V4 graduator**:
-
-- Token price: 39457675015 wei/token = 0.00000003945 ETH
-- Market cap: 39.45 ETH
-
-The price (and market cap) after graduation on univ4 tokens is about 0.7% higher than univ2.
-
-Note that the prices here are the effective prices making a swap, (ethSpent/tokensBought), which also includes the swap fees (1% in Univ4 vs 0.3% in Univ2).
-
-#### 4. **ETH Donations to Uniswap V2 Pair Pre-Graduation**
+#### 3. **ETH Donations to Uniswap V2 Pair Pre-Graduation**
 
 Malicious actors could send ETH directly to the pair to manipulate the price at graduation.
 
@@ -279,17 +222,17 @@ Malicious actors could send ETH directly to the pair to manipulate the price at 
 - The last buyer gets an immediate small profit. The larger the excess, the larger the instant price difference.
 - This is considered acceptable as it encourages graduation. The max excess of 0.1 ETH limits the maximum impact.
 
-#### 5. **Token Transfers to Pool Before Graduation**
+#### 4. **Token Transfers to Pool Before Graduation**
 
 Tokens cannot be transferred to the liquidity pool before graduation to avoid DOS of the graduation transaction.
 
 - `RealmToken._update()` blocks transfers to `pair` address before `graduated == true`.
 
-#### 6. **Minimal Dust Tokens Burned at Graduation**
+#### 5. **Minimal Dust Tokens Burned at Graduation**
 
-When adding liquidity to Uniswap V4, a small amount of tokens (~0.000001% of supply) may remain unallocated due to rounding. This is accepted, but should not be a large portion (0.1% of the supply would be unacceptable).
+When seeding Uniswap V4 positions (direct venue), a small amount of tokens (~0.000001% of supply) may remain unallocated due to rounding. This is accepted, but should not be a large portion (0.1% of the supply would be unacceptable).
 
-#### 7. **Bonding Curve Overflow (>37 ETH)**
+#### 6. **Bonding Curve Overflow (>37 ETH)**
 
 The `ConstantProductBondingCurve` has numerical limits and will revert if `ethReserves > ~37 ETH`.
 

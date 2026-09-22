@@ -60,25 +60,26 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
 
     QuoteCoin internal quoteCoin;
 
-    /// @dev Quote-per-coin of 1e-4 QC per token. QC has 6 decimals and the token 18, so on RAW units
-    ///      that is 1e-4 * 1e6 / 1e18 = 1e-16, i.e. tick ln(1e-16)/ln(1.0001) ≈ -368,400 (spacing-aligned).
-    int24 internal constant QC_LAUNCH_TICK = -368_400;
+    /// @dev The QC pair's launch tick (quote per coin) the factory derives: 2.25 ETH at `QC_PER_ETH` is a
+    ///      7,875 QC market cap. QC has 6 decimals and the token 18, so on RAW units that is
+    ///      7.875e-6 * 1e6 / 1e18 ≈ 7.9e-18, i.e. tick ≈ -394,000.
+    int24 internal QC_LAUNCH_TICK;
 
-    /// @dev QC's whitelist rate, as if it were a dollar stable with ETH at $3,500: `QC_LAUNCH_TICK`'s 1e5
-    ///      QC market cap is ~28.6 ETH.
+    /// @dev QC's whitelist rate, as if it were a dollar stable with ETH at $3,500.
     uint256 internal constant QC_PER_ETH = 3_500e18;
 
     function setUp() public virtual override {
         super.setUp();
         quoteCoin = new QuoteCoin();
         _whitelist(address(quoteCoin), QC_PER_ETH);
+        (QC_LAUNCH_TICK,,) = directFactory.previewLaunchTick(address(quoteCoin));
     }
 
     /////////////////////////// HELPERS ///////////////////////////
 
-    function _quotePairs(int24 tick) internal view returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
+    function _quotePairs() internal view returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
         p = new RealmFactoryUniV4Direct.DirectPair[](1);
-        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(quoteCoin), weightBps: 10_000, launchTick: tick});
+        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(quoteCoin), weightBps: 10_000});
     }
 
     function _launchAgainstQuoteCoin(RealmFactoryUniV4Direct.DevBuy memory devBuy) internal returns (address token) {
@@ -94,7 +95,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         vm.prank(creator);
         token = directFactory.createToken(
             setup,
-            _quotePairs(QC_LAUNCH_TICK),
+            _quotePairs(),
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -248,7 +249,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         vm.prank(creator);
         token = directFactory.createToken(
             _setup(true),
-            _quotePairs(QC_LAUNCH_TICK),
+            _quotePairs(),
             _noDirectAlloc(_taxCfg(300, 300, uint32(14 days))),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -320,10 +321,8 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
 
     function _twoPairs() internal view returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
         p = new RealmFactoryUniV4Direct.DirectPair[](2);
-        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 6_000, launchTick: LAUNCH_TICK});
-        p[1] = RealmFactoryUniV4Direct.DirectPair({
-            quote: address(quoteCoin), weightBps: 4_000, launchTick: QC_LAUNCH_TICK
-        });
+        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 6_000});
+        p[1] = RealmFactoryUniV4Direct.DirectPair({quote: address(quoteCoin), weightBps: 4_000});
     }
 
     function test_multiPair_seedsEveryPoolAndSplitsSupplyByWeight() public {
@@ -394,7 +393,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         (uint256 launchCap, uint256 targetCap, uint8 decimals, string memory symbol) = _poolSeededTail();
         assertEq(decimals, 6);
         assertEq(symbol, "QC");
-        assertApproxEqRel(launchCap, 1e11, 0.01e18, "launch market cap in raw QC units");
+        assertApproxEqRel(launchCap, 7_875e6, 0.0101e18, "launch market cap in raw QC units: 2.25 ETH at 3,500 QC");
         assertEq(targetCap, launchCap * 5);
     }
 
@@ -460,9 +459,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
     function test_multiPair_rejectsMoreThanMaxPairs() public {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](4);
         for (uint256 i; i < 4; ++i) {
-            pairs[i] = RealmFactoryUniV4Direct.DirectPair({
-                quote: address(uint160(0x1000 + i)), weightBps: 2_500, launchTick: LAUNCH_TICK
-            });
+            pairs[i] = RealmFactoryUniV4Direct.DirectPair({quote: address(uint160(0x1000 + i)), weightBps: 2_500});
         }
         vm.prank(creator);
         vm.expectRevert(RealmFactoryUniV4Direct.InvalidPairs.selector);

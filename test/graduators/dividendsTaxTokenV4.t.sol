@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
@@ -42,7 +41,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DivToken",
             symbol: "DIV",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -56,16 +55,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             taxDecayDuration: 0,
             earningsAllocation: _multiAlloc(0, dividendsBps, 0, asset)
         });
-        vm.prank(creator);
-        token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
     }
 
     function _noHolders() internal pure returns (address[] memory list) {
@@ -77,14 +67,19 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         list[0] = a;
     }
 
-    /// @dev A graduated, dividend-paying token with `buyer` as its only holder. Graduation itself
-    ///      starts the accumulator.
+    /// @dev What the buys that hand `buyer` its float left in the dividend buffer: on the direct venue the
+    ///      token is live from creation, so the creator's LP-fee share of those buys is already earnings.
+    uint256 internal seededBuffer;
+
+    /// @dev A launched, dividend-paying token with `buyer` as its only holder. The launch itself starts
+    ///      the accumulator.
     function _graduatedDividendToken() internal returns (RealmTaxableTokenUniV4 token) {
         address addr = _createDividendToken(5_000, address(0));
         testToken = addr;
-        _launchpadBuy(addr, 2 ether);
+        _poolBuy(addr, 2 ether);
         _graduateToken();
-        return RealmTaxableTokenUniV4(payable(addr));
+        token = RealmTaxableTokenUniV4(payable(addr));
+        seededBuffer = token.pendingNative();
     }
 
     /// @dev A graduated, dividend-active token with 0.5 ETH buffered for holders.
@@ -115,7 +110,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "MultiDiv",
             symbol: "MDIV",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -136,16 +131,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
                 dividendRoutes: new bytes[](0)
             })
         });
-        vm.prank(creator);
-        token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
     }
 
     /// @dev The product's own example: 20% of the dividends slice in one asset, 80% in another.
@@ -159,7 +145,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         address addr = _createMultiAssetToken(assets, weights);
         testToken = addr;
-        _launchpadBuy(addr, 2 ether);
+        _poolBuy(addr, 2 ether);
         _graduateToken();
         return RealmTaxableTokenUniV4(payable(addr));
     }
@@ -332,7 +318,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertTrue(token.hasDividends(), "warm-slot gate flipped on");
         assertEq(token.dividendToken(), address(0), "paid in native");
         (, uint40 live,,,,,,) = token.dividendAssets(0);
-        assertEq(live, 0, "the accumulator is dormant before graduation");
+        assertGt(live, 0, "the accumulator is live from creation on the direct venue");
     }
 
     /// @dev The self-token sentinel exists because a creator cannot name an address that does not exist
@@ -380,7 +366,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     function test_accrual_bufferedAsNative() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
-        assertEq(token.pendingNative(), 0.5 ether, "half of the earnings buffered for holders");
+        assertEq(token.pendingNative(), 0.5 ether + seededBuffer, "half of the earnings buffered for holders");
     }
 
     /// @dev Funding has no size floor: a 0.005 ETH slice, far under the 0.1 ETH `DIVIDEND_THRESHOLD`,
@@ -389,7 +375,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 token = _graduatedDividendToken();
         _accrue(token, 0.01 ether); // 0.005 ETH to dividends
         token.processDividends(0, _noHolders());
-        assertEq(token.dividendsOwed(), 0.005 ether, "the short slice distributed");
+        assertEq(token.dividendsOwed(), 0.005 ether + seededBuffer, "the short slice distributed");
 
         vm.roll(block.number + 1);
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
@@ -473,14 +459,16 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_singleHolder_receivesTheWholeDistribution() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         token.processDividends(0, _noHolders());
-        assertApproxEqAbs(token.dividendsOwed(), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "the buffer was distributed");
+        assertApproxEqAbs(
+            token.dividendsOwed(), 0.5 ether + seededBuffer, GRADUATOR_DUST_TOLERANCE, "the buffer was distributed"
+        );
 
         uint256 balanceBefore = buyer.balance;
         token.processDividends(0, _batch(buyer));
 
         assertApproxEqAbs(
             buyer.balance - balanceBefore,
-            0.5 ether,
+            0.5 ether + seededBuffer,
             GRADUATOR_DUST_TOLERANCE,
             "sole holder takes the whole distribution"
         );
@@ -500,7 +488,10 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         uint256 balanceBefore = buyer.balance;
         token.processDividends(0, holders);
         assertApproxEqAbs(
-            buyer.balance - balanceBefore, 0.5 ether, GRADUATOR_DUST_TOLERANCE, "the duplicate pays nothing"
+            buyer.balance - balanceBefore,
+            0.5 ether + seededBuffer,
+            GRADUATOR_DUST_TOLERANCE,
+            "the duplicate pays nothing"
         );
 
         uint256 afterFirstBatch = buyer.balance;
@@ -539,9 +530,13 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         token.processDividends(0, _noHolders());
         vm.roll(block.number + 1);
 
-        assertApproxEqRel(token.previewDividend(holder2), 0.5 ether, 1e14, "two distributions' worth, still owed");
+        assertApproxEqRel(
+            token.previewDividend(holder2), 0.5 ether + seededBuffer / 2, 1e14, "two distributions' worth, still owed"
+        );
         token.processDividends(0, _batch(holder2));
-        assertApproxEqRel(holder2.balance, 0.5 ether, 1e14, "and paid in full whenever the keeper gets to it");
+        assertApproxEqRel(
+            holder2.balance, 0.5 ether + seededBuffer / 2, 1e14, "and paid in full whenever the keeper gets to it"
+        );
     }
 
     function test_claimDividends_isABackstopForAMissedHolder() public {
@@ -552,7 +547,10 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         vm.prank(buyer);
         token.claimDividends();
         assertApproxEqAbs(
-            buyer.balance - balanceBefore, 0.5 ether, GRADUATOR_DUST_TOLERANCE, "self-serve claim pays the same amount"
+            buyer.balance - balanceBefore,
+            0.5 ether + seededBuffer,
+            GRADUATOR_DUST_TOLERANCE,
+            "self-serve claim pays the same amount"
         );
 
         uint256 afterFirstClaim = buyer.balance;
@@ -585,7 +583,10 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         token.sweepStrayEth();
         assertApproxEqAbs(
-            token.dividendsOwed(), 0.5 ether, GRADUATOR_DUST_TOLERANCE, "undelivered dividends are not stray ETH"
+            token.dividendsOwed(),
+            0.5 ether + seededBuffer,
+            GRADUATOR_DUST_TOLERANCE,
+            "undelivered dividends are not stray ETH"
         );
         assertGe(address(token).balance, 0.5 ether, "and are still backed by a real balance");
     }
@@ -652,9 +653,10 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function _graduatedSelfTokenDividendToken() internal returns (RealmTaxableTokenUniV4 token) {
         address addr = _createDividendToken(5_000, token_SELF());
         testToken = addr;
-        _launchpadBuy(addr, 2 ether);
+        _poolBuy(addr, 2 ether);
         _graduateToken();
-        return RealmTaxableTokenUniV4(payable(addr));
+        token = RealmTaxableTokenUniV4(payable(addr));
+        seededBuffer = token.pendingNative();
     }
 
     /// @dev The whole V4 self-token path end to end: accrue ETH, buy the token back on its own pool
@@ -664,7 +666,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_selfTokenLeg_boughtBackOnFundingAndPaidInTokens() public {
         RealmTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
         _accrue(token, 1 ether);
-        assertEq(token.pendingNative(), 0.5 ether, "the self-token leg buffers as ETH on V4");
+        assertEq(token.pendingNative(), 0.5 ether + seededBuffer, "the self-token leg buffers as ETH on V4");
 
         uint256 holderBefore = IERC20(address(token)).balanceOf(buyer);
         token.processDividends(0, _noHolders());
@@ -677,7 +679,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         // earnings.
         assertApproxEqAbs(
             token.pendingNative(),
-            0.5 ether - token.MAX_DIVIDEND_PER_CONVERSION(),
+            0.5 ether + seededBuffer - token.MAX_DIVIDEND_PER_CONVERSION(),
             0.01 ether,
             "the conversion took the cap, the remainder stayed buffered"
         );

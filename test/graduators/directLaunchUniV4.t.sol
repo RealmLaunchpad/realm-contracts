@@ -26,63 +26,22 @@ import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 
-/// @notice The direct-launch venue end to end: pool created at a caller-supplied tick, the whole
-///         circulating supply seeded as a single-sided band, the dev buy settled in the same
-///         transaction, and the resulting token behaving like any other graduated Realm token.
+/// @notice The direct-launch venue end to end: pool created at the tick the factory derives from its
+///         fixed opening market cap, the whole circulating supply seeded as a single-sided band, the dev
+///         buy settled in the same transaction, and the resulting token behaving like any other
+///         graduated Realm token.
 contract DirectLaunchUniV4Tests is V4SwapHelpers {
     using stdStorage for StdStorage;
     using PoolIdLibrary for CorePoolKey;
     using StateLibrary for IPoolManager;
 
-    RealmDirectGraduatorUniV4 internal directGraduator;
-    RealmFactoryUniV4Direct internal directFactory;
-    RealmAssetsWhitelist internal assetsWhitelist;
-
-    /// @dev Launch price as QUOTE PER COIN: 1.0001^-184200 ≈ 1.0e-8 ETH/token, a ~10 ETH market cap
-    ///      across the 1e27 supply. Spacing-aligned (200), well inside the usable band.
-    int24 internal constant LAUNCH_TICK = -184_200;
+    /// @dev The native pair's launch price as QUOTE PER COIN, as the factory derives it from
+    ///      `LAUNCH_MARKET_CAP_X18` (2.25 ETH across the 1e27 supply).
+    int24 internal LAUNCH_TICK;
 
     function setUp() public virtual override {
         super.setUp();
-
-        vm.startPrank(admin);
-        directGraduator = new RealmDirectGraduatorUniV4(
-            poolManagerAddress, TEST_HOOK_ADDRESS, TEST_ANYPAIR_HOOK_ADDRESS, graduatorV4.LIQUIDITY_ADDER()
-        );
-        assetsWhitelist = RealmAssetsWhitelist(
-            address(
-                new ERC1967Proxy(
-                    address(
-                        new RealmAssetsWhitelist(
-                            poolManagerAddress, address(WETH), Mainnet.UNIV2_FACTORY, Mainnet.UNIV3_FACTORY
-                        )
-                    ),
-                    abi.encodeCall(RealmAssetsWhitelist.initialize, (admin))
-                )
-            )
-        );
-        address impl = address(
-            new RealmFactoryUniV4Direct(
-                IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxToken)}),
-                address(directGraduator),
-                address(feeHandler),
-                address(creatorVaultFactory),
-                address(WETH),
-                address(assetsWhitelist)
-            )
-        );
-        directFactory = RealmFactoryUniV4Direct(
-            address(new ERC1967Proxy(impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
-        );
-        vm.stopPrank();
-    }
-
-    /// @dev Whitelists `quote` at `unitsPerNativeX18` whole units per ETH by writing the rate a listing
-    ///      would snapshot, so factory tests need no price pool per test quote. Listing itself is covered
-    ///      in `realmAssetsWhitelist.t.sol`.
-    function _whitelist(address quote, uint256 unitsPerNativeX18) internal {
-        stdstore.target(address(assetsWhitelist)).sig(assetsWhitelist.unitsPerNativeX18.selector).with_key(quote)
-            .checked_write(unitsPerNativeX18);
+        (LAUNCH_TICK,,) = directFactory.previewLaunchTick(address(0));
     }
 
     /////////////////////////// HELPERS ///////////////////////////
@@ -104,25 +63,9 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         s.lpFeeBps = 100;
     }
 
-    function _pairs(address quote, int24 tick) internal pure returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
+    function _pairs(address quote) internal pure returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
         p = new RealmFactoryUniV4Direct.DirectPair[](1);
-        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: quote, weightBps: 10_000, launchTick: tick});
-    }
-
-    function _noDevBuy() internal pure returns (RealmFactoryUniV4Direct.DevBuy memory d) {
-        d = RealmFactoryUniV4Direct.DevBuy({
-            pairIndex: 0,
-            route: new CorePoolKey[](0),
-            minQuoteOut: 0,
-            quoteAmount: 0,
-            recipients: new IRealmFactory.SupplyShare[](0)
-        });
-    }
-
-    function _devBuyTo(address to) internal pure returns (RealmFactoryUniV4Direct.DevBuy memory d) {
-        d = _noDevBuy();
-        d.recipients = new IRealmFactory.SupplyShare[](1);
-        d.recipients[0] = IRealmFactory.SupplyShare({account: to, shares: 10_000});
+        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: quote, weightBps: 10_000});
     }
 
     /// @dev The common no-tax, no-vault, no-sniper launch.
@@ -130,7 +73,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.prank(creator);
         token = directFactory.createToken{value: value}(
             _setup(false),
-            _pairs(address(0), LAUNCH_TICK),
+            _pairs(address(0)),
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -145,7 +88,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
 
     /////////////////////////// TESTS ///////////////////////////
 
-    function test_launch_createsPoolAtTheCallerSuppliedTick() public {
+    function test_launch_createsPoolAtTheDerivedTick() public {
         address token = _launch(0, _noDevBuy());
 
         (uint160 sqrtPriceX96, int24 tick,,) = IPoolManager(poolManagerAddress).getSlot0(_poolKey(token).toId());
@@ -191,7 +134,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
                     abi.decode(logs[i].data, (bytes32, uint16, int24, uint128));
                 assertEq(poolId, PoolId.unwrap(_poolKey(token).toId()));
                 assertEq(weightBps, 10_000);
-                assertEq(tick, LAUNCH_TICK, "PoolSeeded reports the caller's tick, not the pool's");
+                assertEq(tick, LAUNCH_TICK, "PoolSeeded reports the quote-per-coin tick, not the pool's");
                 assertGt(liquidity, 0);
                 (,,,, uint256 launchCap, uint256 targetCap) =
                     abi.decode(logs[i].data, (bytes32, uint16, int24, uint128, uint256, uint256));
@@ -199,6 +142,8 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
                 // `priceAtTick` flooring the per-coin price before scaling by the supply.
                 (, uint256 capX18) = RealmLaunchPricing.priceAtTick(LAUNCH_TICK, 18);
                 assertApproxEqAbs(launchCap, capX18, 1e9, "launch market cap in wei");
+                // ...which is the fixed 2.25 ETH, within the half-spacing (~1%) the tick rounds to.
+                assertApproxEqRel(launchCap, directFactory.LAUNCH_MARKET_CAP_X18(), 0.0101e18, "2.25 ETH open");
                 assertEq(targetCap, launchCap * directGraduator.GRADUATION_TARGET_MULTIPLE(), "target = 5x launch");
                 found = true;
             }
@@ -206,7 +151,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         assertTrue(found, "PoolSeeded not emitted");
     }
 
-    /// @dev Same order as `RealmGraduatorUniswapV4`, which indexers depend on.
+    /// @dev The order indexers depend on.
     function test_launch_emitsPairInitializedBeforePoolIdRegistered() public {
         vm.recordLogs();
         _launch(0, _noDevBuy());
@@ -304,7 +249,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.prank(creator);
         address token = directFactory.createToken(
             _setup(false),
-            _pairs(address(0), LAUNCH_TICK),
+            _pairs(address(0)),
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             vaults,
@@ -326,7 +271,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.prank(creator);
         address token = directFactory.createToken(
             setup,
-            _pairs(address(0), LAUNCH_TICK),
+            _pairs(address(0)),
             _noDirectAlloc(_taxCfg(300, 300, uint32(14 days))),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -357,7 +302,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.prank(creator);
         address token = directFactory.createToken(
             _setup(false),
-            _pairs(address(0), LAUNCH_TICK),
+            _pairs(address(0)),
             _noDirectAlloc(_emptyTaxCfg()),
             cfg,
             new IRealmFactory.CreatorVault[](0),
@@ -365,7 +310,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
             address(0)
         );
 
-        // 0.05 ETH buys ~0.5% of supply out of a ~10 ETH-cap pool — five times the cap — so the
+        // 0.05 ETH buys ~2% of supply out of a 2.25 ETH-cap pool — far over the cap — so the
         // pool -> buyer leg is rejected.
         _swapBuyV4(alice, token, 0.05 ether, 0, false);
         assertEq(IERC20(token).balanceOf(alice), 0);
@@ -378,36 +323,26 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
 
     /////////////////////////// VALIDATION ///////////////////////////
 
-    function test_revertsOnUnalignedLaunchTick() public {
-        vm.prank(creator);
-        vm.expectRevert(RealmDirectGraduatorUniV4.InvalidLaunchTick.selector);
-        directFactory.createToken(
-            _setup(false),
-            _pairs(address(0), LAUNCH_TICK + 1),
-            _noDirectAlloc(_emptyTaxCfg()),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            _noDevBuy(),
-            address(0)
-        );
+    /// @dev The native pair opens at the fixed market cap, whatever else is going on: the preview reports
+    ///      the spacing-aligned tick the launch uses and a market cap within half a spacing step of it.
+    function test_previewLaunchTick_nativeOpensAtTheFixedMarketCap() public view {
+        (int24 tick, uint256 priceX18, uint256 capX18) = directFactory.previewLaunchTick(address(0));
+        assertEq(tick % UniswapV4PoolConstants.TICK_SPACING, 0, "spacing-aligned");
+        assertEq(capX18, priceX18 * 1_000_000_000);
+        assertApproxEqRel(capX18, directFactory.LAUNCH_MARKET_CAP_X18(), 0.0101e18, "2.25 ETH open");
     }
 
-    /// @dev At no quote decimals (0-36) does the edge of the usable band imply a market cap inside the
-    ///      launch-price bounds, so the factory's bound refuses it before the graduator's tick check.
-    function test_revertsOnLaunchTickAtTheEdgeOfTheUsableBand() public {
+    /// @dev The graduator still validates the tick it is handed, whoever derived it.
+    function test_graduatorRejectsAnUnalignedLaunchTick() public {
+        vm.expectRevert(RealmDirectGraduatorUniV4.InvalidLaunchTick.selector);
+        directGraduator.prepare(address(0), LAUNCH_TICK + 1, 10_000);
+    }
+
+    function test_graduatorRejectsALaunchTickAtTheEdgeOfTheUsableBand() public {
         int24 maxUsable =
             (TickMath.MAX_TICK / UniswapV4PoolConstants.TICK_SPACING) * UniswapV4PoolConstants.TICK_SPACING;
-        vm.prank(creator);
-        vm.expectRevert(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector);
-        directFactory.createToken(
-            _setup(false),
-            _pairs(address(0), maxUsable),
-            _noDirectAlloc(_emptyTaxCfg()),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            _noDevBuy(),
-            address(0)
-        );
+        vm.expectRevert(RealmDirectGraduatorUniV4.InvalidLaunchTick.selector);
+        directGraduator.prepare(address(0), maxUsable, 10_000);
     }
 
     /// @dev The wrapped native token is the one quote the venue refuses outright: a pool holding it and
@@ -418,7 +353,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.expectRevert(RealmFactoryUniV4Direct.QuoteNotSupported.selector);
         directFactory.createToken(
             _setup(false),
-            _pairs(address(WETH), LAUNCH_TICK),
+            _pairs(address(WETH)),
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -432,7 +367,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.expectRevert(RealmFactoryUniV4Direct.QuoteNotSupported.selector);
         directFactory.createToken(
             _setup(false),
-            _pairs(address(directGraduator), LAUNCH_TICK), // a contract, but not an ERC20
+            _pairs(address(directGraduator)), // a contract, but not an ERC20
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -442,7 +377,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
     }
 
     function test_revertsOnPartialPairWeight() public {
-        RealmFactoryUniV4Direct.DirectPair[] memory pairs = _pairs(address(0), LAUNCH_TICK);
+        RealmFactoryUniV4Direct.DirectPair[] memory pairs = _pairs(address(0));
         pairs[0].weightBps = 5_000;
         vm.prank(creator);
         vm.expectRevert(RealmFactoryUniV4Direct.InvalidPairs.selector);
@@ -464,7 +399,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.expectRevert(RealmFactoryUniV4Direct.InvalidDevBuy.selector);
         directFactory.createToken{value: 0.01 ether}(
             _setup(false),
-            _pairs(address(0), LAUNCH_TICK),
+            _pairs(address(0)),
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -480,7 +415,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.expectRevert(RealmFactoryUniV4Direct.InvalidLpFeeBps.selector);
         directFactory.createToken(
             setup,
-            _pairs(address(0), LAUNCH_TICK),
+            _pairs(address(0)),
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -499,7 +434,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.expectRevert(IRealmFactory.InvalidTaxBps.selector);
         directFactory.createToken(
             setup,
-            _pairs(address(0), LAUNCH_TICK),
+            _pairs(address(0)),
             _noDirectAlloc(overCap),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -510,7 +445,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.prank(creator);
         address token = directFactory.createToken(
             setup,
-            _pairs(address(0), LAUNCH_TICK),
+            _pairs(address(0)),
             _noDirectAlloc(_decayCfg(1900, 0, 20 minutes, true)),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),

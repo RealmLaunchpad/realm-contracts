@@ -24,13 +24,12 @@ import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/Un
 
 /// @title RealmDirectGraduatorUniV4
 /// @notice The DIRECT-launch venue: a Realm token that never touches a bonding curve. The pool is
-///         created at a price the creator picks, the whole circulating supply is seeded as a
+///         created at the price the factory derives, the whole circulating supply is seeded as a
 ///         SINGLE-SIDED token band, and the creator's own dev buy is the first trade — all inside the
 ///         one `createToken` transaction.
 ///
-/// @dev Shape-compatible with `RealmGraduatorUniswapV4` (same `IRealmGraduator`, same
-///      `HOOK_ADDRESS()` / `LIQUIDITY_ADDER()` views the taxable tokens read for their keeper paths),
-///      so a direct-launched token is an ORDINARY graduated Realm token from every other contract's
+/// @dev Implements `IRealmGraduator` plus the `HOOK_ADDRESS()` / `LIQUIDITY_ADDER()` views the taxable
+///      tokens read for their keeper paths, so a direct-launched token is an ORDINARY graduated Realm token from every other contract's
 ///      point of view. What differs is only how it got there:
 ///      - There is no launchpad and no curve. The token's supply is minted straight here (its
 ///        `launchpad` is `address(0)`, so `RealmToken` falls back to the graduator as the mint target),
@@ -39,7 +38,7 @@ import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/Un
 ///        only ETH in the transaction is the creator's own dev buy, and taking a cut of that would just
 ///        be a launch fee under another name. The protocol earns from the hook's LP fee, as always.
 ///      - The launch price is an INPUT (`launchTick`), not a per-tier constant, so the seed band is
-///        whatever the creator's tick implies rather than a fixed geometry.
+///        whatever the factory's tick implies rather than a fixed geometry.
 ///
 /// @dev Non-upgradeable and ownerless. It holds the seed position NFT forever — that is the liquidity
 ///      lock — and ends every transaction with no balance of anything, so there is nothing to rescue and
@@ -149,7 +148,7 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
 
     /////////////////////// Events ///////////////////////
 
-    /// @notice Mirrors `RealmGraduatorUniswapV4`: lets an indexer map a token to its V4 pool id and the
+    /// @notice Lets an indexer map a token to its V4 pool id and the
     ///         hook mediating its swaps without reconstructing the key.
     event PoolIdRegistered(address indexed token, bytes32 poolId, address swapHookAddress);
 
@@ -237,8 +236,7 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         require(tokenAddress != quote, TokenEqualsQuote());
 
         _initializedToken = tokenAddress;
-        // Before `_openPool`'s `PoolIdRegistered`: the same order `RealmGraduatorUniswapV4` emits, which
-        // indexers depend on.
+        // Before `_openPool`'s `PoolIdRegistered`: the order indexers depend on.
         emit PairInitialized(tokenAddress, address(UNIV4_POOL_MANAGER));
         _openPool(tokenAddress, quote, _pendingLaunchTick);
 

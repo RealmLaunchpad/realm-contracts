@@ -16,6 +16,7 @@ import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "lib/v4-core/src/types/Currency.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {RealmLaunchPricing} from "src/libraries/RealmLaunchPricing.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
@@ -93,23 +94,23 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
     /// @dev A whitelisted `QuoteCoin` at a chosen address. Etched rather than deployed so the sort order
     ///      is fixed; the name and symbol read empty, which nothing here uses. The six-decimal one is priced
-    ///      for `QC_LAUNCH_TICK`, the eighteen-decimal one for `LAUNCH_TICK` (10 units, so 10 ETH at 1:1).
+    ///      like `quoteCoin`, the eighteen-decimal one 1:1 with ETH.
     function _placeQuote(address where, bool eighteenDecimals) internal returns (address) {
         vm.etch(where, eighteenDecimals ? address(new QuoteCoin18()).code : address(new QuoteCoin()).code);
         _whitelist(where, eighteenDecimals ? 1e18 : QC_PER_ETH);
         return where;
     }
 
-    /// @dev A fresh whitelisted eighteen-decimal `QuoteCoin`, priced 1:1 with ETH for `LAUNCH_TICK`.
+    /// @dev A fresh whitelisted eighteen-decimal `QuoteCoin`, priced 1:1 with ETH.
     function _newQuote18() internal returns (address quote) {
         quote = address(new QuoteCoin18());
         _whitelist(quote, 1e18);
     }
 
-    /// @dev A plain launch against `quote` at `tick`, expecting `revertData` (empty for success).
-    function _launchAt(address quote, int24 tick, bytes memory revertData) internal {
+    /// @dev A plain launch against `quote`, expecting `revertData` (empty for success).
+    function _launchAt(address quote, bytes memory revertData) internal {
         RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(false);
-        RealmFactoryUniV4Direct.DirectPair[] memory pairs = _pairs(quote, tick);
+        RealmFactoryUniV4Direct.DirectPair[] memory pairs = _pairs(quote);
         vm.prank(creator);
         if (revertData.length > 0) vm.expectRevert(revertData);
         directFactory.createToken(
@@ -129,7 +130,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         c.earningsAllocation.liquidityBps = 5_000;
     }
 
-    function _launchEarning(address quote, int24 tick, AntiSniperConfigs memory caps)
+    function _launchEarning(address quote, AntiSniperConfigs memory caps)
         internal
         returns (RealmTaxableTokenUniV4 token)
     {
@@ -137,7 +138,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         token = RealmTaxableTokenUniV4(
             payable(directFactory.createToken(
                     _setup(true),
-                    _pairs(quote, tick),
+                    _pairs(quote),
                     _burnAndLiquidityAlloc(),
                     caps,
                     new IRealmFactory.CreatorVault[](0),
@@ -162,7 +163,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     /// @dev The first call mints a wall on the token's OWN ERC20 pool; the second, with the price
     ///      unmoved, tops that same wall up. Neither leaves quote behind in the adder.
     function _wallThenTopUp(address quote) internal {
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         _accrue(token, quote, 4_000e6);
         IPositionManager posm = IPositionManager(positionManagerAddress);
 
@@ -197,7 +198,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     /////////////////////////// processBurn(quote) ///////////////////////////
 
     function _buyBackAndBurn(address quote) internal {
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         _accrue(token, quote, 4_000e6);
         uint256 supply = token.totalSupply();
 
@@ -224,15 +225,15 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
     /// @dev A deposit that sizes to zero liquidity comes back in the currency it was made in, including
     ///      an ERC20 sitting at `currency0` — the index native occupies on a native pool. At this price
-    ///      (~7.4 raw quote per raw coin) one raw unit of quote is worth less than one unit of liquidity.
+    ///      (~22.5 raw quote per raw coin) one raw unit of quote is worth less than one unit of liquidity.
     function test_adder_zeroLiquidityErc20Currency0IsRefundedInKind() public {
         address quote = _placeQuote(LOW_QUOTE, true);
-        // Worth 1e-9 ETH a unit, so the ~7.4e9-unit market cap this price implies is ~7.4 ETH.
-        _whitelist(quote, 1e27);
+        // Worth 1e-10 ETH a unit, so the 2.25 ETH opening cap is ~2.25e10 units.
+        _whitelist(quote, 1e28);
         vm.prank(creator);
         address token = directFactory.createToken(
             _setup(false),
-            _pairs(quote, 20_000),
+            _pairs(quote),
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -271,7 +272,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     ///      real `settleFees`, so the router's ERC20 leg is the thing under test, not a direct `accrueFees`.
     function test_erc20Quote_lpFeeCreatorShareIsCarvedByEarningsAllocation() public {
         address quote = _placeQuote(LOW_QUOTE, false);
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         QuoteCoin(quote).mintTo(alice, 1_000e6);
 
         _swapQuotePool(alice, address(token), quote, true, 100e6);
@@ -302,7 +303,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     ///      has an absolute ceiling instead, which means nothing in a currency nobody calibrated.
     function test_processBurn_quote_capsSpendAt25PercentOfBuffer() public {
         address quote = _placeQuote(LOW_QUOTE, false);
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         _accrue(token, quote, 4_000e6);
 
         (uint256 buffered,,,) = token.quoteBufferOf(quote);
@@ -317,7 +318,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     /// @dev The same cap on the liquidity leg, which reads `_maxSpend` through its own entry point.
     function test_processLiquidity_quote_capsSpendAt25PercentOfBuffer() public {
         address quote = _placeQuote(LOW_QUOTE, false);
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         _accrue(token, quote, 4_000e6);
 
         (, uint256 buffered,,) = token.quoteBufferOf(quote);
@@ -332,7 +333,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     ///      native leg has this; the quote leg is a different path (orientation-dependent, Permit2-settled).
     function test_processBurn_quote_partialFillRefundsUnspentToBuffer() public {
         address quote = _placeQuote(LOW_QUOTE, false);
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         _accrue(token, quote, 4_000e6);
         (uint256 buffered,,,) = token.quoteBufferOf(quote);
         uint256 spend = buffered / 4;
@@ -362,7 +363,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     function test_accrueFees_feeOnTransferQuoteDoesNotOvercredit() public {
         address quote = address(new QuoteCoin18FeeOnTransfer());
         _whitelist(quote, 1e18);
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
 
         QuoteCoin(quote).mintTo(address(this), 4_000e18);
         IERC20(quote).approve(address(token), 4_000e18);
@@ -385,7 +386,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     ///      the two earnings processors, which would otherwise index a buffer that belongs to nobody.
     function test_processBurnAndLiquidity_unregisteredQuoteReverts() public {
         address quote = _placeQuote(LOW_QUOTE, false);
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
 
         vm.expectRevert(RealmToken.UnknownQuote.selector);
         token.processBurn(address(quoteCoin), 1);
@@ -399,8 +400,8 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     function test_processBurn_nativeAndQuoteCooldownsAreIndependent() public {
         address quote = _placeQuote(LOW_QUOTE, false);
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
-        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000, launchTick: LAUNCH_TICK});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: quote, weightBps: 5_000, launchTick: QC_LAUNCH_TICK});
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: quote, weightBps: 5_000});
 
         vm.prank(creator);
         RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(
@@ -499,7 +500,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         vm.expectRevert();
         directFactory.createToken(
             setup,
-            _quotePairs(QC_LAUNCH_TICK),
+            _quotePairs(),
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -517,7 +518,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         AntiSniperConfigs memory caps = AntiSniperConfigs({
             maxBuyPerTxBps: 10, maxWalletBps: 10, protectionWindowSeconds: 1 days, whitelist: new address[](0)
         });
-        RealmTaxableTokenUniV4 token = _launchEarning(address(0), LAUNCH_TICK, caps);
+        RealmTaxableTokenUniV4 token = _launchEarning(address(0), caps);
         vm.deal(address(this), 1 ether);
         token.accrueFees{value: 1 ether}();
         uint256 supply = token.totalSupply();
@@ -527,71 +528,95 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         assertLt(token.totalSupply(), supply, "the buy-back went through inside the window");
     }
 
-    /////////////////////////// launch-price bounds ///////////////////////////
-    // The opening market cap must be worth [1, 250] ETH, an ERC20 quote converted at its whitelist rate in
-    // WHOLE units. The ticks below straddle each bound by one spacing; the comment on each is the market
-    // cap it implies.
+    /////////////////////////// launch price ///////////////////////////
+    // Every pair opens at `LAUNCH_MARKET_CAP_X18` (2.25 ETH) of native value, an ERC20 quote converted at
+    // its LIVE whitelist rate. The [1, 250] ETH bounds are checked at the SNAPSHOT rate, so they cap how
+    // far the live rate may have drifted from the listed one: live / snapshot in ~[0.44, 111].
 
     function _outOfBounds() internal pure returns (bytes memory) {
         return abi.encodeWithSelector(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector);
     }
 
-    function test_launchPrice_nativeBounds() public {
-        _launchAt(address(0), -207_200, ""); // 1.004 ETH
-        _launchAt(address(0), -207_400, _outOfBounds()); // 0.984 ETH
-        _launchAt(address(0), -152_200, ""); // 245.7 ETH
-        _launchAt(address(0), -152_000, _outOfBounds()); // 250.6 ETH
+    /// @dev The opening market cap in whole `quote` units (X18) of a launch against it, read off the pool.
+    function _openingCapInQuote(address quote, uint8 dec) internal returns (uint256 capX18) {
+        vm.recordLogs();
+        _launchAt(quote, "");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics.length == 3 && logs[i].topics[0] == RealmDirectGraduatorUniV4.PoolSeeded.selector) {
+                (,, int24 tick,) = abi.decode(logs[i].data, (bytes32, uint16, int24, uint128));
+                (, capX18) = RealmLaunchPricing.priceAtTick(tick, dec);
+                return capX18;
+            }
+        }
+        revert("PoolSeeded not emitted");
     }
 
-    /// @dev Six decimals at 3,500 QC per ETH (`3500e18`, no decimals in the rate): [3,500, 875,000] QC.
-    function test_launchPrice_sixDecimalQuoteBounds() public {
+    function test_launchPrice_nativeOpensAtTheFixedMarketCap() public {
+        assertApproxEqRel(_openingCapInQuote(address(0), 18), 2.25 ether, 0.0101e18, "2.25 ETH");
+    }
+
+    /// @dev Six decimals at 3,500 QC per ETH: 2.25 ETH is 7,875 QC, and it follows the LIVE rate.
+    function test_launchPrice_erc20OpensAtTheFixedMarketCapAtTheLiveRate() public {
         address quote = address(quoteCoin);
-        _launchAt(quote, -401_800, ""); // 3,556 QC
-        _launchAt(quote, -402_000, _outOfBounds()); // 3,485 QC
-        _launchAt(quote, -346_800, ""); // 869,802 QC
-        _launchAt(quote, -346_600, _outOfBounds()); // 887,372 QC
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 7_875e18, 0.0101e18, "7,875 QC at the snapshot rate");
+
+        _mockLiveRate(quote, 2 * QC_PER_ETH);
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 15_750e18, 0.0101e18, "15,750 QC at twice the rate");
     }
 
-    /// @dev The mistake the lower bound exists for: a 1e5 QC market cap (`QC_LAUNCH_TICK`) priced as if
-    ///      QC had 18 decimals, i.e. 1e12 times too cheap.
-    function test_launchPrice_decimalsSlipIsRejected() public {
-        _launchAt(address(quoteCoin), QC_LAUNCH_TICK - 276_400, _outOfBounds()); // 1e-7 QC
+    /// @dev The live rate may not stray below ~0.44x the snapshot (a < 1 ETH cap at the listed price)...
+    function test_launchPrice_liveRateFarBelowTheSnapshotIsRejected() public {
+        address quote = address(quoteCoin);
+        _mockLiveRate(quote, QC_PER_ETH * 46 / 100); // ~1.035 ETH at the snapshot rate
+        _launchAt(quote, "");
+        _mockLiveRate(quote, QC_PER_ETH * 42 / 100); // ~0.945 ETH
+        _launchAt(quote, _outOfBounds());
     }
 
-    /// @dev Twenty-seven decimals at 1:1 with ETH: [1, 250] units, as for native.
-    function test_launchPrice_27DecimalQuoteBounds() public {
+    /// @dev ...nor above ~111x (a > 250 ETH cap at the listed price).
+    function test_launchPrice_liveRateFarAboveTheSnapshotIsRejected() public {
+        address quote = address(quoteCoin);
+        _mockLiveRate(quote, QC_PER_ETH * 108); // ~243 ETH at the snapshot rate
+        _launchAt(quote, "");
+        _mockLiveRate(quote, QC_PER_ETH * 114); // ~256.5 ETH
+        _launchAt(quote, _outOfBounds());
+    }
+
+    /// @dev The preview reverts exactly where `createToken` does.
+    function test_previewLaunchTick_revertsWhereTheLaunchWould() public {
+        _mockLiveRate(address(quoteCoin), QC_PER_ETH * 114);
+        vm.expectRevert(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector);
+        directFactory.previewLaunchTick(address(quoteCoin));
+    }
+
+    /// @dev Twenty-seven decimals at 1:1 with ETH: 2.25 units, as for native.
+    function test_launchPrice_27DecimalQuote() public {
         address quote = HIGH_QUOTE;
         vm.etch(quote, address(new QuoteCoin27()).code);
         _whitelist(quote, 1e18);
-        _launchAt(quote, 200, ""); // 1.02
-        _launchAt(quote, -200, _outOfBounds()); // 0.98
-        _launchAt(quote, 55_200, ""); // 249.6
-        _launchAt(quote, 55_400, _outOfBounds()); // 254.6
+        assertApproxEqRel(_openingCapInQuote(quote, 27), 2.25e18, 0.0101e18, "2.25 units");
     }
 
-    /// @dev At an absurd rate (1e18 units per ETH) the bounds admit a price where Uniswap's per-tick
-    ///      liquidity ceiling binds first, with its own named error.
+    /// @dev At an absurd rate (4.4e19 units per ETH, a ~9.9e19-unit cap) Uniswap's per-tick liquidity
+    ///      ceiling binds first, with its own named error.
     function test_launchPrice_27DecimalSeedLiquidityCeiling() public {
         address quote = HIGH_QUOTE;
         vm.etch(quote, address(new QuoteCoin27()).code);
-        _whitelist(quote, 1e36);
-        _launchAt(quote, 460_400, abi.encodeWithSelector(RealmDirectGraduatorUniV4.SeedLiquidityOutOfRange.selector)); // 9.9e19
+        _whitelist(quote, 4.4e37);
+        _launchAt(quote, abi.encodeWithSelector(RealmDirectGraduatorUniV4.SeedLiquidityOutOfRange.selector));
     }
 
     /// @dev Only whitelisted ERC20 quotes launch, and delisting refuses new launches.
     function test_directInputs_quoteMustBeWhitelisted() public {
         address quote = address(new QuoteCoin());
-        _expectCreateRevert(
-            _pairs(quote, QC_LAUNCH_TICK), _noDevBuy(), 0, RealmFactoryUniV4Direct.QuoteNotSupported.selector
-        );
+        _expectCreateRevert(_pairs(quote), _noDevBuy(), 0, RealmFactoryUniV4Direct.QuoteNotSupported.selector);
 
         _whitelist(quote, QC_PER_ETH);
-        _launchAt(quote, QC_LAUNCH_TICK, "");
+        _launchAt(quote, "");
 
         _whitelist(quote, 0);
-        _expectCreateRevert(
-            _pairs(quote, QC_LAUNCH_TICK), _noDevBuy(), 0, RealmFactoryUniV4Direct.QuoteNotSupported.selector
-        );
+        _expectCreateRevert(_pairs(quote), _noDevBuy(), 0, RealmFactoryUniV4Direct.QuoteNotSupported.selector);
     }
 
     /////////////////////////// direct factory input validation ///////////////////////////
@@ -621,9 +646,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     function test_directInputs_devBuyOnAPairThatDoesNotExistIsRejected() public {
         RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
         devBuy.pairIndex = 1;
-        _expectCreateRevert(
-            _pairs(address(0), LAUNCH_TICK), devBuy, 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector
-        );
+        _expectCreateRevert(_pairs(address(0)), devBuy, 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
     }
 
     /// @dev No conversion happens, so a floor for one is a caller who believes something is configured
@@ -631,9 +654,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     function test_directInputs_devBuyWithASlippageFloorIsRejected() public {
         RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
         devBuy.minQuoteOut = 1;
-        _expectCreateRevert(
-            _pairs(address(0), LAUNCH_TICK), devBuy, 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector
-        );
+        _expectCreateRevert(_pairs(address(0)), devBuy, 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
     }
 
     /// @dev The ERC20 pair is where a native -> quote route would mean something, and it is still refused.
@@ -641,23 +662,21 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
         devBuy.route = new CorePoolKey[](1);
         devBuy.quoteAmount = 100e6;
-        _expectCreateRevert(_quotePairs(QC_LAUNCH_TICK), devBuy, 0, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
+        _expectCreateRevert(_quotePairs(), devBuy, 0, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
     }
 
     /// @dev Crossing the two payment legs would strand one of them in the factory.
     function test_directInputs_quoteAmountOnANativePairIsRejected() public {
         RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
         devBuy.quoteAmount = 100e6;
-        _expectCreateRevert(_pairs(address(0), LAUNCH_TICK), devBuy, 0, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
+        _expectCreateRevert(_pairs(address(0)), devBuy, 0, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
     }
 
     /// @dev Native AND the quote: one of the two would be stranded.
     function test_directInputs_valueAndQuoteAmountTogetherAreRejected() public {
         RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
         devBuy.quoteAmount = 100e6;
-        _expectCreateRevert(
-            _quotePairs(QC_LAUNCH_TICK), devBuy, 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector
-        );
+        _expectCreateRevert(_quotePairs(), devBuy, 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
     }
 
     /// @dev A quote-funded buy converts nothing, so a floor for it is refused.
@@ -665,16 +684,14 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
         devBuy.quoteAmount = 100e6;
         devBuy.minQuoteOut = 1;
-        _expectCreateRevert(_quotePairs(QC_LAUNCH_TICK), devBuy, 0, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
+        _expectCreateRevert(_quotePairs(), devBuy, 0, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
     }
 
     /// @dev The zap's route is the whitelist's: a caller-supplied one is refused even when zapping.
     function test_directInputs_devBuyRouteOnAZapIsRejected() public {
         RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
         devBuy.route = new CorePoolKey[](1);
-        _expectCreateRevert(
-            _quotePairs(QC_LAUNCH_TICK), devBuy, 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector
-        );
+        _expectCreateRevert(_quotePairs(), devBuy, 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
     }
 
     /////////////////////////// dev-buy zap: native -> quote ///////////////////////////
@@ -725,7 +742,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         vm.prank(creator);
         token = directFactory.createToken{value: value}(
             setup,
-            _pairs(quote, QC_LAUNCH_TICK),
+            _pairs(quote),
             _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -793,9 +810,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
         devBuy.minQuoteOut = 1e30;
         vm.deal(creator, 0.1 ether);
-        _expectCreateRevert(
-            _pairs(USDC, QC_LAUNCH_TICK), devBuy, 0.1 ether, RealmDirectGraduatorUniV4.InsufficientQuoteOut.selector
-        );
+        _expectCreateRevert(_pairs(USDC), devBuy, 0.1 ether, RealmDirectGraduatorUniV4.InsufficientQuoteOut.selector);
     }
 
     /// @dev `source` stands in for QC's whitelist listing; QC itself is whitelisted by rate in `setUp`.
@@ -807,10 +822,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         );
         vm.deal(creator, 0.1 ether);
         _expectCreateRevert(
-            _quotePairs(QC_LAUNCH_TICK),
-            _devBuyTo(alice),
-            0.1 ether,
-            RealmFactoryUniV4Direct.DevBuyRouteUnavailable.selector
+            _quotePairs(), _devBuyTo(alice), 0.1 ether, RealmFactoryUniV4Direct.DevBuyRouteUnavailable.selector
         );
     }
 
@@ -844,10 +856,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
     function test_directInputs_quoteWithoutCodeIsRejected() public {
         _expectCreateRevert(
-            _pairs(makeAddr("eoaQuote"), QC_LAUNCH_TICK),
-            _noDevBuy(),
-            0,
-            RealmFactoryUniV4Direct.QuoteNotSupported.selector
+            _pairs(makeAddr("eoaQuote")), _noDevBuy(), 0, RealmFactoryUniV4Direct.QuoteNotSupported.selector
         );
     }
 
@@ -858,10 +867,8 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         address quote37 = address(new QuoteCoin37());
         _whitelist(quote36, 0.1e18);
         _whitelist(quote37, 0.1e18);
-        _launchAt(quote36, 207_200, ""); // ~1 whole unit market cap
-        _expectCreateRevert(
-            _pairs(quote37, 207_200), _noDevBuy(), 0, RealmFactoryUniV4Direct.QuoteNotSupported.selector
-        );
+        _launchAt(quote36, ""); // ~1 whole unit market cap
+        _expectCreateRevert(_pairs(quote37), _noDevBuy(), 0, RealmFactoryUniV4Direct.QuoteNotSupported.selector);
     }
 
     function test_directAlloc_rejectsMoreQuoteRoutesThanPairs() public {
@@ -872,7 +879,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         vm.expectRevert(RealmFactoryUniV4Direct.InvalidQuoteRoutes.selector);
         directFactory.createToken(
             setup,
-            _quotePairs(QC_LAUNCH_TICK),
+            _quotePairs(),
             cfg,
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -886,7 +893,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         assertEq(
             directFactory.previewTokenImplementation(
                 _previewSetup(),
-                _pairs(address(0), LAUNCH_TICK),
+                _pairs(address(0)),
                 _noDirectAlloc(_emptyTaxCfg()),
                 _emptyAntiSniperCfg(),
                 _noVaults(),
@@ -899,7 +906,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         assertEq(
             directFactory.previewTokenImplementation(
                 _previewSetup(),
-                _pairs(address(0), LAUNCH_TICK),
+                _pairs(address(0)),
                 _noDirectAlloc(_taxCfg(300, 300, uint32(14 days))),
                 _emptyAntiSniperCfg(),
                 _noVaults(),
@@ -948,11 +955,9 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         address third = address(new QuoteCoin());
         _whitelist(third, QC_PER_ETH);
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](3);
-        pairs[0] = RealmFactoryUniV4Direct.DirectPair({
-            quote: address(quoteCoin), weightBps: 5_000, launchTick: QC_LAUNCH_TICK
-        });
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: _newQuote18(), weightBps: 3_000, launchTick: LAUNCH_TICK});
-        pairs[2] = RealmFactoryUniV4Direct.DirectPair({quote: third, weightBps: 2_000, launchTick: QC_LAUNCH_TICK});
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(quoteCoin), weightBps: 5_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: _newQuote18(), weightBps: 3_000});
+        pairs[2] = RealmFactoryUniV4Direct.DirectPair({quote: third, weightBps: 2_000});
         RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(true);
 
         vm.prank(creator);
@@ -985,11 +990,9 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     function test_multiPair_threePoolsAreAllSeeded() public {
         address quote18 = _newQuote18();
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](3);
-        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000, launchTick: LAUNCH_TICK});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({
-            quote: address(quoteCoin), weightBps: 3_000, launchTick: QC_LAUNCH_TICK
-        });
-        pairs[2] = RealmFactoryUniV4Direct.DirectPair({quote: quote18, weightBps: 2_000, launchTick: LAUNCH_TICK});
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: address(quoteCoin), weightBps: 3_000});
+        pairs[2] = RealmFactoryUniV4Direct.DirectPair({quote: quote18, weightBps: 2_000});
 
         RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(false);
         vm.recordLogs();
@@ -1067,17 +1070,17 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     }
 
     /// @dev A dev buy that buys out the whole band and still has quote left reverts rather than stranding
-    ///      the remainder. At ~3.6e-18 raw QC per raw coin (a ~3,556 QC market cap, the bottom of QC's
-    ///      bounds) the full band costs ~3.6e37 raw QC, so 1e38 cannot be filled.
+    ///      the remainder. At ~7.9e-18 raw QC per raw coin (the 7,875 QC opening cap) the full band costs
+    ///      ~7.9e37 raw QC, so 1e39 cannot be filled.
     function test_devBuy_largerThanTheBandCanFillReverts() public {
-        uint256 spend = 1e38;
+        uint256 spend = 1e39;
         quoteCoin.mintTo(creator, spend);
         vm.prank(creator);
         quoteCoin.approve(address(directFactory), spend);
         RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
         devBuy.quoteAmount = spend;
 
-        _expectCreateRevert(_quotePairs(-401_800), devBuy, 0, RealmDirectGraduatorUniV4.DevBuyNotFilled.selector);
+        _expectCreateRevert(_quotePairs(), devBuy, 0, RealmDirectGraduatorUniV4.DevBuyNotFilled.selector);
     }
 
     /////////////////////////// sniper caps on the direct venue ///////////////////////////
@@ -1135,12 +1138,12 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     function test_sniperCaps_sellAboveThePerTxCapIsNotCapped() public {
         uint256 sell = 5 * TOTAL_SUPPLY * 10 / 10_000;
 
-        address nativeToken = _cappedLaunchWithDevBuy(_pairs(address(0), LAUNCH_TICK), 0, 1 ether, _caps(10, 10));
+        address nativeToken = _cappedLaunchWithDevBuy(_pairs(address(0)), 0, 1 ether, _caps(10, 10));
         uint256 bag = IERC20(nativeToken).balanceOf(alice);
         assertGt(_swapSellV4(alice, nativeToken, sell, 0, true), 0, "native-pool sell returned ETH");
         assertEq(bag - IERC20(nativeToken).balanceOf(alice), sell, "the whole native-pool sell went through");
 
-        address quoteToken = _cappedLaunchWithDevBuy(_quotePairs(QC_LAUNCH_TICK), 0, 20_000e6, _caps(10, 10));
+        address quoteToken = _cappedLaunchWithDevBuy(_quotePairs(), 0, 20_000e6, _caps(10, 10));
         bag = IERC20(quoteToken).balanceOf(alice);
         _swapQuotePool(alice, quoteToken, false, sell);
         assertGt(quoteCoin.balanceOf(alice), 0, "ERC20-pool sell returned the quote");
@@ -1186,7 +1189,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         vm.prank(creator);
         address token = directFactory.createToken(
             _setup(false),
-            _quotePairs(QC_LAUNCH_TICK),
+            _quotePairs(),
             _noDirectAlloc(_emptyTaxCfg()),
             _caps(10, 300),
             new IRealmFactory.CreatorVault[](0),
@@ -1247,8 +1250,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     }
 
     function test_accrueFees_unknownQuoteRevertsOnAnAllocationToken() public {
-        RealmTaxableTokenUniV4 token =
-            _launchEarning(_placeQuote(LOW_QUOTE, false), QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(_placeQuote(LOW_QUOTE, false), _emptyAntiSniperCfg());
 
         vm.expectRevert(RealmToken.UnknownQuote.selector);
         token.accrueFees(address(quoteCoin), 1e6);
@@ -1262,7 +1264,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     ///      wall, the next deposit mints a SECOND wall, and the two-entry memory rotates: the new one
     ///      first, the old one second, untouched.
     function _newWallRotatesTheMemory(address quote) internal {
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         _accrue(token, quote, 4_000e6);
         IPositionManager posm = IPositionManager(positionManagerAddress);
 
@@ -1301,7 +1303,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
     /// @dev Once per block per quote, for each leg separately; the next block reopens both.
     function _secondProcessInABlockReverts(address quote) internal {
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         _accrue(token, quote, 4_000e6);
 
         token.processBurn(quote, 1);
@@ -1331,7 +1333,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     /// @dev An empty quote buffer has nothing to spend, even while the NATIVE buffers of the same token are
     ///      full: the buffers are per quote.
     function _emptyQuoteBuffersRevert(address quote) internal {
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         vm.deal(address(this), 1 ether);
         token.accrueFees{value: 1 ether}();
         assertGt(token.burnPendingEth(), 0, "precondition: the native buffers are funded");
@@ -1353,7 +1355,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     /// @dev The quote's burn and liquidity buffers are committed: the owner's `rescueTokens` sees only
     ///      what sits above them.
     function _rescueSweepsOnlyStrayQuote(address quote) internal {
-        RealmTaxableTokenUniV4 token = _launchEarning(quote, QC_LAUNCH_TICK, _emptyAntiSniperCfg());
+        RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         _accrue(token, quote, 4_000e6);
         (uint256 burnPending, uint256 liquidityPending,,) = token.quoteBufferOf(quote);
         assertEq(burnPending + liquidityPending, 4_000e6, "precondition: the whole accrual is buffered");

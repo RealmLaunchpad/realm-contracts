@@ -1,30 +1,15 @@
-# Deploying a token: `createToken` (V2 & V4 curve factories)
+# Deploying a token: `createToken` (V2 curve factory)
 
-Each curve factory has exactly ONE `createToken`:
+The curve factory, `RealmFactoryUniV2Unified` (bonding curve, graduates to Uniswap V2), has exactly ONE `createToken`.
 
-- `RealmFactoryUniV2Unified` (graduates to Uniswap V2)
-- `RealmFactoryUniV4Unified` (graduates to Uniswap V4)
-
-The direct-launch venue (`RealmFactoryUniV4Direct`) is documented in `docs/events-per-entry-point.md` §1.3.
+The direct-launch venue (`RealmFactoryUniV4Direct`) is documented in `docs/events-per-entry-point.md` §1.3. Its pairs carry no price: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (2.25 ETH) market cap, converted to an ERC20 quote at its live whitelist rate; `previewLaunchTick(quote)` shows the resulting tick, price and market cap.
 
 ## Signatures
 
 ```solidity
-// V2 — RealmFactoryUniV2Unified
 function createToken(
     TokenSetupTiered              tokenSetup,
     TaxConfigsWithMultiAllocation taxAllocationConfigs,
-    SupplyShare[]                 buyOnDeployShares,
-    AntiSniperConfigs             antiSniperConfigs,
-    CreatorVault[]                creatorVaults,
-    address                       referral
-) external payable returns (address token);
-
-// V4 — RealmFactoryUniV4Unified  (identical, plus `univ4Configs` in position 3)
-function createToken(
-    TokenSetupTiered              tokenSetup,
-    TaxConfigsWithMultiAllocation taxAllocationConfigs,
-    UniV4Configs                  univ4Configs,   // V4 only
     SupplyShare[]                 buyOnDeployShares,
     AntiSniperConfigs             antiSniperConfigs,
     CreatorVault[]                creatorVaults,
@@ -78,8 +63,7 @@ either, both, or neither. A "decay-only" token (static fields zero, decay fields
 Effective rate a trade pays per direction is `max(decay, static)`.
 
 **Total-fee cap** (static bps only): `lpFeeBps + buyTaxBps ≤ 500` and `lpFeeBps + sellTaxBps ≤ 500`.
-- V2: post-graduation LP fee is `0`, so **each direction's static tax ≤ 500 bps (5%)**.
-- V4: `lpFeeBps` is `univ4Configs.lpFeeBps`, so **static tax ≤ `500 − lpFeeBps`** → **400 bps** with the 100-bps hook, **450 bps** with the 50-bps hook.
+The post-graduation V2 LP fee is `0`, so **each direction's static tax ≤ 500 bps (5%)**.
 
 ### `taxAllocationConfigs.earningsAllocation` — `EarningsAllocationMultiConfig`
 
@@ -95,17 +79,9 @@ dividends and liquidity; the fee receivers take the remainder. All zero = no all
 | `dividendWeightsBps` | `uint16[]` | Each asset's share of the dividends slice, non-zero, summing to `10_000`. |
 | `dividendRoutes` | `bytes[]` | Per-asset swap route (`DividendRouteLib` format); empty or missing = the asset's Uniswap V2 pair. Checked by `RealmDividendSwapRegistry` at creation. |
 
-- V2: a non-zero allocation requires a long-term static tax (`taxDurationSeconds != 0`), else `EarningsAllocationRequiresTax`.
-- V4: any tax config, zero included. A token with an allocation is always cloned from the taxable implementation.
+A non-zero allocation requires a long-term static tax (`taxDurationSeconds != 0`), else `EarningsAllocationRequiresTax`.
 
-### `univ4Configs` — `UniV4Configs` *(V4 only)*
-
-| field | type | expected value |
-|---|---|---|
-| `renounceOwnership` | `bool` | `true` → token deployed ownerless (`tokenOwner = address(0)`). `false` → `tokenOwner = msg.sender`. |
-| `lpFeeBps` | `uint16` | Post-graduation hook fee selector. **Must be `100` or `50`** — anything else reverts. Picks the graduator/hook pair (1% or 0.5% pool fee). |
-
-> V2 has no equivalent: V2 tokens are **always** ownerless and carry **no** post-graduation LP fee.
+Tokens from this factory are **always** ownerless and carry **no** post-graduation LP fee.
 
 ### `buyOnDeployShares` — `SupplyShare[]`
 
@@ -124,7 +100,7 @@ Rules:
   that reaches the threshold **graduates the token in the same tx**.
 - Use `maxBuyOnDeploy(liquidityTier, totalLockedInVaultsBps)` for the max token amount that reaches
   graduation without tripping that revert, then
-  `quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg[, univ4Configs])` (`taxCfg` is the tax
+  `quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg)` (`taxCfg` is the tax
   fields as a `TaxConfigs`) to compute the `msg.value` for a target token amount.
 
 ### `antiSniperConfigs` — `AntiSniperConfigs`
@@ -187,7 +163,6 @@ All errors are 4-byte custom errors.
 | `InvalidCreatorVault` | a vault `owner == address(0)`, or `supplyBps` is zero / not a multiple of 500. |
 | `CreatorVaultAllocationTooHigh` | sum of `supplyBps` > `3_000` (30%). |
 | `TooManyCreatorVaults` | more than 5 vaults. |
-| `InvalidLpFeeBps` | *(V4)* `univ4Configs.lpFeeBps` not `100` or `50`. |
 
 > Note: unlike the older frontend skill, this version has **no charity mode** — long tax durations
 > impose no fee-receiver or ownership constraints (only the 120-year overflow cap applies).
@@ -239,8 +214,8 @@ address won't match and the call reverts with `InvalidTokenAddress`.
 
 ## Minimal call flow
 
-1. Build `(tokenSetup, taxAllocationConfigs[, univ4Configs], buyOnDeployShares, antiSniperConfigs, creatorVaults, referral)`.
+1. Build `(tokenSetup, taxAllocationConfigs, buyOnDeployShares, antiSniperConfigs, creatorVaults, referral)`.
 2. `impl = previewTokenImplementation(<the same arguments>)`.
 3. Mine `salt` against `(factory, impl, deployer)` → address ending in `0xeeaa`.
-4. *(optional)* `value = quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg[, univ4Configs])`.
+4. *(optional)* `value = quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg)`.
 5. `createToken(...)` with `value` (`0` if not buying on deploy).

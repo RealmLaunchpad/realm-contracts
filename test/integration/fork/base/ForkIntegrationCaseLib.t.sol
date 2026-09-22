@@ -4,8 +4,7 @@ pragma solidity 0.8.28;
 /// @notice Chain-neutral data model for Realm fork integration happy-path cases.
 library ForkIntegrationCaseLib {
     enum FactoryKind {
-        UniV2,
-        UniV4
+        UniV2
     }
 
     enum TaxMode {
@@ -53,10 +52,8 @@ library ForkIntegrationCaseLib {
         address quoter;
         address bondingCurve;
         address graduatorV2;
-        address graduatorV4;
         address masterFeeHandler;
         address factoryV2Unified;
-        address factoryV4Unified;
         address tokenImpl;
         address taxTokenImpl;
         address weth;

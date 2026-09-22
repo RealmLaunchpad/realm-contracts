@@ -43,7 +43,7 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
         posm = IPositionManager(positionManagerAddress);
 
         testToken = _createTaxToken(0, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
-        _launchpadBuy(testToken, 2 ether);
+        _poolBuy(testToken, 2 ether);
         _graduateToken();
     }
 

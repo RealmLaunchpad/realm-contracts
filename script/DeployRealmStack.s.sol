@@ -8,7 +8,6 @@ import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {RealmQuoter} from "src/RealmQuoter.sol";
 import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
 import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
-import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {ConstantProductBondingCurveConfigurable} from "src/bondingCurves/ConstantProductBondingCurveConfigurable.sol";
@@ -21,7 +20,6 @@ import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
 import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
@@ -29,7 +27,6 @@ import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.sol";
-import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 
 import {BuildTarget} from "script/BuildTarget.sol";
@@ -39,16 +36,14 @@ import {BuildTarget} from "script/BuildTarget.sol";
 ///
 ///           core      `RealmMasterFeeHandler`, `RealmLaunchpad`, `RealmQuoter`,
 ///                     `RealmUniV4LiquidityAdder`
-///           graduate  `RealmGraduatorUniswapV2`, and three `RealmGraduatorUniswapV4` (DEFAULT /
-///                     THIN / THICK) all pointed at the inherited `SWAP_HOOK`
+///           graduate  `RealmGraduatorUniswapV2`
 ///           curves    22 bonding curves: the hardcoded `ConstantProductBondingCurve` (DEFAULT base)
 ///                     plus 21 `ConstantProductBondingCurveConfigurable` — six DEFAULT vault curves
 ///                     (5%..30%) and a base + six vault curves for each of THIN and THICK
 ///           vaults    `RealmCreatorVault` impl, `RealmCreatorVaultFactory` impl + UUPS proxy
 ///           tokens    `RealmToken`, `RealmTaxableTokenUniV2` (which deploys its own dividend-logic
 ///                     extension), and `RealmTaxableTokenUniV4` with its two extensions deployed first
-///           factories `RealmFactoryUniV2Unified` + `RealmFactoryUniV4Unified`, impl + UUPS proxy each,
-///                     then whitelisted on the launchpad
+///           factories `RealmFactoryUniV2Unified`, impl + UUPS proxy, then whitelisted on the launchpad
 ///           direct    the direct-launch venue: `RealmAssetsWhitelist` (no approvers yet),
 ///                     `RealmDirectGraduatorUniV4`, `RealmFactoryUniV4Direct` impl + UUPS proxy. No
 ///                     launchpad, so nothing to whitelist
@@ -58,8 +53,8 @@ import {BuildTarget} from "script/BuildTarget.sol";
 ///         nothing can be wired to a stale manifest entry. Paste the printed block into the manifest
 ///         once, at the end.
 ///
-///         The broadcaster becomes the launchpad owner (it whitelists the two factories here), the
-///         owner of the three factory proxies and the vault factory proxy, and the assets whitelist's
+///         The broadcaster becomes the launchpad owner (it whitelists the V2 factory here), the
+///         owner of the two factory proxies and the vault factory proxy, and the assets whitelist's
 ///         owner. Hand those over afterwards.
 ///
 /// @dev    PRE-FLIGHT, in order — the script refuses to broadcast otherwise:
@@ -89,9 +84,6 @@ contract DeployRealmStack is Script {
         address quoter;
         address liquidityAdder;
         address graduatorV2;
-        address graduatorV4;
-        address graduatorV4Thin;
-        address graduatorV4Thick;
     }
 
     struct Vaults {
@@ -113,8 +105,6 @@ contract DeployRealmStack is Script {
     struct Factories {
         address v2Impl;
         address v2;
-        address v4Impl;
-        address v4;
     }
 
     struct Direct {
@@ -145,7 +135,7 @@ contract DeployRealmStack is Script {
         console.log("Any-pair hook:", anyPairHook);
         console.log("");
 
-        Core memory core = _deployCore(infra, hook, deployer);
+        Core memory core = _deployCore(infra, deployer);
         address[7] memory def = _deployDefaultCurves();
         address[7] memory thin = _deployTierCurves(LiquidityTier.THIN);
         address[7] memory thick = _deployTierCurves(LiquidityTier.THICK);
@@ -155,7 +145,6 @@ contract DeployRealmStack is Script {
         Direct memory direct = _deployDirectVenue(infra, hook, anyPairHook, core, tokens, vaults.factory, deployer);
 
         RealmLaunchpad(core.launchpad).whitelistFactory(factories.v2);
-        RealmLaunchpad(core.launchpad).whitelistFactory(factories.v4);
 
         vm.stopBroadcast();
 
@@ -165,10 +154,7 @@ contract DeployRealmStack is Script {
 
     /////////////////////////////// DEPLOY ///////////////////////////////
 
-    function _deployCore(ChainConfig.Infra memory infra, address hook, address deployer)
-        internal
-        returns (Core memory c)
-    {
+    function _deployCore(ChainConfig.Infra memory infra, address deployer) internal returns (Core memory c) {
         c.feeHandler = address(new RealmMasterFeeHandler());
         // CREATE2 so the launchpad address carries the same `0xeeaa` suffix the tokens do.
         bytes32 salt =
@@ -177,44 +163,12 @@ contract DeployRealmStack is Script {
         // Only holds while broadcasting, when forge routes the salted `new` through CREATE2_DEPLOYER.
         require(uint16(uint160(c.launchpad)) == VANITY_SUFFIX, "launchpad vanity suffix mismatch");
         c.quoter = address(new RealmQuoter(c.launchpad));
-        // Chain-shared singleton: every V4 graduator's secondary position and taxable tokens'
+        // Chain-shared singleton: the direct graduator's launch band and taxable tokens'
         // `processLiquidity` both route through it.
         c.liquidityAdder =
             address(new RealmUniV4LiquidityAdder(infra.univ4PositionManager, infra.univ4PoolManager, infra.permit2));
         c.graduatorV2 =
             address(new RealmGraduatorUniswapV2(infra.univ2Router, c.launchpad, infra.univ2PairInitCodeHash));
-        // One graduator per tier; the hook is fee-agnostic (it reads the LP fee off the token), so the
-        // only per-tier difference is the graduation price and the primary range's upper tick.
-        c.graduatorV4 = _deployGraduatorV4(
-            infra, c, hook, UniswapV4PoolConstants.SQRT_PRICEX96_GRADUATION_DEFAULT, UniswapV4PoolConstants.TICK_UPPER
-        );
-        c.graduatorV4Thin = _deployGraduatorV4(
-            infra, c, hook, UniswapV4PoolConstants.SQRT_PRICEX96_GRADUATION_THIN, UniswapV4PoolConstants.TICK_UPPER_THIN
-        );
-        c.graduatorV4Thick = _deployGraduatorV4(
-            infra, c, hook, UniswapV4PoolConstants.SQRT_PRICEX96_GRADUATION_THICK, UniswapV4PoolConstants.TICK_UPPER
-        );
-    }
-
-    function _deployGraduatorV4(
-        ChainConfig.Infra memory infra,
-        Core memory c,
-        address hook,
-        uint160 sqrtPriceGraduation,
-        int24 tickUpper
-    ) internal returns (address) {
-        RealmGraduatorUniswapV4 g = new RealmGraduatorUniswapV4(
-            c.launchpad,
-            infra.univ4PoolManager,
-            infra.univ4PositionManager,
-            infra.permit2,
-            hook,
-            sqrtPriceGraduation,
-            tickUpper,
-            c.liquidityAdder
-        );
-        require(g.HOOK_ADDRESS() == hook, "graduator hook mismatch");
-        return address(g);
     }
 
     /// @dev DEFAULT's no-vault curve is the hardcoded `ConstantProductBondingCurve` (manifest slot
@@ -269,8 +223,6 @@ contract DeployRealmStack is Script {
         });
         f.v2Impl = _deployFactoryV2Impl(c, def, vaultFactory, t, tierCurves);
         f.v2 = address(new ERC1967Proxy(f.v2Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())));
-        f.v4Impl = _deployFactoryV4Impl(c, def, vaultFactory, t, tierCurves);
-        f.v4 = address(new ERC1967Proxy(f.v4Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())));
     }
 
     function _deployFactoryV2Impl(
@@ -290,31 +242,6 @@ contract DeployRealmStack is Script {
                 vaultFactory,
                 _vaultsOf(def),
                 tierCurves
-            )
-        );
-    }
-
-    function _deployFactoryV4Impl(
-        Core memory c,
-        address[7] memory def,
-        address vaultFactory,
-        Tokens memory t,
-        IRealmFactory.LiquidityTierConfig memory tierCurves
-    ) internal returns (address) {
-        RealmFactoryUniV4Unified.V4TierConfig memory v4Tier = RealmFactoryUniV4Unified.V4TierConfig({
-            curves: tierCurves,
-            graduators: RealmFactoryUniV4Unified.TierGraduators({thin: c.graduatorV4Thin, thick: c.graduatorV4Thick})
-        });
-        return address(
-            new RealmFactoryUniV4Unified(
-                c.launchpad,
-                IRealmFactory.TokenImpls({base: t.token, tax: t.taxV4}),
-                def[0],
-                c.graduatorV4,
-                c.feeHandler,
-                vaultFactory,
-                _vaultsOf(def),
-                v4Tier
             )
         );
     }
@@ -382,7 +309,6 @@ contract DeployRealmStack is Script {
         _slot("LAUNCHPAD", c.launchpad);
         _slot("BONDING_CURVE", def[0]);
         _slot("GRADUATOR_UNIV2", c.graduatorV2);
-        _slot("GRADUATOR_UNIV4", c.graduatorV4);
         _slot("UNIV4_LIQUIDITY_ADDER", c.liquidityAdder);
         _slot("MASTER_FEE_HANDLER", c.feeHandler);
         _slot("QUOTER", c.quoter);
@@ -392,19 +318,15 @@ contract DeployRealmStack is Script {
         _slot("DIVIDEND_LOGIC_V4", t.dividendLogicV4);
         _slot("EARNINGS_LOGIC_V4", t.earningsLogicV4);
         _slot("FACTORY_UNIV2_UNIFIED", f.v2);
-        _slot("FACTORY_UNIV4_UNIFIED", f.v4);
         _slot("FACTORY_UNIV2_UNIFIED_IMPL", f.v2Impl);
-        _slot("FACTORY_UNIV4_UNIFIED_IMPL", f.v4Impl);
         _slot("CREATOR_VAULT_IMPL", v.vaultImpl);
         _slot("CREATOR_VAULT_FACTORY", v.factory);
         _slot("CREATOR_VAULT_FACTORY_IMPL", v.factoryImpl);
-        _slot("GRADUATOR_UNIV4_THIN", c.graduatorV4Thin);
-        _slot("GRADUATOR_UNIV4_THICK", c.graduatorV4Thick);
         _slots("VAULT_CURVE_", def);
         _slots("THIN_", thin);
         _slots("THICK_", thick);
         console.log("");
-        console.log("Both factory proxies are already whitelisted on the launchpad.");
+        console.log("The V2 factory proxy is already whitelisted on the launchpad.");
         console.log("Next: paste the block above, `just export-deployments`, mirror the addresses in");
         console.log("      ../indexer config.yaml + config.{dev,prod}.yaml, and hand over ownerships.");
     }

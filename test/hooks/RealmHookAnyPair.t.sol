@@ -101,7 +101,7 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         vm.prank(creator);
         token = directFactory.createToken(
             _setup(true),
-            _pairs(quote, QC_LAUNCH_TICK),
+            _pairs(quote),
             _noDirectAlloc(_taxCfg(uint16(TAX_BPS), uint16(TAX_BPS), uint32(14 days))),
             _emptyAntiSniperCfg(),
             new IRealmFactory.CreatorVault[](0),
@@ -532,13 +532,13 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         anyPairHook.settleFees(token, quote);
 
         vm.recordLogs();
-        _swapLeg(alice, token, quote, false, false, 20e6, 500_000e18);
+        _swapLeg(alice, token, quote, false, false, 2e6, 500_000e18);
         logs = vm.getRecordedLogs();
         (lpFee, tax) = _pendingFees(token, quote);
         _assertTradeEvents(
             logs,
             ExpectedTrade(
-                token, quote, alice, false, 20e6 + lpFee + tax, 500_000e18 - IERC20(token).balanceOf(alice), lpFee, tax
+                token, quote, alice, false, 2e6 + lpFee + tax, 500_000e18 - IERC20(token).balanceOf(alice), lpFee, tax
             )
         );
     }
@@ -736,8 +736,8 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         address low = _placeQuote(LOW_QUOTE);
         address high = _placeQuote(HIGH_QUOTE);
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
-        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: low, weightBps: 5_000, launchTick: QC_LAUNCH_TICK});
-        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: high, weightBps: 5_000, launchTick: QC_LAUNCH_TICK});
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: low, weightBps: 5_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: high, weightBps: 5_000});
 
         vm.prank(creator);
         address token = directFactory.createToken(

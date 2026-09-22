@@ -10,7 +10,6 @@ import {ForkIntegrationCaseLib} from "test/integration/fork/base/ForkIntegration
 /// @dev Chain-specific contracts only need to override `_chainConfig()`.
 abstract contract FullHappyPathMatrix is ForkIntegrationSwapHelpers {
     uint256 internal constant UNI_V2_CASE_COUNT = 2 * 3 * 4;
-    uint256 internal constant UNI_V4_CASE_COUNT = 2 * 2 * 2 * 3 * 4;
 
     function test_fullHappyPath_allUniV2Cases() public {
         uint256 caseIndex;
@@ -39,40 +38,6 @@ abstract contract FullHappyPathMatrix is ForkIntegrationSwapHelpers {
         }
 
         emit log_named_uint("UniV2 integration cases run", ran);
-    }
-
-    function test_fullHappyPath_allUniV4Cases() public {
-        uint256 caseIndex = UNI_V2_CASE_COUNT;
-        uint256 ran;
-
-        for (uint256 taxMode; taxMode < 2; ++taxMode) {
-            for (uint256 sniper; sniper < 2; ++sniper) {
-                for (uint256 ownership; ownership < 2; ++ownership) {
-                    for (uint256 creatorBuy; creatorBuy < 3; ++creatorBuy) {
-                        for (uint256 feeMode; feeMode < 4; ++feeMode) {
-                            ForkIntegrationCaseLib.IntegrationCase memory c = ForkIntegrationCaseLib.IntegrationCase({
-                                factoryKind: ForkIntegrationCaseLib.FactoryKind.UniV4,
-                                taxMode: ForkIntegrationCaseLib.TaxMode(taxMode),
-                                sniperMode: ForkIntegrationCaseLib.SniperMode(sniper),
-                                ownershipMode: ForkIntegrationCaseLib.OwnershipMode(ownership),
-                                creatorBuyMode: ForkIntegrationCaseLib.CreatorBuyMode(creatorBuy),
-                                feeMode: ForkIntegrationCaseLib.FeeMode(feeMode)
-                            });
-
-                            if (_caseInShard(caseIndex)) {
-                                _logCase(caseIndex, c);
-                                _runFullHappyPath(caseIndex, c);
-                                ++ran;
-                            }
-                            ++caseIndex;
-                        }
-                    }
-                }
-            }
-        }
-
-        emit log_named_uint("UniV4 integration cases run", ran);
-        assertEq(caseIndex, UNI_V2_CASE_COUNT + UNI_V4_CASE_COUNT, "matrix count mismatch");
     }
 
     function _caseInShard(uint256 caseIndex) internal view returns (bool) {
@@ -105,19 +70,13 @@ abstract contract FullHappyPathMatrix is ForkIntegrationSwapHelpers {
         _assertFeeClaimsAndDirectReceivers(c, token, a, directBalanceBeforeFees);
     }
 
-    function _postGraduationSwaps(ForkIntegrationCaseLib.IntegrationCase memory c, address token, address trader)
+    function _postGraduationSwaps(ForkIntegrationCaseLib.IntegrationCase memory, address token, address trader)
         internal
     {
         uint256 tokenBeforeBuy = IERC20(token).balanceOf(trader);
         vm.deal(trader, INITIAL_ETH_BALANCE);
 
-        if (_isV4(c) && _hasTax(c)) vm.recordLogs();
-        if (_isV4(c)) {
-            _swapBuyV4(trader, token, AMM_BUY_ETH, 0);
-        } else {
-            _swapBuyV2(trader, token, AMM_BUY_ETH, 0);
-        }
-        if (_isV4(c) && _hasTax(c)) _assertTaxLogSeen();
+        _swapBuyV2(trader, token, AMM_BUY_ETH, 0);
 
         uint256 tokenAfterBuy = IERC20(token).balanceOf(trader);
         assertGt(tokenAfterBuy, tokenBeforeBuy, "AMM buy did not deliver tokens");
@@ -125,14 +84,7 @@ abstract contract FullHappyPathMatrix is ForkIntegrationSwapHelpers {
         uint256 sellAmount = (tokenAfterBuy - tokenBeforeBuy) / 2;
         assertGt(sellAmount, 0, "empty AMM sell amount");
 
-        uint256 ethReceived;
-        if (_isV4(c) && _hasTax(c)) vm.recordLogs();
-        if (_isV4(c)) {
-            ethReceived = _swapSellV4(trader, token, sellAmount, 0);
-        } else {
-            ethReceived = _swapSellV2(trader, token, sellAmount, 0);
-        }
-        if (_isV4(c) && _hasTax(c)) _assertTaxLogSeen();
+        uint256 ethReceived = _swapSellV2(trader, token, sellAmount, 0);
 
         assertGt(ethReceived, 0, "AMM sell did not deliver ETH");
     }

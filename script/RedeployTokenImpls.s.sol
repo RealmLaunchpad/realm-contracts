@@ -49,7 +49,7 @@ contract RedeployTokenImpls is UpgradeRealmFactories {
         address dividendLogic = address(new RealmDividendLogicUniV4());
         address earningsLogic = address(new RealmEarningsLogicUniV4());
         m.taxTokenV4Impl = address(new RealmTaxableTokenUniV4(dividendLogic, earningsLogic));
-        (address v2Impl, address v4Impl) = _upgradeFactories(m);
+        (address v2Impl, address directImpl) = _upgradeFactories(m);
         vm.stopBroadcast();
 
         console.log("=== Done. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
@@ -59,10 +59,7 @@ contract RedeployTokenImpls is UpgradeRealmFactories {
         console.log("  DIVIDEND_LOGIC_V4          =", dividendLogic);
         console.log("  EARNINGS_LOGIC_V4          =", earningsLogic);
         console.log("  FACTORY_UNIV2_UNIFIED_IMPL =", v2Impl);
-        console.log("  FACTORY_UNIV4_UNIFIED_IMPL =", v4Impl);
-        console.log("");
-        console.log("NOTE: the DIRECT factory holds the token impls as immutables too. If it is already");
-        console.log("      deployed, redeploy it against these and repoint its proxy.");
+        console.log("  FACTORY_UNIV4_DIRECT_IMPL  =", directImpl);
         console.log("");
         console.log("Then: just export-deployments");
     }

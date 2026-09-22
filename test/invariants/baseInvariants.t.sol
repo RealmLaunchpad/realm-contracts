@@ -6,11 +6,7 @@ import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
 import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
-import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
-import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
-import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -26,19 +22,10 @@ contract LaunchpadInvariants is Test {
     RealmToken public tokenImplementation;
     ConstantProductBondingCurve public bondingCurve;
     RealmGraduatorUniswapV2 public graduatorV2;
-    RealmGraduatorUniswapV4 public graduatorV4;
     RealmFactoryUniV2Unified public factoryV2;
-    RealmFactoryUniV4Unified public factoryV4;
     RealmMasterFeeHandler public feeHandler;
 
     InvariantsHelperLaunchpad public helper;
-
-    address constant poolManagerAddress = DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER;
-    address constant positionManagerAddress = DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER;
-    address constant permit2Address = DeploymentAddressesEthereumMainnet.PERMIT2;
-
-    // Hook address with correct Uniswap V4 permission bits; deployCodeTo() overrides whatever is at this address
-    address constant TEST_HOOK_ADDRESS = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
 
     address public treasury = makeAddr("treasury");
     address public creator = makeAddr("creator");
@@ -63,7 +50,7 @@ contract LaunchpadInvariants is Test {
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
-    // used for both combinations of curves,graduators for univ2 and univ4
+    // graduation parameters of the DEFAULT curve
     uint256 constant GRADUATION_THRESHOLD = 3.75 ether;
     uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
 
@@ -82,28 +69,7 @@ contract LaunchpadInvariants is Test {
         graduatorV2 = new RealmGraduatorUniswapV2(
             UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
-        // These invariants only exercise pre-graduation bonding-curve trades, so the hook never routes a
-        // fee and its LP-fee router is a dummy. Deploy a real `SwapLpFeeRouter` here if a handler ever
-        // starts performing post-graduation V4 swaps.
-        deployCodeTo(
-            "RealmSwapHook.sol:RealmSwapHook",
-            abi.encode(poolManagerAddress, makeAddr("lpFeeRouterDummy"), treasury),
-            TEST_HOOK_ADDRESS
-        );
         feeHandler = new RealmMasterFeeHandler();
-
-        address univ4LiquidityAdder =
-            address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress, permit2Address));
-        graduatorV4 = new RealmGraduatorUniswapV4(
-            address(launchpad),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            TEST_HOOK_ADDRESS,
-            715832709642994126662528799866880, // DEFAULT tier graduation sqrtPriceX96 (12.25 ETH mcap)
-            UniswapV4PoolConstants.TICK_UPPER,
-            univ4LiquidityAdder
-        );
 
         // The unified factories take a base and a tax token impl. The invariant helper only ever uses
         // the base path (no tax), so we pass `tokenImplementation` for both slots. Anti-sniper is a
@@ -128,28 +94,10 @@ contract LaunchpadInvariants is Test {
             address(new ERC1967Proxy(factoryV2Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
         );
 
-        RealmFactoryUniV4Unified.V4TierConfig memory emptyV4Tier;
-        address factoryV4Impl = address(
-            new RealmFactoryUniV4Unified(
-                address(launchpad),
-                IRealmFactory.TokenImpls({base: address(tokenImplementation), tax: address(tokenImplementation)}),
-                address(bondingCurve),
-                address(graduatorV4),
-                address(feeHandler),
-                address(0),
-                emptyVaultCurves,
-                emptyV4Tier
-            )
-        );
-        factoryV4 = RealmFactoryUniV4Unified(
-            address(new ERC1967Proxy(factoryV4Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
-        );
-
         launchpad.whitelistFactory(address(factoryV2));
-        launchpad.whitelistFactory(address(factoryV4));
         vm.stopPrank();
 
-        helper = new InvariantsHelperLaunchpad(launchpad, factoryV2, factoryV4, address(tokenImplementation));
+        helper = new InvariantsHelperLaunchpad(launchpad, factoryV2, address(tokenImplementation));
 
         targetContract(address(helper));
     }

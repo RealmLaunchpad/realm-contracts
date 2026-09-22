@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTestsWithDirectV4} from "test/launchpad/base.t.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 
 /// @notice Factory-level coverage for the `directFeesEnabled` opt-in field on `FeeShare`:
 ///         - max-1-direct enforcement
 ///         - registration in the singleton handler when 1 receiver opts in
 ///         - propagation into the master handler config when 2+ receivers and one opts in
 ///         - struct-level validation paths (zero address, share sums, etc.) still hold
-contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
+contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithDirectV4 {
     function _fsTwoWithDirect(address a1, uint256 s1, address a2, uint256 s2, bool a1Direct, bool a2Direct)
         internal
         pure
@@ -24,35 +25,15 @@ contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
     function test_createToken_revertsWhenTwoDirectReceivers() public {
         IRealmFactory.FeeShare[] memory fs = _fsTwoWithDirect(alice, 6_000, bob, 4_000, true, true);
 
-        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
-        vm.prank(creator);
         vm.expectRevert(IRealmFactory.MultipleDirectFeeReceivers.selector);
-        factoryV4Unified.createToken(
-            _setupTiered("DirectFees", "DF", salt, fs),
-            _noAlloc(_emptyTaxCfg()),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
+        _createDirectToken(_emptyTaxCfg(), fs);
     }
 
     /// @dev when one receiver flags direct (single-receiver path), then registerDirectReceiver is invoked on the singleton
     function test_createToken_singleDirect_registersOnSingleton() public {
         IRealmFactory.FeeShare[] memory fs = _fsDirect(creator);
 
-        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
-        vm.prank(creator);
-        address token = factoryV4Unified.createToken(
-            _setupTiered("DirectFees", "DF", salt, fs),
-            _noAlloc(_emptyTaxCfg()),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
+        address token = _createDirectToken(_emptyTaxCfg(), fs);
 
         assertTrue(feeHandler.isDirectReceiver(token, creator), "direct receiver registered");
     }
@@ -79,17 +60,7 @@ contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
     function test_createToken_noDirect_doesNotRegister() public {
         IRealmFactory.FeeShare[] memory fs = _fs(creator);
 
-        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
-        vm.prank(creator);
-        address token = factoryV4Unified.createToken(
-            _setupTiered("Plain", "P", salt, fs),
-            _noAlloc(_emptyTaxCfg()),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
+        address token = _createDirectToken(_emptyTaxCfg(), fs);
 
         assertFalse(feeHandler.isDirectReceiver(token, creator), "no direct registration when not opted in");
     }
@@ -98,42 +69,31 @@ contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithUniv4Graduator {
     function test_createToken_multiReceiver_withDirect_registersDirectOnMasterHandler() public {
         IRealmFactory.FeeShare[] memory fs = _fsTwoWithDirect(alice, 6_000, bob, 4_000, true, false);
 
-        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
-        vm.prank(creator);
-        address token = factoryV4Unified.createToken(
-            _setupTiered("MultiReceiver", "MR", salt, fs),
-            _noAlloc(_emptyTaxCfg()),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
+        address token = _createDirectToken(_emptyTaxCfg(), fs);
 
         assertTrue(feeHandler.isDirectReceiver(token, alice), "alice is direct receiver");
         assertFalse(feeHandler.isDirectReceiver(token, bob), "bob is claimable, not direct");
     }
 
-    /// @dev when receiver flags direct on a V4 deployer-buy (msg.value > 0), the registration happens before launchToken
+    /// @dev when receiver flags direct on a dev buy (msg.value > 0), the registration happens before the dev
+    ///      buy's swap, so its LP fee is already forwarded directly.
     function test_createToken_directWithDeployerBuy_registersBeforeAccrual() public {
-        IRealmFactory.FeeShare[] memory fs = _fsDirect(creator);
-        IRealmFactory.SupplyShare[] memory ss = _ss(creator);
-
-        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _directSetup("DirectBuy", "DB", false);
+        setup.feeShares = _fsDirect(creator);
         vm.deal(creator, 5 ether);
-        // Small buy so the token stays pre-graduation; the trace shows registration is invoked
-        // immediately after token init, before any fee can possibly flow.
+        uint256 creatorBefore = creator.balance;
         vm.prank(creator);
-        address token = factoryV4Unified.createToken{value: 0.05 ether}(
-            _setupTiered("DirectBuy", "DB", salt, fs),
-            _noAlloc(_emptyTaxCfg()),
-            _v4Cfg(false),
-            ss,
+        address token = directFactory.createToken{value: 0.05 ether}(
+            setup,
+            _nativePair(),
+            _noDirectAlloc(_emptyTaxCfg()),
             _emptyAntiSniperCfg(),
             _noVaults(),
+            _devBuyTo(creator),
             address(0)
         );
 
         assertTrue(feeHandler.isDirectReceiver(token, creator), "registered before deployer-buy fees flow");
+        assertGt(creator.balance, creatorBefore - 0.05 ether, "the dev buy's creator LP fee came straight back");
     }
 }

@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {
-    LaunchpadBaseTests,
-    LaunchpadBaseTestsWithUniv2Graduator,
-    LaunchpadBaseTestsWithUniv4Graduator
-} from "./base.t.sol";
+import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "./base.t.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -294,30 +290,14 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
         // Reset state by creating a new token for the second scenario
         address testToken2;
         vm.prank(creator);
-        if (address(graduator) == address(graduatorV2)) {
-            testToken2 = factoryV2.createToken(
-                _setupTiered(
-                    "Test Token 2", "TT2", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)
-                ),
-                _noAlloc(_emptyTaxCfg()),
-                _noSs(),
-                _emptyAntiSniperCfg(),
-                _noVaults(),
-                address(0)
-            );
-        } else {
-            testToken2 = factoryV4.createToken(
-                _setupTiered(
-                    "Test Token 2", "TT2", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(creator)
-                ),
-                _noAlloc(_emptyTaxCfg()),
-                _v4Cfg(false),
-                _noSs(),
-                _emptyAntiSniperCfg(),
-                _noVaults(),
-                address(0)
-            );
-        }
+        testToken2 = factoryV2.createToken(
+            _setupTiered("Test Token 2", "TT2", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         // Scenario 2: One big buy
         address buyer2 = makeAddr("buyer2");
@@ -461,13 +441,6 @@ abstract contract BuyTokensTest is LaunchpadBaseTests {
 /// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V2 graduator
 contract BuyTokenTests_Univ2 is BuyTokensTest, LaunchpadBaseTestsWithUniv2Graduator {
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
-        super.setUp();
-    }
-}
-
-/// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V4 graduator
-contract BuyTokenTests_Univ4 is BuyTokensTest, LaunchpadBaseTestsWithUniv4Graduator {
-    function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator) {
         super.setUp();
     }
 }

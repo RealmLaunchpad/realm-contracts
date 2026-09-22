@@ -91,8 +91,7 @@ interface IRealmUniV4LiquidityAdder {
 ///           tick holds only the token, and buyers walk up into it. This is how the direct-launch venue
 ///           seeds a pool with supply and no quote at all.
 ///         No swaps: exactly one currency is ever settled.
-/// @dev Shared by `RealmGraduatorUniswapV4` (its secondary graduation position),
-///      `RealmDirectGraduatorUniV4` (the launch band) and the taxable tokens' liquidity earnings leg
+/// @dev Shared by `RealmDirectGraduatorUniV4` (the launch band) and the taxable tokens' liquidity earnings leg
 ///      (`processLiquidity`). Holds no funds between calls: the minted NFT goes to `nftReceiver` and
 ///      whatever the sizing rounded off goes to `excessReceiver` within the same call. The position NFT
 ///      is never withdrawable here, so wherever the caller points it the liquidity is permanent pool
@@ -475,8 +474,7 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
 
     /// @dev Sizes single-sided liquidity for `[tickLower, tickUpper]` from `amount` of ONE side and mints
     ///      it via the position manager, sending the NFT to `nftReceiver` and returning whatever the
-    ///      sizing rounded off to `excessReceiver`. Mirrors `RealmGraduatorUniswapV4._addLiquidity` for
-    ///      the single-sided case: the other side's `amountMax` bound is 0, and the remainder comes back
+    ///      sizing rounded off to `excessReceiver`. Single-sided: the other side's `amountMax` bound is 0, and the remainder comes back
     ///      rather than sticking here.
     /// @param isCurrency1 Which side `amount` is denominated in. `false` = `currency0` (the native side
     ///        on every Realm pool, settled from the forwarded value); `true` = `currency1`, settled from

@@ -27,7 +27,6 @@ contract ExportDeployments is Script {
         address launchpad;
         address bondingCurve;
         address graduatorUniV2;
-        address graduatorUniV4;
         address masterFeeHandler;
         address univ4LiquidityAdder;
         address swapHook;
@@ -55,14 +54,10 @@ contract ExportDeployments is Script {
         address taxableTokenV2Impl;
         address factoryUniV2Unified;
         address factoryUniV2UnifiedImpl;
-        address factoryUniV4Unified;
-        address factoryUniV4UnifiedImpl;
         address creatorVaultFactory;
         address creatorVaultFactoryImpl;
         address creatorVaultImpl;
         address[6] vaultCurves;
-        address graduatorThin;
-        address graduatorThick;
         address thinCurveBase;
         address[6] thinVaultCurves;
         address thickCurveBase;
@@ -104,7 +99,6 @@ contract ExportDeployments is Script {
         d.launchpad = DeploymentsEthereumSepolia.LAUNCHPAD;
         d.bondingCurve = DeploymentsEthereumSepolia.BONDING_CURVE;
         d.graduatorUniV2 = DeploymentsEthereumSepolia.GRADUATOR_UNIV2;
-        d.graduatorUniV4 = DeploymentsEthereumSepolia.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsEthereumSepolia.MASTER_FEE_HANDLER;
         d.univ4LiquidityAdder = DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsEthereumSepolia.SWAP_HOOK;
@@ -132,14 +126,10 @@ contract ExportDeployments is Script {
         d.taxableTokenV2Impl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL;
         d.factoryUniV2Unified = DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED;
         d.factoryUniV2UnifiedImpl = DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.factoryUniV4Unified = DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED;
-        d.factoryUniV4UnifiedImpl = DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED_IMPL;
         d.creatorVaultFactory = DeploymentsEthereumSepolia.CREATOR_VAULT_FACTORY;
         d.creatorVaultFactoryImpl = DeploymentsEthereumSepolia.CREATOR_VAULT_FACTORY_IMPL;
         d.creatorVaultImpl = DeploymentsEthereumSepolia.CREATOR_VAULT_IMPL;
         d.vaultCurves = DeploymentsEthereumSepolia.vaultBondingCurves();
-        d.graduatorThin = DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN;
-        d.graduatorThick = DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK;
         d.thinCurveBase = DeploymentsEthereumSepolia.THIN_CURVE_BASE;
         d.thinVaultCurves = DeploymentsEthereumSepolia.thinVaultCurves();
         d.thickCurveBase = DeploymentsEthereumSepolia.THICK_CURVE_BASE;
@@ -163,7 +153,6 @@ contract ExportDeployments is Script {
         d.launchpad = DeploymentsRobinhoodMainnet.LAUNCHPAD;
         d.bondingCurve = DeploymentsRobinhoodMainnet.BONDING_CURVE;
         d.graduatorUniV2 = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV2;
-        d.graduatorUniV4 = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsRobinhoodMainnet.MASTER_FEE_HANDLER;
         d.univ4LiquidityAdder = DeploymentsRobinhoodMainnet.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsRobinhoodMainnet.SWAP_HOOK;
@@ -191,14 +180,10 @@ contract ExportDeployments is Script {
         d.taxableTokenV2Impl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL;
         d.factoryUniV2Unified = DeploymentsRobinhoodMainnet.FACTORY_UNIV2_UNIFIED;
         d.factoryUniV2UnifiedImpl = DeploymentsRobinhoodMainnet.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.factoryUniV4Unified = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_UNIFIED;
-        d.factoryUniV4UnifiedImpl = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_UNIFIED_IMPL;
         d.creatorVaultFactory = DeploymentsRobinhoodMainnet.CREATOR_VAULT_FACTORY;
         d.creatorVaultFactoryImpl = DeploymentsRobinhoodMainnet.CREATOR_VAULT_FACTORY_IMPL;
         d.creatorVaultImpl = DeploymentsRobinhoodMainnet.CREATOR_VAULT_IMPL;
         d.vaultCurves = DeploymentsRobinhoodMainnet.vaultBondingCurves();
-        d.graduatorThin = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN;
-        d.graduatorThick = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK;
         d.thinCurveBase = DeploymentsRobinhoodMainnet.THIN_CURVE_BASE;
         d.thinVaultCurves = DeploymentsRobinhoodMainnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsRobinhoodMainnet.THICK_CURVE_BASE;
@@ -225,7 +210,6 @@ contract ExportDeployments is Script {
         d.launchpad = DeploymentsRobinhoodTestnet.LAUNCHPAD;
         d.bondingCurve = DeploymentsRobinhoodTestnet.BONDING_CURVE;
         d.graduatorUniV2 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2;
-        d.graduatorUniV4 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER;
         d.univ4LiquidityAdder = DeploymentsRobinhoodTestnet.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsRobinhoodTestnet.SWAP_HOOK;
@@ -253,14 +237,10 @@ contract ExportDeployments is Script {
         d.taxableTokenV2Impl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL;
         d.factoryUniV2Unified = DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED;
         d.factoryUniV2UnifiedImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.factoryUniV4Unified = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED;
-        d.factoryUniV4UnifiedImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED_IMPL;
         d.creatorVaultFactory = DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY;
         d.creatorVaultFactoryImpl = DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY_IMPL;
         d.creatorVaultImpl = DeploymentsRobinhoodTestnet.CREATOR_VAULT_IMPL;
         d.vaultCurves = DeploymentsRobinhoodTestnet.vaultBondingCurves();
-        d.graduatorThin = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN;
-        d.graduatorThick = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK;
         d.thinCurveBase = DeploymentsRobinhoodTestnet.THIN_CURVE_BASE;
         d.thinVaultCurves = DeploymentsRobinhoodTestnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsRobinhoodTestnet.THICK_CURVE_BASE;
@@ -293,7 +273,6 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmLaunchpad", d.launchpad));
         s = string.concat(s, _row("ConstantProductBondingCurve", d.bondingCurve));
         s = string.concat(s, _row("RealmGraduatorUniswapV2", d.graduatorUniV2));
-        s = string.concat(s, _row("RealmGraduatorUniswapV4", d.graduatorUniV4));
         s = string.concat(s, _row("RealmMasterFeeHandler", d.masterFeeHandler));
         s = string.concat(s, _row("RealmUniV4LiquidityAdder", d.univ4LiquidityAdder));
         s = string.concat(s, _row("RealmHook", d.swapHook));
@@ -321,8 +300,6 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmTaxableTokenUniV2 (impl)", d.taxableTokenV2Impl));
         s = string.concat(s, _row("RealmFactoryUniV2Unified (proxy)", d.factoryUniV2Unified));
         s = string.concat(s, _row("RealmFactoryUniV2Unified (impl)", d.factoryUniV2UnifiedImpl));
-        s = string.concat(s, _row("RealmFactoryUniV4Unified (proxy)", d.factoryUniV4Unified));
-        s = string.concat(s, _row("RealmFactoryUniV4Unified (impl)", d.factoryUniV4UnifiedImpl));
         s = string.concat(s, _row("RealmCreatorVaultFactory (proxy)", d.creatorVaultFactory));
         s = string.concat(s, _row("RealmCreatorVaultFactory (impl)", d.creatorVaultFactoryImpl));
         s = string.concat(s, _row("RealmCreatorVault (impl)", d.creatorVaultImpl));
@@ -332,8 +309,6 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("Creator-vault curve 20%", d.vaultCurves[3]));
         s = string.concat(s, _row("Creator-vault curve 25%", d.vaultCurves[4]));
         s = string.concat(s, _row("Creator-vault curve 30%", d.vaultCurves[5]));
-        s = string.concat(s, _row("RealmGraduatorUniV4 THIN", d.graduatorThin));
-        s = string.concat(s, _row("RealmGraduatorUniV4 THICK", d.graduatorThick));
         s = string.concat(s, _row("THIN-tier curve base", d.thinCurveBase));
         s = string.concat(s, _row("THIN-tier curve 5%", d.thinVaultCurves[0]));
         s = string.concat(s, _row("THIN-tier curve 10%", d.thinVaultCurves[1]));
@@ -371,7 +346,7 @@ contract ExportDeployments is Script {
     // ---------------------------------------------------------------- Helpers
 
     /// @dev Inner column widths (content + padding, excluding the surrounding `| ` and ` |`).
-    ///      Longest name today is `RealmGraduatorUniswapV4 (0.5% hook)` = 34 chars, so 44 leaves
+    ///      Longest name today is `RealmCreatorVaultFactory (proxy)` = 32 chars, so 44 leaves
     ///      ample buffer. Backticked addresses are exactly 44 chars
     ///      (`0x` + 40 hex + 2 backticks), so the same width fits the address column too.
     uint256 private constant COL1_WIDTH = 44;

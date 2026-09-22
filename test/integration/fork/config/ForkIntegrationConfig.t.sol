@@ -9,7 +9,7 @@ import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.s
 /// @notice Chain-specific address config for chain-neutral fork integration suites.
 /// @dev Sepolia deployed unified factory / master handler addresses can be supplied by env while
 ///      the manifest catches up:
-///      REALM_FACTORY_V2_UNIFIED, REALM_FACTORY_V4_UNIFIED, REALM_MASTER_FEE_HANDLER.
+///      REALM_FACTORY_V2_UNIFIED, REALM_MASTER_FEE_HANDLER.
 abstract contract ForkIntegrationConfig is Test {
     using ForkIntegrationCaseLib for *;
 
@@ -22,10 +22,8 @@ abstract contract ForkIntegrationConfig is Test {
             quoter: vm.envOr("REALM_QUOTER", DeploymentsEthereumSepolia.QUOTER),
             bondingCurve: vm.envOr("REALM_BONDING_CURVE", DeploymentsEthereumSepolia.BONDING_CURVE),
             graduatorV2: vm.envOr("REALM_GRADUATOR_UNIV2", DeploymentsEthereumSepolia.GRADUATOR_UNIV2),
-            graduatorV4: vm.envOr("REALM_GRADUATOR_UNIV4", DeploymentsEthereumSepolia.GRADUATOR_UNIV4),
             masterFeeHandler: vm.envOr("REALM_MASTER_FEE_HANDLER", DeploymentsEthereumSepolia.MASTER_FEE_HANDLER),
             factoryV2Unified: vm.envOr("REALM_FACTORY_V2_UNIFIED", DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED),
-            factoryV4Unified: vm.envOr("REALM_FACTORY_V4_UNIFIED", DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED),
             tokenImpl: vm.envOr("REALM_TOKEN_IMPL", DeploymentsEthereumSepolia.TOKEN_IMPL),
             taxTokenImpl: vm.envOr("REALM_TAX_TOKEN_IMPL", DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL),
             weth: vm.envOr("REALM_WETH", DeploymentAddressesEthereumSepolia.WETH),

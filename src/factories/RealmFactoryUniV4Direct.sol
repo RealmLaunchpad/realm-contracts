@@ -36,7 +36,8 @@ interface IRealmDirectGraduator {
 
 /// @title RealmFactoryUniV4Direct
 /// @notice Factory for the DIRECT-launch venue: a Realm token that goes straight to a Uniswap V4 pool
-///         at a price its creator picks, with no bonding curve in between. One transaction creates the
+///         at a fixed opening market cap (`LAUNCH_MARKET_CAP_X18` of native value, priced live per
+///         quote), with no bonding curve in between. One transaction creates the
 ///         token, creates the pool, seeds the whole circulating supply into it as a single-sided band,
 ///         and settles the creator's own first buy.
 ///
@@ -59,8 +60,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     using SafeERC20 for IERC20;
 
     /// @notice Token-identity bundle for `createToken`. Mirrors `TokenSetupTiered` minus the liquidity
-    ///         tier — there is no curve here, so there is no tier — plus the two V4 knobs the unified
-    ///         factory carries in its own `UniV4Configs`.
+    ///         tier — there is no curve here, so there is no tier — plus two V4 knobs.
     /// @dev `lpFeeBps` is the per-swap LP fee the hook charges post-graduation, stored on the token and
     ///      read back through `getSwapFees`. Only `100` (1%) and `50` (0.5%) are accepted.
     struct DirectTokenSetup {
@@ -77,14 +77,10 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///        `_validateQuote`).
     /// @param weightBps Share of the circulating supply seeded into THIS pool, in bps. Non-zero; the
     ///        weights of all pairs sum to 10,000.
-    /// @param launchTick Opening price as QUOTE PER COIN (`price = 1.0001^launchTick`) — higher is
-    ///        always a more expensive coin, whichever way the pair happens to sort. Must be a multiple
-    ///        of the pool's tick spacing, strictly inside the usable band, and imply a market cap inside
-    ///        the launch bounds (`LaunchPriceOutOfBounds`). VALIDATED, never rounded.
+    /// @dev No price field: every pair opens at `LAUNCH_MARKET_CAP_X18`, see `_launchTick`.
     struct DirectPair {
         address quote;
         uint16 weightBps;
-        int24 launchTick;
     }
 
     /// @notice The creator's own first buy, settled inside the launch transaction. Pass an all-zero
@@ -119,8 +115,13 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         with no native pair at all.
     uint256 public constant MAX_PAIRS = 3;
 
+    /// @notice Opening market cap of EVERY pair: 2.25 whole native coins (ETH), scaled by 1e18. An ERC20
+    ///         pair opens at this value converted at the quote's LIVE `ASSETS_WHITELIST` rate.
+    uint256 public constant LAUNCH_MARKET_CAP_X18 = 2.25 ether;
+
     /// @notice Lowest opening market cap any pair may launch at: 1 whole native coin (ETH), scaled by
-    ///         1e18. An ERC20 pair's bound is this converted at its `ASSETS_WHITELIST` rate.
+    ///         1e18. An ERC20 pair's bound is this converted at its `ASSETS_WHITELIST` SNAPSHOT rate, so it
+    ///         caps how far the live rate that prices the launch can have drifted from the listed one.
     /// @dev The seed is single-sided, so the opening market cap is the pool's virtual quote reserve: the
     ///      price 4x's after buys of about that much. A tiny one hands the dev buy most of the supply for
     ///      almost nothing. 1 ETH sits just under the THIN curve's own opening (~1.1 ETH) and ~6x under
@@ -160,8 +161,9 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     /// @notice `quoteRoutes` names more entries than there are pairs, a route for a native pair, or a
     ///         route while the allocation has no dividends share.
     error InvalidQuoteRoutes();
-    /// @notice A pair's `launchTick` implies an opening market cap outside
-    ///         [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] of native value.
+    /// @notice A pair's derived launch tick implies an opening market cap outside
+    ///         [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] of native value at the quote's
+    ///         snapshot rate, i.e. its live rate has moved too far from the listed one.
     error LaunchPriceOutOfBounds();
 
     constructor(
@@ -184,8 +186,8 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     /////////////////////// EXTERNAL FUNCTIONS /////////////////////////
 
     /// @notice Deploys a Realm token straight onto Uniswap V4 pools and opens it for trading, all in this
-    ///         call. In order: the token is cloned and initialized (which creates the pool at
-    ///         `pairs[0].launchTick`), its extra quotes are registered, the creator vaults are funded, the
+    ///         call. In order: every pair's launch tick is derived (`_launchTick`), the token is cloned
+    ///         and initialized (which creates the first pool), its extra quotes are registered, the creator vaults are funded, the
     ///         fee split is registered, the earnings allocation is configured, the graduator opens and
     ///         seeds every pool, and the creator's dev buy — if any — is settled and split across
     ///         `devBuy.recipients`. `taxAllocationConfigs` carries the tax, the optional launch-tax decay,
@@ -217,16 +219,17 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         DevBuy calldata devBuy,
         address referral
     ) external payable returns (address token) {
-        _validateDirectInputs(setup, pairs, devBuy);
+        int24[] memory ticks = _validateDirectInputs(setup, pairs, devBuy);
         _validateInputs(
             setup.name, setup.symbol, setup.feeShares, devBuy.recipients, msg.value > 0 ? msg.value : devBuy.quoteAmount
         );
         _validateAntiSniperConfig(antiSniperConfigs);
         bool hasAllocation = _validateAllocation(taxAllocationConfigs, pairs);
 
-        token =
-            _createWithAllocation(setup, pairs, taxAllocationConfigs, antiSniperConfigs, creatorVaults, hasAllocation);
-        _open(token, pairs, devBuy);
+        token = _createWithAllocation(
+            setup, pairs, ticks[0], taxAllocationConfigs, antiSniperConfigs, creatorVaults, hasAllocation
+        );
+        _open(token, pairs, ticks, devBuy);
 
         emit LpFeeBpsSet(token, setup.lpFeeBps);
         if (referral != address(0)) emit TokenReferral(token, referral);
@@ -254,18 +257,21 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         return _previewTokenImplementation(cfg, _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps));
     }
 
-    /// @notice What a `launchTick` actually means: the opening price of one whole coin in whole units
-    ///         of `quote`, and the market cap that implies across the fixed supply — both scaled by 1e18.
-    /// @dev The reader that stops a creator launching at ten times the price they meant. A tick is
-    ///      `1.0001^n` on RAW units, so the answer depends on the quote's decimals, which is exactly the
-    ///      conversion that is easy to get wrong by hand. Pure, and callable before the token exists.
-    /// @param quoteDecimals Decimals of the pair's quote currency; pass 18 for the native pair.
-    function previewLaunchPrice(int24 launchTick, uint8 quoteDecimals)
+    /// @notice The launch a pair against `quote` would get if created now: its tick (QUOTE PER COIN), the
+    ///         opening price of one whole coin in whole units of `quote`, and the market cap that implies
+    ///         across the fixed supply — both scaled by 1e18. Reverts exactly where `createToken` would
+    ///         for this quote (`QuoteNotSupported`, `LaunchPriceOutOfBounds`).
+    /// @dev Live: an ERC20 quote's rate is read from its whitelist price pool at call time, so the result
+    ///      can differ from the one the creation transaction gets.
+    /// @param quote `address(0)` for the native pair, else the ERC20 quote.
+    function previewLaunchTick(address quote)
         external
-        pure
-        returns (uint256 priceX18, uint256 marketCapX18)
+        view
+        returns (int24 tick, uint256 priceX18, uint256 marketCapX18)
     {
-        return RealmLaunchPricing.priceAtTick(launchTick, quoteDecimals);
+        uint8 quoteDecimals;
+        (tick, quoteDecimals) = _launchTick(quote);
+        (priceX18, marketCapX18) = RealmLaunchPricing.priceAtTick(tick, quoteDecimals);
     }
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
@@ -276,6 +282,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     function _createWithAllocation(
         DirectTokenSetup calldata setup,
         DirectPair[] calldata pairs,
+        int24 firstLaunchTick,
         TaxConfigsWithDirectAllocation calldata c,
         AntiSniperConfigs calldata antiSniperConfigs,
         CreatorVault[] calldata creatorVaults,
@@ -285,7 +292,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         _validateTaxConfig(taxConfigs);
         _validateTotalFee(setup.lpFeeBps, taxConfigs);
         _allocationPending = hasAllocation;
-        token = _launch(setup, pairs, taxConfigs, antiSniperConfigs, creatorVaults);
+        token = _launch(setup, pairs, firstLaunchTick, taxConfigs, antiSniperConfigs, creatorVaults);
         if (hasAllocation) _initializeAllocation(token, c, pairs);
     }
 
@@ -316,6 +323,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     function _launch(
         DirectTokenSetup calldata setup,
         DirectPair[] calldata pairs,
+        int24 firstLaunchTick,
         TaxConfigs memory taxConfigs,
         AntiSniperConfigs calldata antiSniperConfigs,
         CreatorVault[] calldata creatorVaults
@@ -326,7 +334,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         // the graduator from inside its own initializer — the one call in the flow that cannot take it
         // as an argument. Transient, so it cannot outlive this transaction. Every later pool is opened
         // by this factory directly. See `RealmDirectGraduatorUniV4`.
-        IRealmDirectGraduator(address(GRADUATOR)).prepare(pairs[0].quote, pairs[0].launchTick, pairs[0].weightBps);
+        IRealmDirectGraduator(address(GRADUATOR)).prepare(pairs[0].quote, firstLaunchTick, pairs[0].weightBps);
 
         token = _dispatchAndInitialize(
             setup.name,
@@ -349,8 +357,8 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     }
 
     /// @dev The rest of the launch: seed the pools — which graduates the token — and settle the dev buy.
-    function _open(address token, DirectPair[] calldata pairs, DevBuy calldata devBuy) private {
-        _seedPools(token, pairs);
+    function _open(address token, DirectPair[] calldata pairs, int24[] memory ticks, DevBuy calldata devBuy) private {
+        _seedPools(token, pairs, ticks);
         _settleDevBuy(token, pairs[devBuy.pairIndex].quote, devBuy);
     }
 
@@ -419,11 +427,11 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     /// @dev Opens every pool after the first — the token's own initializer opened that one — and seeds
     ///      all of them, splitting the circulating supply by `weightBps`. The LAST pool absorbs the
     ///      rounding remainder, so the graduator ends holding only what no band could take.
-    function _seedPools(address token, DirectPair[] calldata pairs) private {
+    function _seedPools(address token, DirectPair[] calldata pairs, int24[] memory ticks) private {
         IRealmDirectGraduator grad = IRealmDirectGraduator(address(GRADUATOR));
         uint256 n = pairs.length;
         for (uint256 i = 1; i < n; ++i) {
-            grad.initializePool(token, pairs[i].quote, pairs[i].launchTick);
+            grad.initializePool(token, pairs[i].quote, ticks[i]);
         }
 
         // Everything not locked in a vault was minted to the graduator. Read rather than computed so a
@@ -438,7 +446,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
                 // happen before any supply can reach the pool manager.
                 GRADUATOR.graduateToken(token, share);
             } else {
-                grad.seedPool(token, pairs[i].quote, pairs[i].launchTick, share, pairs[i].weightBps);
+                grad.seedPool(token, pairs[i].quote, ticks[i], share, pairs[i].weightBps);
             }
         }
     }
@@ -499,14 +507,17 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
 
     /// @dev Venue-specific validation: the V4 fee tier, the pair set, and the dev buy's consistency
     ///      with it. Everything not yet supported is rejected explicitly — see the ABI note above.
+    ///      Returns each pair's derived launch tick.
     function _validateDirectInputs(DirectTokenSetup calldata setup, DirectPair[] calldata pairs, DevBuy calldata devBuy)
         internal
         view
+        returns (int24[] memory ticks)
     {
         require(setup.lpFeeBps == 100 || setup.lpFeeBps == 50, InvalidLpFeeBps());
 
         uint256 n = pairs.length;
         require(n > 0 && n <= MAX_PAIRS, InvalidPairs());
+        ticks = new int24[](n);
         uint256 totalWeight;
         for (uint256 i = 0; i < n; ++i) {
             require(pairs[i].weightBps > 0, InvalidPairs());
@@ -516,10 +527,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
             for (uint256 j = i + 1; j < n; ++j) {
                 require(pairs[i].quote != pairs[j].quote, InvalidPairs());
             }
-            // Native: 18 decimals, and one native coin is worth one native coin.
-            (uint8 quoteDecimals, uint256 unitsPerNativeX18) =
-                pairs[i].quote == address(0) ? (18, 1e18) : _validateQuote(pairs[i].quote);
-            _validateLaunchPrice(pairs[i].launchTick, quoteDecimals, unitsPerNativeX18);
+            (ticks[i],) = _launchTick(pairs[i].quote);
         }
         require(totalWeight == BASIS_POINTS, InvalidPairs());
 
@@ -560,6 +568,23 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
             revert QuoteNotSupported();
         }
         require(dec <= 36, QuoteNotSupported());
+    }
+
+    /// @dev The launch tick (QUOTE PER COIN) of a pair against `quote`: the tick whose price puts the
+    ///      whole supply at `LAUNCH_MARKET_CAP_X18` of native value, at the quote's LIVE whitelist rate
+    ///      (native: 18 decimals, one per native). A live pool read can be pushed within the transaction;
+    ///      accepted, and bounded by `_validateLaunchPrice` against the SNAPSHOT rate, so the opening
+    ///      market cap stays inside the launch bounds of the listed price whatever the pool says.
+    function _launchTick(address quote) internal view returns (int24 tick, uint8 quoteDecimals) {
+        uint256 snapshotRate = 1e18;
+        uint256 liveRate = 1e18;
+        quoteDecimals = 18;
+        if (quote != address(0)) {
+            (quoteDecimals, snapshotRate) = _validateQuote(quote);
+            liveRate = ASSETS_WHITELIST.liveUnitsPerNativeX18(quote);
+        }
+        tick = RealmLaunchPricing.tickForMarketCap(LAUNCH_MARKET_CAP_X18, liveRate, quoteDecimals);
+        _validateLaunchPrice(tick, quoteDecimals, snapshotRate);
     }
 
     /// @dev Bounds the opening market cap to [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] of

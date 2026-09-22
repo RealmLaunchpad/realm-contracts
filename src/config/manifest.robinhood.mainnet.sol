@@ -15,16 +15,15 @@ library DeploymentsRobinhoodMainnet {
     address internal constant LAUNCHPAD = address(0);
     address internal constant BONDING_CURVE = address(0);
     address internal constant GRADUATOR_UNIV2 = address(0);
-    address internal constant GRADUATOR_UNIV4 = address(0);
 
-    /// @notice Shared, permissionless `RealmUniV4LiquidityAdder` singleton — one per chain, passed to every
-    ///         V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
+    /// @notice Shared, permissionless `RealmUniV4LiquidityAdder` singleton — one per chain, passed to the
+    ///         direct V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
     ///         `DeployRealmStack`; `address(0)` until first deployed on this chain.
     address internal constant UNIV4_LIQUIDITY_ADDER = address(0);
     address internal constant MASTER_FEE_HANDLER = address(0);
 
     /// @notice Swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
-    ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. The V4 graduators point here.
+    ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. The direct V4 graduator points here for native pools.
     /// @dev Realm deploys its OWN hook rather than reusing the Livo one, whose `TREASURY` and
     ///      `FEE_ROUTER` immutables are pinned to Livo addresses and cannot be repointed. Deploy with
     ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
@@ -99,13 +98,11 @@ library DeploymentsRobinhoodMainnet {
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
     address internal constant FACTORY_UNIV2_UNIFIED = address(0);
-    address internal constant FACTORY_UNIV4_UNIFIED = address(0);
 
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
     address internal constant FACTORY_UNIV2_UNIFIED_IMPL = address(0);
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = address(0);
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.
@@ -135,15 +132,9 @@ library DeploymentsRobinhoodMainnet {
     }
 
     // --- Liquidity tiers (THIN + THICK) ---
-    /// @notice THIN/THICK V4 graduators, one per tier (the fee-agnostic hook reads the swap fee from the
-    ///         token). The DEFAULT tier reuses `GRADUATOR_UNIV4`. Update after deploying with
-    ///         `DeployRealmStack` or `RedeployGraduators`. Both point at `SWAP_HOOK` above.
-    address internal constant GRADUATOR_UNIV4_THIN = address(0);
-    address internal constant GRADUATOR_UNIV4_THICK = address(0);
-
     /// @notice THIN-tier bonding curves (`ConstantProductBondingCurveConfigurable`): the no-vault
     ///         base curve plus six vault curves (5%..30%). Update after deploying with
-    ///         `DeployRealmStack`. Venue-agnostic — shared by the V2 and V4 factories.
+    ///         `DeployRealmStack`. Used by the V2 factory.
     address internal constant THIN_CURVE_BASE = address(0);
     address internal constant THIN_VAULT_CURVE_5 = address(0);
     address internal constant THIN_VAULT_CURVE_10 = address(0);

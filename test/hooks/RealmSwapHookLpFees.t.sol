@@ -95,8 +95,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     /// @notice Sell charges 1% LP fee split.
     function test_sellChargesLpFee() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
         _graduateToken();
 
         // Warp past tax period so only LP fee applies.
@@ -126,8 +125,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     /// @notice Sell stacks LP fee + sell tax during active tax period.
     function test_sellStacksLpFeeAndSellTax() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
         _graduateToken();
 
         uint256 creatorFeesBefore = _pendingCreatorFees(testToken);
@@ -159,8 +157,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     /// @notice After tax period expires, only LP fee remains (no sell tax).
     function test_onlyLpFeeAfterTaxExpires() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
         _graduateToken();
 
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
@@ -183,12 +180,6 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         assertApproxEqAbs(totalLpFee, expectedLpFee, 2, "Only LP fee (~1%) should be charged after tax expires");
         assertApproxEqAbs(treasuryLpFee, expectedTreasury, 2, "LP fee split should follow the 30/70 split");
-    }
-
-    /// @notice Swaps revert before graduation.
-    function test_noFeesBeforeGraduation() public createDefaultTaxToken {
-        deal(buyer, 1 ether);
-        _swapBuy(buyer, 1 ether, 0, false);
     }
 
     /// @notice Buy charges LP fee split + buy tax (100% creator) during active tax period.
@@ -250,8 +241,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         testToken = _createTaxToken(buyTax, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
 
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
         _graduateToken();
 
         // --- Buy ---
@@ -337,8 +327,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     /// @notice Sell emits RealmSwapSell with correct fields.
     function test_sellEmitsRealmSwapSell() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
         _graduateToken();
 
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
@@ -380,8 +369,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     /// @notice Sell with tax emits correct fee amount.
     function test_sellWithTaxEmitsCorrectFees() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
         _graduateToken();
 
         uint256 sellAmount = IERC20(testToken).balanceOf(buyer) / 2;
@@ -466,8 +454,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     ///         combined fee and could drop a sell into a lower router tier than an equivalent buy.
     function test_sellForwardsGrossEthAsMarketcapBasis() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
         _graduateToken();
 
         // Spy router that echoes the (ethSwapAmount, tokenSwapAmount) the hook forwards.
@@ -718,8 +705,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     ///         tax (4%) both apply, making the gross-up non-trivial.
     function test_exactOutputSell_deliversExactEthAndChargesFee() public createDefaultTaxToken {
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 3 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 3 ether, 0, true, true);
         _graduateToken();
 
         uint256 treasuryBefore = treasury.balance;
@@ -753,8 +739,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     ///         share plus the full sell tax. Runs in the active tax window so both components are non-zero.
     function test_exactOutputSell_distributesLpFeeAndSellTax() public createDefaultTaxToken {
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 3 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 3 ether, 0, true, true);
         _graduateToken();
 
         uint256 treasuryBefore = treasury.balance;

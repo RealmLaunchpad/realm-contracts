@@ -32,13 +32,13 @@ Unified factories register fee config automatically during token creation:
 
 ## Active event emitters covered here
 
-- `RealmFactoryUniV2Unified` / `RealmFactoryUniV4Unified` — the bonding-curve venues
+- `RealmFactoryUniV2Unified` — the bonding-curve venue (graduates to Uniswap V2)
 - `RealmFactoryUniV4Direct` — the DIRECT-launch venue (no curve, no launchpad; see §1.3)
 - `RealmLaunchpad`
 - `RealmToken` / `RealmTaxableTokenUniV4` / `RealmTaxableTokenUniV2` (sniper protection is a gated feature of both implementations, not a separate variant)
 - `RealmDirectGraduatorUniV4` — the direct venue's graduator (§1.3)
 - `RealmHookAnyPair` — the hook every ERC20-QUOTED pool is bound to (§6.1). `RealmHook` keeps every native pool.
-- `RealmGraduatorUniswapV2` / `RealmGraduatorUniswapV4` — the ARC variant `RealmGraduatorUniswapV2Arc` shares `RealmGraduatorUniswapV2Base` and emits the identical events in the identical order; every `RealmGraduatorUniswapV2` mention below applies to it unchanged.
+- `RealmGraduatorUniswapV2` — the ARC variant `RealmGraduatorUniswapV2Arc` shares `RealmGraduatorUniswapV2Base` and emits the identical events in the identical order; every `RealmGraduatorUniswapV2` mention below applies to it unchanged.
 - `RealmMasterFeeHandler`
 - `RealmSwapHook`
 - `RealmDividendSwapRegistry` — one shared upgradeable proxy per chain, not a per-token contract
@@ -53,7 +53,6 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 1b. [`createToken` — direct-launch factory](#13-direct-launch-realmfactoryuniv4direct)
 2. [`buyTokensWithExactEth` — pre-graduation](#2-buytokenswithexacteth--pre-graduation)
 3. [`buyTokensWithExactEth` that triggers V2 graduation](#3-buytokenswithexacteth-that-triggers-v2-graduation)
-4. [`buyTokensWithExactEth` that triggers V4 graduation](#4-buytokenswithexacteth-that-triggers-v4-graduation)
 5. [`sellExactTokens` — pre-graduation](#5-sellexacttokens--pre-graduation)
 6. [V4 post-graduation swaps](#6-v4-post-graduation-swaps)
 6b. [ERC20-quoted V4 swaps](#61-erc20-quoted-v4-swaps-realmhookanypair)
@@ -69,25 +68,21 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 
 ## 1. `createToken` — unified factory paths
 
-Each unified factory exposes ONE `createToken`, and a `previewTokenImplementation` view taking exactly the same arguments:
-- V2: `createToken(TokenSetupTiered, TaxConfigsWithMultiAllocation, SupplyShare[] buyOnDeployShares, AntiSniperConfigs, CreatorVault[], address referral)`.
-- V4: the same with `UniV4Configs` in third position.
+The unified factory (`RealmFactoryUniV2Unified`) exposes ONE `createToken`, and a `previewTokenImplementation` view taking exactly the same arguments: `createToken(TokenSetupTiered, TaxConfigsWithMultiAllocation, SupplyShare[] buyOnDeployShares, AntiSniperConfigs, CreatorVault[], address referral)`.
 
 `TokenSetupTiered` carries the `liquidityTier` selecting the post-graduation pool depth. `CreatorVault[]` (empty for none) locks supply in vesting vaults (§1.1 step 4b). `referral` is an off-chain signal for relayers: when non-zero, `RealmFactory.TokenReferral` is emitted (§1.1 step 7); no token storage or on-chain payout is wired to it.
 
 `TaxConfigsWithMultiAllocation` is the full `TaxConfigs` (static tax + the three launch-tax-decay fields, flattened) plus a nested `earningsAllocation` = `{burnBps, dividendsBps, liquidityBps, dividendTokens[], dividendWeightsBps[], dividendRoutes[]}`: post-graduation earnings routed to buy-back-and-burn / holder dividends / liquidity, the fund wallets taking the remainder. An all-zero split configures nothing (no extra call, no event). A non-zero split is stored on the token at creation via a factory-guarded `initializeEarningsAllocation` call, emitting `EarningsAllocationInitialized` and — when `dividendsBps != 0` — the dividend events of §1.1 step 6c.
-- **Tax requirement.** On V2 a non-zero split requires a LONG-TERM STATIC tax (`taxDurationSeconds != 0`), otherwise `EarningsAllocationRequiresTax`: V2 LP fees never reach the token, and a decay-only token's ≤20-minute window is not an earnings stream worth splitting. V4 accepts any tax config, zero included (the creator's LP-fee share is a permanent stream there), and clones the taxable implementation whenever an allocation is set.
+- **Tax requirement.** A non-zero split requires a LONG-TERM STATIC tax (`taxDurationSeconds != 0`), otherwise `EarningsAllocationRequiresTax`: V2 LP fees never reach the token, and a decay-only token's ≤20-minute window is not an earnings stream worth splitting. The direct V4 venue (§1.3) accepts any tax config.
 - **Payout set.** The dividends slice is paid in UP TO THREE assets (`DividendDistribution.MAX_DIVIDEND_ASSETS`): `address(0)` (native), `DividendDistribution.DIVIDEND_SELF_TOKEN` (the token itself), or ANY ERC20. `dividendWeightsBps[i]` is asset `i`'s share OF THE DIVIDENDS SLICE. Validated once, at creation, and permanent: 1..3 entries with both arrays the same length, every weight non-zero, the weights summing to exactly 10 000, the assets DISTINCT, and `DIVIDEND_SELF_TOKEN` legal only as the sole entry — otherwise `InvalidDividendAssetSet` / `SelfTokenDividendMustBeSole`. Naming assets with a zero `dividendsBps` reverts `DividendAssetWithoutShare`.
 - **Routes.** Every non-native, non-self asset is registered with `RealmDividendSwapRegistry.registerRoute(asset, dividendRoutes[i])`; an array shorter than `dividendTokens` means the empty route (the permissionless V2 pair) for the rest. There is no asset whitelist and no review: the registry accepts either a Uniswap **V2** pair whose quote-side reserve clears its threshold (the empty route), or a Uniswap **V4** / **V3** route whose every pool is initialized and holds liquidity — how assets with no V2 pair, such as Robinhood Chain's xStocks, qualify. Otherwise it reverts `RouteRejected(rejection)` (`NoPair` | `InsufficientLiquidity` | `Blacklisted` | `QuoteNotAllowed` | `MalformedRoute` | `DeadPool` | `IntermediateNotAllowed`) at creation, because a clone cannot be patched afterwards. What is NOT checked, by anyone, is whether the named pool's price tracks the asset's real market.
 
 ### 1.1 Common sequence
 
-For both unified factories, the common Realm event order is:
+For the unified factory, the common Realm event order is:
 
-1. **`RealmFactory.TokenCreated`** (`token, name, symbol, tokenOwner, launchpad, graduator, feeHandler=RealmMasterFeeHandler`) — emitted before token initialization so indexers see the token entity before initializer-side events. `RealmFactoryUniV2Unified` always emits `tokenOwner = address(0)`; `RealmFactoryUniV4Unified` emits `address(0)` only when ownership is renounced.
-2. **Graduator initialization events**:
-   - V2: **`RealmGraduator.PairInitialized`** (`token, pair`) — pair address is predicted; pair deployment can happen later at graduation.
-   - V4: **`RealmGraduator.PairInitialized`** (`token, pair=PoolManager`) then **`RealmGraduatorUniswapV4.PoolIdRegistered`** (`token, poolId, swapHookAddress`).
+1. **`RealmFactory.TokenCreated`** (`token, name, symbol, tokenOwner, launchpad, graduator, feeHandler=RealmMasterFeeHandler`) — emitted before token initialization so indexers see the token entity before initializer-side events. `RealmFactoryUniV2Unified` always emits `tokenOwner = address(0)`.
+2. **Graduator initialization**: **`RealmGraduator.PairInitialized`** (`token, pair`) — pair address is predicted; pair deployment can happen later at graduation.
 3. Implementation initializer events (emitted during the token's `initialize`, after the initial mint(s)):
    - Always: **`RealmToken.LaunchpadFeesInitialized`** (`lpFeeBps, treasuryShareBps`) — the per-token pre-graduation LP-fee config the launchpad reads each trade. A single LP fee applies to both buys and sells (mirroring the post-graduation hook). The creator tax (if any) is reported separately by `RealmTaxableTokenInitialized` below. Emitted before the tax/sniper events below.
    - Tax token: **`RealmTaxableTokenInitialized`** (`buyTaxBps, sellTaxBps, taxDurationSeconds, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps, taxDecayDuration`). `startTaxFromLaunch` tells the indexer the tax-window anchor: `true` → window runs `[launchTimestamp, launchTimestamp + taxDurationSeconds]` (creation-anchored, spans graduation); `false` → `[graduationTimestamp, +taxDurationSeconds]` (no tax pre-graduation). The three `*Decay*` fields configure the optional linear launch-tax decay, anchored at the SAME point as the static window: each direction's rate decays linearly from `*TaxDecayStartBps` (`buyTaxDecayStartBps + sellTaxDecayStartBps` ≤ 2000 = 20% combined) at the anchor to 0 over `taxDecayDuration` (≤1200 s = 20 min). The effective tax a trade pays is `max(decay, static)` per direction, so a token may emit non-zero decay fields with zero static fields (a "decay-only" token — a non-taxable token that opted into the launch decay; it is still deployed as a taxable-impl clone). A token may also configure both, or neither (all six fields 0).
@@ -98,11 +93,11 @@ For both unified factories, the common Realm event order is:
 5. Initial fee config is registered through the token into `RealmMasterFeeHandler`:
    - Zero or more **`RealmMasterFeeHandler.DirectReceiverRegistered`** (`token, receiver`) — one per initial direct receiver.
    - **`RealmMasterFeeHandler.SharesUpdated`** (`token, recipients, sharesBps`).
-6. V4 only: **`RealmFactory.LpFeeBpsSet`** (`token, lpFeeBps`) — emitted by `RealmFactoryUniV4Unified` for every created token, unconditionally (presence of the event is itself the V4-origin signal). `RealmFactoryUniV2Unified` never emits it. With `msg.value > 0`, this fires *after* the deployer-buy events listed in 1.2.
-6b. Only when `earningsAllocation` is non-zero: **`EarningsAllocation.EarningsAllocationInitialized`** (`burnBps, dividendsBps, liquidityBps`) — the creation-time earnings split. Emitted by the token itself from the factory-guarded `initializeEarningsAllocation` call, which the factory makes *after* the shared creation body — so it fires after the fee registration (step 5), any deployer-buy events (§1.2) and `LpFeeBpsSet` (step 6, V4), and before `TokenReferral` (step 7). Both factories emit it (via the token); an all-zero allocation emits nothing here.
+6. (No `RealmFactory.LpFeeBpsSet`: only the direct V4 venue emits it, §1.3 step 11.)
+6b. Only when `earningsAllocation` is non-zero: **`EarningsAllocation.EarningsAllocationInitialized`** (`burnBps, dividendsBps, liquidityBps`) — the creation-time earnings split. Emitted by the token itself from the factory-guarded `initializeEarningsAllocation` call, which the factory makes *after* the shared creation body — so it fires after the fee registration (step 5), and any deployer-buy events (§1.2), and before `TokenReferral` (step 7). The token emits it; an all-zero allocation emits nothing here.
 
 6c. Same call, immediately after 6b, and only when `dividendsBps != 0`: one **`DividendDistribution.DividendAssetInitialized`** (`index` indexed, `asset`, `weightBps`) per configured payout asset, in index order, followed by exactly one **`DividendDistribution.DividendsInitialized`** (`dividendToken`) carrying asset 0. `DividendAssetInitialized` is the complete description of the payout configuration — how many assets, which, and each one's share of the dividends slice; `DividendsInitialized` is kept, and kept last, so indexers written against the single-asset shape keep working (a single-asset token emits one of each, with the same address). The self-token sentinel is already resolved to the token's own address in both. The set is fixed for the token's life — there is no add, no remove and no re-weight, on any path. Nothing else fires here: the accumulators start at graduation, not at creation (see §graduation).
-7. Only when `referral != address(0)`: **`RealmFactory.TokenReferral`** (`token, referral`, both indexed) — records the relayer/referrer that forwarded the creation. Emitted last of all factory events (after `LpFeeBpsSet` on V4, and after `EarningsAllocationInitialized` when an allocation is set). Both factories emit it; the common no-referral deploy emits nothing here.
+7. Only when `referral != address(0)`: **`RealmFactory.TokenReferral`** (`token, referral`, both indexed) — records the relayer/referrer that forwarded the creation. Emitted last of all factory events (after `EarningsAllocationInitialized` when an allocation is set). the common no-referral deploy emits nothing here.
 
 Notes:
 
@@ -125,16 +120,16 @@ ERC20 `Transfer` events occur from launchpad to factory and then from factory to
 
 ## 1.3 Direct launch (`RealmFactoryUniV4Direct`)
 
-A second, independent venue. `RealmFactoryUniV4Direct.createToken(DirectTokenSetup, DirectPair[], TaxConfigsWithDirectAllocation, AntiSniperConfigs, CreatorVault[], DevBuy, address referral)` — creates the token, creates ONE TO THREE Uniswap V4 pools at caller-supplied prices, splits the circulating supply across them as single-sided token bands and settles the creator's first buy — all in one transaction. There is no bonding curve, no launchpad and no pre-graduation phase, so §2–§5 never apply to these tokens; §6 (post-graduation V4 swaps) applies from the creation block onwards.
+A second, independent venue. `RealmFactoryUniV4Direct.createToken(DirectTokenSetup, DirectPair[], TaxConfigsWithDirectAllocation, AntiSniperConfigs, CreatorVault[], DevBuy, address referral)` — creates the token, creates ONE TO THREE Uniswap V4 pools, each opening at a fixed `LAUNCH_MARKET_CAP_X18` (2.25 ETH) market cap, splits the circulating supply across them as single-sided token bands and settles the creator's first buy — all in one transaction. There is no bonding curve, no launchpad and no pre-graduation phase, so §2–§5 never apply to these tokens; §6 (post-graduation V4 swaps) applies from the creation block onwards.
 
-Each `DirectPair` names a `quote` (`address(0)` for the chain's native currency, or any ERC20 with `decimals()` that is not the wrapped native), a `weightBps` share of the supply, and a `launchTick` — the opening price as QUOTE PER COIN. A native pair is bound to `SWAP_HOOK` (`RealmHook`); an ERC20 pair is bound to `SWAP_HOOK_ANY_PAIR` (`RealmHookAnyPair`, §6.1). `DevBuy` spends `msg.value` on a native pair and a pulled `quoteAmount` on an ERC20 one.
+Each `DirectPair` names a `quote` (`address(0)` for the chain's native currency, or any ERC20 with `decimals()` that is not the wrapped native), and a `weightBps` share of the supply. There is no price field: the factory derives each pair's launch tick (QUOTE PER COIN) on-chain from `LAUNCH_MARKET_CAP_X18`, converted to the quote at its LIVE `ASSETS_WHITELIST` rate (`liveUnitsPerNativeX18`, a spot read of the quote's listed price pool; native is 1:1). A native pair is bound to `SWAP_HOOK` (`RealmHook`); an ERC20 pair is bound to `SWAP_HOOK_ANY_PAIR` (`RealmHookAnyPair`, §6.1). `DevBuy` spends `msg.value` on a native pair and a pulled `quoteAmount` on an ERC20 one.
 
 **How an indexer recognises one**: `TokenCreated.launchpad == address(0)`. No `TokenLaunched`, no `BondingCurveAssigned` and no `RealmTokenBuy` is ever emitted for a direct-launched token. Its `graduator` is a `RealmDirectGraduatorUniV4`.
 
 Realm event order:
 
 1. **`RealmFactory.TokenCreated`** (`token, name, symbol, tokenOwner, launchpad=address(0), graduator=RealmDirectGraduatorUniV4, feeHandler`).
-2. Graduator initialization, from inside the token's `initialize`: **`RealmGraduator.PairInitialized`** (`token, pair=PoolManager`) then **`RealmDirectGraduatorUniV4.PoolIdRegistered`** (`token, poolId, swapHookAddress`) — the same order as the unified V4 graduator (§1.1 step 2). The pool is created at `pairs[0].launchTick`, interpreted as QUOTE PER COIN; the pool's own `slot0.tick` is its reciprocal (`-launchTick`) whenever the coin sorts as `currency1`, which it always does against native.
+2. Graduator initialization, from inside the token's `initialize`: **`RealmGraduator.PairInitialized`** (`token, pair=PoolManager`) then **`RealmDirectGraduatorUniV4.PoolIdRegistered`** (`token, poolId, swapHookAddress`) — the same `PairInitialized` as §1.1 step 2, followed by the V4 pool id. The pool is created at the first pair's derived launch tick, QUOTE PER COIN; the pool's own `slot0.tick` is its reciprocal whenever the coin sorts as `currency1`, which it always does against native.
 3. Implementation initializer events, exactly as §1.1 step 3 — **`RealmToken.LaunchpadFeesInitialized`** (both fields `0`: there is no pre-graduation fee to charge or split), then **`RealmTaxableTokenInitialized`** and/or **`SniperProtectionInitialized`** when configured.
 3a. Any ERC20 quotes only: **`RealmToken.QuotesRegistered`** (`quotes[]`) — the currencies beyond the native one the token will earn in. `quotes[0]` on the token is ALWAYS `address(0)`, so this event carries only the extras and is absent on a native-only launch. It is what tells an indexer which currencies to expect in that token's `CreatorAssetFeesDeposited` / `LpAssetFeesRouted`.
 4. Creator vaults, when configured: the §1.1 step 4b sequence unchanged (`CreatorVaultDeployed` per vault, then **`RealmFactory.CreatorVaultsCreated`**).
@@ -142,21 +137,21 @@ Realm event order:
 5b. Only when any allocation bucket is non-zero: **`EarningsAllocationInitialized`** (`burnBps, dividendsBps, liquidityBps`), then — with a dividends share — one **`DividendAssetInitialized`** (`index, asset, weightBps`) per payout asset, each preceded by the registry's **`DividendRouteRegistered`** for a non-native, non-self asset, then **`DividendsInitialized`** (`dividendToken` = asset 0), then one more **`DividendRouteRegistered`** per ERC20 QUOTE some payout leg has to be bought out of (see the registry section). The allocation lands BEFORE the seed on purpose: the `Graduated` of step 6 is what emits `DividendsActivated`, so a direct-launched dividend token is active from its creation block, never from its first earnings.
 5c. Every pool after the first: **`RealmDirectGraduatorUniV4.PoolIdRegistered`** (`token, poolId, swapHookAddress`), one per extra pool in `pairs` order, emitted by the factory-driven `initializePool`. The FIRST pool's pair of events fired in step 2.
 6. **`RealmToken.Graduated`** — the token is opened for trading in its own creation transaction. On a taxable token this also sets `graduationTimestamp`, so a graduation-anchored tax window (`startTaxFromLaunch == false`) starts here, at creation.
-7. **`RealmDirectGraduatorUniV4.PoolSeeded`** for the FIRST pool (`token` indexed, `quote` indexed, `poolId`, `weightBps`, `tick`, `liquidity`, `launchMarketCap`, `targetMarketCap`, `quoteDecimals`, `quoteSymbol`), then **`RealmGraduator.TokenGraduated`** (`token, tokenAmount` = the first pool's share of the supply, `ethAmount` = ALWAYS `0` on this venue, `liquidity` = the first pool's), then one more **`PoolSeeded`** per further pool, in `pairs` order. `tick` is the caller's quote-per-coin value, NOT the pool's internal orientation. `weightBps` is that pool's share of the seeded supply, summing to 10000 across the set; the LAST pool also absorbs the rounding remainder, so its actual amount is marginally above its weight. `launchMarketCap` is the whole supply at `tick`, in the quote's RAW units (wei for native, no decimals applied), the same units an indexer derives from the pool's `sqrtPriceX96`; `targetMarketCap` is `launchMarketCap * GRADUATION_TARGET_MULTIPLE` (5). The token is graduated on-chain from birth; indexers show it graduated once its largest pool (highest `weightBps`, the first seeded on a tie) reaches that pool's `targetMarketCap`. `quoteDecimals` is 18 for native; `quoteSymbol` is the quote's `symbol()`, empty for native and for a quote whose `symbol()` reverts or is not an ABI string of at most 32 bytes (e.g. the legacy `bytes32` form), which never blocks the launch. Each seed is accompanied by ERC20 `Transfer` events (graduator → liquidity adder → PoolManager) plus the position manager's own `Transfer` minting the position NFT to the graduator, where it stays permanently. There is no graduation fee on this venue, so no `CreatorGraduationFeeCollected` / `TreasuryGraduationFeeCollected`.
+7. **`RealmDirectGraduatorUniV4.PoolSeeded`** for the FIRST pool (`token` indexed, `quote` indexed, `poolId`, `weightBps`, `tick`, `liquidity`, `launchMarketCap`, `targetMarketCap`, `quoteDecimals`, `quoteSymbol`), then **`RealmGraduator.TokenGraduated`** (`token, tokenAmount` = the first pool's share of the supply, `ethAmount` = ALWAYS `0` on this venue, `liquidity` = the first pool's), then one more **`PoolSeeded`** per further pool, in `pairs` order. `tick` is the derived quote-per-coin value, NOT the pool's internal orientation. `weightBps` is that pool's share of the seeded supply, summing to 10000 across the set; the LAST pool also absorbs the rounding remainder, so its actual amount is marginally above its weight. `launchMarketCap` is the whole supply at `tick`, in the quote's RAW units (wei for native, no decimals applied), the same units an indexer derives from the pool's `sqrtPriceX96`; `targetMarketCap` is `launchMarketCap * GRADUATION_TARGET_MULTIPLE` (5). The token is graduated on-chain from birth; indexers show it graduated once its largest pool (highest `weightBps`, the first seeded on a tie) reaches that pool's `targetMarketCap`. `quoteDecimals` is 18 for native; `quoteSymbol` is the quote's `symbol()`, empty for native and for a quote whose `symbol()` reverts or is not an ABI string of at most 32 bytes (e.g. the legacy `bytes32` form), which never blocks the launch. Each seed is accompanied by ERC20 `Transfer` events (graduator → liquidity adder → PoolManager) plus the position manager's own `Transfer` minting the position NFT to the graduator, where it stays permanently. There is no graduation fee on this venue, so no `CreatorGraduationFeeCollected` / `TreasuryGraduationFeeCollected`.
 8. Dev buy only (`msg.value > 0` or `quoteAmount > 0`): on a quote-funded ERC20 pair first the quote's `Transfer` (creator → graduator); on a native-funded ERC20 pair (zap) instead, inside the same unlock, the conversion hops' `PoolManager.Swap` (1-2, native → [reference →] quote, through the quote's whitelist V4 pools, plus whatever those pools' hooks emit) and NO quote `Transfer` — the quote never leaves the pool manager. Then the swap, inside the graduator's own pool-manager unlock, on the pool `devBuy.pairIndex` names, emitting that pool's ordinary post-graduation buy sequence with `txOrigin` = the creator: on a native pair the §6.1 sequence (**`RealmHook.RealmPoolState`**, **`LpFeesForwarded`** → the router's **`LpFeesRouted`**, **`CreatorTaxesAccrued`** on a taxable token inside its window, **`RealmSwapHook.RealmSwapBuy`**); on an ERC20 pair the ERC20-quoted sequence (**`RealmHookAnyPair.RealmPoolState`**, **`LpFeesForwarded`**, **`CreatorTaxesAccrued`**, **`RealmQuoteSwapBuy`** — the fees are only BOOKED here; `FeesSettled` and the router's `LpAssetFeesRouted` come later, with `settleFees`). Then ERC20 `Transfer`s of exactly the tokens bought: PoolManager → graduator → factory.
 9. The seed remainder no band could absorb: ERC20 `Transfer` (graduator → `0x…dEaD`). Present in practice on every launch — the position math never consumes the deposit exactly — and burned AFTER the dev buy, which never touches it.
 10. Dev buy only: **`RealmFactory.BuyOnDeploy`** (`token, buyer=msg.sender, quoteSpent, tokensBought, recipients, amounts`) — the same event and the same split rule the curve venue uses in §1.2, sourced from the pool instead of the curve. `quoteSpent` is what the buy spent in the dev-buy pair's own quote, raw units: `msg.value` (wei) on a native pair, `devBuy.quoteAmount` on a quote-funded ERC20 pair, and the CONVERTED quote amount (not the native sent) on a native-funded ERC20 pair.
-11. **`RealmFactory.LpFeeBpsSet`** (`token, lpFeeBps`) — always, as on the V4 unified factory.
+11. **`RealmFactory.LpFeeBpsSet`** (`token, lpFeeBps`) — always, for every direct-launched token; the curve factory never emits it.
 12. Only when `referral != address(0)`: **`RealmFactory.TokenReferral`** (`token, referral`).
 
 Notes:
 
 - The rounding remainder the bands cannot absorb is burned (step 9), never held: the graduator must not become a continuous holder, or it would accrue dividends nobody can claim.
 - A launch takes 1 to `MAX_PAIRS` (3) pairs with distinct quotes and weights summing to 10000 (`InvalidPairs`); an ERC20 quote must be whitelisted in `RealmAssetsWhitelist` (`ASSETS_WHITELIST()`), have `decimals()` ≤ 36 and not be the wrapped native (`QuoteNotSupported`). Fee-on-transfer quotes are not supported. `DevBuy.route` and `DevBuy.minQuoteOut` exist in the ABI but must be empty/zero, and the dev buy's currency must match its pair (`InvalidDevBuy`).
-- Every pair's `launchTick` must imply an opening market cap worth between `MIN_LAUNCH_MARKET_CAP_X18` (1 ETH) and `MAX_LAUNCH_MARKET_CAP_X18` (250 ETH) (`LaunchPriceOutOfBounds`). An ERC20 pair's bounds are those times the quote's whitelist rate `unitsPerNativeX18`, in WHOLE units, whatever its decimals.
-- An earnings allocation on this venue needs NO tax: the creator's LP-fee share is a permanent stream here, so a zero-tax token with an allocation is a revenue-share token. It is cloned from the TAXABLE implementation, which `previewTokenImplementation` (same arguments as `createToken`) reports, so a salt mined against it names the right initcode. The V4 unified factory follows the same rule; only the V2 factory still requires a static tax, because V2 LP fees never reach the token.
+- Every pair's derived tick must still imply an opening market cap worth between `MIN_LAUNCH_MARKET_CAP_X18` (1 ETH) and `MAX_LAUNCH_MARKET_CAP_X18` (250 ETH) (`LaunchPriceOutOfBounds`) at the quote's SNAPSHOT rate `unitsPerNativeX18`: a live rate more than ~2.25x below or ~111x above the listed one is refused. The tick is also spacing-aligned (rounded to the nearest multiple) and must sit strictly inside the usable band (`InvalidLaunchTick`).
+- An earnings allocation on this venue needs NO tax: the creator's LP-fee share is a permanent stream here, so a zero-tax token with an allocation is a revenue-share token. It is cloned from the TAXABLE implementation, which `previewTokenImplementation` (same arguments as `createToken`) reports, so a salt mined against it names the right initcode. Only the V2 curve factory requires a static tax, because V2 LP fees never reach the token.
 - On an ERC20-quoted pool the dividends slice buffers IN THE QUOTE (`quoteDividendPending(quote)`), per payout asset, and is serviced by `processDividends(assetIndex, quote, minOut, holders)` — see Holder dividends.
-- `previewLaunchPrice(launchTick, quoteDecimals)` is a pure view returning the opening price of one whole coin and the implied market cap, both scaled by 1e18. A tick is a ratio of RAW units, so the answer depends on the quote's decimals — the conversion a creator is most likely to get wrong by a factor of ten.
+- `previewLaunchTick(quote)` returns the tick a pair against `quote` would launch at right now, plus the opening price of one whole coin and the implied market cap in whole quote units, both scaled by 1e18. It reverts where `createToken` would (`QuoteNotSupported`, `LaunchPriceOutOfBounds`). Live: an ERC20 quote's result can move with its price pool before the creation transaction lands.
 
 ---
 
@@ -179,10 +174,10 @@ When the buy does not graduate the token:
 5. Treasury share pushed to the treasury address → the §11 router/voting events.
 6. **`RealmLaunchpad.RealmTokenBuy`** (`token, buyer, ethAmount=msg.value, tokenAmount, ethFee`) — `ethFee` is the total (LP fee + tax).
 
-Both curve factories create every token with `treasuryShareBps = 3000` (30% treasury / 70% creator of
+The curve factory creates every token with `treasuryShareBps = 3000` (30% treasury / 70% creator of
 the 1% LP fee), so step 4 fires on every buy that takes a fee; only step 3 depends on an active tax.
 
-If the buy crosses the graduation threshold, append the relevant graduation sequence from §3 or §4.
+If the buy crosses the graduation threshold, append the graduation sequence from §3.
 
 ---
 
@@ -204,28 +199,6 @@ Realm event order:
 8. **`RealmGraduator.TokenGraduated`** (`token, tokenAmount, ethAmount, liquidity`).
 9. Optional **`RealmGraduatorUniswapV2.SweepedRemainingEth`** (`token, amount`) if triggerer compensation failed or residual ETH remains.
 10. **`RealmLaunchpad.TokenGraduated`** (`token, ethCollected, tokensForGraduation`).
-
----
-
-## 4. `buyTokensWithExactEth` that triggers V4 graduation
-
-The initial buy emits the pre-graduation buy sequence from §2, then graduation begins in `RealmLaunchpad._graduateToken`.
-
-Realm event order:
-
-1. The triggering buy first emits its full §2 sequence — ERC20 transfer to buyer, the fee events (**`RealmLaunchpad.LpFeesAccrued`**, optional **`CreatorTaxesAccrued`**, and the creator-share `CreatorFeesDeposited` when applicable), and **`RealmLaunchpad.RealmTokenBuy`** (`token, buyer, ethAmount, tokenAmount, ethFee`).
-2. ERC20 transfer of the remaining launchpad token balance from `RealmLaunchpad` to `RealmGraduatorUniswapV4`.
-3. **`RealmGraduator.CreatorGraduationFeeCollected`** (`token, amount=creatorCompensation`).
-4. Creator compensation is routed through `RealmToken.accrueFees()` into `RealmMasterFeeHandler.depositFees(token)`:
-   - **`RealmMasterFeeHandler.CreatorFeesDeposited`** (`token, amount=creatorCompensation`).
-   - Optional **`RealmMasterFeeHandler.CreatorClaimed`** (`token, directReceiver, amount`) if the configured receiver is direct and the forward succeeds.
-5. **`RealmGraduator.TreasuryGraduationFeeCollected`** (`token, amount=treasuryShare`), the push itself landing on the treasury address → the §11 router/voting events.
-6. **`RealmToken.Graduated`**.
-   - Tax tokens emit this same event from the override and also record `graduationTimestamp`.
-7. External Uniswap V4 PoolManager / PositionManager / Permit2 events occur while liquidity positions are minted.
-7a. ERC20 `Transfer` (graduator -> `0x…dEaD`) of the token dust the positions could not take. Always present in practice — the position math never consumes the deposit exactly — and burned rather than held so the graduator never becomes a continuous holder accruing unclaimable dividends.
-8. **`RealmGraduator.TokenGraduated`** (`token, tokenAmount, ethAmount, liquidity`). `tokenAmount` is what the positions ACTUALLY took, so it already excludes the dust burned in 7a.
-9. **`RealmLaunchpad.TokenGraduated`** (`token, ethCollected, tokensForGraduation`).
 
 ---
 
@@ -254,7 +227,7 @@ Realm event order:
 
 ## 6. V4 post-graduation swaps
 
-V4 swaps are mediated by the swap hook. Swaps before graduation revert with `NoSwapsBeforeGraduation` and emit no Realm swap/fee events.
+V4 pools exist only for direct-launched tokens (§1.3), which graduate in their creation transaction, so every V4 swap is post-graduation. Swaps are mediated by the swap hook; a swap on an ungraduated token reverts `NoSwapsBeforeGraduation` and emits no Realm swap/fee events.
 
 Every native-quoted pool is attached to `RealmHook`, which extends `RealmSwapHook` and additionally emits
 `RealmPoolState` (§6.0) on every swap. `RealmSwapHook` is deprecated as a deployment target: it is never
@@ -430,7 +403,7 @@ Zero-value `depositFees(token)` calls are no-ops and emit no fee events, includi
 
 ## 10. `RealmTaxableToken.setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps)`
 
-Owner-only entry point on both `RealmTaxableTokenUniV2` and `RealmTaxableTokenUniV4`. Callable by the token owner OR `launchpad.owner()`. V2 tokens are always ownerless (`owner == address(0)`), so only the launchpad-owner branch is reachable there; V4 tokens are owned by their creator unless ownership was renounced at creation. Direct-launch tokens have no launchpad, so only their owner can call it, and nobody once ownership is renounced.
+Owner-only entry point on both `RealmTaxableTokenUniV2` and `RealmTaxableTokenUniV4`. Callable by the token owner OR `launchpad.owner()`. V2 tokens are always ownerless (`owner == address(0)`), so only the launchpad-owner branch is reachable there; V4 tokens are all direct-launched: owned by their creator unless ownership was renounced at creation, and with no launchpad, so only their owner can call it, and nobody once ownership is renounced.
 
 The function is decrease-only: `newBuyTaxBps` and `newSellTaxBps` must both be `<= ` their current values, otherwise the call reverts with `TaxBpsCanOnlyDecrease`. Equal values are accepted (no-op for that side). `taxDurationSeconds` and `graduationTimestamp` are untouched.
 

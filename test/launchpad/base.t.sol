@@ -18,7 +18,9 @@ import {
 } from "src/interfaces/IRealmTaxableToken.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
+import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
+import {PoolKey as CorePoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
@@ -28,9 +30,8 @@ import {CreatorVaultCurveConstants} from "src/config/CreatorVaultCurveConstants.
 import {RealmCreatorVault} from "src/vaults/RealmCreatorVault.sol";
 import {RealmCreatorVaultFactory} from "src/vaults/RealmCreatorVaultFactory.sol";
 import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
-import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
+import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
 import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
-import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
@@ -48,6 +49,8 @@ import {Clones} from "lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
 
 contract LaunchpadBaseTests is Test {
+    using stdStorage for StdStorage;
+
     /// @notice Eligibility gate + swap venue for third-asset dividends, installed at the constant
     ///         address every taxable token implementation compiles against.
     RealmDividendSwapRegistry internal dividendSwapRegistry;
@@ -71,9 +74,12 @@ contract LaunchpadBaseTests is Test {
     RealmCreatorVaultFactory public creatorVaultFactory;
     address[6] public vaultCurves; // [5%, 10%, 15%, 20%, 25%, 30%] DEFAULT-tier vault curves
 
-    /// @notice THIN/THICK tier V4 graduators (single hook in tests). Deployed in `setUp`.
-    RealmGraduatorUniswapV4 public graduatorV4Thin;
-    RealmGraduatorUniswapV4 public graduatorV4Thick;
+    /// @notice The direct-launch V4 venue (the only V4 venue), deployed in `setUp`.
+    RealmDirectGraduatorUniV4 internal directGraduator;
+    RealmFactoryUniV4Direct internal directFactory;
+    RealmAssetsWhitelist internal assetsWhitelist;
+    /// @dev Shared `RealmUniV4LiquidityAdder`, as in production.
+    address internal univ4LiquidityAdder;
 
     /// @notice THIN/THICK tier curves (no-vault base + 6 vault curves each), built in `setUp`.
     ///         Stored so subclasses (e.g. factory-upgrade tests) can rebuild a factory with them.
@@ -82,23 +88,12 @@ contract LaunchpadBaseTests is Test {
 
     IRealmGraduator public graduator;
 
-    // Two unified factories. Legacy aliases below point to these instances so existing call sites
-    // that read `factoryV2`, `factoryV4`, `factoryTax`, `factoryV2Sniper`, `factorySniper`, and
-    // `factoryTaxSniper` keep working. The unified factories dispatch implementations based on
+    // The unified curve factory. The legacy aliases below point to it so existing call sites that
+    // read `factoryV2` / `factoryV2Sniper` keep working; it dispatches implementations based on
     // `TaxConfigs`/`AntiSniperConfigs` sentinels.
     RealmFactoryUniV2Unified public factoryV2Unified;
-    RealmFactoryUniV4Unified public factoryV4Unified;
-
-    // Legacy aliases (read-only). The pre-consolidation factories (`RealmFactoryUniV2`,
-    // `RealmFactoryUniV4`, `RealmFactoryTaxToken`, `RealmFactoryUniV2SniperProtected`,
-    // `RealmFactoryUniV4SniperProtected`, `RealmFactoryTaxTokenSniperProtected`) no longer exist;
-    // these names now refer to the unified factories so the test surface remains stable.
     RealmFactoryUniV2Unified public factoryV2;
     RealmFactoryUniV2Unified public factoryV2Sniper;
-    RealmFactoryUniV4Unified public factoryV4;
-    RealmFactoryUniV4Unified public factoryTax;
-    RealmFactoryUniV4Unified public factorySniper;
-    RealmFactoryUniV4Unified public factoryTaxSniper;
 
     RealmToken public realmTokenSniper; // alias of `realmToken` (anti-sniper is a gated feature)
     RealmTaxableTokenUniV4 public realmTaxTokenSniper; // alias of `realmTaxToken`
@@ -189,7 +184,6 @@ contract LaunchpadBaseTests is Test {
     uint256 constant POOL_SETPOINT_PRICE = 12249999999; // ETH/token (eth per token, expressed in wei)
 
     RealmGraduatorUniswapV2 public graduatorV2;
-    RealmGraduatorUniswapV4 public graduatorV4;
     RealmSwapHook public taxHook;
     RealmHookAnyPair public anyPairHook;
     SwapLpFeeRouter public lpFeeRouter;
@@ -391,11 +385,6 @@ contract LaunchpadBaseTests is Test {
         });
     }
 
-    /// @dev V4 configs at the 100-bps swap fee.
-    function _v4Cfg(bool renounceOwnership) internal pure returns (RealmFactoryUniV4Unified.UniV4Configs memory) {
-        return RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: renounceOwnership, lpFeeBps: 100});
-    }
-
     function _noVaults() internal pure returns (IRealmFactory.CreatorVault[] memory) {
         return new IRealmFactory.CreatorVault[](0);
     }
@@ -454,21 +443,173 @@ contract LaunchpadBaseTests is Test {
         }
     }
 
-    /// @dev The V4 tier-graduators struct used by `setUp` (and reusable by subclasses). One graduator
-    ///      per tier — the hook is fee-agnostic and reads the swap fee from the token.
-    function _v4TierGraduators() internal view returns (RealmFactoryUniV4Unified.TierGraduators memory) {
-        return
-            RealmFactoryUniV4Unified.TierGraduators({thin: address(graduatorV4Thin), thick: address(graduatorV4Thick)});
-    }
-
     /// @dev THIN+THICK curve bundle for the factory constructors.
     function _tierConfig() internal view returns (IRealmFactory.LiquidityTierConfig memory) {
         return IRealmFactory.LiquidityTierConfig({thin: thinCurves, thick: thickCurves});
     }
 
-    /// @dev Full V4 tier config (curves + graduators) for the V4 factory constructor.
-    function _v4TierConfig() internal view returns (RealmFactoryUniV4Unified.V4TierConfig memory) {
-        return RealmFactoryUniV4Unified.V4TierConfig({curves: _tierConfig(), graduators: _v4TierGraduators()});
+    /////////////////////////// direct venue helpers ///////////////////////////
+
+    /// @dev Whitelists `quote` at `unitsPerNativeX18` whole units per ETH by writing the rate a listing
+    ///      would snapshot, so tests need no price pool per test quote. Listing itself is covered in
+    ///      `realmAssetsWhitelist.t.sol`. The LIVE rate still reads the (absent) price source, so a quote
+    ///      whitelisted this way also needs `_mockLiveRate`.
+    function _whitelist(address quote, uint256 unitsPerNativeX18) internal {
+        stdstore.target(address(assetsWhitelist)).sig(assetsWhitelist.unitsPerNativeX18.selector).with_key(quote)
+            .checked_write(unitsPerNativeX18);
+        _mockLiveRate(quote, unitsPerNativeX18);
+    }
+
+    /// @dev Pins `quote`'s live whitelist rate, which prices a direct launch against it.
+    function _mockLiveRate(address quote, uint256 unitsPerNativeX18) internal {
+        vm.mockCall(
+            address(assetsWhitelist),
+            abi.encodeCall(RealmAssetsWhitelist.liveUnitsPerNativeX18, (quote)),
+            abi.encode(unitsPerNativeX18)
+        );
+    }
+
+    /// @dev A direct-venue token setup at the 100-bps swap fee, salt mined for `creator`.
+    function _directSetup(string memory name, string memory symbol, bool taxable)
+        internal
+        returns (RealmFactoryUniV4Direct.DirectTokenSetup memory s)
+    {
+        s = RealmFactoryUniV4Direct.DirectTokenSetup({
+            name: name,
+            symbol: symbol,
+            salt: _nextValidSalt(address(directFactory), taxable ? address(realmTaxToken) : address(realmToken)),
+            feeShares: _fs(creator),
+            renounceOwnership: false,
+            lpFeeBps: 100
+        });
+    }
+
+    /// @dev One native pair holding the whole seed.
+    function _nativePair() internal pure returns (RealmFactoryUniV4Direct.DirectPair[] memory p) {
+        p = new RealmFactoryUniV4Direct.DirectPair[](1);
+        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 10_000});
+    }
+
+    function _noDevBuy() internal pure returns (RealmFactoryUniV4Direct.DevBuy memory d) {
+        d = RealmFactoryUniV4Direct.DevBuy({
+            pairIndex: 0,
+            route: new CorePoolKey[](0),
+            minQuoteOut: 0,
+            quoteAmount: 0,
+            recipients: new IRealmFactory.SupplyShare[](0)
+        });
+    }
+
+    function _devBuyTo(address to) internal pure returns (RealmFactoryUniV4Direct.DevBuy memory d) {
+        d = _noDevBuy();
+        d.recipients = new IRealmFactory.SupplyShare[](1);
+        d.recipients[0] = IRealmFactory.SupplyShare({account: to, shares: 10_000});
+    }
+
+    /// @dev A native-pair direct launch by `creator` with `tax` and no allocation, vault, sniper or dev
+    ///      buy. Taxable (cloned from the taxable impl) whenever `tax` sets any rate.
+    function _createDirectToken(TaxConfigs memory tax) internal returns (address token) {
+        return _createDirectToken(tax, _fs(creator));
+    }
+
+    /// @dev A curve-shaped allocation config in the direct factory's shape (no quote routes).
+    function _toDirectAlloc(TaxConfigsWithMultiAllocation memory c)
+        internal
+        pure
+        returns (TaxConfigsWithDirectAllocation memory d)
+    {
+        d.buyTaxBps = c.buyTaxBps;
+        d.sellTaxBps = c.sellTaxBps;
+        d.taxDurationSeconds = c.taxDurationSeconds;
+        d.startTaxFromLaunch = c.startTaxFromLaunch;
+        d.buyTaxDecayStartBps = c.buyTaxDecayStartBps;
+        d.sellTaxDecayStartBps = c.sellTaxDecayStartBps;
+        d.taxDecayDuration = c.taxDecayDuration;
+        d.earningsAllocation = c.earningsAllocation;
+    }
+
+    /// @dev A native-pair direct launch by `creator` from a curve-shaped setup (its tier is ignored; its
+    ///      salt must be mined against `directFactory`) and allocation config.
+    function _createDirect(IRealmFactory.TokenSetupTiered memory s, TaxConfigsWithMultiAllocation memory c)
+        internal
+        returns (address token)
+    {
+        return _createDirect(s, c, _emptyAntiSniperCfg(), _noVaults());
+    }
+
+    function _createDirect(
+        IRealmFactory.TokenSetupTiered memory s,
+        TaxConfigsWithMultiAllocation memory c,
+        AntiSniperConfigs memory antiSniper,
+        IRealmFactory.CreatorVault[] memory vaults
+    ) internal returns (address token) {
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup =
+            RealmFactoryUniV4Direct.DirectTokenSetup({
+                name: s.name,
+                symbol: s.symbol,
+                salt: s.salt,
+                feeShares: s.feeShares,
+                renounceOwnership: false,
+                lpFeeBps: 100
+            });
+        vm.prank(creator);
+        token = directFactory.createToken(
+            setup, _nativePair(), _toDirectAlloc(c), antiSniper, vaults, _noDevBuy(), address(0)
+        );
+    }
+
+    /// @dev A plain (non-tax) native-pair direct launch sent by `deployer`, with its own identity, fee
+    ///      split and ownership choice.
+    function _createDirectTokenAs(
+        address deployer,
+        string memory name,
+        string memory symbol,
+        IRealmFactory.FeeShare[] memory feeShares,
+        bool renounce
+    ) internal returns (address token) {
+        return _createDirectTokenAs(deployer, name, symbol, feeShares, renounce, _emptyTaxCfg());
+    }
+
+    /// @dev The same with a tax; taxable (cloned from the taxable impl) whenever `tax` sets any rate.
+    function _createDirectTokenAs(
+        address deployer,
+        string memory name,
+        string memory symbol,
+        IRealmFactory.FeeShare[] memory feeShares,
+        bool renounce,
+        TaxConfigs memory tax
+    ) internal returns (address token) {
+        bool taxable = tax.buyTaxBps != 0 || tax.sellTaxBps != 0 || tax.buyTaxDecayStartBps != 0
+            || tax.sellTaxDecayStartBps != 0;
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = RealmFactoryUniV4Direct.DirectTokenSetup({
+            name: name,
+            symbol: symbol,
+            salt: _nextValidSalt(
+                address(directFactory), taxable ? address(realmTaxToken) : address(realmToken), deployer
+            ),
+            feeShares: feeShares,
+            renounceOwnership: renounce,
+            lpFeeBps: 100
+        });
+        vm.prank(deployer);
+        token = directFactory.createToken(
+            setup, _nativePair(), _noDirectAlloc(tax), _emptyAntiSniperCfg(), _noVaults(), _noDevBuy(), address(0)
+        );
+    }
+
+    /// @dev `_createDirectToken` with an explicit fee split.
+    function _createDirectToken(TaxConfigs memory tax, IRealmFactory.FeeShare[] memory feeShares)
+        internal
+        returns (address token)
+    {
+        bool taxable = tax.buyTaxBps != 0 || tax.sellTaxBps != 0 || tax.buyTaxDecayStartBps != 0
+            || tax.sellTaxDecayStartBps != 0;
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _directSetup("TestToken", "TEST", taxable);
+        setup.feeShares = feeShares;
+        vm.prank(creator);
+        token = directFactory.createToken(
+            setup, _nativePair(), _noDirectAlloc(tax), _emptyAntiSniperCfg(), _noVaults(), _noDevBuy(), address(0)
+        );
     }
 
     function setUp() public virtual {
@@ -530,19 +671,8 @@ contract LaunchpadBaseTests is Test {
 
         // Single shared liquidity adder, mirroring the production topology (deployed once, all graduators
         // and taxable tokens point at the same one).
-        address univ4LiquidityAdder =
+        univ4LiquidityAdder =
             address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress, permit2Address));
-
-        graduatorV4 = new RealmGraduatorUniswapV4(
-            address(launchpad),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            TEST_HOOK_ADDRESS,
-            715832709642994126662528799866880, // DEFAULT tier graduation sqrtPriceX96 (12.25 ETH mcap)
-            UniswapV4PoolConstants.TICK_UPPER,
-            univ4LiquidityAdder
-        );
 
         realmTaxTokenV2 = new RealmTaxableTokenUniV2();
         // Sniper aliases point at the merged impls: anti-sniper is a gated feature, not a distinct impl.
@@ -553,30 +683,9 @@ contract LaunchpadBaseTests is Test {
         // Creator-vault infrastructure: vault factory (UUPS proxy) + the six allocation-specific curves.
         creatorVaultFactory = _deployCreatorVaultInfra();
 
-        // Non-default liquidity tiers: deploy the THIN/THICK curves + their V4 graduators. Tests use a
-        // single hook, so the 100/50-bps graduator slots reuse the same per-tier graduator instance.
+        // Non-default liquidity tiers: the THIN/THICK curves.
         thinCurves = _deployTierCurves(LiquidityTier.THIN);
         thickCurves = _deployTierCurves(LiquidityTier.THICK);
-        graduatorV4Thin = new RealmGraduatorUniswapV4(
-            address(launchpad),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            TEST_HOOK_ADDRESS,
-            1012340326367404053977557838594048, // THIN graduation sqrtPriceX96 (6.125 ETH mcap)
-            UniswapV4PoolConstants.TICK_UPPER_THIN,
-            univ4LiquidityAdder
-        );
-        graduatorV4Thick = new RealmGraduatorUniswapV4(
-            address(launchpad),
-            poolManagerAddress,
-            positionManagerAddress,
-            permit2Address,
-            TEST_HOOK_ADDRESS,
-            506170163183702026988778919297024, // THICK graduation sqrtPriceX96 (24.5 ETH mcap)
-            UniswapV4PoolConstants.TICK_UPPER,
-            univ4LiquidityAdder
-        );
 
         address factoryV2Impl = address(
             new RealmFactoryUniV2Unified(
@@ -594,88 +703,74 @@ contract LaunchpadBaseTests is Test {
             address(new ERC1967Proxy(factoryV2Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
         );
 
-        address factoryV4Impl = address(
-            new RealmFactoryUniV4Unified(
-                address(launchpad),
-                IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxToken)}),
-                address(bondingCurve),
-                address(graduatorV4),
-                address(feeHandler),
-                address(creatorVaultFactory),
-                vaultCurves,
-                _v4TierConfig()
-            )
-        );
-        factoryV4Unified = RealmFactoryUniV4Unified(
-            address(new ERC1967Proxy(factoryV4Impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
-        );
-
-        // Legacy aliases — same instance, different reference name. Kept so existing tests that
-        // distinguish "tax factory" vs "sniper factory" vs "plain V4 factory" don't all need to
-        // be rewritten. Dispatch happens at the call site via the cfg structs.
+        // Legacy aliases — same instance, different reference name.
         factoryV2 = factoryV2Unified;
         factoryV2Sniper = factoryV2Unified;
-        factoryV4 = factoryV4Unified;
-        factoryTax = factoryV4Unified;
-        factorySniper = factoryV4Unified;
-        factoryTaxSniper = factoryV4Unified;
 
         launchpad.whitelistFactory(address(factoryV2Unified));
-        launchpad.whitelistFactory(address(factoryV4Unified));
+
+        _deployDirectVenue(infra);
 
         vm.stopPrank();
     }
 
+    /// @dev The direct V4 venue: graduator, assets whitelist (no listings) and factory proxy.
+    function _deployDirectVenue(ForkInfra memory infra) internal {
+        directGraduator = new RealmDirectGraduatorUniV4(
+            poolManagerAddress, TEST_HOOK_ADDRESS, TEST_ANYPAIR_HOOK_ADDRESS, univ4LiquidityAdder
+        );
+        assetsWhitelist = RealmAssetsWhitelist(
+            address(
+                new ERC1967Proxy(
+                    address(
+                        new RealmAssetsWhitelist(
+                            poolManagerAddress,
+                            infra.weth,
+                            infra.uniV2Factory,
+                            DeploymentAddressesEthereumMainnet.UNIV3_FACTORY
+                        )
+                    ),
+                    abi.encodeCall(RealmAssetsWhitelist.initialize, (admin))
+                )
+            )
+        );
+        address impl = address(
+            new RealmFactoryUniV4Direct(
+                IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxToken)}),
+                address(directGraduator),
+                address(feeHandler),
+                address(creatorVaultFactory),
+                infra.weth,
+                address(assetsWhitelist)
+            )
+        );
+        directFactory = RealmFactoryUniV4Direct(
+            address(new ERC1967Proxy(impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
+        );
+    }
+
     modifier createTestToken() virtual {
-        vm.prank(creator);
-        if (address(graduator) == address(graduatorV4)) {
-            if (address(implementation) == address(realmTaxToken)) {
-                testToken = factoryV4Unified.createToken(
-                    _setupTiered(
-                        "TestToken",
-                        "TEST",
-                        _nextValidSalt(address(factoryV4Unified), address(realmTaxToken)),
-                        _fs(creator)
-                    ),
-                    _noAlloc(_taxCfg(0, 400, uint32(14 days))),
-                    _v4Cfg(false),
-                    _noSs(),
-                    _emptyAntiSniperCfg(),
-                    _noVaults(),
-                    address(0)
-                );
-            } else {
-                testToken = factoryV4Unified.createToken(
-                    _setupTiered(
-                        "TestToken",
-                        "TEST",
-                        _nextValidSalt(address(factoryV4Unified), address(realmToken)),
-                        _fs(creator)
-                    ),
-                    _noAlloc(_emptyTaxCfg()),
-                    _v4Cfg(false),
-                    _noSs(),
-                    _emptyAntiSniperCfg(),
-                    _noVaults(),
-                    address(0)
-                );
-            }
-        } else {
-            testToken = factoryV2Unified.createToken(
-                _setupTiered(
-                    "TestToken", "TEST", _nextValidSalt(address(factoryV2Unified), address(realmToken)), _fs(creator)
-                ),
-                _noAlloc(_emptyTaxCfg()),
-                _noSs(),
-                _emptyAntiSniperCfg(),
-                _noVaults(),
-                address(0)
-            );
-        }
+        _createTestToken();
         _;
     }
 
-    function _graduateToken() internal {
+    /// @dev What `createTestToken` deploys: a plain curve token on the V2 factory. Direct-venue suites
+    ///      override it.
+    function _createTestToken() internal virtual {
+        vm.prank(creator);
+        testToken = factoryV2Unified.createToken(
+            _setupTiered(
+                "TestToken", "TEST", _nextValidSalt(address(factoryV2Unified), address(realmToken)), _fs(creator)
+            ),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
+    }
+
+    function _graduateToken() internal virtual {
         uint256 ethReserves = launchpad.getTokenState(testToken).ethCollected;
         // Gross up by the token's ACTUAL pre-graduation buy fee (LP fee + buy tax), so tax tokens —
         // whose total fee exceeds `BASE_BUY_FEE_BPS` — still put enough into reserves to graduate.
@@ -726,23 +821,20 @@ contract LaunchpadBaseTestsWithUniv2Graduator is LaunchpadBaseTests {
     }
 }
 
-contract LaunchpadBaseTestsWithUniv4Graduator is LaunchpadBaseTests {
-    uint256 public SELL_TAX_BPS = 0; // 0% sell tax
-
+/// @notice Base for suites on the direct V4 venue: `createTestToken` launches a native-pair token that
+///         is graduated in its creation transaction, so `_graduateToken` has nothing left to do.
+///         `implementation = realmTaxToken` makes the test token taxable (4% sell for 14 days).
+contract LaunchpadBaseTestsWithDirectV4 is LaunchpadBaseTests {
     function setUp() public virtual override {
         super.setUp();
-
-        graduator = graduatorV4;
+        graduator = IRealmGraduator(address(directGraduator));
     }
-}
 
-contract LaunchpadBaseTestsWithUniv4GraduatorTaxableToken is LaunchpadBaseTests {
-    uint256 public SELL_TAX_BPS = 400; // 4% sell tax
-
-    function setUp() public virtual override {
-        super.setUp();
-
-        graduator = graduatorV4;
-        implementation = realmTaxToken;
+    function _createTestToken() internal virtual override {
+        testToken = _createDirectToken(
+            address(implementation) == address(realmTaxToken) ? _taxCfg(0, 400, uint32(14 days)) : _emptyTaxCfg()
+        );
     }
+
+    function _graduateToken() internal virtual override {}
 }

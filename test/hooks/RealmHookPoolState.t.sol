@@ -39,8 +39,7 @@ contract RealmHookPoolStateTests is TaxTokenUniV4BaseTests {
     /// @notice Same guarantee on the sell leg, which settles its fee in `afterSwap` rather than before.
     function test_sellEmitsPoolStateMatchingPoolManager() public createDefaultTaxToken {
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
         _graduateToken();
         vm.warp(block.timestamp + DEFAULT_TAX_DURATION + 1);
 

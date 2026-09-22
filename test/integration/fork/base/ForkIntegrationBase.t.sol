@@ -11,9 +11,7 @@ import {ForkIntegrationCaseLib} from "test/integration/fork/base/ForkIntegration
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {RealmQuoter} from "src/RealmQuoter.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
-import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmQuoter2} from "src/interfaces/IRealmQuoter2.sol";
 import {LimitReason} from "src/interfaces/IRealmQuoter.sol";
@@ -59,7 +57,6 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     RealmLaunchpad internal launchpad;
     RealmQuoter internal quoter;
     RealmFactoryUniV2Unified internal factoryV2;
-    RealmFactoryUniV4Unified internal factoryV4;
     RealmMasterFeeHandler internal feeHandler;
 
     struct CreateInputs {
@@ -90,7 +87,6 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         launchpad = RealmLaunchpad(payable(forkCfg.launchpad));
         quoter = RealmQuoter(forkCfg.quoter);
         factoryV2 = RealmFactoryUniV2Unified(forkCfg.factoryV2Unified);
-        factoryV4 = RealmFactoryUniV4Unified(forkCfg.factoryV4Unified);
         feeHandler = RealmMasterFeeHandler(payable(forkCfg.masterFeeHandler));
 
         _assertDeployedAddressConfig();
@@ -101,10 +97,8 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         require(forkCfg.quoter != address(0), "missing quoter");
         require(forkCfg.bondingCurve != address(0), "missing bonding curve");
         require(forkCfg.graduatorV2 != address(0), "missing v2 graduator");
-        require(forkCfg.graduatorV4 != address(0), "missing v4 graduator");
         require(forkCfg.masterFeeHandler != address(0), "missing master fee handler");
         require(forkCfg.factoryV2Unified != address(0), "missing v2 unified factory");
-        require(forkCfg.factoryV4Unified != address(0), "missing v4 unified factory");
         require(forkCfg.tokenImpl != address(0), "missing token impl");
         require(forkCfg.taxTokenImpl != address(0), "missing tax token impl");
         require(forkCfg.weth != address(0), "missing WETH");
@@ -122,11 +116,9 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         _assertCode(forkCfg.quoter, "quoter code missing");
         _assertCode(forkCfg.masterFeeHandler, "master fee handler code missing");
         _assertCode(forkCfg.factoryV2Unified, "v2 factory code missing");
-        _assertCode(forkCfg.factoryV4Unified, "v4 factory code missing");
         _assertCode(forkCfg.uniV4Hook, "v4 hook code missing");
 
         assertTrue(launchpad.whitelistedFactories(forkCfg.factoryV2Unified), "v2 factory not whitelisted");
-        assertTrue(launchpad.whitelistedFactories(forkCfg.factoryV4Unified), "v4 factory not whitelisted");
 
         assertEq(address(quoter.launchpad()), forkCfg.launchpad, "quoter launchpad mismatch");
 
@@ -135,13 +127,6 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         assertEq(address(factoryV2.GRADUATOR()), forkCfg.graduatorV2, "v2 graduator mismatch");
         assertEq(address(factoryV2.MASTER_FEE_HANDLER()), forkCfg.masterFeeHandler, "v2 handler mismatch");
         assertEq(factoryV2.TOKEN_IMPL_BASE(), forkCfg.tokenImpl, "v2 base impl mismatch");
-
-        assertEq(address(factoryV4.LAUNCHPAD()), forkCfg.launchpad, "v4 launchpad mismatch");
-        assertEq(address(factoryV4.BONDING_CURVE()), forkCfg.bondingCurve, "v4 curve mismatch");
-        assertEq(address(factoryV4.GRADUATOR()), forkCfg.graduatorV4, "v4 graduator mismatch");
-        assertEq(address(factoryV4.MASTER_FEE_HANDLER()), forkCfg.masterFeeHandler, "v4 handler mismatch");
-        assertEq(factoryV4.TOKEN_IMPL_BASE(), forkCfg.tokenImpl, "v4 base impl mismatch");
-        assertEq(factoryV4.TOKEN_IMPL_TAX(), forkCfg.taxTokenImpl, "v4 tax impl mismatch");
 
         assertEq(IUniswapV2Router(forkCfg.uniV2Router).WETH(), forkCfg.weth, "v2 router WETH mismatch");
         assertEq(IUniswapV2Router(forkCfg.uniV2Router).factory(), forkCfg.uniV2Factory, "v2 router factory mismatch");
@@ -173,10 +158,6 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         return address(uint160(uint256(keccak256(abi.encode("REALM_FORK_INTEGRATION_GRAD", caseIndex, i)))));
     }
 
-    function _isV4(ForkIntegrationCaseLib.IntegrationCase memory c) internal pure returns (bool) {
-        return c.factoryKind == ForkIntegrationCaseLib.FactoryKind.UniV4;
-    }
-
     function _hasTax(ForkIntegrationCaseLib.IntegrationCase memory c) internal pure returns (bool) {
         return c.taxMode == ForkIntegrationCaseLib.TaxMode.BuyAndSellTax;
     }
@@ -189,23 +170,12 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         return c.ownershipMode == ForkIntegrationCaseLib.OwnershipMode.RenounceOwnership;
     }
 
-    function _factory(ForkIntegrationCaseLib.IntegrationCase memory c) internal view returns (address) {
-        return _isV4(c) ? address(factoryV4) : address(factoryV2);
+    function _factory(ForkIntegrationCaseLib.IntegrationCase memory) internal view returns (address) {
+        return address(factoryV2);
     }
 
-    /// @dev The case's tax (none on V2) with no earnings allocation, as the factories' `createToken` takes it.
-    function _taxAllocCfg(ForkIntegrationCaseLib.IntegrationCase memory c)
-        internal
-        pure
-        returns (TaxConfigsWithMultiAllocation memory cfg)
-    {
-        if (_isV4(c) && _hasTax(c)) {
-            cfg.buyTaxBps = TAX_BUY_BPS;
-            cfg.sellTaxBps = TAX_SELL_BPS;
-            cfg.taxDurationSeconds = TAX_DURATION_SECONDS;
-            cfg.startTaxFromLaunch = true;
-        }
-    }
+    /// @dev No tax and no earnings allocation: the matrix's V2 cases are untaxed.
+    function _noTaxAllocCfg() internal pure returns (TaxConfigsWithMultiAllocation memory cfg) {}
 
     function _setup(IRealmFactory.FeeShare[] memory fees, bytes32 salt)
         internal
@@ -288,26 +258,9 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         IRealmFactory.SupplyShare[] memory supply
     ) internal view returns (address impl) {
         AntiSniperConfigs memory sniper = _antiSniperCfg(c);
-        if (_isV4(c)) {
-            impl = factoryV4.previewTokenImplementation(
-                _setup(fees, bytes32(0)),
-                _taxAllocCfg(c),
-                RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: _renouncesOwnership(c), lpFeeBps: 100}),
-                supply,
-                sniper,
-                new IRealmFactory.CreatorVault[](0),
-                address(0)
-            );
-        } else {
-            impl = factoryV2.previewTokenImplementation(
-                _setup(fees, bytes32(0)),
-                _taxAllocCfg(c),
-                supply,
-                sniper,
-                new IRealmFactory.CreatorVault[](0),
-                address(0)
-            );
-        }
+        impl = factoryV2.previewTokenImplementation(
+            _setup(fees, bytes32(0)), _noTaxAllocCfg(), supply, sniper, new IRealmFactory.CreatorVault[](0), address(0)
+        );
     }
 
     /// @dev The factory namespaces the CREATE2 salt by the deployer (`keccak256(msg.sender, salt)`),
@@ -364,26 +317,14 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         returns (address token)
     {
         vm.prank(creator);
-        if (_isV4(c)) {
-            token = factoryV4.createToken{value: input.ethValue}(
-                _setup(input.fees, input.salt),
-                _taxAllocCfg(c),
-                RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: _renouncesOwnership(c), lpFeeBps: 100}),
-                input.supply,
-                _antiSniperCfg(c),
-                new IRealmFactory.CreatorVault[](0),
-                address(0)
-            );
-        } else {
-            token = factoryV2.createToken{value: input.ethValue}(
-                _setup(input.fees, input.salt),
-                _taxAllocCfg(c),
-                input.supply,
-                _antiSniperCfg(c),
-                new IRealmFactory.CreatorVault[](0),
-                address(0)
-            );
-        }
+        token = factoryV2.createToken{value: input.ethValue}(
+            _setup(input.fees, input.salt),
+            _noTaxAllocCfg(),
+            input.supply,
+            _antiSniperCfg(c),
+            new IRealmFactory.CreatorVault[](0),
+            address(0)
+        );
     }
 
     function _assertTokenDeployment(
@@ -396,13 +337,9 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         assertEq(impl, _expectedImplFromConfig(c), "expected impl mismatch");
         assertEq(address(launchpad.getTokenConfig(token).bondingCurve), forkCfg.bondingCurve, "token curve mismatch");
         assertEq(IRealmToken(token).feeHandler(), forkCfg.masterFeeHandler, "token handler mismatch");
-        assertEq(IRealmToken(token).graduator(), _isV4(c) ? forkCfg.graduatorV4 : forkCfg.graduatorV2, "graduator");
+        assertEq(IRealmToken(token).graduator(), forkCfg.graduatorV2, "graduator");
 
-        if (!_isV4(c) || _renouncesOwnership(c)) {
-            assertEq(IRealmToken(token).owner(), address(0), "owner should be renounced");
-        } else {
-            assertEq(IRealmToken(token).owner(), a.creator, "owner should be creator");
-        }
+        assertEq(IRealmToken(token).owner(), address(0), "owner should be renounced");
 
         _assertTaxConfig(c, token);
         _assertSniperConfig(c, token);
@@ -413,7 +350,6 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
     function _expectedImplFromConfig(ForkIntegrationCaseLib.IntegrationCase memory c) internal view returns (address) {
         // Anti-sniper is a gated feature of the base/tax impls, so it no longer selects a distinct
         // implementation — only whether the token is taxable does.
-        if (_isV4(c) && _hasTax(c)) return forkCfg.taxTokenImpl;
         return forkCfg.tokenImpl;
     }
 
@@ -628,18 +564,5 @@ abstract contract ForkIntegrationBase is ForkIntegrationConfig {
         _claim(token, account);
         assertEq(account.balance - beforeBal, expectedAmount, "claim amount mismatch");
         assertEq(_claimable(token, account), 0, "claimable not cleared");
-    }
-
-    function _assertTaxLogSeen() internal {
-        Vm.Log[] memory entries = vm.getRecordedLogs();
-        bytes32 want = RealmSwapHook.CreatorTaxesAccrued.selector;
-        bool found;
-        for (uint256 i; i < entries.length; ++i) {
-            if (entries[i].topics.length > 0 && entries[i].topics[0] == want) {
-                found = true;
-                break;
-            }
-        }
-        assertTrue(found, "expected CreatorTaxesAccrued");
     }
 }

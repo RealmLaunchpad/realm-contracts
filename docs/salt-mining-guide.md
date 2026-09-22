@@ -4,10 +4,9 @@
 
 The Realm factories deploy tokens using `Clones.cloneDeterministic()` (CREATE2 under the hood). The factory enforces that every token address must end in `0xeeaa` (last 2 bytes). The frontend/backend must pre-compute a valid `salt` before calling `createToken()`.
 
-The launchpad venues are served by three factories, each exposing ONE `createToken` and one `previewTokenImplementation` taking the exact same arguments:
+The launch venues are served by two factories, each exposing ONE `createToken` and one `previewTokenImplementation` taking the exact same arguments:
 
 - `RealmFactoryUniV2Unified`: bonding curve, graduates to Uniswap V2. `salt` lives in `TokenSetupTiered`.
-- `RealmFactoryUniV4Unified`: bonding curve, graduates to Uniswap V4. `salt` lives in `TokenSetupTiered`.
 - `RealmFactoryUniV4Direct`: direct V4 launch (no curve, 1-3 pools). `salt` lives in `DirectTokenSetup`.
 
 Each factory holds **two** token implementations, `TOKEN_IMPL_BASE` and `TOKEN_IMPL_TAX`. A token is cloned from `TOKEN_IMPL_TAX` if it configures a tax (static or decaying) **or** an earnings allocation (any non-zero burn / dividends / liquidity bps), and from `TOKEN_IMPL_BASE` otherwise. Anti-sniper is not a dispatch input; both implementations carry it.

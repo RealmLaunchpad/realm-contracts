@@ -15,9 +15,10 @@ graph TB
     Launchpad[RealmLaunchpad]
     Token[RealmToken / RealmTaxableTokenUniV4]
     GraduatorV2[RealmGraduatorUniswapV2]
-    GraduatorV4[RealmGraduatorUniswapV4]
-    SwapHook[RealmSwapHook]
-    LiquidityLock[LiquidityLockUniv4WithFees]
+    DirectFactory[RealmFactoryUniV4Direct]
+    GraduatorV4[RealmDirectGraduatorUniV4]
+    SwapHook[RealmHook / RealmHookAnyPair]
+    LpFeeRouter[SwapLpFeeRouter]
 
     %% External Systems
     UniV2[Uniswap V2 Pool]
@@ -38,11 +39,10 @@ graph TB
 
     TraderPost -->|swaps| UniV4
 
-    %% Graduation Flow - V4
-    Launchpad -->|_graduateToken| GraduatorV4
-    GraduatorV4 -->|adds liquidity| UniV4
-    GraduatorV4 -->|locks LP
-     NFTs| LiquidityLock
+    %% Direct V4 launch (no curve)
+    Creator -->|createToken| DirectFactory
+    DirectFactory -->|graduateToken| GraduatorV4
+    GraduatorV4 -->|seeds single-sided,<br/>holds LP NFTs| UniV4
 
 
     %% Trading Flow (Post-Graduation)
@@ -52,10 +52,8 @@ graph TB
     UniV4 -->|hooks| SwapHook
     SwapHook -->|reads tax config,<br/>collects buy/sell tax| Token
 
-    %% Fee Collection (V4)
-    Creator -->|collectEthFees| GraduatorV4
-    GraduatorV4 -->|claims fees| LiquidityLock
-    LiquidityLock -->|collects fees| UniV4
+    %% LP fee routing (V4)
+    SwapHook -->|forwards LP fee| LpFeeRouter
 
     %% Styling
     classDef actor fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
@@ -65,7 +63,7 @@ graph TB
 
     class Creator,Trader actor
     class Launchpad,Token,BondingCurve core
-    class GraduatorV2,GraduatorV4,SwapHook,LiquidityLock graduator
+    class DirectFactory,GraduatorV2,GraduatorV4,SwapHook,LpFeeRouter graduator
     class UniV2,UniV4 external
 ```
 
@@ -73,7 +71,7 @@ graph TB
 
 ### 1. Token Creation
 - **Creator** calls `createToken()` on **RealmLaunchpad**
-- Launchpad deploys a **RealmToken** or **RealmTaxableTokenUniV4**
+- Launchpad deploys a **RealmToken** or **RealmTaxableTokenUniV2**
 - Assigns a **ConstantProductBondingCurve** for pricing
 
 ### 2. Pre-Graduation Trading
@@ -93,14 +91,13 @@ When ETH reserves reach graduation threshold:
 - Creates **Uniswap V2 Pool** via `initialize()`
 - Adds liquidity and locks LP tokens at dead address
 
-#### V4 Graduation Path
-- Launchpad calls `graduateToken()` on **RealmGraduatorUniswapV4**
-- Creates **Uniswap V4 Pool** via `initialize()`
-- Adds two liquidity positions (balanced + single-sided ETH)
-- Locks LP NFTs in **LiquidityLockUniv4WithFees**
-- **RealmSwapHook** reads each token's `TaxConfig` (`buyTaxBps`, `sellTaxBps`, `taxDurationSeconds`) and collects the configured buy/sell tax on every V4 swap while `block.timestamp <= graduationTimestamp + taxDurationSeconds`. The hook itself does not enforce any duration cap; the cap is enforced at creation by the factory (`MAX_TAX_DURATION_SECONDS = 365 days` for the default path, up to `MAX_CHARITY_TAX_DURATION_SECONDS = 120 years` in charity mode — a single non-deployer fee receiver and ownership renounced at creation; the charity address is NOT verified on-chain) and the resulting window is immutable on the token.
+#### Direct V4 launch (no curve)
+V4 tokens never touch the launchpad or a bonding curve:
+- **Creator** calls `createToken()` on **RealmFactoryUniV4Direct**
+- **RealmDirectGraduatorUniV4** creates 1-3 **Uniswap V4 Pools** at creator-chosen prices (native pools on **RealmHook**, ERC20-quoted pools on **RealmHookAnyPair**), seeds the supply as single-sided token bands and executes the optional dev buy, all in the creation tx
+- The token is graduated from birth; the graduator holds the position NFTs forever (the liquidity lock). No graduation fee
+- The hook reads each token's fees via `getSwapFees()` and forwards the LP fee and any tax on every swap
 
 ### 4. Post-Graduation Fee Collection (V4 only)
-- **Creator** calls `collectEthFees()` on graduator
-- Graduator claims fees from locked LP positions
-- Splits 50/50 between creator and protocol treasury
+- The hook forwards the LP fee to **SwapLpFeeRouter**, which splits it 70/30 between the creator (via `RealmMasterFeeHandler`) and the protocol treasury
+- Creators claim their share from `RealmMasterFeeHandler`

@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {
-    LaunchpadBaseTestsWithUniv2Graduator,
-    LaunchpadBaseTestsWithUniv4Graduator,
-    LaunchpadBaseTestsWithUniv4GraduatorTaxableToken
-} from "./base.t.sol";
+import {LaunchpadBaseTestsWithUniv2Graduator, LaunchpadBaseTestsWithDirectV4} from "./base.t.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
+import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 
 contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     function testDeployRealmToken_happyPath() public {
@@ -213,176 +210,68 @@ contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 }
 
-contract RealmTokenV4DeploymentTest is LaunchpadBaseTestsWithUniv4Graduator {
-    /// @dev when feeReceiver is zero address, then createToken reverts with InvalidFeeReceiver
-    function test_createToken_v4_revertsOnZeroFeeReceiver() public {
-        IRealmFactory.FeeShare[] memory zeroFs = new IRealmFactory.FeeShare[](1);
-        zeroFs[0] = IRealmFactory.FeeShare({account: address(0), shares: 10_000, directFeesEnabled: false});
-
+/// @notice Token creation on the direct V4 venue (the only V4 venue).
+contract RealmTokenV4DeploymentTest is LaunchpadBaseTestsWithDirectV4 {
+    function _create(RealmFactoryUniV4Direct.DirectTokenSetup memory setup, TaxConfigs memory tax)
+        internal
+        returns (address)
+    {
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidFeeReceiver.selector));
-        factoryV4.createToken(
-            _setupTiered("TestToken", "TEST", "0x12", zeroFs),
-            _noAlloc(_emptyTaxCfg()),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
+        return directFactory.createToken(
+            setup, _nativePair(), _noDirectAlloc(tax), _emptyAntiSniperCfg(), _noVaults(), _noDevBuy(), address(0)
         );
     }
 
-    function test_createToken_v4_happyPath() public {
-        vm.prank(creator);
-        address deployedToken = factoryV4.createToken(
-            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(creator)),
-            _noAlloc(_emptyTaxCfg()),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
+    /// @dev when feeReceiver is zero address, then createToken reverts with InvalidFeeReceiver
+    function test_createToken_v4_revertsOnZeroFeeReceiver() public {
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _directSetup("TestToken", "TEST", false);
+        setup.feeShares[0].account = address(0);
+        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidFeeReceiver.selector));
+        _create(setup, _emptyTaxCfg());
+    }
 
-        assertTrue(deployedToken != address(0));
+    function test_createToken_v4_happyPath() public {
+        address deployedToken = _create(_directSetup("TestToken", "TEST", false), _emptyTaxCfg());
 
         RealmToken token = RealmToken(deployedToken);
         assertEq(token.name(), "TestToken");
         assertEq(token.symbol(), "TEST");
         assertEq(token.totalSupply(), TOTAL_SUPPLY);
-        assertEq(token.balanceOf(address(launchpad)), TOTAL_SUPPLY);
-        assertEq(token.graduator(), address(graduatorV4));
+        assertEq(token.graduator(), address(directGraduator));
         assertEq(token.owner(), creator);
-
-        TokenConfig memory config = launchpad.getTokenConfig(deployedToken);
-        assertEq(address(config.bondingCurve), address(bondingCurve));
-        assertApproxEqRel(config.bondingCurve.getGraduationConfig().ethGraduationThreshold, GRADUATION_THRESHOLD, 1e10);
-
-        TokenState memory state = launchpad.getTokenState(deployedToken);
-        assertEq(state.ethCollected, 0);
-        assertEq(state.graduated, false);
+        assertEq(address(token.launchpad()), address(0), "direct venue has no launchpad");
+        assertTrue(token.graduated(), "graduated in its creation tx");
     }
 
     /// @dev when renounceOwnership=true, then tokenOwner is set to address(0)
     function test_createToken_v4_renounceOwnership_setsOwnerToZero() public {
-        vm.prank(creator);
-        address deployedToken = factoryV4.createToken(
-            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(creator)),
-            _noAlloc(_emptyTaxCfg()),
-            _v4Cfg(true),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
-        assertEq(RealmToken(deployedToken).owner(), address(0));
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _directSetup("TestToken", "TEST", false);
+        setup.renounceOwnership = true;
+        assertEq(RealmToken(_create(setup, _emptyTaxCfg())).owner(), address(0));
     }
 
     /// @dev when renounceOwnership=false, then tokenOwner is msg.sender
     function test_createToken_v4_keepOwnership_setsOwnerToCaller() public {
-        vm.prank(creator);
-        address deployedToken = factoryV4.createToken(
-            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV4), address(realmToken)), _fs(creator)),
-            _noAlloc(_emptyTaxCfg()),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
-        assertEq(RealmToken(deployedToken).owner(), creator);
+        assertEq(RealmToken(_create(_directSetup("TestToken", "TEST", false), _emptyTaxCfg())).owner(), creator);
     }
-}
 
-contract RealmTaxableTokenValidationTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
     function test_cannotCreateToken_sellTaxAboveMax() public {
-        vm.prank(creator);
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _directSetup("TestToken", "TEST", true);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));
-        factoryTax.createToken(
-            _setupTiered("TestToken", "TEST", "0x12", _fs(creator)),
-            _noAlloc(_taxCfg(0, 401, uint32(14 days))),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
+        _create(setup, _taxCfg(0, 401, uint32(14 days)));
     }
 
     function test_cannotCreateToken_taxDurationAboveMax() public {
         // Duration above the 120-year overflow-prevention cap — must revert with InvalidTaxDuration.
-        vm.prank(creator);
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _directSetup("TestToken", "TEST", true);
         vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxDuration.selector));
-        factoryTax.createToken(
-            _setupTiered("TestToken", "TEST", "0x12", _fs(alice)),
-            _noAlloc(_taxCfg(0, 400, uint32(120 * 365 days + 1))),
-            _v4Cfg(true),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
+        _create(setup, _taxCfg(0, 400, uint32(120 * 365 days + 1)));
     }
-}
 
-contract RealmTaxableTokenEventTests is LaunchpadBaseTestsWithUniv4GraduatorTaxableToken {
     function test_RealmTaxableTokenInitialized_emittedOnCreation() public {
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _directSetup("TestToken", "TEST", true);
         vm.expectEmit(true, true, true, true);
         emit RealmTaxableToken.RealmTaxableTokenInitialized(0, 400, 14 days, true, 0, 0, 0);
-
-        vm.prank(creator);
-        address deployedToken = factoryTax.createToken(
-            _setupTiered(
-                "TestToken", "TEST", _nextValidSalt(address(factoryTax), address(realmTaxToken)), _fs(creator)
-            ),
-            _noAlloc(_taxCfg(0, 400, uint32(14 days))),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
-
-        assertTrue(deployedToken != address(0));
-    }
-
-    function test_LaunchpadDoesNotEmitTokenCreated_eventRemoved() public {
-        vm.recordLogs();
-
-        vm.prank(creator);
-        address deployedToken = factoryTax.createToken(
-            _setupTiered(
-                "TestToken", "TEST", _nextValidSalt(address(factoryTax), address(realmTaxToken)), _fs(creator)
-            ),
-            _noAlloc(_taxCfg(0, 400, uint32(14 days))),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
-
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-
-        assertTrue(logs.length > 0);
-
-        bytes32 tokenCreatedSig = keccak256("TokenCreated(address,address,string,string,address,address,address)");
-        bytes32 taxInitSig = keccak256("RealmTaxableTokenInitialized(uint16,uint16,uint40,bool,uint16,uint16,uint40)");
-
-        uint256 tokenCreatedIndex = type(uint256).max;
-        uint256 taxInitIndex = type(uint256).max;
-
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == tokenCreatedSig) {
-                tokenCreatedIndex = i;
-            } else if (logs[i].topics[0] == taxInitSig) {
-                taxInitIndex = i;
-            }
-        }
-
-        assertTrue(tokenCreatedIndex == type(uint256).max, "TokenCreated should not be emitted by launchpad");
-        assertTrue(taxInitIndex != type(uint256).max, "RealmTaxableTokenInitialized event not found");
-
-        assertTrue(deployedToken != address(0));
+        _create(setup, _taxCfg(0, 400, uint32(14 days)));
     }
 }

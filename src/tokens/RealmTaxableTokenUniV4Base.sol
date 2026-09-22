@@ -11,14 +11,14 @@ import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/Un
 import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with (to rebuild the
-///         pool key) and the shared liquidity adder it deployed (to mint the single-sided ETH wall).
+///         pool key) and the shared liquidity adder it uses (to mint the single-sided ETH wall).
 interface IRealmV4Graduator {
     function HOOK_ADDRESS() external view returns (address);
     function LIQUIDITY_ADDER() external view returns (address);
 
     /// @notice The hook mediating the pool this token shares with `quote`. Native pools keep
     ///         `RealmHook`, which Uniswap whitelisted; an ERC20-quoted pool is served by
-    ///         `RealmHookAnyPair`. A single-hook graduator returns the same address for every quote.
+    ///         `RealmHookAnyPair`.
     function hookFor(address quote) external view returns (address);
 }
 

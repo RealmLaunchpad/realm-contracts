@@ -3,18 +3,20 @@ pragma solidity 0.8.28;
 
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "lib/v4-core/src/libraries/FullMath.sol";
+import {Math} from "lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
+import {SafeCast} from "lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
 /// @title RealmLaunchPricing
-/// @notice Turns a direct launch's `launchTick` into the numbers a human reads: the opening price of
-///         one whole coin, and the market capitalisation that implies across the fixed supply.
+/// @notice Converts between a direct launch's `launchTick` and the numbers a human reads: the opening
+///         price of one whole coin, and the market capitalisation that implies across the fixed supply.
 ///
-/// @dev WHY THIS EXISTS. A creator picks their launch price as a TICK, because that is the only thing
-///      Uniswap V4 can be given exactly and the only thing this protocol will accept un-rounded. A tick
-///      is `1.0001^n` on RAW units, which is not a number anyone can sanity-check by eye — and the
-///      failure it hides is not subtle: a creator who is out by one decimal launches at ten times or a
-///      tenth of the price they meant, and the first buyer keeps the difference. This is the reader
-///      that closes that gap, and it is the same arithmetic a frontend would otherwise reimplement in
-///      floating point.
+/// @dev WHY THIS EXISTS. The direct factory derives each pair's launch TICK from a fixed native market
+///      cap (`tickForMarketCap`), because a tick is the only thing Uniswap V4 can be given exactly. A
+///      tick is `1.0001^n` on RAW units, which is not a number anyone can sanity-check by eye, and the
+///      quote's decimals are exactly the conversion that is easy to get wrong. `priceAtTick` reads a
+///      tick back as a price and market cap, the same arithmetic a frontend would otherwise reimplement
+///      in floating point.
 ///
 /// @dev PURE, and deliberately not on any contract's storage: nothing here depends on a token existing,
 ///      so a creator can price a launch before deciding to make one.
@@ -58,6 +60,37 @@ library RealmLaunchPricing {
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(launchTick);
         uint256 priceX128 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 64);
         return FullMath.mulDiv(priceX128, WHOLE_SUPPLY * 10 ** COIN_DECIMALS, 1 << 128);
+    }
+
+    /// @notice The inverse of `priceAtTick`: the spacing-aligned tick (QUOTE PER COIN) whose price puts the
+    ///         whole supply at `marketCapNativeX18` of native value, for a quote worth
+    ///         `unitsPerNativeX18` whole units per native. Rounded to the NEAREST multiple of the pool's
+    ///         tick spacing, so the result is within half a spacing step (~1%) of the target.
+    /// @dev Raw quote per raw coin = marketCap * rate * 10^quoteDecimals / (1e18 * 1e18 * WHOLE_SUPPLY *
+    ///      10^COIN_DECIMALS). Computed in Q128, then `sqrtPriceX96 = sqrt(priceX128 << 64)`. Reverts
+    ///      (TickMath / FullMath) when the price is outside what V4 can represent.
+    function tickForMarketCap(uint256 marketCapNativeX18, uint256 unitsPerNativeX18, uint8 quoteDecimals)
+        internal
+        pure
+        returns (int24 tick)
+    {
+        require(quoteDecimals <= 36, UnsupportedDecimals());
+        uint256 priceX128 = FullMath.mulDiv(
+            marketCapNativeX18 * unitsPerNativeX18,
+            10 ** quoteDecimals << 128,
+            1e36 * WHOLE_SUPPLY * 10 ** COIN_DECIMALS
+        );
+        // Shift before the root while it fits, to keep the low bits of a cheap price.
+        uint256 sqrtPriceX96 = priceX128 >> 192 == 0 ? Math.sqrt(priceX128 << 64) : Math.sqrt(priceX128) << 32;
+        tick = TickMath.getTickAtSqrtPrice(SafeCast.toUint160(sqrtPriceX96));
+
+        // Floor-divide, then round half up, to the nearest spacing multiple.
+        int24 spacing = UniswapV4PoolConstants.TICK_SPACING;
+        int24 q = tick / spacing;
+        int24 r = tick % spacing;
+        if (r < 0) (q, r) = (q - 1, r + spacing);
+        if (r * 2 >= spacing) ++q;
+        tick = q * spacing;
     }
 
     /// @notice `priceAtTick`'s `priceX18` alone, which fits in 256 bits at every tick and decimals value.

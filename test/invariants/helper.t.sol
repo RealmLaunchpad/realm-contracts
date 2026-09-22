@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
@@ -39,7 +38,6 @@ contract InvariantsHelperLaunchpad is Test {
     RealmLaunchpad public launchpad;
 
     RealmFactoryUniV2Unified public factoryV2;
-    RealmFactoryUniV4Unified public factoryV4;
     address public tokenImpl;
 
     mapping(address => uint256) public aggregatedEthForBuys;
@@ -81,15 +79,9 @@ contract InvariantsHelperLaunchpad is Test {
     }
 
     /////////////////////////////////////////////////////
-    constructor(
-        RealmLaunchpad _launchpad,
-        RealmFactoryUniV2Unified _factoryV2,
-        RealmFactoryUniV4Unified _factoryV4,
-        address _tokenImpl
-    ) {
+    constructor(RealmLaunchpad _launchpad, RealmFactoryUniV2Unified _factoryV2, address _tokenImpl) {
         launchpad = _launchpad;
         factoryV2 = _factoryV2;
-        factoryV4 = _factoryV4;
         tokenImpl = _tokenImpl;
 
         _actors.add(address(makeAddr("actor1")));
@@ -142,25 +134,10 @@ contract InvariantsHelperLaunchpad is Test {
         IRealmFactory.FeeShare[] memory creatorFs = new IRealmFactory.FeeShare[](1);
         creatorFs[0] = IRealmFactory.FeeShare({account: currentActor, shares: 10_000, directFeesEnabled: false});
         IRealmFactory.CreatorVault[] memory noVaults = new IRealmFactory.CreatorVault[](0);
-        if (seed % 2 == 0) {
-            bytes32 salt = _nextValidSalt(address(factoryV2), tokenImpl, currentActor);
-            IRealmFactory.TokenSetupTiered memory setup = _setup(salt, creatorFs);
-            vm.prank(currentActor);
-            token = factoryV2.createToken(setup, _emptyTaxCfg(), noSs, _emptyAntiSniperCfg(), noVaults, address(0));
-        } else {
-            bytes32 salt = _nextValidSalt(address(factoryV4), tokenImpl, currentActor);
-            IRealmFactory.TokenSetupTiered memory setup = _setup(salt, creatorFs);
-            vm.prank(currentActor);
-            token = factoryV4.createToken(
-                setup,
-                _emptyTaxCfg(),
-                RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-                noSs,
-                _emptyAntiSniperCfg(),
-                noVaults,
-                address(0)
-            );
-        }
+        bytes32 salt = _nextValidSalt(address(factoryV2), tokenImpl, currentActor);
+        IRealmFactory.TokenSetupTiered memory setup = _setup(salt, creatorFs);
+        vm.prank(currentActor);
+        token = factoryV2.createToken(setup, _emptyTaxCfg(), noSs, _emptyAntiSniperCfg(), noVaults, address(0));
         _tokens.add(token);
     }
 

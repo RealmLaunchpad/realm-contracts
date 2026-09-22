@@ -9,7 +9,6 @@
 | RealmLaunchpad                               | `0x5f09e414a6f8A004D152dE6aeA5FD435c4188dEC` |
 | ConstantProductBondingCurve                  | `0x63B78b60fbD518aa66944E60579372C421cf06d7` |
 | RealmGraduatorUniswapV2                      | `0xA99282F37825E996a15B9619A13575A266127Ea3` |
-| RealmGraduatorUniswapV4                      | `0x53b659806b6DDF83D4a14f607A8d28487b140cF3` |
 | RealmMasterFeeHandler                        | `0x914e8A6fcA2af6E8Cf4434d1D50234fC89CdF2Ec` |
 | RealmUniV4LiquidityAdder                     | `0xE8168F37CdaAdB08818469De191eD2461EEcc229` |
 | RealmHook                                    | `0xE3246e5Ae48bA84e345D88b3e7473ae8DBB540cC` |
@@ -37,8 +36,6 @@
 | RealmTaxableTokenUniV2 (impl)                | `0xdf63307C4Da6bD3Ed84C0682A3788F35845446c0` |
 | RealmFactoryUniV2Unified (proxy)             | `0xC2793d815BA81AaDC5ae5c8b6de5f14365f8743B` |
 | RealmFactoryUniV2Unified (impl)              | `0xbcb1cA6a9B8DDFdaB3E4676FaF0115B408199774` |
-| RealmFactoryUniV4Unified (proxy)             | `0xAb8e2Ab6516712DA4E0f5B1fa3AB964Bf8b3e8Cf` |
-| RealmFactoryUniV4Unified (impl)              | `0x61fa8c5a21378719C993F116Eb3f5984E280C408` |
 | RealmCreatorVaultFactory (proxy)             | `0x284A47F94624037Cca0f7b0c13734F6C684B9F6C` |
 | RealmCreatorVaultFactory (impl)              | `0xd346ECc082B5db7D7fb787aB7c14f4222e2dd042` |
 | RealmCreatorVault (impl)                     | `0x64dDAe54fb7c1f2b6E1a76645422D8cd26B23ceF` |
@@ -48,8 +45,6 @@
 | Creator-vault curve 20%                      | `0x6d78a676a7b6DDEA364F427eF2EB1CFfeC10cfF2` |
 | Creator-vault curve 25%                      | `0x90D9FdE054E6a6860cE760Fa7a40362a6b122f1F` |
 | Creator-vault curve 30%                      | `0x04d14C0dE84757E4539C7429983E5b5FBF30AbD9` |
-| RealmGraduatorUniV4 THIN                     | `0x6B29469d3E5D5861E6a5C449863a0566E163272C` |
-| RealmGraduatorUniV4 THICK                    | `0xd0b4476f2044574CA498A5AdD5DFB26516E2526d` |
 | THIN-tier curve base                         | `0xA8Df983578993Eea0C02C08BD84Aaaea07FdBc8d` |
 | THIN-tier curve 5%                           | `0x2DAB5D3a65F6deE7F72a60abb6E7ECbf03304783` |
 | THIN-tier curve 10%                          | `0x3D194bcD0B3b84ed0e1f657d1b48C7fE4243238c` |

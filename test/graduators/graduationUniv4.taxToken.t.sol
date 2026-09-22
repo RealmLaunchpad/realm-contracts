@@ -9,7 +9,6 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmClaims} from "src/interfaces/IRealmClaims.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
@@ -33,50 +32,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         return IRealmClaims(IRealmToken(token).feeHandler()).getClaimable(tokens, tokenOwner)[0];
     }
 
-    /////////////////////////////////// CATEGORY 1: PRE-GRADUATION BEHAVIOR ///////////////////////////////////
-
-    /// @notice Test that no taxes are charged before graduation when purchasing through launchpad
-    /// @dev Pre-graduation, the creator accrues their share of the LP/trading fee on every buy. The
-    ///      default tax token has buyTax = 0, so no buy tax adds on top (taxes still apply
-    ///      post-graduation). This is the per-token, creator-splittable pre-graduation fee model.
-    function test_creatorAccruesLpFeeShareBeforeGraduation_launchpadPurchases() public createDefaultTaxToken {
-        uint256 creatorPendingBefore = _pendingTaxes(testToken, creator);
-
-        (,, uint256 tokensToReceive,) = launchpad.quoteBuyTokensWithExactEth(testToken, 1 ether);
-
-        uint256 buyerTokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
-        // Multiple users buy tokens through launchpad
-        vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
-        assertEq(
-            IERC20(testToken).balanceOf(buyer),
-            buyerTokenBalanceBefore + tokensToReceive,
-            "Buyer should receive the quoted amount of tokens (LP fee only, buyTax is 0)"
-        );
-
-        vm.deal(alice, 2 ether);
-        vm.prank(alice);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
-
-        // Each 1-ETH buy charges a 100 bps LP fee; the creator receives the non-treasury share. buyTax
-        // is 0, so nothing adds on top. Both buys accrue to the creator's claimable.
-        uint256 lpFeePerBuy = (1 ether * 100) / 10000;
-        uint256 creatorSharePerBuy = lpFeePerBuy - _treasuryShareOf(lpFeePerBuy);
-        assertEq(
-            _pendingTaxes(testToken, creator),
-            creatorPendingBefore + 2 * creatorSharePerBuy,
-            "Creator accrues only the LP-fee share before graduation (buyTax is 0)"
-        );
-
-        // Verify buyers received tokens (LP fee deducted, no buy tax)
-        assertGt(IERC20(testToken).balanceOf(buyer), 0, "Buyer should have received tokens");
-        assertGt(IERC20(testToken).balanceOf(alice), 0, "Alice should have received tokens");
-
-        // Token is not graduated yet
-        assertFalse(IRealmToken(testToken).graduated(), "Token should not be graduated yet");
-    }
-
     /////////////////////////////////// CATEGORY 2: TAX COLLECTION (ACTIVE PERIOD) ///////////////////////////////////
 
     // This test is removed because buy taxes no longer exist in the implementation
@@ -85,8 +40,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_sellTaxCollected_withinTaxPeriod() public createDefaultTaxToken {
         // First, buy some tokens through launchpad before graduation
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
 
         uint256 buyerTokenBalance = IERC20(testToken).balanceOf(buyer);
         assertGt(buyerTokenBalance, 0, "Buyer should have tokens to sell");
@@ -182,8 +136,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // First get some tokens through launchpad BEFORE graduating
         vm.deal(buyer, 3 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 2 ether, 0, true, true);
 
         _graduateToken();
 
@@ -232,8 +185,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // seed the curve and graduate (all at ~t0, so the decay is barely started)
         vm.deal(buyer, 3 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 2 ether, 0, true, true);
         _graduateToken();
 
         // elapsed 600 of 1200 ⇒ decayed buy rate = 500 bps
@@ -252,37 +204,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertApproxEqRel(collected, expected, 0.001e18, "creator accrues the decayed buy tax + LP share");
     }
 
-    /// @notice A creation-anchored decay token must graduate through the real V4 curve → graduator
-    ///         flow while its decay window is still open. The rate-collection test above graduates
-    ///         incidentally at t≈launch; here we warp to mid-decay so the decay is provably live (5%)
-    ///         at the graduating buy, and assert graduation itself succeeds.
-    function test_v4_graduatesWhileTaxDecayActive() public {
-        uint40 t0 = uint40(block.timestamp);
-        testToken = _createDecayToken(1000, 1000, 20 minutes); // creation-anchored decay-only, 10% peak
-
-        // seed the curve below graduation while decay is at its launch peak
-        vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
-
-        // advance halfway into the decay window: the live launchpad buy tax is now 5% (decayed, nonzero)
-        vm.warp(t0 + 10 minutes);
-        assertEq(
-            IRealmToken(testToken)
-            .getLaunchpadFees(IRealmToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}))
-            .taxBps,
-            500,
-            "decay must be live (5%) right before graduation"
-        );
-
-        // graduate through the real curve + V4 graduator while decay is active
-        _graduateToken();
-
-        // graduation succeeded and the decay window is still open just after graduation
-        assertTrue(launchpad.getTokenState(testToken).graduated, "token must graduate with an active decay");
-        assertGt(IRealmToken(testToken).getTaxConfig().buyTaxBps, 0, "decay still active just after graduation");
-    }
-
     /// @notice Test that zero sell tax rate results in no sell-tax collection on the sell leg.
     /// @dev The factory rejects `(0, 0, duration)` configs, so we use a token with non-zero buy
     ///      tax + zero sell tax to exercise the "zero sell tax" path. The buy-side tax accrued by
@@ -295,8 +216,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Buy tokens through launchpad
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
 
         _graduateToken();
 
@@ -340,8 +260,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_taxRecipientReceivesTaxDuringSwap_twoSellSwaps() public createDefaultTaxToken {
         // First buy tokens through launchpad
         vm.deal(buyer, 3 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 2 ether, 0, true, true);
 
         _graduateToken();
 
@@ -379,8 +298,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         for (uint256 i = 0; i < sellerAddrs.length; i++) {
             vm.deal(sellerAddrs[i], 0.5 ether);
-            vm.prank(sellerAddrs[i]);
-            launchpad.buyTokensWithExactEth{value: 0.5 ether}(testToken, 0, DEADLINE);
+            _swap(sellerAddrs[i], testToken, 0.5 ether, 0, true, true);
         }
 
         _graduateToken();
@@ -406,8 +324,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_noTaxesAfterPeriodExpires() public createDefaultTaxToken {
         // First buy tokens through launchpad
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
 
         _graduateToken();
 
@@ -442,8 +359,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_taxPeriodBoundaries() public createDefaultTaxToken {
         // First buy tokens through launchpad
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 2 ether, 0, true, true);
 
         _graduateToken();
 
@@ -517,41 +433,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         assertEq(expired.taxDurationSeconds, 0, "duration zeroed after window");
     }
 
-    /// @notice The tax window spans graduation and is anchored at creation, NOT graduation. Advancing the
-    ///         clock partway through the window BEFORE graduating makes launchTimestamp != graduationTimestamp,
-    ///         and proves the tax ends at launchTimestamp + duration even though that is strictly before the
-    ///         (old) graduation-anchored expiry.
-    function test_taxWindowSpansGraduation_anchoredAtCreation() public createDefaultTaxToken {
-        uint40 launchTs = IRealmToken(testToken).launchTimestamp();
-
-        // advance halfway through the window BEFORE graduating, so launch != graduation
-        vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION / 2);
-
-        vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
-        _graduateToken();
-
-        uint40 graduationTimestamp = IRealmTaxableToken(testToken).graduationTimestamp();
-        assertGt(graduationTimestamp, launchTs, "graduation strictly after creation");
-
-        // still inside the creation-anchored window, now post-graduation: tax active
-        assertEq(
-            IRealmToken(testToken).getTaxConfig().sellTaxBps, DEFAULT_SELL_TAX_BPS, "active post-grad, within window"
-        );
-
-        // past the creation-anchored expiry, but BEFORE the graduation-anchored expiry: tax is OVER.
-        vm.warp(uint256(launchTs) + DEFAULT_TAX_DURATION + 1);
-        assertLt(
-            block.timestamp,
-            uint256(graduationTimestamp) + DEFAULT_TAX_DURATION,
-            "still inside the OLD graduation-anchored window"
-        );
-        IRealmToken.TaxConfig memory cfg = IRealmToken(testToken).getTaxConfig();
-        assertEq(cfg.sellTaxBps, 0, "tax ends at creation-anchored expiry, not graduation-anchored");
-        assertEq(cfg.taxDurationSeconds, 0, "duration zeroed at creation-anchored expiry");
-    }
-
     /////////////////////////////////// CATEGORY 5: EDGE CASES & SECURITY ///////////////////////////////////
 
     /// @notice Test maximum sell tax rate (4% = 400 bps)
@@ -562,8 +443,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Buy tokens through launchpad (buy enough to have tokens to sell)
         vm.deal(buyer, 3 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 2 ether, 0, true, true);
 
         _graduateToken();
 
@@ -594,68 +474,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         );
     }
 
-    /// @notice Test that token creation with invalid tax rate reverts
-    function test_tokenCreation_invalidTaxRate_reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));
-        vm.prank(creator);
-        factoryTax.createToken(
-            _setupTiered("InvalidToken", "INV", "0x003", _fs(creator)),
-            _noAlloc(_taxCfg(0, 401, uint32(14 days))),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
-    }
-
-    /// @notice Test that swap before graduation has no liquidity to swap with
-    /// @dev Pool is initialized but has no liquidity until graduation adds it
-    function test_notGraduated_swapHasNoLiquidity() public createDefaultTaxToken {
-        // Token is created but not graduated
-        assertFalse(IRealmToken(testToken).graduated(), "Token should not be graduated");
-
-        // Before graduation, the pool exists but has no liquidity
-        // A buy swap will fail due to lack of liquidity or token transfer restrictions
-        deal(buyer, 1 ether);
-
-        // The swap should either revert or return 0 tokens due to no liquidity
-        // Using expectRevert = false and checking the result instead
-        uint256 buyerTokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
-
-        // this swap should revert, as there is no liquidity (expectSuccess=false)
-        _swapBuy(buyer, 1 ether, 0, false);
-
-        uint256 tokensReceived = IERC20(testToken).balanceOf(buyer) - buyerTokenBalanceBefore;
-        assertEq(tokensReceived, 0, "Should receive 0 tokens before graduation (no liquidity)");
-    }
-
-    /// @notice test that a large swapBuy before graduation doesn't alter the gratuation conditions / set point
-    function test_largeSwapBuyBeforeGraduation_doesntAffectGraduation() public createDefaultTaxToken {
-        // Token is created but not graduated
-        assertFalse(IRealmToken(testToken).graduated(), "Token should not be graduated");
-
-        // Perform a large buy swap before graduation
-        deal(buyer, 10 ether);
-        uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(buyer);
-        // this swap should revert, since token is not graduated yet (excpectSuccess=false)
-        _swapBuy(buyer, 10 ether, 0, false);
-        assertEq(
-            IERC20(testToken).balanceOf(buyer),
-            tokenBalanceBefore,
-            "Balance shouldn't change because swap should have reverted"
-        );
-
-        // Graduate the token
-        // if this reverts, we have DOSed the token which cannot ever graduate
-        _graduateToken();
-
-        // Verify that graduation was successful and pool is initialized correctly
-        assertTrue(IRealmToken(testToken).graduated(), "Token should be graduated successfully");
-
-        // Further checks can be added to verify pool state if needed
-    }
-
     /////////////////////////////////// CATEGORY 6: MULTI-USER TAX SCENARIOS ///////////////////////////////////
 
     /// @notice Test buy then sell from same user with only sell tax applied
@@ -663,8 +481,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_buyThenSell_onlySellTaxApplied() public createDefaultTaxToken {
         // First buy tokens through launchpad
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
 
         _graduateToken();
 
@@ -694,14 +511,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         assertEq(IERC20(testToken).balanceOf(testToken), 0, "No tax should be collected on normal transfers");
         assertEq(IERC20(testToken).balanceOf(alice), 1 ether, "No tax should be collected on normal transfers");
-    }
-
-    /// @notice test that we can't transfer tokens to the pool manager before graduation
-    function test_cannotTransferToPoolManagerBeforeGraduation() public createDefaultTaxToken {
-        // Attempt to transfer tokens to the pool manager before graduation
-        vm.prank(buyer);
-        vm.expectRevert(RealmToken.TransferToPairBeforeGraduationNotAllowed.selector);
-        IERC20(testToken).transfer(address(poolManagerAddress), 1 ether);
     }
 
     /////////////////////////////////// CATEGORY 7: LP FEE CLAIMING ///////////////////////////////////
@@ -755,8 +564,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     function test_claimLPFees_duringTaxPeriod_separateFromSellTaxes() public createDefaultTaxToken {
         // First buy tokens through launchpad
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 2 ether, 0, true, true);
 
         _graduateToken();
         address[] memory _t = new address[](1);
@@ -905,53 +713,6 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         );
         assertGt(
             creatorEthBalanceAfter, creatorEthBalanceBefore, "Configured fee receiver should still be able to claim"
-        );
-    }
-
-    /// @notice Test claiming LP fees from both positions (main + single-sided ETH) after price dips below graduation
-    function test_claimLPFees_bothPositions_afterPriceDip() public createDefaultTaxToken {
-        _graduateToken();
-
-        // Perform large sell to dip price below graduation
-        // This activates the second single-sided ETH position
-        _swapSell(buyer, 10_000_000e18, 0.1 ether, true);
-
-        // Perform buy to cross back through both positions
-        uint256 buyAmount = 4 ether;
-        deal(buyer, buyAmount);
-        _swapBuy(buyer, buyAmount, 0, true);
-
-        // Check fees from both positions
-        address[] memory tokens = new address[](1);
-        tokens[0] = testToken;
-
-        uint256[] memory totalClaimable = feeHandler.getClaimable(tokens, creator);
-        assertGt(totalClaimable[0], 0, "claimable amount should be positive");
-
-        // Record balances
-        uint256 creatorEthBalanceBefore = creator.balance;
-
-        // Claim from both positions
-        vm.prank(creator);
-        feeHandler.claim(tokens);
-
-        uint256 creatorEthBalanceAfter = creator.balance;
-        uint256 totalCreatorFees = creatorEthBalanceAfter - creatorEthBalanceBefore;
-
-        // Verify claimed amount matches what was claimable (LP fees + accrued taxes)
-        assertApproxEqAbs(totalCreatorFees, totalClaimable[0], 1, "Claimed fees should match claimable total");
-    }
-
-    function test_deployTaxTokenWithTooHighSellTaxes() public {
-        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTaxBps.selector));
-        factoryTax.createToken(
-            _setupTiered("TestToken", "TEST", "0x12", _fs(creator)),
-            _noAlloc(_taxCfg(0, 401, uint32(4 days))),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
         );
     }
 
@@ -1144,8 +905,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Buy on bonding curve so buyer has tokens for selling
         vm.deal(buyer, 2 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 1 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 1 ether, 0, true, true);
 
         _graduateToken();
 
@@ -1224,8 +984,7 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
 
         // Buy tokens on bonding curve first
         vm.deal(buyer, 3 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 2 ether, 0, true, true);
 
         _graduateToken();
 
@@ -1261,43 +1020,13 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
     // creation: `[graduationTimestamp, graduationTimestamp + duration]`. No tax is charged before
     // graduation, and the window is independent of how long the token spent on the bonding curve.
 
-    /// @notice A graduation-anchored token charges NO tax before graduation, even with buy/sell tax
-    ///         configured. Both `getTaxConfig()` and `getLaunchpadFees()` report the window as inactive.
-    function test_graduationAnchored_noTaxBeforeGraduation() public {
-        testToken = _createTaxTokenFromGraduation(300, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
-
-        // The flag is surfaced via the public getter.
-        assertFalse(
-            RealmTaxableTokenUniV4(payable(testToken)).startTaxFromLaunch(), "token should be graduation-anchored"
-        );
-
-        // Not graduated yet → window has not started.
-        assertEq(IRealmTaxableToken(testToken).graduationTimestamp(), 0, "not graduated yet");
-
-        // getTaxConfig(): fully zeroed before graduation.
-        IRealmToken.TaxConfig memory cfg = IRealmToken(testToken).getTaxConfig();
-        assertEq(cfg.buyTaxBps, 0, "buy tax inactive pre-graduation");
-        assertEq(cfg.sellTaxBps, 0, "sell tax inactive pre-graduation");
-        assertEq(cfg.taxDurationSeconds, 0, "duration zeroed pre-graduation");
-
-        // getLaunchpadFees(): LP fee still applies, but tax is 0 on both sides.
-        IRealmToken.LaunchpadFees memory buyFees = IRealmToken(testToken)
-            .getLaunchpadFees(IRealmToken.LaunchpadTrade({isBuy: true, ethReserves: 0, releasedSupply: 0}));
-        assertGt(buyFees.lpFeeBps, 0, "LP fee still charged pre-graduation");
-        assertEq(buyFees.taxBps, 0, "no buy tax pre-graduation for graduation-anchored token");
-        IRealmToken.LaunchpadFees memory sellFees = IRealmToken(testToken)
-            .getLaunchpadFees(IRealmToken.LaunchpadTrade({isBuy: false, ethReserves: 0, releasedSupply: 0}));
-        assertEq(sellFees.taxBps, 0, "no sell tax pre-graduation for graduation-anchored token");
-    }
-
     /// @notice After graduation, a graduation-anchored token taxes within
     ///         `[graduationTimestamp, graduationTimestamp + duration]` and stops afterwards.
     function test_graduationAnchored_taxActiveAfterGraduationThenExpires() public {
         testToken = _createTaxTokenFromGraduation(0, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
 
         vm.deal(buyer, 3 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
+        _swap(buyer, testToken, 2 ether, 0, true, true);
 
         _graduateToken();
         uint40 graduationTs = IRealmTaxableToken(testToken).graduationTimestamp();
@@ -1331,48 +1060,5 @@ contract TaxTokenUniV4Tests is TaxTokenUniV4BaseTests {
         uint256 creatorLpBpsOfGross = (LP_FEE_BPS_DEFAULT * (10_000 - LP_TREASURY_BPS)) / 10_000;
         uint256 expectedLpShareOnly = (ethReceived * creatorLpBpsOfGross) / (10000 - 100);
         assertApproxEqRel(creatorDelta, expectedLpShareOnly, 0.0000015e18, "only LP share accrues after expiry");
-    }
-
-    /// @notice The crux: the window is anchored at graduation, NOT launch. We let the token sit on the
-    ///         bonding curve well past `launchTimestamp + duration` (where a creation-anchored token's
-    ///         tax would already be over), then graduate. The tax is still ACTIVE because its window
-    ///         only starts at graduation.
-    function test_graduationAnchored_windowAnchoredAtGraduationNotLaunch() public {
-        testToken = _createTaxTokenFromGraduation(0, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
-        uint40 launchTs = IRealmToken(testToken).launchTimestamp();
-
-        // Sit on the curve far past where a creation-anchored window would have closed.
-        vm.warp(uint256(launchTs) + 2 * DEFAULT_TAX_DURATION);
-
-        vm.deal(buyer, 3 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(testToken, 0, DEADLINE);
-        _graduateToken();
-
-        uint40 graduationTs = IRealmTaxableToken(testToken).graduationTimestamp();
-        assertGt(
-            graduationTs,
-            launchTs + DEFAULT_TAX_DURATION,
-            "graduation is past the creation-anchored expiry (so a launch-anchored token would be done taxing)"
-        );
-
-        // Tax is ACTIVE post-graduation, proving the window is anchored at graduation.
-        assertEq(
-            IRealmToken(testToken).getTaxConfig().sellTaxBps,
-            DEFAULT_SELL_TAX_BPS,
-            "tax active post-graduation despite being long past the launch-anchored expiry"
-        );
-        uint256 creatorBefore = _pendingTaxes(testToken, creator);
-        uint256 buyerBalance = IERC20(testToken).balanceOf(buyer);
-        _swapSell(buyer, buyerBalance / 10, 0, true);
-        assertGt(_pendingTaxes(testToken, creator), creatorBefore, "sell tax accrues in the graduation-anchored window");
-
-        // It still ends `duration` after graduation.
-        vm.warp(uint256(graduationTs) + DEFAULT_TAX_DURATION + 1);
-        assertEq(
-            IRealmToken(testToken).getTaxConfig().sellTaxBps,
-            0,
-            "tax ends `duration` after graduation, not after launch"
-        );
     }
 }

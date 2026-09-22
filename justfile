@@ -21,7 +21,7 @@ abis:
     @jq '.abi' out/IRealmToken.sol/IRealmToken.json > abis/IRealmToken.json
     @jq '.abi' out/IRealmClaims.sol/IRealmClaims.json > abis/IRealmClaims.json
     @jq '.abi' out/RealmFactoryUniV2Unified.sol/RealmFactoryUniV2Unified.json > abis/RealmFactoryUniV2Unified.json
-    @jq '.abi' out/RealmFactoryUniV4Unified.sol/RealmFactoryUniV4Unified.json > abis/RealmFactoryUniV4Unified.json
+    @jq '.abi' out/RealmFactoryUniV4Direct.sol/RealmFactoryUniV4Direct.json > abis/RealmFactoryUniV4Direct.json
     @jq '.abi' out/IRealmTaxableToken.sol/IRealmTaxableToken.json > abis/IRealmTaxableToken.json
     @jq '.abi' out/RealmCreatorVault.sol/RealmCreatorVault.json > abis/RealmCreatorVault.json
     @echo "✔ ABIs copied to abis/ directory"
@@ -82,8 +82,8 @@ robinhood_testnet_verify := "--verify --verifier blockscout --verifier-url https
 
 # --- Per-chain build retarget ------------------------------------------------
 # ONE rule per target chain repoints EVERY per-chain compile-time import across ALL contracts at once
-# (the taxable tokens' `DeploymentAddresses` + venue lib, and the V4 graduator's pool-geometry/fee
-# libs). Retarget is for constant-only / trivial divergence; the V2 graduator, whose venue difference
+# (the taxable tokens' `DeploymentAddresses` + venue lib, and the direct V4 graduator's pool-constants
+# lib). Retarget is for constant-only / trivial divergence; the V2 graduator, whose venue difference
 # is behavioral, is instead two separate contracts (RealmGraduatorUniswapV2 / ...Arc) picked at deploy
 # time. The rule is per-CHAIN, never per-chain-AND-per-contract: add every future per-chain contract
 # swap to `_retarget` so callers keep using a single command. Run the `chain-*` recipe matching your
@@ -127,14 +127,12 @@ _taxtoken lib suffix="":
         src/tokens/RealmUniv4BuyBacks.sol src/tokens/RealmTaxableTokenUniV4Base.sol \
         src/tokens/RealmDividendLogicUniV4.sol src/tokens/RealmEarningsLogicUniV4.sol
 
-# (internal) Repoints the V4 graduators' pool-geometry + fee libs to the `{{suffix}}` variant
+# (internal) Repoints the direct V4 graduator's pool-constants lib to the `{{suffix}}` variant
 # ("" = ETH, "Arc" = ARC). The V2 graduators are separate contracts and are NOT touched here.
 # Use a `chain-*` recipe.
 _graduators suffix:
     sed -i -E 's#\{UniswapV4PoolConstants[A-Za-z]* as UniswapV4PoolConstants\} from "src/libraries/UniswapV4PoolConstants[A-Za-z]*\.sol"#{UniswapV4PoolConstants{{suffix}} as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants{{suffix}}.sol"#' \
-        src/graduators/RealmGraduatorUniswapV4.sol src/graduators/RealmDirectGraduatorUniV4.sol
-    sed -i -E 's#\{GraduationFeeConstants[A-Za-z]* as GraduationFeeConstants\} from "src/libraries/GraduationFeeConstants[A-Za-z]*\.sol"#{GraduationFeeConstants{{suffix}} as GraduationFeeConstants} from "src/libraries/GraduationFeeConstants{{suffix}}.sol"#' \
-        src/graduators/RealmGraduatorUniswapV4.sol
+        src/graduators/RealmDirectGraduatorUniV4.sol
 
 # Prints a valid salt (produces a token address ending in 0xeeaa) for the given factory.
 # Usage: just next-salt <factoryAddress>
@@ -156,7 +154,6 @@ graduatorV2 := "0x0000000000000000000000000000000000000000"
 graduatorV4 := "0x0000000000000000000000000000000000000000"
 
 factoryV2 := "0x0000000000000000000000000000000000000000"
-factoryV4 := "0x0000000000000000000000000000000000000000"
 factoryTaxToken := "0x0000000000000000000000000000000000000000"
 # Sniper-protected factories — fill in after deploy.
 factorySniperProtected := "0x0000000000000000000000000000000000000000"
@@ -327,21 +324,6 @@ upgrade-voting-rh: chain-rh
 
 upgrade-voting-rh-testnet: chain-rh-testnet
     forge script UpgradeRealmVoting --rpc-url rh-testnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
-
-# Redeploys the V2 graduator and the three per-tier V4 graduators from the current build and rewires
-# the live factories to them (new factory impls, proxies repointed) in ONE run — for a graduation policy
-# change on a chain whose stack is already live. Paste the six printed slots into the manifest and
-# `just export-deployments`. Dry-run first: the same command without --broadcast, plus --sender.
-redeploy-graduators-sepolia: chain-sepolia
-    forge script RedeployGraduators --rpc-url sepolia --verify --account realm.dev --slow --broadcast
-
-redeploy-graduators-rh: chain-rh
-    forge script RedeployGraduators --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300 {{robinhood_verify}}
-
-redeploy-graduators-rh-testnet: chain-rh-testnet
-    forge script RedeployGraduators --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Redeploys the three token masters (base + two taxable) from the current build and rewires the live
@@ -650,13 +632,6 @@ create-token-v2 tokenName value="0":
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[({{realmdev}},10000)]" "[]" --value {{value}}
 
-create-token-v4 tokenName value="0" renounceOwnership="false":
-    SALT=$(just next-salt {{factoryV4}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factoryV4}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool)" \
-            {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} --value {{value}}
-
 create-tax-token tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryTaxToken}}) && echo "Using salt: $SALT" && \
         cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factoryTaxToken}} \
@@ -664,14 +639,6 @@ create-tax-token tokenName value="0" renounceOwnership="false":
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} \
             "(300,500,1209600)" --value {{value}}
-
-create-token-v4-feesplit tokenName value="0" renounceOwnership="false":
-    SALT=$(just next-salt {{factoryV4}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factoryV4}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool)" \
-            {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[(0x26fFa73c8fFcB8F4BF55d5A11a57c6bfEA7F4495,3000),(0x643e37aCbbbc8e6e2b548C3eA150fDf9BAB8C27f,7000)]" \
-            "[]" {{renounceOwnership}} --value {{value}}
 
 create-tax-token-feesplit tokenName value="0" renounceOwnership="false":
     SALT=$(just next-salt {{factoryTaxToken}}) && echo "Using salt: $SALT" && \
@@ -691,14 +658,6 @@ create-token-v2-sniper tokenName value="0":
             "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],(uint16,uint16,uint40,address[]))" \
             {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
             "[({{realmdev}},10000)]" "[]" \
-            "(300,300,10800,[])" --value {{value}}
-
-create-token-v4-sniper tokenName value="0" renounceOwnership="false":
-    SALT=$(just next-salt {{factorySniperProtected}}) && echo "Using salt: $SALT" && \
-        cast send --rpc-url $SEPOLIA_RPC_URL --account realm.dev {{factorySniperProtected}} \
-            "createToken(string,string,bytes32,(address,uint256)[],(address,uint256)[],bool,(uint16,uint16,uint40,address[]))" \
-            {{tokenName}} {{uppercase(tokenName)}} "$SALT" \
-            "[({{realmdev}},10000)]" "[]" {{renounceOwnership}} \
             "(300,300,10800,[])" --value {{value}}
 
 create-tax-token-sniper tokenName value="0" renounceOwnership="false":

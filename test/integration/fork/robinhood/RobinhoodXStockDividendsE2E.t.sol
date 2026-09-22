@@ -80,7 +80,8 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
     ///      ONLY ETH the token holds, so nothing of it is reachable by a sweep.
     function test_swaps_hookTaxFromRobinhoodsPoolFundsTheDividendBuffer() public {
         RealmTaxableTokenUniV4 token = _graduatedXStockToken(_sole(AAPL), _w(10_000));
-        assertEq(token.pendingNative(), 0, "nothing buffered before the first post-graduation trade");
+        // The buys that handed `buyer` its float already paid tax: the token is live from its launch.
+        uint256 seeded = token.pendingNative();
 
         vm.recordLogs();
         _churn(1, 1 ether);
@@ -88,12 +89,12 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
 
         assertGt(tax, 0, "the hook charged tax on the buy and the sell");
         assertGt(lpShare, 0, "and the router forwarded the creator's LP-fee share");
-        uint256 buffered = token.pendingNative();
+        uint256 buffered = token.pendingNative() - seeded;
         // Four accruals (tax + LP share per leg), each rounding its own 80% down.
         assertApproxEqAbs(
             buffered, (tax + lpShare) * DIVIDENDS_BPS / 10_000, 4, "80% of every accrual is buffered for holders"
         );
-        assertEq(address(token).balance, buffered, "and that buffer is all the ETH the token holds");
+        assertEq(address(token).balance, token.pendingNative(), "and that buffer is all the ETH the token holds");
     }
 
     /// @dev The tax has a window. Once it closes the hook charges none, and what still reaches the

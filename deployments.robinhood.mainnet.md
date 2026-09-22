@@ -9,7 +9,6 @@
 | RealmLaunchpad                               | _(not deployed)_                             |
 | ConstantProductBondingCurve                  | _(not deployed)_                             |
 | RealmGraduatorUniswapV2                      | _(not deployed)_                             |
-| RealmGraduatorUniswapV4                      | _(not deployed)_                             |
 | RealmMasterFeeHandler                        | _(not deployed)_                             |
 | RealmUniV4LiquidityAdder                     | _(not deployed)_                             |
 | RealmHook                                    | `0xAE4c0Cf7C3Feb79e0c244EdBC6A3f8a3290940cC` |
@@ -37,8 +36,6 @@
 | RealmTaxableTokenUniV2 (impl)                | _(not deployed)_                             |
 | RealmFactoryUniV2Unified (proxy)             | _(not deployed)_                             |
 | RealmFactoryUniV2Unified (impl)              | _(not deployed)_                             |
-| RealmFactoryUniV4Unified (proxy)             | _(not deployed)_                             |
-| RealmFactoryUniV4Unified (impl)              | _(not deployed)_                             |
 | RealmCreatorVaultFactory (proxy)             | _(not deployed)_                             |
 | RealmCreatorVaultFactory (impl)              | _(not deployed)_                             |
 | RealmCreatorVault (impl)                     | _(not deployed)_                             |
@@ -48,8 +45,6 @@
 | Creator-vault curve 20%                      | _(not deployed)_                             |
 | Creator-vault curve 25%                      | _(not deployed)_                             |
 | Creator-vault curve 30%                      | _(not deployed)_                             |
-| RealmGraduatorUniV4 THIN                     | _(not deployed)_                             |
-| RealmGraduatorUniV4 THICK                    | _(not deployed)_                             |
 | THIN-tier curve base                         | _(not deployed)_                             |
 | THIN-tier curve 5%                           | _(not deployed)_                             |
 | THIN-tier curve 10%                          | _(not deployed)_                             |

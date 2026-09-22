@@ -15,16 +15,15 @@ library DeploymentsEthereumSepolia {
     address internal constant LAUNCHPAD = 0x5f09e414a6f8A004D152dE6aeA5FD435c4188dEC;
     address internal constant BONDING_CURVE = 0x63B78b60fbD518aa66944E60579372C421cf06d7;
     address internal constant GRADUATOR_UNIV2 = 0xA99282F37825E996a15B9619A13575A266127Ea3;
-    address internal constant GRADUATOR_UNIV4 = 0x53b659806b6DDF83D4a14f607A8d28487b140cF3;
 
-    /// @notice Shared, permissionless `RealmUniV4LiquidityAdder` singleton — one per chain, passed to every
-    ///         V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
+    /// @notice Shared, permissionless `RealmUniV4LiquidityAdder` singleton — one per chain, passed to the
+    ///         direct V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
     ///         `DeployRealmStack`; `address(0)` until first deployed on this chain.
     address internal constant UNIV4_LIQUIDITY_ADDER = 0xE8168F37CdaAdB08818469De191eD2461EEcc229;
     address internal constant MASTER_FEE_HANDLER = 0x914e8A6fcA2af6E8Cf4434d1D50234fC89CdF2Ec;
 
     /// @notice Swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
-    ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. The V4 graduators point here.
+    ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. The direct V4 graduator points here for native pools.
     /// @dev Realm deploys its OWN hook rather than reusing the Livo one, whose `TREASURY` and
     ///      `FEE_ROUTER` immutables are pinned to Livo addresses and cannot be repointed. Deploy with
     ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
@@ -99,13 +98,11 @@ library DeploymentsEthereumSepolia {
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
     address internal constant FACTORY_UNIV2_UNIFIED = 0xC2793d815BA81AaDC5ae5c8b6de5f14365f8743B;
-    address internal constant FACTORY_UNIV4_UNIFIED = 0xAb8e2Ab6516712DA4E0f5B1fa3AB964Bf8b3e8Cf;
 
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
     address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xbcb1cA6a9B8DDFdaB3E4676FaF0115B408199774;
-    address internal constant FACTORY_UNIV4_UNIFIED_IMPL = 0x61fa8c5a21378719C993F116Eb3f5984E280C408;
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.
@@ -135,15 +132,9 @@ library DeploymentsEthereumSepolia {
     }
 
     // --- Liquidity tiers (THIN + THICK) ---
-    /// @notice THIN/THICK V4 graduators, one per tier (the fee-agnostic hook reads the swap fee from the
-    ///         token). The DEFAULT tier reuses `GRADUATOR_UNIV4`. Update after deploying with
-    ///         `DeployRealmStack` or `RedeployGraduators`. Both point at `SWAP_HOOK` above.
-    address internal constant GRADUATOR_UNIV4_THIN = 0x6B29469d3E5D5861E6a5C449863a0566E163272C;
-    address internal constant GRADUATOR_UNIV4_THICK = 0xd0b4476f2044574CA498A5AdD5DFB26516E2526d;
-
     /// @notice THIN-tier bonding curves (`ConstantProductBondingCurveConfigurable`): the no-vault
     ///         base curve plus six vault curves (5%..30%). Update after deploying with
-    ///         `DeployRealmStack`. Venue-agnostic — shared by the V2 and V4 factories.
+    ///         `DeployRealmStack`. Used by the V2 factory.
     address internal constant THIN_CURVE_BASE = 0xA8Df983578993Eea0C02C08BD84Aaaea07FdBc8d;
     address internal constant THIN_VAULT_CURVE_5 = 0x2DAB5D3a65F6deE7F72a60abb6E7ECbf03304783;
     address internal constant THIN_VAULT_CURVE_10 = 0x3D194bcD0B3b84ed0e1f657d1b48C7fE4243238c;

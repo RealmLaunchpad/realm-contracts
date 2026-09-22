@@ -2,14 +2,10 @@
 pragma solidity 0.8.28;
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
-import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
-import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
 import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
-import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -39,9 +35,6 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         super.setUp();
         taxTokenImpl =
             new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
-
-        // Set graduator to tax-enabled version for tests
-        graduator = graduatorV4;
     }
 
     /// @notice Helper to create a tax token with custom configuration
@@ -52,16 +45,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         internal
         returns (address tokenAddress)
     {
-        vm.prank(creator);
-        tokenAddress = factoryTax.createToken(
-            _setupTiered("TaxToken", "TAX", _nextValidSalt(address(factoryTax), address(realmTaxToken)), _fs(creator)),
-            _noAlloc(_taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds))),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
+        tokenAddress = _createDirectToken(_taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds)));
     }
 
     /// @notice Helper to create a tax token whose tax window starts at graduation (not launch).
@@ -73,16 +57,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         internal
         returns (address tokenAddress)
     {
-        vm.prank(creator);
-        tokenAddress = factoryTax.createToken(
-            _setupTiered("TaxToken", "TAX", _nextValidSalt(address(factoryTax), address(realmTaxToken)), _fs(creator)),
-            _noAlloc(_taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds), false)),
-            _v4Cfg(false),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
+        tokenAddress = _createDirectToken(_taxCfg(buyTaxBps, sellTaxBps, uint32(taxDurationSeconds), false));
     }
 
     /// @notice Helper to create a DECAY-only token (no long-term static tax) with a linear launch-tax
@@ -94,23 +69,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         internal
         returns (address tokenAddress)
     {
-        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
-            name: "DecayToken",
-            symbol: "DCY",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
-            feeShares: _fs(creator),
-            liquidityTier: LiquidityTier.DEFAULT
-        });
-        vm.prank(creator);
-        tokenAddress = factoryTax.createToken(
-            setup,
-            _noAlloc(_decayCfg(buyDecayStartBps, sellDecayStartBps, decayDuration, true)),
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        tokenAddress = _createDirectToken(_decayCfg(buyDecayStartBps, sellDecayStartBps, decayDuration, true));
     }
 
     /// @notice Helper to get pool key with tax hook

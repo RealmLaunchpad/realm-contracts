@@ -52,7 +52,8 @@ interface IUniswapV3FactoryPools {
 ///      and unwind it around their own call for the price of two swap fees. Approvers refresh it by
 ///      listing the asset again; on a chain with a public mempool, through private orderflow, since a
 ///      sandwiched listing would snapshot a pushed price. Re-listing a reference does not reprice the
-///      assets listed against it.
+///      assets listed against it. `liveUnitsPerNativeX18` re-reads the same sources on demand, for a
+///      consumer that accepts that risk (the direct factory's launch price, bounded by the snapshot).
 ///
 /// @dev UPGRADEABLE (UUPS, owner-authorised) because its pricing rules are expected to grow, and the
 ///      direct factory bakes this address in: an upgrade keeps every listing and the factory untouched.
@@ -140,7 +141,7 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
         require(isApprover[msg.sender], NotApprover());
         uint256 rate;
         address ref;
-        if (source.venue != Venue.NONE) (rate, ref) = _rateFrom(asset, source);
+        if (source.venue != Venue.NONE) (rate, ref) = _rateFrom(asset, source, false);
         unitsPerNativeX18[asset] = rate;
         referenceOf[asset] = ref;
         _priceSources[asset] = source;
@@ -152,9 +153,25 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
         return _priceSources[asset];
     }
 
+    /// @notice `unitsPerNativeX18` re-read NOW from the stored price source (and the reference's, for an
+    ///         asset listed against one), through the same math as the listing snapshot. Zero when
+    ///         `asset` is not whitelisted.
+    /// @dev A spot read: anyone can move it within a transaction. The snapshot stays the listing gate;
+    ///      consumers using this accept the manipulation risk (the direct factory bounds it by the
+    ///      snapshot, see `RealmFactoryUniV4Direct._launchTick`).
+    function liveUnitsPerNativeX18(address asset) public view returns (uint256 rate) {
+        if (unitsPerNativeX18[asset] == 0) return 0;
+        (rate,) = _rateFrom(asset, _priceSources[asset], true);
+    }
+
     /// @dev `asset`'s whole units per whole native, scaled by 1e18, from `source`'s spot price, and the
-    ///      reference it was priced against (zero for native).
-    function _rateFrom(address asset, PriceSource calldata source) private view returns (uint256 rate, address ref) {
+    ///      reference it was priced against (zero for native). `live` prices the reference at its live
+    ///      rate instead of its snapshot.
+    function _rateFrom(address asset, PriceSource memory source, bool live)
+        private
+        view
+        returns (uint256 rate, address ref)
+    {
         (address t0, address t1, uint256 priceX128) = _spot(source);
         require(asset == t0 || asset == t1, InvalidPriceSource());
         ref = asset == t0 ? t1 : t0;
@@ -163,7 +180,7 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
         // The other side's own rate and decimals: native is one per native at 18.
         (uint256 refRate, uint256 refDecimals) = (1e18, 18);
         if (ref != address(0)) {
-            refRate = unitsPerNativeX18[ref];
+            refRate = live ? liveUnitsPerNativeX18(ref) : unitsPerNativeX18[ref];
             // One hop from native at most: the reference must itself be priced against native.
             require(refRate != 0 && referenceOf[ref] == address(0), InvalidPriceSource());
             refDecimals = IERC20Metadata(ref).decimals();
@@ -179,7 +196,7 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
 
     /// @dev The source pool's two tokens (zero for native) and its spot price as raw token1 per raw
     ///      token0 in Q128, after checking it is Uniswap's and live with liquidity.
-    function _spot(PriceSource calldata source) private view returns (address t0, address t1, uint256 priceX128) {
+    function _spot(PriceSource memory source) private view returns (address t0, address t1, uint256 priceX128) {
         uint160 sqrtPriceX96;
         if (source.venue == Venue.V4) {
             (t0, t1) = (Currency.unwrap(source.key.currency0), Currency.unwrap(source.key.currency1));

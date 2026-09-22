@@ -6,7 +6,7 @@ import {Currency} from "lib/v4-core/src/types/Currency.sol";
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 
 /// @title UniswapV4PoolConstants
-/// @notice Shared Uniswap V4 pool configuration constants used by the graduator and fee handler.
+/// @notice Shared Uniswap V4 pool configuration constants used by the direct graduator and the tokens.
 library UniswapV4PoolConstants {
     /// @notice LP fees in pips, i.e. 1e6 = 100%, so 10000 = 1%
     /// @dev Set to 0 because LP fees are now charged by the hook (RealmSwapHook)
@@ -15,54 +15,6 @@ library UniswapV4PoolConstants {
     /// @notice Tick spacing used to be 200 for volatile pairs in univ3. (60 for 0.3% fee tier)
     /// @dev The larger the spacing the cheaper to swap gas-wise
     int24 internal constant TICK_SPACING = 200;
-
-    // In the uniswapV4 pool, the pair is (currency0,currency1) = (nativeEth, token)
-    // The `sqrtPriceX96` is denominated as sqrt(amountToken1/amountToken0) * 2^96,
-    // so tokens/ETH (eth price of one token).
-    // Thus, the max token price is found at the low tick, and the min token price at the high tick
-
-    /// @notice DEFAULT/THICK upper boundary of the primary liquidity range (minimum token price in ETH)
-    /// @dev Per-tier overridable via the graduator constructor; see `TICK_UPPER_THIN`. Thinner tiers
-    ///      graduate at a higher tick with a shallower pool, so they need a higher upper tick to let a
-    ///      holder sell their full bag back into the pool (otherwise the sell-side range runs dry).
-    /// @dev High tick: 203600 -> 2088220564709554551739049874292736 -> 694694034.078335 tokens per ETH
-    /// @dev Ticks need to be multiples of TICK_SPACING
-    int24 internal constant TICK_UPPER = 203600;
-
-    /// @notice THIN-tier upper boundary of the primary liquidity range.
-    /// @dev THIN graduates at the highest tick (6.125 ETH mcap) yet seeds the shallowest pool (~1.75 ETH),
-    ///      so its sell-side range must be the widest to absorb the full circulating supply when a holder
-    ///      dumps their entire bag. Tuned so the bag just reaches this tick: all tokens sold, ~all ETH out.
-    int24 internal constant TICK_UPPER_THIN = 212000;
-
-    /// @notice The lower boundary of the liquidity range when the position is created (maximum token price in ETH)
-    /// @dev Low tick: -7000 -> sqrtX96price: 55832119482513121612260179968 -> 0.49660268342258984 tokens per ETH
-    /// @dev At this tick, the token price would imply a market cap of 2,000,000,000 ETH (8,000,000,000,000 USD with ETH at 4000 USD)
-    int24 internal constant TICK_LOWER = -7000;
-
-    /// @notice Tick at graduation price
-    int24 internal constant TICK_GRADUATION = 182200;
-
-    /// @notice Second position lower tick (single-sided ETH, concentrated right below the graduation price)
-    int24 internal constant TICK_LOWER_2 = TICK_GRADUATION + TICK_SPACING;
-
-    /// @notice Tick distance from the primary upper tick down to the secondary ETH-only position's upper tick.
-    /// @dev The secondary position covers roughly a -67% drop from graduation price. After that, only the main position would be active
-    /// @dev However, the second position has much less liquidity, so the impact would be barely noticeable.
-    int24 internal constant TICK_UPPER_2_OFFSET = 51 * TICK_SPACING;
-
-    ////////////////////// per-tier graduation prices (deploy-time constructor args) //////////////////////
-    // From `simulations/script/uniswapV4Settings.py`. Shared by `DeployRealmStack` and `RedeployGraduators`
-    // so a redeploy cannot drift from the original stack.
-
-    /// @notice DEFAULT graduation sqrtPriceX96: 12.25 ETH mcap (12250000000 wei/token).
-    uint160 internal constant SQRT_PRICEX96_GRADUATION_DEFAULT = 715832709642994126662528799866880;
-
-    /// @notice THIN graduation sqrtPriceX96: 6.125 ETH mcap. Uses TICK_UPPER_THIN.
-    uint160 internal constant SQRT_PRICEX96_GRADUATION_THIN = 1012340326367404053977557838594048;
-
-    /// @notice THICK graduation sqrtPriceX96: 24.5 ETH mcap.
-    uint160 internal constant SQRT_PRICEX96_GRADUATION_THICK = 506170163183702026988778919297024;
 
     /// @notice The canonical PoolKey of a graduated Realm token's V4 pool: `(ETH, token)` with this
     ///         library's fee/spacing and the graduator's hook. THE single source of truth — the
@@ -75,10 +27,10 @@ library UniswapV4PoolConstants {
     /// @notice The canonical PoolKey of a Realm token against an ARBITRARY quote, with the currencies
     ///         sorted as Uniswap V4 requires. `quote == address(0)` is native, which always sorts as
     ///         `currency0` and reproduces the native-only overload above exactly.
-    /// @dev THE single source of truth for every venue: the direct graduator, the curve graduator, the
-    ///      buy-back mixin and the tokens' liquidity leg must all target the same pool, so none of them
-    ///      may hand-roll the key. Sorting here is what lets a token be `currency0` or `currency1`
-    ///      depending on the quote it launched against, without any caller having to know.
+    /// @dev THE single source of truth for every venue: the direct graduator, the buy-back mixin and
+    ///      the tokens' liquidity leg must all target the same pool, so none of them may hand-roll the
+    ///      key. Sorting here is what lets a token be `currency0` or `currency1` depending on the quote
+    ///      it launched against, without any caller having to know.
     function realmPoolKey(address token, address quote, address hook) internal pure returns (PoolKey memory) {
         (address c0, address c1) = quote < token ? (quote, token) : (token, quote);
         return PoolKey({

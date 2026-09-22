@@ -13,8 +13,8 @@ import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 /// @title Deploy the DIRECT-launch venue
-/// @notice The second venue: a Realm token that goes straight to a Uniswap V4 pool at a price its
-///         creator picks, with no bonding curve and no launchpad in between. Deploys
+/// @notice The second venue: a Realm token that goes straight to a Uniswap V4 pool at a fixed
+///         opening market cap, with no bonding curve and no launchpad in between. Deploys
 ///         `RealmDirectGraduatorUniV4` and `RealmFactoryUniV4Direct` (implementation + UUPS proxy) and
 ///         wires them to the infrastructure already on the chain.
 /// @notice Only for adding the venue to a stack that is already live. A full redeploy gets it from

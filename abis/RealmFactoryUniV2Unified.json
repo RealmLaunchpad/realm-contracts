@@ -1186,7 +1186,7 @@
         "internalType": "address"
       },
       {
-        "name": "ethSpent",
+        "name": "quoteSpent",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"

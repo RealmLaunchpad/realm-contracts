@@ -3,11 +3,6 @@
     "type": "constructor",
     "inputs": [
       {
-        "name": "launchpad",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "impls",
         "type": "tuple",
         "internalType": "struct IRealmFactory.TokenImpls",
@@ -25,11 +20,6 @@
         ]
       },
       {
-        "name": "bondingCurve",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "graduator",
         "type": "address",
         "internalType": "address"
@@ -45,87 +35,27 @@
         "internalType": "address"
       },
       {
-        "name": "vaultBondingCurves",
-        "type": "address[6]",
-        "internalType": "address[6]"
+        "name": "wrappedNative",
+        "type": "address",
+        "internalType": "address"
       },
       {
-        "name": "v4Tier",
-        "type": "tuple",
-        "internalType": "struct RealmFactoryUniV4Unified.V4TierConfig",
-        "components": [
-          {
-            "name": "curves",
-            "type": "tuple",
-            "internalType": "struct IRealmFactory.LiquidityTierConfig",
-            "components": [
-              {
-                "name": "thin",
-                "type": "tuple",
-                "internalType": "struct IRealmFactory.TierCurves",
-                "components": [
-                  {
-                    "name": "base",
-                    "type": "address",
-                    "internalType": "address"
-                  },
-                  {
-                    "name": "vaults",
-                    "type": "address[6]",
-                    "internalType": "address[6]"
-                  }
-                ]
-              },
-              {
-                "name": "thick",
-                "type": "tuple",
-                "internalType": "struct IRealmFactory.TierCurves",
-                "components": [
-                  {
-                    "name": "base",
-                    "type": "address",
-                    "internalType": "address"
-                  },
-                  {
-                    "name": "vaults",
-                    "type": "address[6]",
-                    "internalType": "address[6]"
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "name": "graduators",
-            "type": "tuple",
-            "internalType": "struct RealmFactoryUniV4Unified.TierGraduators",
-            "components": [
-              {
-                "name": "thin",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "thick",
-                "type": "address",
-                "internalType": "address"
-              }
-            ]
-          }
-        ]
+        "name": "assetsWhitelist",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
   },
   {
     "type": "function",
-    "name": "BONDING_CURVE",
+    "name": "ASSETS_WHITELIST",
     "inputs": [],
     "outputs": [
       {
         "name": "",
         "type": "address",
-        "internalType": "contract IRealmBondingCurve"
+        "internalType": "contract RealmAssetsWhitelist"
       }
     ],
     "stateMutability": "view"
@@ -171,32 +101,6 @@
   },
   {
     "type": "function",
-    "name": "GRADUATOR_THICK",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "GRADUATOR_THIN",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "LAUNCHPAD",
     "inputs": [],
     "outputs": [
@@ -204,6 +108,19 @@
         "name": "",
         "type": "address",
         "internalType": "contract IRealmLaunchpad"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "LAUNCH_MARKET_CAP_X18",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -237,6 +154,32 @@
   {
     "type": "function",
     "name": "MAX_CREATOR_VAULT_TOTAL_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_LAUNCH_MARKET_CAP_X18",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_PAIRS",
     "inputs": [],
     "outputs": [
       {
@@ -301,182 +244,13 @@
   },
   {
     "type": "function",
-    "name": "THICK_CURVE_BASE",
+    "name": "MIN_LAUNCH_MARKET_CAP_X18",
     "inputs": [],
     "outputs": [
       {
         "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THICK_VAULT_CURVE_10",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THICK_VAULT_CURVE_15",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THICK_VAULT_CURVE_20",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THICK_VAULT_CURVE_25",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THICK_VAULT_CURVE_30",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THICK_VAULT_CURVE_5",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THIN_CURVE_BASE",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THIN_VAULT_CURVE_10",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THIN_VAULT_CURVE_15",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THIN_VAULT_CURVE_20",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THIN_VAULT_CURVE_25",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THIN_VAULT_CURVE_30",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "THIN_VAULT_CURVE_5",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -522,78 +296,13 @@
   },
   {
     "type": "function",
-    "name": "VAULT_CURVE_10",
+    "name": "WRAPPED_NATIVE",
     "inputs": [],
     "outputs": [
       {
         "name": "",
         "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "VAULT_CURVE_15",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "VAULT_CURVE_20",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "VAULT_CURVE_25",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "VAULT_CURVE_30",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "VAULT_CURVE_5",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRealmBondingCurve"
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -603,9 +312,9 @@
     "name": "createToken",
     "inputs": [
       {
-        "name": "tokenSetup",
+        "name": "setup",
         "type": "tuple",
-        "internalType": "struct IRealmFactory.TokenSetupTiered",
+        "internalType": "struct RealmFactoryUniV4Direct.DirectTokenSetup",
         "components": [
           {
             "name": "name",
@@ -645,16 +354,38 @@
             ]
           },
           {
-            "name": "liquidityTier",
-            "type": "uint8",
-            "internalType": "enum LiquidityTier"
+            "name": "renounceOwnership",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "lpFeeBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          }
+        ]
+      },
+      {
+        "name": "pairs",
+        "type": "tuple[]",
+        "internalType": "struct RealmFactoryUniV4Direct.DirectPair[]",
+        "components": [
+          {
+            "name": "quote",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "weightBps",
+            "type": "uint16",
+            "internalType": "uint16"
           }
         ]
       },
       {
         "name": "taxAllocationConfigs",
         "type": "tuple",
-        "internalType": "struct TaxConfigsWithMultiAllocation",
+        "internalType": "struct TaxConfigsWithDirectAllocation",
         "components": [
           {
             "name": "buyTaxBps",
@@ -727,40 +458,11 @@
                 "internalType": "bytes[]"
               }
             ]
-          }
-        ]
-      },
-      {
-        "name": "univ4Configs",
-        "type": "tuple",
-        "internalType": "struct RealmFactoryUniV4Unified.UniV4Configs",
-        "components": [
-          {
-            "name": "renounceOwnership",
-            "type": "bool",
-            "internalType": "bool"
           },
           {
-            "name": "lpFeeBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          }
-        ]
-      },
-      {
-        "name": "buyOnDeployShares",
-        "type": "tuple[]",
-        "internalType": "struct IRealmFactory.SupplyShare[]",
-        "components": [
-          {
-            "name": "account",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "shares",
-            "type": "uint256",
-            "internalType": "uint256"
+            "name": "quoteRoutes",
+            "type": "bytes[]",
+            "internalType": "bytes[]"
           }
         ]
       },
@@ -819,6 +521,77 @@
         ]
       },
       {
+        "name": "devBuy",
+        "type": "tuple",
+        "internalType": "struct RealmFactoryUniV4Direct.DevBuy",
+        "components": [
+          {
+            "name": "pairIndex",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "route",
+            "type": "tuple[]",
+            "internalType": "struct PoolKey[]",
+            "components": [
+              {
+                "name": "currency0",
+                "type": "address",
+                "internalType": "Currency"
+              },
+              {
+                "name": "currency1",
+                "type": "address",
+                "internalType": "Currency"
+              },
+              {
+                "name": "fee",
+                "type": "uint24",
+                "internalType": "uint24"
+              },
+              {
+                "name": "tickSpacing",
+                "type": "int24",
+                "internalType": "int24"
+              },
+              {
+                "name": "hooks",
+                "type": "address",
+                "internalType": "contract IHooks"
+              }
+            ]
+          },
+          {
+            "name": "minQuoteOut",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "quoteAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "recipients",
+            "type": "tuple[]",
+            "internalType": "struct IRealmFactory.SupplyShare[]",
+            "components": [
+              {
+                "name": "account",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "shares",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ]
+          }
+        ]
+      },
+      {
         "name": "referral",
         "type": "address",
         "internalType": "address"
@@ -842,30 +615,6 @@
   },
   {
     "type": "function",
-    "name": "maxBuyOnDeploy",
-    "inputs": [
-      {
-        "name": "tier",
-        "type": "uint8",
-        "internalType": "enum LiquidityTier"
-      },
-      {
-        "name": "totalLockedInVaultsBps",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "maxTokens",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "owner",
     "inputs": [],
     "outputs": [
@@ -879,12 +628,41 @@
   },
   {
     "type": "function",
+    "name": "previewLaunchTick",
+    "inputs": [
+      {
+        "name": "quote",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "tick",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "priceX18",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "marketCapX18",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "previewTokenImplementation",
     "inputs": [
       {
         "name": "",
         "type": "tuple",
-        "internalType": "struct IRealmFactory.TokenSetupTiered",
+        "internalType": "struct RealmFactoryUniV4Direct.DirectTokenSetup",
         "components": [
           {
             "name": "name",
@@ -924,16 +702,38 @@
             ]
           },
           {
-            "name": "liquidityTier",
-            "type": "uint8",
-            "internalType": "enum LiquidityTier"
+            "name": "renounceOwnership",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "lpFeeBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          }
+        ]
+      },
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct RealmFactoryUniV4Direct.DirectPair[]",
+        "components": [
+          {
+            "name": "quote",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "weightBps",
+            "type": "uint16",
+            "internalType": "uint16"
           }
         ]
       },
       {
         "name": "taxAllocationConfigs",
         "type": "tuple",
-        "internalType": "struct TaxConfigsWithMultiAllocation",
+        "internalType": "struct TaxConfigsWithDirectAllocation",
         "components": [
           {
             "name": "buyTaxBps",
@@ -1006,40 +806,11 @@
                 "internalType": "bytes[]"
               }
             ]
-          }
-        ]
-      },
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct RealmFactoryUniV4Unified.UniV4Configs",
-        "components": [
-          {
-            "name": "renounceOwnership",
-            "type": "bool",
-            "internalType": "bool"
           },
           {
-            "name": "lpFeeBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          }
-        ]
-      },
-      {
-        "name": "",
-        "type": "tuple[]",
-        "internalType": "struct IRealmFactory.SupplyShare[]",
-        "components": [
-          {
-            "name": "account",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "shares",
-            "type": "uint256",
-            "internalType": "uint256"
+            "name": "quoteRoutes",
+            "type": "bytes[]",
+            "internalType": "bytes[]"
           }
         ]
       },
@@ -1099,6 +870,77 @@
       },
       {
         "name": "",
+        "type": "tuple",
+        "internalType": "struct RealmFactoryUniV4Direct.DevBuy",
+        "components": [
+          {
+            "name": "pairIndex",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "route",
+            "type": "tuple[]",
+            "internalType": "struct PoolKey[]",
+            "components": [
+              {
+                "name": "currency0",
+                "type": "address",
+                "internalType": "Currency"
+              },
+              {
+                "name": "currency1",
+                "type": "address",
+                "internalType": "Currency"
+              },
+              {
+                "name": "fee",
+                "type": "uint24",
+                "internalType": "uint24"
+              },
+              {
+                "name": "tickSpacing",
+                "type": "int24",
+                "internalType": "int24"
+              },
+              {
+                "name": "hooks",
+                "type": "address",
+                "internalType": "contract IHooks"
+              }
+            ]
+          },
+          {
+            "name": "minQuoteOut",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "quoteAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "recipients",
+            "type": "tuple[]",
+            "internalType": "struct IRealmFactory.SupplyShare[]",
+            "components": [
+              {
+                "name": "account",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "shares",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "",
         "type": "address",
         "internalType": "address"
       }
@@ -1121,94 +963,6 @@
         "name": "",
         "type": "bytes32",
         "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "quoteBuyOnDeploy",
-    "inputs": [
-      {
-        "name": "liquidityTier",
-        "type": "uint8",
-        "internalType": "enum LiquidityTier"
-      },
-      {
-        "name": "tokenAmount",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "totalLockedInVaultsBps",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "taxCfg",
-        "type": "tuple",
-        "internalType": "struct TaxConfigs",
-        "components": [
-          {
-            "name": "buyTaxBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "sellTaxBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "taxDurationSeconds",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "startTaxFromLaunch",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "buyTaxDecayStartBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "sellTaxDecayStartBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "taxDecayDuration",
-            "type": "uint32",
-            "internalType": "uint32"
-          }
-        ]
-      },
-      {
-        "name": "univ4Configs",
-        "type": "tuple",
-        "internalType": "struct RealmFactoryUniV4Unified.UniV4Configs",
-        "components": [
-          {
-            "name": "renounceOwnership",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "lpFeeBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          }
-        ]
-      }
-    ],
-    "outputs": [
-      {
-        "name": "totalEthNeeded",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -1287,7 +1041,7 @@
         "internalType": "address"
       },
       {
-        "name": "ethSpent",
+        "name": "quoteSpent",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -1499,6 +1253,11 @@
   },
   {
     "type": "error",
+    "name": "DevBuyRouteUnavailable",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "DividendAssetWithoutShare",
     "inputs": []
   },
@@ -1566,6 +1325,11 @@
   },
   {
     "type": "error",
+    "name": "InvalidDevBuy",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidFeeReceiver",
     "inputs": []
   },
@@ -1582,6 +1346,16 @@
   {
     "type": "error",
     "name": "InvalidNameOrSymbol",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidPairs",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidQuoteRoutes",
     "inputs": []
   },
   {
@@ -1621,6 +1395,11 @@
   },
   {
     "type": "error",
+    "name": "LaunchPriceOutOfBounds",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "MultipleDirectFeeReceivers",
     "inputs": []
   },
@@ -1648,6 +1427,27 @@
         "name": "account",
         "type": "address",
         "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "QuoteNotSupported",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "SafeCastOverflowedUintDowncast",
+    "inputs": [
+      {
+        "name": "bits",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ]
   },
@@ -1682,5 +1482,10 @@
         "internalType": "bytes32"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "UnsupportedDecimals",
+    "inputs": []
   }
 ]
