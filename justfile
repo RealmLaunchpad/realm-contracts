@@ -28,21 +28,18 @@ abis:
     
 
 ##################### TESTING ################################
-# Two builds, one command: the Ethereum-mainnet-forked suites need the token impls targeted at mainnet,
-# the Robinhood-forked ones (test/integration/fork/robinhood/) at Robinhood, and one build cannot be
-# both (the impls bake the chain's addresses and refuse a mismatched chain id). Each target keeps its
-# own build cache (`[profile.robinhood]` in foundry.toml), so the retargets do not recompile. Leaves
-# the tree on ROBINHOOD, not the committed mainnet default — run `just chain-mainnet` before
-# committing, or the retarget diff rides along.
-fast-test: check-dividend-layout
-    just chain-mainnet
-    forge test --no-match-contract Invariants --no-match-path "test/integration/**"
+# Every suite forks Robinhood mainnet (`_forkInfra()` in test/launchpad/base.t.sol), so the token impls
+# must be retargeted there first: they bake the chain's addresses and refuse a mismatched chain id.
+# Both runs share the `[profile.robinhood]` build, so the second one does not recompile. Leaves the tree
+# on ROBINHOOD MAINNET — run `just chain-rh-testnet` before committing, or the retarget diff rides along.
+fast-test: check-dividend-layout chain-rh
+    FOUNDRY_PROFILE=robinhood forge test --no-match-contract Invariants --no-match-path "test/integration/**"
     just test-rh-fork
 
 # Robinhood-mainnet fork suites (test/integration/fork/robinhood/): a Realm stack deployed on a Robinhood
 # fork, trading on Robinhood's Uniswap V4 and paying dividends in real xStocks. Needs ROBINHOOD_RPC_URL
 # (archive: the suites pin a block). Retargets the token impls to Robinhood and leaves them there, like
-# the deploy recipes do — and so does `fast-test`, which ends on this recipe.
+# the deploy recipes do. `fast-test` ends on this recipe.
 test-rh-fork: chain-rh
     FOUNDRY_PROFILE=robinhood forge test --match-path "test/integration/fork/robinhood/**"
 

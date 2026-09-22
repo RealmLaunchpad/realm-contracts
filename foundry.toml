@@ -32,9 +32,8 @@ fs_permissions = [
 extra_output = ["storageLayout", "transientStorageLayout"]
 out = "out-layout"
 
-# Second build target for `just test-rh-fork`: the Robinhood-forked suites need the token impls
-# retargeted (`just chain-rh`), and a separate out/cache keeps both targets' builds warm so
-# `fast-test` does not recompile on every switch.
+# Build target for `just fast-test` and `just test-rh-fork`: every suite forks Robinhood mainnet and
+# needs the token impls retargeted (`just chain-rh`); a separate out/cache keeps the default build warm.
 [profile.robinhood]
 out = "out-robinhood"
 cache_path = "cache-robinhood"
