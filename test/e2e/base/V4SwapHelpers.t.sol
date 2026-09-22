@@ -9,7 +9,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
-import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
 /// @notice Reusable V4 swap helpers for end-to-end tests. Mirrors the swap logic from
@@ -53,11 +53,12 @@ abstract contract V4SwapHelpers is LaunchpadBaseTests {
         bytes[] memory params = new bytes[](3);
 
         params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
+            IV4RouterSwaps.ExactInputSingleParams({
                 poolKey: key,
                 zeroForOne: isBuy,
                 amountIn: uint128(amountIn),
                 amountOutMinimum: uint128(minOut),
+                minHopPriceX36: 0,
                 hookData: bytes("")
             })
         );

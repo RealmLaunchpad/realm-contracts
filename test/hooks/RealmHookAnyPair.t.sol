@@ -10,7 +10,7 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmMasterFeeHandler} from "src/interfaces/IRealmMasterFeeHandler.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
-import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {PoolKey as CorePoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -151,11 +151,12 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         params = new bytes[](3);
         params[0] = exactIn
             ? abi.encode(
-                IV4Router.ExactInputSingleParams({
+                IV4RouterSwaps.ExactInputSingleParams({
                     poolKey: key,
                     zeroForOne: zeroForOne,
                     amountIn: uint128(amount),
                     amountOutMinimum: uint128(limit),
+                    minHopPriceX36: 0,
                     hookData: ""
                 })
             )

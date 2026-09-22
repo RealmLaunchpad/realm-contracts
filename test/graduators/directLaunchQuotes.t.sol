@@ -23,7 +23,7 @@ import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
-import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 
 /// @notice An ordinary 6-decimal ERC20, standing in for the kind of stablecoin a creator would quote
 ///         their token against. Six decimals on purpose: it is the shape that breaks anything which
@@ -126,11 +126,12 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
+            IV4RouterSwaps.ExactInputSingleParams({
                 poolKey: key,
                 zeroForOne: isBuy ? quoteIsC0 : !quoteIsC0,
                 amountIn: uint128(amountIn),
                 amountOutMinimum: 0,
+                minHopPriceX36: 0,
                 hookData: bytes("")
             })
         );

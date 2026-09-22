@@ -34,6 +34,7 @@ import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV
 import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet} from "src/config/DeploymentAddresses.sol";
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {IUniswapV2Router02} from "src/interfaces/IUniswapV2Router02.sol";
@@ -137,8 +138,13 @@ contract LaunchpadBaseTests is Test {
     // for fork tests
     uint256 constant BLOCKNUMBER = 23327777;
 
-    /// @dev The chain a suite forks and the external infrastructure the stack is wired to. Ethereum
-    ///      mainnet unless a suite overrides `_forkInfra()`. The token implementations bake their chain's
+    /// @dev The Robinhood-mainnet block every suite pins to, shared with the fork integration suites.
+    uint256 constant ROBINHOOD_BLOCKNUMBER = 58_000_000;
+
+    /// @dev The chain a suite forks and the external infrastructure the stack is wired to. Robinhood
+    ///      mainnet unless a suite overrides `_forkInfra()` — Realm deploys there and nowhere else, and
+    ///      the V4 swap encoding is chain-specific (see `IV4RouterSwaps`), so forking any other chain
+    ///      tests the protocol against a router it will never meet. The token implementations bake their chain's
     ///      addresses in and refuse a mismatched `block.chainid`, so an override needs the matching
     ///      `just chain-<name>` retarget first.
     struct ForkInfra {
@@ -156,16 +162,16 @@ contract LaunchpadBaseTests is Test {
 
     function _forkInfra() internal view virtual returns (ForkInfra memory) {
         return ForkInfra({
-            rpcUrlEnv: "MAINNET_RPC_URL",
-            blockNumber: BLOCKNUMBER,
-            poolManager: DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER,
-            positionManager: DeploymentAddressesEthereumMainnet.UNIV4_POSITION_MANAGER,
-            permit2: DeploymentAddressesEthereumMainnet.PERMIT2,
-            universalRouter: DeploymentAddressesEthereumMainnet.UNIV4_UNIVERSAL_ROUTER,
-            uniV2Router: DeploymentAddressesEthereumMainnet.UNIV2_ROUTER,
-            uniV2Factory: DeploymentAddressesEthereumMainnet.UNIV2_FACTORY,
-            uniV2PairInitCodeHash: DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH,
-            weth: DeploymentAddressesEthereumMainnet.WETH
+            rpcUrlEnv: "ROBINHOOD_RPC_URL",
+            blockNumber: ROBINHOOD_BLOCKNUMBER,
+            poolManager: DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER,
+            positionManager: DeploymentAddressesRobinhoodMainnet.UNIV4_POSITION_MANAGER,
+            permit2: DeploymentAddressesRobinhoodMainnet.PERMIT2,
+            universalRouter: DeploymentAddressesRobinhoodMainnet.UNIV4_UNIVERSAL_ROUTER,
+            uniV2Router: DeploymentAddressesRobinhoodMainnet.UNIV2_ROUTER,
+            uniV2Factory: DeploymentAddressesRobinhoodMainnet.UNIV2_FACTORY,
+            uniV2PairInitCodeHash: DeploymentAddressesRobinhoodMainnet.UNIV2_PAIR_INIT_CODE_HASH,
+            weth: DeploymentAddressesRobinhoodMainnet.WETH
         });
     }
 

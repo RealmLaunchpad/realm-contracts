@@ -31,7 +31,7 @@ import {CustomRevert} from "lib/v4-core/src/libraries/CustomRevert.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
-import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 import {HalfFillQuoteBuyBackRouterStub} from "test/graduators/directLaunchDividends.t.sol";
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
@@ -1176,11 +1176,12 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         IPermit2(permit2Address).approve(address(quoteCoin), universalRouter, type(uint160).max, type(uint48).max);
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
+            IV4RouterSwaps.ExactInputSingleParams({
                 poolKey: key,
                 zeroForOne: quoteIsC0,
                 amountIn: uint128(amountIn),
                 amountOutMinimum: 0,
+                minHopPriceX36: 0,
                 hookData: bytes("")
             })
         );
