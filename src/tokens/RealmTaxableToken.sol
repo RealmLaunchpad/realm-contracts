@@ -205,7 +205,12 @@ abstract contract RealmTaxableToken is
         require(msg.sender == owner || msg.sender == _launchpadOwner(), NotTokenOwner());
         // disallow rescuing the token's own balance to prevent siphoning accrued taxes
         require(token != address(this), CannotRescueSelfToken());
-        IERC20(token).safeTransfer(owner, _sweepableAsset(token));
+        // The V2 family launches with no token owner, and any token can renounce into the same state,
+        // yet both stay rescuable through the launchpad-owner branch above. Paying `owner` there sends
+        // the rescue to `address(0)`: a burn on a permissive ERC20, a revert on a standards-compliant
+        // one. Fall back to the launchpad owner, the only caller that can still reach this.
+        address recipient = owner == address(0) ? _launchpadOwner() : owner;
+        IERC20(token).safeTransfer(recipient, _sweepableAsset(token));
     }
 
     /// @notice Updates `buyTaxBps` and/or `sellTaxBps`. Today this is decrease-only — any attempt

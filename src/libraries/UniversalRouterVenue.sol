@@ -55,7 +55,11 @@ library UniversalRouterVenue {
         bytes[] memory inputs = new bytes[](2);
         inputs[0] = abi.encode(ROUTER_ITSELF, nativeIn);
         // `payerIsUser = false`: the router pays with the WETH the first command just wrapped for it.
-        inputs[1] = abi.encode(address(this), nativeIn, minOut, path, false);
+        // The trailing array is the V3 twin of `IV4RouterSwaps`'s `minHopPriceX36`: the deployed router
+        // decodes this input as `(address, uint256, uint256, bytes, bool, uint256[])` and slices index 5
+        // unconditionally, so omitting it reverts with `SliceOutOfBounds()` before the swap is reached.
+        // Zero-filled, one per hop — a V3 path is `token (20) | fee (3)` repeating, then a final token.
+        inputs[1] = abi.encode(address(this), nativeIn, minOut, path, false, new uint256[]((path.length - 20) / 23));
 
         // A DELTA, not an absolute: the router is not supposed to hold anything between calls, but dust
         // somebody else left there must not fail an otherwise good swap of ours.
