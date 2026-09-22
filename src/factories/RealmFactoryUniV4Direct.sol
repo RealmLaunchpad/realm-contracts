@@ -5,6 +5,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {Currency} from "lib/v4-core/src/types/Currency.sol";
 
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {
@@ -26,7 +27,10 @@ interface IRealmDirectGraduator {
     function seedPool(address token, address quote, int24 launchTick, uint256 tokenAmount, uint16 weightBps)
         external
         returns (uint128 liquidity);
-    function devBuy(address token, address quote) external payable;
+    function devBuy(address token, address quote, PoolKey[] calldata route, uint256 minQuoteOut)
+        external
+        payable
+        returns (uint256 bought, uint256 quoteSpent);
     function burnSeedDust(address token) external;
 }
 
@@ -47,10 +51,10 @@ interface IRealmDirectGraduator {
 ///      `TokenCreated.launchpad` being zero is the on-chain marker that a token came from this venue —
 ///      and the supply is minted to the graduator instead (`RealmToken`'s mint-target fallback).
 ///
-/// @dev ABI note: `createToken` carries its FINAL shape from the first deploy, including a `route` and a
-///      `minQuoteOut` for a dev-buy zap that is not supported yet: both must be empty/zero. Anything not
-///      supported is REJECTED rather than ignored, so a caller can never believe a field took effect
-///      when it did not, and the signature never has to change to turn one on.
+/// @dev ABI note: `createToken` carries its FINAL shape from the first deploy. `DevBuy.route` is
+///      reserved and must be empty: the dev-buy zap's route is derived from `ASSETS_WHITELIST`, never
+///      taken from the caller. Anything not supported is REJECTED rather than ignored, so a caller can
+///      never believe a field took effect when it did not.
 contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     using SafeERC20 for IERC20;
 
@@ -83,19 +87,23 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         int24 launchTick;
     }
 
-    /// @notice The creator's own first buy, settled inside the launch transaction against `msg.value`.
-    ///         Pass an all-zero struct (and no value) for none.
+    /// @notice The creator's own first buy, settled inside the launch transaction. Pass an all-zero
+    ///         struct (and no value) for none. Funded by ONE of:
+    ///         - `msg.value` on a native pair;
+    ///         - `quoteAmount` of the pair's ERC20 quote;
+    ///         - `msg.value` on an ERC20 pair (ZAP): the native is converted to the quote through the
+    ///           quote's whitelist price pool(s) — see `_devBuyRoute` — and the result buys the token.
     /// @param pairIndex Which of `pairs` the buy executes on. The buy runs against ONE pool, the one the
     ///        creator picks — splitting it would just be several worse-priced buys.
-    /// @param route V4 hops taking native ETH to the pair's quote before the buy itself. Not supported
-    ///        yet: must be empty — a creator buying on an ERC20 pair brings that currency instead.
-    /// @param minQuoteOut Slippage floor for that conversion, in the quote's own decimals. The buy leg
-    ///        itself needs none: the pool did not exist before this transaction and nobody else can have
-    ///        traded it, so its output is a pure function of the launch tick and the supply seeded.
-    /// @param quoteAmount For a buy on an ERC20-quoted pair, how much of that quote to spend. PULLED
-    ///        from the caller, who must have approved this factory. Zero on a native pair, where the buy
-    ///        is `msg.value` instead — a creator buying on an ERC20 pair brings that currency rather
-    ///        than having the launch convert for them, which needs no route, no oracle and no floor.
+    /// @param route Reserved; must be empty. The zap's route comes from `ASSETS_WHITELIST`, so no
+    ///        caller-chosen pool (and hook) ever runs mid-launch.
+    /// @param minQuoteOut Floor on the zap's conversion output, in the quote's raw units; 0 accepts any.
+    ///        Must be 0 unless zapping. The buy leg itself needs none: the pool did not exist before this
+    ///        transaction and nobody else can have traded it, so its output is a pure function of the
+    ///        launch tick and the supply seeded.
+    /// @param quoteAmount For a buy on an ERC20-quoted pair paid in that quote, how much to spend.
+    ///        PULLED from the caller, who must have approved this factory. Zero on a native pair and
+    ///        when zapping.
     /// @param recipients How the tokens bought are split, in bps summing to 10,000. Validated exactly as
     ///        the curve venue's deploy-buy shares are, and paid out through the same `BuyOnDeploy` event.
     struct DevBuy {
@@ -142,9 +150,13 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         split the token's own liquidity against itself), or something with no `decimals()` (or more
     ///         than 36).
     error QuoteNotSupported();
-    /// @notice Thrown when the dev buy names a pair that does not exist, carries a conversion route
-    ///         while no route is needed, or sets a floor for a conversion that will not happen.
+    /// @notice Thrown when the dev buy names a pair that does not exist, carries a `route`, is funded
+    ///         both ways (or `quoteAmount` on a native pair), or sets a floor for a conversion that will
+    ///         not happen.
     error InvalidDevBuy();
+    /// @notice Thrown when a zap's quote cannot be reached from native through `ASSETS_WHITELIST`'s V4
+    ///         price pools: a hop listed on V2/V3, against WETH, or more than one reference deep.
+    error DevBuyRouteUnavailable();
     /// @notice `quoteRoutes` names more entries than there are pairs, a route for a native pair, or a
     ///         route while the allocation has no dividends share.
     error InvalidQuoteRoutes();
@@ -435,22 +447,54 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///      which also closes the launch on the graduator — so `burnSeedDust` is always its last call.
     function _settleDevBuy(address token, address quote, DevBuy calldata devBuy) private {
         IRealmDirectGraduator grad = IRealmDirectGraduator(address(GRADUATOR));
-        uint256 spend = quote == address(0) ? msg.value : devBuy.quoteAmount;
-        if (spend == 0) {
+        if (msg.value == 0 && devBuy.quoteAmount == 0) {
             grad.burnSeedDust(token);
             return;
         }
 
+        PoolKey[] memory route;
         if (quote != address(0)) {
-            // Pulled through this factory rather than approved straight to the graduator, so a creator
-            // grants an allowance to ONE address and the graduator never needs one of its own.
-            IERC20(quote).safeTransferFrom(msg.sender, address(GRADUATOR), spend);
+            if (msg.value > 0) {
+                route = _devBuyRoute(quote);
+            } else {
+                // Pulled through this factory rather than approved straight to the graduator, so a
+                // creator grants an allowance to ONE address and the graduator never needs one of its own.
+                IERC20(quote).safeTransferFrom(msg.sender, address(GRADUATOR), devBuy.quoteAmount);
+            }
         }
-        grad.devBuy{value: msg.value}(token, quote);
+        (, uint256 spend) = grad.devBuy{value: msg.value}(token, quote, route, devBuy.minQuoteOut);
         grad.burnSeedDust(token);
 
         // The graduator hands the dev buy back here; the split and its event are the curve venue's.
         _distributeDeployBuy(token, devBuy.recipients, IERC20(token).balanceOf(address(this)), spend);
+    }
+
+    /// @dev The zap's native -> `quote` route, read from `ASSETS_WHITELIST` alone: `quote`'s own V4
+    ///      price pool, preceded by its reference's when it was listed against one. Every hop must be a V4
+    ///      pool against exactly the asset it was listed against, ending at native — a WETH-side pool
+    ///      would need wrapping. Approver-vetted pools only, so no unknown hook runs mid-launch, where the
+    ///      graduator's steps are gated by transient markers rather than by caller.
+    function _devBuyRoute(address quote) private view returns (PoolKey[] memory route) {
+        (PoolKey memory last, address ref) = _devBuyHop(quote);
+        if (ref == address(0)) {
+            route = new PoolKey[](1);
+            route[0] = last;
+            return route;
+        }
+        (PoolKey memory first, address refOfRef) = _devBuyHop(ref);
+        require(refOfRef == address(0), DevBuyRouteUnavailable());
+        route = new PoolKey[](2);
+        (route[0], route[1]) = (first, last);
+    }
+
+    /// @dev `asset`'s whitelist V4 pool and the asset on its other side (zero for native).
+    function _devBuyHop(address asset) private view returns (PoolKey memory key, address from) {
+        RealmAssetsWhitelist.PriceSource memory src = ASSETS_WHITELIST.priceSource(asset);
+        from = ASSETS_WHITELIST.referenceOf(asset);
+        key = src.key;
+        (address c0, address c1) = (Currency.unwrap(key.currency0), Currency.unwrap(key.currency1));
+        // `referenceOf` maps WETH to zero, so a WETH-side pool fails here: its other side is not zero.
+        require(src.venue == RealmAssetsWhitelist.Venue.V4 && (c0 == asset ? c1 : c0) == from, DevBuyRouteUnavailable());
     }
 
     /// @dev Venue-specific validation: the V4 fee tier, the pair set, and the dev buy's consistency
@@ -480,13 +524,16 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         require(totalWeight == BASIS_POINTS, InvalidPairs());
 
         require(devBuy.pairIndex < n, InvalidDevBuy());
-        // The creator brings the pair's own currency; there is nothing here to convert, so a route or a
-        // floor for one is a caller who believes something is happening that is not.
-        require(devBuy.route.length == 0 && devBuy.minQuoteOut == 0, InvalidDevBuy());
-        // Value belongs to a native buy and `quoteAmount` to an ERC20 one; crossing them would leave
-        // one of the two sitting in this contract with nobody to return it to.
-        bool nativeBuy = pairs[devBuy.pairIndex].quote == address(0);
-        require(nativeBuy ? devBuy.quoteAmount == 0 : msg.value == 0, InvalidDevBuy());
+        // The route is the whitelist's, never the caller's (see `_devBuyRoute`).
+        require(devBuy.route.length == 0, InvalidDevBuy());
+        // One funding source, and `quoteAmount` only where there is a quote to pull; a second one would
+        // sit in this contract with nobody to return it to.
+        bool nativePair = pairs[devBuy.pairIndex].quote == address(0);
+        require(
+            (msg.value == 0 || devBuy.quoteAmount == 0) && (!nativePair || devBuy.quoteAmount == 0), InvalidDevBuy()
+        );
+        // A floor only for a conversion that will happen.
+        require(devBuy.minQuoteOut == 0 || (!nativePair && msg.value > 0), InvalidDevBuy());
     }
 
     /// @dev What a quote currency has to be for this venue to launch against it, and its rate.

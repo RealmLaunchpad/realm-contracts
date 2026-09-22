@@ -22,7 +22,7 @@ import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {SniperProtection} from "src/tokens/SniperProtection.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {PoolKey as CorePoolKey} from "lib/v4-core/src/types/PoolKey.sol";
-import {PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
@@ -32,6 +32,9 @@ import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 import {HalfFillQuoteBuyBackRouterStub} from "test/graduators/directLaunchDividends.t.sol";
+import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
+import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
+import {PoolModifyLiquidityTest} from "lib/v4-core/src/test/PoolModifyLiquidityTest.sol";
 
 /// @notice An 18-decimal `QuoteCoin`, for prices where a 6-decimal quote would fall outside the venue's
 ///         launch-price bounds.
@@ -648,10 +651,187 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         _expectCreateRevert(_pairs(address(0), LAUNCH_TICK), devBuy, 0, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
     }
 
-    function test_directInputs_valueOnAnErc20PairIsRejected() public {
+    /// @dev Native AND the quote: one of the two would be stranded.
+    function test_directInputs_valueAndQuoteAmountTogetherAreRejected() public {
+        RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
+        devBuy.quoteAmount = 100e6;
         _expectCreateRevert(
-            _quotePairs(QC_LAUNCH_TICK), _devBuyTo(alice), 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector
+            _quotePairs(QC_LAUNCH_TICK), devBuy, 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector
         );
+    }
+
+    /// @dev A quote-funded buy converts nothing, so a floor for it is refused.
+    function test_directInputs_slippageFloorOnAQuoteFundedBuyIsRejected() public {
+        RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
+        devBuy.quoteAmount = 100e6;
+        devBuy.minQuoteOut = 1;
+        _expectCreateRevert(_quotePairs(QC_LAUNCH_TICK), devBuy, 0, RealmFactoryUniV4Direct.InvalidDevBuy.selector);
+    }
+
+    /// @dev The zap's route is the whitelist's: a caller-supplied one is refused even when zapping.
+    function test_directInputs_devBuyRouteOnAZapIsRejected() public {
+        RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
+        devBuy.route = new CorePoolKey[](1);
+        _expectCreateRevert(
+            _quotePairs(QC_LAUNCH_TICK), devBuy, 0.01 ether, RealmFactoryUniV4Direct.InvalidDevBuy.selector
+        );
+    }
+
+    /////////////////////////// dev-buy zap: native -> quote ///////////////////////////
+
+    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+
+    /// @dev Lists `asset` from `key` as a real approver would, then pins the rate to `QC_PER_ETH` so
+    ///      `QC_LAUNCH_TICK` stays inside the launch bounds whatever the pool's spot.
+    function _listV4(address asset, CorePoolKey memory key) internal {
+        RealmAssetsWhitelist.PriceSource memory src;
+        src.venue = RealmAssetsWhitelist.Venue.V4;
+        src.key = key;
+        vm.prank(admin);
+        assetsWhitelist.setApprover(address(this), true);
+        assetsWhitelist.setWhitelisted(asset, src);
+        _whitelist(asset, QC_PER_ETH);
+    }
+
+    /// @dev The real USDC/ETH 0.05% V4 pool.
+    function _usdcEthKey() internal pure returns (CorePoolKey memory) {
+        return CorePoolKey(Currency.wrap(address(0)), Currency.wrap(USDC), 500, 10, IHooks(address(0)));
+    }
+
+    /// @dev A funded no-hook V4 pool of two ERC20s opened at tick 0.
+    function _erc20Pool(address a, address b) internal returns (CorePoolKey memory key) {
+        (address c0, address c1) = a < b ? (a, b) : (b, a);
+        key = CorePoolKey(Currency.wrap(c0), Currency.wrap(c1), 3000, 60, IHooks(address(0)));
+        IPoolManager(poolManagerAddress).initialize(key, uint160(1 << 96));
+        PoolModifyLiquidityTest lp = new PoolModifyLiquidityTest(IPoolManager(poolManagerAddress));
+        deal(a, address(this), 1e30);
+        deal(b, address(this), 1e30);
+        IERC20(a).approve(address(lp), type(uint256).max);
+        IERC20(b).approve(address(lp), type(uint256).max);
+        lp.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: 1e18, salt: 0}),
+            ""
+        );
+    }
+
+    /// @dev A native-funded launch against `quote`, recording logs.
+    function _zapLaunch(address quote, uint256 value, uint256 minQuoteOut) internal returns (address token) {
+        RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
+        devBuy.minQuoteOut = minQuoteOut;
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(false);
+        vm.deal(creator, value);
+        vm.recordLogs();
+        vm.prank(creator);
+        token = directFactory.createToken{value: value}(
+            setup,
+            _pairs(quote, QC_LAUNCH_TICK),
+            _noDirectAlloc(_emptyTaxCfg()),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            devBuy,
+            address(0)
+        );
+    }
+
+    /// @dev `BuyOnDeploy.quoteSpent`, and what the graduator took out of `key`'s pool — the positive leg
+    ///      of its `PoolManager.Swap` there.
+    function _zapLogs(CorePoolKey memory key) internal returns (uint256 quoteSpent, uint256 converted) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 id = PoolId.unwrap(key.toId());
+        for (uint256 i = 0; i < logs.length; ++i) {
+            bytes32 t0 = logs[i].topics.length > 0 ? logs[i].topics[0] : bytes32(0);
+            if (t0 == IRealmFactory.BuyOnDeploy.selector) {
+                (quoteSpent,,,) = abi.decode(logs[i].data, (uint256, uint256, address[], uint256[]));
+            } else if (t0 == IPoolManager.Swap.selector && logs[i].topics[1] == id) {
+                assertEq(address(uint160(uint256(logs[i].topics[2]))), address(directGraduator), "swapper");
+                (int128 a0, int128 a1) = abi.decode(logs[i].data, (int128, int128));
+                // forge-lint: disable-next-line(unsafe-typecast)
+                converted = uint256(uint128(a0 > 0 ? a0 : a1));
+            }
+        }
+    }
+
+    function _assertNoLeftovers(address quote) internal view {
+        assertEq(IERC20(quote).balanceOf(address(directGraduator)), 0, "graduator keeps no quote");
+        assertEq(IERC20(quote).balanceOf(address(directFactory)), 0, "factory keeps no quote");
+        assertEq(address(directGraduator).balance, 0, "graduator keeps no native");
+        assertEq(address(directFactory).balance, 0, "factory keeps no native");
+    }
+
+    function test_zap_nativeBuysOnAQuoteListedAgainstNative() public {
+        _listV4(USDC, _usdcEthKey());
+        address token = _zapLaunch(USDC, 0.1 ether, 1);
+        (uint256 quoteSpent, uint256 converted) = _zapLogs(_usdcEthKey());
+
+        assertGt(IERC20(token).balanceOf(alice), 0, "dev buy delivered nothing");
+        assertGt(converted, 0, "no conversion");
+        assertEq(quoteSpent, converted, "quoteSpent is the converted quote, not the native sent");
+        assertEq(IERC20(token).balanceOf(address(directFactory)), 0, "factory keeps no tokens");
+        _assertNoLeftovers(USDC);
+    }
+
+    /// @dev Two hops: native -> USDC (the reference) -> QC, whose listing is against USDC.
+    function test_zap_nativeBuysThroughAReferenceListedQuote() public {
+        _listV4(USDC, _usdcEthKey());
+        CorePoolKey memory qcUsdc = _erc20Pool(address(quoteCoin), USDC);
+        _listV4(address(quoteCoin), qcUsdc);
+        assertEq(assetsWhitelist.referenceOf(address(quoteCoin)), USDC, "listed against the reference");
+
+        address token = _zapLaunch(address(quoteCoin), 0.1 ether, 0);
+        (uint256 quoteSpent, uint256 converted) = _zapLogs(qcUsdc);
+
+        assertGt(IERC20(token).balanceOf(alice), 0, "dev buy delivered nothing");
+        assertGt(converted, 0, "no conversion");
+        assertEq(quoteSpent, converted, "quoteSpent is the last hop's output");
+        _assertNoLeftovers(address(quoteCoin));
+        _assertNoLeftovers(USDC);
+    }
+
+    function test_zap_floorAboveTheConversionReverts() public {
+        _listV4(USDC, _usdcEthKey());
+        RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
+        devBuy.minQuoteOut = 1e30;
+        vm.deal(creator, 0.1 ether);
+        _expectCreateRevert(
+            _pairs(USDC, QC_LAUNCH_TICK), devBuy, 0.1 ether, RealmDirectGraduatorUniV4.InsufficientQuoteOut.selector
+        );
+    }
+
+    /// @dev `source` stands in for QC's whitelist listing; QC itself is whitelisted by rate in `setUp`.
+    function _expectZapRouteUnavailable(RealmAssetsWhitelist.PriceSource memory source) internal {
+        vm.mockCall(
+            address(assetsWhitelist),
+            abi.encodeCall(RealmAssetsWhitelist.priceSource, (address(quoteCoin))),
+            abi.encode(source)
+        );
+        vm.deal(creator, 0.1 ether);
+        _expectCreateRevert(
+            _quotePairs(QC_LAUNCH_TICK),
+            _devBuyTo(alice),
+            0.1 ether,
+            RealmFactoryUniV4Direct.DevBuyRouteUnavailable.selector
+        );
+    }
+
+    function test_zap_quoteListedOnV2OrV3Reverts() public {
+        RealmAssetsWhitelist.PriceSource memory src;
+        src.venue = RealmAssetsWhitelist.Venue.V2;
+        src.pool = makeAddr("v2Pair");
+        _expectZapRouteUnavailable(src);
+        src.venue = RealmAssetsWhitelist.Venue.V3;
+        _expectZapRouteUnavailable(src);
+    }
+
+    /// @dev `referenceOf` reads WETH as native, but a WETH-side pool would need wrapping.
+    function test_zap_quoteListedAgainstWethReverts() public {
+        RealmAssetsWhitelist.PriceSource memory src;
+        src.venue = RealmAssetsWhitelist.Venue.V4;
+        (address c0, address c1) = address(quoteCoin) < address(WETH)
+            ? (address(quoteCoin), address(WETH))
+            : (address(WETH), address(quoteCoin));
+        src.key = CorePoolKey(Currency.wrap(c0), Currency.wrap(c1), 3000, 60, IHooks(address(0)));
+        _expectZapRouteUnavailable(src);
     }
 
     /// @dev Weights that DO sum to the whole, one of them zero: a pool with nothing to seed.

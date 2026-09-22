@@ -281,7 +281,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         vm.expectRevert(RealmDirectGraduatorUniV4.LaunchNotPrepared.selector);
-        directGraduator.devBuy{value: 1 ether}(token, address(0));
+        directGraduator.devBuy{value: 1 ether}(token, address(0), new CorePoolKey[](0), 0);
     }
 
     function test_afterLaunch_poolIsTradeableThroughTheHook() public {

@@ -94,13 +94,13 @@ interface IRealmFactory {
     ///         filter by token or by curve (e.g. "all tokens on curve X").
     event BondingCurveAssigned(address indexed token, address indexed bondingCurve);
 
-    /// @param ethSpent What the buy cost, in the currency of the pair it ran on: wei on a native pair,
-    ///        the quote ERC20's raw units on a direct-venue ERC20 pair. Named for the curve venue, where
-    ///        it is always native.
+    /// @param quoteSpent What the buy spent in the quote of the pair it ran on, raw units: wei on a native
+    ///        pair (always, on the curve venue), the quote ERC20's units on a direct-venue ERC20 pair —
+    ///        the CONVERTED amount, not the native sent, when the creator paid in native.
     event BuyOnDeploy(
         address indexed token,
         address indexed buyer,
-        uint256 ethSpent,
+        uint256 quoteSpent,
         uint256 tokensBought,
         address[] recipients,
         uint256[] amounts

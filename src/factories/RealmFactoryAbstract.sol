@@ -192,7 +192,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     /// @dev Splits `tokensBought` across `supplyShares` proportionally and emits `BuyOnDeploy`.
     ///      Rounding dust goes to the last recipient so no tokens remain in the factory.
     /// @param spent What the buy cost, in the pair's quote: wei on a native pair, the ERC20's raw units
-    ///        otherwise. Reported as `BuyOnDeploy.ethSpent`.
+    ///        otherwise. Reported as `BuyOnDeploy.quoteSpent`.
     /// @dev Shared by both venues because the split — and the event an indexer reads it from — must be
     ///      identical however the tokens were acquired: off a bonding curve on the curve factories, out
     ///      of the launch pool on the direct one.

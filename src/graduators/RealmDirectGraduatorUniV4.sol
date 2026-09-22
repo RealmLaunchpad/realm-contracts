@@ -138,6 +138,10 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     ///         end of the band. Reverting hands the creator their ETH back instead of stranding the
     ///         remainder here.
     error DevBuyNotFilled();
+    /// @notice Thrown when a dev-buy conversion route does not chain native -> ... -> the pair's quote.
+    error InvalidDevBuyRoute();
+    /// @notice Thrown when the native -> quote conversion delivered less than the caller's floor.
+    error InsufficientQuoteOut();
     /// @notice Thrown when `unlockCallback` is reached from anywhere but the pool manager.
     error OnlyPoolManager();
     /// @notice Thrown when `graduateToken` is sent native. It spends none; the dev buy is `devBuy`.
@@ -308,19 +312,43 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     ///      which is why no slippage bound is taken for this leg.
     /// @dev Native arrives as `msg.value`; an ERC20 quote is transferred here by the factory first, and
     ///      the whole balance is spent. Either way nothing is left behind: a partial fill reverts.
+    /// @dev ZAP: with a non-empty `route` on an ERC20 pair, `msg.value` is first swapped native -> ... ->
+    ///      `quote` across `route`'s pools, then the quote bought with goes straight into the token leg.
+    ///      All inside one unlock, so the last hop's quote credit nets against the token leg's quote debit
+    ///      and no quote ever lands here. `route` is trusted as given: the factory derives it from the
+    ///      assets whitelist, never from its caller, so no unvetted hook runs mid-launch.
     /// @dev Known and accepted: "the whole balance" includes any of `quote` sent here by mistake, which
     ///      the next dev buy on that quote then spends for its creator. Nothing else can reach it — this
     ///      contract is ownerless — so the alternative is leaving it stranded forever.
-    function devBuy(address tokenAddress, address quote) external payable {
+    /// @param minQuoteOut Floor on the zap's conversion output, in `quote`'s raw units. Unused without a route.
+    /// @return bought Tokens bought, transferred to the caller.
+    /// @return quoteSpent Quote the token leg spent: the conversion's output on a zap.
+    function devBuy(address tokenAddress, address quote, PoolKey[] calldata route, uint256 minQuoteOut)
+        external
+        payable
+        returns (uint256 bought, uint256 quoteSpent)
+    {
         require(tokenAddress == _initializedToken && _launched, LaunchNotPrepared());
-        uint256 amountIn = quote == address(0) ? msg.value : IERC20(quote).balanceOf(address(this));
+        uint256 amountIn;
+        if (quote == address(0)) {
+            require(route.length == 0, InvalidDevBuyRoute());
+            amountIn = msg.value;
+        } else if (route.length > 0) {
+            amountIn = msg.value;
+        } else {
+            // Native on an ERC20 buy with no route to convert it would be stranded here.
+            require(msg.value == 0, UnexpectedValue());
+            amountIn = IERC20(quote).balanceOf(address(this));
+        }
         require(amountIn > 0, NoETHToGraduate());
 
         PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, hookFor(quote));
         bool quoteIsC0 = Currency.unwrap(key.currency0) == quote;
         // Exactly what the swap delivered, not this contract's balance: the seed remainder is still
         // here, waiting for `burnSeedDust`.
-        uint256 bought = abi.decode(UNIV4_POOL_MANAGER.unlock(abi.encode(key, amountIn, quoteIsC0)), (uint256));
+        (bought, quoteSpent) = abi.decode(
+            UNIV4_POOL_MANAGER.unlock(abi.encode(key, amountIn, quoteIsC0, route, minQuoteOut)), (uint256, uint256)
+        );
         IERC20(tokenAddress).safeTransfer(msg.sender, bought);
     }
 
@@ -355,35 +383,68 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
 
     /// @notice The pool manager's re-entry into this contract for the dev buy. Does nothing a caller
     ///         could steer: the only path that opens the lock is `devBuy`, which encodes its own key and
-    ///         amount, and the callback refuses anyone but the manager. Returns the tokens bought.
+    ///         amount, and the callback refuses anyone but the manager. Returns the tokens bought and the
+    ///         quote spent on them.
     function unlockCallback(bytes calldata data) external override returns (bytes memory) {
         require(msg.sender == address(UNIV4_POOL_MANAGER), OnlyPoolManager());
-        (PoolKey memory key, uint256 amountIn, bool quoteIsC0) = abi.decode(data, (PoolKey, uint256, bool));
+        (PoolKey memory key, uint256 amountIn, bool quoteIsC0, PoolKey[] memory route, uint256 minQuoteOut) =
+            abi.decode(data, (PoolKey, uint256, bool, PoolKey[], uint256));
 
-        // Exact-input (negative `amountSpecified`) with the price limit at the far end of the band, so
-        // the swap is bounded by the liquidity it finds rather than by a price we picked.
+        // Zap: native -> ... -> quote, deltas left open for the token leg to net against.
+        uint256 quoteIn = amountIn;
+        if (route.length > 0) {
+            quoteIn = _convert(route, amountIn, quoteIsC0 ? key.currency0 : key.currency1);
+            require(quoteIn >= minQuoteOut, InsufficientQuoteOut());
+        }
+
+        (uint256 spent, uint256 bought) = _swapExactIn(key, quoteIsC0, quoteIn);
+        require(spent == quoteIn, DevBuyNotFilled());
+        // On a zap the quote debit is already netted by the conversion's credit; only native is owed.
+        if (route.length > 0) UNIV4_POOL_MANAGER.settle{value: amountIn}();
+        else _settleQuote(quoteIsC0 ? key.currency0 : key.currency1, amountIn);
+        UNIV4_POOL_MANAGER.take(quoteIsC0 ? key.currency1 : key.currency0, address(this), bought);
+        return abi.encode(bought, quoteIn);
+    }
+
+    /// @dev Swaps `amountIn` native through every hop of `route`, each fully filled, and returns what the
+    ///      last hop delivered of `quote`. Each hop's direction follows from the currency going in.
+    function _convert(PoolKey[] memory route, uint256 amountIn, Currency quote) internal returns (uint256 amount) {
+        Currency c = Currency.wrap(address(0));
+        amount = amountIn;
+        for (uint256 i = 0; i < route.length; ++i) {
+            bool zeroForOne = route[i].currency0 == c;
+            require(zeroForOne || route[i].currency1 == c, InvalidDevBuyRoute());
+            (uint256 spent, uint256 out) = _swapExactIn(route[i], zeroForOne, amount);
+            require(spent == amount, DevBuyNotFilled());
+            amount = out;
+            c = zeroForOne ? route[i].currency1 : route[i].currency0;
+        }
+        require(c == quote, InvalidDevBuyRoute());
+    }
+
+    /// @dev Exact-input (negative `amountSpecified`) with the price limit at the far end of the band, so
+    ///      the swap is bounded by the liquidity it finds rather than by a price we picked. Returns what
+    ///      went in and what came out.
+    function _swapExactIn(PoolKey memory key, bool zeroForOne, uint256 amountIn)
+        internal
+        returns (uint256 spent, uint256 out)
+    {
         BalanceDelta delta = UNIV4_POOL_MANAGER.swap(
             key,
             IPoolManager.SwapParams({
-                zeroForOne: quoteIsC0,
+                zeroForOne: zeroForOne,
                 // forge-lint: disable-next-line(unsafe-typecast)
                 amountSpecified: -int256(amountIn),
-                sqrtPriceLimitX96: quoteIsC0 ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+                sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             }),
             ""
         );
-
-        // `swap` returns THIS contract's own delta, hook deltas already folded in, so the two legs below
-        // are the whole settlement: what we owe on the quote side, what we are owed on the coin side.
-        (int128 quoteDelta, int128 coinDelta) =
-            quoteIsC0 ? (delta.amount0(), delta.amount1()) : (delta.amount1(), delta.amount0());
+        // `swap` returns THIS contract's own delta, hook deltas already folded in, so these two legs are
+        // the whole settlement: what we owe on the input side, what we are owed on the output side.
+        (int128 inDelta, int128 outDelta) =
+            zeroForOne ? (delta.amount0(), delta.amount1()) : (delta.amount1(), delta.amount0());
         // forge-lint: disable-next-line(unsafe-typecast)
-        require(uint256(uint128(-quoteDelta)) == amountIn, DevBuyNotFilled());
-        _settleQuote(quoteIsC0 ? key.currency0 : key.currency1, amountIn);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 bought = uint256(uint128(coinDelta));
-        UNIV4_POOL_MANAGER.take(quoteIsC0 ? key.currency1 : key.currency0, address(this), bought);
-        return abi.encode(bought);
+        (spent, out) = (uint256(uint128(-inDelta)), uint256(uint128(outDelta)));
     }
 
     /// @dev Pays the quote the swap owes. Native settles straight from the forwarded value; an ERC20
