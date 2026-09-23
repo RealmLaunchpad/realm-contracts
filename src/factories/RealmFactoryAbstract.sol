@@ -129,6 +129,17 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     function initialize() external initializer {
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
+        announceGraduator();
+    }
+
+    /// @notice Emits `GraduatorSet(GRADUATOR)` once per graduator: a no-op if this proxy already announced it.
+    /// @dev    The indexer registers the graduator from this event, so it must fire BEFORE any token uses a
+    ///         new GRADUATOR and never twice for the same one. Called from `initialize()`; every upgrade
+    ///         must pass it as `upgradeToAndCall` data so a swapped GRADUATOR is announced atomically.
+    function announceGraduator() public {
+        if (_announcedGraduator == address(GRADUATOR)) return;
+        _announcedGraduator = address(GRADUATOR);
+        emit GraduatorSet(address(GRADUATOR));
     }
 
     /// @dev UUPS upgrade gate: only the owner can swap the implementation.
@@ -587,7 +598,10 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         }
     }
 
+    /// @notice Last graduator announced via `GraduatorSet`; dedupes `announceGraduator()`.
+    address private _announcedGraduator;
+
     /// @dev Reserved for future storage variables. Decrement when adding new storage to keep the
     ///      proxy's slot layout stable across upgrades. Never reorder existing storage.
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 }

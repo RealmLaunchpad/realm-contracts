@@ -126,6 +126,10 @@ interface IRealmFactory {
     ///         by token or by referral (e.g. "all tokens referred by X").
     event TokenReferral(address indexed token, address indexed referral);
 
+    /// @notice Emitted once per graduator a factory proxy uses, before any token can graduate through it.
+    ///         The indexer registers the graduator from this event (not from `TokenCreated`).
+    event GraduatorSet(address graduator);
+
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();

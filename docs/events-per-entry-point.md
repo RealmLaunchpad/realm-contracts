@@ -649,6 +649,14 @@ creation events are in §1 step 4b.
 - **`receive()`** — the vault accepts native so a `processDividends` payout to it lands rather than
   being skipped. No event; the payout is attributed by the paying token's own dividend events.
 
+### Factories (`RealmFactoryUniV2Unified`, `RealmFactoryUniV4Direct` — one UUPS proxy each per chain)
+
+- **`GraduatorSet`** (`graduator`) — the factory's `GRADUATOR`, emitted at most once per graduator per
+  proxy, always before any token can use it: from `initialize()` (after `OwnershipTransferred` and
+  `Initialized`), and from `announceGraduator()` passed as `upgradeToAndCall` data (after `Upgraded`),
+  which is a no-op when the new implementation keeps the same graduator. Permissionless and idempotent.
+  The indexer registers the graduator from this event, not from `TokenCreated`.
+
 ### `RealmKeepersRegistry` (one per chain)
 
 The allowlist of addresses permitted to call `processDividends`, `processBurn` and `processLiquidity`.

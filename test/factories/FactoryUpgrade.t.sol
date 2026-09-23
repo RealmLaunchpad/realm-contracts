@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
+import {Vm} from "forge-std/Vm.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
 import {LaunchpadBaseTestsWithDirectV4} from "test/launchpad/base.t.sol";
@@ -100,6 +101,49 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithDirectV4 {
         address impl = _deployV4ImplSameArgs();
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         RealmFactoryUniV4Direct(impl).initialize();
+    }
+
+    // ───────────── GraduatorSet announcement ─────────────
+
+    function test_initialize_emitsGraduatorSet() public {
+        address impl = _deployV4ImplSameArgs();
+        vm.expectEmit();
+        emit IRealmFactory.GraduatorSet(address(directGraduator));
+        new ERC1967Proxy(impl, abi.encodeCall(RealmFactoryAbstract.initialize, ()));
+    }
+
+    /// @dev Live proxies predate `_announcedGraduator` (slot 0 is zero): the upgrade announces once,
+    ///      a repeat announces nothing, and a graduator swap announces the new one.
+    function test_upgrade_announcesGraduatorOnce() public {
+        vm.store(address(directFactory), bytes32(0), bytes32(0));
+        bytes memory announce = abi.encodeCall(RealmFactoryAbstract.announceGraduator, ());
+        address implA = _deployV4ImplSameArgs();
+        address implB = _deployV4ImplSameArgs();
+        address newGraduator = makeAddr("newGraduator");
+        address implC = _deployV4ImplWithGraduator(newGraduator);
+
+        vm.expectEmit(address(directFactory));
+        emit IRealmFactory.GraduatorSet(address(directGraduator));
+        vm.prank(admin);
+        directFactory.upgradeToAndCall(implA, announce);
+
+        vm.recordLogs();
+        vm.prank(admin);
+        directFactory.upgradeToAndCall(implB, announce);
+        directFactory.announceGraduator();
+        assertEq(_countGraduatorSet(), 0);
+
+        vm.expectEmit(address(directFactory));
+        emit IRealmFactory.GraduatorSet(newGraduator);
+        vm.prank(admin);
+        directFactory.upgradeToAndCall(implC, announce);
+    }
+
+    function _countGraduatorSet() internal returns (uint256 n) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].topics[0] == IRealmFactory.GraduatorSet.selector) n++;
+        }
     }
 
     // ───────────── End-to-end after upgrade ─────────────

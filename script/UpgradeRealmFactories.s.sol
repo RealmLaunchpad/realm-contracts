@@ -6,6 +6,7 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
+import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 
@@ -75,8 +76,10 @@ contract UpgradeRealmFactories is Script {
             )
         );
 
-        UUPSUpgradeable(m.factoryV2Proxy).upgradeToAndCall(v2Impl, "");
-        UUPSUpgradeable(m.factoryV4DirectProxy).upgradeToAndCall(directImpl, "");
+        UUPSUpgradeable(m.factoryV2Proxy)
+            .upgradeToAndCall(v2Impl, abi.encodeCall(RealmFactoryAbstract.announceGraduator, ()));
+        UUPSUpgradeable(m.factoryV4DirectProxy)
+            .upgradeToAndCall(directImpl, abi.encodeCall(RealmFactoryAbstract.announceGraduator, ()));
     }
 
     /// @dev A zero in any of these means the manifest was not refreshed after the last deploy; the

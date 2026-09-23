@@ -7,6 +7,7 @@ import {ERC1967Utils} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 
 import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
+import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 
@@ -79,7 +80,7 @@ contract UpgradeDirectVenue is Script {
                 whitelist
             )
         );
-        UUPSUpgradeable(proxy).upgradeToAndCall(newImpl, "");
+        UUPSUpgradeable(proxy).upgradeToAndCall(newImpl, abi.encodeCall(RealmFactoryAbstract.announceGraduator, ()));
         vm.stopBroadcast();
 
         RealmFactoryUniV4Direct factory = RealmFactoryUniV4Direct(payable(proxy));
