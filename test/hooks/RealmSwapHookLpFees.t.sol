@@ -11,9 +11,8 @@ import {Vm} from "forge-std/Vm.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
-import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 
 /// @notice Test-only router stub that reverts on every call. Used with `vm.etch` to exercise the
@@ -505,8 +504,13 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
-            IV4Router.ExactOutputSingleParams({
-                poolKey: key, zeroForOne: true, amountOut: amountOut, amountInMaximum: amountInMax, hookData: bytes("")
+            IV4RouterSwaps.ExactOutputSingleParams({
+                poolKey: key,
+                zeroForOne: true,
+                amountOut: amountOut,
+                amountInMaximum: amountInMax,
+                minHopPriceX36: 0,
+                hookData: bytes("")
             })
         );
         params[1] = abi.encode(key.currency0, amountInMax);
@@ -679,8 +683,13 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
-            IV4Router.ExactOutputSingleParams({
-                poolKey: key, zeroForOne: false, amountOut: ethOut, amountInMaximum: tokenInMax, hookData: bytes("")
+            IV4RouterSwaps.ExactOutputSingleParams({
+                poolKey: key,
+                zeroForOne: false,
+                amountOut: ethOut,
+                amountInMaximum: tokenInMax,
+                minHopPriceX36: 0,
+                hookData: bytes("")
             })
         );
         // Pay tokens (currency1, capped at tokenInMax), receive ETH (currency0, the exact request).

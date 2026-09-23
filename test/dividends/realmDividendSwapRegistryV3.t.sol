@@ -8,6 +8,7 @@ import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {SwapRejection} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
+import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 
 /// @notice The curated Uniswap V3 venue, exercised against the real Ondo Global Markets pools — the
 ///         assets this venue exists for, and the only tokenized equities on Ethereum with usable depth.
@@ -22,6 +23,18 @@ import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.
 ///      venue was added to reach. That test is the regression guard for ever reintroducing one.
 interface IWETH9 {
     function deposit() external payable;
+}
+
+interface IUniswapV3FactoryMin {
+    function createPool(address a, address b, uint24 fee) external returns (address);
+}
+
+interface IUniswapV3PoolMin {
+    function initialize(uint160 sqrtPriceX96) external;
+    function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool);
+    function mint(address recipient, int24 tickLower, int24 tickUpper, uint128 amount, bytes calldata data)
+        external
+        returns (uint256, uint256);
 }
 
 /// @notice Stand-in for the universal router on a PARTIAL V3 fill. `WRAP_ETH` wraps the whole input up
@@ -57,6 +70,13 @@ contract RealmDividendSwapRegistryV3Tests is Test {
     uint24 internal constant FEE_005 = 500;
     uint24 internal constant FEE_030 = 3000;
     uint24 internal constant FEE_001 = 100;
+    uint24 internal constant FEE_100 = 10_000;
+
+    address internal constant V3_FACTORY = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
+    /// @dev AAPLon's real, liquid WETH pool.
+    address internal constant AAPL_WETH_005 = 0x8bb3514e2204E1cDF3Ac149EFEe7Ff04D91B719f;
+    /// @dev Robinhood asset with NO V2 pair, reachable on V3 only through USDG.
+    address internal constant SHY = 0xBE274710Bf3d9567e1B290eF6a5F9f90ca016FD8;
 
     RealmDividendSwapRegistry internal registry;
 
@@ -100,31 +120,52 @@ contract RealmDividendSwapRegistryV3Tests is Test {
         vm.expectRevert(abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, why));
     }
 
+    /// @dev A fresh 1% AAPLon/WETH pool opened at the live 0.05% pool's price, holding one AAPLon-only
+    ///      position just below it: a WETH-in swap walks straight into it, and the pool holds ~no WETH.
+    function _oneSidedAaplPool() internal returns (address pool) {
+        pool = IUniswapV3FactoryMin(V3_FACTORY).createPool(WETH, AAPLon, FEE_100);
+        (, int24 tick,,,,,) = IUniswapV3PoolMin(AAPL_WETH_005).slot0();
+        // WETH sorts first, so price is AAPLon per WETH and buying AAPLon moves the tick DOWN.
+        int24 upper = (tick / 200) * 200;
+        IUniswapV3PoolMin(pool).initialize(TickMath.getSqrtPriceAtTick(upper) - 1);
+        deal(AAPLon, address(this), 1e24);
+        IUniswapV3PoolMin(pool).mint(address(this), upper - 20_000, upper, 1e20, "");
+    }
+
+    function uniswapV3MintCallback(uint256 owed0, uint256 owed1, bytes calldata) external {
+        if (owed0 > 0) deal(WETH, msg.sender, IERC20(WETH).balanceOf(msg.sender) + owed0);
+        if (owed1 > 0) IERC20(AAPLon).transfer(msg.sender, owed1);
+    }
+
     //////////////////////// admission //////////////////////
 
     /// @dev An asset with no V2 pair is refused until a route admits it. The route IS the curation.
     function test_aV3RouteAdmitsAnAssetTheV2TestCannotSee() public {
         assertEq(
-            uint8(registry.validateRoute(AAPLon, "")), uint8(SwapRejection.NoPair), "no V2 pair, so refused on its own"
+            uint8(registry.validateRoute(SHY, "")), uint8(SwapRejection.NoPair), "no V2 pair, so refused on its own"
         );
 
-        _route(AAPLon, _path(WETH, FEE_030, AAPLon));
+        vm.prank(admin);
+        registry.setAllowedQuoteToken(USDG, true);
+        _route(SHY, _path(WETH, FEE_001, USDG, FEE_030, SHY));
 
-        assertTrue(_supported(AAPLon), "the route admits it");
+        assertTrue(_supported(SHY), "the route admits it");
         assertEq(
-            registry.routeOf(address(this), AAPLon),
-            DividendRouteLib.encodeV3(_path(WETH, FEE_030, AAPLon)),
+            registry.routeOf(address(this), SHY),
+            DividendRouteLib.encodeV3(_path(WETH, FEE_001, USDG, FEE_030, SHY)),
             "and is readable back"
         );
     }
 
-    /// @dev ⚠️ THE REGRESSION GUARD. The AAPLon/WETH pool holds essentially no WETH — its liquidity is
+    /// @dev ⚠️ THE REGRESSION GUARD. An AAPLon/WETH pool holding essentially no WETH — its liquidity is
     ///      single-sided in the asset, which is what a sell-side maker looks like and what a buyer
     ///      wants. Any depth gate that read the quote-side balance would reject it. It converts fine.
+    ///      Robinhood has no such pool at `BLOCKNUMBER`, so it is built: see `_oneSidedAaplPool()`.
     function test_aPoolHoldingAlmostNoQuoteTokenIsStillUsable() public {
-        assertLt(IERC20(WETH).balanceOf(0x2323192488E6632840873410bb65B7Ec8DBfAb6f), 0.01 ether, "pool holds ~no WETH");
+        address pool = _oneSidedAaplPool();
+        assertLt(IERC20(WETH).balanceOf(pool), 0.01 ether, "pool holds ~no WETH");
 
-        _route(AAPLon, _path(WETH, FEE_030, AAPLon));
+        _route(AAPLon, _path(WETH, FEE_100, AAPLon));
 
         vm.deal(address(this), 0.005 ether);
         uint256 out = registry.swapNativeToAsset{value: 0.005 ether}(AAPLon, 1, recipient);
@@ -219,7 +260,8 @@ contract RealmDividendSwapRegistryV3Tests is Test {
     ///      refuses it at write time — this is what the off-chain admission bar is for — but the swap
     ///      fails loudly rather than converting at a bad price.
     function test_aRouteOnTheWrongFeeTierFailsAtSwapTime() public {
-        _route(AAPLon, _path(WETH, FEE_005, AAPLon));
+        // AAPLon's WETH pool is on 0.05%; there is none on 0.3%.
+        _route(AAPLon, _path(WETH, FEE_030, AAPLon));
 
         vm.deal(address(this), 0.005 ether);
         vm.expectRevert(RealmDividendSwapRegistry.SwapFailed.selector);
@@ -231,14 +273,14 @@ contract RealmDividendSwapRegistryV3Tests is Test {
     /// @dev An asset that ALSO passes the V2 test is redirected by its route: the curated pool wins,
     ///      because an asset only carries a route when an admin judged it the better venue.
     function test_aV3RouteWinsOverAViableV2Pair() public {
-        assertEq(uint8(registry.validateRoute(MSFT, "")), uint8(SwapRejection.OK), "MSFT passes the V2 test");
+        assertEq(uint8(registry.validateRoute(HOODon, "")), uint8(SwapRejection.OK), "HOODon passes the V2 test");
 
-        _route(MSFT, _path(WETH, FEE_030, MSFT));
+        _route(HOODon, _path(WETH, FEE_030, HOODon));
 
         vm.deal(address(this), 0.01 ether);
-        uint256 out = registry.swapNativeToAsset{value: 0.01 ether}(MSFT, 1, recipient);
+        uint256 out = registry.swapNativeToAsset{value: 0.01 ether}(HOODon, 1, recipient);
         assertGt(out, 0, "still converts");
-        assertEq(IERC20(MSFT).balanceOf(recipient), out, "and through the route, not the pair");
+        assertEq(IERC20(HOODon).balanceOf(recipient), out, "and through the route, not the pair");
     }
 
     /// @dev Adding a route for one asset must not move any other asset's venue.

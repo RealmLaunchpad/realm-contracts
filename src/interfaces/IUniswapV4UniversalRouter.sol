@@ -46,4 +46,16 @@ interface IV4RouterSwaps {
         uint128 amountIn;
         uint128 amountOutMinimum;
     }
+
+    /// @dev Not encoded by the protocol (it only sells exact-input); pinned for the exact-output paths
+    ///      tests drive through the live router.
+    struct ExactOutputSingleParams {
+        PoolKey poolKey;
+        bool zeroForOne;
+        uint128 amountOut;
+        uint128 amountInMaximum;
+        /// @dev See `ExactInputSingleParams.minHopPriceX36`.
+        uint256 minHopPriceX36;
+        bytes hookData;
+    }
 }

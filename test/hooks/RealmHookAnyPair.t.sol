@@ -24,7 +24,6 @@ import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {Hooks} from "lib/v4-core/src/libraries/Hooks.sol";
 import {CustomRevert} from "lib/v4-core/src/libraries/CustomRevert.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
-import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 
 /// @notice Swaps straight on the pool manager, with no settlement: only for pools whose swap is
@@ -161,11 +160,12 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
                 })
             )
             : abi.encode(
-                IV4Router.ExactOutputSingleParams({
+                IV4RouterSwaps.ExactOutputSingleParams({
                     poolKey: key,
                     zeroForOne: zeroForOne,
                     amountOut: uint128(amount),
                     amountInMaximum: uint128(limit),
+                    minHopPriceX36: 0,
                     hookData: ""
                 })
             );

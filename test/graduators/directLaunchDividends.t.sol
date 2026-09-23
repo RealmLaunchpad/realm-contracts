@@ -18,6 +18,8 @@ import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
+import {V4PoolSeeding} from "test/helpers/V4PoolSeeding.sol";
 
 /// @notice Stand-in for the universal router on a PARTIAL fill of an ERC20-quoted buy-back: the pool
 ///         pulls half the quote through Permit2, the other half never leaves the token, and a fixed
@@ -48,7 +50,7 @@ contract HalfFillQuoteBuyBackRouterStub {
 ///         legs cross real pools: AAPL -> ETH on V4, ETH -> MSFT on the V2 pair. AAPL is the quote
 ///         because its native V4 pool is the one hookless, static-fee pool with live liquidity at the
 ///         pinned block; USDG would mirror USDC's 6 decimals but its pool is empty there.
-contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
+contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
     address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
     address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
     /// @dev AAPL's real native V4 pool on Robinhood: hookless, static fee.
@@ -66,6 +68,13 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests {
         // exactly this reason; drop it so the V2 leg is exercised rather than rejected as too shallow.
         vm.prank(admin);
         dividendSwapRegistry.setDefaultThreshold(0.001 ether);
+
+        // AAPL's native pool holds ~4.5e18 of liquidity and part-fills an 8.75 AAPL buffer, which the
+        // registry refuses. Deepen it, and open the native/MSFT pool `_daiRoute()` names (absent on
+        // Robinhood) at the 1:1 the whitelist above prices MSFT at.
+        IPoolManager manager = IPoolManager(poolManagerAddress);
+        _seedV4Pool(manager, address(0), AAPL, V4_FEE_AAPL, V4_SPACING_AAPL, 1e21);
+        _seedV4Pool(manager, address(0), MSFT, 3_000, 60, 1e21);
     }
 
     /////////////////////////// HELPERS ///////////////////////////
