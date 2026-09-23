@@ -307,6 +307,34 @@ upgrade-treasury-router-rh-testnet: chain-rh-testnet
     forge script UpgradeRealmTreasuryRouter --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Deploys a new RealmAssetsWhitelist implementation and repoints the live ASSETS_WHITELIST proxy at it.
+# Listings, approvers and owner are kept. Paste the printed ASSETS_WHITELIST_IMPL into the manifest and
+# `just export-deployments`. Dry-run first: the same command without --broadcast, plus --sender <realm.dev address>.
+upgrade-assets-whitelist-sepolia: chain-sepolia
+    forge script UpgradeAssetsWhitelist --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+upgrade-assets-whitelist-rh: chain-rh
+    forge script UpgradeAssetsWhitelist --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+upgrade-assets-whitelist-rh-testnet: chain-rh-testnet
+    forge script UpgradeAssetsWhitelist --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
+# Deploys a new RealmDividendSwapRegistry implementation and repoints this chain's DIVIDEND_SWAP_REGISTRY
+# proxy at it. Routes, thresholds and keeper wallet are kept; the proxy address never moves, so nothing to
+# paste. Dry-run first: the same command without --broadcast, plus --sender <realm.dev address>.
+upgrade-dividend-registry-sepolia: chain-sepolia
+    forge script UpgradeDividendSwapRegistry --rpc-url sepolia --verify --account realm.dev --slow --broadcast
+
+upgrade-dividend-registry-rh: chain-rh
+    forge script UpgradeDividendSwapRegistry --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+upgrade-dividend-registry-rh-testnet: chain-rh-testnet
+    forge script UpgradeDividendSwapRegistry --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
 # Deploys a new RealmVoting implementation for the manifest's CURRENT REALM_TOKEN (the token it burns is
 # an implementation immutable) and repoints the live VOTING proxy at it. The proxy never moves, so the
 # treasury router that bakes it and the indexer that subscribes to it are untouched. Round state lives in

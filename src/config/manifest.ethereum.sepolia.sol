@@ -88,6 +88,11 @@ library DeploymentsEthereumSepolia {
     ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
     address internal constant KEEPER_LENS = address(0);
 
+    /// @notice Implementation behind the `RealmDividendSwapRegistry` proxy, which lives in
+    ///         `DeploymentAddresses.sol` (`DIVIDEND_SWAP_REGISTRY`). Update on every registry upgrade;
+    ///         tracked for verification and audit trails only.
+    address internal constant DIVIDEND_SWAP_REGISTRY_IMPL = address(0);
+
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0xa5498948245b1D3CDda08B9324e22c709CE9bDE7;
     address internal constant TAXABLE_TOKEN_V4_IMPL = 0x0a4d26B99a124Bb08bc335764b6C2A1ee4C3E85c;

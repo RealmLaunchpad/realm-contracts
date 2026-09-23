@@ -31,6 +31,7 @@
 | RealmKeeperLens                              | _(not deployed)_                             |
 | RealmKeepersRegistry                         | `0xCba49A6057256392cF480C17C81DF2170FB650CB` |
 | RealmDividendSwapRegistry (proxy)            | `0x9b3c560D86909B8116468536737a272Fe0cE327d` |
+| RealmDividendSwapRegistry (impl)             | _(not deployed)_                             |
 | RealmToken (impl)                            | `0xa5498948245b1D3CDda08B9324e22c709CE9bDE7` |
 | RealmTaxableTokenUniV4 (impl)                | `0x0a4d26B99a124Bb08bc335764b6C2A1ee4C3E85c` |
 | RealmTaxableTokenUniV2 (impl)                | `0xdf63307C4Da6bD3Ed84C0682A3788F35845446c0` |

@@ -88,6 +88,11 @@ library DeploymentsRobinhoodMainnet {
     ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
     address internal constant KEEPER_LENS = address(0);
 
+    /// @notice Implementation behind the `RealmDividendSwapRegistry` proxy, which lives in
+    ///         `DeploymentAddresses.sol` (`DIVIDEND_SWAP_REGISTRY`). Update on every registry upgrade;
+    ///         tracked for verification and audit trails only.
+    address internal constant DIVIDEND_SWAP_REGISTRY_IMPL = address(0);
+
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = address(0);
     address internal constant TAXABLE_TOKEN_V4_IMPL = address(0);

@@ -49,6 +49,7 @@ contract ExportDeployments is Script {
         address keeperLens;
         address keepersRegistry;
         address dividendSwapRegistry;
+        address dividendSwapRegistryImpl;
         address tokenImpl;
         address taxableTokenImpl;
         address taxableTokenV2Impl;
@@ -121,6 +122,7 @@ contract ExportDeployments is Script {
         d.keeperLens = DeploymentsEthereumSepolia.KEEPER_LENS;
         d.keepersRegistry = DeploymentAddressesEthereumSepolia.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesEthereumSepolia.DIVIDEND_SWAP_REGISTRY;
+        d.dividendSwapRegistryImpl = DeploymentsEthereumSepolia.DIVIDEND_SWAP_REGISTRY_IMPL;
         d.tokenImpl = DeploymentsEthereumSepolia.TOKEN_IMPL;
         d.taxableTokenImpl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL;
@@ -175,6 +177,7 @@ contract ExportDeployments is Script {
         d.keeperLens = DeploymentsRobinhoodMainnet.KEEPER_LENS;
         d.keepersRegistry = DeploymentAddressesRobinhoodMainnet.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesRobinhoodMainnet.DIVIDEND_SWAP_REGISTRY;
+        d.dividendSwapRegistryImpl = DeploymentsRobinhoodMainnet.DIVIDEND_SWAP_REGISTRY_IMPL;
         d.tokenImpl = DeploymentsRobinhoodMainnet.TOKEN_IMPL;
         d.taxableTokenImpl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL;
@@ -232,6 +235,7 @@ contract ExportDeployments is Script {
         d.keeperLens = DeploymentsRobinhoodTestnet.KEEPER_LENS;
         d.keepersRegistry = DeploymentAddressesRobinhoodTestnet.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesRobinhoodTestnet.DIVIDEND_SWAP_REGISTRY;
+        d.dividendSwapRegistryImpl = DeploymentsRobinhoodTestnet.DIVIDEND_SWAP_REGISTRY_IMPL;
         d.tokenImpl = DeploymentsRobinhoodTestnet.TOKEN_IMPL;
         d.taxableTokenImpl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL;
@@ -295,6 +299,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmKeeperLens", d.keeperLens));
         s = string.concat(s, _row("RealmKeepersRegistry", d.keepersRegistry));
         s = string.concat(s, _row("RealmDividendSwapRegistry (proxy)", d.dividendSwapRegistry));
+        s = string.concat(s, _row("RealmDividendSwapRegistry (impl)", d.dividendSwapRegistryImpl));
         s = string.concat(s, _row("RealmToken (impl)", d.tokenImpl));
         s = string.concat(s, _row("RealmTaxableTokenUniV4 (impl)", d.taxableTokenImpl));
         s = string.concat(s, _row("RealmTaxableTokenUniV2 (impl)", d.taxableTokenV2Impl));
