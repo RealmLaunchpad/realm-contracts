@@ -713,9 +713,13 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         deal(b, address(this), 1e30);
         IERC20(a).approve(address(lp), type(uint256).max);
         IERC20(b).approve(address(lp), type(uint256).max);
+        // 1e21, not 1e18: this is a SYNTHETIC 1:1 pool and its depth has to absorb whatever the
+        // preceding hop delivers. Sized for 6-decimal USDC, 1e18 across +/-600 ticks held ~0.03 of an
+        // 18-decimal token, while the reference hop now hands it ~0.77 AAPL — so the zap part-filled and
+        // reverted DevBuyNotFilled. Nothing here asserts on depth; it only has to not be the constraint.
         lp.modifyLiquidity(
             key,
-            IPoolManager.ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: 1e18, salt: 0}),
+            IPoolManager.ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: 1e21, salt: 0}),
             ""
         );
     }
