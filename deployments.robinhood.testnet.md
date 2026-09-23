@@ -15,7 +15,7 @@
 | RealmHookAnyPair                             | `0x87f077ebBE1D9d35D5E4522bf0a4e30adaaF40cc` |
 | RealmDirectGraduatorUniV4                    | `0x538240562A197aE4092e5CdFb7155077F24e47d4` |
 | RealmFactoryUniV4Direct (proxy)              | `0x3307857e113E9fF6D53Cf5478F9320407232574E` |
-| RealmFactoryUniV4Direct (impl)               | `0x28c506F95e5f58Db0bCedE8ef5b6Ce31d3328A13` |
+| RealmFactoryUniV4Direct (impl)               | `0x0ceE419EaF86989E74dA26DAE0fFf88fd39FE69D` |
 | RealmAssetsWhitelist (proxy)                 | `0x0f3629Bd715C17373d7E401eB3f0ed94B46991d5` |
 | RealmAssetsWhitelist (impl)                  | `0x6FAdbD11CF2dcD46305dC195A12cdF671ba96BE3` |
 | RealmDividendLogicUniV4                      | `0xd2645AeDA85A893E2609519D5975b42Cb6feE5E5` |
@@ -36,7 +36,7 @@
 | RealmTaxableTokenUniV4 (impl)                | `0xc5Ec8eAa4BE32451b180F21340aD00a70bff0b90` |
 | RealmTaxableTokenUniV2 (impl)                | `0xc748462BF54f7caFf61866676F66e1657cC4F053` |
 | RealmFactoryUniV2Unified (proxy)             | `0xbC2Ce024f4425B4928De257f3F3f8813f6a80122` |
-| RealmFactoryUniV2Unified (impl)              | `0x7c6B84AA60050146E3ff6c8C312d39706e755141` |
+| RealmFactoryUniV2Unified (impl)              | `0xdD9AF2201f3D61FE3863b03b59b4EbE928dCD6Bc` |
 | RealmCreatorVaultFactory (proxy)             | `0x7a0073E5bF9fCB85Cbfe8b8340987055aEc7E5EA` |
 | RealmCreatorVaultFactory (impl)              | `0x359D4d3A477Bd7b52f6777F40E267DDFBD1Db997` |
 | RealmCreatorVault (impl)                     | `0x4A2C4A74bFa4Db8039372E4caaFBfBd05C79304B` |
