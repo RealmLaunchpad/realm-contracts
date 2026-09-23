@@ -441,6 +441,13 @@ deploy-dummy-xstocks-rh-testnet:
     forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Re-pegs the six rh-testnet dummy xStock pools to their whitelisted price and adds ETH_PER_POOL (default
+# 20 ETH, 120 total) of full-range liquidity to each. The account must hold the dummy tokens. Dry run:
+#   forge script RepegDummyXStocks --rpc-url rh-testnet --account livo.dev
+repeg-dummy-xstocks-rh-testnet:
+    forge script RepegDummyXStocks --rpc-url rh-testnet --account livo.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
 # --- DIRECT-LAUNCH VENUE -----------------------------------------------------
 # The second venue: a token that goes straight to a Uniswap V4 pool at a price its creator picks, with
 # no bonding curve and no launchpad. Two steps, in this order, because the graduator takes the hook as
