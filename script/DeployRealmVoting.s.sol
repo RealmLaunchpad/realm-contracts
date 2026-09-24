@@ -9,7 +9,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 
 /// @title Deploy `RealmVoting` for the chain's REALM token
 /// @notice Deploys the impl + UUPS proxy; round 1 opens in the deploy block. Round length defaults to
-///         3 days (`VOTING_ROUND_DURATION`, seconds, overrides). Where the chain names a buyback wallet it
+///         48 hours (`VOTING_ROUND_DURATION`, seconds, overrides). Where the chain names a buyback wallet it
 ///         is appointed admin; the owner (broadcaster) can always act as one. The token must be a clone
 ///         of a `RealmToken` master that has `burnFrom` — a master that predates it needs
 ///         `RedeployTokenImpls` first, and a new REALM token after that.
@@ -51,7 +51,7 @@ contract DeployRealmVoting is Script {
     ///      voting proxy it bakes in as an immutable needs no paste-and-rebuild round trip first.
     function _deployVoting() internal returns (address proxy, address impl) {
         address realm = _realmToken();
-        uint256 duration = vm.envOr("VOTING_ROUND_DURATION", uint256(3 days));
+        uint256 duration = vm.envOr("VOTING_ROUND_DURATION", uint256(48 hours));
         address admin = ChainConfig.voteBuybackWallet();
         // `msg.sender` is forge's DEFAULT_SENDER unless `--sender` is passed; `readCallers` reports the
         // real `--account` broadcaster, and only inside an active broadcast.
