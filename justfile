@@ -167,6 +167,19 @@ upgrade-lp-fee-router-rh-testnet: chain-rh-testnet
     forge script UpgradeSwapLpFeeRouter --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Deploys a new RealmCreatorVaultFactory implementation from the current build (same vault impl the
+# proxy already clones) and repoints the manifest's CREATOR_VAULT_FACTORY proxy at it. Paste the printed
+# CREATOR_VAULT_FACTORY_IMPL into the manifest and `just export-deployments`. Dry-run first: the same
+# command without --broadcast, plus --sender <realm.dev address>.
+
+upgrade-vault-factory-rh: chain-rh
+    forge script UpgradeCreatorVaultFactory --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+upgrade-vault-factory-rh-testnet: chain-rh-testnet
+    forge script UpgradeCreatorVaultFactory --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
 # Deploys RealmVoting (impl + UUPS proxy) for the manifest's REALM_TOKEN: round 1 opens at deploy, 48-hour
 # rounds (override with VOTING_ROUND_DURATION seconds), VOTE_BUYBACK_WALLET appointed admin where the
 # chain names one. The token's master must have burnFrom (redeploy-token-impls first if it predates it).
