@@ -393,6 +393,8 @@ abstract contract DividendDistribution {
     /// @notice This asset's buffer already moved in this block. Only the funding leg is gated — a call
     ///         carrying holders still pays them.
     error DividendProcessCooldown();
+    /// @notice A push-only call (`fund == false`) with no holders: nothing to do.
+    error NoDividendWork();
     /// @notice The treasury refused the swept buffer. Reverts the whole call, leaving the buffer where it
     ///         was — the same state a caller who never tried would have seen.
     error DividendSweepFailed();

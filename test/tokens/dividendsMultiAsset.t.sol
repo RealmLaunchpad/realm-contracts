@@ -223,12 +223,12 @@ contract DividendsMultiAssetTests is Test {
         uint256 big = h.bufferOf(1);
         assertLt(small, big, "precondition: the 20% leg holds a quarter of the 80% leg");
 
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(1, true, 0, _noHolders());
         assertGt(h.owedOf(1), 0, "the big leg distributed");
         assertEq(h.owedOf(0), 0, "and the small leg is untouched");
         assertEq(h.bufferOf(0), small, "its buffer too");
 
-        h.processDividends(0, 0, _noHolders());
+        h.processDividends(0, true, 0, _noHolders());
         assertGt(h.owedOf(0), 0, "the small leg distributes on its own terms, whatever its size");
     }
 
@@ -239,15 +239,15 @@ contract DividendsMultiAssetTests is Test {
         _activateWith(1_000e18);
         _accrue(10 ether);
 
-        h.processDividends(0, 0, _noHolders());
+        h.processDividends(0, true, 0, _noHolders());
         // Same block, different asset: allowed.
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(1, true, 0, _noHolders());
         assertGt(h.owedOf(0), 0, "asset 0 funded");
         assertGt(h.owedOf(1), 0, "asset 1 funded");
 
         // Same block, same asset: refused.
         vm.expectRevert(DividendDistribution.DividendProcessCooldown.selector);
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(1, true, 0, _noHolders());
     }
 
     /// @dev Each asset accrues against its OWN accumulator, so a holder's two claims are independent
@@ -256,12 +256,12 @@ contract DividendsMultiAssetTests is Test {
         _activateWith(1_000e18);
         _accrue(10 ether);
 
-        h.processDividends(0, 0, _noHolders()); // native leg: no conversion
+        h.processDividends(0, true, 0, _noHolders()); // native leg: no conversion
 
         assertGt(h.previewDividend(holder, 0), 0, "the native leg credited the holder");
         assertEq(h.previewDividend(holder, 1), 0, "the MSFT leg never distributed");
 
-        h.processDividends(1, 0, _noHolders()); // MSFT leg: converts
+        h.processDividends(1, true, 0, _noHolders()); // MSFT leg: converts
         assertGt(h.previewDividend(holder, 1), 0, "and now it has");
     }
 
@@ -269,12 +269,12 @@ contract DividendsMultiAssetTests is Test {
     function test_multiAsset_conversionFailureIsContained() public {
         _activateWith(1_000e18);
         _accrue(10 ether);
-        h.processDividends(0, 0, _noHolders());
+        h.processDividends(0, true, 0, _noHolders());
         uint256 owedNative = h.owedOf(0);
 
         // An unreachable floor on the MSFT leg. The buffer stays put and nothing else moves.
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        h.processDividends(1, type(uint256).max, _noHolders());
+        h.processDividends(1, true, type(uint256).max, _noHolders());
 
         assertEq(h.bufferOf(1), 8 ether, "the failed leg's buffer is untouched");
         assertEq(h.owedOf(0), owedNative, "the healthy leg's ledger is untouched");
@@ -287,8 +287,8 @@ contract DividendsMultiAssetTests is Test {
     function test_multiAsset_claimPaysEveryAsset() public {
         _activateWith(1_000e18);
         _accrue(10 ether);
-        h.processDividends(0, 0, _noHolders());
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(0, true, 0, _noHolders());
+        h.processDividends(1, true, 0, _noHolders());
 
         uint256 ethBefore = holder.balance;
         vm.prank(holder);
@@ -304,14 +304,42 @@ contract DividendsMultiAssetTests is Test {
     function test_multiAsset_keeperBatchPaysOnlyItsOwnAsset() public {
         _activateWith(1_000e18);
         _accrue(10 ether);
-        h.processDividends(0, 0, _noHolders());
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(0, true, 0, _noHolders());
+        h.processDividends(1, true, 0, _noHolders());
 
         uint256 daiPending = h.previewDividend(holder, 1);
-        h.processDividends(0, 0, _holders());
+        h.processDividends(0, true, 0, _holders());
 
         assertEq(h.previewDividend(holder, 0), 0, "the pushed asset is paid");
         assertEq(h.previewDividend(holder, 1), daiPending, "the other asset is untouched");
+    }
+
+    /// @dev `fund == false` pushes already-credited payouts and nothing else: the buffer is not
+    ///      converted and the block is not claimed, so a funding call can still follow in it.
+    function test_multiAsset_pushOnlyLeavesTheBufferAlone() public {
+        _activateWith(1_000e18);
+        _accrue(10 ether);
+        h.processDividends(0, true, 0, _noHolders());
+        vm.roll(block.number + 1);
+        _accrue(1 ether);
+        uint256 buffer = h.bufferOf(0);
+        uint256 owed = h.owedOf(0);
+
+        vm.recordLogs();
+        h.processDividends(0, false, 0, _holders());
+        assertEq(vm.getRecordedLogs().length, 1, "only the payout event, no DividendsFunded");
+        assertEq(h.bufferOf(0), buffer, "buffer untouched");
+        assertEq(h.previewDividend(holder, 0), 0, "holder pushed");
+        assertLt(h.owedOf(0), owed, "the push paid out of the ledger");
+
+        h.processDividends(0, true, 0, _noHolders()); // same block: not claimed by the push
+        assertEq(h.bufferOf(0), 0, "funded");
+    }
+
+    function test_multiAsset_pushOnlyWithoutHoldersReverts() public {
+        _activateWith(1_000e18);
+        vm.expectRevert(DividendDistribution.NoDividendWork.selector);
+        h.processDividends(0, false, 0, _noHolders());
     }
 
     /// @dev `committedDividends` is what keeps `rescueTokens` and `sweepStrayEth` off holders' money. It
@@ -319,7 +347,7 @@ contract DividendsMultiAssetTests is Test {
     function test_multiAsset_committedDividendsAnswersPerAsset() public {
         _activateWith(1_000e18);
         _accrue(10 ether);
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(1, true, 0, _noHolders());
 
         assertEq(h.committedDividends(MSFT), h.owedOf(1), "the MSFT debt is reported against MSFT");
         assertEq(h.committedDividends(NATIVE), 0, "and not against the native leg");
@@ -329,7 +357,7 @@ contract DividendsMultiAssetTests is Test {
     function test_multiAsset_indexPastTheSetIsRejected() public {
         _activateWith(1_000e18);
         vm.expectRevert(DividendDistribution.DividendAssetOutOfRange.selector);
-        h.processDividends(2, 0, _noHolders());
+        h.processDividends(2, true, 0, _noHolders());
     }
 
     //////////////////////// the set's shape //////////////////////

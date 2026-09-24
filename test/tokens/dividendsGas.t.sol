@@ -270,7 +270,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         token.accrueFees{value: 3 ether}();
         uint256 n = token.dividendAssetCount();
         for (uint256 i; i < n; ++i) {
-            token.processDividends(uint8(i), 0, new address[](0));
+            token.processDividends(uint8(i), true, 0, new address[](0));
         }
     }
 

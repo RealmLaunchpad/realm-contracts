@@ -198,8 +198,8 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         (,,,,,, uint88 buffer1,) = token.dividendAssets(1);
         assertEq(uint256(buffer0) * 4, uint256(buffer1), "the 20/80 split reached the buffers");
 
-        token.processDividends(0, 0, _noHolders());
-        token.processDividends(1, 0, _noHolders());
+        token.processDividends(0, true, 0, _noHolders());
+        token.processDividends(1, true, 0, _noHolders());
 
         uint256 ethBefore = buyer.balance;
         vm.prank(buyer);
@@ -235,7 +235,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_multiAsset_rescueTokensCannotTakeAPayoutPot() public {
         RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
         _accrue(token, 1 ether);
-        token.processDividends(1, 0, _noHolders());
+        token.processDividends(1, true, 0, _noHolders());
 
         uint256 pot = IERC20(MSFT).balanceOf(address(token));
         assertGt(pot, 0, "precondition: a MSFT pot exists");

@@ -29,7 +29,7 @@ contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLo
     /// @notice `processDividends` for a buffer held in one of this token's QUOTES: converts what asset
     ///         `assetIndex` has accrued from earnings on `quote`'s pool into that asset, credits it to
     ///         the holders, and pushes `holders` their accruals. `quote == address(0)` is the shared
-    ///         native machine, exactly `processDividends(uint8,uint256,address[])`.
+    ///         native machine, exactly `processDividends(uint8,true,uint256,address[])`.
     /// @dev What differs from the native path, and why:
     ///      - Like the native path, no funding floor: the keeper pays the gas and decides when a buffer
     ///        is worth converting, as it does for `processBurn(quote, …)`. This path never had one —
@@ -55,7 +55,7 @@ contract RealmDividendLogicUniV4 is RealmV4ExtensionBase, DividendDistributionLo
         nonReentrantDividends
     {
         if (quote == address(0)) {
-            _processDividends(assetIndex, minOut, holders);
+            _processDividends(assetIndex, true, minOut, holders);
             return;
         }
         _processQuoteDividends(assetIndex, quote, minOut, holders);

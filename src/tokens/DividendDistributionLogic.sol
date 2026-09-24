@@ -86,6 +86,8 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      conversion.
     ///
     /// @param assetIndex Which configured payout asset to service. Reverts past the configured count.
+    /// @param fund False for a push-only call: skips the conversion (no block claimed, no
+    ///        `DividendsFunded`); `holders` must then be non-empty, or it reverts `NoDividendWork`.
     /// @param minOut Slippage floor for the conversion, in that asset's own decimals. Ignored when the
     ///        asset is native or the token itself, and by any call that does not convert.
     /// @param holders Addresses to push accrued payouts to. May be empty — a fund-only call is a normal
@@ -99,18 +101,19 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      `processLiquidity` already hold this lock; this was the one earnings entry point that did
     ///      not. Costs no SSTORE (transient) and blocks nothing legitimate: `accrueFees`, which the V4
     ///      hook calls back mid-swap, deliberately takes neither lock.
-    function processDividends(uint8 assetIndex, uint256 minOut, address[] calldata holders)
+    function processDividends(uint8 assetIndex, bool fund, uint256 minOut, address[] calldata holders)
         public
         nonReentrant
         nonReentrantDividends
     {
-        _processDividends(assetIndex, minOut, holders);
+        _processDividends(assetIndex, fund, minOut, holders);
     }
 
     /// @dev The body of `processDividends`, without its locks, so a venue can service the same asset
     ///      out of a buffer the shared machine does not know — an ERC20 quote's — under locks of its own
     ///      (`RealmDividendLogicUniV4.processDividends(uint8,address,uint256,address[])`).
-    function _processDividends(uint8 assetIndex, uint256 minOut, address[] calldata holders) internal {
+    function _processDividends(uint8 assetIndex, bool fund, uint256 minOut, address[] calldata holders) internal {
+        require(fund || holders.length != 0, NoDividendWork());
         require(assetIndex < _dividendAssetCount(), DividendAssetOutOfRange());
         DivAsset storage asset = dividendAssets[assetIndex];
         require(asset.lastDistribution != 0, DividendsNotActive());
@@ -160,12 +163,14 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // The gate is on the FUNDING leg ALONE. Pushing payouts is not rate-limited and must not be: a
         // keeper splitting a large holder set across several transactions in one block is ordinary, and
         // those calls read a buffer this one already resolved.
+        // `fund == false` is a push-only call: it never funds, so it neither claims the block nor emits
+        // `DividendsFunded` — a keeper pushing already-credited payouts must not convert buffer dust.
         bool cooldown = block.number <= asset.lastProcessBlock;
 
         FundOutcome outcome = FundOutcome.NotReady;
         uint256 nativeIn;
         uint256 out;
-        if (!cooldown) {
+        if (fund && !cooldown) {
             (outcome, nativeIn, out) = _fundDividends(assetIndex, minOut);
             // Claimed only when the buffer actually MOVED. A call that found nothing fundable, or whose
             // swap failed, spent nothing and must not lock the block against an honest keeper.
@@ -207,7 +212,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///         against single-asset tokens — which is what every token with one payout asset still is —
     ///         keep working unchanged.
     function processDividends(uint256 minOut, address[] calldata holders) external {
-        processDividends(0, minOut, holders);
+        processDividends(0, true, minOut, holders);
     }
 
     /// @notice Self-serve payout of everything the caller has accrued, in EVERY configured asset.

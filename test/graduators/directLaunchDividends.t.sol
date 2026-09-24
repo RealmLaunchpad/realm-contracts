@@ -265,7 +265,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         assertGe(uint256(pendingNative), 0.5 ether, "half of the earnings buffered as native");
 
         uint256 before = alice.balance;
-        token.processDividends(0, 0, _one(alice));
+        token.processDividends(0, true, 0, _one(alice));
         assertGt(alice.balance - before, 0.49 ether, "alice, the only holder, got nearly all of it in native");
     }
 

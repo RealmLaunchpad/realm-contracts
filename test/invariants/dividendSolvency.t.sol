@@ -48,7 +48,7 @@ contract DividendSolvencyHandler is Test {
     ///      instead of always draining the same one.
     function process(uint256 seed) public {
         uint8 index = uint8(seed % TOKEN.dividendAssetCount());
-        try TOKEN.processDividends(index, 0, new address[](0)) {} catch {}
+        try TOKEN.processDividends(index, true, 0, new address[](0)) {} catch {}
     }
 
     function distribute(uint256 seed) public {
@@ -57,7 +57,7 @@ contract DividendSolvencyHandler is Test {
             batch[i] = holders[(i + seed) % holders.length];
         }
         uint8 index = uint8(seed % TOKEN.dividendAssetCount());
-        try TOKEN.processDividends(index, 0, batch) {} catch {}
+        try TOKEN.processDividends(index, true, 0, batch) {} catch {}
     }
 
     /// @dev The holder's own route, which pays every asset in one call. Included so the run interleaves

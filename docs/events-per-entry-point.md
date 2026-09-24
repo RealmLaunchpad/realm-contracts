@@ -533,8 +533,10 @@ ONE exception to the timing: a deploy buy large enough to graduate the token ins
 `markGraduated()` before the allocation is configured, so that token emits `DividendsActivated` on its
 first earnings instead.
 
-**`processDividends(uint8 assetIndex, uint256 minOut, address[] holders)`** — KEEPER-GATED, and the
-keeper entry point for the NATIVE buffer. It services ONE payout asset per call: each asset fills on its own
+**`processDividends(uint8 assetIndex, bool fund, uint256 minOut, address[] holders)`** — KEEPER-GATED, and the
+keeper entry point for the NATIVE buffer. `fund == false` is a PUSH-ONLY call: no conversion, no
+`DividendsFunded`, the block's cooldown untouched — it emits only the per-holder payout events, and
+reverts `NoDividendWork` if `holders` is empty. `fund == true` is the full call described below. It services ONE payout asset per call: each asset fills on its own
 schedule, prices its floor against its own pool and holds its own cooldown, so a keeper calls it once
 per asset and the assets never contend. There is NO minimum buffer size — any non-zero buffer converts,
 and whether a conversion earns its gas is the keeper's judgement, not a contract rule. `assetIndex` past `dividendAssetCount()` reverts
@@ -557,7 +559,7 @@ are never gated — `claimDividends()` stays open to everyone.
 
 **`processDividends(uint8 assetIndex, address quote, uint256 minOut, address[] holders)`** (V4 tokens
 only) services the buffer held in one of the token's QUOTES — what that quote's pool earned. `quote ==
-address(0)` is exactly the call above. For an ERC20 quote the leg is one of three shapes, and the shape
+address(0)` is exactly the call above with `fund == true`. For an ERC20 quote the leg is one of three shapes, and the shape
 decides the gate: the payout asset IS the quote (nothing is swapped; the whole buffer credits at once;
 anyone may call once the asset is stale), the payout asset is the token itself (a buy-back on that
 quote's own pool, the `processBurn` primitive, capped at `MAX_QUOTE_SPEND_BPS` of the buffer per call

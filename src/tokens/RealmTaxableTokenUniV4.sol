@@ -115,10 +115,13 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     ///         which; each asset crosses its own threshold, prices its own floor and holds its own
     ///         per-block cooldown, so a keeper services them one call at a time.
     /// @param assetIndex Which configured payout asset to service, `0 .. dividendAssetCount() - 1`.
+    /// @param fund False for a push-only call: skips the conversion entirely (no block claimed, no
+    ///        `DividendsFunded`); `holders` must then be non-empty.
     /// @param minOut Slippage floor for that asset's conversion, in its own decimals.
-    /// @param holders Addresses to push that asset's accrued payouts to. May be empty.
-    function processDividends(uint8 assetIndex, uint256 minOut, address[] calldata holders) external {
+    /// @param holders Addresses to push that asset's accrued payouts to. May be empty when funding.
+    function processDividends(uint8 assetIndex, bool fund, uint256 minOut, address[] calldata holders) external {
         assetIndex;
+        fund;
         minOut;
         holders;
         _delegateToDividendLogic();

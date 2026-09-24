@@ -130,7 +130,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         uint256 cap = token.MAX_DIVIDEND_PER_CONVERSION();
         uint256 spend = buffered > cap ? cap : buffered;
 
-        token.processDividends(0, 1, _noHolders());
+        token.processDividends(0, true, 1, _noHolders());
 
         uint256 pot = IERC20(AAPL).balanceOf(address(token));
         assertGt(pot, 0, "the buffer was converted into AAPL on Robinhood's V4");
@@ -138,7 +138,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         assertEq(token.committedDividends(AAPL), pot, "and none of it is rescuable");
         assertEq(token.pendingNative(), buffered - spend, "what the per-conversion cap left stays buffered");
 
-        token.processDividends(0, 0, _holders(buyer, holder2));
+        token.processDividends(0, true, 0, _holders(buyer, holder2));
 
         uint256 paidBuyer = IERC20(AAPL).balanceOf(buyer);
         uint256 paidHolder2 = IERC20(AAPL).balanceOf(holder2);
@@ -159,13 +159,13 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         assertGe(apple, token.DIVIDEND_THRESHOLD(), "precondition: the 30% leg crossed the threshold");
         assertApproxEqRel(apple * 7, tesla * 3, 1e12, "the tax split 30/70 between the legs");
 
-        token.processDividends(0, 1, _noHolders());
-        token.processDividends(1, 1, _noHolders());
+        token.processDividends(0, true, 1, _noHolders());
+        token.processDividends(1, true, 1, _noHolders());
         assertEq(token.committedDividends(AAPL), IERC20(AAPL).balanceOf(address(token)), "AAPL pot committed");
         assertEq(token.committedDividends(TSLA), IERC20(TSLA).balanceOf(address(token)), "TSLA pot committed");
 
-        token.processDividends(0, 0, _holders(buyer));
-        token.processDividends(1, 0, _holders(buyer));
+        token.processDividends(0, true, 0, _holders(buyer));
+        token.processDividends(1, true, 0, _holders(buyer));
 
         assertGt(IERC20(AAPL).balanceOf(buyer), 0, "paid in AAPL");
         assertGt(IERC20(TSLA).balanceOf(buyer), 0, "and in TSLA");
@@ -178,12 +178,12 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         _churn(2, 2 ether);
         assertGe(_buffered(token, 1), token.DIVIDEND_THRESHOLD(), "precondition: both legs crossed the threshold");
 
-        token.processDividends(0, 0, _noHolders());
-        token.processDividends(1, 1, _noHolders());
+        token.processDividends(0, true, 0, _noHolders());
+        token.processDividends(1, true, 1, _noHolders());
 
         uint256 ethBefore = buyer.balance;
-        token.processDividends(0, 0, _holders(buyer));
-        token.processDividends(1, 0, _holders(buyer));
+        token.processDividends(0, true, 0, _holders(buyer));
+        token.processDividends(1, true, 0, _holders(buyer));
 
         assertGt(buyer.balance, ethBefore, "paid in native");
         assertGt(IERC20(MSFT).balanceOf(buyer), 0, "and in MSFT");
@@ -193,7 +193,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
     ///      their AAPL themselves, and gets exactly what the accumulator says they are owed.
     function test_holder_claimsTheirAppleWithoutAKeeper() public {
         RealmTaxableTokenUniV4 token = _liveAppleToken();
-        token.processDividends(0, 1, _noHolders());
+        token.processDividends(0, true, 1, _noHolders());
 
         uint256 owed = token.previewDividend(holder2);
         assertGt(owed, 0, "precondition: holder2 accrued a share");
@@ -215,7 +215,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         uint256 buffered = token.pendingNative();
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        token.processDividends(0, type(uint128).max, _noHolders());
+        token.processDividends(0, true, type(uint128).max, _noHolders());
 
         assertEq(token.pendingNative(), buffered, "the buffer was not touched");
         assertEq(IERC20(AAPL).balanceOf(address(token)), 0, "and nothing was bought");
@@ -227,7 +227,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
 
         vm.prank(stranger);
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
-        token.processDividends(0, 1, _noHolders());
+        token.processDividends(0, true, 1, _noHolders());
     }
 
     /// @dev Robinhood's `KEEPER_FEE`: with a funding wallet set, each conversion diverts a flat cut of
@@ -237,7 +237,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         dividendSwapRegistry.setKeeperFunding(keeperWallet);
         RealmTaxableTokenUniV4 token = _liveAppleToken();
 
-        token.processDividends(0, 1, _noHolders());
+        token.processDividends(0, true, 1, _noHolders());
 
         assertEq(keeperWallet.balance, Robinhood.KEEPER_FEE, "the flat Robinhood keeper fee reached the wallet");
         assertGt(IERC20(AAPL).balanceOf(address(token)), 0, "and the conversion still bought AAPL");
