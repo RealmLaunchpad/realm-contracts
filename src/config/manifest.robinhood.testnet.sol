@@ -115,7 +115,7 @@ library DeploymentsRobinhoodTestnet {
     /// @notice `RealmCreatorVaultFactory` UUPS proxy (stable across upgrades). Update after deploying.
     address internal constant CREATOR_VAULT_FACTORY = 0x7a0073E5bF9fCB85Cbfe8b8340987055aEc7E5EA;
     /// @notice `RealmCreatorVaultFactory` implementation behind the proxy. Update after deploying.
-    address internal constant CREATOR_VAULT_FACTORY_IMPL = 0x359D4d3A477Bd7b52f6777F40E267DDFBD1Db997;
+    address internal constant CREATOR_VAULT_FACTORY_IMPL = 0x2af5d6a4dEC999446DC900e681Fe3E0Cb8f1DFc1;
 
     /// @notice The six allocation-specific bonding curves (`ConstantProductBondingCurveConfigurable`),
     ///         one per locked allocation. Update after deploying with `DeployRealmStack`.

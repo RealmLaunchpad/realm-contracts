@@ -38,7 +38,7 @@
 | RealmFactoryUniV2Unified (proxy)             | `0xbC2Ce024f4425B4928De257f3F3f8813f6a80122` |
 | RealmFactoryUniV2Unified (impl)              | `0xdD9AF2201f3D61FE3863b03b59b4EbE928dCD6Bc` |
 | RealmCreatorVaultFactory (proxy)             | `0x7a0073E5bF9fCB85Cbfe8b8340987055aEc7E5EA` |
-| RealmCreatorVaultFactory (impl)              | `0x359D4d3A477Bd7b52f6777F40E267DDFBD1Db997` |
+| RealmCreatorVaultFactory (impl)              | `0x2af5d6a4dEC999446DC900e681Fe3E0Cb8f1DFc1` |
 | RealmCreatorVault (impl)                     | `0x4A2C4A74bFa4Db8039372E4caaFBfBd05C79304B` |
 | Creator-vault curve 5%                       | `0xfb2ca43D65BDF19529F65da1e9136db99205A4db` |
 | Creator-vault curve 10%                      | `0x1193ce7193535c5F88cf89278446D79D74d0ecc4` |
