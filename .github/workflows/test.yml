@@ -10,7 +10,6 @@ on:
 
 env:
   FOUNDRY_PROFILE: ci
-  MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
   # Archive endpoint: the Robinhood fork suites pin a block.
   ROBINHOOD_RPC_URL: ${{ secrets.ROBINHOOD_RPC_URL }}
 
@@ -55,8 +54,8 @@ jobs:
       - name: Deployment manifest drift check
         run: |
           forge script ExportDeployments
-          if ! git diff --exit-code deployments.ethereum.sepolia.md deployments.robinhood.mainnet.md deployments.robinhood.testnet.md; then
-            echo "::error::deployments.{ethereum,robinhood,arc}.*.md is out of sync with the .sol manifest. Run 'just export-deployments' and commit the result."
+          if ! git diff --exit-code deployments.robinhood.mainnet.md deployments.robinhood.testnet.md; then
+            echo "::error::deployments.robinhood.*.md is out of sync with the .sol manifest. Run 'just export-deployments' and commit the result."
             exit 1
           fi
         id: deployments_drift
@@ -70,8 +69,6 @@ jobs:
         run: |
           sed -i 's/runs = [0-9]*/runs = 1/' foundry.toml
           sed -i 's/depth = [0-9]*/depth = 5/' foundry.toml
-          # The invariant suite still forks Ethereum mainnet.
-          just chain-mainnet
           forge test --match-contract Invariants
         id: invariants
 

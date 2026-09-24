@@ -16,7 +16,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 /// @dev    Refuses if the new implementation's Uniswap immutables differ from the live ones: those decide
 ///         which pools a listing is priced against, and moving them under existing listings is not an upgrade.
 ///
-/// @dev    Run: just upgrade-assets-whitelist-<sepolia|rh|rh-testnet>
+/// @dev    Run: just upgrade-assets-whitelist-<rh|rh-testnet>
 ///         Dry-run first: the same `forge script` without --broadcast, plus --sender <realm.dev address>
 ///         so the owner check passes in simulation.
 contract UpgradeAssetsWhitelist is Script {

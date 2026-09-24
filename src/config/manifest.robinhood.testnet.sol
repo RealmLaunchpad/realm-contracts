@@ -184,6 +184,6 @@ library DeploymentsRobinhoodTestnet {
     ///      `deprecated.realm.dev` keystore holds. Everything deployed on this chain is already owned by the new key.
     address internal constant REALM_DEV = 0x81f7D06a88223f5a2850411E72256AacC9E27035;
     address internal constant REALM_TOKEN_DEPLOYER = address(0);
-    /// @notice The keeper lambda's EOA (see the Sepolia manifest); appointed on the keepers registry.
+    /// @notice The keeper lambda's EOA; appointed on the keepers registry.
     address internal constant REALM_KEEPER = 0xE092CB5868e1Ca091Ea975069bf2Afc9CDD1732C;
 }

@@ -14,12 +14,9 @@ import {IRealmDividendSwapRegistry, SwapRejection, Hop} from "src/interfaces/IRe
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
-/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
-/// or DeploymentAddressesArc{Mainnet,Testnet}.
+/// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
 import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
-// Aliased so the `chain-arc-*` recipe can import-swap it: on ARC the "native" leg is 18-dec native USDC
-// and the V2 quote token is its 6-dec ERC-20 alias, so the depth check needs a scale factor.
-import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
+import {UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
 import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
 import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -51,9 +48,7 @@ import {IHooks as ICoreHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 /// @dev CUSTODIES NOTHING. `swapNativeToAsset` receives, swaps and forwards inside one call, and holds
 ///      no balance between calls. Its `receive()` exists only for the native a reverse V4 leg takes out
 ///      of the pool manager mid-`swapAssetToAsset`, which moves on in the same call; anything else sent
-///      there is a donation nobody can recover. The one exception is ARC, where the venue
-///      floors the 18-dec native amount to 6-dec USDC and leaves sub-1e-6 dust behind; it is unreachable
-///      rather than owed to anyone, and a sweep for it would buy less than it costs to review.
+///      there is a donation nobody can recover.
 contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
     using PoolIdLibrary for PoolKey;
@@ -66,9 +61,7 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     address public constant UNIV2_FACTORY = DeploymentAddresses.UNIV2_FACTORY;
 
     /// @notice Router a V4 or V3 route is executed on. One router, two commands.
-    /// @dev ETH-family chains only: the route pays the router in the native coin. On a chain whose
-    ///      native currency is an ERC20 (ARC) no route can convert, so none is ever registered there and
-    ///      every asset goes through the V2 path.
+    /// @dev The route pays the router in the native coin.
     address public constant UNIV4_UNIVERSAL_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
 
     /// @notice Permit2, through which the universal router pulls an ERC20 the registry sells.
@@ -285,7 +278,7 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         (uint112 reserve0, uint112 reserve1,) = IUniswapV2Pair(pair).getReserves();
         uint256 reserve = IUniswapV2Pair(pair).token0() == quote ? reserve0 : reserve1;
         // `QUOTE_TO_NATIVE_SCALE` lifts the pool's quote units to native 18-dec, which is what every
-        // threshold here is denominated in. 1 on ETH-family chains, 1e12 on ARC.
+        // threshold here is denominated in.
         quoteDepth = reserve * UniswapV2Venue.QUOTE_TO_NATIVE_SCALE;
     }
 
@@ -610,9 +603,6 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         address[] memory v2Path = new address[](2);
         v2Path[0] = quote;
         v2Path[1] = asset;
-        // Through the venue lib, not the router directly: the `chain-arc-*` recipe import-swaps it,
-        // and ARC has no WETH — its native USDC shares a balance with the 6-dec ERC-20 the pair is
-        // quoted in, so the same `msg.value` becomes a two-ERC20 swap there rather than an ETH-in one.
         return UniswapV2Venue.trySwapNativeToAsset(IUniswapV2Router(SWAP_ROUTER), quote, v2Path, nativeIn, minOut);
     }
 

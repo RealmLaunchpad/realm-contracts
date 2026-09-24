@@ -206,6 +206,6 @@ library DeploymentsRobinhoodMainnet {
     ///      so their `setAdmin` / `transferOwnership` must still be signed with it.
     address internal constant REALM_DEV = 0x81f7D06a88223f5a2850411E72256AacC9E27035;
     address internal constant REALM_TOKEN_DEPLOYER = address(0);
-    /// @notice The keeper lambda's EOA (see the Sepolia manifest). `address(0)` until configured here.
+    /// @notice The keeper lambda's EOA. `address(0)` until configured here.
     address internal constant REALM_KEEPER = address(0);
 }

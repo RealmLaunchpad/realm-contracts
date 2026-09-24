@@ -6,7 +6,6 @@ import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
 import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
-import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -27,9 +26,6 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
     // Default tax configuration
     uint16 public constant DEFAULT_SELL_TAX_BPS = 400; // 4%
     uint40 public constant DEFAULT_TAX_DURATION = 14 days;
-
-    // WETH address for tax assertions
-    address public constant WETH_ADDRESS = DeploymentAddressesEthereumMainnet.WETH;
 
     function setUp() public virtual override {
         super.setUp();

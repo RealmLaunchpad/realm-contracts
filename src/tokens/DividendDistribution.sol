@@ -2,8 +2,7 @@
 pragma solidity 0.8.28;
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
-/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
-/// or DeploymentAddressesArc{Mainnet,Testnet}.
+/// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
 import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title DividendDistribution
@@ -278,9 +277,7 @@ abstract contract DividendDistribution {
         ///      much of this balance is not ours", read through `committedDividends`.
         uint128 owed;
         /// @dev Native earnings accrued to THIS asset so far, awaiting a distribution.
-        ///      ~309M units of the chain's native currency. The width matters because "native" is not
-        ///      ETH everywhere: on ARC it is USDC-denominated, where a narrower field would cap the
-        ///      buffer at a dollar figure a token could conceivably reach.
+        ///      ~309M units of the chain's native currency.
         uint88 pendingNative;
         /// @dev Block in which a zero-floor conversion of this asset was last seen to return nothing,
         ///      i.e. the first half of the treasury sweep's proof that the pool is really gone. 0 = no

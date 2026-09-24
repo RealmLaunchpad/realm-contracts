@@ -34,7 +34,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 /// @dev    This is the counterpart to `DeployDirectVenue`, which is first-time wiring and deploys the
 ///         proxy and the whitelist; every later change comes here.
 ///
-/// @dev    Run: just upgrade-direct-venue-<sepolia|rh|rh-testnet>
+/// @dev    Run: just upgrade-direct-venue-<rh|rh-testnet>
 ///         Dry-run first: the same `forge script` without --broadcast, plus --sender <realm.dev address>
 ///         so the owner check passes in simulation.
 contract UpgradeDirectVenue is Script {

@@ -58,13 +58,13 @@ import {BuildTarget} from "script/BuildTarget.sol";
 ///         owner. Hand those over afterwards.
 ///
 /// @dev    PRE-FLIGHT, in order — the script refuses to broadcast otherwise:
-///           1. `just chain-sepolia` / `just chain-rh`, then `forge build`.
+///           1. `just chain-rh` / `just chain-rh-testnet`, then `forge build`.
 ///           2. `DeployRealmPrereqs` must have run and its two addresses pasted into
 ///              `src/config/DeploymentAddresses.sol` (they are baked into the taxable token bytecode).
 ///           3. `SWAP_HOOK` (`RealmHook`) and `SWAP_HOOK_ANY_PAIR` (`DeployRealmHookAnyPair`) must be set
 ///              in the manifest for this chain.
 ///
-///         Run: forge script DeployRealmStack --rpc-url <sepolia|rh-mainnet> \
+///         Run: forge script DeployRealmStack --rpc-url <rh-mainnet|rh-testnet> \
 ///                  --account realm.dev --slow --broadcast --verify
 contract DeployRealmStack is Script {
     /// @dev Index 0 is each tier's no-vault base curve; 1..6 are the 5%..30% vault curves.

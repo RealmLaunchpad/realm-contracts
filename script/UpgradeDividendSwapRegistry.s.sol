@@ -18,7 +18,7 @@ import {BuildTarget} from "script/BuildTarget.sol";
 /// @dev    The registry's venue addresses are compile-time constants from the `just chain-*` retarget, so
 ///         the script refuses to broadcast a build targeted at another chain.
 ///
-/// @dev    Run: just upgrade-dividend-registry-<sepolia|rh|rh-testnet>
+/// @dev    Run: just upgrade-dividend-registry-<rh|rh-testnet>
 ///         Dry-run first: the same `forge script` without --broadcast, plus --sender <realm.dev address>
 ///         so the owner check passes in simulation.
 contract UpgradeDividendSwapRegistry is Script {

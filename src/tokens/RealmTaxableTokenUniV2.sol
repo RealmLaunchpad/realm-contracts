@@ -11,12 +11,9 @@ import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
-/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
-/// or DeploymentAddressesArc{Mainnet,Testnet} (ARC: `WETH` is the 6-decimal USDC ERC-20 V2 quote).
+/// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
 import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
-// Aliased so the `chain-arc-*` recipe can import-swap it for the ARC venue: swap-back sells tax tokens
-// for USDC (token→USDC) instead of ETH, since ARC has no wrappable WETH. See UniswapV2VenueArc.
-import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
+import {UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
 
 /// @title RealmTaxableTokenUniV2
 /// @notice ERC20 token implementation with time-limited buy/sell taxes for tokens that graduate to
@@ -99,9 +96,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
     /// @param swapAmount Amount to swap. The auto path's `2 * SWAP_THRESHOLD` cap is NOT enforced
     ///        here so a private-mempool caller can drain a larger residual in one shot. The router
     ///        reverts if `swapAmount` exceeds the contract's balance.
-    /// @param amountOutMinWei Minimum native proceeds the swap must yield, in QUOTE decimals: 18-dec
-    ///        ETH on ETH-family builds, 6-dec USDC on ARC builds (where the swap sells to USDC, which
-    ///        IS native balance). Caller's slippage budget. Applies to the post-burn, post-liquidity
+    /// @param amountOutMinWei Minimum native proceeds the swap must yield, in wei. Caller's slippage budget. Applies to the post-burn, post-liquidity
     ///        remainder actually swapped, not to `swapAmount`.
     /// @dev If the per-block cap is hit, `_processCollectedTokens` silently no-ops (no event, no revert).
     /// @dev Post-graduation only: no tax accrues (and there is no pair to swap against) before
@@ -119,8 +114,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
     ///         V4 `processLiquidity` and the burn `processBurn` async pattern. Processes at most
     ///         `2 * SWAP_THRESHOLD` tokens per call, once per block (`ProcessCooldown`), capping what a
     ///         sandwich of the half-sell can extract per block; the remainder stays buffered.
-    /// @param amountOutMinWei Slippage floor for the half-sell, in QUOTE decimals (18-dec ETH on
-    ///        ETH-family builds, 6-dec USDC on ARC) — the swap reverts if it yields less. Keepers
+    /// @param amountOutMinWei Slippage floor for the half-sell, in wei — the swap reverts if it yields less. Keepers
     ///        should set it from the current price (via a private mempool); 0 invites sandwiching of
     ///        the half-sell, bounded by the current buffer. Only a keeper can reach this at all — the
     ///        floor is the keeper's own discipline, not a bound the contract can enforce.
@@ -164,14 +158,12 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
         if (tokensToSell > 0) {
             UniswapV2Venue.swapTaxToNative(UNISWAP_V2_ROUTER, WETH, tokensToSell, amountOutMinWei);
         }
-        // 18-dec native on both chains: on ARC the swap's 6-dec USDC output IS native balance.
         uint256 ethFromSell = address(this).balance - ethBefore;
 
-        // Pair the retained tokens with the native just obtained, via the per-chain venue: WETH
-        // `addLiquidityETH` on ETH-family, two-ERC20 `addLiquidity` against the 6-dec USDC on ARC.
+        // Pair the retained tokens with the native just obtained, via WETH `addLiquidityETH`.
         // Accept any ratio (priority: don't revert); the router refunds the excess side to this contract.
         // The event reports the router's ACTUAL amounts, not the requested ones: the refunded remainder
-        // never reached the pool (on ARC, so does the sub-1e-6-USDC flooring dust).
+        // never reached the pool.
         uint256 ethAdded;
         uint256 tokensAdded;
         uint256 liquidity;
@@ -331,10 +323,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
 
         uint256 swapAmount = tokenAmount - burnAmount - liquidityAmount - dividendAmount;
 
-        // Sell the remainder for native via the per-chain venue: token→ETH on ETH-family, token→USDC on
-        // ARC. On ARC the received 6-dec USDC IS native balance, so the balance reads below reflect the
-        // proceeds with no unwrap. `amountOutMinWei` is in quote decimals (18-dec ETH / 6-dec USDC); the
-        // auto path passes 0. See UniswapV2Venue.
+        // Sell the remainder for ETH. The auto path passes `amountOutMinWei` = 0. See UniswapV2Venue.
         // Measured as a DELTA, not as the closing balance: the contract may already hold router refunds
         // from an earlier `processLiquidity`, and the event must report this swap's own proceeds so an
         // indexer can match it against the pair's `Swap`.

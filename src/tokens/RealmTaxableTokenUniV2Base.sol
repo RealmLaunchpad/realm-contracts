@@ -5,8 +5,7 @@ import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
-/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
-/// or DeploymentAddressesArc{Mainnet,Testnet} (ARC: `WETH` is the 6-decimal USDC ERC-20 V2 quote).
+/// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
 import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title RealmTaxableTokenUniV2Base

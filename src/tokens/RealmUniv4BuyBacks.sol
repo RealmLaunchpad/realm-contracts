@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-// Self-aliased so the `chain-arc-*` recipes can import-swap it for the ARC pool constants.
-import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 // The repo vendors TWO v4-core copies: lib/v4-core (used by all Realm contracts, incl.
 // `UniswapV4PoolConstants.realmPoolKey`) and v4-periphery's own pin (which types the router's params).

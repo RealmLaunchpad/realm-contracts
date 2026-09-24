@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {RealmTreasuryRouter} from "src/treasury/RealmTreasuryRouter.sol";
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
-import {DeploymentAddressesEthereumMainnet as Mainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as Mainnet} from "src/config/DeploymentAddresses.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
@@ -154,12 +154,13 @@ contract RealmTreasuryRouterTests is Test {
     }
 }
 
-/// @notice `convert` against real mainnet liquidity: USDC sold for ETH on the V4 USDC/ETH 0.05% pool.
+/// @notice `convert` against real Robinhood mainnet liquidity: USDG sold for ETH on the V4 USDG/ETH 0.05% pool.
 contract RealmTreasuryRouterConvertTests is Test {
     event TreasuryEthRouted(address indexed from, uint256 votingShare, uint256 treasuryShare);
 
-    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    uint256 constant BLOCKNUMBER = 23327777;
+    /// @dev Global Dollar, a 6-decimal USD stablecoin.
+    address constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
+    uint256 constant BLOCKNUMBER = 58_000_000;
 
     RealmTreasuryRouter router;
     Sink treasury;
@@ -168,7 +169,7 @@ contract RealmTreasuryRouterConvertTests is Test {
     address keeper = makeAddr("keeper");
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), BLOCKNUMBER);
+        vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
         treasury = new Sink();
         voting = new Sink();
         RealmKeepersRegistry keepers = new RealmKeepersRegistry(admin);
@@ -180,12 +181,12 @@ contract RealmTreasuryRouterConvertTests is Test {
         router = RealmTreasuryRouter(
             payable(address(new ERC1967Proxy(address(impl), abi.encodeCall(RealmTreasuryRouter.initialize, ()))))
         );
-        router.setConversionRoute(USDC, _usdcToNative());
+        router.setConversionRoute(USDG, _usdgToNative());
         vm.stopPrank();
-        deal(USDC, address(router), 1_000e6);
+        deal(USDG, address(router), 1_000e6);
     }
 
-    function _usdcToNative() internal pure returns (PathKey[] memory path) {
+    function _usdgToNative() internal pure returns (PathKey[] memory path) {
         path = new PathKey[](1);
         path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(0)),
@@ -203,10 +204,10 @@ contract RealmTreasuryRouterConvertTests is Test {
         uint256 treasuryBefore = address(treasury).balance;
         uint256 routerBefore = address(router).balance;
         vm.prank(keeper);
-        uint256 out = router.convert(USDC, 1_000e6, 0.01 ether);
+        uint256 out = router.convert(USDG, 1_000e6, 0.01 ether);
 
         assertGt(out, 0.01 ether, "native received");
-        assertEq(IERC20(USDC).balanceOf(address(router)), 0, "asset sold");
+        assertEq(IERC20(USDG).balanceOf(address(router)), 0, "asset sold");
         assertEq(address(voting).balance - votingBefore, out / 3, "voting third");
         assertEq(address(treasury).balance - treasuryBefore, out - out / 3, "treasury rest");
         assertEq(address(router).balance, routerBefore, "nothing stranded");
@@ -216,14 +217,14 @@ contract RealmTreasuryRouterConvertTests is Test {
         uint256 routedBefore = address(voting).balance + address(treasury).balance;
         vm.recordLogs();
         vm.prank(keeper);
-        uint256 out = router.convert(USDC, 400e6, 1);
+        uint256 out = router.convert(USDG, 400e6, 1);
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bool converted;
         for (uint256 i; i < logs.length; ++i) {
             if (logs[i].emitter != address(router)) continue;
             if (logs[i].topics[0] == RealmTreasuryRouter.TreasuryAssetConverted.selector) {
-                assertEq(logs[i].topics[1], bytes32(uint256(uint160(USDC))));
+                assertEq(logs[i].topics[1], bytes32(uint256(uint160(USDG))));
                 (uint256 amountIn, uint256 nativeOut) = abi.decode(logs[i].data, (uint256, uint256));
                 assertEq(amountIn, 400e6);
                 assertEq(nativeOut, out);
@@ -239,14 +240,14 @@ contract RealmTreasuryRouterConvertTests is Test {
 
     function test_convert_onlyKeepers() public {
         vm.expectRevert(RealmTreasuryRouter.NotAKeeper.selector);
-        router.convert(USDC, 1_000e6, 0);
+        router.convert(USDG, 1_000e6, 0);
     }
 
     function test_convert_missedFloorRevertsAndKeepsTheAsset() public {
         vm.prank(keeper);
         vm.expectRevert(RealmTreasuryRouter.ConversionFailed.selector);
-        router.convert(USDC, 1_000e6, 1_000 ether);
-        assertEq(IERC20(USDC).balanceOf(address(router)), 1_000e6);
+        router.convert(USDG, 1_000e6, 1_000 ether);
+        assertEq(IERC20(USDG).balanceOf(address(router)), 1_000e6);
     }
 
     function test_convert_refusesAnAssetWithoutARoute() public {
@@ -257,12 +258,12 @@ contract RealmTreasuryRouterConvertTests is Test {
 
     function test_setConversionRoute_onlyOwnerAndMustEndInNative() public {
         vm.expectRevert();
-        router.setConversionRoute(USDC, _usdcToNative());
+        router.setConversionRoute(USDG, _usdgToNative());
 
-        PathKey[] memory toUsdt = _usdcToNative();
+        PathKey[] memory toUsdt = _usdgToNative();
         toUsdt[0].intermediateCurrency = Currency.wrap(makeAddr("notNative"));
         vm.prank(admin);
         vm.expectRevert(RealmTreasuryRouter.InvalidRoute.selector);
-        router.setConversionRoute(USDC, toUsdt);
+        router.setConversionRoute(USDG, toUsdt);
     }
 }

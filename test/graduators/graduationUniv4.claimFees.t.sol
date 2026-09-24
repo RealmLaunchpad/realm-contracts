@@ -26,7 +26,6 @@ import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmClaims} from "src/interfaces/IRealmClaims.sol";
-import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
 contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {

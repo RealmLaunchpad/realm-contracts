@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {RealmUniv4BuyBacks} from "src/tokens/RealmUniv4BuyBacks.sol";
 // Self-aliased so the `chain-*` recipes can import-swap it for the target chain's pool constants.
-import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode) - see the justfile `_taxtoken` recipe.

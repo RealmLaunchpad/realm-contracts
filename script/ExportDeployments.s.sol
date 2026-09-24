@@ -3,11 +3,9 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
 import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 import {
-    DeploymentAddressesEthereumSepolia,
     DeploymentAddressesRobinhoodMainnet,
     DeploymentAddressesRobinhoodTestnet
 } from "src/config/DeploymentAddresses.sol";
@@ -82,7 +80,6 @@ contract ExportDeployments is Script {
     }
 
     function run() public {
-        _write("deployments.ethereum.sepolia.md", _render(_ethereumSepolia()));
         _write("deployments.robinhood.mainnet.md", _render(_robinhoodMainnet()));
         _write("deployments.robinhood.testnet.md", _render(_robinhoodTestnet()));
     }
@@ -93,61 +90,6 @@ contract ExportDeployments is Script {
     }
 
     // ---------------------------------------------------------------- Per-chain collectors
-
-    function _ethereumSepolia() internal pure returns (ChainDeployments memory d) {
-        d.title = "Sepolia";
-        d.manifestFile = "manifest.ethereum.sepolia.sol";
-        d.launchpad = DeploymentsEthereumSepolia.LAUNCHPAD;
-        d.bondingCurve = DeploymentsEthereumSepolia.BONDING_CURVE;
-        d.graduatorUniV2 = DeploymentsEthereumSepolia.GRADUATOR_UNIV2;
-        d.masterFeeHandler = DeploymentsEthereumSepolia.MASTER_FEE_HANDLER;
-        d.univ4LiquidityAdder = DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER;
-        d.swapHook = DeploymentsEthereumSepolia.SWAP_HOOK;
-        d.swapHookAnyPair = DeploymentsEthereumSepolia.SWAP_HOOK_ANY_PAIR;
-        d.graduatorUniV4Direct = DeploymentsEthereumSepolia.GRADUATOR_UNIV4_DIRECT;
-        d.factoryUniV4Direct = DeploymentsEthereumSepolia.FACTORY_UNIV4_DIRECT;
-        d.factoryUniV4DirectImpl = DeploymentsEthereumSepolia.FACTORY_UNIV4_DIRECT_IMPL;
-        d.assetsWhitelist = DeploymentsEthereumSepolia.ASSETS_WHITELIST;
-        d.assetsWhitelistImpl = DeploymentsEthereumSepolia.ASSETS_WHITELIST_IMPL;
-        d.dividendLogicV4 = DeploymentsEthereumSepolia.DIVIDEND_LOGIC_V4;
-        d.earningsLogicV4 = DeploymentsEthereumSepolia.EARNINGS_LOGIC_V4;
-        d.lpFeeRouter = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
-        d.lpFeeRouterImpl = DeploymentsEthereumSepolia.LP_FEE_ROUTER_IMPL;
-        d.treasuryRouter = DeploymentsEthereumSepolia.TREASURY_ROUTER;
-        d.treasuryRouterImpl = DeploymentsEthereumSepolia.TREASURY_ROUTER_IMPL;
-        d.realmToken = DeploymentsEthereumSepolia.REALM_TOKEN;
-        d.voting = DeploymentsEthereumSepolia.VOTING;
-        d.votingImpl = DeploymentsEthereumSepolia.VOTING_IMPL;
-        d.quoter = DeploymentsEthereumSepolia.QUOTER;
-        d.keeperLens = DeploymentsEthereumSepolia.KEEPER_LENS;
-        d.keepersRegistry = DeploymentAddressesEthereumSepolia.REALM_KEEPERS_REGISTRY;
-        d.dividendSwapRegistry = DeploymentAddressesEthereumSepolia.DIVIDEND_SWAP_REGISTRY;
-        d.dividendSwapRegistryImpl = DeploymentsEthereumSepolia.DIVIDEND_SWAP_REGISTRY_IMPL;
-        d.tokenImpl = DeploymentsEthereumSepolia.TOKEN_IMPL;
-        d.taxableTokenImpl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL;
-        d.taxableTokenV2Impl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL;
-        d.factoryUniV2Unified = DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED;
-        d.factoryUniV2UnifiedImpl = DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.creatorVaultFactory = DeploymentsEthereumSepolia.CREATOR_VAULT_FACTORY;
-        d.creatorVaultFactoryImpl = DeploymentsEthereumSepolia.CREATOR_VAULT_FACTORY_IMPL;
-        d.creatorVaultImpl = DeploymentsEthereumSepolia.CREATOR_VAULT_IMPL;
-        d.vaultCurves = DeploymentsEthereumSepolia.vaultBondingCurves();
-        d.thinCurveBase = DeploymentsEthereumSepolia.THIN_CURVE_BASE;
-        d.thinVaultCurves = DeploymentsEthereumSepolia.thinVaultCurves();
-        d.thickCurveBase = DeploymentsEthereumSepolia.THICK_CURVE_BASE;
-        d.thickVaultCurves = DeploymentsEthereumSepolia.thickVaultCurves();
-        d.realmDev = DeploymentsEthereumSepolia.REALM_DEV;
-        d.realmTreasury = DeploymentAddressesEthereumSepolia.REALM_TREASURY;
-        d.realmTokenDeployer = DeploymentsEthereumSepolia.REALM_TOKEN_DEPLOYER;
-        d.realmKeeper = DeploymentsEthereumSepolia.REALM_KEEPER;
-        d.weth = DeploymentAddressesEthereumSepolia.WETH;
-        d.univ2Router = DeploymentAddressesEthereumSepolia.UNIV2_ROUTER;
-        d.univ2Factory = DeploymentAddressesEthereumSepolia.UNIV2_FACTORY;
-        d.univ4PoolManager = DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER;
-        d.univ4PositionManager = DeploymentAddressesEthereumSepolia.UNIV4_POSITION_MANAGER;
-        d.univ4UniversalRouter = DeploymentAddressesEthereumSepolia.UNIV4_UNIVERSAL_ROUTER;
-        d.permit2 = DeploymentAddressesEthereumSepolia.PERMIT2;
-    }
 
     function _robinhoodMainnet() internal pure returns (ChainDeployments memory d) {
         d.title = "Robinhood Chain Mainnet";

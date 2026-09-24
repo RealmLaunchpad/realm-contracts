@@ -26,8 +26,8 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         Deploys nothing but the two implementations, and touches no other contract. The broadcaster
 ///         must own both proxies.
 ///
-/// @dev    Run: just chain-<sepolia|robinhood> && forge script UpgradeRealmFactories \
-///                  --rpc-url <sepolia|rh-mainnet> --account realm.dev --slow --broadcast --verify
+/// @dev    Run: just chain-<rh|rh-testnet> && forge script UpgradeRealmFactories \
+///                  --rpc-url <rh-mainnet|rh-testnet> --account realm.dev --slow --broadcast --verify
 contract UpgradeRealmFactories is Script {
     function run() public virtual {
         ChainConfig.Manifest memory m = ChainConfig.manifest();

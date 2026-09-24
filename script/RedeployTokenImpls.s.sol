@@ -25,7 +25,7 @@ import {RealmToken} from "src/tokens/RealmToken.sol";
 ///         and every `process*` call reverted. `BuildTarget.assertBuiltFor` now refuses to broadcast a
 ///         build with any per-chain constant on the wrong chain.
 ///
-/// @dev    Run: just redeploy-token-impls-<sepolia|robinhood-testnet>
+/// @dev    Run: just redeploy-token-impls-<rh|rh-testnet>
 contract RedeployTokenImpls is UpgradeRealmFactories {
     function run() public override {
         BuildTarget.assertBuiltFor(block.chainid);

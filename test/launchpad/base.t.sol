@@ -33,7 +33,6 @@ import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.so
 import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
 import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {DeploymentAddressesRobinhoodMainnet} from "src/config/DeploymentAddresses.sol";
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
@@ -125,7 +124,7 @@ contract LaunchpadBaseTests is Test {
 
     // we don't test deadlines mostly
     uint256 constant DEADLINE = type(uint256).max;
-    address constant DEAD_ADDRESS = DeploymentAddressesEthereumMainnet.DEAD_ADDRESS;
+    address constant DEAD_ADDRESS = DeploymentAddressesRobinhoodMainnet.DEAD_ADDRESS;
 
     // Hook address with correct Uniswap V4 permission bits; deployCodeTo() overrides whatever is at this address
     address constant TEST_HOOK_ADDRESS = 0x2ca2764a626de36331E20b08aEd13E5C7A0240cC;
@@ -134,9 +133,6 @@ contract LaunchpadBaseTests is Test {
     ///      `TEST_HOOK_ADDRESS` (v4 reads a hook's callbacks off its own address), different address:
     ///      the two hooks serve different pools and a pool key names exactly one of them.
     address constant TEST_ANYPAIR_HOOK_ADDRESS = 0x99999999999999999999999999999999999900cc;
-
-    // for fork tests
-    uint256 constant BLOCKNUMBER = 23327777;
 
     /// @dev The Robinhood-mainnet block every suite pins to, shared with the fork integration suites.
     uint256 constant ROBINHOOD_BLOCKNUMBER = 58_000_000;
@@ -733,7 +729,7 @@ contract LaunchpadBaseTests is Test {
                             poolManagerAddress,
                             infra.weth,
                             infra.uniV2Factory,
-                            DeploymentAddressesEthereumMainnet.UNIV3_FACTORY
+                            DeploymentAddressesRobinhoodMainnet.UNIV3_FACTORY
                         )
                     ),
                     abi.encodeCall(RealmAssetsWhitelist.initialize, (admin))

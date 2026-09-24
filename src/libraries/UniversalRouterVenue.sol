@@ -17,9 +17,7 @@ import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/
 /// @title UniversalRouterVenue
 /// @notice Native -> ERC20 swaps on Uniswap V3 and V4, both through the universal router. The V2 leg of
 ///         the same job lives in `UniswapV2Venue`, which talks to the V2 router directly.
-/// @dev ETH-family only: both helpers pay with `msg.value`. A chain whose native currency is an ERC20
-///      (Arc) has no counterpart here, which is why `DividendDistribution` refuses a third-asset leg
-///      there rather than configuring one that could never convert.
+/// @dev Both helpers pay with `msg.value`.
 /// @dev Every helper returns `false` instead of reverting when the swap fails. A dividend payout whose pool
 ///      dies must not take the token's other legs down with it — see `DividendDistribution._freezeLeg`.
 /// @dev All functions are `internal` so they inline into the caller's bytecode (no deployed library);

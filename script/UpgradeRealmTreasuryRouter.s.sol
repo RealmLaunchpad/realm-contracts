@@ -19,7 +19,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 /// @dev    This is the counterpart to `DeployRealmTreasuryRouter`, which is deploy-once and refuses while
 ///         `TREASURY_ROUTER` is set: first-time wiring goes there, every later change comes here.
 ///
-/// @dev    Run: just upgrade-treasury-router-<sepolia|rh|rh-testnet>
+/// @dev    Run: just upgrade-treasury-router-<rh|rh-testnet>
 ///         Dry-run first: the same `forge script` without --broadcast, plus --sender <realm.dev address>
 ///         so the owner check passes in simulation.
 contract UpgradeRealmTreasuryRouter is Script {

@@ -1,6 +1,6 @@
 # Deployment plan
 
-Realm deploys on **Sepolia** (11155111), **Robinhood Chain mainnet** (4663) and **Robinhood Chain testnet** (46630, `*-robinhood-testnet` recipes). Every manifest slot is
+Realm deploys on **Robinhood Chain mainnet** (4663, `*-rh` recipes) and **Robinhood Chain testnet** (46630, `*-rh-testnet` recipes). Every manifest slot is
 `address(0)` on both — Realm now deploys its own swap hook and LP fee router too, so nothing is inherited
 from the Livo deployment.
 
@@ -37,7 +37,7 @@ Not deployed by `DeployRealmStack`: the hook (its own script, above) and the div
 
 ```bash
 # 0. Retarget the build to the chain, then phase 0.
-just deploy-prereqs-sepolia          # or: just deploy-prereqs-rh
+just deploy-prereqs-rh               # or: just deploy-prereqs-rh-testnet
 
 # 1. Paste REALM_KEEPERS_REGISTRY + DIVIDEND_SWAP_REGISTRY into that chain's library in
 #    src/config/DeploymentAddresses.sol. They are baked into the taxable token bytecode and clones
@@ -46,7 +46,7 @@ just deploy-prereqs-sepolia          # or: just deploy-prereqs-rh
 forge build
 
 # 2. Phase 1 — the whole stack in one broadcast. Refuses to run if step 1 was skipped.
-just deploy-stack-sepolia            # or: just deploy-stack-rh
+just deploy-stack-rh                 # or: just deploy-stack-rh-testnet
 
 # 3. Paste the printed manifest block into src/config/manifest.<chain>.sol, then:
 just export-deployments
@@ -55,13 +55,13 @@ just export-deployments
 
 # 5. Appoint the admin + keeper on both registries (they ship empty). Admin defaults to the
 #    broadcasting account; REALM_KEEPER comes from the manifest. Idempotent.
-just configure-registries-sepolia     # or: just configure-registries-rh[-testnet]
+just configure-registries-rh         # or: just configure-registries-rh-testnet
 
 # 6. Smoke test: create a token through `RealmFactoryUniV2Unified` and `RealmFactoryUniV4Direct`
 #    (no dedicated script).
 ```
 
-Verification on Robinhood uses Blockscout, not Etherscan — the `*-robinhood*` recipes pass
+Verification on Robinhood uses Blockscout, not Etherscan — the `*-rh*` recipes pass
 `--verify --verifier blockscout --verifier-url <explorer>/api/` (the `robinhood_verify` /
 `robinhood_testnet_verify` justfile variables). To verify a past broadcast after the fact, re-run its
 recipe's `forge script` with `--resume` and the same verify flags; it reads `broadcast/` and only verifies.
@@ -109,7 +109,7 @@ than through a paste-and-rebuild round trip — the router holds it as an immuta
 into the manifest's `REALM_TOKEN` first (or prefix `REALM_TOKEN=<address>`).
 
 ```bash
-just deploy-treasury-router-rh       # or: -sepolia / -rh-testnet; dry-run without --broadcast first
+just deploy-treasury-router-rh       # or: -rh-testnet; dry-run without --broadcast first
 just export-deployments              # after pasting VOTING(+_IMPL), TREASURY_ROUTER(+_IMPL), LP_FEE_ROUTER_IMPL
 ```
 
@@ -130,7 +130,7 @@ graduators, curves or the vault factory means a new factory implementation:
 
 ```bash
 # after updating src/config/manifest.<chain>.sol with the new addresses
-just upgrade-factories-sepolia       # or: just upgrade-factories-rh
+just upgrade-factories-rh            # or: just upgrade-factories-rh-testnet
 ```
 
 When it is the **token masters** that change (the taxable ones bake per-chain constants, see
@@ -139,7 +139,7 @@ fresh masters AND rewires the factories to them, with nothing to paste in betwee
 slots go into the manifest afterwards:
 
 ```bash
-just redeploy-token-impls-sepolia      # or: just redeploy-token-impls-rh-testnet
+just redeploy-token-impls-rh           # or: just redeploy-token-impls-rh-testnet
 just export-deployments
 ```
 

@@ -7,7 +7,7 @@ import {IRealmDividendSwapRegistry} from "src/interfaces/IRealmDividendSwapRegis
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {IRealmV4Graduator} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
 // Self-aliased so the `chain-*` recipes can import-swap it for the target chain's pool constants.
-import {UniswapV4PoolConstants as UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {IRealmUniV4LiquidityAdder, WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";

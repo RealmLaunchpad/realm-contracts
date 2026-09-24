@@ -8,7 +8,6 @@ import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 import {
-    DeploymentAddressesEthereumSepolia,
     DeploymentAddressesRobinhoodMainnet,
     DeploymentAddressesRobinhoodTestnet
 } from "src/config/DeploymentAddresses.sol";
@@ -21,8 +20,8 @@ import {
 /// @dev    Nothing already deployed references the registries: only the taxable token impls bake them
 ///         in, and those come later in `DeployRealmStack`. Paste, `forge build`, then deploy the stack.
 ///
-///         Run: just chain-<sepolia|robinhood> && forge script DeployRealmRegistries \
-///                  --rpc-url <sepolia|rh-mainnet> --account realm.dev --slow --broadcast --verify
+///         Run: just chain-<rh|rh-testnet> && forge script DeployRealmRegistries \
+///                  --rpc-url <rh-mainnet|rh-testnet> --account realm.dev --slow --broadcast --verify
 contract DeployRealmRegistries is Script {
     function run() external virtual {
         vm.startBroadcast();
@@ -60,7 +59,6 @@ contract DeployRealmRegistries is Script {
     ///      ~10% of its quote side. NOT a sandwich defence (the keeper gate is) — it only keeps honest
     ///      conversions out of dead pairs. Changed later with `setDefaultThreshold`.
     function _dividendDepthThreshold() internal view returns (uint256) {
-        if (ChainConfig.isSepolia()) return 10 * DeploymentAddressesEthereumSepolia.MAX_EARNINGS_PER_PROCESS;
         if (ChainConfig.isRobinhoodTestnet()) return 10 * DeploymentAddressesRobinhoodTestnet.MAX_EARNINGS_PER_PROCESS;
         return 10 * DeploymentAddressesRobinhoodMainnet.MAX_EARNINGS_PER_PROCESS;
     }

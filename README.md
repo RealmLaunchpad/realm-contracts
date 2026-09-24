@@ -31,7 +31,7 @@ Realm Launchpad is a decentralized token launch platform that enables fair token
 
 ## Meta info
 
-- Deployment chain: **Ethereum mainnet**
+- Deployment chains: **Robinhood Chain mainnet** (4663) and **Robinhood Chain testnet** (46630)
 - Integrations:
   - Uniswap v2 (liquidity addition)
   - Uniswap V4 (direct-launch pools)
@@ -244,22 +244,3 @@ The `ConstantProductBondingCurve` has numerical limits and will revert if `ethRe
 
 ## Updates
 
-### Uniswap hooks
-
-To find the hook address with create2, run the script:
-
-   forge script MineHookAddressForTests
-
-This should be run for the latest version of the hook, since it uses its creation code. 
-
-This should print an output like this:
-
-```
-  === MINED ADDRESS ===
-  Hook Address: 0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044
-  Salt: 0x0x3b57
-  
-  === Copy this to your test file ===
-  address constant PRECOMPUTED_HOOK_ADDRESS = 0xf84841AB25aCEcf0907Afb0283aB6Da38E5FC044;
-  bytes32 constant HOOK_SALT = bytes32(uint256(0x0x3b57));
-```

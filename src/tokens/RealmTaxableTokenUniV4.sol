@@ -9,8 +9,7 @@ import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
-/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
-/// or DeploymentAddressesArc{Mainnet,Testnet} (ARC native currency is USDC, 18-dec at msg.value).
+/// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
 import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title RealmTaxableTokenUniV4

@@ -17,7 +17,7 @@ import {RealmKeeperLens} from "src/RealmKeeperLens.sol";
 ///      implementations it does not need `just chain-*` run first and its artifact verifies identically
 ///      on every chain. The recipes retarget anyway, because the rest of the tree is built alongside it.
 ///
-/// @dev Run: just deploy-keeper-lens-<sepolia|rh|rh-testnet>
+/// @dev Run: just deploy-keeper-lens-<rh|rh-testnet>
 ///      Dry-run first: the same `forge script` without --broadcast, plus --sender <realm.dev address>.
 contract DeployRealmKeeperLens is Script {
     function run() external {

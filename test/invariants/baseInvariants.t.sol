@@ -11,7 +11,7 @@ import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.s
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
-import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet} from "src/config/DeploymentAddresses.sol";
 import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 import {InvariantsHelperLaunchpad} from "./helper.t.sol";
@@ -45,18 +45,17 @@ contract LaunchpadInvariants is Test {
     uint16 public constant BASE_BUY_FEE_BPS = 100;
     uint16 public constant BASE_SELL_FEE_BPS = 100;
 
-    // Uniswap V2 router address on mainnet
-    address constant UNISWAP_V2_ROUTER = DeploymentAddressesEthereumMainnet.UNIV2_ROUTER;
+    // Uniswap V2 router on Robinhood mainnet
+    address constant UNISWAP_V2_ROUTER = DeploymentAddressesRobinhoodMainnet.UNIV2_ROUTER;
     // for fork tests
-    uint256 constant BLOCKNUMBER = 23327777;
+    uint256 constant BLOCKNUMBER = 58_000_000;
 
     // graduation parameters of the DEFAULT curve
     uint256 constant GRADUATION_THRESHOLD = 3.75 ether;
     uint256 constant MAX_THRESHOLD_EXCESS = 0.1 ether;
 
     function setUp() public virtual {
-        string memory mainnetRpcUrl = vm.envString("MAINNET_RPC_URL");
-        vm.createSelectFork(mainnetRpcUrl, BLOCKNUMBER);
+        vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
 
         vm.startPrank(admin);
 
@@ -67,7 +66,7 @@ contract LaunchpadInvariants is Test {
         bondingCurve = new ConstantProductBondingCurve();
         // For graduation tests, a new graduatorV2 should be deployed, and use fork tests.
         graduatorV2 = new RealmGraduatorUniswapV2(
-            UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesEthereumMainnet.UNIV2_PAIR_INIT_CODE_HASH
+            UNISWAP_V2_ROUTER, address(launchpad), DeploymentAddressesRobinhoodMainnet.UNIV2_PAIR_INIT_CODE_HASH
         );
         feeHandler = new RealmMasterFeeHandler();
 

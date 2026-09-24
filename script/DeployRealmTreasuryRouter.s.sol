@@ -30,7 +30,7 @@ import {DeployRealmVoting} from "script/DeployRealmVoting.s.sol";
 ///         router upgrade, not a redeploy). The broadcaster must own the launchpad and the LP router
 ///         proxy (`realm.dev`).
 ///
-/// @dev    Run: just deploy-treasury-router-<sepolia|rh|rh-testnet>
+/// @dev    Run: just deploy-treasury-router-<rh|rh-testnet>
 ///         Dry-run first: the same `forge script` without --broadcast, plus --sender <realm.dev address>.
 contract DeployRealmTreasuryRouter is DeployRealmVoting {
     function run() external override {

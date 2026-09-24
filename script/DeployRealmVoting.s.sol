@@ -19,7 +19,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         zero — so running this standalone is only for the case where the two are deployed apart (a
 ///         launchpad already owned by the multisig, say, which the router leg needs and this one does not).
 ///
-/// @dev    Run: just deploy-voting-<sepolia|rh|rh-testnet>
+/// @dev    Run: just deploy-voting-<rh|rh-testnet>
 ///         Dry-run first: the same `forge script` without --broadcast, plus --sender <realm.dev address>.
 contract DeployRealmVoting is Script {
     function run() external virtual {
