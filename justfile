@@ -325,17 +325,18 @@ deploy-keeper-lens-rh-testnet:
     forge script DeployRealmKeeperLens --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# The six-stock set on Robinhood testnet (AAPL, TSLA, AMZN, GOOGL, META, NVDA), 12 ETH of pool liquidity
-# by default (2 per pool) — pass ETH_PER_POOL (wei) to seed less. That chain DOES carry Robinhood's own official stock
+# Deploys the dummy assets `DeployDummyXStocks._stocks()` lists (today: USDG at ~2700 per ETH), each with a
+# native V4 pool seeded with ETH_PER_POOL wei (default 2 ETH). Earlier runs deployed the six-stock set
+# (AAPL, TSLA, AMZN, GOOGL, META, NVDA). E.g. `ETH_PER_POOL=20000000000000000000 just deploy-dummy-xstocks-rh-testnet`.
+# That chain DOES carry Robinhood's own official stock
 # tokens (TSLA, AMZN, PLTR, NFLX, AMD), but none of them can be bought with native ETH — no V2 pair,
 # nothing in the V4 pool manager, and the only depth is a third-party V3 DEX quoted in USDC — so they are
 # unusable as dividend payout assets or as quote assets. These dummies stand in, and their tickers match
 # the pair artwork the frontend ships, which is why TSLA and AMZN now overlap the official ones.
 # AFTER RUNNING THIS: `just discover-whitelist-assets-rh-testnet` then `just whitelist-assets-rh-testnet`.
-# No addresses to paste — discovery reads them from this recipe's broadcast log, and the dummies these
-# replace are delisted automatically. Dry run:
+# No addresses to paste — discovery reads them from this recipe's broadcast log. Dry run:
 #   forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev
-deploy-dummy-xstocks-rh-testnet:
+deploy-dummy-xstocks-rh-testnet: chain-rh-testnet
     forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
@@ -443,14 +444,18 @@ whitelist-assets-rh:
 # price sanity check does not apply. The pools are probed by key rather than scanned: that RPC caps
 # eth_getLogs at 10k blocks.
 #
-# The addresses come from the LAST `deploy-dummy-xstocks-rh-testnet` broadcast, so a redeploy needs no
-# edit here — but it does mean this always follows the newest run. The dummies it replaced are retired
-# automatically: they are still in the listings file this overwrites, so they come back as NONE entries.
+# The addresses are the LAST `deploy-dummy-xstocks-rh-testnet` broadcast PLUS every asset the current
+# listings file still lists, so a run that deploys one new asset keeps the older ones. To retire an asset,
+# mark it NONE in the listings file by hand.
 discover-whitelist-assets-rh-testnet:
     #!/usr/bin/env bash
     set -euo pipefail
     RUN=broadcast/DeployDummyXStocks.s.sol/46630/run-latest.json
-    ASSETS=$(jq -r '[.transactions[] | select(.contractName=="DummyXStock" and .transactionType=="CREATE") | .contractAddress] | join(",")' "$RUN")
+    LISTINGS=script/operations/assets-whitelist/listings.robinhood.testnet.json
+    ASSETS=$(jq -rn --slurpfile run "$RUN" --slurpfile l "$LISTINGS" \
+        '[($run[0].transactions[] | select(.contractName=="DummyXStock" and .transactionType=="CREATE") | .contractAddress),
+          ($l[0] | [.assets, .venues] | transpose[] | select(.[1] != 0) | .[0])]
+         | map(ascii_downcase) | unique | join(",")')
     [ -n "$ASSETS" ] || { echo "no DummyXStock deploys in $RUN"; exit 1; }
     echo "assets from $RUN: $ASSETS"
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py --chain testnet --min-depth 0.05 \
