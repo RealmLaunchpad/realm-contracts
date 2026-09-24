@@ -180,6 +180,15 @@ contract DividendsThirdAssetTests is Test {
         h.accrue{value: 1 ether}();
     }
 
+    /// @dev Tops the buffer up to more than two conversion caps, so two consecutive conversions both
+    ///      take a full slice. Returns the new buffer.
+    function _topUpPastTwoCaps(DividendHarness h) internal returns (uint256 funded) {
+        funded = 2 * h.MAX_DIVIDEND_PER_CONVERSION() + 1 ether;
+        uint256 extra = funded - h.pendingNative();
+        vm.deal(address(this), extra);
+        h.accrue{value: extra}();
+    }
+
     function _holders() internal view returns (address[] memory list) {
         list = new address[](1);
         list[0] = holder;
@@ -240,13 +249,14 @@ contract DividendsThirdAssetTests is Test {
     function test_thirdAsset_cappedConversionLeavesTheRemainderBuffered() public {
         _fundAndActivate(harness);
         uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
+        uint256 funded = _topUpPastTwoCaps(harness);
 
         harness.processDividends(0, _holders());
-        assertEq(harness.pendingNative(), 1 ether - cap, "the first conversion took exactly the cap");
+        assertEq(harness.pendingNative(), funded - cap, "the first conversion took exactly the cap");
 
         vm.roll(block.number + 1); // the funding leg is once per block
         harness.processDividends(0, _noHolders());
-        assertEq(harness.pendingNative(), 1 ether - 2 * cap, "and the next one takes the next slice");
+        assertEq(harness.pendingNative(), funded - 2 * cap, "and the next one takes the next slice");
     }
 
     //////////////////////// the liquidity proof //////////////////////
@@ -480,17 +490,18 @@ contract DividendsThirdAssetTests is Test {
     function test_theFundingLegIsOncePerBlock() public {
         _fundAndActivate(harness);
         uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
+        uint256 funded = _topUpPastTwoCaps(harness);
 
         harness.processDividends(0, _noHolders());
-        assertEq(harness.pendingNative(), 1 ether - cap, "the first conversion went through");
+        assertEq(harness.pendingNative(), funded - cap, "the first conversion went through");
 
         vm.expectRevert(DividendDistribution.DividendProcessCooldown.selector);
         harness.processDividends(0, _noHolders());
-        assertEq(harness.pendingNative(), 1 ether - cap, "and a second one in the same block converts nothing");
+        assertEq(harness.pendingNative(), funded - cap, "and a second one in the same block converts nothing");
 
         vm.roll(block.number + 1);
         harness.processDividends(0, _noHolders());
-        assertEq(harness.pendingNative(), 1 ether - 2 * cap, "the next block converts again");
+        assertEq(harness.pendingNative(), funded - 2 * cap, "the next block converts again");
     }
 
     /// @dev The gate is on FUNDING alone. A keeper splitting a large holder set across several

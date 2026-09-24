@@ -127,7 +127,7 @@ abstract contract DividendDistribution {
 
     /// @notice Max native a token may convert in ONE distribution, per asset. Deliberately the SAME
     ///         constant `processBurn` and `processLiquidity` cap with, for the same reason and on the
-    ///         same scale — roughly 3-11% of a graduated pool across the liquidity tiers.
+    ///         same scale — roughly 15-55% of a graduated pool across the liquidity tiers.
     /// @dev WHAT THIS DOES AND DOES NOT BOUND. It caps the loss PER BLOCK PER ASSET, and nothing else.
     ///      It does NOT bound the FRACTION of a conversion a sandwich can take: the cost of pushing a
     ///      constant-product price arbitrarily far and back is the pool fee paid twice — about 0.6% of

@@ -49,7 +49,7 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      earnings buffers PER BLOCK; the remainder stays buffered for later calls. It does not bound
     ///      the fraction of a single call that can be taken — only the keeper gate does that. See
     ///      `DividendDistribution.MAX_DIVIDEND_PER_CONVERSION`.
-    uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 1 ether;
 
     /// @notice Minimum accrued native amount the dividend buffer must hold before
     ///         `processDividends` may convert it and stream it to holders. Per-chain because a wei value
@@ -80,7 +80,7 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      conversion costs a tiny fraction of this even with the L1 data fee, so the fee survives an
     ///      L1 fee spike, a stretch of conversions that revert on their floor, and a gas regime nobody
     ///      forecast — the cost of being wrong the other way is every token's distributions stopping at
-    ///      once. It is ~2% of a threshold-sized conversion (0.1 ETH) and ~1% of a maximum one.
+    ///      once. It is ~2% of a threshold-sized conversion (0.1 ETH) and ~0.2% of a maximum one (1 ETH).
     uint256 public constant KEEPER_FEE = 0.002 ether;
 
     /// @notice The `RealmDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
@@ -169,7 +169,7 @@ library DeploymentAddressesRobinhoodTestnet {
 
     /// @notice Max native amount (wei) a taxable token's `processBurn`/`processLiquidity` processes per call.
     /// @dev See the Robinhood mainnet library for the rationale (sandwich-extraction cap).
-    uint256 public constant MAX_EARNINGS_PER_PROCESS = 0.2 ether;
+    uint256 public constant MAX_EARNINGS_PER_PROCESS = 1 ether;
 
     /// @notice Minimum accrued native amount the dividend buffer must hold before
     ///         `processDividends` may convert it and stream it to holders. Per-chain because a wei value

@@ -6,11 +6,6 @@ import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {ChainConfig} from "script/ChainConfig.sol";
-import {
-    DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet
-} from "src/config/DeploymentAddresses.sol";
 
 /// @title The two keeper registries, owned by the broadcasting account
 /// @notice Deploys `RealmKeepersRegistry` and the `RealmDividendSwapRegistry` proxy, both owned by the
@@ -55,11 +50,11 @@ contract DeployRealmRegistries is Script {
     }
 
     /// @dev Depth an asset's V2 pair must hold to be an eligible dividend payout asset, in native
-    ///      18-dec. 10x the per-process cap, so the largest swap a token ever sends through the pool is
-    ///      ~10% of its quote side. NOT a sandwich defence (the keeper gate is) — it only keeps honest
-    ///      conversions out of dead pairs. Changed later with `setDefaultThreshold`.
-    function _dividendDepthThreshold() internal view returns (uint256) {
-        if (ChainConfig.isRobinhoodTestnet()) return 10 * DeploymentAddressesRobinhoodTestnet.MAX_EARNINGS_PER_PROCESS;
-        return 10 * DeploymentAddressesRobinhoodMainnet.MAX_EARNINGS_PER_PROCESS;
+    ///      18-dec. 2x the per-process cap: a max-size conversion is up to ~50% of the quote side, so the
+    ///      keeper sizes its own conversions below the cap on shallow pairs. NOT a sandwich defence (the
+    ///      keeper gate is) — it only keeps honest conversions out of dead pairs. Changed later with
+    ///      `setDefaultThreshold`.
+    function _dividendDepthThreshold() internal pure returns (uint256) {
+        return 2 ether;
     }
 }

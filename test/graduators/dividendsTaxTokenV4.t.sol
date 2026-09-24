@@ -676,8 +676,8 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      executed.
     function test_selfTokenLeg_boughtBackOnFundingAndPaidInTokens() public {
         RealmTaxableTokenUniV4 token = _graduatedSelfTokenDividendToken();
-        _accrue(token, 1 ether);
-        assertEq(token.pendingNative(), 0.5 ether + seededBuffer, "the self-token leg buffers as ETH on V4");
+        _accrue(token, 3 ether);
+        assertEq(token.pendingNative(), 1.5 ether + seededBuffer, "the self-token leg buffers as ETH on V4");
 
         uint256 holderBefore = IERC20(address(token)).balanceOf(buyer);
         token.processDividends(0, _noHolders());
@@ -690,7 +690,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         // earnings.
         assertApproxEqAbs(
             token.pendingNative(),
-            0.5 ether + seededBuffer - token.MAX_DIVIDEND_PER_CONVERSION(),
+            1.5 ether + seededBuffer - token.MAX_DIVIDEND_PER_CONVERSION(),
             0.01 ether,
             "the conversion took the cap, the remainder stayed buffered"
         );

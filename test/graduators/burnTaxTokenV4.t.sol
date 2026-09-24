@@ -221,7 +221,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         _graduateToken();
 
         // Overfill the buffer past the per-call cap via a stray-ETH sweep (50% burn allocation).
-        vm.deal(address(burnToken), 1 ether);
+        vm.deal(address(burnToken), 3 ether);
         burnToken.sweepStrayEth();
         uint256 pending = burnToken.burnPendingEth();
         uint256 cap = burnToken.MAX_EARNINGS_PER_PROCESS();
