@@ -358,6 +358,55 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         );
     }
 
+    /// @dev The milestone follows the heaviest pool (native, 60%): pumping the lighter one does nothing.
+    function test_graduation_followsTheHeaviestPool() public {
+        vm.prank(creator);
+        address token = directFactory.createToken(
+            _setup(false),
+            _twoPairs(),
+            _noDirectAlloc(_emptyTaxCfg()),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+
+        quoteCoin.mintTo(alice, 20_000e6);
+        _swapQuotePool(alice, token, true, 20_000e6);
+        assertFalse(IRealmToken(token).graduationReached(), "the lighter pool must not graduate the token");
+
+        vm.deal(alice, 10 ether);
+        _swapBuyV4(alice, token, 3 ether, 0, true);
+        assertTrue(IRealmToken(token).graduationReached(), "the heaviest pool past 5x graduates it");
+    }
+
+    /// @dev A quote sorting above the token makes the coin currency0, so appreciation moves the tick UP.
+    function test_graduation_coinAsCurrency0() public {
+        address high = address(type(uint160).max);
+        deployCodeTo("directLaunchQuotes.t.sol:QuoteCoin", high);
+        _whitelist(high, QC_PER_ETH);
+        RealmFactoryUniV4Direct.DirectPair[] memory p = new RealmFactoryUniV4Direct.DirectPair[](1);
+        p[0] = RealmFactoryUniV4Direct.DirectPair({quote: high, weightBps: 10_000});
+
+        vm.prank(creator);
+        address token = directFactory.createToken(
+            _setup(false),
+            p,
+            _noDirectAlloc(_emptyTaxCfg()),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+        assertTrue(token < high, "coin must sort as currency0");
+
+        QuoteCoin(high).mintTo(alice, 20_000e6);
+        _swapQuotePool(alice, token, high, true, 1_000e6);
+        assertFalse(IRealmToken(token).graduationReached(), "below 5x must not graduate");
+        _swapQuotePool(alice, token, high, true, 19_000e6);
+        assertTrue(IRealmToken(token).graduationReached(), "past 5x must graduate");
+    }
+
     function test_multiPair_emitsOnePoolSeededPerPoolWithItsWeight() public {
         vm.recordLogs();
         vm.prank(creator);

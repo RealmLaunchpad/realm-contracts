@@ -7,6 +7,9 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 interface IRealmToken is IERC20 {
     //////////////////////// Events //////////////////////
 
+    /// @notice The token reached its graduation milestone. Curve venues: the migration to the DEX. Direct
+    ///         venue (no curve, tradable from birth): the first buy that takes its graduation pool to
+    ///         `GRADUATION_TARGET_MULTIPLE`x its launch market cap. Cosmetic only; see `graduationReached`.
     event Graduated();
 
     /// @notice Emitted once at creation when a token is launched against ERC20 quotes on top of the
@@ -84,6 +87,10 @@ interface IRealmToken is IERC20 {
 
     function markGraduated() external;
 
+    /// @notice Sets the pool and tick whose crossing emits `Graduated` on a direct-venue token.
+    /// @dev Callable only by the graduator, at launch.
+    function setGraduationTarget(bytes32 poolId, int24 tick, bool ascending) external;
+
     /// @notice Registers the token's initial fee receiver config in its fee handler.
     /// @dev Callable only by the factory that initialized the token.
     function registerFees(IRealmFactory.FeeShare[] calldata feeShares) external;
@@ -153,8 +160,13 @@ interface IRealmToken is IERC20 {
     /// @dev Must implement IRealmGraduator interface
     function graduator() external view returns (address);
 
-    /// @notice Returns true if already graduated
+    /// @notice True once DEX liquidity is live and the token is tradable there (the deployed V4 hooks
+    ///         refuse swaps until then). Direct-venue tokens are tradable from birth, so this is NOT the
+    ///         graduation milestone: that is `graduationReached`.
     function graduated() external view returns (bool);
+
+    /// @notice True once the token hit its graduation milestone, i.e. once `Graduated` was emitted.
+    function graduationReached() external view returns (bool);
 
     /// @notice Timestamp when this token was created (the `initialize` call). Anchors the
     ///         sniper-protection window and, on taxable variants, the creation-anchored tax window.

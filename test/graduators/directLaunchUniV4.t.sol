@@ -107,6 +107,51 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
 
     /// @dev Everything not locked in a vault goes into the pool, bar the rounding remainder the band
     ///      could not absorb — which is burned, never held, so the graduator never becomes a holder.
+    /////////////////////////// GRADUATION MILESTONE ///////////////////////////
+
+    /// @dev `Graduated` events the token emitted since the last `vm.recordLogs()`.
+    function _graduatedEvents(address token) internal returns (uint256 n) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].emitter == token && logs[i].topics[0] == IRealmToken.Graduated.selector) ++n;
+        }
+    }
+
+    /// @dev Tradable from birth, but the milestone waits for the market cap.
+    function test_launch_isTradableButNotYetGraduated() public {
+        vm.recordLogs();
+        address token = _launch(0, _noDevBuy());
+
+        assertTrue(IRealmToken(token).graduated(), "pool must be tradable from birth");
+        assertFalse(IRealmToken(token).graduationReached(), "milestone must wait for 5x");
+        assertEq(_graduatedEvents(token), 0, "Graduated must not fire at deploy");
+    }
+
+    /// @dev 2.25 ETH opening market cap: ~2 ETH in takes it to ~3.5x, ~3.5 ETH to ~6.4x.
+    function test_graduation_firesOnceOnTheBuyThatCrossesFiveTimesTheLaunchMarketCap() public {
+        address token = _launch(0, _noDevBuy());
+        vm.deal(alice, 10 ether);
+
+        vm.recordLogs();
+        _swapBuyV4(alice, token, 2 ether, 0, true);
+        assertFalse(IRealmToken(token).graduationReached(), "below 5x must not graduate");
+        assertEq(_graduatedEvents(token), 0);
+
+        vm.recordLogs();
+        _swapBuyV4(alice, token, 1.5 ether, 0, true);
+        assertTrue(IRealmToken(token).graduationReached(), "past 5x must graduate");
+        assertEq(_graduatedEvents(token), 1, "Graduated fires on the crossing buy");
+        // Coin is currency1: quote-per-coin up is the pool tick down.
+        (, int24 tick,,) = IPoolManager(poolManagerAddress).getSlot0(_poolKey(token).toId());
+        assertLt(tick, -(LAUNCH_TICK + directGraduator.GRADUATION_TARGET_TICKS()), "pool is past 5x");
+
+        vm.recordLogs();
+        _swapSellV4(alice, token, IERC20(token).balanceOf(alice), 0, true);
+        _swapBuyV4(alice, token, 3.5 ether, 0, true);
+        assertTrue(IRealmToken(token).graduationReached(), "the milestone is one-way");
+        assertEq(_graduatedEvents(token), 0, "Graduated fires once");
+    }
+
     function test_launch_seedsTheWholeSupplyIntoThePool() public {
         address token = _launch(0, _noDevBuy());
 

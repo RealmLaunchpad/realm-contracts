@@ -5,6 +5,9 @@ import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol"
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolId} from "lib/v4-core/src/types/PoolId.sol";
+import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
@@ -19,6 +22,7 @@ import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.s
 ///      their window has closed, pay no extra SLOAD — the caps code is present but never reached. Tax variants (`RealmTaxableToken*`) inherit this same gated feature.
 contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperProtection {
     using SafeERC20 for IERC20;
+    using StateLibrary for IPoolManager;
 
     /// @notice Version of the Realm stack this token belongs to
     string public constant override VERSION = "2.0";
@@ -41,7 +45,9 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     ///      in `_update` costs a single SLOAD.
     address public pair;
 
-    /// @notice Whether the token has graduated already or not
+    /// @notice Whether DEX liquidity is live, which unlocks transfers to the pair. The deployed V4 hooks
+    ///         read it (via `graduated()`) to allow swaps, hence the name. NOT the graduation milestone on
+    ///         the direct venue, whose tokens trade from birth: see `graduationReached`.
     bool public graduated;
 
     /// @notice Absolute timestamp at which the anti-sniper window closes: `launchTimestamp` plus the
@@ -73,8 +79,22 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     ///      transfer hook has already warmed rather than a cold one of its own.
     uint8 public quoteCount;
 
+    /// @notice Whether the token hit its graduation milestone (and emitted `Graduated`). Curve venues:
+    ///         set together with `graduated`, at migration. Direct venue: set by the first buy that takes
+    ///         the graduation pool past `graduationTick` (see `_checkGraduationMilestone`).
+    /// @dev Packs into the `pair` slot, so the transfer hook gates the milestone check for free.
+    bool public graduationReached;
+
     /// @notice Launchpad address
     RealmLaunchpad public launchpad;
+
+    /// @notice Direct venue only: tick of `graduationPoolId` at which the token graduates, in the pool's
+    ///         own orientation. Packs into the `launchpad` slot.
+    int24 internal graduationTick;
+
+    /// @notice Direct venue only: whether the coin appreciating moves `graduationPoolId`'s tick up (the
+    ///         coin is currency0) or down (currency1).
+    bool internal graduationTickAscending;
 
     /// @notice Contract handling fees for this token
     address public feeHandler;
@@ -139,6 +159,10 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     ///         launched against has no pool, no buffer and no way to be spent, so accepting one would
     ///         strand it.
     mapping(address quote => uint8 indexPlusOne) internal _quoteIndexPlusOne;
+
+    /// @notice Direct venue only: the pool whose price decides the graduation milestone (the launch's
+    ///         heaviest pool, set by the graduator). Read only until the milestone is reached.
+    bytes32 internal graduationPoolId;
 
     //////////////////////// Errors //////////////////////
 
@@ -252,7 +276,16 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         require(msg.sender == graduator, OnlyGraduatorAllowed());
 
         graduated = true;
-        emit Graduated();
+        _onLiquidityLive();
+    }
+
+    /// @notice Sets the pool and tick whose crossing graduates a direct-venue token.
+    /// @dev Only the graduator, which calls it at launch for each heavier pool it seeds.
+    function setGraduationTarget(bytes32 poolId, int24 tick, bool ascending) external {
+        require(msg.sender == graduator, OnlyGraduatorAllowed());
+        graduationPoolId = poolId;
+        graduationTick = tick;
+        graduationTickAscending = ascending;
     }
 
     /// @notice Proposes a new owner for a token. Only callable by the current tokenOwner.
@@ -444,8 +477,8 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     function _update(address from, address to, uint256 amount) internal virtual override {
         // Load `pair`/`graduated`/`protectionWindowEnd`/`hasDividends` (one packed slot) with a single
         // SLOAD, reused for every check below instead of re-reading the slot up to four times.
-        (address _pair, bool _graduated, uint40 _windowEnd, bool _hasDividends) =
-            (pair, graduated, protectionWindowEnd, hasDividends);
+        (address _pair, bool _graduated, uint40 _windowEnd, bool _hasDividends, bool _graduationReached) =
+            (pair, graduated, protectionWindowEnd, hasDividends, graduationReached);
 
         // Dividend round minima, gated by the warm-slot flag so a non-dividend token pays nothing.
         if (_hasDividends) _onBalanceChange(from, to, amount);
@@ -469,6 +502,33 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         }
 
         super._update(from, to, amount);
+
+        // Only a buy moves the price up. On curve venues `_graduationReached` is set before the pair can
+        // hold any supply, so this only ever runs on the direct venue.
+        if (from == _pair && !_graduationReached) _checkGraduationMilestone();
+    }
+
+    /// @dev Curve venues graduate when their liquidity goes live. The direct venue (no launchpad) is live
+    ///      from birth and graduates later, on its market-cap milestone (`_checkGraduationMilestone`).
+    function _onLiquidityLive() internal {
+        if (address(launchpad) != address(0)) _reachGraduation();
+    }
+
+    function _reachGraduation() internal {
+        graduationReached = true;
+        emit Graduated();
+    }
+
+    /// @dev Direct venue: graduates on the first buy that leaves the graduation pool at or past
+    ///      `graduationTick` (`GRADUATION_TARGET_MULTIPLE`x the launch market cap, in the pool's own
+    ///      quote). Reads spot, so a flash-loan pump-and-dump can trigger it for the round-trip fees.
+    ///      Accepted: the milestone only emits an event and flips a view for third-party integrators;
+    ///      no funds, fees, taxes or permissions depend on it.
+    /// @dev `virtual` so venues that can never reach it (V2) drop its bytecode.
+    function _checkGraduationMilestone() internal virtual {
+        (, int24 tick,,) = IPoolManager(pair).getSlot0(PoolId.wrap(graduationPoolId));
+        int24 target = graduationTick;
+        if (graduationTickAscending ? tick >= target : tick < target) _reachGraduation();
     }
 
     function _spendAllowance(address owner_, address spender, uint256 value) internal override {

@@ -126,4 +126,8 @@ abstract contract RealmTaxableTokenUniV2Base is RealmTaxableToken {
         }
         return balance > reserved ? balance - reserved : 0;
     }
+
+    /// @dev A V2 token graduates at migration (`markGraduated`), so the direct-venue milestone check is
+    ///      unreachable here; overriding it drops its bytecode (EIP-170).
+    function _checkGraduationMilestone() internal pure override {}
 }

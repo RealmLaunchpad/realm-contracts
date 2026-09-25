@@ -65,6 +65,12 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     /// @dev 5x is the DEFAULT curve's own run, from its 2.25 ETH opening to its 12.25 ETH graduation.
     uint256 public constant GRADUATION_TARGET_MULTIPLE = 5;
 
+    /// @notice `GRADUATION_TARGET_MULTIPLE` as a tick offset from the launch tick: ceil(log_1.0001(5)).
+    ///         Market cap is price times a fixed supply, so 5x the market cap is 5x the price in the
+    ///         pool's own quote, whatever that quote is. The token emits `Graduated` when its graduation
+    ///         pool crosses it (`RealmToken._checkGraduationMilestone`).
+    int24 public constant GRADUATION_TARGET_TICKS = 16_096;
+
     /// @notice Uniswap V4 pool manager. Also the `pair` every direct-launched token records, so the
     ///         token's own pre-graduation transfer guard points at the same place the curve venue's does.
     IPoolManager public immutable UNIV4_POOL_MANAGER;
@@ -113,6 +119,10 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
 
     /// @dev Set by `graduateToken`, so a launch cannot be graduated (and pair 0 seeded) twice.
     bool transient _launched;
+
+    /// @dev Weight of the heaviest pool seeded so far in this launch: the one the token's graduation
+    ///      milestone follows (first seeded wins a tie, as indexers pick it).
+    uint16 transient _graduationWeightBps;
 
     /////////////////////// Errors ///////////////////////
 
@@ -368,6 +378,7 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         _prepared = false;
         _initializedToken = address(0);
         _launched = false;
+        _graduationWeightBps = 0;
     }
 
     /// @dev Seeds ONE pool with `tokenAmount`.
@@ -376,6 +387,13 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         returns (uint128 liquidity)
     {
         PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, hookFor(quote));
+        if (weightBps > _graduationWeightBps) {
+            _graduationWeightBps = weightBps;
+            // Target in the pool's orientation: the coin appreciating moves the tick up iff it is currency0.
+            bool coinIsC0 = tokenAddress < quote;
+            int24 target = _poolTickFor(tokenAddress, quote, launchTick + GRADUATION_TARGET_TICKS);
+            IRealmToken(tokenAddress).setGraduationTarget(PoolId.unwrap(key.toId()), target, coinIsC0);
+        }
         return _seed(key, tokenAddress, quote, tokenAmount, launchTick, weightBps);
     }
 

@@ -205,7 +205,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///      `QuotesRegistered` → `CreatorVaultsCreated` → `SharesUpdated` → the allocation's events
     ///      (`EarningsAllocationInitialized`, `DividendAssetInitialized` per payout asset,
     ///      `DividendsInitialized`, the registry's `DividendRouteRegistered` per route) →
-    ///      `PoolIdRegistered` per extra pool → `Graduated` → `PoolSeeded` (first pool) →
+    ///      `PoolIdRegistered` per extra pool → (`DividendsActivated`) → `PoolSeeded` (first pool) →
     ///      `TokenGraduated` → `PoolSeeded` per extra pool → the dev buy's own swap events → the
     ///      seed-remainder burn → `BuyOnDeploy` → `LpFeeBpsSet` → `TokenReferral`.
     /// @param referral Relayer that forwarded the creation, or `address(0)`. Emitted as an off-chain

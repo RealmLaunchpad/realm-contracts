@@ -575,6 +575,7 @@ contract TestDeferredPairDeployment is BaseUniswapV2GraduationTests {
         _graduateToken();
 
         assertTrue(RealmToken(testToken).graduated(), "Token should graduate");
+        assertTrue(RealmToken(testToken).graduationReached(), "curve venues reach the milestone at migration");
         assertEq(UNISWAP_FACTORY.getPair(testToken, address(WETH)), uniswapPair, "Factory still records the same pair");
         // Liquidity actually landed in the pre-existing pair
         assertGt(WETH.balanceOf(uniswapPair), 0, "Pair should have WETH reserves");

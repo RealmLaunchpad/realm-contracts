@@ -178,8 +178,9 @@ abstract contract RealmTaxableToken is
 
         graduated = true;
         graduationTimestamp = uint40(block.timestamp);
-        emit Graduated();
-        // After `Graduated`, never before: the indexer reads `DividendsActivated` as following it.
+        _onLiquidityLive();
+        // After `Graduated` (curve venues), never before: the indexer reads `DividendsActivated` as
+        // following it. The direct venue emits `Graduated` later, on its market-cap milestone.
         if (hasDividends) _activateDividends();
     }
 
