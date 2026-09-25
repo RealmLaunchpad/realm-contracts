@@ -363,15 +363,16 @@ contract DeployRealmStack is Script {
 
     /// @dev Brute-forces the CREATE2 salt whose address ends in `VANITY_SUFFIX`. 1 in 65,536 salts
     ///      hits, so the bound is ~15x the expected work — overrunning it means the initcode is wrong,
-    ///      not that the search was unlucky.
-    function _mineSalt(bytes memory initCode) internal pure returns (bytes32) {
+    ///      not that the search was unlucky. Skips occupied addresses, so a rehearsal launchpad with the
+    ///      same initcode doesn't block the real one.
+    function _mineSalt(bytes memory initCode) internal view returns (bytes32) {
         bytes32 initCodeHash = keccak256(initCode);
         for (uint256 i = 0; i < 1_000_000; ++i) {
             bytes32 salt = bytes32(i);
             address predicted = address(
                 uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), CREATE2_DEPLOYER, salt, initCodeHash))))
             );
-            if (uint16(uint160(predicted)) == VANITY_SUFFIX) return salt;
+            if (uint16(uint160(predicted)) == VANITY_SUFFIX && predicted.code.length == 0) return salt;
         }
         revert("no vanity salt found");
     }
