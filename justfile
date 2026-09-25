@@ -127,13 +127,16 @@ deploy-registries-rh-testnet: chain-rh-testnet
 # until phase 0 is pasted and the build is retargeted. Paste the printed manifest block afterwards and
 # run `just export-deployments`.
 
+# `--disable-code-size-limit` on every recipe that deploys the taxable tokens: they exceed EIP-170's 24 KB
+# (Robinhood allows 96 KB), and forge's pre-broadcast size check is hardcoded to 24 KB, ignoring
+# `code_size_limit` in foundry.toml — without the flag it stops at an interactive y/n prompt.
 deploy-stack-rh: chain-rh
     forge script DeployRealmStack --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300 {{robinhood_verify}}
+        --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_verify}}
 
 deploy-stack-rh-testnet: chain-rh-testnet
     forge script DeployRealmStack --rpc-url rh-testnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+        --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_testnet_verify}}
 
 # Redeploys both unified factory implementations from the CURRENT manifest and repoints the live
 # proxies at them. The upgrade path for anything a factory holds as an immutable — token impls,
@@ -267,11 +270,11 @@ upgrade-voting-rh-testnet: chain-rh-testnet
 
 redeploy-token-impls-rh-testnet: chain-rh-testnet
     forge script RedeployTokenImpls --rpc-url rh-testnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+        --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_testnet_verify}}
 
 redeploy-token-impls-rh: chain-rh
     forge script RedeployTokenImpls --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
-        --gas-estimate-multiplier 300 {{robinhood_verify}}
+        --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_verify}}
 
 # Appoints the admin and the keeper on BOTH registries (keepers + dividend swap), which ship empty from
 # DeployRealmPrereqs. Admin defaults to the broadcasting account (the registries' owner) — override with
