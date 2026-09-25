@@ -2,33 +2,27 @@
 # requires-python = ">=3.11"
 # dependencies = ["requests", "eth-abi", "eth-utils", "eth-hash[pycryptodome]"]
 # ///
-"""Pick the Uniswap pool that prices each of Robinhood Chain's biggest coins, and write the file
+"""Pick the Uniswap pool that prices USDG and each of Robinhood's own xStocks, and write the file
 `WhitelistRobinhoodAssets` lists them from.
 
 The whitelist stores a SNAPSHOT of each asset's rate, read from one pool the approver names, so the
-only question this script answers is: for every coin worth listing, which pool should that be? A pool
-qualifies when it is Uniswap V2, V3 or V4 (nothing else -- the contract refuses every other venue),
-when its other side is native/WETH or the chain's reference asset (itself listed against native), when
-it holds real depth, and when its price agrees with the coin's market price. Of those, the deepest
-wins.
+only question this script answers is: for every asset worth listing, which pool should that be? A pool
+qualifies when it is Uniswap V2, V3 or V4 (nothing else -- the contract refuses every other venue) and
+its other side is native/WETH or the chain's reference asset (itself listed against native). Of those,
+the deepest wins.
 
 How it works:
-  1. CoinGecko for the universe: every coin it lists with a Robinhood Chain deployment, ranked by
-     market cap, with its USD price. On-chain there is no such thing as "the top 300" -- anyone can
-     deploy a token, so the ranking has to come from off chain. Robinhood's own ~195 xStocks come from
-     its asset API and are added on top, exempt from `--limit`: they are the assets the chain exists
-     for, and several of them are too small to make any market-cap cut. `--assets` replaces both with
-     a list given by the caller, which is how the testnet is done: nothing there is ranked or priced
-     anywhere, so the price check is skipped and naming the assets IS the vetting.
+  1. The universe is policy: USDG (the reference) plus Robinhood's own ~195 xStocks, from its asset
+     API -- the list behind docs.robinhood.com/chain/contracts. Every one with a pool is listed, however
+     thin: liquidity is shown to creators as a low/ok/deep tier rather than gated here. `--assets`
+     replaces the universe with a list given by the caller, which is how the testnet is done.
   2. The chain for the pools: `PairCreated`, `PoolCreated` and `Initialize` logs, filtered to those
-     coins, then Uniswap's own state (reserves / slot0 + liquidity) read through Multicall3. Where the
+     assets, then Uniswap's own state (reserves / slot0 + liquidity) read through Multicall3. Where the
      RPC will not serve a log scan (the testnet caps `eth_getLogs` at 10k blocks), pools are instead
      probed by key at a handful of standard shapes.
   3. Depth as the tiebreak, measured as the quote-side amount at the current price, converted to
      native so a reference-quoted pool and an ETH-quoted one compare. For V3 and V4 that is the
-     in-range virtual amount, which overstates a narrow position -- hence the price check, which is
-     what actually catches a pool seeded at a made-up price.
-
+     in-range virtual amount, which overstates a narrow position.
   4. Curation, in both directions. An asset the previous file listed that no longer qualifies, and
      that the live whitelist still prices, comes back as a `Venue.NONE` entry -- how `setWhitelisted`
      retires an asset -- so one broadcast refreshes the list and empties out what fell off it. Without
@@ -36,8 +30,8 @@ How it works:
 
 Output: `listings.robinhood.<chain>.json`, which `WhitelistRobinhoodAssets` reads and broadcasts.
 Review it, and re-run before listing: the stored rate is a snapshot, and a coin whose liquidity has
-moved gets a different pool, or drops off the list. Its `rejected` section says why every coin that
-did not make it was left out, which is where a missing xStock gets explained.
+moved gets a different pool. Its `rejected` section says why every asset that did not make it was left
+out.
 
 Usage:  uv run script/operations/assets-whitelist/discover_whitelist_assets.py [--chain testnet …]
         The chain's RPC env var (`ROBINHOOD_RPC_URL` / `ROBINHOOD_TESTNET_RPC_URL`) must point at an
@@ -75,11 +69,9 @@ CHAINS = {
         "univ3_factory": "0x1f7d7550b1b028f7571e69a784071f0205fd2efa",
         "pool_manager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
         "scan_logs": True,
-        # Robinhood's own stock tokens live here, and are listed on top of the market-cap ranking.
-        "xstocks": True,
         "manifest": "src/config/manifest.robinhood.mainnet.sol",
     },
-    # The testnet has no CoinGecko universe to rank and no reference asset worth the name, so it is only
+    # The testnet has no Robinhood xStocks and no reference asset worth the name, so it is only
     # ever run with `--assets`: the dummy dividend xStocks, each in its own native-quoted V4 pool.
     # Its RPC also caps `eth_getLogs` at 10k blocks, which is 12,000 queries per filter over a chain this
     # long, so pools are probed by key instead of discovered from logs.
@@ -93,15 +85,13 @@ CHAINS = {
         "univ3_factory": None,
         "pool_manager": "0x552815ef68e6eb418a3d65d0aa1043d93204f612",
         "scan_logs": False,
-        # The dummy xStocks here are Realm's own, not Robinhood's, so the asset API does not know them.
-        "xstocks": False,
         "manifest": "src/config/manifest.robinhood.testnet.sol",
     },
 }
 
 # Set from `CHAINS` by `main`, before anything reads the chain.
 CHAIN_ID = RPC = WETH = REFERENCE = UNIV2_FACTORY = UNIV3_FACTORY = POOL_MANAGER = SCAN_LOGS = None
-XSTOCKS = MANIFEST = None
+MANIFEST = None
 NATIVE_SIDE: set[str] = set()
 
 TOPIC_V2 = "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"  # PairCreated
@@ -115,8 +105,6 @@ POOLS_SLOT, LIQUIDITY_OFFSET = 6, 3
 BEFORE_SWAP_RETURNS_DELTA = 1 << 3
 Q96 = 1 << 96
 
-CG = "https://api.coingecko.com/api/v3"
-CG_PAUSE = 8  # the free tier rejects anything faster
 # Robinhood's public list of its own stock tokens, and where their addresses come from.
 XSTOCKS_API = "https://api.robinhood.com/rhj/assets"
 HTTP_TIMEOUT = 180
@@ -130,58 +118,11 @@ def selector(signature: str) -> str:
     return "0x" + keccak(text=signature)[:4].hex()
 
 
-def coingecko(path: str, params: dict) -> list:
-    for attempt in range(10):
-        try:
-            r = SESSION.get(f"{CG}/{path}", params=params, timeout=HTTP_TIMEOUT)
-            if r.status_code == 200:
-                return r.json()
-        except requests.RequestException:
-            pass
-        time.sleep(CG_PAUSE * (attempt + 1))
-    raise SystemExit(f"CoinGecko gave up on {path}")
-
-
-def universe(cache: Path, max_age: float = 3600) -> list[dict]:
-    """Every CoinGecko coin deployed on Robinhood Chain, market-cap first, with its USD price.
-
-    Cached for an hour, no longer: the prices in it are what every pool's price is checked against, so a
-    day-old copy quietly rejects any coin the market has moved since. The hour is there for the retry
-    after a failed run — the free tier takes ~6 minutes to serve this."""
-    if cache.exists() and time.time() - cache.stat().st_mtime < max_age:
-        print(f"universe from {cache.name} (delete it to refetch)", file=sys.stderr)
-        return json.loads(cache.read_text())
-
-    coins = coingecko("coins/list", {"include_platform": "true"})
-    address_of = {c["id"]: c["platforms"]["robinhood"].lower() for c in coins if c["platforms"].get("robinhood")}
-    print(f"{len(address_of)} coins with a Robinhood Chain deployment", file=sys.stderr)
-
-    ids = sorted(address_of)
-    markets = []
-    for i in range(0, len(ids), 150):
-        markets += coingecko("coins/markets", {"vs_currency": "usd", "ids": ",".join(ids[i : i + 150]), "per_page": 250})
-        print(f"  market caps {min(i + 150, len(ids))}/{len(ids)}", file=sys.stderr)
-        time.sleep(CG_PAUSE)
-
-    # No market cap means CoinGecko cannot vouch for the supply, so the coin cannot be ranked at all.
-    ranked = sorted((m for m in markets if m.get("market_cap") and m.get("current_price")), key=lambda m: -m["market_cap"])
-    coins = [
-        {"asset": address_of[m["id"]], "symbol": m["symbol"].upper(), "mcap": m["market_cap"], "price": m["current_price"]}
-        for m in ranked
-        if address_of[m["id"]] != WETH  # the direct venue refuses wrapped native as a quote
-    ]
-    cache.write_text(json.dumps(coins))
-    return coins
-
-
 def xstocks() -> dict[str, str]:
     """Robinhood's own stock tokens on this chain, address to ticker, from its public asset list.
 
-    They are the assets the chain exists for, so they are listed whatever their market cap — a stock
-    token with a $15k float still ranks below several hundred memecoins, and ranking is not what we
-    want to decide this. `--min-depth` is what keeps a thin one out, and remains the only filter some
-    of them ever face: a handful are not on CoinGecko at all, so there is no market price to check
-    their pool against. Their identity needs no vouching, the address comes from Robinhood."""
+    With USDG, the only assets mainnet lists. Their identity needs no vouching: the address comes from
+    Robinhood."""
     data = SESSION.get(XSTOCKS_API, timeout=HTTP_TIMEOUT).json()
     return {
         deployment["contractAddress"].lower(): asset["tokenSymbol"]
@@ -189,21 +130,6 @@ def xstocks() -> dict[str, str]:
         for deployment in asset.get("deployments", [])
         if deployment.get("chainId") == CHAIN_ID
     }
-
-
-def with_xstocks(coins: list[dict], stocks: dict[str, str]) -> list[dict]:
-    """Tag the ranking's xStocks, and append the ones CoinGecko has never heard of.
-
-    An appended coin has no market cap and no price, so it sorts last and its pool's price is taken
-    on trust; the tag is what exempts every xStock from `--limit` further down."""
-    for coin in coins:
-        coin["xstock"] = coin["asset"] in stocks
-    known = {coin["asset"] for coin in coins}
-    unranked = [(a, s) for a, s in sorted(stocks.items()) if a not in known]
-    coins += [{"asset": a, "symbol": s, "mcap": 0, "price": None, "xstock": True} for a, s in unranked]
-    print(f"{len(stocks)} Robinhood xStocks, {len(unranked)} of them unknown to CoinGecko "
-          f"({', '.join(s for _, s in unranked) or 'none'})", file=sys.stderr)
-    return coins
 
 
 def rpc(method: str, params: list) -> dict:
@@ -437,22 +363,19 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--chain", choices=sorted(CHAINS), default="mainnet")
     parser.add_argument("--assets", default="", help="comma-separated addresses to list INSTEAD of "
-                        "CoinGecko's ranking. The only mode the testnet has: nothing there has a market "
-                        "price, so the price check is skipped and the caller vouches for the assets.")
-    parser.add_argument("--limit", type=int, default=300, help="how many coins to list, market cap first")
-    parser.add_argument("--min-depth", type=float, default=10.0, help="quote-side depth a pool needs, in native")
-    parser.add_argument("--tolerance", type=float, default=0.15, help="how far a pool's price may sit from CoinGecko's")
-    parser.add_argument("--universe-cache", type=Path, default=Path(__file__).with_name(".universe.cache.json"),
-                        help="where the CoinGecko ranking is kept; delete it to refetch")
+                        "USDG + the xStocks. The only mode the testnet has; the caller vouches for them.")
+    parser.add_argument("--min-depth", type=float, default=0.0, help="quote-side depth a pool needs, in native")
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
     out = args.json or Path(__file__).with_name(f"listings.robinhood.{args.chain}.json")
     _use_chain(args.chain)
 
     named = [a.strip().lower() for a in args.assets.split(",") if a.strip()]
-    coins = _named_coins(named) if named else universe(args.universe_cache)
-    if XSTOCKS and not named:
-        coins = with_xstocks(coins, xstocks())
+    if named:
+        coins = _named_coins(named)
+    else:
+        coins = [{"asset": a, "symbol": s, "xstock": True} for a, s in sorted(xstocks().items())]
+        print(f"{len(coins)} Robinhood xStocks", file=sys.stderr)
     print(f"scanning pools for {len(coins)} {'assets' if named else 'coins'}…", file=sys.stderr)
     addresses = [c["asset"] for c in coins]
     pools = scan_pools(addresses) if SCAN_LOGS else probe_pools(addresses)
@@ -473,68 +396,76 @@ def main() -> int:
         if not priced:
             raise SystemExit("the reference asset has no native pool — nothing can be listed against it")
         reference_rate = priced[0]["rate"]
-        known = {c["asset"]: c for c in coins}
-        listings = [{**known.get(REFERENCE, {"asset": REFERENCE, "symbol": "REF", "mcap": 0, "price": None}), **priced[0]}]
+        listings = [{**_named_coins([REFERENCE])[0], **priced[0]}]
         print(f"reference: {reference_rate:,.2f} per native, {priced[0]['depth']:,.0f} native deep, "
               f"v{priced[0]['pool']['v']}", file=sys.stderr)
 
     rejected = []
     for coin in coins:
-        # The market-cap ranking is capped at `--limit`; Robinhood's own xStocks are listed on top of
-        # it, however far down they rank, so the cap can never quietly drop one.
-        if len(listings) >= args.limit and not coin.get("xstock"):
-            continue
         if coin["asset"] == REFERENCE:
             continue
         found = candidates(coin["asset"], by_token.get(coin["asset"], []), decimals, reference_rate)
-        priced = [
-            c for c in found
-            if c["depth"] >= args.min_depth and _priced_right(c, coin, reference_rate, args.tolerance)
-        ]
+        priced = [c for c in found if c["depth"] >= args.min_depth]
         if priced:
             listings.append({**coin, **priced[0]})
         else:
-            rejected.append(_rejection(coin, found, reference_rate, args))
+            rejected.append(_rejection(coin, found, args))
 
     keeping = {l["asset"] for l in listings}
     delistings = stale_listings(out, keeping, args.min_depth)
     out.write_text(render(listings + delistings, reference_rate, rejected) + "\n")
     print(f"wrote {len(listings)} listings and {len(delistings)} delistings to {out}", file=sys.stderr)
     _report(rejected, delistings)
+    _xstock_table(listings, rejected)
     return 0
 
 
 def _report(rejected: list[dict], delistings: list[dict]) -> None:
-    """The two lists a curator has to look at: what fell off the chain's list, and which of Robinhood's
-    own xStocks did not make it. Everything else that was rejected is one line of counts."""
+    """What fell off the chain's list. The xStocks' fate is `_xstock_table`; everything else that was
+    rejected is one line of counts."""
     if delistings:
         print(f"\nDELIST — listed on chain, no longer qualifying ({len(delistings)}):", file=sys.stderr)
         for d in delistings:
             print(f"  {d['symbol']:<12} {d['asset']}", file=sys.stderr)
-    thin = [r for r in rejected if r["xstock"]]
-    if thin:
-        print(f"\nxSTOCKS NOT LISTED ({len(thin)}):", file=sys.stderr)
-        for r in sorted(thin, key=lambda r: -r["depthNative"]):
-            print(f"  {r['symbol']:<12} {r['depthNative']:>10,.2f} native  {r['reason']}", file=sys.stderr)
-    rest = len(rejected) - len(thin)
+    rest = len([r for r in rejected if not r["xstock"]])
     if rest:
         print(f"\n{rest} other coins rejected; see `rejected` in the output file.", file=sys.stderr)
+
+
+# The liquidity tiers the frontend shows creators, in native of quote-side depth.
+TIERS = ((50, "deep"), (10, "ok"), (0, "low"))
+
+
+def tier(depth: float) -> str:
+    return next(name for floor, name in TIERS if depth >= floor)
+
+
+def _xstock_table(listings: list[dict], rejected: list[dict]) -> None:
+    """Every xStock, deepest pool first, IN or OUT of the list — a markdown table on stdout."""
+    rows = [(l["symbol"], l["asset"], l["depth"], f'v{l["pool"]["v"]}', "IN", tier(l["depth"])) for l in listings if l.get("xstock")]
+    rows += [(r["symbol"], r["asset"], r["depthNative"], r["venue"] or "-", "OUT", r["reason"]) for r in rejected if r["xstock"]]
+    if not rows:
+        return
+    print(f"\n{sum(r[4] == 'IN' for r in rows)}/{len(rows)} xStocks listed\n")
+    print("| # | symbol | address | depth (native) | venue | status | liquidity / reason |\n|---|---|---|---:|---|---|---|")
+    for i, (symbol, asset, depth, venue, status, reason) in enumerate(sorted(rows, key=lambda r: -r[2]), 1):
+        print(f"| {i} | {symbol} | `{asset}` | {depth:,.2f} | {venue} | **{status}** | {reason} |")
 
 
 def _use_chain(name: str) -> None:
     """Point the module at one chain's Uniswap deployment. Called once, before anything reads it."""
     global CHAIN_ID, RPC, WETH, REFERENCE, UNIV2_FACTORY, UNIV3_FACTORY, POOL_MANAGER, SCAN_LOGS, NATIVE_SIDE
-    global XSTOCKS, MANIFEST
+    global MANIFEST
     c = CHAINS[name]
     CHAIN_ID, WETH, REFERENCE, SCAN_LOGS = c["chain_id"], c["weth"], c["reference"], c["scan_logs"]
-    XSTOCKS, MANIFEST = c["xstocks"], c["manifest"]
+    MANIFEST = c["manifest"]
     UNIV2_FACTORY, UNIV3_FACTORY, POOL_MANAGER = c["univ2_factory"], c["univ3_factory"], c["pool_manager"]
     RPC = os.environ.get(c["rpc_env"]) or c["rpc_default"]
     NATIVE_SIDE = {NATIVE, WETH}
 
 
 def _named_coins(assets: list[str]) -> list[dict]:
-    """The `--assets` stand-in for a CoinGecko ranking: symbols off the chain, no market cap, no price."""
+    """Assets as the main loop takes them, with their symbols read off the chain."""
     symbols = multicall([(a, selector("symbol()")) for a in assets])
     out = []
     for asset, (ok, ret) in zip(assets, symbols):
@@ -542,26 +473,18 @@ def _named_coins(assets: list[str]) -> list[dict]:
             symbol = abi_decode(["string"], bytes(ret))[0] if ok and len(ret) > 32 else asset[:8]
         except Exception:
             symbol = asset[:8]
-        out.append({"asset": asset, "symbol": symbol, "mcap": 0, "price": None})
+        out.append({"asset": asset, "symbol": symbol})
     return out
 
 
-def _rejection(coin: dict, found: list[dict], reference_rate: float, args) -> dict:
-    """Why a coin did not make the list, with the number that decided it.
-
-    Three ways to fail, reported against the best pool the coin has: nothing quotes it on a venue the
-    contract can read, or its deepest pool is too thin, or a deep enough pool disagrees with the
-    market on what the coin is worth."""
+def _rejection(coin: dict, found: list[dict], args) -> dict:
+    """Why an asset did not make the list: nothing quotes it on a venue the contract can read, or its
+    deepest pool is under `--min-depth`."""
     best = found[0] if found else None
-    deep = next((c for c in found if c["depth"] >= args.min_depth), None)
     if best is None:
         reason = "no Uniswap V2/V3/V4 pool against native or the reference"
-    elif deep is None:
-        reason = f"too thin: deepest pool holds {best['depth']:,.2f} native, under --min-depth {args.min_depth}"
     else:
-        best = deep
-        reason = (f"pool says ${reference_rate / deep['rate']:,.4f}, the market says "
-                  f"${coin['price']:,.4f} — over the {args.tolerance:.0%} tolerance")
+        reason = f"too thin: deepest pool holds {best['depth']:,.2f} native, under --min-depth {args.min_depth}"
     return {
         "symbol": coin["symbol"],
         "asset": coin["asset"],
@@ -569,7 +492,6 @@ def _rejection(coin: dict, found: list[dict], reference_rate: float, args) -> di
         "reason": reason,
         "venue": f'v{best["pool"]["v"]}' if best else None,
         "depthNative": round(best["depth"], 4) if best else 0.0,
-        "coingeckoUsd": coin["price"],
     }
 
 
@@ -597,7 +519,7 @@ def stale_listings(previous: Path, keeping: set[str], min_depth: float) -> list[
           f"asking {whitelist} which are still priced…", file=sys.stderr)
     calls = [(whitelist, selector("unitsPerNativeX18(address)") + abi_encode(["address"], [a]).hex()) for a in dropped]
     return [
-        {"asset": asset, "symbol": symbols[asset], "mcap": 0, "price": None, "xstock": False}
+        {"asset": asset, "symbol": symbols[asset], "xstock": False}
         for asset, (ok, ret) in zip(dropped, multicall(calls))
         if ok and len(ret) == 32 and int.from_bytes(ret, "big") != 0
     ]
@@ -614,13 +536,6 @@ def _manifest_whitelist() -> str | None:
         return None
     found = re.search(r"ASSETS_WHITELIST\s*=\s*(0x[0-9a-fA-F]{40})", path.read_text())
     return found.group(1).lower() if found and int(found.group(1), 16) else None
-
-
-def _priced_right(candidate: dict, coin: dict, reference_rate: float, tolerance: float) -> bool:
-    """Does the pool quote the coin near its market price? Vacuously true for a coin that has none."""
-    if not coin.get("price"):
-        return True
-    return 1 / (1 + tolerance) <= (reference_rate / candidate["rate"]) / coin["price"] <= 1 + tolerance
 
 
 def _source(listing: dict) -> dict:
@@ -651,7 +566,6 @@ def _readable(listing: dict, reference_rate: float, reference: str | None) -> di
     return {
         "symbol": listing["symbol"],
         "asset": listing["asset"],
-        "marketCapUsd": round(listing["mcap"]),
         "xstock": listing.get("xstock", False),
         "venue": f'v{listing["pool"]["v"]}',
         "quote": "native" if listing["quote"] == NATIVE else reference,
@@ -659,7 +573,6 @@ def _readable(listing: dict, reference_rate: float, reference: str | None) -> di
         # Priced in the reference asset, which on a chain that has one is a dollar stablecoin.
         "priceUsd": round(reference_rate / listing["rate"], 8) if REFERENCE else None,
         "perNative": round(listing["rate"], 8),
-        "coingeckoUsd": listing["price"],
     }
 
 

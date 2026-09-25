@@ -419,9 +419,9 @@ pick-dividend-routes:
     just chain-rh
     forge script PickDividendRoutes --rpc-url rh-mainnet
 
-# Re-pick, from live state, the Uniswap pool that prices each of Robinhood Chain's 300 biggest coins
-# AND every one of Robinhood's own xStocks, into
-# script/operations/assets-whitelist/listings.robinhood.mainnet.json. This is the maintenance loop, not
+# Re-pick, from live state, the Uniswap pool that prices USDG and each of Robinhood's own xStocks (the
+# only assets mainnet lists), into script/operations/assets-whitelist/listings.robinhood.mainnet.json,
+# and print every xStock, deepest first, IN or OUT. This is the maintenance loop, not
 # a one-off: re-running refreshes every rate, re-picks every pool, and delists what stopped qualifying
 # but is still live on chain. Review the git diff of that file: it is what the script below broadcasts.
 discover-whitelist-assets:

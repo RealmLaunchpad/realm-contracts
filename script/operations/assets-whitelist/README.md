@@ -20,25 +20,29 @@ recipe mean what it says: a script only ever sees the state its own simulation p
 that went nowhere — a local fork, an RPC alias whose env var is unset, a proxy that has since been
 redeployed — reports success from inside itself and lists nothing. `verify()` fails instead.
 
-`discover_whitelist_assets.py` takes the universe from CoinGecko — every coin it knows to be deployed
-on chain 4663, ranked by market cap, since on chain there is no such thing as "the top 300" — and then
-answers, for each one, which pool should price it. It writes `listings.robinhood.mainnet.json`, which
-`WhitelistRobinhoodAssets` reads and broadcasts — the arrays it parses, plus `readable` and `rejected`
-sections that exist for whoever reviews the list and are never read on chain.
+`discover_whitelist_assets.py` answers, for each asset mainnet may list, which pool should price it. It
+writes `listings.robinhood.mainnet.json`, which `WhitelistRobinhoodAssets` reads and broadcasts — the
+arrays it parses, plus `readable` and `rejected` sections that exist for whoever reviews the list and are
+never read on chain — and prints every xStock, deepest pool first, marked IN or OUT with its liquidity
+tier.
 
-## Robinhood's own xStocks
+## What mainnet lists
 
-The ~195 stock tokens Robinhood issues on this chain come from its own asset API
-(`api.robinhood.com/rhj/assets`) and are considered **on top of** the market-cap ranking, exempt from
-`--limit`. They have to be: a stock token with a $15k on-chain float ranks below several hundred
-memecoins, and market cap is not what should decide whether the chain's flagship assets can quote a
-launch. A handful of them are not on CoinGecko at all, so there is no market price to check their pool
-against — their address comes from Robinhood rather than from a ranking, so identity needs no vouching,
-and `--min-depth` is the only filter they face.
+Only two kinds of asset, by policy:
 
-Thin ones are still refused, which is the point: an xStock whose deepest Uniswap pool holds less than
-`--min-depth` of native does not get listed, and the `rejected` section of the output says so with the
-depth it measured. That section is the list to review when retuning the threshold.
+- **USDG**, the reference asset.
+- **Robinhood's own stock tokens** (~195), from its asset API (`api.robinhood.com/rhj/assets`, the list
+  behind docs.robinhood.com/chain/contracts) — every one with a price pool the contract can read,
+  however thin.
+
+Nothing else, however large its market cap; anything listed earlier outside that set is delisted on the
+next run. Their address comes from Robinhood, so identity needs no vouching.
+
+Thin pools are listed on purpose. Liquidity is not gated here but shown to creators, as a tier of the
+pool's quote-side depth in native: **low** under 10, **ok** from 10 to 50, **deep** above 50 (`TIERS` in
+the script, which the frontend mirrors). Accepted cost: a launch prices its opening tick from the quote's
+pool live (`liveUnitsPerNativeX18`), so a thin pool's price can be pushed cheaply within the launch
+transaction.
 
 ## The testnet
 
@@ -50,32 +54,29 @@ ranks a testnet token — update them there if the dummies are ever redeployed.
 Two things work differently there, both forced by the chain rather than chosen. Pools are **probed by
 key** (a handful of standard fee/tick-spacing shapes against native, WETH and the V2 pair) instead of
 discovered from logs, because that RPC caps `eth_getLogs` at 10k blocks and the chain is 122M blocks
-long; a pool at an unusual shape, or behind a hook, would have to be added by hand. And the **price
-check does not apply** — a dummy has no market price to compare against — so the caller naming the
-assets is the whole of the vetting.
+long; a pool at an unusual shape, or behind a hook, would have to be added by hand. And the caller naming
+the assets is the whole of the vetting.
 
 ## What qualifies as a price pool
 
 - **Uniswap V2, V3 or V4, nothing else.** Robinhood Chain has some forty DEXes and a coin's deepest
   market is often on one of them; `RealmAssetsWhitelist` can only read those three, so a coin whose
-  liquidity lives anywhere else simply does not make the list. That is most of the difference between
-  CoinGecko's top 300 and this file.
+  liquidity lives anywhere else simply does not make the list.
 - **Quoted in native (or WETH), or in USDG.** The contract prices an asset against native, or against
   one reference asset that is itself listed against native — one hop, no chains. USDG is that
   reference here, and is entry 0 of the generated script for that reason.
-- **Deep enough, and priced right.** A pool must hold at least `--min-depth` (10 by default) of native
-  on the quote side at the current price, and must price the coin within `--tolerance` (15%) of its
-  market price. The price check is the one that matters: depth for V3 and V4 is measured as the
-  in-range virtual amount, which a narrow position inflates, while a pool seeded at a made-up price
-  fails the comparison outright no matter how it was funded.
+- **Live, with liquidity** — all the contract itself demands. `--min-depth` (0 by default) can add a floor
+  on the quote side's depth in native.
 
-Of the pools that qualify, the deepest wins.
+Of the pools that qualify, the deepest wins. Depth for V3 and V4 is the in-range virtual amount, which a
+narrow position inflates. Nothing checks a pool's price against the market any more: a pool seeded at a
+made-up price is listed at that price, and only its depth — the tiebreak — keeps it from being picked.
 
 ## Keeping the list curated
 
 The list of quote assets is not a one-off. It decides what a creator may launch against, and a coin
-that qualified last month can have had its pool drained, moved its liquidity to a DEX the contract
-cannot read, or drifted away from its market price since. So the same two commands are the maintenance
+that qualified last month can have had its pool drained or moved its liquidity to a DEX the contract
+cannot read since. So the same two commands are the maintenance
 loop, run as often as the list is worth trusting:
 
 ```
@@ -90,7 +91,7 @@ it **delists**: an asset the previous file listed that no longer qualifies, and 
 still prices, comes back as a `Venue.NONE` entry, which is how `setWhitelisted` retires an asset. Without
 that last step the whitelist would only ever grow.
 
-The script prints what it is retiring and which xStocks did not make it; the git diff of the file is the
+The script prints what it is retiring and the IN/OUT table of every xStock; the git diff of the file is the
 rest of the review. The delisting candidates come from the file being overwritten, so an asset an
 approver listed **by hand** — never in a generated file — is invisible to this and has to be retired by
 hand too.
