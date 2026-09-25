@@ -502,12 +502,6 @@ None of these fire on a trade. The dividend module accrues on the earnings path 
 else in separate transactions — `processDividends` keeper-gated, `claimDividends` open to every holder —
 so an indexer sees them on their own.
 
-`processDividends` and `claimDividends` are `delegatecall` stubs on the token into a per-venue
-extension (`RealmDividendLogicUniV2` / `RealmDividendLogicUniV4`), because their bodies do not fit in the
-clone's implementation under EIP-170. This changes nothing observable: the selectors, the argument
-shapes, the event signatures and the emitting ADDRESS are all still the token's. The extension address
-is never an event source and never needs indexing.
-
 A token pays dividends in ONE TO THREE assets (`MAX_DIVIDEND_ASSETS`), fixed at creation: native, the
 token itself (only when it is the sole asset), or any ERC20 whose configured pool held liquidity at
 creation. The SET is written once and never rewritten, by anyone — there is no path that adds an asset,

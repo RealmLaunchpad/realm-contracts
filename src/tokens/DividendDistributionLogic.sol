@@ -29,23 +29,8 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 ///      list against an unfundable buffer — and they are there so a keeper's simulation gets a reason
 ///      rather than a silent success.
 ///
-/// @dev WHY THIS IS A SEPARATE CONTRACT. Taxable tokens are CLONES of a single implementation, and that
-///      implementation has to fit in EIP-170's 24,576 bytes. The dividend engine did not fit alongside
-///      the rest of the token, so this half — never on a hot path — lives behind a thin `delegatecall`
-///      stub per entry point (see `RealmTaxableToken._delegateToDividendLogic`), in a contract
-///      deployed ONCE per venue per chain by the token implementation's own constructor.
-///
-/// @dev The delegatecall means every line below runs in the TOKEN's context: `address(this)` is the
-///      token, the payouts come out of the token's own balance, the events are emitted from the token's
-///      address (so indexers see no change), and the `dividendLocked` transient guard is the token's.
-///      Nothing is pooled and nothing is custodied here.
-///
-/// @dev ⚠️ STORAGE LAYOUT. This contract writes the token's storage directly, so the two layouts must be
-///      byte-identical. The concrete extensions (`RealmDividendLogicUniV2` / `...UniV4`) inherit the same
-///      venue base the token does and add no state of their own, so the compiler derives the layout for
-///      both — never hand-maintain it. `just check-dividend-layout` fails if they ever drift.
-///      The same applies to TRANSIENT slots, which is why `dividendLocked` stays declared in
-///      `DividendDistribution` rather than moving here with the modifier's users.
+/// @dev A mixin of `RealmTaxableToken`, separate from `DividendDistribution` only so the test harnesses
+///      can build the hot half alone. Adds NO storage.
 abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated, ReentrancyGuardTransient {
     /// @notice The eligible supply is under `MIN_DIVIDEND_SUPPLY`: there is nobody to credit, so the
     ///         buffer stays where it is until a holder shows up.

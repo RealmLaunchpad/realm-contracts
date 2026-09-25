@@ -3,8 +3,6 @@ pragma solidity 0.8.28;
 
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
-import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -29,8 +27,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
 
     function setUp() public virtual override {
         super.setUp();
-        taxTokenImpl =
-            new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
+        taxTokenImpl = new RealmTaxableTokenUniV4();
     }
 
     /// @notice Helper to create a tax token with custom configuration

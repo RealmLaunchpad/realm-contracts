@@ -7,8 +7,6 @@ import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
-import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
@@ -723,8 +721,7 @@ contract RealmTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
         launchpad = address(launchpadMock);
 
         graduator = new MockGraduator(DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER);
-        impl =
-            new RealmTaxableTokenUniV4(address(new RealmDividendLogicUniV4()), address(new RealmEarningsLogicUniV4()));
+        impl = new RealmTaxableTokenUniV4();
         token = RealmTaxableTokenUniV4(payable(Clones.clone(address(impl))));
         token.initialize(
             IRealmToken.InitializeParams({

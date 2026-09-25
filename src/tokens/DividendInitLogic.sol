@@ -7,11 +7,8 @@ import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 
 /// @title DividendInitLogic
 /// @notice The creation-time half of the dividend machine: validating a payout set and writing it to the
-///         token's storage. Its own contract so a venue with two extensions can host it in whichever has
-///         the room — it runs once per token and never again, so it belongs wherever the hot entry points
-///         are not.
-/// @dev Adds NO storage: every write lands in `DividendDistribution`'s declarations, which is what lets
-///      a `delegatecall`ing token share the layout. Pinned by `just check-dividend-layout`.
+///         token's storage. Runs once per token, at creation.
+/// @dev Adds NO storage: every write lands in `DividendDistribution`'s declarations.
 abstract contract DividendInitLogic is DividendDistribution {
     //////////////////////// configuration //////////////////////
 

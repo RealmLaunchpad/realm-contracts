@@ -16,8 +16,6 @@ import {RealmCreatorVaultFactory} from "src/vaults/RealmCreatorVaultFactory.sol"
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmDividendLogicUniV4} from "src/tokens/RealmDividendLogicUniV4.sol";
-import {RealmEarningsLogicUniV4} from "src/tokens/RealmEarningsLogicUniV4.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
@@ -96,10 +94,6 @@ contract DeployRealmStack is Script {
         address token;
         address taxV2;
         address taxV4;
-        /// @dev The V4 token's two `delegatecall` extensions. Recorded so they can be verified and
-        ///      pasted into the manifest; nothing calls them directly.
-        address dividendLogicV4;
-        address earningsLogicV4;
     }
 
     struct Factories {
@@ -201,12 +195,7 @@ contract DeployRealmStack is Script {
     function _deployTokenImpls() internal returns (Tokens memory t) {
         t.token = address(new RealmToken());
         t.taxV2 = address(new RealmTaxableTokenUniV2());
-        // The V4 token's two extensions: deployed here and passed in, not built by the token's own
-        // constructor, because their creation code counts toward its initcode and two of them break
-        // EIP-3860. Both derive the token's storage layout; `just check-dividend-layout` pins it.
-        t.dividendLogicV4 = address(new RealmDividendLogicUniV4());
-        t.earningsLogicV4 = address(new RealmEarningsLogicUniV4());
-        t.taxV4 = address(new RealmTaxableTokenUniV4(t.dividendLogicV4, t.earningsLogicV4));
+        t.taxV4 = address(new RealmTaxableTokenUniV4());
     }
 
     function _deployFactories(
@@ -315,8 +304,6 @@ contract DeployRealmStack is Script {
         _slot("TOKEN_IMPL", t.token);
         _slot("TAXABLE_TOKEN_V2_IMPL", t.taxV2);
         _slot("TAXABLE_TOKEN_V4_IMPL", t.taxV4);
-        _slot("DIVIDEND_LOGIC_V4", t.dividendLogicV4);
-        _slot("EARNINGS_LOGIC_V4", t.earningsLogicV4);
         _slot("FACTORY_UNIV2_UNIFIED", f.v2);
         _slot("FACTORY_UNIV2_UNIFIED_IMPL", f.v2Impl);
         _slot("CREATOR_VAULT_IMPL", v.vaultImpl);

@@ -32,7 +32,7 @@ abis:
 # must be retargeted there first: they bake the chain's addresses and refuse a mismatched chain id.
 # Both runs share the `[profile.robinhood]` build, so the second one does not recompile. Leaves the tree
 # on ROBINHOOD MAINNET — run `just chain-rh-testnet` before committing, or the retarget diff rides along.
-fast-test: check-dividend-layout chain-rh
+fast-test: chain-rh
     FOUNDRY_PROFILE=robinhood forge test --no-match-contract Invariants --no-match-path "test/integration/**"
     just test-rh-fork
 
@@ -42,13 +42,6 @@ fast-test: check-dividend-layout chain-rh
 # the deploy recipes do. `fast-test` ends on this recipe.
 test-rh-fork: chain-rh
     FOUNDRY_PROFILE=robinhood forge test --match-path "test/integration/fork/robinhood/**"
-
-# Fails if a taxable token and its dividend extension disagree on storage layout. The extension is
-# `delegatecall`ed with the token's storage, so this is the one property no Solidity test can assert
-# for itself. It builds under the `layout` profile (its own `out` dir, so enabling `extra_output` does
-# not thrash the default cache) and costs ~2s incrementally, hence running it before every `fast-test`.
-check-dividend-layout:
-    @python3 script/checks/dividend_layout.py
 
 gas-report:
     forge test --no-match-contract Invariants --no-match-path "test/integration/**" --gas-report

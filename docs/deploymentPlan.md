@@ -23,8 +23,8 @@ from the Livo deployment.
 | 11 | `RealmCreatorVault` | clone master |
 | 12 | `RealmCreatorVaultFactory` | impl + UUPS proxy |
 | 13 | `RealmToken` | clone master |
-| 14 | `RealmTaxableTokenUniV2` | clone master; deploys `RealmDividendLogicUniV2` in its constructor |
-| 15 | `RealmTaxableTokenUniV4` | clone master; deploys `RealmDividendLogicUniV4` in its constructor |
+| 14 | `RealmTaxableTokenUniV2` | clone master |
+| 15 | `RealmTaxableTokenUniV4` | clone master |
 | 16 | `RealmFactoryUniV2Unified` | impl + UUPS proxy, whitelisted on the launchpad by the script |
 | 17 | `RealmAssetsWhitelist` | direct venue's ERC20-quote whitelist, no approvers yet |
 | 18 | `RealmDirectGraduatorUniV4` | direct venue's graduator, bound to `SWAP_HOOK` / `SWAP_HOOK_ANY_PAIR` |

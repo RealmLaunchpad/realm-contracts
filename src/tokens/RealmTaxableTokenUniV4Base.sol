@@ -23,15 +23,8 @@ interface IRealmV4Graduator {
 }
 
 /// @title RealmTaxableTokenUniV4Base
-/// @notice Everything the Uniswap-V4 taxable token and its dividend extension must AGREE on: the token's
-///         own storage, the buy-back precursor events, and the small reads either side may perform.
-/// @dev This exists so `RealmTaxableTokenUniV4` and `RealmDividendLogicUniV4` derive an IDENTICAL storage
-///      layout from the same declarations — including the inheritance ORDER below, which is what places
-///      them. The extension is `delegatecall`ed with the token's storage, so a layout that drifts would
-///      have it writing the wrong slots; splitting the declarations out here makes that structurally
-///      impossible rather than merely tested (it is tested too — see
-///      `just check-dividend-layout`). Nothing behavioural belongs here: put a function in
-///      this base only when BOTH sides need it, and everything else in the contract that uses it.
+/// @notice The Uniswap-V4 taxable token's venue constants, storage, buy-back precursor events, and
+///         per-quote views.
 abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4BuyBacks {
     /////////////////////////// venue constants ///////////////////////
     // NB: hardcoded per target chain to save gas.
@@ -174,15 +167,6 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     error BuyBackFailed();
     error NothingToAdd();
     error ProcessCooldown();
-
-    //////////////////////// EXTENSIONS //////////////////////
-
-    /// @notice The `RealmEarningsLogicUniV4` extension `processBurn` / `processLiquidity` execute in,
-    ///         against this token's own storage.
-    /// @dev A SECOND extension beside `dividendLogic()`, not a replacement: once every buffer is keyed
-    ///      by quote the two halves no longer fit in one contract under EIP-170. They are peers — same
-    ///      base, same layout, neither delegates to the other.
-    function earningsLogic() public view virtual returns (address);
 
     //////////////////////// PER-QUOTE VIEWS //////////////////////
 

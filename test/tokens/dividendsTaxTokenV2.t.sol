@@ -11,7 +11,6 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
-import {RealmDividendLogicUniV2} from "src/tokens/RealmDividendLogicUniV2.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
@@ -295,70 +294,11 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         assertEq(IERC20(MSFT).balanceOf(address(token)), pot, "the stray left, the owed pot stayed");
     }
 
-    ///////////////////////// the delegatecall extension /////////////////////////
-
-    /// @dev The dividend entry points are stubs that `delegatecall` into a separate contract,
-    ///      because their bodies do not fit in the clone's implementation alongside everything else.
-    ///      What has to hold for that to be safe is that the extension writes the TOKEN's storage and
-    ///      keeps none of its own — which is exactly what a distribution lets us observe.
-    function test_extension_dividendStateLandsOnTheTokenNotTheExtension() public {
-        RealmTaxableTokenUniV2 token = _nativeToken();
-        RealmDividendLogicUniV2 extension = RealmDividendLogicUniV2(payable(token.dividendLogic()));
-
-        _accrue(token, 1 ether);
-        token.processDividends(0, _noHolders());
-
-        assertGt(token.dividendsOwed(), 0, "the token distributed through the delegatecall");
-        assertGt(token.dividendRewardPerToken(0), 0, "and its accumulator moved");
-        assertEq(extension.dividendsOwed(), 0, "the extension kept nothing of its own");
-        assertEq(extension.dividendRewardPerToken(0), 0, "and its accumulator never moved");
-        assertEq(address(extension).balance, 0, "the extension holds no money");
-    }
-
-    /// @dev Every clone of one implementation shares that implementation's extension: it is an
-    ///      `immutable` on the implementation, so a clone reads it out of the implementation's code.
-    function test_extension_isSharedByEveryCloneOfAnImplementation() public {
-        RealmTaxableTokenUniV2 a = _nativeToken();
-        RealmTaxableTokenUniV2 b = _nativeToken();
-
-        address logic = realmTaxTokenV2.DIVIDEND_LOGIC();
-        assertGt(logic.code.length, 0, "the implementation deployed its extension");
-        assertEq(a.dividendLogic(), logic, "first clone");
-        assertEq(b.dividendLogic(), logic, "second clone");
-    }
-
-    /// @dev An extension is an execution body, not a token. Reverting every token entry point is what
-    ///      makes the machinery behind them unreachable — the saving that buys the cold half its room —
-    ///      and it is also the honest answer to anyone who arrives at the wrong address.
-    function test_extension_disownsTheTokenEntryPoints() public {
-        RealmDividendLogicUniV2 extension = RealmDividendLogicUniV2(payable(realmTaxTokenV2.DIVIDEND_LOGIC()));
-
-        vm.expectRevert(RealmTaxableToken.NotAToken.selector);
-        extension.transfer(buyer, 1);
-
-        vm.expectRevert(RealmTaxableToken.NotAToken.selector);
-        extension.getTaxConfig();
-
-        vm.expectRevert(RealmTaxableToken.NotAToken.selector);
-        extension.markGraduated();
-
-        vm.expectRevert(RealmTaxableToken.NotAToken.selector);
-        extension.accrueFees{value: 0}();
-
-        vm.expectRevert(RealmTaxableToken.NotAToken.selector);
-        extension.rescueTokens(MSFT);
-    }
+    ///////////////////////// the quote-routes overload /////////////////////////
 
     /// @dev A V2 token earns in native only, so the quote-routes overload has nothing to configure: it is
-    ///      refused outright, on the extension and through a live token's delegatecall alike, before any
-    ///      caller check — never silently accepted as an empty list.
-    function test_extension_refusesTheQuoteRoutesOverload() public {
-        RealmDividendLogicUniV2 extension = RealmDividendLogicUniV2(payable(realmTaxTokenV2.DIVIDEND_LOGIC()));
-        vm.expectRevert(RealmToken.InvalidQuotes.selector);
-        extension.initializeEarningsAllocation(
-            0, 5_000, 0, new address[](0), new uint16[](0), new bytes[](0), new bytes[](0)
-        );
-
+    ///      refused outright, before any caller check — never silently accepted as an empty list.
+    function test_refusesTheQuoteRoutesOverload() public {
         RealmTaxableTokenUniV2 token = RealmTaxableTokenUniV2(payable(_createDividendToken(5_000, address(0))));
         vm.expectRevert(RealmToken.InvalidQuotes.selector);
         token.initializeEarningsAllocation(

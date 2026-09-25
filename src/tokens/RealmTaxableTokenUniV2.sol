@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {RealmTaxableTokenUniV2Base} from "src/tokens/RealmTaxableTokenUniV2Base.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
-import {RealmDividendLogicUniV2} from "src/tokens/RealmDividendLogicUniV2.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
@@ -30,19 +29,9 @@ import {UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
 ///      `swapBack(amountOutMinWei)` lets the owner trigger a slippage-bounded swap via a private
 ///      mempool. Factory-deployed tokens have `owner == address(0)`, so this entry point is
 ///      reachable only via the launchpad owner; the auto-trigger remains the live path.
-/// @dev The out-of-band dividend entry points (`processDividends`, `claimDividends`) are thin
-///      `delegatecall` stubs into `DIVIDEND_LOGIC`; only their
-///      bodies live elsewhere, and nothing on the transfer hot path does. See `DividendDistributionLogic`.
+/// @dev The out-of-band dividend entry points (`processDividends`, `claimDividends`) are inherited from
+///      `DividendDistributionLogic`, through `RealmTaxableToken`.
 contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
-    /// @notice The `RealmDividendLogicUniV2` extension the dividend entry points `delegatecall` into.
-    /// @dev Deployed by THIS constructor rather than passed in or read from a manifest: the two are
-    ///      storage-layout-coupled, so pairing them at deploy time is one more thing that can be wired
-    ///      wrong for no benefit. Deploying it here makes the pair atomic, keeps every deploy script and
-    ///      test unchanged (`new RealmTaxableTokenUniV2()` still takes no arguments), and costs only
-    ///      creation-code size on the implementation — which EIP-170 does not bound, and EIP-3860 bounds
-    ///      far above what this needs. Immutable, so clones read it straight from the implementation.
-    address public immutable DIVIDEND_LOGIC;
-
     /// @notice Thrown by the manual `swapBack` before graduation (no tax accrues / no pair yet), and by
     ///         `processLiquidity` (no pool to add to before graduation).
     error NotGraduated();
@@ -59,7 +48,6 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
     /// @dev Token configuration is set during initialization, not in constructor
     constructor() RealmToken() {
         require(block.chainid == DeploymentAddresses.BLOCKCHAIN_ID, "configuration for wrong chainId");
-        DIVIDEND_LOGIC = address(new RealmDividendLogicUniV2());
     }
 
     /// @notice Initializes the token clone with its tax configuration. Anti-sniper protection is
@@ -363,43 +351,25 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
         if (ethToFund > 0) _depositToFund(address(0), ethToFund);
     }
 
-    //////////////////////// DIVIDENDS (delegated) //////////////////////
+    //////////////////////// DIVIDENDS //////////////////////
 
-    /// @notice Advances the dividend round by everything it is due for: freezes the pot once the buffer
-    ///         has cleared its threshold, pushes payouts to `holders`, and rolls the round over once the
-    ///         pot is drained. Permissionless, and the only entry point a keeper needs.
-    /// @param minOut Slippage floor for the conversion, in the payout asset's own decimals. Ignored when
-    ///        the payout asset is native or the token itself, and by any call that does not freeze.
-    /// @param holders Addresses to push this round's payouts to. May be empty.
-    function processDividends(uint256 minOut, address[] calldata holders) external {
-        minOut;
-        holders;
-        _delegateToDividendLogic();
-    }
+    /// @dev Funds a self-token payout straight out of its token buffer — no conversion, no slippage,
+    ///      and so no way for it to fail. Every other payout asset is native-buffered and goes through
+    ///      the base.
+    /// @dev NO SIZE FLOOR, matching the base: any non-zero buffer credits. This leg never carried a
+    ///      security floor to begin with — it is carved in token space and merely moves a buffer, so
+    ///      there is no swap for anyone to sandwich — and "is this worth its gas" belongs to whoever
+    ///      pays that gas. The per-block cooldown still applies.
+    /// @dev A self-token payout is only ever configured as the SOLE asset, so `i` is 0 whenever this
+    ///      branch is taken; the index is still threaded through so the base's asset-agnostic path stays
+    ///      the one that decides.
+    function _fundDividends(uint256 i, uint256 minOut) internal override returns (FundOutcome, uint256, uint256) {
+        if (dividendAssets[i].token != address(this)) return super._fundDividends(i, minOut);
 
-    /// @notice Same, for one of the payout assets of a token that pays in several. `assetIndex` selects
-    ///         which; each asset crosses its own threshold, prices its own floor and holds its own
-    ///         per-block cooldown, so a keeper services them one call at a time.
-    /// @param assetIndex Which configured payout asset to service, `0 .. dividendAssetCount() - 1`.
-    /// @param fund False for a push-only call: skips the conversion entirely (no block claimed, no
-    ///        `DividendsFunded`); `holders` must then be non-empty.
-    /// @param minOut Slippage floor for that asset's conversion, in its own decimals.
-    /// @param holders Addresses to push that asset's accrued payouts to. May be empty when funding.
-    function processDividends(uint8 assetIndex, bool fund, uint256 minOut, address[] calldata holders) external {
-        assetIndex;
-        fund;
-        minOut;
-        holders;
-        _delegateToDividendLogic();
-    }
+        uint256 buffered = dividendPendingTokens;
+        if (buffered == 0) return (FundOutcome.NotReady, 0, 0);
 
-    /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
-    function claimDividends() external {
-        _delegateToDividendLogic();
-    }
-
-    /// @inheritdoc RealmTaxableToken
-    function dividendLogic() public view override returns (address) {
-        return DIVIDEND_LOGIC;
+        dividendPendingTokens = 0;
+        return (FundOutcome.Funded, 0, buffered);
     }
 }

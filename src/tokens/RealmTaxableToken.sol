@@ -5,6 +5,8 @@ import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {EarningsAllocation} from "src/tokens/EarningsAllocation.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
+import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmTaxableToken, TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
@@ -30,16 +32,22 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 /// @dev ⚠️ `DividendDistribution` is listed BEFORE `EarningsAllocation` on purpose: inheritance lays
 ///      base storage out in declaration order, so putting it after would wedge its state between the
 ///      allocation bps and the tax fields and break the packing described above.
-/// @dev `ReentrancyGuardTransient` is last and holds NO regular storage (its flag lives in transient
-///      storage), so it adds nothing to the layout above and is safe wherever it sits. It is inherited
-///      here, rather than per venue, because `sweepStrayEth` needs it on both.
+/// @dev `ReentrancyGuardTransient` holds NO regular storage (its flag lives in transient storage), so
+///      it adds nothing to the layout above and is safe wherever it sits. It is inherited here, rather
+///      than per venue, because `sweepStrayEth` needs it on both.
+/// @dev `DividendDistributionLogic` (conversion, crediting, payouts) and `DividendInitLogic` (creation-time
+///      payout config) come last and add NO storage, so the layout above is unchanged by them. They
+///      used to live in `delegatecall` extensions to fit EIP-170; Robinhood's 96 KB code-size limit
+///      lets them sit inline, which is also why this token does not deploy on Ethereum mainnet.
 abstract contract RealmTaxableToken is
     RealmToken,
     IRealmTaxableToken,
     DividendDistribution,
     EarningsAllocation,
     KeeperGated,
-    ReentrancyGuardTransient
+    ReentrancyGuardTransient,
+    DividendDistributionLogic,
+    DividendInitLogic
 {
     using SafeERC20 for IERC20;
 
@@ -137,13 +145,6 @@ abstract contract RealmTaxableToken is
     //////////////////////// Errors //////////////////////
 
     error NotTokenOwner();
-    /// @notice Thrown by every token entry point an EXTENSION inherits but must never serve. Declared
-    ///         here, on the common ancestor of every token and every extension, because both venues'
-    ///         extensions revert with it and only one of them is about dividends.
-    /// @dev The revert is not politeness: it makes the machinery behind each entry point unreachable, so
-    ///      the compiler drops it from the extension's bytecode. That is what buys a cold half its room
-    ///      under EIP-170 — see `RealmV4ExtensionBase`.
-    error NotAToken();
     error CannotRescueSelfToken();
     error TaxBpsCanOnlyDecrease();
     /// @notice A dividends allocation was configured without the payout asset that makes it payable.
@@ -273,8 +274,8 @@ abstract contract RealmTaxableToken is
     ///         be distinct; `DIVIDEND_SELF_TOKEN` is only legal on its own.
     /// @dev `hasDividends` is what actually turns the feature on. It lives on `RealmToken`, packed into
     ///      the `pair` slot `_update` already loads, so a token that leaves `_dividendsBps` at 0 pays
-    ///      nothing for the feature on any transfer. The body runs in the extension: the payout
-    ///      configuration is validated once, at creation, with exactly one copy of the rules.
+    ///      nothing for the feature on any transfer. The payout configuration is validated once, at
+    ///      creation, with exactly one copy of the rules (`_initializeDividends`).
     /// @dev The routes are the creator's choice and are fixed here for the token's life — the registry
     ///      records them against this token and refuses to rewrite them. It checks the pools they name
     ///      exist and hold liquidity; it cannot check the price those pools quote is the asset's real
@@ -287,38 +288,32 @@ abstract contract RealmTaxableToken is
         uint16[] calldata _dividendWeightsBps,
         bytes[] calldata _dividendRoutes
     ) external virtual {
-        // Named for the ABI, unread here: the extension decodes them straight out of calldata.
-        _burnBps;
-        _dividendsBps;
-        _liquidityBps;
-        _dividendTokens;
-        _dividendWeightsBps;
-        _dividendRoutes;
-        _delegateTo(_allocationLogic());
+        require(msg.sender == tokenFactory, Unauthorized());
+        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
+        if (_dividendsBps != 0) {
+            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
+            hasDividends = true;
+        }
     }
 
     /// @notice The multi-asset overload plus the routes of this token's ERC20 QUOTES — for a venue
     ///         whose earnings can arrive in a currency other than native, where a dividends leg may
     ///         have to be bought OUT of a quote. See `TaxConfigsWithDirectAllocation` for which entries
     ///         are required. Positional to `quotes` from index 1.
+    /// @dev The base refuses it: a token that earns in native only (Uniswap V2, whose pair is the WETH
+    ///      pair) has no ERC20 quotes to route out of. Refused rather than silently accepting an empty
+    ///      list, so a factory that reaches for this overload on the wrong venue finds out at creation.
+    ///      `RealmTaxableTokenUniV4` overrides it.
     function initializeEarningsAllocation(
-        uint16 _burnBps,
-        uint16 _dividendsBps,
-        uint16 _liquidityBps,
-        address[] calldata _dividendTokens,
-        uint16[] calldata _dividendWeightsBps,
-        bytes[] calldata _dividendRoutes,
-        bytes[] calldata _quoteRoutes
+        uint16,
+        uint16,
+        uint16,
+        address[] calldata,
+        uint16[] calldata,
+        bytes[] calldata,
+        bytes[] calldata
     ) external virtual {
-        // Named for the ABI, unread here: the extension decodes them straight out of calldata.
-        _burnBps;
-        _dividendsBps;
-        _liquidityBps;
-        _dividendTokens;
-        _dividendWeightsBps;
-        _dividendRoutes;
-        _quoteRoutes;
-        _delegateTo(_allocationLogic());
+        revert InvalidQuotes();
     }
 
     /// @notice Routes ETH earnings (post-graduation swap tax + LP-fee creator share) through the
@@ -403,58 +398,6 @@ abstract contract RealmTaxableToken is
         if (hasDividends && dividendAssets[0].lastDistribution == 0) _activateDividends();
     }
 
-    //////////////////////// DIVIDEND LOGIC EXTENSION //////////////////////
-
-    /// @notice The `DividendDistributionLogic` extension this token's four out-of-band dividend entry
-    ///         points execute in, against this token's own storage.
-    /// @dev Declared here and implemented by each concrete token, so a venue that forgets to wire one
-    ///      does not compile.
-    function dividendLogic() public view virtual returns (address);
-
-    /// @dev Which extension the creation-time `initializeEarningsAllocation` overloads run in: the
-    ///      dividend extension unless a venue with two of them puts them elsewhere (V4 hosts them in
-    ///      `RealmEarningsLogicUniV4`, which has the room).
-    function _allocationLogic() internal view virtual returns (address) {
-        return dividendLogic();
-    }
-
-    /// @dev Runs the extension's copy of the entry point against THIS contract's storage, balance and
-    ///      transient slots, forwarding calldata and returndata untouched. The extension exists for one
-    ///      reason: the conversion, the venue routing and the payout loop are ~8.6 KB of bytecode a
-    ///      cloned token cannot afford under EIP-170, and they only ever run out-of-band. Nothing on the
-    ///      transfer hot path goes through here.
-    /// @dev ⚠️ The extension MUST have byte-identical storage layout to this token — it writes round
-    ///      state and pots directly. That is guaranteed structurally (both inherit the same venue base,
-    ///      neither adds state) and pinned by `just check-dividend-layout`.
-    /// @dev The assembly is the standard proxy forward and it is load-bearing, not an optimisation: the
-    ///      delegated entry points revert with distinct custom errors a keeper decodes
-    ///      (`BelowDividendThreshold` vs `DividendConversionFailed`), so the returndata has to be
-    ///      bubbled verbatim — `(bool ok,) = logic.delegatecall(msg.data); require(ok)` would erase it,
-    ///      and OZ's `Address.functionDelegateCall` buys the same behaviour for bytecode this clone does
-    ///      not have.
-    /// @dev NOT annotated `memory-safe`, deliberately: `calldatacopy(0, 0, calldatasize())` overwrites
-    ///      the free-memory pointer at 0x40 and the zero slot at 0x60, which the annotation forbids.
-    ///      Harmless because the block always ends in `return`/`revert`, but promising the optimizer
-    ///      otherwise is not. OpenZeppelin's `Proxy._delegate` leaves the identical body unannotated for
-    ///      exactly this reason.
-    function _delegateToDividendLogic() internal {
-        _delegateTo(dividendLogic());
-    }
-
-    /// @dev Same, for whichever extension the caller names. The two V4 extensions are peers — one
-    ///      carries the dividend machine, the other the buy-back and liquidity processors — because
-    ///      together they no longer fit under EIP-170.
-    function _delegateTo(address logic) internal {
-        assembly {
-            calldatacopy(0, 0, calldatasize())
-            let ok := delegatecall(gas(), logic, 0, calldatasize(), 0, 0)
-            returndatacopy(0, 0, returndatasize())
-            switch ok
-            case 0 { revert(0, returndatasize()) }
-            default { return(0, returndatasize()) }
-        }
-    }
-
     //////////////////////// DIVIDEND HOOKS //////////////////////
 
     /// @inheritdoc RealmToken
@@ -522,11 +465,7 @@ abstract contract RealmTaxableToken is
     ///      own buffers out of the sweep. This entry point is permissionless and repeatable, so
     ///      open-coding the subtraction would let anyone recycle the dividend pot through the split and
     ///      hand its fund-wallet slice to the creator's receivers on every call.
-    /// @dev `virtual` for the same reason `accrueFees` is: it is the only other entry point that
-    ///      reaches `_allocateEthEarnings`, and the dividend extension must be able to stub it out or
-    ///      the whole earnings split is linked into the extension's bytecode, where it is dead weight it
-    ///      has no room for.
-    function sweepStrayEth() external virtual nonReentrant {
+    function sweepStrayEth() external nonReentrant {
         _allocateEthEarnings(_sweepableNative(), burnBps, liquidityBps);
     }
 

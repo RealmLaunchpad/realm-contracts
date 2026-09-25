@@ -10,17 +10,10 @@ import {IRealmKeepersRegistry} from "src/interfaces/IRealmKeepersRegistry.sol";
 /// @notice The keeper check the out-of-band earnings conversions share. See `RealmKeepersRegistry` for
 ///         what the gate is for and, just as importantly, what it is not for.
 ///
-/// @dev A SEPARATE MIXIN rather than a method on the token, because the two contracts that need it do
-///      not share a hierarchy where one could live: `processBurn` and `processLiquidity` are compiled
-///      into the token, `processDividends` into the `delegatecall` extension, and the extension's own
-///      base (`DividendDistribution`) knows nothing about the token. Duplicating three lines in both
-///      would let the registry address drift between them, and a drift here is a silent auth hole rather
-///      than a compile error.
-///
-/// @dev NO STATE. That is load-bearing: the extension is `delegatecall`ed with the token's storage, so
-///      anything declared here would have to appear at the same slot in both hierarchies. A constant and
-///      a function are free of that constraint — and `just check-dividend-layout` is what would catch it
-///      if this ever stopped being true.
+/// @dev A SEPARATE MIXIN rather than a method on the token, because `DividendDistributionLogic` needs it
+///      too and knows nothing about the token (its test harnesses inherit it without one). Duplicating
+///      three lines in both would let the registry address drift between them, and a drift here is a
+///      silent auth hole rather than a compile error.
 abstract contract KeeperGated {
     /// @notice The `RealmKeepersRegistry` holding the set of addresses allowed to trigger this token's
     ///         earnings conversions.

@@ -7,6 +7,11 @@ optimizer = true
 optimizer_runs = 200
 threads = 4
 evm_version = "cancun"
+# Robinhood Chain (Arbitrum Orbit) caps deployed code at 98,304 bytes (96 KB), not EIP-170's 24,576
+# (verified against both RPCs: 98,305 reverts "max code size exceeded"). The taxable tokens rely on it:
+# they exceed 24 KB, so they would NOT deploy on Ethereum mainnet. Foundry's local EVM defaults to the
+# Ethereum limit even on a Robinhood fork, so this is what lets tests and script simulations deploy them.
+code_size_limit = 98304
 
 verbosity = 3
 
@@ -23,13 +28,6 @@ fs_permissions = [
 ]
 
 # extra_output = ["storageLayout"]
-
-# Storage-layout output, for `just check-dividend-layout`. Its own `out` dir on purpose: turning
-# `extra_output` on in the default profile changes the build settings and would invalidate the cache
-# every test run switches back to.
-[profile.layout]
-extra_output = ["storageLayout", "transientStorageLayout"]
-out = "out-layout"
 
 # Build target for `just fast-test` and `just test-rh-fork`: every suite forks Robinhood mainnet and
 # needs the token impls retargeted (`just chain-rh`); a separate out/cache keeps the default build warm.
