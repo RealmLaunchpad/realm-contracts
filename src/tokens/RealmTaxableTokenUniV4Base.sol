@@ -8,7 +8,7 @@ import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode) - see the justfile `_taxtoken` recipe.
-import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with (to rebuild the
 ///         pool key) and the shared liquidity adder it uses (to mint the single-sided ETH wall).

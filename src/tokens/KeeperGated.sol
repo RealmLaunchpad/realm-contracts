@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
-import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 import {IRealmKeepersRegistry} from "src/interfaces/IRealmKeepersRegistry.sol";
 
 /// @title KeeperGated

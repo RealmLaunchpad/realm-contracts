@@ -10,7 +10,7 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
-import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title RealmTaxableTokenUniV4
 /// @notice ERC20 token implementation with time-limited buy/sell taxes enforced via Uniswap V4 hooks.

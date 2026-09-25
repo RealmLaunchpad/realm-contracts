@@ -15,7 +15,7 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
-import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 import {UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
 import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
 import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";

@@ -5,7 +5,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 // Swapped per target chain by `just chain-<name>`, together with the token implementations that bake
 // the same constant in.
-import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 Vm constant KEEPERS_VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
