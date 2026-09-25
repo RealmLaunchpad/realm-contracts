@@ -110,7 +110,10 @@ library UniversalRouterVenue {
             IV4RouterSwaps.ExactInputSingleParams({
                 poolKey: key,
                 zeroForOne: true, // native (currency0) -> asset (currency1)
+                // Safe cast: both bounded by `type(uint128).max` above.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountIn: uint128(nativeIn),
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountOutMinimum: uint128(minOut),
                 minHopPriceX36: 0,
                 hookData: bytes("")
@@ -170,7 +173,10 @@ library UniversalRouterVenue {
                 currencyIn: Currency.wrap(NATIVE),
                 path: path,
                 minHopPriceX36: new uint256[](path.length),
+                // Safe cast: both bounded by `type(uint128).max` above.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountIn: uint128(nativeIn),
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountOutMinimum: uint128(minOut)
             })
         );
@@ -216,7 +222,10 @@ library UniversalRouterVenue {
                 IV4RouterSwaps.ExactInputSingleParams({
                     poolKey: key,
                     zeroForOne: false,
+                    // Safe cast: both bounded by `type(uint128).max` above.
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     amountIn: uint128(amountIn),
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     amountOutMinimum: uint128(minOut),
                     minHopPriceX36: 0,
                     hookData: bytes("")
@@ -228,7 +237,10 @@ library UniversalRouterVenue {
                     currencyIn: Currency.wrap(source),
                     path: path,
                     minHopPriceX36: new uint256[](path.length),
+                    // Safe cast: both bounded by `type(uint128).max` above.
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     amountIn: uint128(amountIn),
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     amountOutMinimum: uint128(minOut)
                 })
             );

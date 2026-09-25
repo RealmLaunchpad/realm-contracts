@@ -539,6 +539,7 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
         require(total == BPS_TOTAL, InvalidShares());
         require(cfg.directReceivers.length <= MAX_DIRECT_RECEIVERS, TooManyDirectReceivers());
         // Safe cast: `directSum <= total == BPS_TOTAL == 10_000`, fits in uint16.
+        // forge-lint: disable-next-line(unsafe-typecast)
         cfg.totalDirectBps = uint16(directSum);
     }
 

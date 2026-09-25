@@ -635,6 +635,8 @@ abstract contract RealmTaxableToken is
         config = TaxConfig({
             buyTaxBps: effBuy,
             sellTaxBps: effSell,
+            // Safe cast: `referenceTime >= anchor`, so the result is at most `_maxWindowDuration()`, a uint40.
+            // forge-lint: disable-next-line(unsafe-typecast)
             taxDurationSeconds: uint40(anchor + _maxWindowDuration() - referenceTime),
             graduationTimestamp: graduationTs
         });
@@ -748,6 +750,8 @@ abstract contract RealmTaxableToken is
         if (decayDuration != 0 && elapsed < decayDuration) {
             uint256 remaining = decayDuration - elapsed;
             // (start*remaining + static*elapsed) / duration — exact at both endpoints
+            // Safe cast: weighted average of two uint16 rates.
+            // forge-lint: disable-next-line(unsafe-typecast)
             bps = uint16((uint256(decayStartBps) * remaining + uint256(staticBps) * elapsed) / decayDuration);
         }
         if (elapsed <= taxDurationSeconds && staticBps > bps) bps = staticBps;
@@ -775,7 +779,10 @@ abstract contract RealmTaxableToken is
         uint256 decayDuration = taxDecayDuration;
         if (decayDuration != 0 && elapsed < decayDuration) {
             uint256 remaining = decayDuration - elapsed;
+            // Safe cast: weighted averages of two uint16 rates.
+            // forge-lint: disable-next-line(unsafe-typecast)
             buyBps = uint16((uint256(buyTaxDecayStartBps) * remaining + uint256(buyStatic) * elapsed) / decayDuration);
+            // forge-lint: disable-next-item(unsafe-typecast)
             sellBps =
                 uint16((uint256(sellTaxDecayStartBps) * remaining + uint256(sellStatic) * elapsed) / decayDuration);
         }

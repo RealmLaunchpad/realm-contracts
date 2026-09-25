@@ -6,7 +6,6 @@ import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {ERC20, IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {IRealmDividendSwapRegistry} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 
 /// @title RealmV4ExtensionBase
 /// @notice What every Uniswap-V4 token extension is: the token's storage layout, and nothing of the

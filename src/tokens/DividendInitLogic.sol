@@ -66,6 +66,8 @@ abstract contract DividendInitLogic is DividendDistribution {
         uint256 n = tokens.length;
         require(n != 0 && n <= MAX_DIVIDEND_ASSETS && weights.length == n, InvalidDividendAssetSet());
         require(routes.length <= n, InvalidDividendAssetSet());
+        // Safe cast: `n <= MAX_DIVIDEND_ASSETS`.
+        // forge-lint: disable-next-line(unsafe-typecast)
         count = uint8(n);
 
         IRealmDividendSwapRegistry registry = IRealmDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
@@ -103,7 +105,9 @@ abstract contract DividendInitLogic is DividendDistribution {
             // Clamped rather than reverted above 36 decimals: an exponent of 0 is simply the coarsest
             // scale, and such an asset has so many units per whole token that it needs no help.
             dividendAssets[i].precisionExp =
-                assetDecimals >= DIVIDEND_PRECISION_DECIMALS ? 0 : uint8(DIVIDEND_PRECISION_DECIMALS - assetDecimals);
+            // Safe cast: result is below `DIVIDEND_PRECISION_DECIMALS`.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assetDecimals >= DIVIDEND_PRECISION_DECIMALS ? 0 : uint8(DIVIDEND_PRECISION_DECIMALS - assetDecimals);
             dividendWeightsBps[i] = weights[i];
             emit DividendAssetInitialized(i, token, weights[i]);
         }

@@ -453,6 +453,8 @@ abstract contract DividendDistribution {
         // only the part above the ceiling and keeps both the token and the claim working, the same
         // trade `_reduceDividendsOwed` makes on the other side of the ledger.
         uint256 accrued = uint256(acct.rewards) + _dividendBalanceOf(account) * (rpt - paid) / _dividendPrecision(i);
+        // Safe cast: clamped to `type(uint120).max`.
+        // forge-lint: disable-next-line(unsafe-typecast)
         acct.rewards = accrued > type(uint120).max ? type(uint120).max : uint120(accrued);
     }
 

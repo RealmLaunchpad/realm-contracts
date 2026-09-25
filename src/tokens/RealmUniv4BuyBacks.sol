@@ -88,7 +88,10 @@ abstract contract RealmUniv4BuyBacks {
             IV4RouterSwaps.ExactInputSingleParams({
                 poolKey: key,
                 zeroForOne: quoteIsC0, // quote -> token, whichever way the pair sorted
+                // Safe cast: both bounded by `type(uint128).max` above.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountIn: uint128(amountIn),
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountOutMinimum: uint128(minTokensOut),
                 minHopPriceX36: 0,
                 hookData: bytes("")

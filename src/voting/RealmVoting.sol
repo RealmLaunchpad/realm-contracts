@@ -176,7 +176,10 @@ contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             emit RoundStarted(k, s, e);
         }
         (uint256 start, uint256 end) = _roundTimes(id);
+        // Safe cast: timestamps fit uint40 for millennia.
+        // forge-lint: disable-next-line(unsafe-typecast)
         rounds[id].startTime = uint40(start);
+        // forge-lint: disable-next-line(unsafe-typecast)
         rounds[id].endTime = uint40(end);
         lastSyncedRound = id;
         emit RoundStarted(id, start, end);
