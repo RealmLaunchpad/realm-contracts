@@ -72,10 +72,10 @@ lean-invariants:
 error-inspection errorhex:
     forge inspect RealmLaunchpad errors | grep {{errorhex}}
 
-# Robinhood explorers are Blockscout, not Etherscan, and the chain ids are not in Foundry's registry
-# (see foundry.toml), so every Robinhood deploy recipe passes the verifier explicitly.
-robinhood_verify := "--verify --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/"
-robinhood_testnet_verify := "--verify --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/"
+# Robinhood deploys verify on Sourcify (supports 4663 + 46630). The mainnet Blockscout API sits behind a
+# Cloudflare bot challenge that rejects forge's verification requests.
+robinhood_verify := "--verify --verifier sourcify"
+robinhood_testnet_verify := "--verify --verifier sourcify"
 
 # --- Per-chain build retarget ------------------------------------------------
 # ONE rule per target chain repoints EVERY per-chain compile-time import across ALL contracts at once
