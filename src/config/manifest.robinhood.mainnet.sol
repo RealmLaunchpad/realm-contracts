@@ -37,13 +37,13 @@ library DeploymentsRobinhoodMainnet {
 
     /// @notice `RealmDirectGraduatorUniV4`: the direct-launch venue's graduator. Non-upgradeable, holds
     ///         every launch's seed position NFTs forever.
-    address public constant GRADUATOR_UNIV4_DIRECT = 0xc9152dDec38cD71C2Bf7fE8F30dd7F8AEF611DCc;
+    address public constant GRADUATOR_UNIV4_DIRECT = 0xE46F23DcfFa51513C42978E7EE136383632cD76F;
 
     /// @notice `RealmFactoryUniV4Direct` proxy — the direct-launch venue's entry point.
     address public constant FACTORY_UNIV4_DIRECT = 0x7c3777357da3f2FB8911ddA946afB1Fc74f0A613;
 
     /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
-    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x13Fa01Ba77E70f114b0003ca5a8AD250A27A5dfB;
+    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x84083D67C0CC576726AB5270e01315d728476dC5;
 
     /// @notice `RealmAssetsWhitelist` proxy (UUPS): the quote currencies the direct venue will launch
     ///         against, each with the native rate derived from its price pool. `FACTORY_UNIV4_DIRECT`
@@ -94,11 +94,11 @@ library DeploymentsRobinhoodMainnet {
     address internal constant DIVIDEND_SWAP_REGISTRY_IMPL = address(0);
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0x78336f032d9140a7b0946E717f2b80cA07618C6C;
-    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x8A50B7fc00999336cb7e42bf149f43Fb54DCf2Be;
+    address internal constant TOKEN_IMPL = 0x90c602831FeEec9537915793572323C6f4C8CbB9;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x06D2df9F1524820b86ef6e064B2480CdB3FCB785;
 
     /// @notice V2 taxable token implementation (cloned by `RealmFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xe053928E94332a85c929B18Dd155B053d6314Ec4;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xB9aB764680D74aC220DB8D6740ec56a26f24e575;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -107,7 +107,7 @@ library DeploymentsRobinhoodMainnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xC3174C8082bbFbe9614B31D3682fA45c1832d17b;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x73BA11122a5B92d14dfdF71606f76A440c95337C;
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.
