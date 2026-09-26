@@ -107,6 +107,10 @@ interface IRealmUniV4LiquidityAdder {
 ///      directly, so anyone can already claim anything the POSM holds — which is nothing, by design: it
 ///      settles every delta inside the unlock and holds no native across transactions. Sweeping "all"
 ///      rather than "mine" is the only shape v4 offers, and the two are the same amount here.
+/// @dev ⚠️ The `...Eth` entry points do NOT check that `key.currency0` is native: they deposit
+///      `msg.value` as `currency0` whatever it is. On an ERC20/ERC20 pool they would spend ERC20 already
+///      sitting in this contract (or revert) and strand the ETH sent. Only call them on native pools;
+///      use `addSingleSided` / `addOrTopUpSingleSided` for ERC20 quotes.
 contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;

@@ -128,6 +128,11 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // constant to judge when a conversion earns it (`RealmDividendLogicUniV4`'s quote path, which
         // never had one, is where that reasoning came from). The constant survives only as the yardstick
         // this gate measures an absent keeper against.
+        // ACKNOWLEDGED GAP: the gate reads the CURRENT buffer, not how long it has held the threshold,
+        // and `accrueFees()` is open. On a stale token anyone can donate a sub-threshold buffer over the
+        // line and then fund it with `minOut = 0` inside a sandwich. Bounded to one buffer per asset per
+        // `STALE_DIVIDEND_WINDOW`, minus the donation; accepted. Fix if it matters: record when the
+        // buffer first crossed the threshold and require that point to be a window old.
         // Assets whose funding does NOT swap keep the wide hatch (native, and the V2 self-token leg,
         // which is carved in token space and merely credits a buffer): there is nothing
         // for a caller to sandwich, so stranding is their only failure mode.
