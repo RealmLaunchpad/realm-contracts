@@ -561,19 +561,39 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         assertApproxEqRel(_openingCapInQuote(quote, 6), 15_750e18, 0.0101e18, "15,750 QC at twice the rate");
     }
 
-    /// @dev A live rate 100x off the listed one either way still launches, at 2.25 ETH of the live rate,
-    ///      and the preview agrees.
-    function test_launchPrice_liveRateFarFromTheSnapshotStillLaunches() public {
+    /// @dev A live rate 100x ABOVE the listed one (the quote pushed cheap) opens at 225 ETH in snapshot
+    ///      terms, inside the 250 ETH cap: it launches, at 2.25 ETH of the live rate, and the preview agrees.
+    function test_launchPrice_liveRateAboveTheSnapshotWithinTheCapLaunches() public {
         address quote = address(quoteCoin);
         _mockLiveRate(quote, QC_PER_ETH * 100);
-        (,, uint256 previewAbove) = directFactory.previewLaunchTick(quote);
-        assertApproxEqRel(previewAbove, 787_500e18, 0.0101e18, "preview: 2.25 ETH at 100x the rate");
+        (,, uint256 preview) = directFactory.previewLaunchTick(quote);
+        assertApproxEqRel(preview, 787_500e18, 0.0101e18, "preview: 2.25 ETH at 100x the rate");
         assertApproxEqRel(_openingCapInQuote(quote, 6), 787_500e18, 0.0101e18, "2.25 ETH at 100x the rate");
+    }
 
+    /// @dev Half the listed rate (the quote pushed 2x dear) opens at 1.125 ETH in snapshot terms, still
+    ///      above the 1 ETH floor.
+    function test_launchPrice_liveRateBelowTheSnapshotAboveTheFloorLaunches() public {
+        address quote = address(quoteCoin);
+        _mockLiveRate(quote, QC_PER_ETH / 2);
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 3_937.5e18, 0.0101e18, "2.25 ETH at half the rate");
+    }
+
+    /// @dev A price pool pushed so the quote looks 100x dearer would open the pair at 0.0225 ETH of real
+    ///      value: the snapshot bound refuses it, in the preview and in `createToken`.
+    function test_launchPrice_pushedLiveRateUnderTheFloorReverts() public {
+        address quote = address(quoteCoin);
         _mockLiveRate(quote, QC_PER_ETH / 100);
-        (,, uint256 previewBelow) = directFactory.previewLaunchTick(quote);
-        assertApproxEqRel(previewBelow, 78.75e18, 0.0101e18, "preview: 2.25 ETH at 1/100 the rate");
-        assertApproxEqRel(_openingCapInQuote(quote, 6), 78.75e18, 0.0101e18, "2.25 ETH at 1/100 the rate");
+        vm.expectRevert(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector);
+        directFactory.previewLaunchTick(quote);
+        _launchAt(quote, abi.encodeWithSelector(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector));
+    }
+
+    /// @dev A live rate 200x above the listed one would open at 450 ETH in snapshot terms, over the cap.
+    function test_launchPrice_liveRateOverTheCapReverts() public {
+        address quote = address(quoteCoin);
+        _mockLiveRate(quote, QC_PER_ETH * 200);
+        _launchAt(quote, abi.encodeWithSelector(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector));
     }
 
     /// @dev Twenty-seven decimals at 1:1 with ETH: 2.25 units, as for native.
