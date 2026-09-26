@@ -31,7 +31,7 @@ contract DeployRealmVoting is Script {
 
         _reportVoting(voting, impl);
         console.log("");
-        console.log("Then: just export-deployments, and just deploy-treasury-router-<chain>");
+        console.log("Then: just export-deployments, and just deploy-treasury-stack-<chain>");
     }
 
     /// @dev The REALM token, from the manifest like every other Realm-owned address. `REALM_TOKEN`
@@ -47,7 +47,7 @@ contract DeployRealmVoting is Script {
     }
 
     /// @dev Impl + UUPS proxy + the admin appointment, with every post-condition asserted. Must run
-    ///      inside an active broadcast: `DeployRealmTreasuryRouter` calls it from within its own, so the
+    ///      inside an active broadcast: `DeployRealmTreasuryStack` calls it from within its own, so the
     ///      voting proxy it bakes in as an immutable needs no paste-and-rebuild round trip first.
     function _deployVoting() internal returns (address proxy, address impl) {
         address realm = _realmToken();

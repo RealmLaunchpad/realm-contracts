@@ -12,7 +12,7 @@ import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 import {DeployRealmVoting} from "script/DeployRealmVoting.s.sol";
 
-/// @title Put `RealmTreasuryRouter` in front of the treasury
+/// @title Deploy the treasury stack: `RealmVoting`, `RealmTreasuryRouter`, and the `SwapLpFeeRouter` upgrade
 /// @notice One broadcast: (0) `RealmVoting`, impl + proxy, when the manifest has none yet; (1) the
 ///         `RealmTreasuryRouter` impl + UUPS proxy (2/3 to the team treasury, 1/3 to voting); (2) a
 ///         `SwapLpFeeRouter` impl whose `TREASURY` is that proxy, with the live `LP_FEE_ROUTER` upgraded
@@ -30,9 +30,9 @@ import {DeployRealmVoting} from "script/DeployRealmVoting.s.sol";
 ///         router upgrade, not a redeploy). The broadcaster must own the launchpad and the LP router
 ///         proxy (`realm.dev`).
 ///
-/// @dev    Run: just deploy-treasury-router-<rh|rh-testnet>
+/// @dev    Run: just deploy-treasury-stack-<rh|rh-testnet>
 ///         Dry-run first: the same `forge script` without --broadcast, plus --sender <realm.dev address>.
-contract DeployRealmTreasuryRouter is DeployRealmVoting {
+contract DeployRealmTreasuryStack is DeployRealmVoting {
     function run() external override {
         address voting = ChainConfig.voting();
         address teamTreasury = ChainConfig.teamTreasury();

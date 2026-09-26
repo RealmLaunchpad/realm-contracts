@@ -69,14 +69,14 @@ library DeploymentsRobinhoodMainnet {
     address internal constant LP_FEE_ROUTER_IMPL = 0xA53a42561D85255C0dbDc73a27626FCb71bA48EA;
     /// @notice `RealmTreasuryRouter` proxy (UUPS): the treasury address every push lands on once live —
     ///         `LAUNCHPAD.treasury()` and the `SwapLpFeeRouter` impl's `TREASURY` point here. Forwards 1/3
-    ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryRouter`, which also
+    ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryStack`, which also
     ///         does that repointing; `address(0)` until then.
     address internal constant TREASURY_ROUTER = address(0);
     /// @notice Implementation behind `TREASURY_ROUTER`. Tracked for verification and audit trails only.
     address internal constant TREASURY_ROUTER_IMPL = address(0);
     /// @notice The REALM token (a launchpad token like any other; the one `VOTING` burns). `address(0)`
     ///         until it is launched on this chain.
-    address internal constant REALM_TOKEN = address(0);
+    address internal constant REALM_TOKEN = 0x5b1d3bF27e8Ea07c050BFf6401C72478A43CeeaA;
     /// @notice `RealmVoting` proxy (UUPS): REALM burn-to-vote rounds. Needs the REALM token, so it is
     ///         deployed after the first token; `TREASURY_ROUTER` bakes it in, so it comes BEFORE that.
     address internal constant VOTING = address(0);

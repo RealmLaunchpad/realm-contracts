@@ -180,7 +180,7 @@ upgrade-vault-factory-rh-testnet: chain-rh-testnet
 # rounds (override with VOTING_ROUND_DURATION seconds), VOTE_BUYBACK_WALLET appointed admin where the
 # chain names one. The token's master must have burnFrom (redeploy-token-impls first if it predates it).
 # Prefix REALM_TOKEN=<address> to deploy against a token that is not pasted into the manifest yet.
-# ONLY needed to deploy voting apart from the treasury router — deploy-treasury-router below deploys it
+# ONLY needed to deploy voting apart from the treasury stack — deploy-treasury-stack below deploys it
 # in its own broadcast when VOTING is still zero. Paste the printed VOTING / VOTING_IMPL into the
 # manifest. Dry-run first: same command without --broadcast, plus --sender <realm.dev address>.
 
@@ -192,7 +192,7 @@ deploy-voting-rh-testnet: chain-rh-testnet
     forge script DeployRealmVoting --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Puts RealmTreasuryRouter in front of the treasury, in ONE broadcast: RealmVoting first when the
+# Deploys the treasury stack (voting + treasury router + LP fee router upgrade) in ONE broadcast: RealmVoting first when the
 # manifest has no VOTING yet (the router bakes it in as an immutable), then the router impl + proxy
 # (2/3 to the team treasury, 1/3 to voting), then a SwapLpFeeRouter impl pointing at the new proxy,
 # upgrades LP_FEE_ROUTER onto it and repoints LAUNCHPAD.treasury(). Needs the manifest's REALM_TOKEN
@@ -201,18 +201,18 @@ deploy-voting-rh-testnet: chain-rh-testnet
 # DeploymentAddresses, `just export-deployments`. Dry-run first: same command without --broadcast,
 # plus --sender <realm.dev address>.
 
-deploy-treasury-router-rh: chain-rh
-    forge script DeployRealmTreasuryRouter --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+deploy-treasury-stack-rh: chain-rh
+    forge script DeployRealmTreasuryStack --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
-deploy-treasury-router-rh-testnet: chain-rh-testnet
-    forge script DeployRealmTreasuryRouter --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+deploy-treasury-stack-rh-testnet: chain-rh-testnet
+    forge script DeployRealmTreasuryStack --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Deploys a new RealmTreasuryRouter implementation (team treasury, VOTING, keepers registry — all
 # implementation immutables) and repoints the live TREASURY_ROUTER proxy at it. The proxy never moves, so
 # the launchpad, the LP fee router and the token impls that bake it keep working. Use this after
-# redeploying RealmVoting or the keepers registry; DeployRealmTreasuryRouter is first-time wiring only.
+# redeploying RealmVoting or the keepers registry; DeployRealmTreasuryStack is first-time wiring only.
 # Paste the printed TREASURY_ROUTER_IMPL into the manifest and `just export-deployments`. Dry-run first:
 # the same command without --broadcast, plus --sender <realm.dev address>.
 

@@ -16,7 +16,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         dead address until this runs. The proxy address never moves, so the launchpad, the
 ///         `SwapLpFeeRouter` and the token impls that bake it as `DIVIDEND_TREASURY` are untouched.
 ///
-/// @dev    This is the counterpart to `DeployRealmTreasuryRouter`, which is deploy-once and refuses while
+/// @dev    This is the counterpart to `DeployRealmTreasuryStack`, which is deploy-once and refuses while
 ///         `TREASURY_ROUTER` is set: first-time wiring goes there, every later change comes here.
 ///
 /// @dev    Run: just upgrade-treasury-router-<rh|rh-testnet>
@@ -28,7 +28,7 @@ contract UpgradeRealmTreasuryRouter is Script {
         address voting = ChainConfig.voting();
         address teamTreasury = ChainConfig.teamTreasury();
         ChainConfig.Infra memory infra = ChainConfig.infra();
-        require(proxy != address(0), "manifest: TREASURY_ROUTER missing (run DeployRealmTreasuryRouter first)");
+        require(proxy != address(0), "manifest: TREASURY_ROUTER missing (run DeployRealmTreasuryStack first)");
         require(voting != address(0), "manifest: VOTING missing (the router bakes it in)");
         // Once the router is live, this chain's REALM_TREASURY IS the proxy, so a config that resolves the
         // 2/3 leg to it would have the router forwarding to itself and the funds never leaving.
