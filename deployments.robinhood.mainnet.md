@@ -21,12 +21,12 @@
 | RealmDividendLogicUniV4                      | `0x3cec0f5719b1a2860eDA4016565a49B40A48Af3c` |
 | RealmEarningsLogicUniV4                      | `0x9B1F2d5dB689A45e352D0d1d7b4eB0769998E0aa` |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
-| SwapLpFeeRouter (impl)                       | `0xA53a42561D85255C0dbDc73a27626FCb71bA48EA` |
-| RealmTreasuryRouter (proxy)                  | _(not deployed)_                             |
-| RealmTreasuryRouter (impl)                   | _(not deployed)_                             |
-| REALM token                                  | _(not deployed)_                             |
-| RealmVoting (proxy)                          | _(not deployed)_                             |
-| RealmVoting (impl)                           | _(not deployed)_                             |
+| SwapLpFeeRouter (impl)                       | `0x93C33E33ECA0Dd2923D26B76D58Ea33BAFb296EE` |
+| RealmTreasuryRouter (proxy)                  | `0x9756b155415A69eEAF5829C1DC52cE6e8874B98E` |
+| RealmTreasuryRouter (impl)                   | `0x23d1A64231cE5508e12D32462237069e9B7F17e5` |
+| REALM token                                  | `0x5b1d3bF27e8Ea07c050BFf6401C72478A43CeeaA` |
+| RealmVoting (proxy)                          | `0xdDE5e6E499AB075660C816bf51a0Fe020e1D26F0` |
+| RealmVoting (impl)                           | `0xe911474eda6CF973D5995DAE40d72b3f19b354c2` |
 | RealmQuoter                                  | `0x557c778574c278c9Ebd8EC3B4725955A648Abc81` |
 | RealmKeeperLens                              | _(not deployed)_                             |
 | RealmKeepersRegistry                         | `0x914e8A6fcA2af6E8Cf4434d1D50234fC89CdF2Ec` |
@@ -66,7 +66,7 @@
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
 | Realm Deployer                               | `0x81f7D06a88223f5a2850411E72256AacC9E27035` |
-| Realm Treasury                               | `0x24CF0733F2b6F9407ab34E2BE9059C16A33cFE8D` |
+| Realm Treasury                               | `0x9756b155415A69eEAF5829C1DC52cE6e8874B98E` |
 | Team Treasury (2/3 leg)                      | `0x24CF0733F2b6F9407ab34E2BE9059C16A33cFE8D` |
 | Vote Buyback Wallet (1/3 leg)                | `0x636A44e110a79d2a799BFe2F79ABdF9D6C2CE0A6` |
 | Legacy Treasury (pre-router)                 | `0x7826AaE926AfD2886257976770e93e0240D2426e` |

@@ -115,8 +115,9 @@ library DeploymentAddressesRobinhoodMainnet {
     ///         winner. Set as a voting admin at deploy.
     address public constant VOTE_BUYBACK_WALLET = 0x636A44e110a79d2a799BFe2F79ABdF9D6C2CE0A6;
     /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
-    ///         lands on. The team multisig until `RealmTreasuryRouter` is live, then that proxy.
-    address public constant REALM_TREASURY = TEAM_TREASURY;
+    ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
+    ///         2026-09-26; `TEAM_TREASURY` before that.
+    address public constant REALM_TREASURY = 0x9756b155415A69eEAF5829C1DC52cE6e8874B98E;
 }
 
 /// @title Deployment Address Constants for Robinhood Chain Testnet (chain id 46630)
