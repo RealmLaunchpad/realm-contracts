@@ -23,7 +23,7 @@ import {RealmToken} from "src/tokens/RealmToken.sol";
 ///         and every `process*` call reverted. `BuildTarget.assertBuiltFor` now refuses to broadcast a
 ///         build with any per-chain constant on the wrong chain.
 ///
-/// @dev    Run: just redeploy-token-impls-<sepolia|robinhood-testnet>
+/// @dev    Run: just redeploy-token-impls-<rh|rh-testnet>
 contract RedeployTokenImpls is UpgradeRealmFactories {
     function run() public override {
         BuildTarget.assertBuiltFor(block.chainid);
@@ -42,7 +42,7 @@ contract RedeployTokenImpls is UpgradeRealmFactories {
         m.tokenImpl = address(new RealmToken());
         m.taxTokenV2Impl = address(new RealmTaxableTokenUniV2());
         m.taxTokenV4Impl = address(new RealmTaxableTokenUniV4());
-        (address v2Impl, address v4Impl) = _upgradeFactories(m);
+        (address v2Impl, address directImpl) = _upgradeFactories(m);
         vm.stopBroadcast();
 
         console.log("=== Done. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
@@ -50,7 +50,7 @@ contract RedeployTokenImpls is UpgradeRealmFactories {
         console.log("  TAXABLE_TOKEN_V2_IMPL      =", m.taxTokenV2Impl);
         console.log("  TAXABLE_TOKEN_V4_IMPL      =", m.taxTokenV4Impl);
         console.log("  FACTORY_UNIV2_UNIFIED_IMPL =", v2Impl);
-        console.log("  FACTORY_UNIV4_UNIFIED_IMPL =", v4Impl);
+        console.log("  FACTORY_UNIV4_DIRECT_IMPL  =", directImpl);
         console.log("");
         console.log("Then: just export-deployments");
     }

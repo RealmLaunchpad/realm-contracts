@@ -3,20 +3,15 @@ pragma solidity 0.8.28;
 
 import {RealmTaxableTokenUniV2Base} from "src/tokens/RealmTaxableTokenUniV2Base.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
-import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
-import {RealmDividendLogicUniV2} from "src/tokens/RealmDividendLogicUniV2.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
-/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
-/// or DeploymentAddressesArc{Mainnet,Testnet} (ARC: `WETH` is the 6-decimal USDC ERC-20 V2 quote).
-import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
-// Aliased so the `chain-arc-*` recipe can import-swap it for the ARC venue: swap-back sells tax tokens
-// for USDC (token→USDC) instead of ETH, since ARC has no wrappable WETH. See UniswapV2VenueArc.
-import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
+/// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
 
 /// @title RealmTaxableTokenUniV2
 /// @notice ERC20 token implementation with time-limited buy/sell taxes for tokens that graduate to
@@ -34,19 +29,9 @@ import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol
 ///      `swapBack(amountOutMinWei)` lets the owner trigger a slippage-bounded swap via a private
 ///      mempool. Factory-deployed tokens have `owner == address(0)`, so this entry point is
 ///      reachable only via the launchpad owner; the auto-trigger remains the live path.
-/// @dev The out-of-band dividend entry points (`processDividends`, `claimDividends`) are thin
-///      `delegatecall` stubs into `DIVIDEND_LOGIC`; only their
-///      bodies live elsewhere, and nothing on the transfer hot path does. See `DividendDistributionLogic`.
+/// @dev The out-of-band dividend entry points (`processDividends`, `claimDividends`) are inherited from
+///      `DividendDistributionLogic`, through `RealmTaxableToken`.
 contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
-    /// @notice The `RealmDividendLogicUniV2` extension the dividend entry points `delegatecall` into.
-    /// @dev Deployed by THIS constructor rather than passed in or read from a manifest: the two are
-    ///      storage-layout-coupled, so pairing them at deploy time is one more thing that can be wired
-    ///      wrong for no benefit. Deploying it here makes the pair atomic, keeps every deploy script and
-    ///      test unchanged (`new RealmTaxableTokenUniV2()` still takes no arguments), and costs only
-    ///      creation-code size on the implementation — which EIP-170 does not bound, and EIP-3860 bounds
-    ///      far above what this needs. Immutable, so clones read it straight from the implementation.
-    address public immutable DIVIDEND_LOGIC;
-
     /// @notice Thrown by the manual `swapBack` before graduation (no tax accrues / no pair yet), and by
     ///         `processLiquidity` (no pool to add to before graduation).
     error NotGraduated();
@@ -63,7 +48,6 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
     /// @dev Token configuration is set during initialization, not in constructor
     constructor() RealmToken() {
         require(block.chainid == DeploymentAddresses.BLOCKCHAIN_ID, "configuration for wrong chainId");
-        DIVIDEND_LOGIC = address(new RealmDividendLogicUniV2());
     }
 
     /// @notice Initializes the token clone with its tax configuration. Anti-sniper protection is
@@ -99,9 +83,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
     /// @param swapAmount Amount to swap. The auto path's `2 * SWAP_THRESHOLD` cap is NOT enforced
     ///        here so a private-mempool caller can drain a larger residual in one shot. The router
     ///        reverts if `swapAmount` exceeds the contract's balance.
-    /// @param amountOutMinWei Minimum native proceeds the swap must yield, in QUOTE decimals: 18-dec
-    ///        ETH on ETH-family builds, 6-dec USDC on ARC builds (where the swap sells to USDC, which
-    ///        IS native balance). Caller's slippage budget. Applies to the post-burn, post-liquidity
+    /// @param amountOutMinWei Minimum native proceeds the swap must yield, in wei. Caller's slippage budget. Applies to the post-burn, post-liquidity
     ///        remainder actually swapped, not to `swapAmount`.
     /// @dev If the per-block cap is hit, `_processCollectedTokens` silently no-ops (no event, no revert).
     /// @dev Post-graduation only: no tax accrues (and there is no pair to swap against) before
@@ -119,8 +101,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
     ///         V4 `processLiquidity` and the burn `processBurn` async pattern. Processes at most
     ///         `2 * SWAP_THRESHOLD` tokens per call, once per block (`ProcessCooldown`), capping what a
     ///         sandwich of the half-sell can extract per block; the remainder stays buffered.
-    /// @param amountOutMinWei Slippage floor for the half-sell, in QUOTE decimals (18-dec ETH on
-    ///        ETH-family builds, 6-dec USDC on ARC) — the swap reverts if it yields less. Keepers
+    /// @param amountOutMinWei Slippage floor for the half-sell, in wei — the swap reverts if it yields less. Keepers
     ///        should set it from the current price (via a private mempool); 0 invites sandwiching of
     ///        the half-sell, bounded by the current buffer. Only a keeper can reach this at all — the
     ///        floor is the keeper's own discipline, not a bound the contract can enforce.
@@ -164,14 +145,12 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
         if (tokensToSell > 0) {
             UniswapV2Venue.swapTaxToNative(UNISWAP_V2_ROUTER, WETH, tokensToSell, amountOutMinWei);
         }
-        // 18-dec native on both chains: on ARC the swap's 6-dec USDC output IS native balance.
         uint256 ethFromSell = address(this).balance - ethBefore;
 
-        // Pair the retained tokens with the native just obtained, via the per-chain venue: WETH
-        // `addLiquidityETH` on ETH-family, two-ERC20 `addLiquidity` against the 6-dec USDC on ARC.
+        // Pair the retained tokens with the native just obtained, via WETH `addLiquidityETH`.
         // Accept any ratio (priority: don't revert); the router refunds the excess side to this contract.
         // The event reports the router's ACTUAL amounts, not the requested ones: the refunded remainder
-        // never reached the pool (on ARC, so does the sub-1e-6-USDC flooring dust).
+        // never reached the pool.
         uint256 ethAdded;
         uint256 tokensAdded;
         uint256 liquidity;
@@ -191,7 +170,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
 
         _inSwap = false;
 
-        emit LiquidityAdded(ethAdded, tokensAdded, liquidity);
+        emit LiquidityAdded(address(0), ethAdded, tokensAdded, liquidity);
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////
@@ -313,7 +292,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
         if (burnAmount > 0) {
             _burn(address(this), burnAmount);
             // `ethSpent` is 0: the burn happens in token-space, with no ETH→token round trip.
-            emit CreatorTaxBurn(0, burnAmount);
+            emit CreatorTaxBurn(address(0), 0, burnAmount);
         }
 
         // Set aside the liquidity-share as TOKENS — kept on this contract (tracked by
@@ -331,10 +310,7 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
 
         uint256 swapAmount = tokenAmount - burnAmount - liquidityAmount - dividendAmount;
 
-        // Sell the remainder for native via the per-chain venue: token→ETH on ETH-family, token→USDC on
-        // ARC. On ARC the received 6-dec USDC IS native balance, so the balance reads below reflect the
-        // proceeds with no unwrap. `amountOutMinWei` is in quote decimals (18-dec ETH / 6-dec USDC); the
-        // auto path passes 0. See UniswapV2Venue.
+        // Sell the remainder for ETH. The auto path passes `amountOutMinWei` = 0. See UniswapV2Venue.
         // Measured as a DELTA, not as the closing balance: the contract may already hold router refunds
         // from an earlier `processLiquidity`, and the event must report this swap's own proceeds so an
         // indexer can match it against the pair's `Swap`.
@@ -372,43 +348,28 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
         // `ethFromSwap` (this swap) and `ethToFund` (what reaches the fee handler) are equal for a token
         // with no earnings allocation.
         emit CreatorTaxSwapback(swapAmount, ethFromSwap, ethToFund);
-        if (ethToFund > 0) _depositToFund(ethToFund);
+        if (ethToFund > 0) _depositToFund(address(0), ethToFund);
     }
 
-    //////////////////////// DIVIDENDS (delegated) //////////////////////
+    //////////////////////// DIVIDENDS //////////////////////
 
-    /// @notice Advances the dividend round by everything it is due for: freezes the pot once the buffer
-    ///         has cleared its threshold, pushes payouts to `holders`, and rolls the round over once the
-    ///         pot is drained. Permissionless, and the only entry point a keeper needs.
-    /// @param minOut Slippage floor for the conversion, in the payout asset's own decimals. Ignored when
-    ///        the payout asset is native or the token itself, and by any call that does not freeze.
-    /// @param holders Addresses to push this round's payouts to. May be empty.
-    function processDividends(uint256 minOut, address[] calldata holders) external {
-        minOut;
-        holders;
-        _delegateToDividendLogic();
-    }
+    /// @dev Funds a self-token payout straight out of its token buffer — no conversion, no slippage,
+    ///      and so no way for it to fail. Every other payout asset is native-buffered and goes through
+    ///      the base.
+    /// @dev NO SIZE FLOOR, matching the base: any non-zero buffer credits. This leg never carried a
+    ///      security floor to begin with — it is carved in token space and merely moves a buffer, so
+    ///      there is no swap for anyone to sandwich — and "is this worth its gas" belongs to whoever
+    ///      pays that gas. The per-block cooldown still applies.
+    /// @dev A self-token payout is only ever configured as the SOLE asset, so `i` is 0 whenever this
+    ///      branch is taken; the index is still threaded through so the base's asset-agnostic path stays
+    ///      the one that decides.
+    function _fundDividends(uint256 i, uint256 minOut) internal override returns (FundOutcome, uint256, uint256) {
+        if (dividendAssets[i].token != address(this)) return super._fundDividends(i, minOut);
 
-    /// @notice Same, for one of the payout assets of a token that pays in several. `assetIndex` selects
-    ///         which; each asset crosses its own threshold, prices its own floor and holds its own
-    ///         per-block cooldown, so a keeper services them one call at a time.
-    /// @param assetIndex Which configured payout asset to service, `0 .. dividendAssetCount() - 1`.
-    /// @param minOut Slippage floor for that asset's conversion, in its own decimals.
-    /// @param holders Addresses to push that asset's accrued payouts to. May be empty.
-    function processDividends(uint8 assetIndex, uint256 minOut, address[] calldata holders) external {
-        assetIndex;
-        minOut;
-        holders;
-        _delegateToDividendLogic();
-    }
+        uint256 buffered = dividendPendingTokens;
+        if (buffered == 0) return (FundOutcome.NotReady, 0, 0);
 
-    /// @notice Self-serve backstop for a holder the keeper missed. Same formula, same paid marker.
-    function claimDividends() external {
-        _delegateToDividendLogic();
-    }
-
-    /// @inheritdoc RealmTaxableToken
-    function dividendLogic() public view override returns (address) {
-        return DIVIDEND_LOGIC;
+        dividendPendingTokens = 0;
+        return (FundOutcome.Funded, 0, buffered);
     }
 }

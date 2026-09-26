@@ -10,7 +10,6 @@ on:
 
 env:
   FOUNDRY_PROFILE: ci
-  MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
   # Archive endpoint: the Robinhood fork suites pin a block.
   ROBINHOOD_RPC_URL: ${{ secrets.ROBINHOOD_RPC_URL }}
 
@@ -44,19 +43,19 @@ jobs:
           forge fmt --check
         id: fmt
 
-      # The token impls bake one chain's addresses; the committed tree may be left retargeted at a
-      # deploy chain, so pin the build (and the mainnet-forked tests below) to the test default.
+      # The token impls bake one chain's addresses; the unit suites fork Robinhood mainnet, so pin the
+      # build to it (the committed tree may be retargeted at another chain).
       - name: Forge build
         run: |
-          just chain-mainnet
+          just chain-rh
           forge build --sizes
         id: build
 
       - name: Deployment manifest drift check
         run: |
           forge script ExportDeployments
-          if ! git diff --exit-code deployments.ethereum.sepolia.md deployments.robinhood.mainnet.md deployments.robinhood.testnet.md; then
-            echo "::error::deployments.{ethereum,robinhood,arc}.*.md is out of sync with the .sol manifest. Run 'just export-deployments' and commit the result."
+          if ! git diff --exit-code deployments.robinhood.mainnet.md deployments.robinhood.testnet.md; then
+            echo "::error::deployments.robinhood.*.md is out of sync with the .sol manifest. Run 'just export-deployments' and commit the result."
             exit 1
           fi
         id: deployments_drift

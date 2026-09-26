@@ -6,12 +6,6 @@ import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {ChainConfig} from "script/ChainConfig.sol";
-import {
-    DeploymentAddressesEthereumSepolia,
-    DeploymentAddressesRobinhoodMainnet,
-    DeploymentAddressesRobinhoodTestnet
-} from "src/config/DeploymentAddresses.sol";
 
 /// @title The two keeper registries, owned by the broadcasting account
 /// @notice Deploys `RealmKeepersRegistry` and the `RealmDividendSwapRegistry` proxy, both owned by the
@@ -21,8 +15,8 @@ import {
 /// @dev    Nothing already deployed references the registries: only the taxable token impls bake them
 ///         in, and those come later in `DeployRealmStack`. Paste, `forge build`, then deploy the stack.
 ///
-///         Run: just chain-<sepolia|robinhood> && forge script DeployRealmRegistries \
-///                  --rpc-url <sepolia|rh-mainnet> --account realm.dev --slow --broadcast --verify
+///         Run: just chain-<rh|rh-testnet> && forge script DeployRealmRegistries \
+///                  --rpc-url <rh-mainnet|rh-testnet> --account realm.dev --slow --broadcast --verify
 contract DeployRealmRegistries is Script {
     function run() external virtual {
         vm.startBroadcast();
@@ -56,12 +50,11 @@ contract DeployRealmRegistries is Script {
     }
 
     /// @dev Depth an asset's V2 pair must hold to be an eligible dividend payout asset, in native
-    ///      18-dec. 10x the per-process cap, so the largest swap a token ever sends through the pool is
-    ///      ~10% of its quote side. NOT a sandwich defence (the keeper gate is) — it only keeps honest
-    ///      conversions out of dead pairs. Changed later with `setDefaultThreshold`.
-    function _dividendDepthThreshold() internal view returns (uint256) {
-        if (ChainConfig.isSepolia()) return 10 * DeploymentAddressesEthereumSepolia.MAX_EARNINGS_PER_PROCESS;
-        if (ChainConfig.isRobinhoodTestnet()) return 10 * DeploymentAddressesRobinhoodTestnet.MAX_EARNINGS_PER_PROCESS;
-        return 10 * DeploymentAddressesRobinhoodMainnet.MAX_EARNINGS_PER_PROCESS;
+    ///      18-dec. 2x the per-process cap: a max-size conversion is up to ~50% of the quote side, so the
+    ///      keeper sizes its own conversions below the cap on shallow pairs. NOT a sandwich defence (the
+    ///      keeper gate is) — it only keeps honest conversions out of dead pairs. Changed later with
+    ///      `setDefaultThreshold`.
+    function _dividendDepthThreshold() internal pure returns (uint256) {
+        return 2 ether;
     }
 }

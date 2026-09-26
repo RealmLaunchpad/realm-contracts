@@ -5,6 +5,8 @@ import {IRealmMasterFeeHandler} from "src/interfaces/IRealmMasterFeeHandler.sol"
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {TokenFeeConfigLib} from "src/libraries/TokenFeeConfigLib.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 
@@ -26,6 +28,7 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 ///         The direct-receiver set is mutable via `setShares` (admin or token-owner gated).
 contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, ReentrancyGuardTransient {
     using TokenFeeConfigLib for TokenFeeConfigLib.Config;
+    using SafeERC20 for IERC20;
 
     uint256 internal constant BPS_TOTAL = 10_000;
     uint256 internal constant PRECISION = 1e18;
@@ -40,6 +43,16 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     ///         (including out-of-gas inside the receiver) fall back to per-account pending claims,
     ///         so legitimate receivers needing more gas can still recover via `claim`.
     uint256 internal constant DIRECT_FORWARD_GAS = 100_000;
+    /// @notice Gas forwarded to a direct receiver's ERC20 `transfer`. Far larger than the native
+    ///         stipend for the same reason `DividendDistribution.ASSET_PAYOUT_GAS` is: the asset is a
+    ///         pool's quote currency, not something this protocol vets, so a token whose `transfer`
+    ///         burns unbounded gas must return `false` here rather than take the swap down. Sized to be
+    ///         unreachable by any honest ERC20 — a bomb bound, not an eligibility gate.
+    uint256 internal constant DIRECT_FORWARD_GAS_ASSET = 400_000;
+    /// @notice Max distinct ERC20 assets one token may ever be paid in (native is implicit, on top). A
+    ///         ceiling on the `setShares` snapshot loop, which must visit every one of them. Comfortably
+    ///         above `MAX_PAIRS` (its real bound: a token only accrues in the quotes it registered).
+    uint256 internal constant MAX_FEE_ASSETS = 8;
 
     mapping(address token => TokenFeeConfigLib.Config) internal _configs;
 
@@ -50,19 +63,32 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     /// @notice True iff `account` is currently a direct receiver for `token`.
     mapping(address token => mapping(address account => bool)) public isDirectReceiver;
 
-    /// @notice Snapshot of `_configs[token].ethPerBps` at the time of the account's last claim
-    ///         or share update. Used in the claimable accumulator formula.
-    mapping(address token => mapping(address account => uint256)) internal _claimedPerBps;
+    /// @notice Cumulative amount deposited per bps of claimable share, PER ASSET. `address(0)` is
+    ///         native; anything else is the ERC20 a token's pool is quoted in.
+    /// @dev Lives here rather than on the config because it is the one piece of per-token fee state
+    ///      that is also per-ASSET. A token launched against several quotes earns in several
+    ///      currencies, and each one needs its own accumulator or a claim in one would draw on
+    ///      another's balance.
+    mapping(address token => mapping(address asset => uint256)) internal _accPerBps;
 
-    /// @notice Residual claimable ETH for an account: carried over from share updates
+    /// @notice Snapshot of `_accPerBps[token][asset]` at the time of the account's last claim
+    ///         or share update. Used in the claimable accumulator formula.
+    mapping(address token => mapping(address asset => mapping(address account => uint256))) internal _claimedPerBps;
+
+    /// @notice Residual claimable amount for an account, per asset: carried over from share updates
     ///         (claimable recipients) or from failed direct forwards (direct recipients).
-    mapping(address token => mapping(address account => uint256)) internal _pendingClaims;
+    mapping(address token => mapping(address asset => mapping(address account => uint256))) internal _pendingClaims;
+
+    /// @notice True once ERC20 `asset` has been recorded in `_configs[token].assets`. Keeps the
+    ///         first-payment bookkeeping O(1) instead of scanning the array on every deposit. Never read
+    ///         for native, which is implicit.
+    mapping(address token => mapping(address asset => bool)) internal _assetSeen;
 
     constructor() Ownable(msg.sender) {}
 
     ////////////////////////////// EXTERNAL FUNCTIONS ///////////////////////////////////
 
-    /// @notice Deposits ETH fees for `token`. For direct receivers the slice is forwarded
+    /// @notice Deposits native fees for `token`. For direct receivers the slice is forwarded
     ///         synchronously; for claimable recipients the accumulator is advanced.
     /// @dev `CreatorFeesDeposited` is emitted before any forward attempt for non-zero deposits;
     ///      zero-value calls are no-ops and emit nothing. There is intentionally no explicit
@@ -73,15 +99,52 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
     ///      call from a direct-receiver hook into those functions reverts, which prevents iteration
     ///      corruption in `_depositSplit`.
     function depositFees(address token) external payable nonReentrant {
-        TokenFeeConfigLib.Config storage cfg = _configs[token];
-
         if (msg.value == 0) return;
         emit CreatorFeesDeposited(token, msg.value);
+        _deposit(token, address(0), msg.value);
+    }
+
+    /// @notice Deposits ERC20 fees for `token`, in whichever currency its pool is quoted in. Pulls
+    ///         `amount` of `asset` from the caller and splits it by exactly the same rules the native
+    ///         path uses, against that asset's own accumulator.
+    /// @dev ONLY THE TOKEN MAY CALL THIS, unlike the native `depositFees` above, which is deliberately
+    ///      permissionless (a caller there is splitting their own ETH and nothing is at risk). Here the
+    ///      asset becomes a permanent entry in the token's `assets` list, which `setShares` must walk;
+    ///      leaving it open would let anyone stuff that list with worthless tokens until a share update
+    ///      no longer fits in a block. The token is also the only caller that knows which quotes it is
+    ///      actually registered for. The LP-fee router and the hook reach this the same way they reach
+    ///      the native path: through the token's own `accrueFees`.
+    /// @dev A fee-on-transfer asset delivers less than `amount`; the split is computed on what actually
+    ///      ARRIVED, so recipients are never credited with more than this contract holds.
+    function depositFees(address token, address asset, uint256 amount) external nonReentrant {
+        require(msg.sender == token, Unauthorized());
+        require(asset != address(0), InvalidAsset());
+        if (amount == 0) return;
+
+        uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = IERC20(asset).balanceOf(address(this)) - balanceBefore;
+        if (received == 0) return;
+
+        emit CreatorAssetFeesDeposited(token, asset, received);
+        _deposit(token, asset, received);
+    }
+
+    /// @dev Shared body of both deposit entry points: record the asset the first time it is seen, then
+    ///      forward the direct slices and accumulate the rest.
+    function _deposit(address token, address asset, uint256 amount) internal {
+        TokenFeeConfigLib.Config storage cfg = _configs[token];
+
+        if (asset != address(0) && !_assetSeen[token][asset]) {
+            require(cfg.assets.length < MAX_FEE_ASSETS, TooManyFeeAssets());
+            _assetSeen[token][asset] = true;
+            cfg.assets.push(asset);
+        }
 
         if (!cfg.isSplit) {
-            _depositSingle(token, cfg);
+            _depositSingle(token, cfg, asset, amount);
         } else {
-            _depositSplit(token, cfg);
+            _depositSplit(token, cfg, asset, amount);
         }
     }
 
@@ -116,7 +179,7 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
         _setSharesInternal(token, cfg, feeShares, true);
     }
 
-    /// @notice Claims accumulated ETH fees for `msg.sender` across the given tokens.
+    /// @notice Claims accumulated NATIVE fees for `msg.sender` across the given tokens.
     function claim(address[] calldata tokens) external nonReentrant {
         uint256 total;
         uint256 nTokens = tokens.length;
@@ -126,7 +189,7 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
             TokenFeeConfigLib.Config storage cfg = _configs[token];
             if (!cfg.isRegistered()) continue;
 
-            uint256 claimable = _getAndClearClaimable(token, cfg, msg.sender);
+            uint256 claimable = _getAndClearClaimable(token, cfg, address(0), msg.sender);
             if (claimable == 0) continue;
 
             total += claimable;
@@ -137,10 +200,30 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
         _transferEth(msg.sender, total);
     }
 
+    /// @notice Claims accumulated fees for `msg.sender` in ONE ERC20 asset across the given tokens.
+    /// @dev One asset per call rather than a matrix: the amounts are summed into a single transfer, and
+    ///      a matrix would either need a transfer per asset anyway or an inner loop whose gas nobody can
+    ///      bound. `assetsOf(token)` tells a caller which assets a token has paid in.
+    function claim(address[] calldata tokens, address asset) external nonReentrant {
+        uint256 total = _claimAsset(tokens, asset);
+        if (total == 0) return;
+        IERC20(asset).safeTransfer(msg.sender, total);
+    }
+
     ////////////////////////////// VIEW FUNCTIONS ///////////////////////////////////
 
-    /// @notice Returns the pending claimable ETH for `account` across the given tokens.
+    /// @notice Returns the pending claimable NATIVE fees for `account` across the given tokens.
     function getClaimable(address[] calldata tokens, address account) external view returns (uint256[] memory amounts) {
+        return getClaimable(tokens, address(0), account);
+    }
+
+    /// @notice Returns the pending claimable fees in `asset` for `account` across the given tokens.
+    ///         `address(0)` is native, reproducing the two-argument overload exactly.
+    function getClaimable(address[] calldata tokens, address asset, address account)
+        public
+        view
+        returns (uint256[] memory amounts)
+    {
         uint256 nTokens = tokens.length;
         amounts = new uint256[](nTokens);
 
@@ -148,7 +231,19 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
             address token = tokens[i];
             TokenFeeConfigLib.Config storage cfg = _configs[token];
             if (!cfg.isRegistered()) continue;
-            amounts[i] = _claimableView(token, cfg, account);
+            amounts[i] = _claimableView(token, cfg, asset, account);
+        }
+    }
+
+    /// @notice Every asset `token` may hold fees in: native (`address(0)`) first, always, then every
+    ///         ERC20 it has been paid in, in first-payment order. What a claimer iterates to find
+    ///         everything it is owed.
+    function assetsOf(address token) external view returns (address[] memory assets) {
+        address[] storage erc20s = _configs[token].assets;
+        uint256 n = erc20s.length;
+        assets = new address[](n + 1);
+        for (uint256 i = 0; i < n; i++) {
+            assets[i + 1] = erc20s[i];
         }
     }
 
@@ -185,81 +280,137 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
 
     /// @dev Single-receiver deposit path. Either forwards directly or credits pending claims.
     ///      Branches on `totalDirectBps` (warm slot — packed with `isSplit` already read in
-    ///      `depositFees`) instead of `directReceivers.length` to avoid a cold SLOAD.
-    function _depositSingle(address token, TokenFeeConfigLib.Config storage cfg) internal {
+    ///      `_deposit`) instead of `directReceivers.length` to avoid a cold SLOAD.
+    function _depositSingle(address token, TokenFeeConfigLib.Config storage cfg, address asset, uint256 amount)
+        internal
+    {
         if (cfg.totalDirectBps > 0) {
             address receiver = cfg.directReceivers[0];
-            (bool ok,) = receiver.call{value: msg.value, gas: DIRECT_FORWARD_GAS}("");
-            if (ok) {
-                emit CreatorClaimed(token, receiver, msg.value);
-                return;
-            }
-            _pendingClaims[token][receiver] += msg.value;
+            if (_forwardDirect(token, asset, receiver, amount)) return;
+            _pendingClaims[token][asset][receiver] += amount;
         } else {
-            _pendingClaims[token][cfg.claimableRecipients[0]] += msg.value;
+            _pendingClaims[token][asset][cfg.claimableRecipients[0]] += amount;
         }
     }
 
     /// @dev Multi-receiver deposit path. Forwards direct slices and accumulates the rest.
-    function _depositSplit(address token, TokenFeeConfigLib.Config storage cfg) internal {
+    function _depositSplit(address token, TokenFeeConfigLib.Config storage cfg, address asset, uint256 amount)
+        internal
+    {
         uint256 directAmountTotal;
 
         uint256 directLen = cfg.directReceivers.length;
         for (uint256 i = 0; i < directLen; i++) {
             address dr = cfg.directReceivers[i];
-            uint256 directAmount = (msg.value * _sharesBpsOf[token][dr]) / BPS_TOTAL;
+            uint256 directAmount = (amount * _sharesBpsOf[token][dr]) / BPS_TOTAL;
             directAmountTotal += directAmount;
             if (directAmount == 0) continue;
 
-            (bool ok,) = dr.call{value: directAmount, gas: DIRECT_FORWARD_GAS}("");
-            if (ok) {
-                emit CreatorClaimed(token, dr, directAmount);
-            } else {
-                _pendingClaims[token][dr] += directAmount;
+            if (!_forwardDirect(token, asset, dr, directAmount)) {
+                _pendingClaims[token][asset][dr] += directAmount;
             }
         }
 
         uint256 claimableBpsTot = cfg.claimableBpsTotal();
         if (claimableBpsTot > 0) {
-            uint256 toAccumulate = msg.value - directAmountTotal;
-            cfg.ethPerBps += (toAccumulate * PRECISION) / claimableBpsTot;
+            uint256 toAccumulate = amount - directAmountTotal;
+            _accPerBps[token][asset] += (toAccumulate * PRECISION) / claimableBpsTot;
         }
     }
 
-    /// @dev Returns and clears all claimable ETH for `account` on `token`.
-    function _getAndClearClaimable(address token, TokenFeeConfigLib.Config storage cfg, address account)
+    /// @dev One direct receiver's synchronous payout, in whichever currency the deposit arrived in.
+    ///      Reports failure instead of reverting — a hostile or merely expensive receiver must never be
+    ///      able to take down a swap — and the caller books the slice as a pending claim instead.
+    /// @dev The ERC20 leg is a RAW gas-capped `call` with a one-word output window, not
+    ///      `SafeERC20.safeTransfer`: `safeTransfer` reverts on failure, which is exactly what this
+    ///      function exists not to do, and the capped window keeps an asset that expands memory before
+    ///      returning from making the copy unaffordable. The success test is `SafeERC20`'s minus the
+    ///      revert: empty returndata is success (non-standard ERC20s), and a return too short to decode
+    ///      is failure rather than a panic.
+    function _forwardDirect(address token, address asset, address receiver, uint256 amount) internal returns (bool ok) {
+        if (asset == address(0)) {
+            (ok,) = receiver.call{value: amount, gas: DIRECT_FORWARD_GAS}("");
+            if (ok) emit CreatorClaimed(token, receiver, amount);
+            return ok;
+        }
+
+        bytes memory payload = abi.encodeCall(IERC20.transfer, (receiver, amount));
+        uint256 size;
+        uint256 word;
+        assembly ("memory-safe") {
+            mstore(0, 0)
+            ok := call(DIRECT_FORWARD_GAS_ASSET, asset, 0, add(payload, 32), mload(payload), 0, 32)
+            size := returndatasize()
+            word := mload(0)
+        }
+        ok = ok && (size == 0 || (size >= 32 && word != 0));
+        if (ok) emit CreatorAssetClaimed(token, asset, receiver, amount);
+    }
+
+    /// @dev Returns and clears all claimable `asset` for `account` on `token`.
+    function _getAndClearClaimable(address token, TokenFeeConfigLib.Config storage cfg, address asset, address account)
         internal
         returns (uint256 claimable)
     {
         if (isDirectReceiver[token][account]) {
-            claimable = _pendingClaims[token][account];
-            _pendingClaims[token][account] = 0;
+            claimable = _pendingClaims[token][asset][account];
+            _pendingClaims[token][asset][account] = 0;
         } else {
-            claimable = _accruedClaimableFor(token, cfg, account) + _pendingClaims[token][account];
-            _claimedPerBps[token][account] = cfg.ethPerBps;
-            _pendingClaims[token][account] = 0;
+            claimable = _accruedClaimableFor(token, cfg, asset, account) + _pendingClaims[token][asset][account];
+            _claimedPerBps[token][asset][account] = _accPerBps[token][asset];
+            _pendingClaims[token][asset][account] = 0;
         }
     }
 
     /// @dev View counterpart of `_getAndClearClaimable` — no state mutation.
-    function _claimableView(address token, TokenFeeConfigLib.Config storage cfg, address account)
+    function _claimableView(address token, TokenFeeConfigLib.Config storage cfg, address asset, address account)
         internal
         view
         returns (uint256)
     {
         if (isDirectReceiver[token][account]) {
-            return _pendingClaims[token][account];
+            return _pendingClaims[token][asset][account];
         }
-        return _accruedClaimableFor(token, cfg, account) + _pendingClaims[token][account];
+        return _accruedClaimableFor(token, cfg, asset, account) + _pendingClaims[token][asset][account];
     }
 
-    /// @dev Accumulator-based claimable for a claimable (non-direct) account.
-    function _accruedClaimableFor(address token, TokenFeeConfigLib.Config storage cfg, address account)
+    /// @dev Accumulator-based claimable for a claimable (non-direct) account, in one asset.
+    function _accruedClaimableFor(
+        address token,
+        TokenFeeConfigLib.Config storage, /* cfg */
+        address asset,
+        address account
+    )
         internal
         view
         returns (uint256)
     {
-        return (cfg.ethPerBps - _claimedPerBps[token][account]) * _sharesBpsOf[token][account] / PRECISION;
+        return
+            (_accPerBps[token][asset] - _claimedPerBps[token][asset][account]) * _sharesBpsOf[token][account]
+                / PRECISION;
+    }
+
+    /// @dev Banks every current claimable recipient's accumulator-based accrual into `_pendingClaims`,
+    ///      for EVERY asset the token has been paid in. Its own function only because inlining it in
+    ///      `_setSharesInternal` puts that function over the stack limit without `via_ir`.
+    /// @dev `_claimedPerBps` is deliberately left stale afterwards: the caller zeroes `_sharesBpsOf`,
+    ///      which zeroes the accumulator term, so a recipient re-added by the same update starts from
+    ///      the fresh checkpoint `_populateNewShares` writes and never double-earns.
+    function _snapshotClaimables(address token, TokenFeeConfigLib.Config storage cfg) private {
+        address[] memory seenAssets = cfg.assets;
+        uint256 nRecipients = cfg.claimableRecipients.length;
+        // `a == 0` is native, which `cfg.assets` never stores.
+        for (uint256 a = 0; a <= seenAssets.length; a++) {
+            address asset = a == 0 ? address(0) : seenAssets[a - 1];
+            uint256 cachedAccPerBps = _accPerBps[token][asset];
+            // Nothing accrued means nothing to bank: every checkpoint is at or below the accumulator.
+            if (cachedAccPerBps == 0) continue;
+            for (uint256 i = 0; i < nRecipients; i++) {
+                address r = cfg.claimableRecipients[i];
+                _pendingClaims[token][asset][r] += (cachedAccPerBps - _claimedPerBps[token][asset][r])
+                    * _sharesBpsOf[token][r] / PRECISION;
+            }
+        }
     }
 
     /// @dev Rebuilds the per-token config from `feeShares`. When `isUpdate = true`, wipes previous
@@ -283,15 +434,13 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
 
             // Wipe claimable per-account state, snapshotting accumulator-based accrual into pending
             // first so removals keep their residue (and re-registered recipients don't double-earn).
-            // `cfg.ethPerBps` is cached once outside the loop to avoid re-reading the storage slot.
-            uint256 cachedEthPerBps = cfg.ethPerBps;
+            // Across EVERY asset the token has been paid in, not just native: a recipient dropped here
+            // keeps whatever it accrued in each of them, and one left out would silently lose that
+            // asset's accrual. `cfg.assets` is what makes the set knowable — see its docstring.
+            _snapshotClaimables(token, cfg);
             uint256 oldClaimableLen = cfg.claimableRecipients.length;
             for (uint256 i = 0; i < oldClaimableLen; i++) {
-                address r = cfg.claimableRecipients[i];
-                _pendingClaims[token][r] += (cachedEthPerBps - _claimedPerBps[token][r]) * _sharesBpsOf[token][r]
-                    / PRECISION;
-                delete _sharesBpsOf[token][r];
-                // _claimedPerBps[token][r] is stale but harmless: sharesBps==0 zeroes the accumulator term.
+                delete _sharesBpsOf[token][cfg.claimableRecipients[i]];
             }
             delete cfg.claimableRecipients;
 
@@ -302,6 +451,8 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
                 delete _sharesBpsOf[token][r];
                 delete isDirectReceiver[token][r];
             }
+            // A direct receiver's residue lives in `_pendingClaims`, which is never wiped, so nothing
+            // has to be snapshotted for them here — in any asset.
             delete cfg.directReceivers;
         }
 
@@ -360,10 +511,9 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
         shares = new uint256[](len);
         uint256 total;
         uint256 directSum;
-        // Cache `cfg.ethPerBps` once: read N times by the loop otherwise. Also lets us skip the
-        // SSTORE entirely when zero (which is always the case at `registerToken`, and avoids a
-        // wasted cold 0→0 write per claimable on init).
-        uint256 cachedEthPerBps = cfg.ethPerBps;
+        // Read once for every incoming claimable recipient: nothing in this loop can grow `cfg.assets`
+        // (only a fee deposit does, and no external call is made here), so the copy stays exact.
+        address[] memory seenAssets = cfg.assets;
 
         for (uint256 i = 0; i < len; i++) {
             address acc = feeShares[i].account;
@@ -383,15 +533,29 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
                 directSum += sh;
             } else {
                 cfg.claimableRecipients.push(acc);
-                if (cachedEthPerBps != 0) {
-                    _claimedPerBps[token][acc] = cachedEthPerBps;
-                }
+                _checkpointNewClaimable(token, seenAssets, acc);
             }
         }
         require(total == BPS_TOTAL, InvalidShares());
         require(cfg.directReceivers.length <= MAX_DIRECT_RECEIVERS, TooManyDirectReceivers());
         // Safe cast: `directSum <= total == BPS_TOTAL == 10_000`, fits in uint16.
+        // forge-lint: disable-next-line(unsafe-typecast)
         cfg.totalDirectBps = uint16(directSum);
+    }
+
+    /// @dev Starts an incoming claimable recipient at the CURRENT accumulator of every asset the token
+    ///      has been paid in, so it earns from this update forward and not out of a history it was not
+    ///      part of. A token that has never been paid — always the case at `registerToken` — writes
+    ///      nothing, which is what keeps a fresh token's registration free of cold 0→0 writes.
+    ///      Its own function for the same stack reason as `_snapshotClaimables`.
+    /// @param seenAssets `cfg.assets`, read once by the caller for the whole batch.
+    function _checkpointNewClaimable(address token, address[] memory seenAssets, address account) private {
+        // `a == 0` is native, which `cfg.assets` never stores.
+        for (uint256 a = 0; a <= seenAssets.length; a++) {
+            address asset = a == 0 ? address(0) : seenAssets[a - 1];
+            uint256 acc = _accPerBps[token][asset];
+            if (acc != 0) _claimedPerBps[token][asset][account] = acc;
+        }
     }
 
     /// @dev Reverts if any two `feeShares` entries share the same `account`.
@@ -401,6 +565,25 @@ contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, Reentran
             for (uint256 j = i + 1; j < len; j++) {
                 require(feeShares[i].account != feeShares[j].account, InvalidFeeShares());
             }
+        }
+    }
+
+    /// @dev Clears `msg.sender`'s claimable `asset` across `tokens`, emitting `CreatorAssetClaimed` per
+    ///      token, and returns the total. The caller delivers it.
+    function _claimAsset(address[] calldata tokens, address asset) internal returns (uint256 total) {
+        require(asset != address(0), InvalidAsset());
+        uint256 nTokens = tokens.length;
+
+        for (uint256 i = 0; i < nTokens; i++) {
+            address token = tokens[i];
+            TokenFeeConfigLib.Config storage cfg = _configs[token];
+            if (!cfg.isRegistered()) continue;
+
+            uint256 claimable = _getAndClearClaimable(token, cfg, asset, msg.sender);
+            if (claimable == 0) continue;
+
+            total += claimable;
+            emit CreatorAssetClaimed(token, asset, msg.sender, claimable);
         }
     }
 

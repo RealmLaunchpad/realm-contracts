@@ -15,17 +15,7 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
     /// @notice When feeReceiver != tokenOwner at creation, getClaimable returns non-zero for feeReceiver
     function test_viewFunction_getClaimable_feeReceiverDifferentFromOwner() public {
         // Create token with creator as msg.sender (owner), alice as feeReceiver
-        vm.prank(creator);
-        testToken = factoryV4.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(alice),
-            _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
-        );
+        testToken = _createDirectTokenAs(creator, "TestToken", "TEST", _fs(alice), false, _emptyTaxCfg());
 
         _graduateToken();
 
@@ -39,17 +29,7 @@ contract UniswapV4ClaimFeesViewFunctions_NormalToken is UniswapV4ClaimFeesViewFu
     /// @notice When feeReceiver != tokenOwner at creation, getClaimable returns zero for tokenOwner
     function test_viewFunction_getClaimable_tokenOwnerGetsZeroWhenNotFeeReceiver() public {
         // Create token with creator as msg.sender (owner), alice as feeReceiver
-        vm.prank(creator);
-        testToken = factoryV4.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(alice),
-            _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
-        );
+        testToken = _createDirectTokenAs(creator, "TestToken", "TEST", _fs(alice), false, _emptyTaxCfg());
 
         _graduateToken();
 

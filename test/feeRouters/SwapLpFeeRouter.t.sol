@@ -5,6 +5,8 @@ import "forge-std/Test.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {SwapLpFeeRouter} from "src/feeRouters/SwapLpFeeRouter.sol";
 import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
+import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Treasury sink that intentionally rejects ETH so we can exercise the router's revert path.
 contract RejectEth {
@@ -14,17 +16,47 @@ contract RejectEth {
 }
 
 /// @notice Stub token mimicking the `RealmToken` surface the router calls: `accrueFees()` for the
-///         creator slice.
+///         creator slice, and its ERC20 twin, which PULLS the approved amount exactly as the real token
+///         does (so the test sees whether the approval was sized to the split).
 contract MockRealmToken {
     uint256 public lastAccrued;
     uint256 public accrueCount;
+    address public lastAsset;
+    uint256 public lastAssetAmount;
 
     function accrueFees() external payable {
         lastAccrued = msg.value;
         accrueCount++;
     }
 
+    function accrueFees(address asset, uint256 amount) external {
+        lastAsset = asset;
+        lastAssetAmount = amount;
+        accrueCount++;
+        IERC20(asset).transferFrom(msg.sender, address(this), amount);
+    }
+
     receive() external payable {}
+}
+
+/// @notice A plain 18-decimal ERC20 standing in for a quote currency.
+contract MockQuote is ERC20 {
+    constructor() ERC20("Quote", "Q") {}
+
+    function mintTo(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+}
+
+/// @notice A quote that burns 10% of every transfer. The router must split what it RECEIVED, not what
+///         it was told to pull, or it would hand out more than it holds.
+contract FeeOnTransferQuote is MockQuote {
+    function _update(address from, address to, uint256 value) internal override {
+        if (from == address(0) || to == address(0)) return super._update(from, to, value);
+        uint256 fee = value / 10;
+        super._update(from, address(0xdEaD), fee);
+        super._update(from, to, value - fee);
+    }
 }
 
 /// @notice Tests for the flat 30/70 LP fee router. Verifies the deposit split, transfer semantics,
@@ -131,6 +163,67 @@ contract SwapLpFeeRouterTests is Test {
         routerBad.depositLpFees{value: 1 ether}(address(token), 1 ether, 1e24);
     }
 
+    // ───────────────────────── ERC20 deposit splits ─────────────────────────
+
+    event LpAssetFeesRouted(
+        address indexed token,
+        address indexed asset,
+        uint256 creatorShare,
+        uint256 treasuryShare,
+        uint256 liquidityShare
+    );
+
+    /// @dev `address(0)` is the native sentinel and belongs on the payable overload; accepting it here
+    ///      would make an ERC20 call on an address with no code and split nothing.
+    function test_depositLpFeesAsset_revertsOnNativeSentinel() public {
+        vm.expectRevert(SwapLpFeeRouter.InvalidAsset.selector);
+        router.depositLpFees(address(token), address(0), 1 ether, 0, 0);
+    }
+
+    /// @dev Zero pulls nothing and touches neither destination — the shape the hook relies on when a
+    ///      ledger happens to be empty.
+    function test_depositLpFeesAsset_zeroAmountIsNoop() public {
+        MockQuote quote = new MockQuote();
+        uint256 accrueCountBefore = token.accrueCount();
+        router.depositLpFees(address(token), address(quote), 0, 0, 0);
+        assertEq(quote.balanceOf(treasury), 0, "treasury untouched");
+        assertEq(token.accrueCount(), accrueCountBefore, "creator path not hit");
+    }
+
+    /// @dev The same flat 30/70 the native overload applies, in the quote's own units, PULLED from the
+    ///      caller rather than received as value.
+    function test_depositLpFeesAsset_split_30_70() public {
+        MockQuote quote = new MockQuote();
+        quote.mintTo(address(this), 1_000e18);
+        quote.approve(address(router), type(uint256).max);
+
+        vm.expectEmit(true, true, false, true);
+        emit LpAssetFeesRouted(address(token), address(quote), 700e18, 300e18, 0);
+        router.depositLpFees(address(token), address(quote), 1_000e18, 0, 0);
+
+        assertEq(quote.balanceOf(treasury), 300e18, "treasury's 30%, in the quote");
+        assertEq(token.lastAsset(), address(quote), "the token was told which currency");
+        assertEq(token.lastAssetAmount(), 700e18, "creator's 70%");
+        assertEq(quote.balanceOf(address(token)), 700e18, "and the token pulled exactly that");
+        assertEq(quote.balanceOf(address(router)), 0, "the router keeps nothing");
+    }
+
+    /// @dev A fee-on-transfer quote delivers less than `amount`. The router splits what ARRIVED — if it
+    ///      split the nominal amount instead, the creator's approval would exceed its balance and the
+    ///      whole routing would revert.
+    function test_depositLpFeesAsset_feeOnTransfer_splitsOnReceivedAmount() public {
+        FeeOnTransferQuote quote = new FeeOnTransferQuote();
+        quote.mintTo(address(this), 1_000e18);
+        quote.approve(address(router), type(uint256).max);
+
+        router.depositLpFees(address(token), address(quote), 1_000e18, 0, 0);
+
+        // 10% burned on the pull: 900 received, then 30/70 of that, and 10% burned again on each leg out.
+        assertEq(quote.balanceOf(treasury), 270e18 - 27e18, "treasury got 30% of what arrived, less its own fee");
+        assertEq(token.lastAssetAmount(), 630e18, "the creator slice is 70% of what arrived, not of the nominal");
+        assertEq(quote.balanceOf(address(router)), 0, "and nothing is stranded in the router");
+    }
+
     // ───────────────────────── access control & upgrades ─────────────────────────
 
     function test_initialize_revertsOnSecondCall() public {
@@ -163,10 +256,28 @@ contract SwapLpFeeRouterTests is Test {
 
     // ───────────────────────── ISwapLpFeeRouter interface ─────────────────────────
 
-    function test_interface_id_matchesSelector() public pure {
-        // Smoke test: the canonical selector must remain stable across upgrades.
-        bytes4 sel = ISwapLpFeeRouter.depositLpFees.selector;
-        assertEq(sel, bytes4(keccak256("depositLpFees(address,uint256,uint256)")));
+    /// @dev The wire format both hook generations dispatch on must stay stable across upgrades.
+    ///      Asserted by CALLING each selector rather than reading `.selector`, which Solidity refuses to
+    ///      resolve now that `depositLpFees` is overloaded for ERC20-quoted pools. Both calls are
+    ///      zero-amount, which every implementation must treat as a no-op that still succeeds.
+    function test_interface_selectors_dispatch() public {
+        (bool nativeOk,) = address(router).call{value: 0}(
+            abi.encodeWithSignature("depositLpFees(address,uint256,uint256)", address(0xbeef), uint256(0), uint256(0))
+        );
+        assertTrue(nativeOk, "native depositLpFees selector must dispatch");
+
+        (bool assetOk,) = address(router)
+            .call(
+                abi.encodeWithSignature(
+                    "depositLpFees(address,address,uint256,uint256,uint256)",
+                    address(0xbeef),
+                    address(0xdead),
+                    uint256(0),
+                    uint256(0),
+                    uint256(0)
+                )
+            );
+        assertTrue(assetOk, "asset depositLpFees selector must dispatch");
     }
 
     receive() external payable {}

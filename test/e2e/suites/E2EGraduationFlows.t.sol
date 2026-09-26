@@ -45,6 +45,9 @@ abstract contract E2EGraduationFlows is RealmE2EBase {
         _graduateE2E(token);
 
         if (_hasTax()) _warpPastTaxWindow(token);
+        // This test is about the sell leg, not the caps: step past the sniper window so the
+        // pool -> buyer leg of the setup buy is not capped (see `E2ESniperWindow`).
+        if (_hasSniperProtection()) _warpPastSniperWindow(token);
 
         // First buy some tokens to sell back.
         vm.deal(alice, 1 ether);

@@ -21,7 +21,14 @@ contract E2E_FactoryUniV2 is E2EHappyPath, E2EGraduationFlows, LaunchpadBaseTest
 
     function _createTestToken(bytes32 salt) internal override returns (address token) {
         vm.prank(creator);
-        token = factoryV2.createToken("E2E", "E2E", salt, _fs(creator), _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
+        token = factoryV2.createToken(
+            _setupTiered("E2E", "E2E", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function _createTestTokenWithSplit(bytes32 salt, IRealmFactory.FeeShare[] memory feeReceivers)
@@ -30,7 +37,14 @@ contract E2E_FactoryUniV2 is E2EHappyPath, E2EGraduationFlows, LaunchpadBaseTest
         returns (address token)
     {
         vm.prank(creator);
-        token = factoryV2.createToken("E2E", "E2E", salt, feeReceivers, _noSs(), _emptyTaxCfg(), _emptyAntiSniperCfg());
+        token = factoryV2.createToken(
+            _setupTiered("E2E", "E2E", salt, feeReceivers),
+            _noAlloc(_emptyTaxCfg()),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
     }
 
     function _createTokenWithDeployerBuy(
@@ -41,7 +55,12 @@ contract E2E_FactoryUniV2 is E2EHappyPath, E2EGraduationFlows, LaunchpadBaseTest
         vm.deal(creator, ethValue);
         vm.prank(creator);
         token = factoryV2.createToken{value: ethValue}(
-            "E2E", "E2E", salt, _fs(creator), supplyShares, _emptyTaxCfg(), _emptyAntiSniperCfg()
+            _setupTiered("E2E", "E2E", salt, _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
+            supplyShares,
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 

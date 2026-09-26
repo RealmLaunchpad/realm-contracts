@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
@@ -49,7 +48,7 @@ contract DividendSolvencyHandler is Test {
     ///      instead of always draining the same one.
     function process(uint256 seed) public {
         uint8 index = uint8(seed % TOKEN.dividendAssetCount());
-        try TOKEN.processDividends(index, 0, new address[](0)) {} catch {}
+        try TOKEN.processDividends(index, true, 0, new address[](0)) {} catch {}
     }
 
     function distribute(uint256 seed) public {
@@ -58,7 +57,7 @@ contract DividendSolvencyHandler is Test {
             batch[i] = holders[(i + seed) % holders.length];
         }
         uint8 index = uint8(seed % TOKEN.dividendAssetCount());
-        try TOKEN.processDividends(index, 0, batch) {} catch {}
+        try TOKEN.processDividends(index, true, 0, batch) {} catch {}
     }
 
     /// @dev The holder's own route, which pays every asset in one call. Included so the run interleaves
@@ -91,7 +90,7 @@ contract DividendSolvencyHandler is Test {
 ///         through `_sweepableNative` / `_sweepableAsset`; this suite is what stops a fourth bucket from
 ///         being added to one of them and forgotten in the others.
 contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
-    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+    address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
 
     RealmTaxableTokenUniV4 internal divToken;
     DividendSolvencyHandler internal handler;
@@ -101,11 +100,15 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
 
     function setUp() public virtual override {
         super.setUp();
+        // Robinhood's xStock/WETH V2 pairs hold ~0.005 ETH a side, under the default depth floor; drop it
+        // so the V2 route is exercised rather than rejected as too shallow.
+        vm.prank(admin);
+        dividendSwapRegistry.setDefaultThreshold(0.001 ether);
 
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DivInv",
             symbol: "DINV",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -118,7 +121,7 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
         // only legal on its own.
         address[] memory dividendTokens = new address[](2);
         dividendTokens[0] = address(0);
-        dividendTokens[1] = DAI;
+        dividendTokens[1] = MSFT;
         uint16[] memory dividendWeights = new uint16[](2);
         dividendWeights[0] = 7_000;
         dividendWeights[1] = 3_000;
@@ -140,18 +143,9 @@ contract DividendSolvencyInvariants is TaxTokenUniV4BaseTests {
                 dividendRoutes: new bytes[](0)
             })
         });
-        vm.prank(creator);
-        address token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        address token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
         testToken = token;
-        _launchpadBuy(token, 2 ether);
+        _poolBuy(token, 2 ether);
         _graduateToken();
 
         divToken = RealmTaxableTokenUniV4(payable(token));

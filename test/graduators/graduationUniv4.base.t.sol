@@ -2,12 +2,11 @@
 pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
-import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTestsWithDirectV4} from "test/launchpad/base.t.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
-import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -17,7 +16,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
-import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -26,19 +25,18 @@ import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
 /// @notice Tests for Uniswap V4 graduator functionality
-contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
+contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithDirectV4 {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
 
     IPoolManager poolManager;
 
+    /// @dev The test token's sell tax; tax-token suites set it.
+    uint256 public SELL_TAX_BPS;
+
     uint24 constant lpFee = UniswapV4PoolConstants.LP_FEE;
     int24 constant tickSpacing = UniswapV4PoolConstants.TICK_SPACING;
-    int24 constant tickGraduation = UniswapV4PoolConstants.TICK_GRADUATION;
-
-    // this is the price set when creating the pool, which is the starting price ONCE GRADUATED
-    uint160 constant startingPriceX96 = 715832709642994126662528799866880;
 
     function setUp() public virtual override {
         super.setUp();
@@ -46,6 +44,19 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     //////////////////////////////////// modifiers and utilities ///////////////////////////////
+
+    /// @dev Direct tokens graduate at creation, so this stands in for the curve venue's graduating buy:
+    ///      `buyer` buys `GRADUATION_THRESHOLD` of ETH on the pool, leaving it holding tokens and the pool
+    ///      holding ETH at a ~16 ETH market cap, much as a curve graduation did.
+    function _graduateToken() internal virtual override {
+        _poolBuy(testToken, GRADUATION_THRESHOLD);
+    }
+
+    /// @dev Buys `token` with `value` ETH on its V4 pool as `buyer` (whose balance is set to `value`).
+    function _poolBuy(address token, uint256 value) internal {
+        vm.deal(buyer, value);
+        _swap(buyer, token, value, 0, true, true);
+    }
 
     function _getPoolKey(address tokenAddress) internal view returns (PoolKey memory) {
         return PoolKey({
@@ -116,11 +127,12 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
 
         // First parameter: swap configuration
         params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
+            IV4RouterSwaps.ExactInputSingleParams({
                 poolKey: key,
                 zeroForOne: isBuy, // true if we're swapping token0 for token1 (buying tokens with eth)
                 amountIn: uint128(amountIn), // amount of tokens we're swapping
                 amountOutMinimum: uint128(minAmountOut), // minimum amount we expect to receive
+                minHopPriceX36: 0,
                 hookData: bytes("") // no hook data needed
             })
         );
@@ -151,47 +163,6 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithUniv4Graduator {
         uint256 valueIn = isBuy ? amountIn : 0;
         IUniversalRouter(universalRouter).execute{value: valueIn}(commands, inputs, block.timestamp);
         vm.stopPrank();
-    }
-
-    function _addEthLiquidity(address caller, uint256 ethValue) internal {
-        uint160 graduationPriceX96_tokensPerEth = startingPriceX96;
-        // Both ticks above graduation tick -> single-sided ETH position (buy side)
-        int24 tickLower = tickGraduation + 9 * tickSpacing;
-        int24 tickUpper = tickGraduation + 59 * tickSpacing;
-        uint160 lowTickSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
-        uint160 highTickSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
-        _addLiquidity(
-            caller,
-            ethValue,
-            0, // no tokens
-            tickUpper,
-            tickLower,
-            graduationPriceX96_tokensPerEth, // current price
-            lowTickSqrtPriceX96,
-            highTickSqrtPriceX96,
-            true // false if expectRevert
-        );
-    }
-
-    function _addMixedLiquidity(address caller, uint256 ethValue, uint256 tokenAmount, bool expectSuccess) internal {
-        uint160 graduationPriceX96_tokensPerEth = startingPriceX96;
-        // Ticks straddle graduation tick -> position contains both ETH and tokens
-        int24 tickLower = tickGraduation - 50 * tickSpacing;
-        int24 tickUpper = tickGraduation + 49 * tickSpacing;
-        uint160 lowTickSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
-        uint160 highTickSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
-
-        _addLiquidity(
-            caller,
-            ethValue,
-            tokenAmount, // some tokens
-            tickUpper,
-            tickLower,
-            graduationPriceX96_tokensPerEth, // current price
-            lowTickSqrtPriceX96,
-            highTickSqrtPriceX96,
-            expectSuccess // false if expectRevert
-        );
     }
 
     function _addLiquidity(

@@ -35,21 +35,21 @@ contract EarningsAllocationHarness is EarningsAllocation {
         ++graduatedEarningsCalls;
     }
 
-    function _depositToFund(uint256 amount) internal override {
+    function _depositToFund(address, uint256 amount) internal override {
         fundReceived += amount;
     }
 
-    function _handleBurn(uint256 amount) internal override returns (uint256) {
+    function _handleBurn(address, uint256 amount) internal override returns (uint256) {
         burnReceived += amount;
         return 0; // fully consumed (accrued), nothing folds back to fund
     }
 
-    function _handleDividends(uint256 amount) internal override returns (uint256) {
+    function _handleDividends(address, uint256 amount) internal override returns (uint256) {
         dividendsReceived += amount;
         return 0;
     }
 
-    function _handleLiquidity(uint256 amount) internal override returns (uint256) {
+    function _handleLiquidity(address, uint256 amount) internal override returns (uint256) {
         liquidityReceived += amount;
         return 0;
     }
@@ -77,7 +77,7 @@ contract EarningsAllocationFallbackHarness is EarningsAllocation {
         return grad;
     }
 
-    function _depositToFund(uint256 amount) internal override {
+    function _depositToFund(address, uint256 amount) internal override {
         fundReceived += amount;
     }
 }
@@ -225,11 +225,11 @@ contract EarningsAllocationPartialHarness is EarningsAllocation {
         return true;
     }
 
-    function _depositToFund(uint256 amount) internal override {
+    function _depositToFund(address, uint256 amount) internal override {
         fundReceived += amount;
     }
 
-    function _handleBurn(uint256 amount) internal override returns (uint256) {
+    function _handleBurn(address, uint256 amount) internal override returns (uint256) {
         uint256 consume = amount / 2;
         burnConsumed += consume;
         return amount - consume; // residual folds back to fund
@@ -257,21 +257,21 @@ contract EarningsAllocationTokenBurnHarness is EarningsAllocation {
         return true;
     }
 
-    function _depositToFund(uint256 amount) internal override {
+    function _depositToFund(address, uint256 amount) internal override {
         fundReceived += amount;
     }
 
-    function _handleBurn(uint256) internal override returns (uint256) {
+    function _handleBurn(address, uint256) internal override returns (uint256) {
         burnHandlerCalled = true;
         return 0;
     }
 
-    function _handleDividends(uint256 amount) internal override returns (uint256) {
+    function _handleDividends(address, uint256 amount) internal override returns (uint256) {
         dividendsReceived += amount;
         return 0;
     }
 
-    function _handleLiquidity(uint256 amount) internal override returns (uint256) {
+    function _handleLiquidity(address, uint256 amount) internal override returns (uint256) {
         liquidityReceived += amount;
         return 0;
     }

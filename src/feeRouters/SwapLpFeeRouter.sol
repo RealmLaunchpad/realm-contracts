@@ -5,8 +5,12 @@ import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/pr
 import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {IRealmTaxableToken} from "src/interfaces/IRealmTaxableToken.sol";
 
 /// @title SwapLpFeeRouter
 /// @notice UUPS-upgradeable router that splits LP fees collected by `RealmSwapHook` between the
@@ -17,6 +21,8 @@ import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 ///         implementation's bytecode, so changing either is done by deploying a new implementation
 ///         and calling `upgradeTo` on the proxy.
 contract SwapLpFeeRouter is ISwapLpFeeRouter, Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    using SafeERC20 for IERC20;
+
     /// @notice Basis points denominator (10000 = 100%).
     uint256 internal constant BASIS_POINTS = 10_000;
 
@@ -39,8 +45,23 @@ contract SwapLpFeeRouter is ISwapLpFeeRouter, Initializable, OwnableUpgradeable,
     ///                       from day one so indexers and the off-chain ABI stay stable.
     event LpFeesRouted(address indexed token, uint256 creatorShare, uint256 treasuryShare, uint256 liquidityShare);
 
+    /// @notice The ERC20 counterpart of `LpFeesRouted`, for a pool quoted in something other than the
+    ///         chain's native currency. A separate event rather than a widened one so every existing
+    ///         indexer handler for the native path keeps working untouched.
+    /// @param asset The quote currency the fee was collected and split in.
+    event LpAssetFeesRouted(
+        address indexed token,
+        address indexed asset,
+        uint256 creatorShare,
+        uint256 treasuryShare,
+        uint256 liquidityShare
+    );
+
     error TreasuryTransferFailed();
     error InvalidTreasury();
+    /// @notice Thrown when the ERC20 entry point is handed `address(0)`, which is the native sentinel
+    ///         and belongs on the payable overload instead.
+    error InvalidAsset();
 
     /// @notice Sets up the implementation's immutables. The implementation itself is not meant to
     ///         be used directly — `_disableInitializers()` locks its proxy storage so only proxies
@@ -91,6 +112,41 @@ contract SwapLpFeeRouter is ISwapLpFeeRouter, Initializable, OwnableUpgradeable,
             // Forwards to the master fee handler via the token's own `accrueFees`. The token is
             // pre-approved as a recipient there and routes to the configured creator/fee receivers.
             IRealmToken(token).accrueFees{value: creatorShare}();
+        }
+    }
+
+    /// @inheritdoc ISwapLpFeeRouter
+    /// @dev The ERC20 twin of the payable overload above, for a pool quoted in something other than the
+    ///      chain's native currency. Same flat split, same destinations, same revert-on-failure contract
+    ///      so the hook's own fallback still governs.
+    /// @dev PULLS rather than receiving: an ERC20 has no `receive()`, so the caller approves this
+    ///      contract for `amount` and the transfer happens here. That also makes the amount actually
+    ///      moved the amount this contract splits, which is what a fee-on-transfer quote requires.
+    /// @dev The treasury slice is a plain transfer, NOT a call: `RealmTreasuryRouter` has no ERC20 hook
+    ///      to route it on arrival, so it accumulates there until someone calls its `sweep(asset)`.
+    ///      Voting stays native-only by design, so that sweep sends the whole balance to the multisig.
+    function depositLpFees(address token, address asset, uint256 amount, uint256, uint256) external override {
+        require(asset != address(0), InvalidAsset());
+        if (amount == 0) return;
+
+        IERC20 quote = IERC20(asset);
+        uint256 balanceBefore = quote.balanceOf(address(this));
+        quote.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = quote.balanceOf(address(this)) - balanceBefore;
+        if (received == 0) return;
+
+        uint256 treasuryShare = (received * TREASURY_BPS) / BASIS_POINTS;
+        uint256 creatorShare = received - treasuryShare;
+
+        emit LpAssetFeesRouted(token, asset, creatorShare, treasuryShare, 0);
+
+        if (treasuryShare > 0) quote.safeTransfer(TREASURY, treasuryShare);
+        if (creatorShare > 0) {
+            // The token pulls, exactly as this contract just did, so the approval is sized to this call
+            // and consumed by it. Routed through the TOKEN rather than straight to the fee handler
+            // because the token is what carves the earnings-allocation slices out of the creator share.
+            quote.forceApprove(token, creatorShare);
+            IRealmTaxableToken(payable(token)).accrueFees(asset, creatorShare);
         }
     }
 

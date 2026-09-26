@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTests, LaunchpadBaseTestsWithDirectV4} from "test/launchpad/base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 
-contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv4Graduator {
+contract AdminFunctionsTest is LaunchpadBaseTestsWithDirectV4 {
     address public nonOwner = makeAddr("nonOwner");
     address public newTreasury = makeAddr("newTreasury");
 
@@ -127,7 +127,9 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv4Graduator {
         launchpad.setTreasuryAddress(address(0x1223432345));
     }
 
-    function test_communityTakeOver_revertsForNonOwner() public createTestToken {
+    /// @dev Community takeover is the launchpad's path to an owner for a renounced curve (V2) token.
+    function test_communityTakeOver_revertsForNonOwner() public {
+        LaunchpadBaseTests._createTestToken();
         vm.prank(nonOwner);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
         launchpad.communityTakeOver(testToken, alice);
@@ -135,10 +137,9 @@ contract AdminFunctionsTest is LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(IRealmToken(testToken).proposedOwner(), address(0));
     }
 
-    function test_communityTakeOver_routesToTokenProposeNewOwner() public createTestToken {
-        vm.prank(creator);
-        IRealmToken(testToken).proposeNewOwner(alice);
-        assertEq(IRealmToken(testToken).proposedOwner(), alice);
+    function test_communityTakeOver_routesToTokenProposeNewOwner() public {
+        LaunchpadBaseTests._createTestToken();
+        assertEq(IRealmToken(testToken).owner(), address(0), "curve tokens launch ownerless");
 
         vm.prank(admin);
         launchpad.communityTakeOver(testToken, bob);

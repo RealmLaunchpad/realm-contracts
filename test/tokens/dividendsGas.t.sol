@@ -4,15 +4,9 @@ pragma solidity 0.8.28;
 import {console} from "forge-std/console.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {
-    TaxConfigsWithAllocation,
-    EarningsAllocationConfig,
-    TaxConfigsWithMultiAllocation,
-    EarningsAllocationMultiConfig
-} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice The hot-path gas measurement the dividends design hangs on.
@@ -25,6 +19,15 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 /// What matters is the DELTA, and that a token WITHOUT dividends pays nothing — the whole point of
 /// putting `hasDividends` in the warm `pair` slot `_update` already loads.
 contract DividendsGasTests is TaxTokenUniV4BaseTests {
+    function setUp() public virtual override {
+        super.setUp();
+        // Robinhood's xStock/WETH V2 pairs hold ~0.005 ETH a side, under the default depth floor of
+        // 10x MAX_EARNINGS_PER_PROCESS. The floor is per-chain configurable; drop it so the V2 route is
+        // exercised rather than rejected as too shallow.
+        vm.prank(admin);
+        dividendSwapRegistry.setDefaultThreshold(0.001 ether);
+    }
+
     address internal holderA = makeAddr("gasHolderA");
     address internal holderB = makeAddr("gasHolderB");
 
@@ -32,11 +35,11 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "GasTok",
             symbol: "GAS",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: 400,
             taxDurationSeconds: uint32(14 days),
@@ -44,22 +47,11 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(0, dividendsBps, 0, address(0))
         });
-        vm.prank(creator);
-        address token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        address token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
         testToken = token;
-        _launchpadBuy(token, 2 ether);
+        _poolBuy(token, 2 ether);
         _graduateToken();
 
         // Route one lot of earnings through both tokens, identically, so both set-ups are symmetric
@@ -230,8 +222,8 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
 
     ///////////////////////// several payout assets /////////////////////////
 
-    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
+    address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
 
     /// @dev The same token as `_create`, paying in a SET of assets. Everything else is identical, so the
     ///      only difference between the measurements is how many assets the transfer hook settles.
@@ -239,7 +231,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "GasTok",
             symbol: "GAS",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -260,18 +252,9 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
                 dividendRoutes: new bytes[](0)
             })
         });
-        vm.prank(creator);
-        address token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        address token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
         testToken = token;
-        _launchpadBuy(token, 2 ether);
+        _poolBuy(token, 2 ether);
         _graduateToken();
         vm.deal(address(this), 3 ether);
         RealmTaxableTokenUniV4(payable(token)).accrueFees{value: 3 ether}();
@@ -287,7 +270,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         token.accrueFees{value: 3 ether}();
         uint256 n = token.dividendAssetCount();
         for (uint256 i; i < n; ++i) {
-            token.processDividends(uint8(i), 0, new address[](0));
+            token.processDividends(uint8(i), true, 0, new address[](0));
         }
     }
 
@@ -303,15 +286,15 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
 
         address[] memory two = new address[](2);
         two[0] = address(0);
-        two[1] = DAI;
+        two[1] = MSFT;
         uint16[] memory w2 = new uint16[](2);
         w2[0] = 5_000;
         w2[1] = 5_000;
 
         address[] memory three = new address[](3);
         three[0] = address(0);
-        three[1] = DAI;
-        three[2] = USDC;
+        three[1] = MSFT;
+        three[2] = AAPL;
         uint16[] memory w3 = new uint16[](3);
         w3[0] = 4_000;
         w3[1] = 3_000;

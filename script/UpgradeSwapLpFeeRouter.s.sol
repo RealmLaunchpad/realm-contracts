@@ -14,7 +14,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         address — the one the hook holds as an immutable — never moves, so the hook keeps its Uniswap
 ///         whitelisting and nothing else is touched. The broadcaster must own the proxy (`realm.dev`).
 ///
-/// @dev    Run: just upgrade-lp-fee-router-<sepolia|robinhood|robinhood-testnet>
+/// @dev    Run: just upgrade-lp-fee-router-<rh|rh-testnet>
 ///         Dry-run first: the same `forge script` without --broadcast, plus --sender <realm.dev address>
 ///         so the owner check passes in simulation.
 contract UpgradeSwapLpFeeRouter is Script {

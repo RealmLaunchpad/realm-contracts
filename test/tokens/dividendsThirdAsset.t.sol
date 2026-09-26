@@ -3,8 +3,9 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
-import {DeploymentAddressesEthereumMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
@@ -18,9 +19,17 @@ import {KeeperGated} from "src/tokens/KeeperGated.sol";
 ///         third-asset payout shape — the only one that actually performs a swap — can be exercised
 ///         against real Uniswap pools without dragging a launchpad, a graduator and a pool through
 ///         the test. Balances are set directly instead of being moved by transfers.
-contract DividendHarness is DividendDistributionLogic {
+contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
     mapping(address => uint256) public balances;
     uint256 public eligibleSupply;
+
+    /// @dev A one-asset payout set taking the whole dividends slice.
+    function _soleAssetSet(address asset) internal pure returns (address[] memory assets, uint16[] memory weights) {
+        assets = new address[](1);
+        assets[0] = asset;
+        weights = new uint16[](1);
+        weights[0] = 10_000;
+    }
 
     function configure(address asset) external {
         (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
@@ -124,9 +133,16 @@ contract GhostToken is ERC20 {
 ///         deep enough Uniswap V2 pair qualifies — there is no asset whitelist and no per-asset
 ///         approval, only the liquidity the registry measures.
 contract DividendsThirdAssetTests is Test {
-    uint256 internal constant BLOCKNUMBER = 23327777;
-    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    uint256 internal constant BLOCKNUMBER = 58_000_000;
+    address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
+
+    /// @dev The chain's 6-decimal reference asset, and the one V2 pair here that is genuinely deep
+    ///      (~235 ETH a side), so it needs no depth-floor relief.
+    address internal constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
+
+    /// @dev The V2 depth floor this suite runs at; every depth assertion below is relative to it.
+    uint256 internal constant V2_DEPTH_FLOOR = 0.001 ether;
+    address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
 
     DividendHarness internal harness;
     RealmDividendSwapRegistry internal registry;
@@ -138,10 +154,17 @@ contract DividendsThirdAssetTests is Test {
     receive() external payable {}
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), BLOCKNUMBER);
+        vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
         registry = installDividendSwapRegistry(registryOwner);
+        // Robinhood's xStock/WETH V2 pairs hold ~0.005 ETH a side, under the shipped default depth
+        // floor of 10x MAX_EARNINGS_PER_PROCESS. The floor is per-chain configurable; drop it so the V2
+        // route is exercised rather than rejected as too shallow.
+        vm.startPrank(registryOwner);
+        registry.setAdmin(registryOwner, true);
+        registry.setDefaultThreshold(V2_DEPTH_FLOOR);
+        vm.stopPrank();
         installKeepersRegistry(registryOwner, address(this));
-        harness = _harness(DAI);
+        harness = _harness(MSFT);
     }
 
     /// @dev A harness paying `asset`, configured and ready to be activated.
@@ -155,6 +178,15 @@ contract DividendsThirdAssetTests is Test {
         h.activate();
         vm.deal(address(this), 1 ether);
         h.accrue{value: 1 ether}();
+    }
+
+    /// @dev Tops the buffer up to more than two conversion caps, so two consecutive conversions both
+    ///      take a full slice. Returns the new buffer.
+    function _topUpPastTwoCaps(DividendHarness h) internal returns (uint256 funded) {
+        funded = 2 * h.MAX_DIVIDEND_PER_CONVERSION() + 1 ether;
+        uint256 extra = funded - h.pendingNative();
+        vm.deal(address(this), extra);
+        h.accrue{value: extra}();
     }
 
     function _holders() internal view returns (address[] memory list) {
@@ -189,26 +221,26 @@ contract DividendsThirdAssetTests is Test {
 
     function test_thirdAsset_boughtOnFundingAndCreditedToHolders() public {
         _fundAndActivate(harness);
-        assertEq(harness.pendingNative(), 1 ether, "native buffered for the DAI payout");
+        assertEq(harness.pendingNative(), 1 ether, "native buffered for the MSFT payout");
 
         harness.processDividends(0, _noHolders());
 
         uint256 pot = harness.dividendsOwed();
-        assertGt(pot, 0, "native converted into DAI");
+        assertGt(pot, 0, "native converted into MSFT");
         // A swapping payout converts at most `MAX_DIVIDEND_PER_CONVERSION` at a time; the rest stays
         // buffered.
         assertEq(harness.pendingNative(), 1 ether - harness.MAX_DIVIDEND_PER_CONVERSION(), "only the cap was converted");
-        assertEq(IERC20(DAI).balanceOf(address(harness)), pot, "the distribution is a real DAI balance");
+        assertEq(IERC20(MSFT).balanceOf(address(harness)), pot, "the distribution is a real MSFT balance");
         // What every sweep path subtracts: an undelivered third-asset payout is COMMITTED, not stray, so
         // `rescueTokens` cannot hand holders' money to the owner while it is still owed.
-        assertEq(harness.committedDividends(DAI), pot, "the whole of it is owed to holders");
+        assertEq(harness.committedDividends(MSFT), pot, "the whole of it is owed to holders");
         assertApproxEqRel(harness.previewDividend(holder), pot, 1e12, "and credited to the sole holder at once");
 
         // Same block, so the funding leg is on cooldown and this call only pays.
         harness.processDividends(0, _holders());
 
-        assertApproxEqRel(IERC20(DAI).balanceOf(holder), pot, 1e12, "sole holder paid the whole distribution, in DAI");
-        assertEq(harness.committedDividends(DAI), harness.dividendsOwed(), "what is still owed is what is committed");
+        assertApproxEqRel(IERC20(MSFT).balanceOf(holder), pot, 1e12, "sole holder paid the whole distribution, in MSFT");
+        assertEq(harness.committedDividends(MSFT), harness.dividendsOwed(), "what is still owed is what is committed");
         assertLt(harness.dividendsOwed(), pot / 1e6, "nothing meaningful left owed");
     }
 
@@ -217,13 +249,14 @@ contract DividendsThirdAssetTests is Test {
     function test_thirdAsset_cappedConversionLeavesTheRemainderBuffered() public {
         _fundAndActivate(harness);
         uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
+        uint256 funded = _topUpPastTwoCaps(harness);
 
         harness.processDividends(0, _holders());
-        assertEq(harness.pendingNative(), 1 ether - cap, "the first conversion took exactly the cap");
+        assertEq(harness.pendingNative(), funded - cap, "the first conversion took exactly the cap");
 
         vm.roll(block.number + 1); // the funding leg is once per block
         harness.processDividends(0, _noHolders());
-        assertEq(harness.pendingNative(), 1 ether - 2 * cap, "and the next one takes the next slice");
+        assertEq(harness.pendingNative(), funded - 2 * cap, "and the next one takes the next slice");
     }
 
     //////////////////////// the liquidity proof //////////////////////
@@ -231,8 +264,8 @@ contract DividendsThirdAssetTests is Test {
     /// @dev THE eligibility rule, and the only one. Any ERC20 is fair game as long as the pool the
     ///      creator names for it actually exists and is worth swapping against — no whitelist, no admin.
     function test_anyErc20WithADeepPoolIsConfigurable() public {
-        assertEq(_harness(DAI).dividendToken(), DAI, "DAI");
-        assertEq(_harness(USDC).dividendToken(), USDC, "USDC");
+        assertEq(_harness(MSFT).dividendToken(), MSFT, "MSFT");
+        assertEq(_harness(AAPL).dividendToken(), AAPL, "AAPL");
     }
 
     /// @dev An asset nobody has ever made a market for is refused at creation, not left to accrue into a
@@ -252,7 +285,7 @@ contract DividendsThirdAssetTests is Test {
         IUniswapV2Router router = IUniswapV2Router(DeploymentAddresses.UNIV2_ROUTER);
 
         // A real pair on the real factory, seeded with less than the floor.
-        uint256 seeded = DEFAULT_DIVIDEND_POOL_LIQUIDITY / 2;
+        uint256 seeded = V2_DEPTH_FLOOR / 2;
         vm.deal(address(this), seeded);
         thin.approve(address(router), type(uint256).max);
         router.addLiquidityETH{value: seeded}(address(thin), 500_000e18, 0, 0, address(this), block.timestamp);
@@ -299,7 +332,7 @@ contract DividendsThirdAssetTests is Test {
     /// @dev The point of putting the rule behind a proxy: a threshold raised AFTER a token was created
     ///      still governs it. A creation-time check compiled into an unpatchable clone could not.
     function test_aRaisedThresholdRefusesAssetsThatUsedToQualify() public {
-        assertTrue(registry.validateRoute(DAI, "") == SwapRejection.OK, "DAI qualifies today");
+        assertTrue(registry.validateRoute(MSFT, "") == SwapRejection.OK, "MSFT qualifies today");
 
         vm.prank(registryOwner);
         registry.setDefaultThreshold(type(uint128).max);
@@ -310,7 +343,7 @@ contract DividendsThirdAssetTests is Test {
                 RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.InsufficientLiquidity
             )
         );
-        h.configure(DAI);
+        h.configure(MSFT);
     }
 
     /// @dev The one admin veto, and it reaches tokens that ALREADY exist: an asset blacklisted after a
@@ -325,7 +358,7 @@ contract DividendsThirdAssetTests is Test {
 
         // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
         vm.prank(registryOwner);
-        registry.setBlacklisted(DAI, true);
+        registry.setBlacklisted(MSFT, true);
 
         uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
@@ -334,7 +367,7 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.pendingNative(), 1 ether, "the whole buffer waits for the veto to lift");
 
         vm.prank(registryOwner);
-        registry.setBlacklisted(DAI, false);
+        registry.setBlacklisted(MSFT, false);
         harness.processDividends(0, _noHolders());
         assertGt(harness.dividendsOwed(), 0, "and it converts in full once the veto is lifted");
     }
@@ -346,12 +379,12 @@ contract DividendsThirdAssetTests is Test {
         // A DELTA, not zero: the registry constant is `address(0)` until the proxy is deployed, and on a
         // mainnet fork that address already holds every ETH ever burned to it.
         uint256 registryBalanceBefore = address(registry).balance;
-        uint256 registryDaiBefore = IERC20(DAI).balanceOf(address(registry));
+        uint256 registryDaiBefore = IERC20(MSFT).balanceOf(address(registry));
         harness.processDividends(0, _noHolders());
 
         assertEq(address(registry).balance, registryBalanceBefore, "no native retained");
-        assertEq(IERC20(DAI).balanceOf(address(registry)), registryDaiBefore, "no asset retained");
-        assertEq(IERC20(DAI).balanceOf(address(harness)), harness.dividendsOwed(), "it all reached the token");
+        assertEq(IERC20(MSFT).balanceOf(address(registry)), registryDaiBefore, "no asset retained");
+        assertEq(IERC20(MSFT).balanceOf(address(harness)), harness.dividendsOwed(), "it all reached the token");
     }
 
     //////////////////////// conversion failures //////////////////////
@@ -402,16 +435,30 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.dividendsOwed(), 0, "nothing was distributed");
     }
 
-    /// @dev A token that simply has not earned enough yet reports the OTHER error: the keeper is told to
-    ///      wait, not sent looking for a broken pool.
-    function test_aBelowThresholdBufferReportsBelowDividendThreshold() public {
+    /// @dev A token that has earned NOTHING yet reports the OTHER error: the keeper is told to wait, not
+    ///      sent looking for a broken pool. With no size floor left, that is the only thing
+    ///      `BelowDividendThreshold` means.
+    function test_anEmptyBufferReportsBelowDividendThreshold() public {
+        harness.setBalance(holder, 1_000e18);
+        harness.activate();
+
+        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        harness.processDividends(0, _noHolders());
+    }
+
+    /// @dev The floor is gone all the way down: ONE WEI converts and credits. Whether that is worth the
+    ///      gas is the keeper's call, not the contract's — and the keeper is the only one who can make
+    ///      it, which is what keeps this from becoming a dust stream anyone can drive.
+    function test_aOneWeiBufferConverts() public {
         harness.setBalance(holder, 1_000e18);
         harness.activate();
         vm.deal(address(this), 1 wei);
         harness.accrue{value: 1 wei}();
 
-        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
         harness.processDividends(0, _noHolders());
+
+        assertGt(harness.dividendsOwed(), 0, "a one-wei buffer bought and credited some payout asset");
+        assertEq(harness.pendingNative(), 0, "buffer drained");
     }
 
     /// @dev A payout asset that returns a non-boolean word from `transfer` must be TOLERATED, not
@@ -421,14 +468,14 @@ contract DividendsThirdAssetTests is Test {
     ///      `claimDividends` for everyone.
     function test_aNonBooleanTransferReturnDoesNotBrickTheBatch() public {
         _fundAndActivate(harness);
-        harness.processDividends(0, _noHolders()); // buy DAI, distribute
+        harness.processDividends(0, _noHolders()); // buy MSFT, distribute
 
         uint256 owed = harness.previewDividend(holder);
         assertGt(owed, 0, "the holder has accrued the distribution");
-        vm.mockCall(DAI, abi.encodeWithSelector(IERC20.transfer.selector), abi.encode(uint256(2)));
+        vm.mockCall(MSFT, abi.encodeWithSelector(IERC20.transfer.selector), abi.encode(uint256(2)));
 
         vm.expectEmit(true, true, true, true, address(harness));
-        emit DividendDistribution.DividendPaid(holder, DAI, owed);
+        emit DividendDistribution.DividendPaid(holder, MSFT, owed);
         harness.processDividends(0, _holders());
 
         assertEq(harness.previewDividend(holder), 0, "the payout was accepted, not skipped");
@@ -443,17 +490,18 @@ contract DividendsThirdAssetTests is Test {
     function test_theFundingLegIsOncePerBlock() public {
         _fundAndActivate(harness);
         uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
+        uint256 funded = _topUpPastTwoCaps(harness);
 
         harness.processDividends(0, _noHolders());
-        assertEq(harness.pendingNative(), 1 ether - cap, "the first conversion went through");
+        assertEq(harness.pendingNative(), funded - cap, "the first conversion went through");
 
         vm.expectRevert(DividendDistribution.DividendProcessCooldown.selector);
         harness.processDividends(0, _noHolders());
-        assertEq(harness.pendingNative(), 1 ether - cap, "and a second one in the same block converts nothing");
+        assertEq(harness.pendingNative(), funded - cap, "and a second one in the same block converts nothing");
 
         vm.roll(block.number + 1);
         harness.processDividends(0, _noHolders());
-        assertEq(harness.pendingNative(), 1 ether - 2 * cap, "the next block converts again");
+        assertEq(harness.pendingNative(), funded - 2 * cap, "the next block converts again");
     }
 
     /// @dev The gate is on FUNDING alone. A keeper splitting a large holder set across several
@@ -468,7 +516,7 @@ contract DividendsThirdAssetTests is Test {
 
         // Same block as the funding call above: it must pay, not revert.
         harness.processDividends(0, _holders());
-        assertEq(IERC20(DAI).balanceOf(holder), owed, "paid in full despite the funding cooldown");
+        assertEq(IERC20(MSFT).balanceOf(holder), owed, "paid in full despite the funding cooldown");
     }
 
     /// @dev The block is claimed only when the buffer actually MOVED. A call whose swap failed spent
@@ -498,14 +546,14 @@ contract DividendsThirdAssetTests is Test {
     ///      paid, keeps every unit accrued, and the batch carries on.
     function test_aGasBombPayoutAssetCannotStarveTheBatch() public {
         _fundAndActivate(harness);
-        harness.processDividends(0, _noHolders()); // buy DAI, distribute
+        harness.processDividends(0, _noHolders()); // buy MSFT, distribute
 
         uint256 owed = harness.previewDividend(holder);
         assertGt(owed, 0, "the holder accrued the distribution");
 
         // Etched AFTER the conversion, and called in the SAME block as it, so the funding leg is under
         // its own cooldown and never touches the bomb — only the payout leg does.
-        vm.etch(DAI, type(GasBombToken).runtimeCode);
+        vm.etch(MSFT, type(GasBombToken).runtimeCode);
 
         uint256 before = gasleft();
         harness.processDividends(0, _holders());
@@ -532,7 +580,7 @@ contract DividendsThirdAssetTests is Test {
         uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
 
         vm.expectEmit(true, false, false, true, address(harness));
-        emit DividendDistribution.DividendBufferSweptToTreasury(DAI, cap);
+        emit DividendDistribution.DividendBufferSweptToTreasury(MSFT, cap);
         harness.processDividends(0, _noHolders()); // must NOT revert
 
         assertEq(harness.DIVIDEND_TREASURY().balance - treasuryBefore, cap, "the treasury caught the slice");
@@ -545,11 +593,11 @@ contract DividendsThirdAssetTests is Test {
     ///      downgrade, which had to write those accruals off to stay coherent.
     function test_theSweepDoesNotTouchWhatHoldersHaveAlreadyAccrued() public {
         _fundAndActivate(harness);
-        harness.processDividends(0, _noHolders()); // a real DAI distribution
+        harness.processDividends(0, _noHolders()); // a real MSFT distribution
 
         uint256 daiOwed = harness.previewDividend(holder);
         uint256 owedBefore = harness.dividendsOwed();
-        assertGt(daiOwed, 0, "the holder accrued DAI it never claimed");
+        assertGt(daiOwed, 0, "the holder accrued MSFT it never claimed");
 
         _killTheV2Router();
         _goStale(harness);
@@ -559,26 +607,26 @@ contract DividendsThirdAssetTests is Test {
         _recordFailedConversion(harness);
         harness.processDividends(0, _noHolders());
 
-        assertEq(harness.dividendToken(), DAI, "the payout asset is never repointed");
-        assertEq(harness.previewDividend(holder), daiOwed, "the DAI claim survives the sweep");
+        assertEq(harness.dividendToken(), MSFT, "the payout asset is never repointed");
+        assertEq(harness.previewDividend(holder), daiOwed, "the MSFT claim survives the sweep");
         assertEq(harness.dividendsOwed(), owedBefore, "and so does what the token owes");
-        assertEq(harness.committedDividends(DAI), owedBefore, "the DAI stays holders' money, not rescuable");
+        assertEq(harness.committedDividends(MSFT), owedBefore, "the MSFT stays holders' money, not rescuable");
 
         // The holder can still take it: claiming never depended on the pool being alive.
         vm.roll(block.number + 1);
         harness.processDividends(0, _holders());
-        assertEq(IERC20(DAI).balanceOf(holder), daiOwed, "paid in full, in the asset they accrued");
+        assertEq(IERC20(MSFT).balanceOf(holder), daiOwed, "paid in full, in the asset they accrued");
     }
 
     //////////////////////// weird payout assets //////////////////////
 
     /// @dev The accumulator's scale comes from the PAYOUT ASSET's decimals, not from a fixed 1e18. With
-    ///      1e18 against a 1e27 supply, one accumulator step was worth 1e9 asset units — 1000 USDC — so
+    ///      1e18 against a 1e27 supply, one accumulator step was worth 1e9 asset units — 1000 USDG — so
     ///      every increment of a realistic distribution truncated to zero and a 6-decimal payout credited
-    ///      NOTHING while `dividendsOwed` kept counting it. USDC is a first-class payout asset here.
+    ///      NOTHING while `dividendsOwed` kept counting it. USDG is a first-class payout asset here.
     function test_aSixDecimalPayoutAssetCreditsTheWholeDistribution() public {
-        DividendHarness h = _harness(USDC);
-        assertEq(h.dividendPrecisionExp(), 30, "36 - 6, so one step is 1e-18 of a whole USDC");
+        DividendHarness h = _harness(USDG);
+        assertEq(h.dividendPrecisionExp(), 30, "36 - 6, so one step is 1e-18 of a whole USDG");
 
         // A realistic graduated token: 1e27 supply, most of it outside the pair, and one holder.
         h.setBalance(holder, 8e26);
@@ -588,15 +636,15 @@ contract DividendsThirdAssetTests is Test {
         h.processDividends(0, _noHolders());
 
         uint256 distributed = h.dividendsOwed();
-        assertGt(distributed, 0, "the conversion bought USDC");
+        assertGt(distributed, 0, "the conversion bought USDG");
 
         h.processDividends(0, _holders());
         // Not exact: the accumulator truncates towards the protocol at every step, which is what keeps
         // it solvent. What matters is that the loss is dust rather than the whole distribution.
-        assertApproxEqRel(IERC20(USDC).balanceOf(holder), distributed, 0.0001e18, "the sole holder got it all");
+        assertApproxEqRel(IERC20(USDG).balanceOf(holder), distributed, 0.0001e18, "the sole holder got it all");
     }
 
-    /// @dev `DAI` is unchanged by the same rule — an 18-decimal asset keeps the scale it always had, so
+    /// @dev `MSFT` is unchanged by the same rule — an 18-decimal asset keeps the scale it always had, so
     ///      nothing about the existing shape moved.
     function test_anEighteenDecimalPayoutAssetKeepsTheOriginalScale() public {
         assertEq(harness.dividendPrecisionExp(), 18, "36 - 18");
@@ -609,14 +657,14 @@ contract DividendsThirdAssetTests is Test {
     ///      holder supplied, killing the one payout route that is supposed to always work. The payout call
     ///      copies at most one word, so the bomb costs the caller nothing and just reports failure.
     function test_aReturnBombingAssetCannotBrickTheSelfServeClaim() public {
-        DividendHarness h = _harness(DAI);
+        DividendHarness h = _harness(MSFT);
         h.setBalance(holder, 1_000e18);
         h.activate();
         vm.deal(address(this), 1 ether);
         h.accrue{value: 1 ether}();
         h.processDividends(0, _noHolders());
 
-        vm.etch(DAI, address(new ReturnBombToken()).code);
+        vm.etch(MSFT, address(new ReturnBombToken()).code);
         assertGt(h.previewDividend(holder), 0, "the holder has accrued");
 
         uint256 accrued = h.previewDividend(holder);
@@ -704,7 +752,7 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "and the treasury got nothing");
 
         harness.processDividends(0, _noHolders());
-        assertGt(harness.dividendsOwed(), 0, "the same buffer distributes DAI at a reachable floor");
+        assertGt(harness.dividendsOwed(), 0, "the same buffer distributes MSFT at a reachable floor");
     }
 
     //////////////////////// the keeper gate's staleness bypass //////////////////////

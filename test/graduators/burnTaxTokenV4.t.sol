@@ -3,10 +3,10 @@ pragma solidity 0.8.28;
 
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
@@ -44,17 +44,17 @@ contract ReentrantDividendClaimer {
 
 /// @notice Integration tests for the V4 buy-back-and-burn earnings-allocation leg.
 contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
-    /// @dev Creates a taxable V4 token with a `burnBps` earnings allocation via the allocation-aware
-    ///      `createToken` overload. 4%-configurable sell tax, creation-anchored 14-day window.
+    /// @dev Creates a taxable V4 token with a `burnBps` earnings allocation via
+    ///      `createToken`. 4%-configurable sell tax, creation-anchored 14-day window.
     function _createBurnTaxToken(uint16 sellTaxBps, uint16 burnBps) internal returns (address token) {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "BurnToken",
             symbol: "BURN",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: uint32(14 days),
@@ -62,25 +62,14 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: burnBps, dividendsBps: 0, liquidityBps: 0, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(burnBps, 0, 0, address(0))
         });
-        vm.prank(creator);
-        token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
     }
 
     function test_burnBps_storedAtCreation() public {
         address token = _createBurnTaxToken(400, 5000);
-        assertEq(RealmTaxableTokenUniV4(payable(token)).burnBps(), 5000, "burnBps stored via new overload");
+        assertEq(RealmTaxableTokenUniV4(payable(token)).burnBps(), 5000, "burnBps stored at creation");
     }
 
     function test_v4Burn_accruesThenProcessBurnReducesSupply() public {
@@ -89,8 +78,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
 
         // Sell to accrue tax: hook -> accrueFees -> _allocateEthEarnings -> burn slice buffered as ETH.
@@ -121,8 +109,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
         _swapSell(buyer, IERC20(token).balanceOf(buyer) / 2, 0, true);
 
@@ -144,11 +131,11 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "BurnDivToken",
             symbol: "BDIV",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: 400,
             taxDurationSeconds: uint32(14 days),
@@ -156,20 +143,9 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: burnBps, dividendsBps: dividendsBps, liquidityBps: 0, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(burnBps, dividendsBps, 0, address(0))
         });
-        vm.prank(creator);
-        token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
     }
 
     /// @dev `processBurn` must measure its spend from the RAW balance and the UNCLAMPED reserves, never
@@ -184,8 +160,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
 
         // The attacker needs a real, dividend-eligible balance to have anything to claim.
@@ -231,7 +206,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     function test_v4ProcessBurn_revertsWhenNothingPending() public {
         address token = _createBurnTaxToken(400, 5000);
-        vm.expectRevert(RealmTaxableTokenUniV4.NothingToBurn.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.NothingToBurn.selector);
         RealmTaxableTokenUniV4(payable(token)).processBurn(0);
     }
 
@@ -242,12 +217,11 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
 
         // Overfill the buffer past the per-call cap via a stray-ETH sweep (50% burn allocation).
-        vm.deal(address(burnToken), 1 ether);
+        vm.deal(address(burnToken), 3 ether);
         burnToken.sweepStrayEth();
         uint256 pending = burnToken.burnPendingEth();
         uint256 cap = burnToken.MAX_EARNINGS_PER_PROCESS();
@@ -257,7 +231,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         // At most `cap` spent; the remainder (plus any re-accrual from the buy-back's own fees) stays.
         assertGe(burnToken.burnPendingEth(), pending - cap, "spend capped per call");
 
-        vm.expectRevert(RealmTaxableTokenUniV4.ProcessCooldown.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.ProcessCooldown.selector);
         burnToken.processBurn(0);
 
         vm.roll(block.number + 1);
@@ -274,15 +248,14 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
         _swapSell(buyer, IERC20(token).balanceOf(buyer) / 2, 0, true);
 
         uint256 pending = burnToken.burnPendingEth();
         assertGt(pending, 0, "burn ETH should accrue from the sell tax");
 
-        vm.expectRevert(RealmTaxableTokenUniV4.BuyBackFailed.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.BuyBackFailed.selector);
         burnToken.processBurn(uint256(type(uint128).max) + 1);
 
         assertEq(burnToken.burnPendingEth(), pending, "the buffer is untouched by the rejected call");
@@ -294,11 +267,10 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 burnToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
 
-        vm.deal(address(burnToken), 1 ether); // stray ETH
+        vm.deal(address(burnToken), address(burnToken).balance + 1 ether); // stray ETH, on top of the buffers
         uint256 pendingBefore = burnToken.burnPendingEth();
 
         burnToken.sweepStrayEth();
@@ -307,17 +279,18 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertApproxEqAbs(burnToken.burnPendingEth() - pendingBefore, 0.5 ether, 1, "half of stray -> burn buffer");
     }
 
-    function test_createToken_revertsOnAllocationForDecayOnlyToken() public {
-        // The V4 factory carries its own copy of the gate: decay-only tokens (no long-term static tax)
-        // cannot configure an earnings allocation.
+    /// @dev A decay-only token — no long-term static tax — may still configure an allocation on V4:
+    ///      the creator's LP-fee share is a permanent stream there, so the split has something to split.
+    ///      It is cloned from the TAXABLE implementation, which is where the split lives.
+    function test_createToken_allowsAllocationForDecayOnlyToken() public {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "DecayOnly",
             symbol: "DEC",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: 0,
             taxDurationSeconds: 0,
@@ -325,20 +298,55 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 1000,
             sellTaxDecayStartBps: 1000,
             taxDecayDuration: 20 minutes,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 5000, dividendsBps: 0, liquidityBps: 0, dividendToken: address(0)
+            earningsAllocation: _multiAlloc(5000, 0, 0, address(0))
+        });
+        address token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
+        assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).burnBps()), 5000, "allocation stored");
+    }
+
+    /// @dev And with NO tax at all — a pure revenue-share token — the allocation alone routes the clone
+    ///      to the taxable implementation. The preview must say so too, or a mined salt names the wrong
+    ///      initcode.
+    function test_createToken_zeroTaxWithAllocationClonesTheTaxableImpl() public {
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
+            buyTaxBps: 0,
+            sellTaxBps: 0,
+            taxDurationSeconds: 0,
+            startTaxFromLaunch: true,
+            buyTaxDecayStartBps: 0,
+            sellTaxDecayStartBps: 0,
+            taxDecayDuration: 0,
+            earningsAllocation: EarningsAllocationMultiConfig({
+                burnBps: 2500,
+                dividendsBps: 0,
+                liquidityBps: 0,
+                dividendTokens: new address[](0),
+                dividendWeightsBps: new uint16[](0),
+                dividendRoutes: new bytes[](0)
             })
         });
-        vm.prank(creator);
-        vm.expectRevert(IRealmFactory.EarningsAllocationRequiresTax.selector);
-        factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
+        assertEq(
+            directFactory.previewTokenImplementation(
+                _directSetup("", "", true),
+                _nativePair(),
+                _toDirectAlloc(cfg),
+                _emptyAntiSniperCfg(),
+                _noVaults(),
+                _noDevBuy(),
+                address(0)
+            ),
+            address(realmTaxToken),
+            "an allocation alone selects the taxable implementation"
         );
+        IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
+            name: "RevShare",
+            symbol: "REV",
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
+            feeShares: _fs(creator),
+            liquidityTier: LiquidityTier.DEFAULT
+        });
+        address token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
+        assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).burnBps()), 2500, "allocation stored");
+        assertEq(uint256(RealmTaxableTokenUniV4(payable(token)).sellTaxBps()), 0, "and no tax");
     }
 }

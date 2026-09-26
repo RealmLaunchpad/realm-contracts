@@ -1,67 +1,66 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
+import {Vm} from "forge-std/Vm.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 
-import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTestsWithDirectV4} from "test/launchpad/base.t.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {RealmFactoryUniV2Unified} from "src/factories/RealmFactoryUniV2Unified.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
+import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 
-/// @notice UUPS upgrade-safety tests for the unified factories. Locks in:
+/// @notice UUPS upgrade-safety tests for the factories (V4 direct as the representative). Locks in:
 ///         (1) ownership and immutable-readback semantics across an upgrade,
 ///         (2) upgrade auth (only owner),
 ///         (3) initializer is one-shot on the proxy and disabled on the implementation,
 ///         (4) `createToken` still works after the implementation is swapped out.
-contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
+contract FactoryUpgradeTests is LaunchpadBaseTestsWithDirectV4 {
     function _deployV4ImplWithGraduator(address newGraduator) internal returns (address) {
         return address(
-            new RealmFactoryUniV4Unified(
-                address(launchpad),
+            new RealmFactoryUniV4Direct(
                 IRealmFactory.TokenImpls({base: address(realmToken), tax: address(realmTaxToken)}),
-                address(bondingCurve),
                 newGraduator,
                 address(feeHandler),
                 address(creatorVaultFactory),
-                vaultCurves,
-                _v4TierConfig()
+                address(WETH),
+                address(assetsWhitelist)
             )
         );
     }
 
     function _deployV4ImplSameArgs() internal returns (address) {
-        return _deployV4ImplWithGraduator(address(graduatorV4));
+        return _deployV4ImplWithGraduator(address(directGraduator));
     }
 
     // ───────────── Owner / state preservation ─────────────
 
     function test_upgrade_preservesOwner() public {
-        address before = factoryV4Unified.owner();
+        address before = directFactory.owner();
         assertEq(before, admin);
 
         address newImpl = _deployV4ImplSameArgs();
         vm.prank(admin);
-        factoryV4Unified.upgradeToAndCall(newImpl, "");
+        directFactory.upgradeToAndCall(newImpl, "");
 
-        assertEq(factoryV4Unified.owner(), before);
+        assertEq(directFactory.owner(), before);
     }
 
     function test_upgrade_preservesImmutables_whenSameArgs() public {
-        address launchpadBefore = address(factoryV4Unified.LAUNCHPAD());
-        address graduatorBefore = address(factoryV4Unified.GRADUATOR());
-        address feeHandlerBefore = address(factoryV4Unified.MASTER_FEE_HANDLER());
-        address tokenImplBefore = factoryV4Unified.TOKEN_IMPL_BASE();
+        address launchpadBefore = address(directFactory.LAUNCHPAD());
+        address graduatorBefore = address(directFactory.GRADUATOR());
+        address feeHandlerBefore = address(directFactory.MASTER_FEE_HANDLER());
+        address tokenImplBefore = directFactory.TOKEN_IMPL_BASE();
 
         address newImpl = _deployV4ImplSameArgs();
         vm.prank(admin);
-        factoryV4Unified.upgradeToAndCall(newImpl, "");
+        directFactory.upgradeToAndCall(newImpl, "");
 
-        assertEq(address(factoryV4Unified.LAUNCHPAD()), launchpadBefore);
-        assertEq(address(factoryV4Unified.GRADUATOR()), graduatorBefore);
-        assertEq(address(factoryV4Unified.MASTER_FEE_HANDLER()), feeHandlerBefore);
-        assertEq(factoryV4Unified.TOKEN_IMPL_BASE(), tokenImplBefore);
+        assertEq(address(directFactory.LAUNCHPAD()), launchpadBefore);
+        assertEq(address(directFactory.GRADUATOR()), graduatorBefore);
+        assertEq(address(directFactory.MASTER_FEE_HANDLER()), feeHandlerBefore);
+        assertEq(directFactory.TOKEN_IMPL_BASE(), tokenImplBefore);
     }
 
     /// @dev Proves the upgrade mechanism actually reroutes reads to the new implementation: a new
@@ -72,9 +71,9 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
         address newImpl = _deployV4ImplWithGraduator(newGraduator);
 
         vm.prank(admin);
-        factoryV4Unified.upgradeToAndCall(newImpl, "");
+        directFactory.upgradeToAndCall(newImpl, "");
 
-        assertEq(address(factoryV4Unified.GRADUATOR()), newGraduator);
+        assertEq(address(directFactory.GRADUATOR()), newGraduator);
     }
 
     // ───────────── Upgrade authorization ─────────────
@@ -83,7 +82,7 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
         address newImpl = _deployV4ImplSameArgs();
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, creator));
-        factoryV4Unified.upgradeToAndCall(newImpl, "");
+        directFactory.upgradeToAndCall(newImpl, "");
     }
 
     // ───────────── Initializer safety ─────────────
@@ -91,7 +90,7 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
     function test_initialize_revertsOnSecondCall() public {
         vm.prank(admin);
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        factoryV4Unified.initialize();
+        directFactory.initialize();
     }
 
     /// @dev `_disableInitializers()` runs in the implementation's constructor, so calling
@@ -101,7 +100,50 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
     function test_implementationInitializeReverts() public {
         address impl = _deployV4ImplSameArgs();
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        RealmFactoryUniV4Unified(impl).initialize();
+        RealmFactoryUniV4Direct(impl).initialize();
+    }
+
+    // ───────────── GraduatorSet announcement ─────────────
+
+    function test_initialize_emitsGraduatorSet() public {
+        address impl = _deployV4ImplSameArgs();
+        vm.expectEmit();
+        emit IRealmFactory.GraduatorSet(address(directGraduator));
+        new ERC1967Proxy(impl, abi.encodeCall(RealmFactoryAbstract.initialize, ()));
+    }
+
+    /// @dev Live proxies predate `_announcedGraduator` (slot 0 is zero): the upgrade announces once,
+    ///      a repeat announces nothing, and a graduator swap announces the new one.
+    function test_upgrade_announcesGraduatorOnce() public {
+        vm.store(address(directFactory), bytes32(0), bytes32(0));
+        bytes memory announce = abi.encodeCall(RealmFactoryAbstract.announceGraduator, ());
+        address implA = _deployV4ImplSameArgs();
+        address implB = _deployV4ImplSameArgs();
+        address newGraduator = makeAddr("newGraduator");
+        address implC = _deployV4ImplWithGraduator(newGraduator);
+
+        vm.expectEmit(address(directFactory));
+        emit IRealmFactory.GraduatorSet(address(directGraduator));
+        vm.prank(admin);
+        directFactory.upgradeToAndCall(implA, announce);
+
+        vm.recordLogs();
+        vm.prank(admin);
+        directFactory.upgradeToAndCall(implB, announce);
+        directFactory.announceGraduator();
+        assertEq(_countGraduatorSet(), 0);
+
+        vm.expectEmit(address(directFactory));
+        emit IRealmFactory.GraduatorSet(newGraduator);
+        vm.prank(admin);
+        directFactory.upgradeToAndCall(implC, announce);
+    }
+
+    function _countGraduatorSet() internal returns (uint256 n) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].topics[0] == IRealmFactory.GraduatorSet.selector) n++;
+        }
     }
 
     // ───────────── End-to-end after upgrade ─────────────
@@ -109,13 +151,9 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithUniv4Graduator {
     function test_createToken_worksAfterUpgrade() public {
         address newImpl = _deployV4ImplSameArgs();
         vm.prank(admin);
-        factoryV4Unified.upgradeToAndCall(newImpl, "");
+        directFactory.upgradeToAndCall(newImpl, "");
 
-        bytes32 salt = _nextValidSalt(address(factoryV4Unified), address(realmToken));
-        vm.prank(creator);
-        address token = factoryV4Unified.createToken(
-            "Upgraded", "UPG", salt, _fs(creator), _noSs(), false, _emptyTaxCfg(), _emptyAntiSniperCfg()
-        );
+        address token = _createDirectToken(_emptyTaxCfg());
         assertTrue(token != address(0));
     }
 }

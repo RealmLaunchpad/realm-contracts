@@ -4,11 +4,11 @@
 # ///
 """Daily alert: fail if any Realm reward creator has pending ETH claims but a 0 ETH wallet.
 
-Checks both Ethereum mainnet and Robinhood Chain mainnet. Runs in CI via
+Checks Robinhood Chain mainnet. Runs in CI via
 .github/workflows/check-unfunded-creators.yml. On match, exits 1 so GitHub fires the
 standard workflow-failed email. Locally, runnable with `uv run check_unfunded_creators.py`
-after exporting MAINNET_RPC_URL (Robinhood defaults to its public RPC; override with
-ROBINHOOD_RPC_URL). Env vars can also live in a sibling .env file.
+(defaults to Robinhood's public RPC; override with ROBINHOOD_RPC_URL). Env vars can also
+live in a sibling .env file.
 """
 
 from __future__ import annotations
@@ -34,7 +34,6 @@ MIN_ACCRUED_WEI = 5 * 10**16  # 0.05 ETH: ignore dust claims not worth funding g
 
 # Chains to check. rpc_default lets Robinhood work without a configured secret (public RPC).
 CHAINS = [
-    {"name": "ethereum", "chain_id": "1", "rpc_env": "MAINNET_RPC_URL", "rpc_default": None},
     {
         "name": "robinhood",
         "chain_id": "4663",

@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
+import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
@@ -10,13 +11,18 @@ import {BuildTarget} from "script/BuildTarget.sol";
 import {DeploymentAddresses as KeeperGateBuild} from "src/tokens/KeeperGated.sol";
 import {DeploymentAddresses as DividendBuild} from "src/tokens/DividendDistribution.sol";
 
-/// @title Post-deploy wiring for the two registries
-/// @notice Both registries ship empty: `DeployRealmPrereqs` only sets an owner. This appoints the admin
-///         that holds every operational lever and the keeper that triggers `process*`, on both:
+/// @title Post-deploy wiring for the registries
+/// @notice Every registry ships empty: the deploy scripts only set an owner. This appoints the admin
+///         that holds every operational lever and the keeper that triggers `process*`:
 ///           1. `RealmKeepersRegistry.setAdmin(admin, true)`        — owner-only
 ///           2. `RealmKeepersRegistry.setKeeper(keeper, true)`      — admin-only, hence after (1)
 ///           3. `RealmDividendSwapRegistry.setAdmin(admin, true)`   — owner-only
 ///           4. `RealmDividendSwapRegistry.setKeeperFunding(keeper)` — admin-only, hence after (3)
+///           5. `RealmAssetsWhitelist.setApprover(admin, true)`     — owner-only
+///
+/// @dev (5) is the same appointment in the direct venue's registry: its owner cannot list a quote asset,
+///      only an approver can, so until this runs `WhitelistRobinhoodAssets` has nobody to broadcast as.
+///      Skipped, not fatal, on a chain whose manifest has no `ASSETS_WHITELIST` yet.
 ///
 /// @dev Idempotent: each call is skipped if the state is already what it should be, so this is also the
 ///      way to re-run after rotating the keeper (`REALM_KEEPER` in the manifest) with no bespoke steps.
@@ -58,6 +64,14 @@ contract ConfigureRegistries is Script {
             "REALMDEVADDRESS names an address that is neither the broadcaster nor an existing admin (see the two logged above)"
         );
 
+        // (5) is owner-gated, not admin-gated: only the whitelist's own owner can appoint an approver.
+        // Checked up front so a chain where that is a different key fails before the four sends above.
+        RealmAssetsWhitelist assets = RealmAssetsWhitelist(ChainConfig.assetsWhitelistOrZero());
+        require(
+            address(assets) == address(0) || assets.isApprover(admin) || assets.owner() == broadcaster,
+            "broadcaster does not own ASSETS_WHITELIST: its owner has to appoint the approver"
+        );
+
         _log("keepers.setAdmin", admin, keepers.isAdmin(admin));
         if (!keepers.isAdmin(admin)) keepers.setAdmin(admin, true);
 
@@ -69,6 +83,13 @@ contract ConfigureRegistries is Script {
 
         _log("dividends.setKeeperFunding", keeper, dividends.keeper() == keeper);
         if (dividends.keeper() != keeper) dividends.setKeeperFunding(keeper);
+
+        if (address(assets) == address(0)) {
+            console.log("  [skip]  assets.setApprover: no ASSETS_WHITELIST in this chain's manifest");
+        } else {
+            _log("assets.setApprover", admin, assets.isApprover(admin));
+            if (!assets.isApprover(admin)) assets.setApprover(admin, true);
+        }
 
         vm.stopBroadcast();
     }

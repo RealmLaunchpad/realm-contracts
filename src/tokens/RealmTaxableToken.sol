@@ -2,8 +2,11 @@
 pragma solidity 0.8.28;
 
 import {RealmToken} from "src/tokens/RealmToken.sol";
+import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {EarningsAllocation} from "src/tokens/EarningsAllocation.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
+import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmTaxableToken, TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
@@ -29,16 +32,22 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 /// @dev ⚠️ `DividendDistribution` is listed BEFORE `EarningsAllocation` on purpose: inheritance lays
 ///      base storage out in declaration order, so putting it after would wedge its state between the
 ///      allocation bps and the tax fields and break the packing described above.
-/// @dev `ReentrancyGuardTransient` is last and holds NO regular storage (its flag lives in transient
-///      storage), so it adds nothing to the layout above and is safe wherever it sits. It is inherited
-///      here, rather than per venue, because `sweepStrayEth` needs it on both.
+/// @dev `ReentrancyGuardTransient` holds NO regular storage (its flag lives in transient storage), so
+///      it adds nothing to the layout above and is safe wherever it sits. It is inherited here, rather
+///      than per venue, because `sweepStrayEth` needs it on both.
+/// @dev `DividendDistributionLogic` (conversion, crediting, payouts) and `DividendInitLogic` (creation-time
+///      payout config) come last and add NO storage, so the layout above is unchanged by them. They
+///      used to live in `delegatecall` extensions to fit EIP-170; Robinhood's 96 KB code-size limit
+///      lets them sit inline, which is also why this token does not deploy on Ethereum mainnet.
 abstract contract RealmTaxableToken is
     RealmToken,
     IRealmTaxableToken,
     DividendDistribution,
     EarningsAllocation,
     KeeperGated,
-    ReentrancyGuardTransient
+    ReentrancyGuardTransient,
+    DividendDistributionLogic,
+    DividendInitLogic
 {
     using SafeERC20 for IERC20;
 
@@ -114,21 +123,24 @@ abstract contract RealmTaxableToken is
     /// @notice Emitted when a token's liquidity earnings allocation is turned into a locked LP position by
     ///         `processLiquidity`. Shared by both venues; a few fields carry a slightly venue-specific
     ///         meaning:
-    ///         - V4: `ethIn` is the ETH deposited single-sided just below the price, `tokensAdded` is
-    ///           always 0 (an ETH-only bid wall), and `liquidity` is the Uniswap-V4 liquidity units minted.
-    ///         - V2: `ethIn`/`tokensAdded` are the ETH and tokens paired into the V2 LP (half the buffered
-    ///           tokens are sold for the ETH side), and `liquidity` is the V2 LP tokens minted (locked at
-    ///           the dead address).
-    event LiquidityAdded(uint256 ethIn, uint256 tokensAdded, uint256 liquidity);
+    ///         - `quote` is the currency `amountIn` is denominated in, and the pool the position sits in:
+    ///           `address(0)` for native (always, on V2), an ERC20 for a V4 pool quoted in one.
+    ///         - V4: `amountIn` is the quote deposited single-sided just below the price, `tokensAdded` is
+    ///           always 0 (a quote-only bid wall), and `liquidity` is the Uniswap-V4 liquidity units minted.
+    ///         - V2: `amountIn`/`tokensAdded` are the ETH and tokens paired into the V2 LP (half the
+    ///           buffered tokens are sold for the ETH side), and `liquidity` is the V2 LP tokens minted
+    ///           (locked at the dead address).
+    event LiquidityAdded(address indexed quote, uint256 amountIn, uint256 tokensAdded, uint256 liquidity);
 
     /// @notice Emitted when a token's burn earnings allocation removes supply. Shared by both venues;
-    ///         `ethSpent` is venue-specific:
-    ///         - V4: the buffered ETH spent buying the tokens back before burning them (`processBurn`).
-    ///         - V2: always 0 — the burn share is taken in TOKEN-space during the swap-back, before the
-    ///           sell, so no ETH round trip happens and no ETH is spent to burn.
-    ///         Summing `ethSpent` across both venues therefore gives the protocol-wide ETH actually
-    ///         spent on buy-backs.
-    event CreatorTaxBurn(uint256 ethSpent, uint256 tokensBurned);
+    ///         `amountSpent` is venue-specific:
+    ///         - V4: the buffered `quote` spent buying the tokens back on that quote's pool before burning
+    ///           them (`processBurn`). `quote` is `address(0)` for native.
+    ///         - V2: always 0, with `quote == address(0)` — the burn share is taken in TOKEN-space during
+    ///           the swap-back, before the sell, so no round trip happens and nothing is spent to burn.
+    ///         Amounts in different quotes have different units: sum `amountSpent` per `quote`, never
+    ///         across them.
+    event CreatorTaxBurn(address indexed quote, uint256 amountSpent, uint256 tokensBurned);
 
     //////////////////////// Errors //////////////////////
 
@@ -167,8 +179,9 @@ abstract contract RealmTaxableToken is
 
         graduated = true;
         graduationTimestamp = uint40(block.timestamp);
-        emit Graduated();
-        // After `Graduated`, never before: the indexer reads `DividendsActivated` as following it.
+        _onLiquidityLive();
+        // After `Graduated` (curve venues), never before: the indexer reads `DividendsActivated` as
+        // following it. The direct venue emits `Graduated` later, on its market-cap milestone.
         if (hasDividends) _activateDividends();
     }
 
@@ -191,10 +204,15 @@ abstract contract RealmTaxableToken is
     ///      TRANSFER it from holders to the owner, which is worse. Never open-code
     ///      `IERC20(token).balanceOf(address(this))` on a sweep path.
     function rescueTokens(address token) external virtual {
-        require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
+        require(msg.sender == owner || msg.sender == _launchpadOwner(), NotTokenOwner());
         // disallow rescuing the token's own balance to prevent siphoning accrued taxes
         require(token != address(this), CannotRescueSelfToken());
-        IERC20(token).safeTransfer(owner, _sweepableAsset(token));
+        // The V2 family launches with no token owner, and any token can renounce into the same state,
+        // yet both stay rescuable through the launchpad-owner branch above. Paying `owner` there sends
+        // the rescue to `address(0)`: a burn on a permissive ERC20, a revert on a standards-compliant
+        // one. Fall back to the launchpad owner, the only caller that can still reach this.
+        address recipient = owner == address(0) ? _launchpadOwner() : owner;
+        IERC20(token).safeTransfer(recipient, _sweepableAsset(token));
     }
 
     /// @notice Updates `buyTaxBps` and/or `sellTaxBps`. Today this is decrease-only — any attempt
@@ -209,13 +227,24 @@ abstract contract RealmTaxableToken is
     /// @param newBuyTaxBps New buy tax rate in basis points. Must be `<= buyTaxBps`.
     /// @param newSellTaxBps New sell tax rate in basis points. Must be `<= sellTaxBps`.
     function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external virtual {
-        require(msg.sender == owner || msg.sender == launchpad.owner(), NotTokenOwner());
+        require(msg.sender == owner || msg.sender == _launchpadOwner(), NotTokenOwner());
         require(newBuyTaxBps <= buyTaxBps && newSellTaxBps <= sellTaxBps, TaxBpsCanOnlyDecrease());
 
         emit TaxBpsUpdated(newBuyTaxBps, newSellTaxBps);
 
         buyTaxBps = newBuyTaxBps;
         sellTaxBps = newSellTaxBps;
+    }
+
+    /// @dev The protocol admin half of the dual-auth on `rescueTokens` / `setTaxBps`. The DIRECT-launch
+    ///      venue has no launchpad (`launchpad == address(0)`), and calling `owner()` on an address with
+    ///      no code reverts with empty returndata — so a non-owner caller on such a token would get that
+    ///      instead of `NotTokenOwner`. Returning zero keeps the revert honest. It also means those two
+    ///      functions are owner-only on that venue, and unreachable on one whose owner is renounced:
+    ///      accepted, because the venue's tokens are not administered through a launchpad at all.
+    function _launchpadOwner() internal view returns (address) {
+        RealmLaunchpad lp = launchpad;
+        return address(lp) == address(0) ? address(0) : lp.owner();
     }
 
     //////////////////////// EARNINGS ALLOCATION //////////////////////
@@ -229,7 +258,7 @@ abstract contract RealmTaxableToken is
     ///      and buffered into `pendingNative` with nothing to credit it and no `processDividends` that
     ///      does not revert `DividendsNotActive`. Worse, `_reservedNative()` returns 0 without
     ///      `hasDividends`, so the permissionless `sweepStrayEth()` would keep recycling that buffer
-    ///      through the split. A dividends allocation must come in through the 5-argument overload.
+    ///      through the split. A dividends allocation must come in through the multi-asset overload.
     function initializeEarningsAllocation(uint16 _burnBps, uint16 _dividendsBps, uint16 _liquidityBps)
         external
         virtual
@@ -239,33 +268,14 @@ abstract contract RealmTaxableToken is
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
     }
 
-    /// @notice Same as the three-bps overload, plus the single asset the dividends slice buys. Kept as a
-    ///         separate overload so the original signature stays untouched.
+    /// @notice Same as the three-bps overload, plus the dividend payout: UP TO `MAX_DIVIDEND_ASSETS`
+    ///         assets, the bps split of the dividends slice between them, and the swap route each asset is
+    ///         bought through. `dividendWeightsBps` must sum to 10,000 and hold no zero; the assets must
+    ///         be distinct; `DIVIDEND_SELF_TOKEN` is only legal on its own.
     /// @dev `hasDividends` is what actually turns the feature on. It lives on `RealmToken`, packed into
     ///      the `pair` slot `_update` already loads, so a token that leaves `_dividendsBps` at 0 pays
-    ///      nothing for the feature on any transfer.
-    function initializeEarningsAllocation(
-        uint16 _burnBps,
-        uint16 _dividendsBps,
-        uint16 _liquidityBps,
-        address _dividendToken
-    ) external virtual {
-        // Named for the ABI, unread here: the extension decodes them straight out of calldata.
-        _burnBps;
-        _dividendsBps;
-        _liquidityBps;
-        _dividendToken;
-        // Runs in the extension: the payout configuration is validated once, at creation, and the
-        // validation is the same ~0.9 KB of bytecode a clone would otherwise carry forever. Delegated
-        // rather than duplicated, so there is exactly one copy of the rules.
-        _delegateToDividendLogic();
-    }
-
-    /// @notice Same again, for a token paying in UP TO `MAX_DIVIDEND_ASSETS` assets: the payout set, the
-    ///         bps split of the dividends slice between its members, and the swap route each asset is
-    ///         bought through. `dividendWeightsBps` must sum to 10,000 and hold no zero; the assets must
-    ///         be distinct; `DIVIDEND_SELF_TOKEN` is only legal on its own. The single-asset overload
-    ///         above is exactly this with a one-entry set and no route.
+    ///      nothing for the feature on any transfer. The payout configuration is validated once, at
+    ///      creation, with exactly one copy of the rules (`_initializeDividends`).
     /// @dev The routes are the creator's choice and are fixed here for the token's life — the registry
     ///      records them against this token and refuses to rewrite them. It checks the pools they name
     ///      exist and hold liquidity; it cannot check the price those pools quote is the asset's real
@@ -278,14 +288,32 @@ abstract contract RealmTaxableToken is
         uint16[] calldata _dividendWeightsBps,
         bytes[] calldata _dividendRoutes
     ) external virtual {
-        // Named for the ABI, unread here: the extension decodes them straight out of calldata.
-        _burnBps;
-        _dividendsBps;
-        _liquidityBps;
-        _dividendTokens;
-        _dividendWeightsBps;
-        _dividendRoutes;
-        _delegateToDividendLogic();
+        require(msg.sender == tokenFactory, Unauthorized());
+        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
+        if (_dividendsBps != 0) {
+            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
+            hasDividends = true;
+        }
+    }
+
+    /// @notice The multi-asset overload plus the routes of this token's ERC20 QUOTES — for a venue
+    ///         whose earnings can arrive in a currency other than native, where a dividends leg may
+    ///         have to be bought OUT of a quote. See `TaxConfigsWithDirectAllocation` for which entries
+    ///         are required. Positional to `quotes` from index 1.
+    /// @dev The base refuses it: a token that earns in native only (Uniswap V2, whose pair is the WETH
+    ///      pair) has no ERC20 quotes to route out of. Refused rather than silently accepting an empty
+    ///      list, so a factory that reaches for this overload on the wrong venue finds out at creation.
+    ///      `RealmTaxableTokenUniV4` overrides it.
+    function initializeEarningsAllocation(
+        uint16,
+        uint16,
+        uint16,
+        address[] calldata,
+        uint16[] calldata,
+        bytes[] calldata,
+        bytes[] calldata
+    ) external virtual {
+        revert InvalidQuotes();
     }
 
     /// @notice Routes ETH earnings (post-graduation swap tax + LP-fee creator share) through the
@@ -298,6 +326,18 @@ abstract contract RealmTaxableToken is
         _allocateEthEarnings(msg.value, burnBps, liquidityBps);
     }
 
+    /// @notice Routes ERC20 earnings — the creator's share of the LP fee and the swap tax on a pool
+    ///         quoted in something other than the chain's native currency — through the same
+    ///         earnings-allocation split the native path uses, in that currency.
+    /// @dev PULLS `amount` of `asset` from the caller, who must have approved this token, and requires
+    ///      `asset` to be one of this token's registered `quotes`.
+    /// @dev Splits what was actually RECEIVED, not the nominal `amount` — see `RealmToken.accrueFees`.
+    function accrueFees(address asset, uint256 amount) external virtual override(IRealmToken, RealmToken) {
+        uint256 received = _pullQuote(asset, amount);
+        if (received == 0) return;
+        _allocateEarnings(asset, received, burnBps, liquidityBps);
+    }
+
     /// @dev Earnings split routes each slice post-graduation only; pre-graduation the whole amount
     ///      goes to the fund wallets. Reads the base `RealmToken.graduated` flag.
     function _earningsGraduated() internal view override returns (bool) {
@@ -305,17 +345,41 @@ abstract contract RealmTaxableToken is
     }
 
     /// @dev Routes the fund-wallet slice to this token's master fee handler — the same path all
-    ///      earnings took before the allocation split was introduced.
-    function _depositToFund(uint256 amount) internal override {
-        IRealmMasterFeeHandler(feeHandler).depositFees{value: amount}(address(this));
+    ///      earnings took before the allocation split was introduced. The creator receives the slice in
+    ///      whatever currency the pool that produced it is quoted in, native included; the handler keeps
+    ///      a separate accumulator per asset.
+    function _depositToFund(address asset, uint256 amount) internal override {
+        if (asset == address(0)) {
+            IRealmMasterFeeHandler(feeHandler).depositFees{value: amount}(address(this));
+            return;
+        }
+        _depositAssetToFund(asset, amount);
     }
 
     /// @dev Dividends accrue as native into the packed per-leg buffer — one SSTORE for all three legs,
     ///      well inside the router gas budget — and are converted out-of-band by `processDividends`.
     ///      A token with no dividend configuration has a zero native weight total, so this consumes
     ///      nothing and the slice folds back to the fund wallets.
-    function _handleDividends(uint256 amount) internal override returns (uint256 unconsumed) {
+    function _handleDividends(address asset, uint256 amount) internal override returns (uint256 unconsumed) {
+        if (asset != address(0)) return _accrueQuoteDividends(asset, amount);
         return _accrueDividends(amount);
+    }
+
+    /// @dev The dividends slice of earnings that arrived in an ERC20 QUOTE. The shared machine is
+    ///      native-denominated — its pots, thresholds and conversion all are — so the base consumes
+    ///      nothing and the slice folds back to the fund wallets, the contract `EarningsAllocation`
+    ///      defines for a leg a venue has not shipped. A venue whose tokens earn in other currencies
+    ///      overrides it with buffers keyed by quote (`RealmTaxableTokenUniV4`).
+    function _accrueQuoteDividends(
+        address,
+        /* asset */
+        uint256 amount
+    )
+        internal
+        virtual
+        returns (uint256 unconsumed)
+    {
+        return amount;
     }
 
     /// @inheritdoc EarningsAllocation
@@ -332,45 +396,6 @@ abstract contract RealmTaxableToken is
     ///      activates instead — self-healing, not a one-shot.
     function _onGraduatedEarnings() internal override {
         if (hasDividends && dividendAssets[0].lastDistribution == 0) _activateDividends();
-    }
-
-    //////////////////////// DIVIDEND LOGIC EXTENSION //////////////////////
-
-    /// @notice The `DividendDistributionLogic` extension this token's four out-of-band dividend entry
-    ///         points execute in, against this token's own storage.
-    /// @dev Declared here and implemented by each concrete token (which deploys its own alongside
-    ///      itself), so a venue that forgets to wire one does not compile.
-    function dividendLogic() public view virtual returns (address);
-
-    /// @dev Runs the extension's copy of the entry point against THIS contract's storage, balance and
-    ///      transient slots, forwarding calldata and returndata untouched. The extension exists for one
-    ///      reason: the conversion, the venue routing and the payout loop are ~8.6 KB of bytecode a
-    ///      cloned token cannot afford under EIP-170, and they only ever run out-of-band. Nothing on the
-    ///      transfer hot path goes through here.
-    /// @dev ⚠️ The extension MUST have byte-identical storage layout to this token — it writes round
-    ///      state and pots directly. That is guaranteed structurally (both inherit the same venue base,
-    ///      neither adds state) and pinned by `just check-dividend-layout`.
-    /// @dev The assembly is the standard proxy forward and it is load-bearing, not an optimisation: the
-    ///      delegated entry points revert with distinct custom errors a keeper decodes
-    ///      (`BelowDividendThreshold` vs `DividendConversionFailed`), so the returndata has to be
-    ///      bubbled verbatim — `(bool ok,) = logic.delegatecall(msg.data); require(ok)` would erase it,
-    ///      and OZ's `Address.functionDelegateCall` buys the same behaviour for bytecode this clone does
-    ///      not have.
-    /// @dev NOT annotated `memory-safe`, deliberately: `calldatacopy(0, 0, calldatasize())` overwrites
-    ///      the free-memory pointer at 0x40 and the zero slot at 0x60, which the annotation forbids.
-    ///      Harmless because the block always ends in `return`/`revert`, but promising the optimizer
-    ///      otherwise is not. OpenZeppelin's `Proxy._delegate` leaves the identical body unannotated for
-    ///      exactly this reason.
-    function _delegateToDividendLogic() internal {
-        address logic = dividendLogic();
-        assembly {
-            calldatacopy(0, 0, calldatasize())
-            let ok := delegatecall(gas(), logic, 0, calldatasize(), 0, 0)
-            returndatacopy(0, 0, returndatasize())
-            switch ok
-            case 0 { revert(0, returndatasize()) }
-            default { return(0, returndatasize()) }
-        }
     }
 
     //////////////////////// DIVIDEND HOOKS //////////////////////
@@ -440,11 +465,7 @@ abstract contract RealmTaxableToken is
     ///      own buffers out of the sweep. This entry point is permissionless and repeatable, so
     ///      open-coding the subtraction would let anyone recycle the dividend pot through the split and
     ///      hand its fund-wallet slice to the creator's receivers on every call.
-    /// @dev `virtual` for the same reason `accrueFees` is: it is the only other entry point that
-    ///      reaches `_allocateEthEarnings`, and the dividend extension must be able to stub it out or
-    ///      the whole earnings split is linked into the extension's bytecode, where it is dead weight it
-    ///      has no room for.
-    function sweepStrayEth() external virtual nonReentrant {
+    function sweepStrayEth() external nonReentrant {
         _allocateEthEarnings(_sweepableNative(), burnBps, liquidityBps);
     }
 
@@ -461,12 +482,22 @@ abstract contract RealmTaxableToken is
         return balance > reserved ? balance - reserved : 0;
     }
 
-    /// @notice ERC20 balance of `asset` that is not owed to dividend holders.
+    /// @notice ERC20 balance of `asset` this token does NOT hold on someone else's behalf.
     function _sweepableAsset(address asset) internal view virtual returns (uint256) {
         uint256 balance = IERC20(asset).balanceOf(address(this));
-        if (!hasDividends) return balance;
-        uint256 reserved = committedDividends(asset);
+        uint256 reserved = _reservedAsset(asset);
         return balance > reserved ? balance - reserved : 0;
+    }
+
+    /// @dev `asset` units this contract holds on someone else's behalf — the ERC20 twin of
+    ///      `_reservedNative`. The base covers the undelivered dividend pot of whichever assets are
+    ///      payout assets; a venue extends it with its own per-quote buffers.
+    /// @dev Every sweep and rescue path MUST route through `_sweepableAsset` rather than reading
+    ///      `balanceOf` directly. The failure mode of forgetting a bucket here is not a lost balance but
+    ///      a silent transfer of committed money to the token owner.
+    function _reservedAsset(address asset) internal view virtual returns (uint256) {
+        if (!hasDividends) return 0;
+        return committedDividends(asset);
     }
 
     /// @dev Native this contract holds on someone else's behalf. Venues extend it with their own
@@ -544,6 +575,8 @@ abstract contract RealmTaxableToken is
         config = TaxConfig({
             buyTaxBps: effBuy,
             sellTaxBps: effSell,
+            // Safe cast: `referenceTime >= anchor`, so the result is at most `_maxWindowDuration()`, a uint40.
+            // forge-lint: disable-next-line(unsafe-typecast)
             taxDurationSeconds: uint40(anchor + _maxWindowDuration() - referenceTime),
             graduationTimestamp: graduationTs
         });
@@ -657,6 +690,8 @@ abstract contract RealmTaxableToken is
         if (decayDuration != 0 && elapsed < decayDuration) {
             uint256 remaining = decayDuration - elapsed;
             // (start*remaining + static*elapsed) / duration — exact at both endpoints
+            // Safe cast: weighted average of two uint16 rates.
+            // forge-lint: disable-next-line(unsafe-typecast)
             bps = uint16((uint256(decayStartBps) * remaining + uint256(staticBps) * elapsed) / decayDuration);
         }
         if (elapsed <= taxDurationSeconds && staticBps > bps) bps = staticBps;
@@ -684,7 +719,10 @@ abstract contract RealmTaxableToken is
         uint256 decayDuration = taxDecayDuration;
         if (decayDuration != 0 && elapsed < decayDuration) {
             uint256 remaining = decayDuration - elapsed;
+            // Safe cast: weighted averages of two uint16 rates.
+            // forge-lint: disable-next-line(unsafe-typecast)
             buyBps = uint16((uint256(buyTaxDecayStartBps) * remaining + uint256(buyStatic) * elapsed) / decayDuration);
+            // forge-lint: disable-next-item(unsafe-typecast)
             sellBps =
                 uint16((uint256(sellTaxDecayStartBps) * remaining + uint256(sellStatic) * elapsed) / decayDuration);
         }

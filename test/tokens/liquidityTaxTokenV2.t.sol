@@ -8,7 +8,7 @@ import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {stdStorage, StdStorage} from "forge-std/Test.sol";
@@ -23,8 +23,8 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         super.setUp();
     }
 
-    /// @dev Creates an ownerless V2 tax token with a `liquidityBps` allocation via the allocation-aware
-    ///      `createToken` overload. 4%-configurable sell tax, creation-anchored 14-day window.
+    /// @dev Creates an ownerless V2 tax token with a `liquidityBps` allocation via
+    ///      `createToken`. 4%-configurable sell tax, creation-anchored 14-day window.
     function _createLiquidityV2Token(uint16 sellTaxBps, uint16 liquidityBps) internal returns (address token) {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "LiqV2",
@@ -33,7 +33,7 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 0,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: uint32(14 days),
@@ -41,9 +41,7 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0, dividendsBps: 0, liquidityBps: liquidityBps, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(0, 0, liquidityBps, address(0))
         });
         vm.prank(creator);
         token = factoryV2Unified.createToken(
@@ -53,7 +51,7 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     function test_liquidityBps_storedAtCreation() public {
         address token = _createLiquidityV2Token(400, 5000);
-        assertEq(RealmTaxableTokenUniV2(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
+        assertEq(RealmTaxableTokenUniV2(payable(token)).liquidityBps(), 5000, "liquidityBps stored at creation");
     }
 
     function test_v2Liquidity_swapBackBuffersThenProcessAddsLp() public {
@@ -166,9 +164,10 @@ contract LiquidityTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     /// @dev Decodes the `ethIn`/`tokensAdded` fields of the last `LiquidityAdded` in `logs`.
     function _liquidityAddedAmounts(Vm.Log[] memory logs) internal pure returns (uint256 ethIn, uint256 tokensAdded) {
-        bytes32 sig = keccak256("LiquidityAdded(uint256,uint256,uint256)");
+        bytes32 sig = keccak256("LiquidityAdded(address,uint256,uint256,uint256)");
         for (uint256 i = logs.length; i > 0; --i) {
             if (logs[i - 1].topics[0] == sig) {
+                assertEq(logs[i - 1].topics[1], bytes32(0), "V2 liquidity is native-quoted");
                 (ethIn, tokensAdded,) = abi.decode(logs[i - 1].data, (uint256, uint256, uint256));
                 return (ethIn, tokensAdded);
             }

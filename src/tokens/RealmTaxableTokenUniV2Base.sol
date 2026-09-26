@@ -5,19 +5,11 @@ import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
-/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
-/// or DeploymentAddressesArc{Mainnet,Testnet} (ARC: `WETH` is the 6-decimal USDC ERC-20 V2 quote).
-import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+/// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title RealmTaxableTokenUniV2Base
-/// @notice Everything the Uniswap-V2 taxable token and its dividend extension must AGREE on: the V2
-///         constants, the token's own storage, and the small reads either side may perform.
-/// @dev This exists so `RealmTaxableTokenUniV2` and `RealmDividendLogicUniV2` derive an IDENTICAL storage
-///      layout from the same declarations. The extension is `delegatecall`ed with the token's storage,
-///      so a layout that drifts would have it writing the wrong slots; splitting the declarations out
-///      here makes that structurally impossible rather than merely tested (it is tested too — see
-///      `just check-dividend-layout`). Nothing behavioural belongs here: put a function in
-///      this base only when BOTH sides need it, and everything else in the contract that uses it.
+/// @notice The Uniswap-V2 taxable token's venue constants, storage, and small shared reads.
 abstract contract RealmTaxableTokenUniV2Base is RealmTaxableToken {
     ///////////////////////////////// uniswap v2 related /////////////////////////////////////////
     // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
@@ -127,4 +119,8 @@ abstract contract RealmTaxableTokenUniV2Base is RealmTaxableToken {
         }
         return balance > reserved ? balance - reserved : 0;
     }
+
+    /// @dev A V2 token graduates at migration (`markGraduated`), so the direct-venue milestone check is
+    ///      unreachable here; overriding it drops its bytecode (EIP-170).
+    function _checkGraduationMilestone() internal pure override {}
 }

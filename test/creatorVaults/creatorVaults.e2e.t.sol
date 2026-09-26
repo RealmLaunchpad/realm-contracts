@@ -3,10 +3,9 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {RealmCreatorVault} from "src/vaults/RealmCreatorVault.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmQuoter} from "src/RealmQuoter.sol";
@@ -16,7 +15,7 @@ import {LimitReason} from "src/interfaces/IRealmQuoter.sol";
 /// @notice End-to-end tests for the creator-vault feature: createToken-with-vaults across the
 ///         V2/V4 + tax/sniper variants, the supply split, allocation-specific curve selection,
 ///         graduation invariants vs a baseline token, and the vault vesting lifecycle.
-contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
+contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv2Graduator {
     uint256 constant TOKEN_TOTAL_SUPPLY = 1_000_000_000e18;
     uint256 constant T_GRAD = 285714285714285714285714285; // tokens into liquidity, identical for all curves
 
@@ -42,30 +41,28 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         arr[0] = v;
     }
 
-    /// @dev Creates a plain (non-tax, non-sniper) V4 token with the given vaults.
-    function _createV4(IRealmFactory.CreatorVault[] memory vaults) internal returns (address token) {
+    /// @dev Creates a plain (non-tax, non-sniper) curve token with the given vaults.
+    function _createCurve(IRealmFactory.CreatorVault[] memory vaults) internal returns (address token) {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "Vault",
             symbol: "VLT",
-            salt: _nextValidSalt(address(factoryV4Unified), address(realmToken)),
+            salt: _nextValidSalt(address(factoryV2Unified), address(realmToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        RealmFactoryUniV4Unified.UniV4Configs memory cfg =
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
         vm.prank(creator);
-        token = factoryV4Unified.createToken(
-            setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), _emptyAntiSniperCfg(), vaults, address(0)
+        token = factoryV2Unified.createToken(
+            setup, _noAlloc(_emptyTaxCfg()), _noSs(), _emptyAntiSniperCfg(), vaults, address(0)
         );
     }
 
     /// @dev Creates a token and returns the (single) deployed vault address by scanning logs.
-    function _createV4AndVault(IRealmFactory.CreatorVault[] memory vaults)
+    function _createWithVault(IRealmFactory.CreatorVault[] memory vaults)
         internal
         returns (address token, address vault)
     {
         vm.recordLogs();
-        token = _createV4(vaults);
+        token = _createCurve(vaults);
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 i; i < logs.length; ++i) {
             if (logs[i].topics[0] == VAULT_DEPLOYED_SIG) {
@@ -95,7 +92,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
     /////////////////////////// supply split ///////////////////////////
 
     function test_mintSplit_30pct_launchpadAndVaultBalances() public {
-        (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 3000, 30 days, 365 days)));
+        (address token, address vault) = _createWithVault(_one(_vault(vaultOwner, 3000, 30 days, 365 days)));
 
         uint256 expectedVault = TOKEN_TOTAL_SUPPLY * 3000 / 10_000; // 300M
         assertEq(IRealmToken(token).totalSupply(), TOKEN_TOTAL_SUPPLY, "total supply unchanged at 1B");
@@ -103,7 +100,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         assertEq(
             IRealmToken(token).balanceOf(address(launchpad)), TOKEN_TOTAL_SUPPLY - expectedVault, "launchpad holds 70%"
         );
-        assertEq(IRealmToken(token).balanceOf(address(factoryV4Unified)), 0, "factory holds nothing after distribution");
+        assertEq(IRealmToken(token).balanceOf(address(factoryV2Unified)), 0, "factory holds nothing after distribution");
     }
 
     function test_mintSplit_multipleVaults_sumExact() public {
@@ -112,7 +109,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         vaults[1] = _vault(vaultOwner2, 1500, 0, 100 days); // 15%
 
         vm.recordLogs();
-        address token = _createV4(vaults);
+        address token = _createCurve(vaults);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         address[] memory found = new address[](2);
@@ -134,7 +131,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
     function test_curveSelection_perAllocation() public {
         uint256[6] memory bps = [uint256(500), 1000, 1500, 2000, 2500, 3000];
         for (uint256 i; i < 6; ++i) {
-            address token = _createV4(_one(_vault(vaultOwner, bps[i], 0, 1 days)));
+            address token = _createCurve(_one(_vault(vaultOwner, bps[i], 0, 1 days)));
             assertEq(
                 address(launchpad.getTokenConfig(token).bondingCurve),
                 vaultCurves[i],
@@ -144,7 +141,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     function test_emptyVaults_usesBaseCurve() public {
-        address token = _createV4(new IRealmFactory.CreatorVault[](0));
+        address token = _createCurve(new IRealmFactory.CreatorVault[](0));
         assertEq(
             address(launchpad.getTokenConfig(token).bondingCurve), address(bondingCurve), "base curve when no vaults"
         );
@@ -160,12 +157,12 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
             vaults[i] = _vault(vaultOwner, 500, 0, 1 days);
         }
         vm.expectRevert(IRealmFactory.TooManyCreatorVaults.selector);
-        _createV4(vaults);
+        _createCurve(vaults);
     }
 
     function test_revert_bpsNotMultipleOf500() public {
         vm.expectRevert(IRealmFactory.InvalidCreatorVault.selector);
-        _createV4(_one(_vault(vaultOwner, 300, 0, 1 days)));
+        _createCurve(_one(_vault(vaultOwner, 300, 0, 1 days)));
     }
 
     function test_revert_totalAbove30pct() public {
@@ -173,28 +170,28 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         vaults[0] = _vault(vaultOwner, 2000, 0, 1 days);
         vaults[1] = _vault(vaultOwner2, 1500, 0, 1 days); // total 35%
         vm.expectRevert(IRealmFactory.CreatorVaultAllocationTooHigh.selector);
-        _createV4(vaults);
+        _createCurve(vaults);
     }
 
     function test_revert_zeroOwner() public {
         vm.expectRevert(IRealmFactory.InvalidCreatorVault.selector);
-        _createV4(_one(_vault(address(0), 500, 0, 1 days)));
+        _createCurve(_one(_vault(address(0), 500, 0, 1 days)));
     }
 
     function test_revert_zeroBps() public {
         vm.expectRevert(IRealmFactory.InvalidCreatorVault.selector);
-        _createV4(_one(_vault(vaultOwner, 0, 0, 1 days)));
+        _createCurve(_one(_vault(vaultOwner, 0, 0, 1 days)));
     }
 
     /////////////////////////// graduation invariants ///////////////////////////
 
     function test_graduation_vaultToken_depositsSameAsBaseToken() public {
         // baseline (no vault)
-        address baseToken = _createV4(new IRealmFactory.CreatorVault[](0));
+        address baseToken = _createCurve(new IRealmFactory.CreatorVault[](0));
         (uint256 baseEth, uint256 baseTokens) = _graduateAndCapture(baseToken);
 
         // 30% vault token, graduated the same way
-        address vaultToken = _createV4(_one(_vault(vaultOwner, 3000, 0, 1 days)));
+        address vaultToken = _createCurve(_one(_vault(vaultOwner, 3000, 0, 1 days)));
         (uint256 vaultEth, uint256 vaultTokens) = _graduateAndCapture(vaultToken);
 
         // Core invariant: a vault token graduates IDENTICALLY to a baseline token (to the wei).
@@ -209,7 +206,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
     function test_graduation_eachAllocation_depositsTGRAD() public {
         uint256[6] memory bps = [uint256(500), 1000, 1500, 2000, 2500, 3000];
         for (uint256 i; i < 6; ++i) {
-            address token = _createV4(_one(_vault(vaultOwner, bps[i], 0, 1 days)));
+            address token = _createCurve(_one(_vault(vaultOwner, bps[i], 0, 1 days)));
             (uint256 ethCollected, uint256 tokensForGraduation) = _graduateAndCapture(token);
             assertApproxEqAbs(tokensForGraduation, T_GRAD, 10, "tokens into liquidity ~= T_GRAD for every allocation");
             assertGe(ethCollected, GRADUATION_THRESHOLD, "eth reserves at least the threshold");
@@ -224,12 +221,10 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "VaultSniper",
             symbol: "VS",
-            salt: _nextValidSalt(address(factoryV4Unified), address(realmTokenSniper)),
+            salt: _nextValidSalt(address(factoryV2Unified), address(realmTokenSniper)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        RealmFactoryUniV4Unified.UniV4Configs memory cfg =
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
         AntiSniperConfigs memory sniper = AntiSniperConfigs({
             maxBuyPerTxBps: 50,
             maxWalletBps: 50, // 0.5%
@@ -239,8 +234,8 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
 
         vm.recordLogs();
         vm.prank(creator);
-        address token = factoryV4Unified.createToken(
-            setup, _toCfgs(_emptyTaxCfg()), cfg, _noSs(), sniper, _one(_vault(vaultOwner, 3000, 0, 1 days)), address(0)
+        address token = factoryV2Unified.createToken(
+            setup, _noAlloc(_emptyTaxCfg()), _noSs(), sniper, _one(_vault(vaultOwner, 3000, 0, 1 days)), address(0)
         );
         Vm.Log[] memory logs = vm.getRecordedLogs();
         address vault;
@@ -266,7 +261,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         vm.prank(creator);
         address token = factoryV2Unified.createToken(
             setup,
-            _toCfgs(_taxCfg(300, 300, uint32(7 days))),
+            _noAlloc(_taxCfg(300, 300, uint32(7 days))),
             _noSs(),
             _emptyAntiSniperCfg(),
             _one(_vault(vaultOwner, 2000, 0, 1 days)),
@@ -286,7 +281,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
     // The vesting clock starts at token creation (vault init); claims are gated on graduation.
 
     function test_vault_claimBeforeGraduation_reverts() public {
-        (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 1000, 0, 30 days)));
+        (address token, address vault) = _createWithVault(_one(_vault(vaultOwner, 1000, 0, 30 days)));
         // schedule has progressed, but the token has not graduated yet
         vm.warp(block.timestamp + 15 days);
         assertEq(RealmCreatorVault(payable(vault)).claimable(), 0, "nothing claimable before graduation");
@@ -299,7 +294,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
     }
 
     function test_vault_claimByNonOwner_reverts() public {
-        (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 1000, 0, 30 days)));
+        (address token, address vault) = _createWithVault(_one(_vault(vaultOwner, 1000, 0, 30 days)));
         _graduateAndCapture(token);
         vm.warp(block.timestamp + 15 days);
         vm.prank(makeAddr("intruder"));
@@ -311,7 +306,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         uint256 cliff = 30 days;
         uint256 vesting = 100 days;
         uint256 alloc = TOKEN_TOTAL_SUPPLY * 1000 / 10_000; // 10%
-        (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 1000, cliff, vesting)));
+        (address token, address vault) = _createWithVault(_one(_vault(vaultOwner, 1000, cliff, vesting)));
 
         _graduateAndCapture(token);
         uint256 start = RealmCreatorVault(payable(vault)).startTimestamp(); // creation time
@@ -344,7 +339,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_vault_zeroCliffZeroVesting_fullUnlockAtGraduation() public {
         uint256 alloc = TOKEN_TOTAL_SUPPLY * 500 / 10_000; // 5%
-        (address token, address vault) = _createV4AndVault(_one(_vault(vaultOwner, 500, 0, 0)));
+        (address token, address vault) = _createWithVault(_one(_vault(vaultOwner, 500, 0, 0)));
         // zero cliff + zero vesting => schedule says fully vested immediately, but claim is gated
         assertEq(RealmCreatorVault(payable(vault)).vestedAmount(), alloc, "schedule fully vested");
         assertEq(RealmCreatorVault(payable(vault)).claimable(), 0, "but nothing claimable before graduation");
@@ -362,7 +357,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
     ///      quoter changes. This locks that in.
     function test_quoter_usesRegisteredVaultCurve() public {
         RealmQuoter quoter = new RealmQuoter(address(launchpad));
-        address token = _createV4(_one(_vault(vaultOwner, 3000, 0, 1 days)));
+        address token = _createCurve(_one(_vault(vaultOwner, 3000, 0, 1 days)));
 
         uint256 ethValue = 0.1 ether;
         IRealmQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer, ethValue);
@@ -382,28 +377,24 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv4Graduator {
         IRealmFactory.CreatorVault[] memory vaults = _one(_vault(vaultOwner, 3000, 0, 1 days));
         uint256 tokenAmount = 50_000_000e18; // 5% of supply, under the 10% buy-on-deploy cap
 
-        RealmFactoryUniV4Unified.UniV4Configs memory cfg =
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100});
-
         uint256 ethVaultAware =
-            factoryV4Unified.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 3000, _toCfgs(_emptyTaxCfg()), cfg);
-        uint256 ethBaseOnly =
-            factoryV4Unified.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 0, _toCfgs(_emptyTaxCfg()), cfg);
+            factoryV2Unified.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 3000, _emptyTaxCfg());
+        uint256 ethBaseOnly = factoryV2Unified.quoteBuyOnDeploy(LiquidityTier.DEFAULT, tokenAmount, 0, _emptyTaxCfg());
         // the 30% curve starts steeper, so the same tokens cost MORE ETH than the base quote
         assertGt(ethVaultAware, ethBaseOnly, "vault-aware quote must exceed the base quote");
 
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "VQ",
             symbol: "VQ",
-            salt: _nextValidSalt(address(factoryV4Unified), address(realmToken)),
+            salt: _nextValidSalt(address(factoryV2Unified), address(realmToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
 
         vm.deal(creator, ethVaultAware);
         vm.prank(creator);
-        address token = factoryV4Unified.createToken{value: ethVaultAware}(
-            setup, _toCfgs(_emptyTaxCfg()), cfg, _ss(creator), _emptyAntiSniperCfg(), vaults
+        address token = factoryV2Unified.createToken{value: ethVaultAware}(
+            setup, _noAlloc(_emptyTaxCfg()), _ss(creator), _emptyAntiSniperCfg(), vaults, address(0)
         );
 
         // deployer (sole supply-share recipient) receives ~tokenAmount, never less than quoted

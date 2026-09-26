@@ -7,12 +7,11 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
 import {RealmHook} from "src/hooks/RealmHook.sol";
+import {RealmHookAnyPair} from "src/hooks/RealmHookAnyPair.sol";
 import {
-    DeploymentAddressesEthereumSepolia,
     DeploymentAddressesRobinhoodMainnet,
     DeploymentAddressesRobinhoodTestnet
 } from "src/config/DeploymentAddresses.sol";
-import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
 import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 
@@ -27,7 +26,7 @@ import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet
 ///      AFTER_SWAP_RETURNS_DELTA → mask `0xCC`. The base is abstract over the creation code and the
 ///      `new` call so a future hook variant only has to supply those two.
 ///
-/// @dev Runs against Sepolia (11155111), Robinhood mainnet (4663) or Robinhood testnet (46630). Pool manager and treasury come from
+/// @dev Runs against Robinhood mainnet (4663) or Robinhood testnet (46630). Pool manager and treasury come from
 ///      `DeploymentAddresses*`; the LP fee router proxy comes from `Deployments*` and must already exist —
 ///      run `DeployRealmPrereqs` first.
 ///
@@ -94,17 +93,12 @@ abstract contract DeployHookBase is Script {
 
     /// @dev Manifest file suffix for the current chain, for the "paste it here" hint.
     function _manifestName() internal view returns (string memory) {
-        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) return "ethereum.sepolia";
         if (block.chainid == DeploymentAddressesRobinhoodTestnet.BLOCKCHAIN_ID) return "robinhood.testnet";
         return "robinhood.mainnet";
     }
 
     function _resolveAddresses() internal view returns (address poolManager, address router, address treasury) {
-        if (block.chainid == DeploymentAddressesEthereumSepolia.BLOCKCHAIN_ID) {
-            poolManager = DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER;
-            router = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
-            treasury = DeploymentAddressesEthereumSepolia.REALM_TREASURY;
-        } else if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) {
+        if (block.chainid == DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID) {
             poolManager = DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER;
             router = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
             treasury = DeploymentAddressesRobinhoodMainnet.REALM_TREASURY;
@@ -127,8 +121,7 @@ abstract contract DeployHookBase is Script {
 /// @dev The whitelisted variant, and the only hook Realm deploys; its address becomes the manifest's
 ///      `SWAP_HOOK`.
 ///
-/// Usage (dry run):   forge script DeployRealmHook --rpc-url sepolia --account realm.dev
-/// Usage (deploy):    forge script DeployRealmHook --rpc-url sepolia --account realm.dev --slow --broadcast --verify
+/// Usage (dry run):   forge script DeployRealmHook --rpc-url rh-testnet --account realm.dev
 /// Usage (robinhood): ROUTER_ADDRESS=<router> forge script DeployRealmHook --rpc-url rh-mainnet \
 ///                        --account realm.dev --slow --broadcast --gas-estimate-multiplier 300
 contract DeployRealmHook is DeployHookBase {
@@ -146,5 +139,32 @@ contract DeployRealmHook is DeployHookBase {
         returns (address)
     {
         return address(new RealmHook{salt: salt}(IPoolManager(poolManager), router, treasury));
+    }
+}
+
+/// @notice Deploys `RealmHookAnyPair` — the hook every ERC20-quoted Realm pool is bound to, which
+///         resolves which side of the pair is the token and collects its fee in the pool's own quote.
+/// @dev A SECOND hook, not a replacement: `RealmHook` is whitelisted by Uniswap and keeps every
+///      native-quoted pool. This one's address becomes the manifest's `SWAP_HOOK_ANY_PAIR` and is what
+///      `RealmDirectGraduatorUniV4` binds an ERC20 pair to. It declares the same four callbacks, so it
+///      mines against the same `0xCC` mask.
+///
+/// Usage (dry run):   forge script DeployRealmHookAnyPair --rpc-url rh-testnet --account realm.dev
+/// Usage (deploy):    just deploy-anypair-hook-rh-testnet
+contract DeployRealmHookAnyPair is DeployHookBase {
+    function hookName() internal pure override returns (string memory) {
+        return "RealmHookAnyPair";
+    }
+
+    function creationCode() internal pure override returns (bytes memory) {
+        return type(RealmHookAnyPair).creationCode;
+    }
+
+    function _deploy(bytes32 salt, address poolManager, address router, address treasury)
+        internal
+        override
+        returns (address)
+    {
+        return address(new RealmHookAnyPair{salt: salt}(IPoolManager(poolManager), router, treasury));
     }
 }

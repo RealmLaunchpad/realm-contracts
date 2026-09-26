@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {
-    LaunchpadBaseTests,
-    LaunchpadBaseTestsWithUniv2Graduator,
-    LaunchpadBaseTestsWithUniv4Graduator
-} from "./base.t.sol";
+import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "./base.t.sol";
 import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 
 abstract contract QuoteInverseTests is LaunchpadBaseTests {
@@ -127,34 +123,12 @@ contract QuoteInverseTests_Univ2 is QuoteInverseTests, LaunchpadBaseTestsWithUni
     modifier createTestToken() override(LaunchpadBaseTests) {
         vm.prank(creator);
         testToken = factoryV2.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV2), address(realmToken)),
-            _fs(creator),
+            _setupTiered("TestToken", "TEST", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
-        );
-        _;
-    }
-}
-
-contract QuoteInverseTests_Univ4 is QuoteInverseTests, LaunchpadBaseTestsWithUniv4Graduator {
-    function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator) {
-        super.setUp();
-    }
-
-    modifier createTestToken() override(LaunchpadBaseTests) {
-        vm.prank(creator);
-        testToken = factoryV4.createToken(
-            "TestToken",
-            "TEST",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(creator),
-            _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         _;
     }

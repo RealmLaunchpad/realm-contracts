@@ -3,14 +3,11 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
+import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {
-    TaxConfigsWithAllocation,
-    EarningsAllocationConfig,
-    IRealmTaxableToken
-} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation, IRealmTaxableToken} from "src/interfaces/IRealmTaxableToken.sol";
 
 /// @notice Pins the storage packing the taxable tokens depend on for gas, and the creation-time-only
 ///         nature of the earnings allocation.
@@ -25,7 +22,7 @@ import {
 ///      added ahead of these, the slot index moves and this test fails — which is exactly the moment a
 ///      human should look at it, so update the constants deliberately rather than reflexively.
 contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
-    /// @dev `pair` + `graduated` + `hasSniperProt` + `hasDividends` + `dividendAssetCount`. `_update`
+    /// @dev `pair` + `graduated` + `protectionWindowEnd` + `hasDividends` + `dividendAssetCount`. `_update`
     ///      loads this slot on every transfer, which is the entire reason `hasDividends` and the payout
     ///      count live on `RealmToken` instead of beside the rest of the dividend state — the transfer
     ///      hook learns how many assets to settle without a cold read.
@@ -36,18 +33,22 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev Moved 21 -> 19 when the dividend round machinery was replaced by the streaming accumulator,
     ///      which needs three global slots instead of five, then 19 -> 20 when the treasury sweep's
     ///      persistence marker (`failedConversionBlock`) took a full word ahead of it, then 20 -> 26 when
-    ///      the payout became a SET: `dividendAssets` is three slots per asset (15..23),
+    ///      the payout became a SET: `dividendAssets` is three slots per asset (19..27), and again
+    ///      15 -> 19 when the quote registry (`quotes[3]` + its index mapping) landed ahead of it,
     ///      `dividendAccounts` 24 and `dividendWeightsBps` 25. `failedConversionBlock` no longer needs a
     ///      word of its own — inside a struct array it cannot leak into the head of this slot — but the
-    ///      arrays that replaced it occupy whole slots, so the effect is the same.
-    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 26;
+    ///      arrays that replaced it occupy whole slots, so the effect is the same. Then 30 -> 31 when
+    ///      `quotes` grew to four entries (native + three ERC20s), pushing everything after it by a slot, and
+    ///      31 -> 32 when `graduationPoolId` (the direct venue's graduation milestone) took a word.
+    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 32;
 
     /// @dev The V2 swap-back counters, which the packing above pushes into the following slot.
-    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 27;
+    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 33;
 
     /// @dev First `DivAsset` of the payout set. Three slots each: the hot slot (accumulator + the three
     ///      clocks + the precision exponent), then `token` + `rate`, then the ledger + the buffer.
-    uint256 internal constant DIVIDEND_ASSETS_SLOT = 15;
+    /// @dev 20 -> 21 when `graduationPoolId` landed ahead of it.
+    uint256 internal constant DIVIDEND_ASSETS_SLOT = 21;
 
     RealmTaxableTokenUniV2 internal tok;
 
@@ -58,12 +59,12 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     ///      the guard trivially satisfiable.
     function setUp() public override {
         super.setUp();
-        tok = _token();
+        tok = _token(_emptyAntiSniperCfg());
     }
 
     /// @dev A token with every packed field set to a DISTINCT non-zero value, so a field landing at the
     ///      wrong offset cannot coincidentally still match.
-    function _token() internal returns (RealmTaxableTokenUniV2 token) {
+    function _token(AntiSniperConfigs memory sniper) internal returns (RealmTaxableTokenUniV2 token) {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "Layout",
             symbol: "LAY",
@@ -71,7 +72,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: 300,
             sellTaxBps: 400,
             taxDurationSeconds: uint32(14 days),
@@ -79,14 +80,11 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
             buyTaxDecayStartBps: 900,
             sellTaxDecayStartBps: 1_100,
             taxDecayDuration: 600,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 1_000, dividendsBps: 2_000, liquidityBps: 1_500, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(1_000, 2_000, 1_500, address(0))
         });
         vm.prank(creator);
-        address addr = factoryV2Unified.createToken(
-            setup, cfg, _noSs(), _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0), address(0)
-        );
+        address addr =
+            factoryV2Unified.createToken(setup, cfg, _noSs(), sniper, new IRealmFactory.CreatorVault[](0), address(0));
         return RealmTaxableTokenUniV2(payable(addr));
     }
 
@@ -120,14 +118,16 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     /// @dev `hasDividends` must ride in the slot `_update` already loads. If it slips into a slot of its
     ///      own, every transfer of every token — dividend-paying or not — pays for a cold SLOAD.
     function test_hasDividendsPacksIntoTheWarmFlagsSlot() public {
-        RealmTaxableTokenUniV2 token = tok;
+        // Anti-sniper on, so the window end is non-zero and its offset observable.
+        RealmTaxableTokenUniV2 token = _token(_defaultAntiSniperCfg());
         uint256 word = _slot(address(token), WARM_FLAGS_SLOT);
 
         assertEq(address(uint160(word)), token.pair(), "pair at byte 0");
         assertEq((word >> 160) & 0xff, token.graduated() ? 1 : 0, "graduated at byte 20");
-        assertEq((word >> 168) & 0xff, token.hasSniperProt() ? 1 : 0, "hasSniperProt at byte 21");
-        assertEq((word >> 176) & 0xff, token.hasDividends() ? 1 : 0, "hasDividends at byte 22");
-        assertEq((word >> 184) & 0xff, token.dividendAssetCount(), "dividendAssetCount at byte 23");
+        assertEq(uint40(word >> 168), token.protectionWindowEnd(), "protectionWindowEnd at byte 21");
+        assertEq((word >> 208) & 0xff, token.hasDividends() ? 1 : 0, "hasDividends at byte 26");
+        assertEq((word >> 216) & 0xff, token.dividendAssetCount(), "dividendAssetCount at byte 27");
+        assertGt(token.protectionWindowEnd(), 0, "fixture opted into anti-sniper, so the window end is observable");
         assertTrue(token.hasDividends(), "fixture opted into dividends, so the flag is observable");
         assertEq(token.dividendAssetCount(), 1, "the fixture pays in one asset, and says so");
     }
@@ -210,9 +210,13 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     function test_dividendConfigCannotBeSetAfterCreation() public {
         RealmTaxableTokenUniV2 token = tok;
 
+        address[] memory assets = new address[](1);
+        uint16[] memory weights = new uint16[](1);
+        weights[0] = 10_000;
         vm.prank(creator);
         vm.expectRevert();
-        IRealmTaxableToken(payable(address(token))).initializeEarningsAllocation(0, 10_000, 0, address(0));
+        IRealmTaxableToken(payable(address(token)))
+            .initializeEarningsAllocation(0, 10_000, 0, assets, weights, new bytes[](0));
 
         assertEq(token.dividendsBps(), 2_000, "the creation-time dividend share is unchanged");
     }

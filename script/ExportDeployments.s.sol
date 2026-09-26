@@ -3,11 +3,9 @@ pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 
-import {DeploymentsEthereumSepolia} from "src/config/manifest.ethereum.sepolia.sol";
 import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
 import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 import {
-    DeploymentAddressesEthereumSepolia,
     DeploymentAddressesRobinhoodMainnet,
     DeploymentAddressesRobinhoodTestnet
 } from "src/config/DeploymentAddresses.sol";
@@ -27,10 +25,17 @@ contract ExportDeployments is Script {
         address launchpad;
         address bondingCurve;
         address graduatorUniV2;
-        address graduatorUniV4;
         address masterFeeHandler;
         address univ4LiquidityAdder;
         address swapHook;
+        address swapHookAnyPair;
+        address graduatorUniV4Direct;
+        address factoryUniV4Direct;
+        address factoryUniV4DirectImpl;
+        address assetsWhitelist;
+        address assetsWhitelistImpl;
+        address dividendLogicV4;
+        address earningsLogicV4;
         address lpFeeRouter;
         address lpFeeRouterImpl;
         address treasuryRouter;
@@ -39,21 +44,19 @@ contract ExportDeployments is Script {
         address voting;
         address votingImpl;
         address quoter;
+        address keeperLens;
         address keepersRegistry;
         address dividendSwapRegistry;
+        address dividendSwapRegistryImpl;
         address tokenImpl;
         address taxableTokenImpl;
         address taxableTokenV2Impl;
         address factoryUniV2Unified;
         address factoryUniV2UnifiedImpl;
-        address factoryUniV4Unified;
-        address factoryUniV4UnifiedImpl;
         address creatorVaultFactory;
         address creatorVaultFactoryImpl;
         address creatorVaultImpl;
         address[6] vaultCurves;
-        address graduatorThin;
-        address graduatorThick;
         address thinCurveBase;
         address[6] thinVaultCurves;
         address thickCurveBase;
@@ -77,7 +80,6 @@ contract ExportDeployments is Script {
     }
 
     function run() public {
-        _write("deployments.ethereum.sepolia.md", _render(_ethereumSepolia()));
         _write("deployments.robinhood.mainnet.md", _render(_robinhoodMainnet()));
         _write("deployments.robinhood.testnet.md", _render(_robinhoodTestnet()));
     }
@@ -89,66 +91,23 @@ contract ExportDeployments is Script {
 
     // ---------------------------------------------------------------- Per-chain collectors
 
-    function _ethereumSepolia() internal pure returns (ChainDeployments memory d) {
-        d.title = "Sepolia";
-        d.manifestFile = "manifest.ethereum.sepolia.sol";
-        d.launchpad = DeploymentsEthereumSepolia.LAUNCHPAD;
-        d.bondingCurve = DeploymentsEthereumSepolia.BONDING_CURVE;
-        d.graduatorUniV2 = DeploymentsEthereumSepolia.GRADUATOR_UNIV2;
-        d.graduatorUniV4 = DeploymentsEthereumSepolia.GRADUATOR_UNIV4;
-        d.masterFeeHandler = DeploymentsEthereumSepolia.MASTER_FEE_HANDLER;
-        d.univ4LiquidityAdder = DeploymentsEthereumSepolia.UNIV4_LIQUIDITY_ADDER;
-        d.swapHook = DeploymentsEthereumSepolia.SWAP_HOOK;
-        d.lpFeeRouter = DeploymentsEthereumSepolia.LP_FEE_ROUTER;
-        d.lpFeeRouterImpl = DeploymentsEthereumSepolia.LP_FEE_ROUTER_IMPL;
-        d.treasuryRouter = DeploymentsEthereumSepolia.TREASURY_ROUTER;
-        d.treasuryRouterImpl = DeploymentsEthereumSepolia.TREASURY_ROUTER_IMPL;
-        d.realmToken = DeploymentsEthereumSepolia.REALM_TOKEN;
-        d.voting = DeploymentsEthereumSepolia.VOTING;
-        d.votingImpl = DeploymentsEthereumSepolia.VOTING_IMPL;
-        d.quoter = DeploymentsEthereumSepolia.QUOTER;
-        d.keepersRegistry = DeploymentAddressesEthereumSepolia.REALM_KEEPERS_REGISTRY;
-        d.dividendSwapRegistry = DeploymentAddressesEthereumSepolia.DIVIDEND_SWAP_REGISTRY;
-        d.tokenImpl = DeploymentsEthereumSepolia.TOKEN_IMPL;
-        d.taxableTokenImpl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V4_IMPL;
-        d.taxableTokenV2Impl = DeploymentsEthereumSepolia.TAXABLE_TOKEN_V2_IMPL;
-        d.factoryUniV2Unified = DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED;
-        d.factoryUniV2UnifiedImpl = DeploymentsEthereumSepolia.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.factoryUniV4Unified = DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED;
-        d.factoryUniV4UnifiedImpl = DeploymentsEthereumSepolia.FACTORY_UNIV4_UNIFIED_IMPL;
-        d.creatorVaultFactory = DeploymentsEthereumSepolia.CREATOR_VAULT_FACTORY;
-        d.creatorVaultFactoryImpl = DeploymentsEthereumSepolia.CREATOR_VAULT_FACTORY_IMPL;
-        d.creatorVaultImpl = DeploymentsEthereumSepolia.CREATOR_VAULT_IMPL;
-        d.vaultCurves = DeploymentsEthereumSepolia.vaultBondingCurves();
-        d.graduatorThin = DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THIN;
-        d.graduatorThick = DeploymentsEthereumSepolia.GRADUATOR_UNIV4_THICK;
-        d.thinCurveBase = DeploymentsEthereumSepolia.THIN_CURVE_BASE;
-        d.thinVaultCurves = DeploymentsEthereumSepolia.thinVaultCurves();
-        d.thickCurveBase = DeploymentsEthereumSepolia.THICK_CURVE_BASE;
-        d.thickVaultCurves = DeploymentsEthereumSepolia.thickVaultCurves();
-        d.realmDev = DeploymentsEthereumSepolia.REALM_DEV;
-        d.realmTreasury = DeploymentAddressesEthereumSepolia.REALM_TREASURY;
-        d.realmTokenDeployer = DeploymentsEthereumSepolia.REALM_TOKEN_DEPLOYER;
-        d.realmKeeper = DeploymentsEthereumSepolia.REALM_KEEPER;
-        d.weth = DeploymentAddressesEthereumSepolia.WETH;
-        d.univ2Router = DeploymentAddressesEthereumSepolia.UNIV2_ROUTER;
-        d.univ2Factory = DeploymentAddressesEthereumSepolia.UNIV2_FACTORY;
-        d.univ4PoolManager = DeploymentAddressesEthereumSepolia.UNIV4_POOL_MANAGER;
-        d.univ4PositionManager = DeploymentAddressesEthereumSepolia.UNIV4_POSITION_MANAGER;
-        d.univ4UniversalRouter = DeploymentAddressesEthereumSepolia.UNIV4_UNIVERSAL_ROUTER;
-        d.permit2 = DeploymentAddressesEthereumSepolia.PERMIT2;
-    }
-
     function _robinhoodMainnet() internal pure returns (ChainDeployments memory d) {
         d.title = "Robinhood Chain Mainnet";
         d.manifestFile = "manifest.robinhood.mainnet.sol";
         d.launchpad = DeploymentsRobinhoodMainnet.LAUNCHPAD;
         d.bondingCurve = DeploymentsRobinhoodMainnet.BONDING_CURVE;
         d.graduatorUniV2 = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV2;
-        d.graduatorUniV4 = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsRobinhoodMainnet.MASTER_FEE_HANDLER;
         d.univ4LiquidityAdder = DeploymentsRobinhoodMainnet.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsRobinhoodMainnet.SWAP_HOOK;
+        d.swapHookAnyPair = DeploymentsRobinhoodMainnet.SWAP_HOOK_ANY_PAIR;
+        d.graduatorUniV4Direct = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_DIRECT;
+        d.factoryUniV4Direct = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_DIRECT;
+        d.factoryUniV4DirectImpl = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_DIRECT_IMPL;
+        d.assetsWhitelist = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST;
+        d.assetsWhitelistImpl = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST_IMPL;
+        d.dividendLogicV4 = DeploymentsRobinhoodMainnet.DIVIDEND_LOGIC_V4;
+        d.earningsLogicV4 = DeploymentsRobinhoodMainnet.EARNINGS_LOGIC_V4;
         d.lpFeeRouter = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER_IMPL;
         d.treasuryRouter = DeploymentsRobinhoodMainnet.TREASURY_ROUTER;
@@ -157,21 +116,19 @@ contract ExportDeployments is Script {
         d.voting = DeploymentsRobinhoodMainnet.VOTING;
         d.votingImpl = DeploymentsRobinhoodMainnet.VOTING_IMPL;
         d.quoter = DeploymentsRobinhoodMainnet.QUOTER;
+        d.keeperLens = DeploymentsRobinhoodMainnet.KEEPER_LENS;
         d.keepersRegistry = DeploymentAddressesRobinhoodMainnet.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesRobinhoodMainnet.DIVIDEND_SWAP_REGISTRY;
+        d.dividendSwapRegistryImpl = DeploymentsRobinhoodMainnet.DIVIDEND_SWAP_REGISTRY_IMPL;
         d.tokenImpl = DeploymentsRobinhoodMainnet.TOKEN_IMPL;
         d.taxableTokenImpl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL;
         d.factoryUniV2Unified = DeploymentsRobinhoodMainnet.FACTORY_UNIV2_UNIFIED;
         d.factoryUniV2UnifiedImpl = DeploymentsRobinhoodMainnet.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.factoryUniV4Unified = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_UNIFIED;
-        d.factoryUniV4UnifiedImpl = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_UNIFIED_IMPL;
         d.creatorVaultFactory = DeploymentsRobinhoodMainnet.CREATOR_VAULT_FACTORY;
         d.creatorVaultFactoryImpl = DeploymentsRobinhoodMainnet.CREATOR_VAULT_FACTORY_IMPL;
         d.creatorVaultImpl = DeploymentsRobinhoodMainnet.CREATOR_VAULT_IMPL;
         d.vaultCurves = DeploymentsRobinhoodMainnet.vaultBondingCurves();
-        d.graduatorThin = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THIN;
-        d.graduatorThick = DeploymentsRobinhoodMainnet.GRADUATOR_UNIV4_THICK;
         d.thinCurveBase = DeploymentsRobinhoodMainnet.THIN_CURVE_BASE;
         d.thinVaultCurves = DeploymentsRobinhoodMainnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsRobinhoodMainnet.THICK_CURVE_BASE;
@@ -198,10 +155,17 @@ contract ExportDeployments is Script {
         d.launchpad = DeploymentsRobinhoodTestnet.LAUNCHPAD;
         d.bondingCurve = DeploymentsRobinhoodTestnet.BONDING_CURVE;
         d.graduatorUniV2 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV2;
-        d.graduatorUniV4 = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4;
         d.masterFeeHandler = DeploymentsRobinhoodTestnet.MASTER_FEE_HANDLER;
         d.univ4LiquidityAdder = DeploymentsRobinhoodTestnet.UNIV4_LIQUIDITY_ADDER;
         d.swapHook = DeploymentsRobinhoodTestnet.SWAP_HOOK;
+        d.swapHookAnyPair = DeploymentsRobinhoodTestnet.SWAP_HOOK_ANY_PAIR;
+        d.graduatorUniV4Direct = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_DIRECT;
+        d.factoryUniV4Direct = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_DIRECT;
+        d.factoryUniV4DirectImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_DIRECT_IMPL;
+        d.assetsWhitelist = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST;
+        d.assetsWhitelistImpl = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST_IMPL;
+        d.dividendLogicV4 = DeploymentsRobinhoodTestnet.DIVIDEND_LOGIC_V4;
+        d.earningsLogicV4 = DeploymentsRobinhoodTestnet.EARNINGS_LOGIC_V4;
         d.lpFeeRouter = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER_IMPL;
         d.treasuryRouter = DeploymentsRobinhoodTestnet.TREASURY_ROUTER;
@@ -210,21 +174,19 @@ contract ExportDeployments is Script {
         d.voting = DeploymentsRobinhoodTestnet.VOTING;
         d.votingImpl = DeploymentsRobinhoodTestnet.VOTING_IMPL;
         d.quoter = DeploymentsRobinhoodTestnet.QUOTER;
+        d.keeperLens = DeploymentsRobinhoodTestnet.KEEPER_LENS;
         d.keepersRegistry = DeploymentAddressesRobinhoodTestnet.REALM_KEEPERS_REGISTRY;
         d.dividendSwapRegistry = DeploymentAddressesRobinhoodTestnet.DIVIDEND_SWAP_REGISTRY;
+        d.dividendSwapRegistryImpl = DeploymentsRobinhoodTestnet.DIVIDEND_SWAP_REGISTRY_IMPL;
         d.tokenImpl = DeploymentsRobinhoodTestnet.TOKEN_IMPL;
         d.taxableTokenImpl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL;
         d.factoryUniV2Unified = DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED;
         d.factoryUniV2UnifiedImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV2_UNIFIED_IMPL;
-        d.factoryUniV4Unified = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED;
-        d.factoryUniV4UnifiedImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_UNIFIED_IMPL;
         d.creatorVaultFactory = DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY;
         d.creatorVaultFactoryImpl = DeploymentsRobinhoodTestnet.CREATOR_VAULT_FACTORY_IMPL;
         d.creatorVaultImpl = DeploymentsRobinhoodTestnet.CREATOR_VAULT_IMPL;
         d.vaultCurves = DeploymentsRobinhoodTestnet.vaultBondingCurves();
-        d.graduatorThin = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THIN;
-        d.graduatorThick = DeploymentsRobinhoodTestnet.GRADUATOR_UNIV4_THICK;
         d.thinCurveBase = DeploymentsRobinhoodTestnet.THIN_CURVE_BASE;
         d.thinVaultCurves = DeploymentsRobinhoodTestnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsRobinhoodTestnet.THICK_CURVE_BASE;
@@ -257,10 +219,17 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmLaunchpad", d.launchpad));
         s = string.concat(s, _row("ConstantProductBondingCurve", d.bondingCurve));
         s = string.concat(s, _row("RealmGraduatorUniswapV2", d.graduatorUniV2));
-        s = string.concat(s, _row("RealmGraduatorUniswapV4", d.graduatorUniV4));
         s = string.concat(s, _row("RealmMasterFeeHandler", d.masterFeeHandler));
         s = string.concat(s, _row("RealmUniV4LiquidityAdder", d.univ4LiquidityAdder));
         s = string.concat(s, _row("RealmHook", d.swapHook));
+        s = string.concat(s, _row("RealmHookAnyPair", d.swapHookAnyPair));
+        s = string.concat(s, _row("RealmDirectGraduatorUniV4", d.graduatorUniV4Direct));
+        s = string.concat(s, _row("RealmFactoryUniV4Direct (proxy)", d.factoryUniV4Direct));
+        s = string.concat(s, _row("RealmFactoryUniV4Direct (impl)", d.factoryUniV4DirectImpl));
+        s = string.concat(s, _row("RealmAssetsWhitelist (proxy)", d.assetsWhitelist));
+        s = string.concat(s, _row("RealmAssetsWhitelist (impl)", d.assetsWhitelistImpl));
+        s = string.concat(s, _row("RealmDividendLogicUniV4", d.dividendLogicV4));
+        s = string.concat(s, _row("RealmEarningsLogicUniV4", d.earningsLogicV4));
         s = string.concat(s, _row("SwapLpFeeRouter (proxy)", d.lpFeeRouter));
         s = string.concat(s, _row("SwapLpFeeRouter (impl)", d.lpFeeRouterImpl));
         s = string.concat(s, _row("RealmTreasuryRouter (proxy)", d.treasuryRouter));
@@ -269,15 +238,15 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmVoting (proxy)", d.voting));
         s = string.concat(s, _row("RealmVoting (impl)", d.votingImpl));
         s = string.concat(s, _row("RealmQuoter", d.quoter));
+        s = string.concat(s, _row("RealmKeeperLens", d.keeperLens));
         s = string.concat(s, _row("RealmKeepersRegistry", d.keepersRegistry));
         s = string.concat(s, _row("RealmDividendSwapRegistry (proxy)", d.dividendSwapRegistry));
+        s = string.concat(s, _row("RealmDividendSwapRegistry (impl)", d.dividendSwapRegistryImpl));
         s = string.concat(s, _row("RealmToken (impl)", d.tokenImpl));
         s = string.concat(s, _row("RealmTaxableTokenUniV4 (impl)", d.taxableTokenImpl));
         s = string.concat(s, _row("RealmTaxableTokenUniV2 (impl)", d.taxableTokenV2Impl));
         s = string.concat(s, _row("RealmFactoryUniV2Unified (proxy)", d.factoryUniV2Unified));
         s = string.concat(s, _row("RealmFactoryUniV2Unified (impl)", d.factoryUniV2UnifiedImpl));
-        s = string.concat(s, _row("RealmFactoryUniV4Unified (proxy)", d.factoryUniV4Unified));
-        s = string.concat(s, _row("RealmFactoryUniV4Unified (impl)", d.factoryUniV4UnifiedImpl));
         s = string.concat(s, _row("RealmCreatorVaultFactory (proxy)", d.creatorVaultFactory));
         s = string.concat(s, _row("RealmCreatorVaultFactory (impl)", d.creatorVaultFactoryImpl));
         s = string.concat(s, _row("RealmCreatorVault (impl)", d.creatorVaultImpl));
@@ -287,8 +256,6 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("Creator-vault curve 20%", d.vaultCurves[3]));
         s = string.concat(s, _row("Creator-vault curve 25%", d.vaultCurves[4]));
         s = string.concat(s, _row("Creator-vault curve 30%", d.vaultCurves[5]));
-        s = string.concat(s, _row("RealmGraduatorUniV4 THIN", d.graduatorThin));
-        s = string.concat(s, _row("RealmGraduatorUniV4 THICK", d.graduatorThick));
         s = string.concat(s, _row("THIN-tier curve base", d.thinCurveBase));
         s = string.concat(s, _row("THIN-tier curve 5%", d.thinVaultCurves[0]));
         s = string.concat(s, _row("THIN-tier curve 10%", d.thinVaultCurves[1]));
@@ -326,7 +293,7 @@ contract ExportDeployments is Script {
     // ---------------------------------------------------------------- Helpers
 
     /// @dev Inner column widths (content + padding, excluding the surrounding `| ` and ` |`).
-    ///      Longest name today is `RealmGraduatorUniswapV4 (0.5% hook)` = 34 chars, so 44 leaves
+    ///      Longest name today is `RealmCreatorVaultFactory (proxy)` = 32 chars, so 44 leaves
     ///      ample buffer. Backticked addresses are exactly 44 chars
     ///      (`0x` + 40 hex + 2 backticks), so the same width fits the address column too.
     uint256 private constant COL1_WIDTH = 44;

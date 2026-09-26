@@ -7,18 +7,12 @@ import {UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
 import {GraduationFeeConstants} from "src/libraries/GraduationFeeConstants.sol";
 
 /// @title RealmGraduatorUniswapV2
-/// @notice ETH-family (native = ETH, WETH-quoted) Uniswap V2 graduator. Shared logic in the base;
+/// @notice Uniswap V2 graduator (native = ETH, WETH-quoted). Shared logic in the base;
 ///         this fills the venue hooks with the WETH `addLiquidityETH` path and the ETH fee amounts.
-/// @dev The ARC (native = USDC) counterpart is the separate `RealmGraduatorUniswapV2Arc` — the venues
-///      differ behaviorally, so they are distinct deployable contracts, not one import-swapped file.
 contract RealmGraduatorUniswapV2 is RealmGraduatorUniswapV2Base {
     constructor(address _uniswapRouter, address _launchpad, bytes32 _pairInitCodeHash)
         RealmGraduatorUniswapV2Base(_uniswapRouter, _launchpad, _pairInitCodeHash)
     {}
-
-    function _assertDeployableOn(uint256 chainId) internal pure override {
-        GraduationFeeConstants.assertDeployableOn(chainId);
-    }
 
     function _graduationFee() internal pure override returns (uint256) {
         return GraduationFeeConstants.GRADUATION_FEE;

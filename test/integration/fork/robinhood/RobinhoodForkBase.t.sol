@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {DeploymentAddressesRobinhoodMainnet as Robinhood} from "src/config/DeploymentAddresses.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
@@ -86,7 +85,7 @@ abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "xStock Dividends",
             symbol: "XDIV",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -107,27 +106,18 @@ abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
                 dividendRoutes: routes
             })
         });
-        vm.prank(creator);
-        token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
     }
 
-    /// @dev Created, bought into on the launchpad and graduated onto Robinhood's V4, with `buyer`
-    ///      holding the float. Graduation activates every dividend leg.
+    /// @dev Direct-launched onto Robinhood's V4 and bought into, with `buyer` holding the float.
+    ///      Launching (graduation at creation) activates every dividend leg.
     function _graduatedXStockToken(address[] memory assets, uint16[] memory weights)
         internal
         returns (RealmTaxableTokenUniV4 token)
     {
         address addr = _createXStockToken(assets, weights);
         testToken = addr;
-        _launchpadBuy(addr, 2 ether);
+        _poolBuy(addr, 2 ether);
         _graduateToken();
         return RealmTaxableTokenUniV4(payable(addr));
     }

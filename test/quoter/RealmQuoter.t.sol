@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {RealmQuoter} from "src/RealmQuoter.sol";
 import {IRealmQuoter2} from "src/interfaces/IRealmQuoter2.sol";
 import {LimitReason} from "src/interfaces/IRealmQuoter.sol";
@@ -18,7 +18,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 ///         If a quote is wrong (or trips a cap), one of those assertions / the launchpad's
 ///         slippage check fails — guaranteeing the quoter's outputs are *executable* and
 ///         *accurate*, not merely non-reverting.
-contract RealmQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
+contract RealmQuoterTest is LaunchpadBaseTestsWithUniv2Graduator {
     RealmQuoter internal quoter;
 
     address internal sniperToken;
@@ -43,27 +43,25 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
         quoter = new RealmQuoter(address(launchpad));
 
         vm.prank(creator);
-        sniperToken = factorySniper.createToken(
-            "SNIPER",
-            "SNIPER",
-            _nextValidSalt(address(factorySniper), address(realmTokenSniper)),
-            _fs(creator),
+        sniperToken = factoryV2.createToken(
+            _setupTiered(
+                "SNIPER", "SNIPER", _nextValidSalt(address(factoryV2), address(realmTokenSniper)), _fs(creator)
+            ),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _sniperCfg()
+            _sniperCfg(),
+            _noVaults(),
+            address(0)
         );
 
         vm.prank(creator);
-        baseToken = factoryV4.createToken(
-            "BASE",
-            "BASE",
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(creator),
+        baseToken = factoryV2.createToken(
+            _setupTiered("BASE", "BASE", _nextValidSalt(address(factoryV2), address(realmToken)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
     }
 
@@ -122,15 +120,13 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv4Graduator {
 
     function test_consistency_buyExactEth_NONE_whitelistedBuyer() public {
         vm.prank(creator);
-        address wlToken = factorySniper.createToken(
-            "WL",
-            "WL",
-            _nextValidSalt(address(factorySniper), address(realmTokenSniper)),
-            _fs(creator),
+        address wlToken = factoryV2.createToken(
+            _setupTiered("WL", "WL", _nextValidSalt(address(factoryV2), address(realmTokenSniper)), _fs(creator)),
+            _noAlloc(_emptyTaxCfg()),
             _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _sniperCfgWithWhitelist(buyer)
+            _sniperCfgWithWhitelist(buyer),
+            _noVaults(),
+            address(0)
         );
         _quoteAndBuyExactEth(wlToken, buyer, 0.5 ether, LimitReason.NONE);
     }

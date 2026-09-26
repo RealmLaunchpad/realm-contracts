@@ -28,6 +28,24 @@
   },
   {
     "type": "function",
+    "name": "accrueFees",
+    "inputs": [
+      {
+        "name": "asset",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "allowance",
     "inputs": [
       {
@@ -474,9 +492,24 @@
         "internalType": "uint16"
       },
       {
-        "name": "dividendToken",
-        "type": "address",
-        "internalType": "address"
+        "name": "dividendTokens",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "dividendWeightsBps",
+        "type": "uint16[]",
+        "internalType": "uint16[]"
+      },
+      {
+        "name": "dividendRoutes",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
+      },
+      {
+        "name": "quoteRoutes",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
       }
     ],
     "outputs": [],
@@ -598,6 +631,38 @@
   },
   {
     "type": "function",
+    "name": "quoteCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quotes",
+    "inputs": [
+      {
+        "name": "index",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "registerFees",
     "inputs": [
       {
@@ -621,6 +686,19 @@
             "internalType": "bool"
           }
         ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "registerQuotes",
+    "inputs": [
+      {
+        "name": "extraQuotes",
+        "type": "address[]",
+        "internalType": "address[]"
       }
     ],
     "outputs": [],
@@ -814,6 +892,19 @@
         "type": "address",
         "indexed": false,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "QuotesRegistered",
+    "inputs": [
+      {
+        "name": "quotes",
+        "type": "address[]",
+        "indexed": false,
+        "internalType": "address[]"
       }
     ],
     "anonymous": false
