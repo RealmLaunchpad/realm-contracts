@@ -65,12 +65,10 @@
 
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| Realm Deployer                               | `0x81f7D06a88223f5a2850411E72256AacC9E27035` |
 | Realm Treasury                               | `0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B` |
 | Team Treasury (2/3 leg)                      | _(not deployed)_                             |
 | Vote Buyback Wallet (1/3 leg)                | _(not deployed)_                             |
 | Legacy Treasury (pre-router)                 | _(not deployed)_                             |
-| Realm Token Deployer                         | _(not deployed)_                             |
 | Realm Keeper                                 | `0xE092CB5868e1Ca091Ea975069bf2Afc9CDD1732C` |
 
 ## Integrations
