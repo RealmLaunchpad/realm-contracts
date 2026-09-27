@@ -21,7 +21,7 @@
 | RealmDividendLogicUniV4                      | _(not deployed)_                             |
 | RealmEarningsLogicUniV4                      | _(not deployed)_                             |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
-| SwapLpFeeRouter (impl)                       | `0x93C33E33ECA0Dd2923D26B76D58Ea33BAFb296EE` |
+| SwapLpFeeRouter (impl)                       | `0xAc2444639cEc9b5ED31937982F34f62280F9B273` |
 | RealmTreasuryRouter (proxy)                  | _(not deployed)_                             |
 | RealmTreasuryRouter (impl)                   | _(not deployed)_                             |
 | REALM token                                  | _(not deployed)_                             |
