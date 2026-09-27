@@ -51,7 +51,7 @@ library DeploymentsRobinhoodMainnet {
     address public constant ASSETS_WHITELIST = 0x540d02FFD93D22d33Da196b426A465DCdE6BfAa2;
 
     /// @notice Implementation behind `ASSETS_WHITELIST`. Tracked for verification and audit trails only.
-    address public constant ASSETS_WHITELIST_IMPL = 0x29470284A73077a1039f4FeC3534a3a588D2fd12;
+    address public constant ASSETS_WHITELIST_IMPL = 0x0AE35e0474C289c45d135772c326f161Bfb20eaf;
 
     /// @notice `RealmDividendLogicUniV4`: the LIVE V4 token impl's dividend extension, reached only by
     ///         `delegatecall`. Removed from the source (folded into the token); kept as a deploy record.

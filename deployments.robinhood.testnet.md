@@ -17,7 +17,7 @@
 | RealmFactoryUniV4Direct (proxy)              | `0x3307857e113E9fF6D53Cf5478F9320407232574E` |
 | RealmFactoryUniV4Direct (impl)               | `0xCc19CEf72D915fe6A340486DF48eE990d0A226fc` |
 | RealmAssetsWhitelist (proxy)                 | `0x0f3629Bd715C17373d7E401eB3f0ed94B46991d5` |
-| RealmAssetsWhitelist (impl)                  | `0x6FAdbD11CF2dcD46305dC195A12cdF671ba96BE3` |
+| RealmAssetsWhitelist (impl)                  | `0x8d60F713129887Ab9a8fBddcA8bbc58B74e9F1E3` |
 | RealmDividendLogicUniV4                      | `0x6E45BfD35f4681b709079Dd886b3437fAd5996ff` |
 | RealmEarningsLogicUniV4                      | `0x1BC0878C4225DDB72075b4683cE28497cc703B6f` |
 | SwapLpFeeRouter (proxy)                      | `0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0` |
