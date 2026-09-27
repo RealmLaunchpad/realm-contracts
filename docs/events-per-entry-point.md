@@ -674,13 +674,16 @@ attributable to any token. Delisting refuses new launches only; live pools are u
 deployment emits the proxy's `Upgraded`, `OwnershipTransferred` and `Initialized`, and every owner-only
 upgrade another `Upgraded`.
 
-- **`ApproverSet`** (`account` indexed, `allowed`) — owner-only; manages who may emit the one below. The
+- **`ApproverSet`** (`account` indexed, `allowed`) — owner-only; manages who may list (the one below). The
   owner cannot whitelist itself.
 - **`WhitelistUpdated`** (`asset` indexed, `unitsPerNativeX18`, `source`) — approver-only, from
   `setWhitelisted(asset, source)`. `source` is `(venue, pool, key)`: venue `V2`/`V3` with the pair/pool
   address in `pool`, or `V4` with the full `PoolKey` in `key`, against native (WETH counts as native) or
   against an asset itself listed against native. `asset` is listed or repriced with the rate snapshotted
   from that pool's spot price, or delisted by venue `NONE`, emitting `unitsPerNativeX18 == 0`.
+  Also emitted, keeper-only, by `refreshRates(assets)`: once per listed asset in the array, in array
+  order, with its re-snapshotted rate and its UNCHANGED stored `source`; unlisted assets are skipped
+  silently.
 
 ### `RealmDividendSwapRegistry` (one per chain)
 

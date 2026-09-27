@@ -43,6 +43,8 @@ contract UpgradeAssetsWhitelist is Script {
         vm.startBroadcast();
         address newImpl =
             address(new RealmAssetsWhitelist(infra.univ4PoolManager, wrappedNative, univ2Factory, univ3Factory));
+        // `refreshRates` fails closed without it; a wrong `chain-*` retarget bakes another chain's registry.
+        require(RealmAssetsWhitelist(newImpl).REALM_KEEPERS_REGISTRY().code.length != 0, "keepers registry has no code");
         UUPSUpgradeable(proxy).upgradeToAndCall(newImpl, "");
         vm.stopBroadcast();
 

@@ -463,6 +463,21 @@ whitelist-assets-rh-testnet:
         --gas-estimate-multiplier 300
     forge script WhitelistRobinhoodAssets --rpc-url rh-testnet --sig 'verify()'
 
+# Lists the manifest's REALM_TOKEN as a direct-venue quote, priced from its native V4 pool. ONCE per chain,
+# right after REALM graduates; separate from the xStock/USDG loop above, which never touches it. Keepers
+# keep its rate fresh afterwards (`RealmAssetsWhitelist.refreshRates`). Signer must be an approver.
+whitelist-realm-rh:
+    just chain-rh
+    forge script WhitelistRealmToken --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+    forge script WhitelistRealmToken --rpc-url rh-mainnet --sig 'verify()'
+
+whitelist-realm-rh-testnet:
+    just chain-rh-testnet
+    forge script WhitelistRealmToken --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+    forge script WhitelistRealmToken --rpc-url rh-testnet --sig 'verify()'
+
 # Buys a GRADUATED Realm token with native ETH through the universal router, on Uniswap V4.
 # `amount` is anything cast parses (0.01ether, 1000000gwei, raw wei); `net` is mainnet|testnet.
 # Route: the (ETH, token) pool when it is initialized, else ETH -> quote -> token through the token's

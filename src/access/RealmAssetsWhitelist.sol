@@ -15,6 +15,7 @@ import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {FullMath} from "lib/v4-core/src/libraries/FullMath.sol";
 import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @dev The slice of Uniswap V3 this contract reads.
 interface IUniswapV3PoolState {
@@ -49,16 +50,16 @@ interface IUniswapV3FactoryPools {
 ///
 /// @dev THE RATE IS A SNAPSHOT, deliberately. A live read at the consumer would let anyone push the pool
 ///      and unwind it around their own call for the price of two swap fees. Approvers refresh it by
-///      listing the asset again; on a chain with a public mempool, through private orderflow, since a
-///      sandwiched listing would snapshot a pushed price. Re-listing a reference does not reprice the
-///      assets listed against it. `liveUnitsPerNativeX18` re-reads the same sources on demand, for a
+///      listing the asset again, and keepers by `refreshRates` from the stored source; on a chain with a
+///      public mempool, through private orderflow, since a sandwiched refresh would snapshot a pushed
+///      price. Re-listing a reference does not reprice the assets listed against it. `liveUnitsPerNativeX18` re-reads the same sources on demand, for a
 ///      consumer that accepts that risk (the direct factory's launch price, bounded by the snapshot).
 ///
 /// @dev UPGRADEABLE (UUPS, owner-authorised) because its pricing rules are expected to grow, and the
 ///      direct factory bakes this address in: an upgrade keeps every listing and the factory untouched.
 ///      The Uniswap addresses are implementation immutables, set per chain by the deploy script; a zero
 ///      factory means that venue does not exist on the chain and its listings are refused.
-contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
+contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable, KeeperGated {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -145,6 +146,24 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
         referenceOf[asset] = ref;
         _priceSources[asset] = source;
         emit WhitelistUpdated(asset, rate, source);
+    }
+
+    /// @notice Re-snapshot each listed asset's rate from its STORED source, so launches keep following a
+    ///         quote whose price has moved past the direct factory's bounds. Keepers only: a public
+    ///         refresh would let anyone push the pool, snapshot it and launch in one transaction.
+    /// @dev Cannot change a source or list anything; unlisted assets are skipped. Reverts if any source
+    ///      no longer prices. Pass references before the assets priced against them: each asset reads its
+    ///      reference's snapshot.
+    function refreshRates(address[] calldata assets) external {
+        _requireKeeper();
+        for (uint256 i; i < assets.length; ++i) {
+            address asset = assets[i];
+            if (unitsPerNativeX18[asset] == 0) continue;
+            PriceSource memory source = _priceSources[asset];
+            (uint256 rate,) = _rateFrom(asset, source, false);
+            unitsPerNativeX18[asset] = rate;
+            emit WhitelistUpdated(asset, rate, source);
+        }
     }
 
     /// @notice The pool `asset` was priced from, for integrators pricing it live.

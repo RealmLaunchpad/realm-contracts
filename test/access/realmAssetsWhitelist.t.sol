@@ -11,8 +11,12 @@ import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {PoolModifyLiquidityTest} from "lib/v4-core/src/test/PoolModifyLiquidityTest.sol";
+import {PoolSwapTest} from "lib/v4-core/src/test/PoolSwapTest.sol";
+import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
+import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 import {DeploymentAddressesRobinhoodMainnet as Mainnet} from "src/config/DeploymentAddresses.sol";
 
 contract Coin is ERC20 {
@@ -61,11 +65,13 @@ contract RealmAssetsWhitelistTest is Test {
     address internal owner = makeAddr("owner");
     address internal approver = makeAddr("approver");
     address internal stranger = makeAddr("stranger");
+    address internal keeper = makeAddr("keeper");
 
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
         whitelist = _deploy(Mainnet.UNIV2_FACTORY, Mainnet.UNIV3_FACTORY);
         lp = new PoolModifyLiquidityTest(manager);
+        installKeepersRegistry(owner, keeper);
     }
 
     /// @dev Refunds of the native `_pool` overpays.
@@ -327,5 +333,59 @@ contract RealmAssetsWhitelistTest is Test {
 
         _list(USDG, _usdgV4());
         assertGt(whitelist.unitsPerNativeX18(USDG), 0, "relisted");
+    }
+
+    /////////////////////////// keeper refresh ///////////////////////////
+
+    function _refresh(address caller, address asset) internal {
+        address[] memory assets = new address[](1);
+        assets[0] = asset;
+        vm.prank(caller);
+        whitelist.refreshRates(assets);
+    }
+
+    /// @dev The pool moves after listing; a keeper re-snapshots it to the live rate, same source.
+    function test_aKeeperRefreshesTheRateFromTheStoredSource() public {
+        address coin = address(new Coin(18));
+        RealmAssetsWhitelist.PriceSource memory source = _pool(coin, address(0), true);
+        _list(coin, source);
+        assertEq(whitelist.unitsPerNativeX18(coin), 1e18);
+
+        PoolSwapTest swapper = new PoolSwapTest(manager);
+        vm.deal(address(this), 0.01 ether);
+        swapper.swap{value: 0.01 ether}(
+            source.key,
+            IPoolManager.SwapParams({
+                zeroForOne: true, amountSpecified: -0.01 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
+        uint256 live = whitelist.liveUnitsPerNativeX18(coin);
+        assertLt(live, 1e18, "native bought coin: fewer coins per native");
+
+        vm.expectEmit(address(whitelist));
+        emit RealmAssetsWhitelist.WhitelistUpdated(coin, live, source);
+        _refresh(keeper, coin);
+        assertEq(whitelist.unitsPerNativeX18(coin), live, "snapshot follows the pool");
+        assertEq(Currency.unwrap(whitelist.priceSource(coin).key.currency1), coin, "source unchanged");
+    }
+
+    function test_onlyKeepersRefresh() public {
+        _list(USDG, _usdgV4());
+        for (uint256 i; i < 3; ++i) {
+            address caller = i == 0 ? approver : i == 1 ? owner : stranger;
+            address[] memory assets = new address[](1);
+            assets[0] = USDG;
+            vm.prank(caller);
+            vm.expectRevert(KeeperGated.NotAKeeper.selector);
+            whitelist.refreshRates(assets);
+        }
+    }
+
+    /// @dev A refresh cannot list: unlisted assets are skipped.
+    function test_refreshSkipsUnlistedAssets() public {
+        _refresh(keeper, USDG);
+        assertEq(whitelist.unitsPerNativeX18(USDG), 0, "still unlisted");
     }
 }
