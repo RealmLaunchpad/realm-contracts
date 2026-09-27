@@ -463,6 +463,59 @@ whitelist-assets-rh-testnet:
         --gas-estimate-multiplier 300
     forge script WhitelistRobinhoodAssets --rpc-url rh-testnet --sig 'verify()'
 
+# Buys a GRADUATED Realm token with native ETH through the universal router, on Uniswap V4.
+# `amount` is anything cast parses (0.01ether, 1000000gwei, raw wei); `net` is mainnet|testnet.
+# Route: the (ETH, token) pool when it is initialized, else ETH -> quote -> token through the token's
+# first ERC20 quote, whose ETH pool comes from the manifest's ASSETS_WHITELIST price source.
+# Token pool keys follow UniswapV4PoolConstants.realmPoolKey (fee 0, spacing 200, graduator.hookFor).
+# ponytail: no slippage floor (minOut 0); Robinhood has no public mempool to sandwich it.
+# e.g. just buy 0xToken 0.01ether livo.dev testnet
+buy token amount account net:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case '{{net}}' in
+        mainnet) RPC=rh-mainnet; ROUTER=0x8876789976dEcBfCbBbe364623C63652db8C0904; PM=0x8366a39CC670B4001A1121B8F6A443A643e40951 ;;
+        testnet) RPC=rh-testnet; ROUTER=0x79E3a3473ad2d9285A7C87ACfb4A5C871396240d; PM=0x552815eF68E6eb418A3d65D0AA1043d93204F612 ;;
+        *) echo "net must be mainnet or testnet"; exit 1 ;;
+    esac
+    ETH=0x0000000000000000000000000000000000000000
+    KEY_T='(address,address,uint24,int24,address)'
+    TOKEN=$(cast to-check-sum-address '{{token}}')
+    WEI=$(cast to-unit '{{amount}}' wei)
+    GRAD=$(cast call --rpc-url $RPC $TOKEN 'graduator()(address)')
+    # exact-in single swap; amountIn 0 = OPEN_DELTA, i.e. spend whatever the previous hop credited
+    swap() { cast abi-encode "f(($KEY_T,bool,uint128,uint128,uint256,bytes))" "($1,$2,$3,0,0,0x)"; }
+    HOOK=$(cast call --rpc-url $RPC $GRAD 'hookFor(address)(address)' $ETH)
+    NATIVE_KEY="($ETH,$TOKEN,0,200,$HOOK)"
+    # pool initialized <=> slot0 (PoolManager `pools` mapping, slot 6) is nonzero
+    PID=$(cast keccak $(cast abi-encode 'f(address,address,uint24,int24,address)' $ETH $TOKEN 0 200 $HOOK))
+    SLOT0=$(cast call --rpc-url $RPC $PM 'extsload(bytes32)(bytes32)' $(cast keccak $(cast concat-hex $PID $(cast to-uint256 6))))
+    if [ $((16#${SLOT0:2:16} | 16#${SLOT0:18:16} | 16#${SLOT0:34:16} | 16#${SLOT0:50:16})) -ne 0 ]; then
+        echo "route: ETH -> token (hook $HOOK)"
+        SWAPS=$(swap "$NATIVE_KEY" true $WEI); ACTIONS=0x06
+    else
+        [ "$(cast call --rpc-url $RPC $TOKEN 'quoteCount()(uint8)')" -ge 2 ] || { echo "no initialized pool for $TOKEN"; exit 1; }
+        QUOTE=$(cast call --rpc-url $RPC $TOKEN 'quotes(uint256)(address)' 1)
+        WL=$(grep -oP 'ASSETS_WHITELIST = \K0x[0-9a-fA-F]{40}' src/config/manifest.robinhood.{{net}}.sol)
+        [ "$WL" != "$ETH" ] || { echo "ASSETS_WHITELIST unset in manifest.robinhood.{{net}}.sol"; exit 1; }
+        SRC=$(cast call --rpc-url $RPC $WL "priceSource(address)((uint8,address,$KEY_T))" $QUOTE)
+        read -r VENUE C0 C1 FEE TS QHOOK < <(echo "$SRC" | sed 's/ \[[^]]*\]//g' | tr -d '(),' | awk '{print $1, $3, $4, $5, $6, $7}')
+        [ "$VENUE" = 3 ] && [ "$C0" = "$ETH" ] || { echo "quote $QUOTE has no V4 ETH pool in the whitelist: $SRC"; exit 1; }
+        QTHOOK=$(cast call --rpc-url $RPC $GRAD 'hookFor(address)(address)' $QUOTE)
+        # realmPoolKey sorts the pair; quote -> token is zeroForOne when the quote sorts first
+        if [[ "${QUOTE,,}" < "${TOKEN,,}" ]]; then TKEY="($QUOTE,$TOKEN,0,200,$QTHOOK)"; Z=true; else TKEY="($TOKEN,$QUOTE,0,200,$QTHOOK)"; Z=false; fi
+        echo "route: ETH -> $QUOTE -> token"
+        SWAPS="$(swap "($C0,$C1,$FEE,$TS,$QHOOK)" true $WEI),$(swap "$TKEY" $Z 0)"; ACTIONS=0x0606
+    fi
+    SETTLE=$(cast abi-encode 'f(address,uint256)' $ETH $WEI)
+    TAKE=$(cast abi-encode 'f(address,uint256)' $TOKEN 0)
+    # actions: SWAP_EXACT_IN_SINGLE (x1-2), SETTLE_ALL, TAKE_ALL
+    INPUT=$(cast abi-encode 'f(bytes,bytes[])' ${ACTIONS}0c0f "[$SWAPS,$SETTLE,$TAKE]")
+    echo "buying $TOKEN with $WEI wei on {{net}}"
+    # command 0x10 = V4_SWAP
+    cast send --rpc-url $RPC --account '{{account}}' --value $WEI $ROUTER 'execute(bytes,bytes[],uint256)' \
+        0x10 "[$INPUT]" $(( $(date +%s) + 600 ))
+
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS
 # implementation — the 2nd-to-last on-chain `Upgraded` event, read from the node via `cast logs`
