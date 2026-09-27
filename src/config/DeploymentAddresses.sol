@@ -76,12 +76,12 @@ library DeploymentAddressesRobinhoodMainnet {
     /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
     ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
     ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
-    /// @dev THE ONE THAT MATTERS — dividends ship here. Deliberately over-provisioned: an Arbitrum L2
-    ///      conversion costs a tiny fraction of this even with the L1 data fee, so the fee survives an
-    ///      L1 fee spike, a stretch of conversions that revert on their floor, and a gas regime nobody
-    ///      forecast — the cost of being wrong the other way is every token's distributions stopping at
-    ///      once. It is ~2% of a threshold-sized conversion (0.1 ETH) and ~0.2% of a maximum one (1 ETH).
-    uint256 public constant KEEPER_FEE = 0.002 ether;
+    /// @dev THE ONE THAT MATTERS — dividends ship here. A conversion measured ~160k-330k gas on a mainnet
+    ///      fork; at 0.02 gwei (2026-09-27, L1 calldata price 0) that is <= ~0.0000066 ETH, so this covers
+    ///      the worst case ~15x — headroom for a gas spike, the L1 data fee returning and conversions that
+    ///      revert on their floor. It is ~0.1% of a threshold-sized conversion (0.1 ETH) and ~0.01% of a
+    ///      maximum one (1 ETH).
+    uint256 public constant KEEPER_FEE = 0.0001 ether;
 
     /// @notice The `RealmDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
