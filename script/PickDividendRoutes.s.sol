@@ -8,7 +8,7 @@ import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry
 import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
-/// @notice Picks the Uniswap V4 route that actually buys the most of each payout asset, out of the
+/// @notice Picks the Uniswap V4 or V3 route that actually buys the most of each payout asset, out of the
 ///         candidates `discover_xstock_routes.py` shortlisted, and writes them out in the wire format a
 ///         token creation takes. The output feeds the frontend's suggested-asset catalogue: a creator
 ///         who picks a listed asset ships its route with it and never has to search for pools.
@@ -45,6 +45,10 @@ contract PickDividendRoutes is Script {
     ///      absorb it, large enough that a pool holding dust fails rather than passes.
     uint256 internal constant PROBE_AMOUNT = 0.001 ether;
 
+    /// @dev Stands in as the token that registers and converts through each route. A fixed pranked
+    ///      address, not `address(this)`: forge refuses a script contract's own address.
+    address internal constant PROBER = address(uint160(uint256(keccak256("PickDividendRoutes.prober"))));
+
     string internal constant DEFAULT_ROUTES_JSON = "script/operations/dividend-routes/routes.robinhood.mainnet.json";
     string internal constant DEFAULT_ROUTES_OUT = "script/operations/dividend-routes/catalogue.robinhood.mainnet.json";
 
@@ -56,16 +60,21 @@ contract PickDividendRoutes is Script {
         // Pre-encoded `Hop[][]` rather than a JSON object per hop: `parseJson` decodes struct fields in
         // alphabetical order, which silently mismatches `Hop`'s declaration order.
         bytes[] memory encoded = vm.parseJsonBytesArray(json, ".candidates");
-        string[] memory symbols = vm.parseJsonStringArray(json, ".readable[*].symbol");
+        // Per asset, `abi.encode(bytes[])` of ready V3 routes. Absent in discovery output that predates V3.
+        bytes[] memory v3 = vm.keyExistsJson(json, ".v3Candidates")
+            ? vm.parseJsonBytesArray(json, ".v3Candidates")
+            : new bytes[](assets.length);
+        string[] memory symbols = vm.parseJsonStringArray(json, ".symbols");
         require(assets.length == encoded.length, "assets/candidates length mismatch");
         require(assets.length == symbols.length, "assets/symbols length mismatch");
+        require(assets.length == v3.length, "assets/v3Candidates length mismatch");
 
         console.log("=== Pick dividend routes ===");
         console.log("Chain ID: %d", block.chainid);
         console.log("Registry: %s", address(registry));
         console.log("Assets:   %d", assets.length);
 
-        bytes[] memory chosen = _probe(registry, assets, encoded);
+        bytes[] memory chosen = _probe(registry, assets, encoded, v3);
 
         string memory out;
         uint256 picked;
@@ -87,8 +96,12 @@ contract PickDividendRoutes is Script {
     ///      then rolls the whole thing back. Nothing here is broadcast; the return value is the wire
     ///      format of the route that bought the most of each asset, empty for an asset no candidate
     ///      could buy at all.
-    function _probe(RealmDividendSwapRegistry registry, address[] memory assets, bytes[] memory encoded)
-        internal
+    function _probe(
+        RealmDividendSwapRegistry registry,
+        address[] memory assets,
+        bytes[] memory encoded,
+        bytes[] memory v3
+    ) internal
         returns (bytes[] memory chosen)
     {
         chosen = new bytes[](assets.length);
@@ -105,6 +118,14 @@ contract PickDividendRoutes is Script {
                     chosen[i] = route;
                 }
             }
+            bytes[] memory v3Routes = v3[i].length == 0 ? new bytes[](0) : abi.decode(v3[i], (bytes[]));
+            for (uint256 j; j < v3Routes.length; ++j) {
+                uint256 amountOut = _bought(registry, assets[i], v3Routes[j]);
+                if (amountOut > best) {
+                    best = amountOut;
+                    chosen[i] = v3Routes[j];
+                }
+            }
             if (best == 0) console.log("  %s : no candidate route could buy it - skipped", assets[i]);
         }
 
@@ -115,7 +136,7 @@ contract PickDividendRoutes is Script {
     /// @dev Rolled back before returning, so every candidate for an asset is measured against the same
     ///      pool state — otherwise the first probe would move the price the second one is judged on. The
     ///      rollback is also what lets this script register the same (token, asset) pair repeatedly:
-    ///      `registerRoute` is write-once, and `address(this)` stands in as the token every time.
+    ///      `registerRoute` is write-once, and `PROBER` stands in as the token every time.
     /// @dev `minOut` of 1: the probe asks whether the pools exist and hold anything, and compares
     ///      candidates against each other. Pricing a real floor is the keeper's job, per conversion.
     function _bought(RealmDividendSwapRegistry registry, address asset, bytes memory route)
@@ -124,9 +145,10 @@ contract PickDividendRoutes is Script {
     {
         uint256 snapshot = vm.snapshotState();
 
+        vm.deal(PROBER, PROBE_AMOUNT);
+        vm.startPrank(PROBER);
         try registry.registerRoute(asset, route) {
-            vm.deal(address(this), PROBE_AMOUNT);
-            try registry.swapNativeToAsset{value: PROBE_AMOUNT}(asset, 1, address(this)) returns (uint256 bought) {
+            try registry.swapNativeToAsset{value: PROBE_AMOUNT}(asset, 1, PROBER) returns (uint256 bought) {
                 out = bought;
             } catch {
                 out = 0;
@@ -136,6 +158,7 @@ contract PickDividendRoutes is Script {
             // bought nothing, and the caller only compares magnitudes.
             out = 0;
         }
+        vm.stopPrank();
 
         vm.revertToState(snapshot);
     }

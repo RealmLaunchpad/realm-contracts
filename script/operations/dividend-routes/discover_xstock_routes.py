@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["requests", "eth-abi", "eth-utils", "eth-hash[pycryptodome]"]
 # ///
-"""Discover the Uniswap V4 route from native ETH to every Robinhood Chain stock token.
+"""Discover the Uniswap V4 and V3 routes from native ETH to every Robinhood Chain stock token.
 
 Robinhood Chain's ~190 xStocks have no Uniswap V2 pair at all: their liquidity lives in V4, most
 of it in a pool against native ETH and the rest against USDG. `RealmDividendSwapRegistry` cannot
@@ -18,6 +18,11 @@ pool's own currencies, so the number for an ETH-quoted pool and the number for a
 are not the same kind of thing, and a fat pool charging 5% still loses to a thin one charging
 0.05%. Choosing between shortlisted candidates is `PickDividendRoutes.s.sol`'s job: it buys the
 asset through each of them against forked state and keeps whichever actually delivers most.
+
+V3 is shortlisted too: some xStocks' only live ETH market is a Uniswap V3 WETH pool (SPCX, whose V4
+pools are drained). Those candidates are single-hop WETH -> stock, one per fee tier holding in-range
+liquidity, already in wire format under `v3Candidates`. The router executes V3 against the factory
+below, and the registry checks a V3 route for shape only, so the probe is what proves the pool is live.
 
 Output is a JSON file that forge script reads. Review it before broadcasting -- this is the one
 place a wrong answer silently sends a token's dividends through somebody else's pool.
@@ -44,6 +49,11 @@ ASSETS_API = "https://api.robinhood.com/rhj/assets"
 CHAIN_ID = 4663
 
 POOL_MANAGER = "0x8366a39CC670B4001A1121B8F6A443A643e40951"
+# The Uniswap V3 factory the Universal Router swaps against on this chain.
+V3_FACTORY = "0x1f7d7550B1b028f7571E69A784071F0205FD2EfA"
+V3_FEES = (100, 500, 3000, 10000)
+GET_POOL_SELECTOR = "0x1698ee82"  # getPool(address,address,uint24)
+LIQUIDITY_SELECTOR = "0x1a686502"  # liquidity()
 USDG = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
 WETH = "0x0bd7d308f8e1639fab988df18a8011f41eacad73"
 NATIVE = "0x" + "00" * 20
@@ -227,6 +237,42 @@ def as_hop(pool: dict, currency: str) -> dict:
     }
 
 
+def eth_calls(calls: list[tuple[str, str]]) -> list[str]:
+    """`eth_call` results for (to, data) pairs, batched like the V4 liquidity reads."""
+    out = []
+    for start in range(0, len(calls), LIQUIDITY_BATCH):
+        batch = [
+            {"jsonrpc": "2.0", "id": i, "method": "eth_call", "params": [{"to": to, "data": data}, "latest"]}
+            for i, (to, data) in enumerate(calls[start : start + LIQUIDITY_BATCH])
+        ]
+        answers = sorted(rpc_batch(batch), key=lambda a: a["id"])
+        out += [a.get("result") or "0x" for a in answers]
+        time.sleep(BATCH_PAUSE)
+    return out
+
+
+def v3_routes(tokens: list[str]) -> dict[str, list[dict]]:
+    """Per stock, its WETH V3 pools holding in-range liquidity, deepest first, capped like V4.
+
+    Liquidity is comparable here: every pool of one pair measures it in the same two tokens."""
+    pairs = [(t, fee) for t in tokens for fee in V3_FEES]
+    pools = eth_calls(
+        [(V3_FACTORY, GET_POOL_SELECTOR + abi_encode(["address", "address", "uint24"], [WETH, t, f]).hex()) for t, f in pairs]
+    )
+    live = [(t, f, "0x" + p[-40:]) for (t, f), p in zip(pairs, pools) if len(p) >= 66 and int(p, 16)]
+    liquidity = eth_calls([(pool, LIQUIDITY_SELECTOR) for _, _, pool in live])
+    found: dict[str, list[dict]] = {}
+    for (t, f, pool), liq in zip(live, liquidity):
+        if len(liq) > 2 and int(liq, 16) > 0:
+            found.setdefault(t, []).append({"fee": f, "pool": pool, "liquidity": int(liq, 16)})
+    return {t: sorted(v, key=lambda p: p["liquidity"], reverse=True)[:CANDIDATES_PER_PAIR] for t, v in found.items()}
+
+
+def v3_wire(token: str, fee: int) -> str:
+    """`DividendRouteLib` V3 route: 0x03, then the packed WETH | fee | token path."""
+    return "0x03" + WETH[2:] + f"{fee:06x}" + token[2:]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -280,18 +326,22 @@ def main() -> int:
     print(f"{len(pools)} candidate pools; reading liquidity…", file=sys.stderr)
     read_liquidity(pools)
 
+    print("collecting V3 pools…", file=sys.stderr)
+    v3 = v3_routes(sorted(stocks))
+
     # Every two-hop candidate shares this leg, so it is shortlisted once.
     usdg_legs = deepest(pools, NATIVE, USDG, CANDIDATES_PER_PAIR)
     if not usdg_legs:
         print("no native/USDG pool with liquidity — cannot build two-hop candidates", file=sys.stderr)
 
-    assets, candidates, readable, skipped = [], [], [], []
+    assets, candidates, v3_candidates, readable, skipped = [], [], [], [], []
     for symbol, token in tokens:
         routes = [[as_hop(p, token)] for p in deepest(pools, NATIVE, token, CANDIDATES_PER_PAIR)]
         for hop in deepest(pools, USDG, token, CANDIDATES_PER_PAIR):
             if usdg_legs:
                 routes.append([as_hop(usdg_legs[0], USDG), as_hop(hop, token)])
-        if not routes:
+        v3_pools = v3.get(token, [])
+        if not routes and not v3_pools:
             skipped.append(symbol)
             continue
 
@@ -303,16 +353,27 @@ def main() -> int:
                 [[[(h["currency"], h["fee"], h["tickSpacing"], h["hooks"]) for h in r] for r in routes]],
             ).hex()
         )
-        readable.append({"symbol": symbol, "asset": token, "candidates": routes})
+        v3_candidates.append(
+            "0x" + abi_encode(["bytes[]"], [[bytes.fromhex(v3_wire(token, p["fee"])[2:]) for p in v3_pools]]).hex()
+        )
+        readable.append({"symbol": symbol, "asset": token, "candidates": routes, "v3": v3_pools})
 
     args.out.write_text(
         json.dumps(
-            {"chainId": CHAIN_ID, "assets": assets, "candidates": candidates, "readable": readable},
+            {
+                "chainId": CHAIN_ID,
+                "assets": assets,
+                # Flat, for forge: `parseJson` refuses a `[*]` path that yields more than one value.
+                "symbols": [r["symbol"] for r in readable],
+                "candidates": candidates,
+                "v3Candidates": v3_candidates,
+                "readable": readable,
+            },
             indent=2,
         )
         + "\n"
     )
-    total = sum(len(r["candidates"]) for r in readable)
+    total = sum(len(r["candidates"]) + len(r["v3"]) for r in readable)
     print(f"wrote {len(assets)} assets / {total} candidate routes to {args.out}", file=sys.stderr)
     if skipped:
         print(f"no pool found for {len(skipped)}: {', '.join(skipped)}", file=sys.stderr)
