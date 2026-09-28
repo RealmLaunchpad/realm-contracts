@@ -152,8 +152,7 @@ interface IRealmFactory {
     error DividendAssetWithoutShare();
     /// @notice DEPRECATED and no longer thrown: the dividends module has shipped. Kept so the ABI is not
     ///         rewritten under integrators that already decode it. A misconfigured dividend allocation
-    ///         now reverts at creation from elsewhere: a payout asset whose route the registry refuses
-    ///         gives `RealmDividendSwapRegistry.RouteRejected(SwapRejection)`, and a malformed asset set
+    ///         now reverts at creation from elsewhere: a malformed asset set
     ///         (wrong lengths, a zero or non-summing weight, a duplicate) gives
     ///         `DividendDistribution.InvalidDividendAssetSet` or `SelfTokenDividendMustBeSole`. A
     ///         dividends share routed through an overload that names no payout asset still gives

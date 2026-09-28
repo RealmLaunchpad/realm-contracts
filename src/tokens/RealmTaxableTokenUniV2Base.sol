@@ -81,13 +81,6 @@ abstract contract RealmTaxableTokenUniV2Base is RealmTaxableToken {
     ///      must use this field and not `ethAmount`. The two are equal for a token with no allocation.
     event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount, uint256 ethToFund);
 
-    /// @dev On V2 a payout in the token ITSELF must be buffered in token space: `UniswapV2Pair.swap`
-    ///      reverts `INVALID_TO` when the recipient is one of the pair's own tokens, so there is no
-    ///      ETH -> self-token route to buy it back with.
-    function _isTokenSpaceDividendAsset(address asset) internal view virtual override returns (bool) {
-        return asset == address(this);
-    }
-
     /// @dev The share of total earnings the self-token dividend payout takes, in token space: all of
     ///      the dividends slice when the payout asset IS this token, none of it otherwise.
     /// @dev Gated on the warm `hasDividends` flag first, as `_sweepableAsset` below is: without dividends

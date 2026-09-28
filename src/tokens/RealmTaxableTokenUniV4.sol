@@ -8,7 +8,6 @@ import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {IRealmDividendSwapRegistry} from "src/interfaces/IRealmDividendSwapRegistry.sol";
-import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 // Self-aliased so the `chain-*` recipes can import-swap it for the target chain's pool constants.
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {IRealmUniV4LiquidityAdder, WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
@@ -230,54 +229,57 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     /// @notice `processDividends` for a buffer held in one of this token's QUOTES: converts what asset
     ///         `assetIndex` has accrued from earnings on `quote`'s pool into that asset, credits it to
     ///         the holders, and pushes `holders` their accruals. `quote == address(0)` is the shared
-    ///         native machine, exactly `processDividends(uint8,true,uint256,address[])`.
+    ///         native machine, exactly `processDividends(uint8,true,uint256,uint256,address[])`.
     /// @dev What differs from the native path, and why:
     ///      - Like the native path, no funding floor: the keeper pays the gas and decides when a buffer
-    ///        is worth converting, as it does for `processBurn(quote, …)`. This path never had one —
-    ///        `DIVIDEND_THRESHOLD` is native-denominated and means nothing in a currency the creator
-    ///        picked — and the native path has since dropped its own.
-    ///      - The per-call cap is `_maxSpend`'s FRACTION of the buffer, for the same units reason, and
-    ///        only on a leg that SWAPS. A payout that IS the quote has no swap: nothing to sandwich, the
+    ///        is worth converting, as it does for `processBurn(quote, …)`.
+    ///      - The per-call cap is `_maxSpend`'s FRACTION of the buffer (a native-denominated cap means
+    ///        nothing in a currency the creator picked), lowered further by `amount` if the keeper asks,
+    ///        and only on a leg that SWAPS. A payout that IS the quote has no swap: nothing to sandwich, the
     ///        whole buffer credits at once.
-    ///      - A leg that swaps is keeper-only, ALWAYS — the staleness hatch never opens it, because
-    ///        without a threshold there is nothing that evidences an absent keeper rather than a quiet
-    ///        token, and a zero-floor conversion handed to anyone is the sandwich the gate exists for.
-    ///        The passthrough keeps the hatch: it moves no money through a pool.
-    ///      - NO treasury sweep for a dead pool: a quote pool nobody can swap on strands that quote's
-    ///        buffer, as it strands `processBurn`'s. The registry legs pivot through native, whose
-    ///        liquidity the payout asset's own route already vouches for.
+    ///      - Keeper-gated like the native path (see `RealmKeepersRegistry` for the global switch).
+    ///      - A quote pool nobody can swap on strands that quote's buffer until the registry's route is
+    ///        fixed, as it strands `processBurn`'s.
     ///      - The once-per-block cooldown is the ASSET's, shared with the native leg and the other
     ///        quotes: one conversion of asset `i` per block, whichever buffer feeds it.
+    /// @param amount Buffer to convert, in `quote`'s units (native for `address(0)`), capped as above;
+    ///        0 means "up to the cap". Ignored by the passthrough.
     /// @param minOut Slippage floor in the PAYOUT asset's units, checked on the final amount however
     ///        many pools the conversion crosses. Ignored by the passthrough.
-    function processDividends(uint8 assetIndex, address quote, uint256 minOut, address[] calldata holders)
-        external
-        nonReentrant
-        nonReentrantDividends
-    {
+    function processDividends(
+        uint8 assetIndex,
+        address quote,
+        uint256 amount,
+        uint256 minOut,
+        address[] calldata holders
+    ) external nonReentrant nonReentrantDividends {
         if (quote == address(0)) {
-            _processDividends(assetIndex, true, minOut, holders);
+            _processDividends(assetIndex, true, amount, minOut, holders);
             return;
         }
-        _processQuoteDividends(assetIndex, quote, minOut, holders);
+        _processQuoteDividends(assetIndex, quote, amount, minOut, holders);
     }
 
     /// @dev The quote path's body. Mirrors `_processDividends`'s shape — gate, fund once per block,
     ///      credit, push, then the error that tells a keeper what to do next — over `quoteBuffers`.
-    function _processQuoteDividends(uint8 assetIndex, address quote, uint256 minOut, address[] calldata holders)
-        private
-    {
+    function _processQuoteDividends(
+        uint8 assetIndex,
+        address quote,
+        uint256 amount,
+        uint256 minOut,
+        address[] calldata holders
+    ) private {
         require(assetIndex < _dividendAssetCount(), DividendAssetOutOfRange());
         DivAsset storage asset = dividendAssets[assetIndex];
         require(asset.lastDistribution != 0, DividendsNotActive());
         address payout = asset.token;
-        if (payout != quote || !dividendsStale(assetIndex)) _requireKeeper();
+        _requireKeeper();
 
         bool cooldown = block.number <= asset.lastProcessBlock;
         uint256 spend;
         uint256 spent;
         uint256 out;
-        if (!cooldown) (spend, spent, out) = _fundFromQuote(assetIndex, quote, payout, minOut);
+        if (!cooldown) (spend, spent, out) = _fundFromQuote(assetIndex, quote, payout, amount, minOut);
         if (out != 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
             asset.lastProcessBlock = uint40(block.number);
@@ -304,7 +306,7 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     /// @return spend what was attempted, 0 when nothing was buffered.
     /// @return spent what the conversion consumed; the rest is back on the buffer.
     /// @return out payout-asset units actually acquired, 0 when the conversion did not happen.
-    function _fundFromQuote(uint256 i, address quote, address payout, uint256 minOut)
+    function _fundFromQuote(uint256 i, address quote, address payout, uint256 amount, uint256 minOut)
         private
         returns (uint256 spend, uint256 spent, uint256 out)
     {
@@ -312,6 +314,7 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         uint256 buffered = pending[i];
         if (buffered == 0) return (0, 0, 0);
         spend = payout == quote ? buffered : _maxSpend(quote, buffered);
+        if (payout != quote && amount != 0 && amount < spend) spend = amount;
         // forge-lint: disable-next-line(unsafe-typecast)
         pending[i] = uint128(buffered - spend);
         (out, spent) = _acquireFromQuote(quote, payout, spend, minOut);
@@ -376,63 +379,6 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     {
         if (asset != address(this)) return super._acquireDividendAsset(asset, nativeIn, minOut);
         return _acquireFromQuote(address(0), address(this), nativeIn, minOut);
-    }
-
-    //////////////////////// CREATION-TIME CONFIGURATION //////////////////////
-
-    /// @notice The multi-asset overload plus the routes of this token's ERC20 quotes. See
-    ///         `RealmTaxableToken.initializeEarningsAllocation(uint16,uint16,uint16,address[],uint16[],bytes[],bytes[])`.
-    function initializeEarningsAllocation(
-        uint16 _burnBps,
-        uint16 _dividendsBps,
-        uint16 _liquidityBps,
-        address[] calldata _dividendTokens,
-        uint16[] calldata _dividendWeightsBps,
-        bytes[] calldata _dividendRoutes,
-        bytes[] calldata _quoteRoutes
-    ) external override {
-        require(msg.sender == tokenFactory, Unauthorized());
-        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
-        if (_dividendsBps != 0) {
-            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
-            hasDividends = true;
-            _registerQuoteRoutes(_quoteRoutes);
-        }
-    }
-
-    /// @dev Registers the route of every ERC20 quote a dividends leg has to be bought OUT of — one where
-    ///      some payout asset is neither that quote itself nor this token. Only those: a route nobody
-    ///      needs is a pool this token commits to for life for nothing. A quote that is itself a payout
-    ///      asset already has its route from `_initializeDividends` (the registry holds ONE route per
-    ///      asset, walked either way), so it is checked here but not registered again.
-    /// @dev The registry can only walk a V4 route backwards, so anything else is refused HERE, at
-    ///      creation, rather than failing every conversion out of that quote for the token's life.
-    ///      `_quoteRoutes` is positional to `quotes` from index 1; a missing entry is empty, which the
-    ///      registry reads as the permissionless V2 pair — and which therefore fails this venue check.
-    ///      A non-empty entry for a quote that needs no route, or that is itself a payout asset, reverts
-    ///      rather than being silently dropped.
-    function _registerQuoteRoutes(bytes[] calldata routes) private {
-        uint256 nq = quoteCount;
-        uint256 na = dividendAssetCount;
-        IRealmDividendSwapRegistry registry = IRealmDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
-        for (uint256 q = 1; q < nq; ++q) {
-            address quote = quotes[q];
-            bool needed;
-            bool isPayout;
-            for (uint256 i; i < na; ++i) {
-                address a = dividendAssets[i].token;
-                if (a == quote) isPayout = true;
-                else if (a != address(this)) needed = true;
-            }
-            // A route this token would not register is one the creator believes is in use; refuse it.
-            bool supplied = q - 1 < routes.length && routes[q - 1].length != 0;
-            require(!supplied || (needed && !isPayout), QuoteRouteUnsupported());
-            if (!needed) continue;
-            bytes memory route =
-                isPayout ? registry.routeOf(address(this), quote) : (supplied ? routes[q - 1] : bytes(""));
-            require(DividendRouteLib.venue(route) == DividendRouteLib.VENUE_V4, QuoteRouteUnsupported());
-            if (!isPayout) registry.registerRoute(quote, route);
-        }
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////

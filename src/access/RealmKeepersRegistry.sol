@@ -32,6 +32,11 @@ import {IRealmKeepersRegistry} from "src/interfaces/IRealmKeepersRegistry.sol";
 ///      the worst a rogue keeper can do is exactly what a permissionless caller could do before this
 ///      contract existed, which is why the hot tier is acceptable.
 ///
+/// @dev THE GLOBAL SWITCH. `permissionless` makes `isKeeper` answer true for everyone, on every token at
+///      once: the answer to a keeper set that is retired or broken, so no buffer is ever stranded. It
+///      re-opens exactly the atomic sandwich described above, which is why it is an admin decision and
+///      not a timer.
+///
 /// @dev NOT UPGRADEABLE, and not behind a proxy, unlike `RealmDividendSwapRegistry`. That one is a proxy
 ///      because its ELIGIBILITY RULES have to be fixable for tokens that are already live. This contract
 ///      has no rules — it is a mapping and two setters, and there is nothing in it that could turn out
@@ -42,12 +47,15 @@ contract RealmKeepersRegistry is Ownable2Step, IRealmKeepersRegistry {
     ///         the keepers.
     mapping(address account => bool) public isAdmin;
 
-    /// @inheritdoc IRealmKeepersRegistry
-    /// @dev A plain public mapping: the interface's getter and the storage are the same thing.
-    mapping(address account => bool) public isKeeper;
+    /// @notice The appointed keepers. `isKeeper` is what tokens ask; this is the raw set.
+    mapping(address account => bool) public keepers;
+
+    /// @notice When true, every account passes `isKeeper`. See the contract docstring.
+    bool public permissionless;
 
     event AdminSet(address indexed account, bool allowed);
     event KeeperSet(address indexed account, bool allowed);
+    event PermissionlessSet(bool enabled);
 
     error NotAdmin();
 
@@ -65,11 +73,23 @@ contract RealmKeepersRegistry is Ownable2Step, IRealmKeepersRegistry {
         emit AdminSet(account, allowed);
     }
 
+    /// @inheritdoc IRealmKeepersRegistry
+    /// @dev The keeper set first: the everyday caller answers in one SLOAD.
+    function isKeeper(address account) external view returns (bool) {
+        return keepers[account] || permissionless;
+    }
+
     /// @notice Allow or revoke a keeper.
     /// @dev Revocation is immediate and total — a keeper holds no funds and has nothing to unwind, so
     ///      there is no reason for this to be anything but a single write.
     function setKeeper(address account, bool allowed) external onlyAdmin {
-        isKeeper[account] = allowed;
+        keepers[account] = allowed;
         emit KeeperSet(account, allowed);
+    }
+
+    /// @notice Open (or close again) every keeper-gated call to everyone, on every token.
+    function setPermissionless(bool enabled) external onlyAdmin {
+        permissionless = enabled;
+        emit PermissionlessSet(enabled);
     }
 }

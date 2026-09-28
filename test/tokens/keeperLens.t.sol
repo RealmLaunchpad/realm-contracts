@@ -203,13 +203,11 @@ contract RealmKeeperLensTests is Test {
         assertEq(s.assets.length, 2, "unconfigured asset leaked into the set");
     }
 
-    function test_keeperState_reportsStalenessPerAsset() public {
+    function test_keeperState_reportsLastDistributionPerAsset() public {
         v4.setAsset(1, DAI, 200e18, 7e18, uint40(block.timestamp - 31 days));
 
         RealmKeeperLens.TokenState memory s = _state(address(v4));
 
-        assertFalse(s.assets[0].stale, "live asset reported stale");
-        assertTrue(s.assets[1].stale, "aged asset not reported stale");
         assertEq(s.assets[1].lastDistribution, uint40(block.timestamp - 31 days), "lastDistribution");
     }
 
@@ -234,7 +232,6 @@ contract RealmKeeperLensTests is Test {
     function test_keeperState_reportsTheImplementationConstants() public view {
         RealmKeeperLens.TokenState memory s = _state(address(v4));
 
-        assertEq(s.dividendThreshold, v4.DIVIDEND_THRESHOLD(), "dividend threshold");
         assertEq(s.maxPerConversion, v4.MAX_DIVIDEND_PER_CONVERSION(), "max per conversion");
         assertEq(s.swapRegistry, v4.DIVIDEND_SWAP_REGISTRY(), "swap registry");
     }
@@ -250,7 +247,6 @@ contract RealmKeeperLensTests is Test {
         assertEq(s.assets[0].asset, DAI, "legacy asset");
         assertEq(s.assets[0].owed, 42e18, "legacy owed");
         assertEq(s.assets[0].pendingNative, 9e18, "legacy buffer");
-        assertTrue(s.assets[0].stale, "legacy staleness");
     }
 
     //////////////////////// keeperState: tolerating the unknown //////////////////////

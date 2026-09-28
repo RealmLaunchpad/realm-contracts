@@ -14,6 +14,8 @@ import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.so
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
+import {setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice Integration tests for holder dividends on Uniswap V2. Two things are V2-specific and get the
 ///         attention here: a leg paying the TOKEN ITSELF must be carved in token space (a V2 pair reverts
@@ -25,11 +27,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
         super.setUp();
-        // Robinhood's xStock/WETH V2 pairs hold ~0.005 ETH a side, under the default depth floor of
-        // 10x MAX_EARNINGS_PER_PROCESS. The floor is per-chain configurable; drop it so the V2 route is
-        // exercised rather than rejected as too shallow.
-        vm.prank(admin);
-        dividendSwapRegistry.setDefaultThreshold(0.001 ether);
+        setDividendRoute(dividendSwapRegistry, MSFT, DividendRouteLib.encodeV2());
     }
 
     address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
@@ -294,18 +292,6 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         assertEq(IERC20(MSFT).balanceOf(address(token)), pot, "the stray left, the owed pot stayed");
     }
 
-    ///////////////////////// the quote-routes overload /////////////////////////
-
-    /// @dev A V2 token earns in native only, so the quote-routes overload has nothing to configure: it is
-    ///      refused outright, before any caller check — never silently accepted as an empty list.
-    function test_refusesTheQuoteRoutesOverload() public {
-        RealmTaxableTokenUniV2 token = RealmTaxableTokenUniV2(payable(_createDividendToken(5_000, address(0))));
-        vm.expectRevert(RealmToken.InvalidQuotes.selector);
-        token.initializeEarningsAllocation(
-            0, 5_000, 0, new address[](0), new uint16[](0), new bytes[](0), new bytes[](0)
-        );
-    }
-
     ///////////////////////// dust cannot force a distribution /////////////////////////
 
     /// @dev `accrueFees` and `sweepStrayEth` are both permissionless, so anyone can push dust into the
@@ -321,7 +307,6 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
         vm.deal(address(token), address(token).balance + 2 wei);
         token.sweepStrayEth();
         assertGt(token.pendingNative(), 0, "the attacker's dust did reach the buffer");
-        assertFalse(token.dividendsStale(0), "precondition: the hatch is shut on a live token");
 
         vm.prank(makeAddr("griefer"));
         vm.expectRevert(KeeperGated.NotAKeeper.selector);

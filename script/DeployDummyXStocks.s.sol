@@ -15,10 +15,8 @@ import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {DeploymentAddressesRobinhoodTestnet as RobinhoodTestnet} from "src/config/DeploymentAddresses.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {Hop, SwapRejection} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice Stand-in for a Robinhood xStock: a plain 18-decimal ERC20, whole supply to the deployer.
@@ -52,17 +50,15 @@ contract DummyXStock is ERC20 {
 ///      swap of `x` ETH against a pool seeded with `e` ETH moves the price by roughly `(1 + x/e)^2` — but
 ///      it can never fall out of range, whatever the price does afterwards. The default is sized off the
 ///      conversions the pool has to absorb rather than off what a pool costs: both testnets' dividend
-///      buffers convert between `DIVIDEND_THRESHOLD` (0.001 ETH) and `MAX_EARNINGS_PER_PROCESS` (1
-///      ETH) at a time, so 2 ETH keeps an ordinary conversion well under one percent impact, while a
+///      buffers convert up to `MAX_EARNINGS_PER_PROCESS` (1 ETH) at a time, so 2 ETH keeps an ordinary conversion well under one percent impact, while a
 ///      max-size one moves the price ~2.25x. Raise `ETH_PER_POOL` further if the max-size case needs to price
 ///      realistically.
 ///
 /// @dev The position NFT goes to the BROADCASTER, not to a locked contract like graduation does, so the
 ///      testnet ETH can be pulled back out when the experiment is over.
 ///
-/// @dev Routes are only VALIDATED here, against the chain's `DIVIDEND_SWAP_REGISTRY` when it is
-///      deployed; nothing is written on-chain either way (see `_reportRoute`). A chain whose registry
-///      constant is still a placeholder prints the routes unvalidated.
+/// @dev Routes are only PRINTED here (see `_reportRoute`); an admin lists each one on the chain's
+///      `DIVIDEND_SWAP_REGISTRY` with `setRoute`.
 ///
 /// @dev DEPLOYED SO FAR. The consumer of these is the frontend's payout catalogue
 ///      (`dividendAssets.<chain>.mjs`), which carries the matching route bytes; they are recorded here
@@ -110,13 +106,11 @@ contract DeployDummyXStocks is Script {
         console.log("Stocks:       %d", stocks.length);
         console.log("ETH per pool: %d wei", ethPerPool);
 
-        RealmDividendSwapRegistry registry = RealmDividendSwapRegistry(payable(_registry()));
         address poolManager = ChainConfig.infra().univ4PoolManager;
 
         vm.startBroadcast();
         address deployer = _broadcaster();
         console.log("Deployer:     %s", deployer);
-        bool haveRegistry = address(registry).code.length != 0;
 
         for (uint256 i; i < stocks.length; ++i) {
             address token = address(new DummyXStock(stocks[i].name, stocks[i].symbol, deployer, SUPPLY));
@@ -135,16 +129,9 @@ contract DeployDummyXStocks is Script {
             console.log("%s: %s", stocks[i].symbol, token);
             console.log("   pool liquidity %d, fee %d", liquidity, stocks[i].fee);
 
-            _reportRoute(registry, haveRegistry, token, stocks[i]);
+            _reportRoute(token, stocks[i]);
         }
         vm.stopBroadcast();
-
-        if (!haveRegistry) {
-            console.log("");
-            console.log("Registry %s is not deployed here, so the routes above", address(registry));
-            console.log("could not be validated. They are still correct by construction: one hop,");
-            console.log("currency = the token, fee and tickSpacing as printed, hooks = 0.");
-        }
     }
 
     /// @notice The assets to deploy. Each run deploys EVERY entry, so the list holds only what is new.
@@ -155,11 +142,6 @@ contract DeployDummyXStocks is Script {
     function _stocks() internal pure returns (XStock[] memory stocks) {
         stocks = new XStock[](1);
         stocks[0] = XStock("SPDR Gold Trust", "GLD", 6.85e18, 3000, 60); // rh-mainnet GLD rate, 0.3% like its USDG V3 pool
-    }
-
-    /// @dev The chain's `RealmDividendSwapRegistry` proxy.
-    function _registry() internal pure returns (address) {
-        return RobinhoodTestnet.DIVIDEND_SWAP_REGISTRY;
     }
 
     /// @dev `sqrt(price) * 2^96` with the price given as a WAD. `mulDiv` carries the 512-bit intermediate,
@@ -207,28 +189,12 @@ contract DeployDummyXStocks is Script {
         );
     }
 
-    /// @notice Prints the one-hop native -> stock route, in the exact wire format a token creation takes.
-    /// @dev NOTHING IS WRITTEN ON-CHAIN HERE ANY MORE. Routes belong to the token that converts through
-    ///      them and are registered by that token at ITS creation, so a payout asset has no registry
-    ///      state of its own to seed. What this script owes its caller is therefore the bytes: paste
-    ///      them into the frontend's payout catalogue next to the address printed above, and a creator
-    ///      picking this asset ships the route with it.
-    /// @dev The validation is a dry read against the pool just seeded, and it is the point of doing it
-    ///      here rather than trusting the encoding: it proves the pool is initialized and holds
-    ///      liquidity, which is exactly what `registerRoute` will demand at creation time.
-    function _reportRoute(RealmDividendSwapRegistry registry, bool haveRegistry, address token, XStock memory stock)
-        internal
-        view
-    {
+    /// @notice Prints the one-hop native -> stock route, in the wire format
+    ///         `RealmDividendSwapRegistry.setRoute` takes.
+    function _reportRoute(address token, XStock memory stock) internal pure {
         Hop[] memory hops = new Hop[](1);
         hops[0] = Hop({currency: token, fee: stock.fee, tickSpacing: stock.tickSpacing, hooks: address(0)});
-        bytes memory route = DividendRouteLib.encodeV4(hops);
-        console.logBytes(route);
-
-        if (!haveRegistry) return;
-        SwapRejection rejection = registry.validateRoute(token, route);
-        if (rejection == SwapRejection.OK) console.log("   route valid");
-        else console.log("   route REJECTED (rejection %d)", uint8(rejection));
+        console.logBytes(DividendRouteLib.encodeV4(hops));
     }
 
     /// @dev The account forge will actually send from. NOT `msg.sender`: with `--account <keystore>` the

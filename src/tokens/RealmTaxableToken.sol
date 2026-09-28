@@ -269,51 +269,26 @@ abstract contract RealmTaxableToken is
     }
 
     /// @notice Same as the three-bps overload, plus the dividend payout: UP TO `MAX_DIVIDEND_ASSETS`
-    ///         assets, the bps split of the dividends slice between them, and the swap route each asset is
-    ///         bought through. `dividendWeightsBps` must sum to 10,000 and hold no zero; the assets must
-    ///         be distinct; `DIVIDEND_SELF_TOKEN` is only legal on its own.
+    ///         assets and the bps split of the dividends slice between them. `dividendWeightsBps` must
+    ///         sum to 10,000 and hold no zero; the assets must be distinct; `DIVIDEND_SELF_TOKEN` is only
+    ///         legal on its own. How each asset is bought is `RealmDividendSwapRegistry`'s business.
     /// @dev `hasDividends` is what actually turns the feature on. It lives on `RealmToken`, packed into
     ///      the `pair` slot `_update` already loads, so a token that leaves `_dividendsBps` at 0 pays
     ///      nothing for the feature on any transfer. The payout configuration is validated once, at
     ///      creation, with exactly one copy of the rules (`_initializeDividends`).
-    /// @dev The routes are the creator's choice and are fixed here for the token's life — the registry
-    ///      records them against this token and refuses to rewrite them. It checks the pools they name
-    ///      exist and hold liquidity; it cannot check the price those pools quote is the asset's real
-    ///      one, and nobody reviews that afterwards either.
     function initializeEarningsAllocation(
         uint16 _burnBps,
         uint16 _dividendsBps,
         uint16 _liquidityBps,
         address[] calldata _dividendTokens,
-        uint16[] calldata _dividendWeightsBps,
-        bytes[] calldata _dividendRoutes
+        uint16[] calldata _dividendWeightsBps
     ) external virtual {
         require(msg.sender == tokenFactory, Unauthorized());
         _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
         if (_dividendsBps != 0) {
-            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
+            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps);
             hasDividends = true;
         }
-    }
-
-    /// @notice The multi-asset overload plus the routes of this token's ERC20 QUOTES — for a venue
-    ///         whose earnings can arrive in a currency other than native, where a dividends leg may
-    ///         have to be bought OUT of a quote. See `TaxConfigsWithDirectAllocation` for which entries
-    ///         are required. Positional to `quotes` from index 1.
-    /// @dev The base refuses it: a token that earns in native only (Uniswap V2, whose pair is the WETH
-    ///      pair) has no ERC20 quotes to route out of. Refused rather than silently accepting an empty
-    ///      list, so a factory that reaches for this overload on the wrong venue finds out at creation.
-    ///      `RealmTaxableTokenUniV4` overrides it.
-    function initializeEarningsAllocation(
-        uint16,
-        uint16,
-        uint16,
-        address[] calldata,
-        uint16[] calldata,
-        bytes[] calldata,
-        bytes[] calldata
-    ) external virtual {
-        revert InvalidQuotes();
     }
 
     /// @notice Routes ETH earnings (post-graduation swap tax + LP-fee creator share) through the

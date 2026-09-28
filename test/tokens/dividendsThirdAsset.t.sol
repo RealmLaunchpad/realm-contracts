@@ -10,10 +10,11 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {SwapRejection} from "src/interfaces/IRealmDividendSwapRegistry.sol";
-import {installDividendSwapRegistry, DEFAULT_DIVIDEND_POOL_LIQUIDITY} from "test/helpers/DividendRegistryHelpers.sol";
+import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
+import {installDividendSwapRegistry, setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
+import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 
 /// @notice A bare `DividendDistributionLogic` with the token's hooks stubbed out. It exists so the
 ///         third-asset payout shape — the only one that actually performs a swap — can be exercised
@@ -33,16 +34,7 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
 
     function configure(address asset) external {
         (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
-        assetCount = _initializeDividends(assets, weights, new bytes[](0));
-    }
-
-    /// @notice Same, naming the pools explicitly. No routes at all means the permissionless V2 pair,
-    ///         which is what every other helper here relies on.
-    function configureRouted(address asset, bytes calldata route) external {
-        (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
-        bytes[] memory routes = new bytes[](1);
-        routes[0] = route;
-        assetCount = _initializeDividends(assets, weights, routes);
+        assetCount = _initializeDividends(assets, weights);
     }
 
     /// @dev How many payout assets the harness was configured with. The production token keeps this in
@@ -55,7 +47,7 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
 
     /// @notice Configure a multi-asset payout set, as `initializeEarningsAllocation`'s array overload does.
     function configureMulti(address[] calldata assets, uint16[] calldata weights) external {
-        assetCount = _initializeDividends(assets, weights, new bytes[](0));
+        assetCount = _initializeDividends(assets, weights);
     }
 
     function activate() external {
@@ -77,10 +69,6 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
         return dividendAssets[0].precisionExp;
     }
 
-    function failedConversionBlock() external view returns (uint40) {
-        return dividendAssets[0].failedConversionBlock;
-    }
-
     function _dividendBalanceOf(address account) internal view override returns (uint256) {
         return balances[account];
     }
@@ -96,8 +84,8 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
     receive() external payable {}
 }
 
-/// @notice A payout asset whose `transfer` never returns. The registry vets an asset's LIQUIDITY, never
-///         its behaviour, so a token like this can pass creation and then meet a keeper batch.
+/// @notice A payout asset whose `transfer` never returns. Any ERC20 can be configured, so a token like
+///         this can pass creation and then meet a keeper batch.
 contract GasBombToken {
     fallback() external {
         while (true) {}
@@ -129,9 +117,8 @@ contract GhostToken is ERC20 {
 }
 
 /// @notice The third-token payout shape: an accrued native buffer is converted into an arbitrary ERC20
-///         through `RealmDividendSwapRegistry`, and pushed to holders in that asset. Any ERC20 with a
-///         deep enough Uniswap V2 pair qualifies — there is no asset whitelist and no per-asset
-///         approval, only the liquidity the registry measures.
+///         through the route `RealmDividendSwapRegistry` holds for it, and pushed to holders in that
+///         asset. Any ERC20 can be configured; one without a route just does not convert.
 contract DividendsThirdAssetTests is Test {
     uint256 internal constant BLOCKNUMBER = 58_000_000;
     address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
@@ -140,8 +127,6 @@ contract DividendsThirdAssetTests is Test {
     ///      (~235 ETH a side), so it needs no depth-floor relief.
     address internal constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
 
-    /// @dev The V2 depth floor this suite runs at; every depth assertion below is relative to it.
-    uint256 internal constant V2_DEPTH_FLOOR = 0.001 ether;
     address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
 
     DividendHarness internal harness;
@@ -156,13 +141,10 @@ contract DividendsThirdAssetTests is Test {
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
         registry = installDividendSwapRegistry(registryOwner);
-        // Robinhood's xStock/WETH V2 pairs hold ~0.005 ETH a side, under the shipped default depth
-        // floor of 10x MAX_EARNINGS_PER_PROCESS. The floor is per-chain configurable; drop it so the V2
-        // route is exercised rather than rejected as too shallow.
-        vm.startPrank(registryOwner);
-        registry.setAdmin(registryOwner, true);
-        registry.setDefaultThreshold(V2_DEPTH_FLOOR);
-        vm.stopPrank();
+        // Every asset this suite converts goes through its V2 pair with WETH.
+        setDividendRoute(registry, MSFT, DividendRouteLib.encodeV2());
+        setDividendRoute(registry, AAPL, DividendRouteLib.encodeV2());
+        setDividendRoute(registry, USDG, DividendRouteLib.encodeV2());
         installKeepersRegistry(registryOwner, address(this));
         harness = _harness(MSFT);
     }
@@ -196,25 +178,6 @@ contract DividendsThirdAssetTests is Test {
 
     function _noHolders() internal pure returns (address[] memory list) {
         list = new address[](0);
-    }
-
-    /// @dev Ages the token past `STALE_DIVIDEND_WINDOW`, the gate the treasury sweep sits behind. Only a
-    ///      token that has been UNABLE to distribute for that long reaches it — every successful
-    ///      distribution resets `lastDistribution` — which is what makes the sweep condition
-    ///      persistent rather than a snapshot anyone can manufacture inside one transaction.
-    function _goStale(DividendHarness h) internal {
-        skip(h.STALE_DIVIDEND_WINDOW() + 1);
-    }
-
-    /// @dev The treasury sweep needs the zero-floor failure on record from an EARLIER block, so the first
-    ///      call only records it and still reports `DividendConversionFailed`. This makes that call and
-    ///      moves to the next block, leaving the harness one call away from sweeping.
-    function _recordFailedConversion(DividendHarness h) internal {
-        // Returns quietly rather than reverting: the call WROTE the marker, and `DividendConversionFailed`
-        // would have rolled it straight back.
-        h.processDividends(0, _noHolders());
-        assertEq(h.failedConversionBlock(), block.number, "the failure is on record");
-        vm.roll(block.number + 1);
     }
 
     //////////////////////// the payout shape //////////////////////
@@ -261,59 +224,30 @@ contract DividendsThirdAssetTests is Test {
 
     //////////////////////// the liquidity proof //////////////////////
 
-    /// @dev THE eligibility rule, and the only one. Any ERC20 is fair game as long as the pool the
-    ///      creator names for it actually exists and is worth swapping against — no whitelist, no admin.
-    function test_anyErc20WithADeepPoolIsConfigurable() public {
+    /// @dev ANY ERC20 is configurable, routed or not: nothing about the asset is checked at creation.
+    function test_anyErc20IsConfigurable() public {
         assertEq(_harness(MSFT).dividendToken(), MSFT, "MSFT");
-        assertEq(_harness(AAPL).dividendToken(), AAPL, "AAPL");
+        assertEq(_harness(address(new GhostToken())).dividendToken() != address(0), true, "a token with no pool");
     }
 
-    /// @dev An asset nobody has ever made a market for is refused at creation, not left to accrue into a
-    ///      buffer that could never be converted — the failure mode a clone cannot be patched out of.
-    function test_anAssetWithNoPoolAtAllIsRejected() public {
-        address ghost = address(new GhostToken());
+    /// @dev An asset without a route converts nothing and loses nothing: the buffer waits for a route.
+    function test_anAssetWithoutARouteKeepsItsBufferUntilItGetsOne() public {
+        GhostToken ghost = new GhostToken();
+        DividendHarness h = _harness(address(ghost));
+        _fundAndActivate(h);
 
-        DividendHarness h = new DividendHarness();
-        vm.expectRevert(abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
-        h.configure(ghost);
-    }
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
+        h.processDividends(0, _noHolders());
+        assertEq(h.pendingNative(), 1 ether, "the buffer is intact");
 
-    /// @dev A pool that EXISTS but is too thin is refused just the same. The floor is denominated in the
-    ///      quote asset, so it means the same thing whatever the payout asset's own decimals are.
-    function test_aPoolTooThinToSwapAgainstIsRejected() public {
-        GhostToken thin = new GhostToken();
+        // A market appears and an admin lists it: the SAME token converts.
         IUniswapV2Router router = IUniswapV2Router(DeploymentAddresses.UNIV2_ROUTER);
-
-        // A real pair on the real factory, seeded with less than the floor.
-        uint256 seeded = V2_DEPTH_FLOOR / 2;
-        vm.deal(address(this), seeded);
-        thin.approve(address(router), type(uint256).max);
-        router.addLiquidityETH{value: seeded}(address(thin), 500_000e18, 0, 0, address(this), block.timestamp);
-
-        DividendHarness h = new DividendHarness();
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.InsufficientLiquidity
-            )
-        );
-        h.configure(address(thin));
-
-        // Top the same pair up over the floor and the very same asset becomes eligible. Nothing about
-        // the ASSET changed — only its liquidity, which is the whole rule.
-        vm.deal(address(this), seeded + 1);
-        router.addLiquidityETH{value: seeded + 1}(address(thin), 500_000e18, 0, 0, address(this), block.timestamp);
-
-        DividendHarness ok = new DividendHarness();
-        ok.configure(address(thin));
-        assertEq(ok.dividendToken(), address(thin), "eligible once the pool is deep enough");
-    }
-
-    /// @dev An asset whose only liquidity lives on V3 or V4 has no V2 pair, so it is refused — the
-    ///      deliberate cost of a V2-only registry, and the reason the registry is upgradeable.
-    function test_anAssetWithoutAV2PairIsRejectedEvenIfItTradesElsewhere() public {
-        DividendHarness h = new DividendHarness();
-        vm.expectRevert(abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
-        h.configure(makeAddr("v4OnlyToken"));
+        vm.deal(address(this), 10 ether);
+        ghost.approve(address(router), type(uint256).max);
+        router.addLiquidityETH{value: 10 ether}(address(ghost), 500_000e18, 0, 0, address(this), block.timestamp);
+        setDividendRoute(registry, address(ghost), DividendRouteLib.encodeV2());
+        h.processDividends(0, _noHolders());
+        assertGt(h.dividendsOwed(), 0, "converts once routed");
     }
 
     /// @dev Native and the token itself buy nothing, so they never touch the registry.
@@ -329,47 +263,19 @@ contract DividendsThirdAssetTests is Test {
 
     //////////////////////// what the registry buys //////////////////////
 
-    /// @dev The point of putting the rule behind a proxy: a threshold raised AFTER a token was created
-    ///      still governs it. A creation-time check compiled into an unpatchable clone could not.
-    function test_aRaisedThresholdRefusesAssetsThatUsedToQualify() public {
-        assertTrue(registry.validateRoute(MSFT, "") == SwapRejection.OK, "MSFT qualifies today");
-
-        vm.prank(registryOwner);
-        registry.setDefaultThreshold(type(uint128).max);
-
-        DividendHarness h = new DividendHarness();
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.InsufficientLiquidity
-            )
-        );
-        h.configure(MSFT);
-    }
-
-    /// @dev The one admin veto, and it reaches tokens that ALREADY exist: an asset blacklisted after a
-    ///      token was configured for it stops converting on the next distribution.
-    /// @dev ⚠️ The veto is NOT a pause for the buffer. A blacklisted asset fails a zero-floor swap exactly
-    ///      the way a dead pool does, so a keeper calling `processDividends(0, ...)` while the veto is up
-    ///      sweeps a capped slice to the treasury each time. The sweep condition is deliberately the swap
-    ///      itself, with no reason code consulted, so an admin lifting the veto later recovers only what
-    ///      keepers have not already swept. Realm owns both ends of that, which is what makes it tolerable.
-    function test_blacklistingAnAssetHoldsTheBufferUntilTheVetoLifts() public {
+    /// @dev The one admin veto is clearing the route, and it reaches tokens that ALREADY exist: the
+    ///      buffer waits, whole, until a route is set again.
+    function test_clearingARouteHoldsTheBufferUntilItIsRestored() public {
         _fundAndActivate(harness);
+        setDividendRoute(registry, MSFT, "");
 
-        // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
-        vm.prank(registryOwner);
-        registry.setBlacklisted(MSFT, true);
-
-        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
         harness.processDividends(0, _noHolders());
-        assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "a live veto sweeps nothing");
-        assertEq(harness.pendingNative(), 1 ether, "the whole buffer waits for the veto to lift");
+        assertEq(harness.pendingNative(), 1 ether, "the whole buffer waits");
 
-        vm.prank(registryOwner);
-        registry.setBlacklisted(MSFT, false);
+        setDividendRoute(registry, MSFT, DividendRouteLib.encodeV2());
         harness.processDividends(0, _noHolders());
-        assertGt(harness.dividendsOwed(), 0, "and it converts in full once the veto is lifted");
+        assertGt(harness.dividendsOwed(), 0, "and it converts once the route is back");
     }
 
     /// @dev The registry is a swap venue, not a vault: it forwards everything it buys inside the same
@@ -411,27 +317,18 @@ contract DividendsThirdAssetTests is Test {
     function test_aCodelessRegistryFailsClosedInsteadOfBurningTheBuffer() public {
         _fundAndActivate(harness);
         vm.etch(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY, hex"");
-        _goStale(harness); // the sweep is gated on staleness; a codeless registry never lets a distribution through
 
         // A call CARRYING holders never reverts for a broken swap, so nothing rolls the transfer back:
         // this is the shape in which a codeless registry would silently pocket the buffer, every call.
-        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
         uint256 registryBalanceBefore = DeploymentAddresses.DIVIDEND_SWAP_REGISTRY.balance;
-        uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
-        // A call carrying holders reports nothing, so the first one only records the failure.
-        harness.processDividends(0, _holders());
-        vm.roll(block.number + 1);
         harness.processDividends(0, _holders());
 
-        // The point of the guard: the native went to the treasury, which can hand it back, instead of to
-        // a codeless address, which cannot. Without it the raw `call` would have succeeded and kept it.
         assertEq(
             DeploymentAddresses.DIVIDEND_SWAP_REGISTRY.balance,
             registryBalanceBefore,
             "the codeless address got nothing"
         );
-        assertEq(harness.DIVIDEND_TREASURY().balance - treasuryBefore, cap, "the treasury caught it instead");
-        assertEq(harness.pendingNative(), 1 ether - cap, "and only the attempted slice left the buffer");
+        assertEq(harness.pendingNative(), 1 ether, "the buffer is intact");
         assertEq(harness.dividendsOwed(), 0, "nothing was distributed");
     }
 
@@ -563,61 +460,6 @@ contract DividendsThirdAssetTests is Test {
         assertEq(harness.previewDividend(holder), owed, "and the unpaid holder keeps every unit accrued");
     }
 
-    //////////////////////// the dead-pool escape //////////////////////
-
-    /// @dev Nobody can repair a dead pool, and a buffer that can never be converted must not sit owed to
-    ///      holders forever. Once a zero-floor swap comes back empty — the proof that the pool cannot
-    ///      produce a single wei at ANY price, on a token that has been unable to distribute for a whole
-    ///      `STALE_DIVIDEND_WINDOW` — that slice goes to the treasury and the call reports success instead
-    ///      of reverting.
-    function test_aPermanentlyDeadPoolSweepsTheBufferToTheTreasury() public {
-        _fundAndActivate(harness);
-        _killTheV2Router();
-        _goStale(harness);
-        _recordFailedConversion(harness);
-
-        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
-        uint256 cap = harness.MAX_DIVIDEND_PER_CONVERSION();
-
-        vm.expectEmit(true, false, false, true, address(harness));
-        emit DividendDistribution.DividendBufferSweptToTreasury(MSFT, cap);
-        harness.processDividends(0, _noHolders()); // must NOT revert
-
-        assertEq(harness.DIVIDEND_TREASURY().balance - treasuryBefore, cap, "the treasury caught the slice");
-        assertEq(harness.pendingNative(), 1 ether - cap, "and only the converted slice left the buffer");
-    }
-
-    /// @dev The sweep changes NOTHING that holders hold. It moves native that was still waiting to be
-    ///      converted and therefore had never been credited to anyone — the payout asset, the accumulator
-    ///      and every unclaimed accrual survive it untouched. That is the whole reason it replaced a
-    ///      downgrade, which had to write those accruals off to stay coherent.
-    function test_theSweepDoesNotTouchWhatHoldersHaveAlreadyAccrued() public {
-        _fundAndActivate(harness);
-        harness.processDividends(0, _noHolders()); // a real MSFT distribution
-
-        uint256 daiOwed = harness.previewDividend(holder);
-        uint256 owedBefore = harness.dividendsOwed();
-        assertGt(daiOwed, 0, "the holder accrued MSFT it never claimed");
-
-        _killTheV2Router();
-        _goStale(harness);
-        vm.roll(block.number + 1); // the funding leg above already claimed this block
-        vm.deal(address(this), 1 ether);
-        harness.accrue{value: 1 ether}();
-        _recordFailedConversion(harness);
-        harness.processDividends(0, _noHolders());
-
-        assertEq(harness.dividendToken(), MSFT, "the payout asset is never repointed");
-        assertEq(harness.previewDividend(holder), daiOwed, "the MSFT claim survives the sweep");
-        assertEq(harness.dividendsOwed(), owedBefore, "and so does what the token owes");
-        assertEq(harness.committedDividends(MSFT), owedBefore, "the MSFT stays holders' money, not rescuable");
-
-        // The holder can still take it: claiming never depended on the pool being alive.
-        vm.roll(block.number + 1);
-        harness.processDividends(0, _holders());
-        assertEq(IERC20(MSFT).balanceOf(holder), daiOwed, "paid in full, in the asset they accrued");
-    }
-
     //////////////////////// weird payout assets //////////////////////
 
     /// @dev The accumulator's scale comes from the PAYOUT ASSET's decimals, not from a fixed 1e18. With
@@ -673,125 +515,54 @@ contract DividendsThirdAssetTests is Test {
         assertEq(h.previewDividend(holder), accrued, "unpaid, but the accrual is intact for a later try");
     }
 
-    /// @dev A snapshot is not a proof. Anyone can empty a pool for the length of one transaction and put
-    ///      it back after, so a single failed zero-floor swap must not hand the buffer over. Staleness
-    ///      narrows it: every SUCCESSFUL distribution resets `lastDistribution`, so an
-    ///      actively distributing token never reaches the gate. It narrows rather than closes — a healthy
-    ///      pool no keeper has called for a month is stale too — which is the accepted limit spelled out
-    ///      at the gate itself.
-    function test_aFreshTokenWithADeadPoolDoesNotSweep() public {
+    /// @dev A dead pool strands nothing: every failed conversion leaves the buffer exactly where it was,
+    ///      however long it lasts, and a revived (or repointed) venue converts it.
+    function test_aDeadPoolLeavesTheBufferWhole() public {
         _fundAndActivate(harness);
         _killTheV2Router();
 
-        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
         harness.processDividends(0, _noHolders());
-
-        assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "the treasury got nothing");
-        assertEq(harness.pendingNative(), 1 ether, "and the buffer is exactly where it was");
-    }
-
-    /// @dev Staleness alone is not enough either. The registry refuses whenever the pair's quote depth
-    ///      merely dips under its threshold, which one sell causes and one buy undoes — so a griefer on a
-    ///      quiet-but-healthy token could otherwise manufacture the failure and sweep atomically. The
-    ///      failure has to be on record from an EARLIER block, which costs them the same position held
-    ///      across a block boundary, twice, per slice.
-    function test_aSingleBlockFailureNeverSweepsHoweverStaleTheToken() public {
-        _fundAndActivate(harness);
-        _killTheV2Router();
-        _goStale(harness);
-
-        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
-
-        // First sighting: recorded, nothing swept. It returns quietly instead of reverting precisely
-        // because it wrote the marker — a revert would undo it and the gate would never be reachable.
+        skip(365 days);
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
         harness.processDividends(0, _noHolders());
-        assertEq(harness.failedConversionBlock(), block.number, "the failure is on record");
-        assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "nothing swept on the first sighting");
-
-        // A second sighting in the SAME block proves nothing new, so it still cannot sweep.
-        harness.processDividends(0, _noHolders());
-        assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "nor within the same block");
-        assertEq(harness.pendingNative(), 1 ether, "and the buffer is exactly where it was");
-
-        // Only once the failure has outlived a block does the slice move.
-        vm.roll(block.number + 1);
-        harness.processDividends(0, _noHolders());
-        assertEq(
-            harness.DIVIDEND_TREASURY().balance - treasuryBefore,
-            harness.MAX_DIVIDEND_PER_CONVERSION(),
-            "swept once the failure outlived a block"
-        );
-    }
-
-    /// @dev The marker is evidence of a CURRENT failure, not a permanent unlock. A conversion that goes
-    ///      through clears it, so a pool that recovers cannot be swept off a month-old sighting.
-    function test_aSuccessfulConversionClearsTheFailureRecord() public {
-        _fundAndActivate(harness);
-        _killTheV2Router();
-        _goStale(harness);
-        _recordFailedConversion(harness);
+        assertEq(harness.pendingNative(), 1 ether, "the buffer is exactly where it was");
 
         _reviveTheV2Router();
         harness.processDividends(0, _noHolders());
-        assertEq(harness.failedConversionBlock(), 0, "the record is cleared by a working conversion");
-        assertGt(harness.dividendsOwed(), 0, "and the distribution went through normally");
+        assertGt(harness.dividendsOwed(), 0, "and converts once the venue works");
     }
 
-    /// @dev The sweep cannot be triggered by a caller's bad price. A floor the pool has merely moved past
-    ///      is a `ConversionFailed` that leaves the buffer exactly where it was: only `minOut == 0` proves
-    ///      the pool itself is gone rather than the caller's number.
-    function test_aLivePoolCannotBeSweptByAnUnreachableFloor() public {
+    /// @dev The keeper sizes a conversion below the cap, for a pool too thin to take all of it at once.
+    function test_theKeeperCanConvertASliceSmallerThanTheCap() public {
         _fundAndActivate(harness);
-        uint256 treasuryBefore = harness.DIVIDEND_TREASURY().balance;
-
-        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        harness.processDividends(1_000_000e18, _noHolders());
-
-        assertEq(harness.pendingNative(), 1 ether, "the buffer is untouched");
-        assertEq(harness.DIVIDEND_TREASURY().balance, treasuryBefore, "and the treasury got nothing");
-
-        harness.processDividends(0, _noHolders());
-        assertGt(harness.dividendsOwed(), 0, "the same buffer distributes MSFT at a reachable floor");
+        harness.processDividends(0, true, 0.2 ether, 0, _noHolders());
+        assertEq(harness.pendingNative(), 0.8 ether, "spent exactly the requested slice");
+        assertGt(harness.dividendsOwed(), 0, "and credited it");
     }
 
-    //////////////////////// the keeper gate's staleness bypass //////////////////////
+    /// @dev A requested amount above the cap is clipped to it; 0 means "up to the cap".
+    function test_anAmountAboveTheCapIsClipped() public {
+        _fundAndActivate(harness);
+        _topUpPastTwoCaps(harness);
+        uint256 buffered = harness.pendingNative();
+        harness.processDividends(0, true, type(uint256).max, 0, _noHolders());
+        assertEq(harness.pendingNative(), buffered - harness.MAX_DIVIDEND_PER_CONVERSION(), "clipped to the cap");
+    }
 
-    /// @dev Staleness is NOT on its own a licence to convert someone else's buffer. `dividendsStale`
-    ///      reads "no distribution in a month", which a quiet token reaches in its ordinary steady
-    ///      state — it just never buffers enough to be worth a conversion — and the conversion takes its
-    ///      slippage floor from whoever calls it. Opening that to everyone every month is a sandwich,
-    ///      not a rescue, so a SWAPPING asset also has to hold at least `DIVIDEND_THRESHOLD`.
-    function test_aStaleSubThresholdSwappingAssetStaysKeeperOnly() public {
-        harness.setBalance(holder, 1_000e18);
-        harness.activate();
-        // Deliberately under the threshold: a low-volume token's normal condition.
-        uint256 dust = harness.DIVIDEND_THRESHOLD() - 1;
-        vm.deal(address(this), dust);
-        harness.accrue{value: dust}();
-        _goStale(harness);
-
-        assertTrue(harness.dividendsStale(0), "precondition: the asset is stale");
-
-        vm.prank(makeAddr("randomCaller"));
+    /// @dev With the keepers registry's global switch on, anyone may fund.
+    function test_theGlobalSwitchOpensFundingToAnyone() public {
+        _fundAndActivate(harness);
+        address randomCaller = makeAddr("randomCaller");
+        vm.prank(randomCaller);
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
         harness.processDividends(0, _noHolders());
 
-        // The keeper itself is not blocked: staleness still lets IT fund below the threshold, which is
-        // what keeps a residual that can no longer grow from stranding.
+        vm.prank(registryOwner);
+        RealmKeepersRegistry(DeploymentAddresses.REALM_KEEPERS_REGISTRY).setPermissionless(true);
+        vm.prank(randomCaller);
         harness.processDividends(0, _noHolders());
-        assertGt(harness.dividendsOwed(), 0, "a keeper still clears the stale residual");
-    }
-
-    /// @dev The escape hatch is intact where it was actually meant to apply: a buffer that HAS been worth
-    ///      converting all along and still was not converted is what evidences an absent keeper set.
-    function test_aStaleAboveThresholdSwappingAssetGoesPermissionless() public {
-        _fundAndActivate(harness); // 1 ether, well over the threshold
-        _goStale(harness);
-
-        vm.prank(makeAddr("randomCaller"));
-        harness.processDividends(0, _noHolders());
-        assertGt(harness.dividendsOwed(), 0, "anyone may convert a buffer no keeper came for");
+        assertGt(harness.dividendsOwed(), 0, "anyone converted");
     }
 
     /// @dev Makes every V2 swap revert, whatever the price — the on-chain shape of a pool that is gone.

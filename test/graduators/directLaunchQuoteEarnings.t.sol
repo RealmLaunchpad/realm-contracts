@@ -883,23 +883,6 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         _expectCreateRevert(_pairs(quote37), _noDevBuy(), 0, RealmFactoryUniV4Direct.QuoteNotSupported.selector);
     }
 
-    function test_directAlloc_rejectsMoreQuoteRoutesThanPairs() public {
-        TaxConfigsWithDirectAllocation memory cfg = _burnAndLiquidityAlloc();
-        cfg.quoteRoutes = new bytes[](2);
-        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(true);
-        vm.prank(creator);
-        vm.expectRevert(RealmFactoryUniV4Direct.InvalidQuoteRoutes.selector);
-        directFactory.createToken(
-            setup,
-            _quotePairs(),
-            cfg,
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            _noDevBuy(),
-            address(0)
-        );
-    }
-
     /// @dev With no allocation, the tax alone picks the implementation.
     function test_previewTokenImplementation_withoutAnAllocationFollowsTheTax() public view {
         assertEq(

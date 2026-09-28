@@ -12,7 +12,6 @@ uint256 constant MAX_ASSETS = 3;
 interface IDividendTokenMulti {
     function dividendAssetCount() external view returns (uint8);
     function dividendAssets(uint256 i) external view returns (DividendDistribution.DivAsset memory);
-    function dividendsStale(uint256 i) external view returns (bool);
     function previewDividend(address holder, uint256 i) external view returns (uint256);
 }
 
@@ -22,14 +21,12 @@ interface IDividendTokenLegacy {
     function dividendToken() external view returns (address);
     function dividendsOwed() external view returns (uint128);
     function pendingNative() external view returns (uint88);
-    function dividendsStale() external view returns (bool);
     function previewDividend(address holder) external view returns (uint256);
 }
 
 /// @dev Token-wide reads. `SWAP_THRESHOLD` / `*PendingTokens` exist only on V2, `*PendingEth` and the
 ///      quote getters only on V4 — which is exactly what makes them venue discriminators.
 interface IDividendTokenCommon {
-    function DIVIDEND_THRESHOLD() external view returns (uint256);
     function MAX_DIVIDEND_PER_CONVERSION() external view returns (uint256);
     function DIVIDEND_SWAP_REGISTRY() external view returns (address);
     function SWAP_THRESHOLD() external view returns (uint256);
@@ -73,7 +70,7 @@ contract RealmKeeperLens {
     uint256 public constant MAX_DIVIDEND_ASSETS = MAX_ASSETS;
 
     /// @notice One payout asset's machine. Independent of its siblings by construction — its own
-    ///         buffer, accumulator and staleness clock — so the keeper services each on its own.
+    ///         buffer and accumulator — so the keeper services each on its own.
     struct AssetState {
         /// @notice The payout asset: `address(0)` native, the token itself self-paying, else an ERC20.
         address asset;
@@ -84,8 +81,6 @@ contract RealmKeeperLens {
         uint256 pendingNative;
         /// @notice When this asset last distributed. 0 = dividends have not activated yet.
         uint40 lastDistribution;
-        /// @notice Whether this asset has aged past `STALE_DIVIDEND_WINDOW`, i.e. is treated as dead.
-        bool stale;
     }
 
     /// @notice Everything one token contributes to a keeper pass.
@@ -105,10 +100,6 @@ contract RealmKeeperLens {
         /// @notice Compile-time constants of the implementation this token was cloned from. Identical
         ///         across every token of that impl, so a keeper is free to cache them per impl and
         ///         ignore them here.
-        /// @dev `dividendThreshold` is NOT a funding floor — it is the yardstick the permissionless
-        ///      stale hatch measures a swapping asset's buffer against. Do not gate a keeper's own
-        ///      "worth its gas" decision on it.
-        uint256 dividendThreshold;
         uint256 swapThreshold;
         uint256 maxPerConversion;
         address swapRegistry;
@@ -226,7 +217,6 @@ contract RealmKeeperLens {
         // the cap cannot happen, but clamping keeps a garbage answer from sizing the loop below.
         s.assetCount = uint8(s.multiAsset ? (count > MAX_ASSETS ? MAX_ASSETS : count) : 1);
 
-        (, s.dividendThreshold) = _word(token, abi.encodeCall(IDividendTokenCommon.DIVIDEND_THRESHOLD, ()));
         (, s.maxPerConversion) = _word(token, abi.encodeCall(IDividendTokenCommon.MAX_DIVIDEND_PER_CONVERSION, ()));
         (, uint256 registry) = _word(token, abi.encodeCall(IDividendTokenCommon.DIVIDEND_SWAP_REGISTRY, ()));
         // casting to 'uint160' is safe because the word came back from an `address` getter; a wider
@@ -245,7 +235,7 @@ contract RealmKeeperLens {
         s.assets = s.multiAsset ? _multiAssets(token, s.assetCount) : _legacyAsset(token);
     }
 
-    /// @dev Current generation: one `dividendAssets(i)` per configured asset, plus its staleness flag.
+    /// @dev Current generation: one `dividendAssets(i)` per configured asset.
     ///      The struct is decoded through the REAL `DivAsset` type rather than by field position, so a
     ///      layout change is a compile error here instead of a silent misread at runtime.
     function _multiAssets(address token, uint8 count) private view returns (AssetState[] memory assets) {
@@ -254,13 +244,8 @@ contract RealmKeeperLens {
             (bool ok, bytes memory out) = token.staticcall(abi.encodeCall(IDividendTokenMulti.dividendAssets, (i)));
             if (!ok || out.length == 0) continue;
             DividendDistribution.DivAsset memory a = abi.decode(out, (DividendDistribution.DivAsset));
-            (, uint256 stale) = _word(token, abi.encodeCall(IDividendTokenMulti.dividendsStale, (i)));
             assets[i] = AssetState({
-                asset: a.token,
-                owed: a.owed,
-                pendingNative: a.pendingNative,
-                lastDistribution: a.lastDistribution,
-                stale: stale != 0
+                asset: a.token, owed: a.owed, pendingNative: a.pendingNative, lastDistribution: a.lastDistribution
             });
         }
     }
@@ -271,7 +256,6 @@ contract RealmKeeperLens {
         (, uint256 asset) = _word(token, abi.encodeCall(IDividendTokenLegacy.dividendToken, ()));
         (, uint256 owed) = _word(token, abi.encodeCall(IDividendTokenLegacy.dividendsOwed, ()));
         (, uint256 pending) = _word(token, abi.encodeCall(IDividendTokenLegacy.pendingNative, ()));
-        (, uint256 stale) = _word(token, abi.encodeCall(IDividendTokenLegacy.dividendsStale, ()));
         // ponytail: `lastDistribution` is left 0 on this branch. The legacy activation marker is
         // `dividendPeriodFinish()`, which means something else entirely; the keeper reads it itself.
         assets[0] = AssetState({
@@ -281,8 +265,7 @@ contract RealmKeeperLens {
             asset: address(uint160(asset)),
             owed: owed,
             pendingNative: pending,
-            lastDistribution: 0,
-            stale: stale != 0
+            lastDistribution: 0
         });
     }
 

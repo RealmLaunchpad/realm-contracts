@@ -321,8 +321,7 @@ contract BurnTaxTokenV4Tests is TaxTokenUniV4BaseTests {
                 dividendsBps: 0,
                 liquidityBps: 0,
                 dividendTokens: new address[](0),
-                dividendWeightsBps: new uint16[](0),
-                dividendRoutes: new bytes[](0)
+                dividendWeightsBps: new uint16[](0)
             })
         });
         assertEq(

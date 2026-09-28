@@ -72,10 +72,10 @@ The unified factory (`RealmFactoryUniV2Unified`) exposes ONE `createToken`, and 
 
 `TokenSetupTiered` carries the `liquidityTier` selecting the post-graduation pool depth. `CreatorVault[]` (empty for none) locks supply in vesting vaults (§1.1 step 4b). `referral` is an off-chain signal for relayers: when non-zero, `RealmFactory.TokenReferral` is emitted (§1.1 step 7); no token storage or on-chain payout is wired to it.
 
-`TaxConfigsWithMultiAllocation` is the full `TaxConfigs` (static tax + the three launch-tax-decay fields, flattened) plus a nested `earningsAllocation` = `{burnBps, dividendsBps, liquidityBps, dividendTokens[], dividendWeightsBps[], dividendRoutes[]}`: post-graduation earnings routed to buy-back-and-burn / holder dividends / liquidity, the fund wallets taking the remainder. An all-zero split configures nothing (no extra call, no event). A non-zero split is stored on the token at creation via a factory-guarded `initializeEarningsAllocation` call, emitting `EarningsAllocationInitialized` and — when `dividendsBps != 0` — the dividend events of §1.1 step 6c.
+`TaxConfigsWithMultiAllocation` is the full `TaxConfigs` (static tax + the three launch-tax-decay fields, flattened) plus a nested `earningsAllocation` = `{burnBps, dividendsBps, liquidityBps, dividendTokens[], dividendWeightsBps[]}`: post-graduation earnings routed to buy-back-and-burn / holder dividends / liquidity, the fund wallets taking the remainder. An all-zero split configures nothing (no extra call, no event). A non-zero split is stored on the token at creation via a factory-guarded `initializeEarningsAllocation` call, emitting `EarningsAllocationInitialized` and — when `dividendsBps != 0` — the dividend events of §1.1 step 6c.
 - **Tax requirement.** A non-zero split requires a LONG-TERM STATIC tax (`taxDurationSeconds != 0`), otherwise `EarningsAllocationRequiresTax`: V2 LP fees never reach the token, and a decay-only token's ≤20-minute window is not an earnings stream worth splitting. The direct V4 venue (§1.3) accepts any tax config.
 - **Payout set.** The dividends slice is paid in UP TO THREE assets (`DividendDistribution.MAX_DIVIDEND_ASSETS`): `address(0)` (native), `DividendDistribution.DIVIDEND_SELF_TOKEN` (the token itself), or ANY ERC20. `dividendWeightsBps[i]` is asset `i`'s share OF THE DIVIDENDS SLICE. Validated once, at creation, and permanent: 1..3 entries with both arrays the same length, every weight non-zero, the weights summing to exactly 10 000, the assets DISTINCT, and `DIVIDEND_SELF_TOKEN` legal only as the sole entry — otherwise `InvalidDividendAssetSet` / `SelfTokenDividendMustBeSole`. Naming assets with a zero `dividendsBps` reverts `DividendAssetWithoutShare`.
-- **Routes.** Every non-native, non-self asset is registered with `RealmDividendSwapRegistry.registerRoute(asset, dividendRoutes[i])`; an array shorter than `dividendTokens` means the empty route (the permissionless V2 pair) for the rest. There is no asset whitelist and no review: the registry accepts either a Uniswap **V2** pair whose quote-side reserve clears its threshold (the empty route), or a Uniswap **V4** / **V3** route whose every pool is initialized and holds liquidity — how assets with no V2 pair, such as Robinhood Chain's xStocks, qualify. Otherwise it reverts `RouteRejected(rejection)` (`NoPair` | `InsufficientLiquidity` | `Blacklisted` | `QuoteNotAllowed` | `MalformedRoute` | `DeadPool` | `IntermediateNotAllowed`) at creation, because a clone cannot be patched afterwards. What is NOT checked, by anyone, is whether the named pool's price tracks the asset's real market.
+- **Routes.** None at creation, and no registry call: any ERC20 is accepted. How an asset is bought is the route `RealmDividendSwapRegistry` holds for it, one per asset, set and repointed by the registry's admins (`DividendRouteSet`, registry section). An asset without a route simply does not convert until it gets one; its buffer waits, whole.
 
 ### 1.1 Common sequence
 
@@ -134,7 +134,7 @@ Realm event order:
 3a. Any ERC20 quotes only: **`RealmToken.QuotesRegistered`** (`quotes[]`) — the currencies beyond the native one the token will earn in. `quotes[0]` on the token is ALWAYS `address(0)`, so this event carries only the extras and is absent on a native-only launch. It is what tells an indexer which currencies to expect in that token's `CreatorAssetFeesDeposited` / `LpAssetFeesRouted`.
 4. Creator vaults, when configured: the §1.1 step 4b sequence unchanged (`CreatorVaultDeployed` per vault, then **`RealmFactory.CreatorVaultsCreated`**).
 5. Fee registration, exactly as §1.1 step 5: zero or more **`DirectReceiverRegistered`**, then **`RealmMasterFeeHandler.SharesUpdated`**.
-5b. Only when any allocation bucket is non-zero: **`EarningsAllocationInitialized`** (`burnBps, dividendsBps, liquidityBps`), then — with a dividends share — one **`DividendAssetInitialized`** (`index, asset, weightBps`) per payout asset, each preceded by the registry's **`DividendRouteRegistered`** for a non-native, non-self asset, then **`DividendsInitialized`** (`dividendToken` = asset 0), then one more **`DividendRouteRegistered`** per ERC20 QUOTE some payout leg has to be bought out of (see the registry section). The allocation lands BEFORE the seed on purpose: the `markGraduated()` of step 6 is what emits `DividendsActivated`, so a direct-launched dividend token is active from its creation block, never from its first earnings.
+5b. Only when any allocation bucket is non-zero: **`EarningsAllocationInitialized`** (`burnBps, dividendsBps, liquidityBps`), then — with a dividends share — one **`DividendAssetInitialized`** (`index, asset, weightBps`) per payout asset, then **`DividendsInitialized`** (`dividendToken` = asset 0). No registry event: routes are set on the registry, per asset, outside any token's transaction. The allocation lands BEFORE the seed on purpose: the `markGraduated()` of step 6 is what emits `DividendsActivated`, so a direct-launched dividend token is active from its creation block, never from its first earnings.
 5c. Every pool after the first: **`RealmDirectGraduatorUniV4.PoolIdRegistered`** (`token, poolId, swapHookAddress`), one per extra pool in `pairs` order, emitted by the factory-driven `initializePool`. The FIRST pool's pair of events fired in step 2.
 6. `markGraduated()` — the token is opened for trading in its own creation transaction (`graduated() == true`), but emits NO `RealmToken.Graduated`: on this venue that marks the market-cap milestone instead, emitted by a later buy (§6.1 / §6.1 ERC20). With dividends it emits **`DividendsActivated`** here. On a taxable token this also sets `graduationTimestamp`, so a graduation-anchored tax window (`startTaxFromLaunch == false`) starts here, at creation.
 7. **`RealmDirectGraduatorUniV4.PoolSeeded`** for the FIRST pool (`token` indexed, `quote` indexed, `poolId`, `weightBps`, `tick`, `liquidity`, `launchMarketCap`, `targetMarketCap`, `quoteDecimals`, `quoteSymbol`), then **`RealmGraduator.TokenGraduated`** (`token, tokenAmount` = the first pool's share of the supply, `ethAmount` = ALWAYS `0` on this venue, `liquidity` = the first pool's), then one more **`PoolSeeded`** per further pool, in `pairs` order. `tick` is the derived quote-per-coin value, NOT the pool's internal orientation. `weightBps` is that pool's share of the seeded supply, summing to 10000 across the set; the LAST pool also absorbs the rounding remainder, so its actual amount is marginally above its weight. `launchMarketCap` is the whole supply at `tick`, in the quote's RAW units (wei for native, no decimals applied), the same units an indexer derives from the pool's `sqrtPriceX96`; `targetMarketCap` is `launchMarketCap * GRADUATION_TARGET_MULTIPLE` (5). The token is tradable from birth and reaches its graduation milestone on-chain once its largest pool (highest `weightBps`, the first seeded on a tie) trades at `GRADUATION_TARGET_TICKS` (16096, i.e. 5x) past that pool's launch `tick`: the buy that crosses it emits `RealmToken.Graduated` and flips `graduationReached()`. A dev buy large enough emits it inside the creation transaction, after step 8's swap. `quoteDecimals` is 18 for native; `quoteSymbol` is the quote's `symbol()`, empty for native and for a quote whose `symbol()` reverts or is not an ABI string of at most 32 bytes (e.g. the legacy `bytes32` form), which never blocks the launch. Each seed is accompanied by ERC20 `Transfer` events (graduator → liquidity adder → PoolManager) plus the position manager's own `Transfer` minting the position NFT to the graduator, where it stays permanently. There is no graduation fee on this venue, so no `CreatorGraduationFeeCollected` / `TreasuryGraduationFeeCollected`.
@@ -441,9 +441,7 @@ nests the following inside the paying entry point, at the point of the push:
 
 **`setConversionRoute(address asset, PathKey[] path)`** — owner. **`RealmTreasuryRouter.ConversionRouteSet`** (`asset, route`), `route` = `abi.encode(path)`.
 
-The multisig transfer emits nothing. `DividendBufferSweptToTreasury` (dividends section) pushes to the
-token impl's compile-time `DIVIDEND_TREASURY`, which follows `DeploymentAddresses.REALM_TREASURY` at
-the impl's deploy; whether it produces §11 events depends on what that constant was set to.
+The multisig transfer emits nothing.
 
 ---
 
@@ -503,18 +501,17 @@ else in separate transactions — `processDividends` keeper-gated, `claimDividen
 so an indexer sees them on their own.
 
 A token pays dividends in ONE TO THREE assets (`MAX_DIVIDEND_ASSETS`), fixed at creation: native, the
-token itself (only when it is the sole asset), or any ERC20 whose configured pool held liquidity at
-creation. The SET is written once and never rewritten, by anyone — there is no path that adds an asset,
+token itself (only when it is the sole asset), or any ERC20. The SET is written once and never rewritten, by anyone — there is no path that adds an asset,
 removes one, or re-weights the split, so an indexer reads the whole configuration off the
 `DividendAssetInitialized` events at creation and never has to watch for a change. `asset` on every
 event below identifies WHICH member of that set the event is about, and is always one of them.
 
 The assets are independent machines sharing only the token's eligible supply. Each has its own native
-buffer, its own conversion, its own accumulator, its own per-block funding cooldown and its own
-staleness clock. So the events below interleave freely ACROSS assets, and nothing may be inferred about
-asset `j` from an event carrying asset `i` — a 20/80 split fills the 20% leg roughly four times more
-slowly and is serviced that much less often, and one leg can go stale and be swept while the other is
-distributing normally.
+buffer, its own conversion, its own accumulator and its own per-block funding cooldown. So the events
+below interleave freely ACROSS assets, and nothing may be inferred about asset `j` from an event
+carrying asset `i` — a 20/80 split fills the 20% leg roughly four times more slowly and is serviced that
+much less often, and one leg can sit unconverted (no route, dead pool) while the other distributes
+normally.
 
 Each distribution is credited INSTANTLY, pro rata to the balances held when it lands, against a global
 `rewardPerToken` accumulator that moves only then. (It used to drip over a 15-minute stream; that is
@@ -525,56 +522,45 @@ entitlement is `previewDividend(holder)`, read from the chain.
 
 **At graduation**, from `markGraduated()` itself — immediately after `Graduated` on the curve venue; with no `Graduated` before it on the direct venue, whose `Graduated` is the later market-cap milestone:
 **`DividendsActivated`** (no args) — the accumulator starts here rather than at creation, so a holder
-earns from the moment the token is live. It is also the anchor for `STALE_DIVIDEND_WINDOW`. There is
+earns from the moment the token is live. There is
 ONE exception to the timing: a deploy buy large enough to graduate the token inside `createToken` runs
 `markGraduated()` before the allocation is configured, so that token emits `DividendsActivated` on its
 first earnings instead.
 
-**`processDividends(uint8 assetIndex, bool fund, uint256 minOut, address[] holders)`** — KEEPER-GATED, and the
+**`processDividends(uint8 assetIndex, bool fund, uint256 amount, uint256 minOut, address[] holders)`** — KEEPER-GATED, and the
 keeper entry point for the NATIVE buffer. `fund == false` is a PUSH-ONLY call: no conversion, no
 `DividendsFunded`, the block's cooldown untouched — it emits only the per-holder payout events, and
 reverts `NoDividendWork` if `holders` is empty. `fund == true` is the full call described below. It services ONE payout asset per call: each asset fills on its own
 schedule, prices its floor against its own pool and holds its own cooldown, so a keeper calls it once
 per asset and the assets never contend. There is NO minimum buffer size — any non-zero buffer converts,
-and whether a conversion earns its gas is the keeper's judgement, not a contract rule. `assetIndex` past `dividendAssetCount()` reverts
-`DividendAssetOutOfRange`. The pre-existing two-argument form
-**`processDividends(uint256 minOut, address[] holders)`** is still there and services asset 0, so a
-keeper written for a single-asset token needs no change. Reverts `NotAKeeper` unless `msg.sender` is on
-the `RealmKeepersRegistry` allowlist, with one exception: once THAT ASSET is stale
-(`dividendsStale(assetIndex)`, i.e. `STALE_DIVIDEND_WINDOW` with no distribution of it) anyone may call
-it for that asset, so a keeper set that goes away cannot strand holders' money. For an asset whose
-funding SWAPS (any third ERC20, and the V4 self-token buy-back) staleness alone is NOT enough — its
-buffer must ALSO hold at least `DIVIDEND_THRESHOLD`. A quiet token reaches a month without a
-distribution in its ordinary steady state, simply by never buffering enough to be worth converting, and
-opening a caller-supplied-floor swap there every month is a sandwich, not a rescue; a buffer that HAS
-been convertible all along and still was not converted is the reading that actually evidences an absent
-keeper. Assets whose funding does not swap (native, and the Uniswap-V2 self-token leg) keep the wide
-bypass — there is nothing there for a caller to extract, so stranding is their only failure mode. A
-sub-threshold residual on a swapping asset stays keeper-only. This is the ONLY thing
-`DIVIDEND_THRESHOLD` still governs: it no longer gates funding. Holders
-are never gated — `claimDividends()` stays open to everyone.
+and whether a conversion earns its gas is the keeper's judgement, not a contract rule. `amount` is how
+much of the buffer to convert, capped at `MAX_DIVIDEND_PER_CONVERSION` (0 = up to the cap), so a keeper
+can slice a buffer a thin pool cannot take at once; a payout that does not swap ignores it. `assetIndex`
+past `dividendAssetCount()` reverts `DividendAssetOutOfRange`. The pre-existing two-argument form
+**`processDividends(uint256 minOut, address[] holders)`** is still there and services asset 0 up to the
+cap, so a keeper written for a single-asset token needs no change. Reverts `NotAKeeper` unless
+`msg.sender` is on the `RealmKeepersRegistry` allowlist or that registry's global `permissionless`
+switch is on (`PermissionlessSet`) — the one way past the gate, for a keeper set that is retired.
+Nothing ages into it. Holders are never gated — `claimDividends()` stays open to everyone.
 
-**`processDividends(uint8 assetIndex, address quote, uint256 minOut, address[] holders)`** (V4 tokens
+**`processDividends(uint8 assetIndex, address quote, uint256 amount, uint256 minOut, address[] holders)`** (V4 tokens
 only) services the buffer held in one of the token's QUOTES — what that quote's pool earned. `quote ==
-address(0)` is exactly the call above with `fund == true`. For an ERC20 quote the leg is one of three shapes, and the shape
-decides the gate: the payout asset IS the quote (nothing is swapped; the whole buffer credits at once;
-anyone may call once the asset is stale), the payout asset is the token itself (a buy-back on that
-quote's own pool, the `processBurn` primitive, capped at `MAX_QUOTE_SPEND_BPS` of the buffer per call
-and keeper-only however stale), or anything else (the registry's `swapAssetToAsset`, same cap, same
-gate). As on the native leg there is no minimum buffer — the keeper decides when a buffer is worth its
-gas — and `DIVIDEND_THRESHOLD` does not even apply here, being native-denominated and meaningless in a
-currency the creator picked, so the staleness bypass never opens a quote leg that swaps. NO treasury sweep either:
-a quote pool nobody can swap on strands that quote's buffer, as it strands `processBurn`'s. The
-once-per-block cooldown is the ASSET's, shared across its native leg and every quote. `quote` not one
-of the token's reverts `UnknownQuote`. Nothing about the gate changes the EVENT
-sequence; it only adds a revert path. Once stale, the bypass also makes a distribution an ATOMIC
-flash-buy capture (buy, fund, claim, sell in one transaction) — accepted, because a token nobody has
-distributed for a month is most likely dead. It converts the buffer, credits the proceeds to holders,
-and pushes payouts, doing whichever of the three there is anything to do. A keeper whose holder list
-does not fit in one block just calls it again; there is no phase to sequence and no state that a
-second call could disturb.
+address(0)` is exactly the call above with `fund == true`. For an ERC20 quote the leg is one of three
+shapes: the payout asset IS the quote (nothing is swapped; the whole buffer credits at once), the payout
+asset is the token itself (a buy-back on that quote's own pool, the `processBurn` primitive, capped at
+`MAX_QUOTE_SPEND_BPS` of the buffer per call), or anything else (the registry's `swapAssetToAsset`, same
+cap). `amount` (in the quote's units, 0 = up to the cap) lowers the cap further on a leg that swaps. The
+gate is the same as above for every shape. As on the native leg there is no minimum buffer. A quote
+whose route is missing or cannot be walked backwards (only V4 can) strands that quote's buffer until its
+route is fixed, as a dead pool strands `processBurn`'s. The once-per-block cooldown is the ASSET's,
+shared across its native leg and every quote. `quote` not one of the token's reverts `UnknownQuote`.
+With the switch on, a distribution is also an ATOMIC flash-buy capture (buy, fund, claim, sell in one
+transaction) — accepted as the cost of never stranding a buffer. It converts the buffer, credits the
+proceeds to holders, and pushes payouts, doing whichever of the three there is anything to do. A keeper
+whose holder list does not fit in one block just calls it again; there is no phase to sequence and no
+state that a second call could disturb.
 
-The FUNDING leg — steps 1 and 1b — runs at most once per block PER ASSET; servicing all three assets in
+The FUNDING leg — step 1 — runs at most once per block PER ASSET; servicing all three assets in
 one block is normal and expected. A second call in the same block that
 actually moved the buffer skips straight to the payouts, and reverts `DividendProcessCooldown` if it
 was given no holders either. Pushing payouts is never rate-limited, so splitting a large holder set
@@ -586,17 +572,6 @@ across several transactions in one block works exactly as before.
    in — `address(0)` for native, else the ERC20 quote — and `amountIn` how much of it was consumed, in
    THAT currency's units; `assetOut` was split across the eligible supply at this instant. Reverts `NoDividendSupply`
    instead, leaving the buffer untouched, if the eligible supply is under one whole token.
-1b. Instead of `DividendsFunded`, when a zero-floor conversion came back empty AND the token has gone
-   `STALE_DIVIDEND_WINDOW` without a distribution: **`DividendBufferSweptToTreasury`**
-   (`asset, nativeAmount`). The pool cannot produce a single wei at any price and has been unable to for
-   a month — staleness is what makes that a persistent reading rather than a snapshot anyone could
-   manufacture inside one transaction, since every successful distribution resets the staleness anchor.
-   That slice of the native buffer went to `DIVIDEND_TREASURY` rather than sitting owed to
-   holders forever, and the call returned successfully instead of reverting. It is bounded by
-   `MAX_DIVIDEND_PER_CONVERSION` per call, so a dead pool's whole buffer takes several calls to clear.
-   Nothing else changes: the payout asset, the accumulator and every unclaimed accrual are
-   untouched, so an indexer needs only to stop expecting that native to become a distribution. A caller
-   whose own `minOut` was simply unreachable gets `DividendConversionFailed` and no sweep.
 2. V4 self-token only, immediately BEFORE its buy-back swap: **`DividendBuyBackInitiated`**
    (`quote, amountIn` — `address(0)` or the ERC20 quote, and the amount in its units), followed by the pool's own buy event
    (`RealmSwapHook.RealmSwapBuy` on the native pool, `RealmHookAnyPair.RealmQuoteSwapBuy` on an ERC20
@@ -610,18 +585,16 @@ across several transactions in one block works exactly as before.
 
    A call that funds nothing AND was given no holders reverts rather than emitting:
    `DividendConversionFailed` when the buffer was fundable and the conversion did not happen (an
-   unreachable floor, or a dead pool on a token not yet stale), `BelowDividendThreshold` when it had not
-   earned enough to try, and `DividendProcessCooldown` when the funding leg already ran this block.
-   A call that swept does NOT revert —
-   it resolved the buffer, and reverting would undo the sweep. A call carrying holders never reverts for
-   either reason — it pushes the payouts it was asked to push.
+   unreachable floor, no route, or a dead pool — the buffer stays whole), `BelowDividendThreshold` when
+   it was empty, and `DividendProcessCooldown` when the funding leg already ran this block. A call
+   carrying holders never reverts for any of these — it pushes the payouts it was asked to push.
 
 **`claimDividends()`** — the self-serve backstop, emitting one **`DividendPaid`** for `msg.sender` PER
 CONFIGURED ASSET that had anything accrued, in index order. It is the holder's one call for the whole
 set, so a holder never has to know how many assets there are. It differs from a batch payout in one respect: a native payout inside `processDividends`
 is gas-capped, so one expensive holder cannot starve the batch — at the chain's `NATIVE_PAYOUT_GAS` for
 a native payout, and at the far larger `ASSET_PAYOUT_GAS` for an ERC20 one, whose `transfer` is a
-contract the registry only ever vetted for liquidity. `claimDividends` forwards all remaining gas for
+contract nobody vetted. `claimDividends` forwards all remaining gas for
 both shapes, so a holder skipped by a batch can always be paid by claiming. It never distributes.
 
 
@@ -665,6 +638,8 @@ own, rarely, and are not attributable to any token.
 - **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the one below.
 - **`KeeperSet`** (`account`, `allowed`) — admin-level; a keeper key being rotated in or out. Revocation
   takes effect in the next transaction.
+- **`PermissionlessSet`** (`enabled`) — admin-level; the GLOBAL switch. While on, every keeper-gated call
+  on every token (and `RealmAssetsWhitelist.refreshRates`) is open to anyone.
 
 ### `RealmAssetsWhitelist` (one upgradeable proxy per chain)
 
@@ -687,7 +662,7 @@ upgrade another `Upgraded`.
 
 ### `RealmDividendSwapRegistry` (one per chain)
 
-The eligibility gate and swap venue behind every third-asset dividend. It is a SHARED contract, so its
+The swap venue behind every third-asset dividend, and the one place payout routes live (one per asset). It is a SHARED contract, so its
 events are not attributable to a token by their emitter — index them on their own and join on `asset`.
 
 **Per conversion**, inside the funding leg of `processDividends` (step 1 above), immediately before the
@@ -712,41 +687,20 @@ token's own `DividendsFunded`:
   `DividendAssetPurchased.nativeIn` is the FULL amount the token sent, this included, so the amount
   actually converted is `nativeIn - amount`.
 
-**Per token creation**, one per non-native, non-self payout asset — plus, on the direct venue, one per
-ERC20 quote some payout leg has to be bought OUT of (a quote that is itself a payout asset registers
-once; its one route is walked either way) — inside the creation transaction:
-
-- **`DividendRouteRegistered`** (`token`, `asset`, `route`) — the pools `token` will convert `asset`
-  through, for the rest of its life. `route` is the `DividendRouteLib` wire format: EMPTY means the
-  asset's permissionless Uniswap V2 pair (a real choice, not a missing one), a leading `0x04` is an
-  abi-encoded `Hop[]` of `{currency, fee, tickSpacing, hooks}` running from the native coin, and a
-  leading `0x03` is Uniswap V3's own packed `token | fee | token` path running from the quote token.
-  Chosen by the creator, validated once, and NEVER rewritten — there is no second event for a
-  `(token, asset)` pair and no admin override. Replaying these is the only way to learn which pools a
-  token's dividends cross; nothing else records it, and the route is not derivable from the asset.
-
 **Configuration** (admin, rare, never inside a token's transaction):
 
-- **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the four below.
-- **`BlacklistSet`** (`asset`, `blacklisted`) — THE ONLY VETO, and the only admin lever that touches
-  eligibility at all. Retroactive: it stops tokens that already registered a route for the asset, from
-  their next conversion on. Realm does not review payout assets and has no whitelist, so this is what
-  answers an asset that turns out to be hostile after tokens have committed to it.
-- **`DefaultThresholdSet`** (`threshold`) / **`QuoteTokenThresholdSet`** (`quote`, `threshold`) — the
-  quote-side depth an asset's V2 pair must hold. Applies to the EMPTY route only; a route names its
-  pools, which are checked for existence and liquidity instead. A change applies to tokens that ALREADY
-  exist, for every conversion they have not made yet.
-- **`QuoteTokenAllowed`** (`quote`, `allowed`) — the `from` side of a conversion, and the set of
-  currencies a two-hop V3 path may route THROUGH. Emitted once at deployment for the chain's canonical
-  quote token.
+- **`AdminSet`** (`account`, `allowed`) — owner-only; manages who may emit the two below.
+- **`DividendRouteSet`** (`asset`, `route`) — `asset`'s route, for EVERY token paying it, existing ones
+  included, from their next conversion on. Empty `route` removes it (the veto: that asset's buffers wait,
+  whole, until a route is set again). `route` is the `DividendRouteLib` wire format: `0x02` alone is the
+  asset's Uniswap V2 pair with the native quote, a leading `0x04` is an abi-encoded `Hop[]` of
+  `{currency, fee, tickSpacing, hooks}` running from the native coin, and a leading `0x03` is Uniswap V3's
+  own packed `token | fee | token` path running from WETH. Replaying these is the only way to learn
+  which pools an asset's conversions cross.
 - **`KeeperFundingSet`** (`keeper`) — the wallet the fee above is paid to; `address(0)` turns the fee
   off, which is the state a freshly deployed registry is in. The fee AMOUNT is not here and never
   changes without an upgrade: it is the compile-time `KEEPER_FEE`. Applies to tokens that ALREADY exist,
   from the next conversion on.
 
-Eligibility is not fully replayable from logs: for a token whose route is empty it is a live liquidity
-read against Uniswap V2, and for a routed one it is a live pool read against the V4 singleton, so an
-indexer must call `checkSwapSupported(token, asset)` for a current answer.
-
-Resolution is not an order any more — a token has exactly ONE route per asset and it names its venue.
-`checkSwapSupported` and the swap itself share that order.
+`routeOf(asset)` answers the current route; whether its pools can fill a conversion is only known by
+converting.

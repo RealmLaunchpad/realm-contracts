@@ -363,8 +363,12 @@ contract RealmTaxableTokenUniV2 is RealmTaxableTokenUniV2Base {
     /// @dev A self-token payout is only ever configured as the SOLE asset, so `i` is 0 whenever this
     ///      branch is taken; the index is still threaded through so the base's asset-agnostic path stays
     ///      the one that decides.
-    function _fundDividends(uint256 i, uint256 minOut) internal override returns (FundOutcome, uint256, uint256) {
-        if (dividendAssets[i].token != address(this)) return super._fundDividends(i, minOut);
+    function _fundDividends(uint256 i, uint256 amount, uint256 minOut)
+        internal
+        override
+        returns (FundOutcome, uint256, uint256)
+    {
+        if (dividendAssets[i].token != address(this)) return super._fundDividends(i, amount, minOut);
 
         uint256 buffered = dividendPendingTokens;
         if (buffered == 0) return (FundOutcome.NotReady, 0, 0);

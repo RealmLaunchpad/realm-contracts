@@ -150,7 +150,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
             uint40 lastDistribution,
             uint40 lastProcessBlock,
             uint8 precisionExp,
-            address asset,,,
+            address asset,,
         ) = token.dividendAssets(0);
 
         assertEq(uint128(hot), rewardPerTokenStored, "rewardPerTokenStored at byte 0");
@@ -215,8 +215,7 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
         weights[0] = 10_000;
         vm.prank(creator);
         vm.expectRevert();
-        IRealmTaxableToken(payable(address(token)))
-            .initializeEarningsAllocation(0, 10_000, 0, assets, weights, new bytes[](0));
+        IRealmTaxableToken(payable(address(token))).initializeEarningsAllocation(0, 10_000, 0, assets, weights);
 
         assertEq(token.dividendsBps(), 2_000, "the creation-time dividend share is unchanged");
     }

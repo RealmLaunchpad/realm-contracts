@@ -159,9 +159,6 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     /// @notice Thrown when a zap's quote cannot be reached from native through `ASSETS_WHITELIST`'s V4
     ///         price pools: a hop listed on V2/V3, against WETH, or more than one reference deep.
     error DevBuyRouteUnavailable();
-    /// @notice `quoteRoutes` names more entries than there are pairs, a route for a native pair, or a
-    ///         route while the allocation has no dividends share.
-    error InvalidQuoteRoutes();
     /// @notice A pair's derived launch tick implies an opening market cap outside
     ///         [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] of native value at the quote's
     ///         snapshot rate.
@@ -225,7 +222,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
             setup.name, setup.symbol, setup.feeShares, devBuy.recipients, msg.value > 0 ? msg.value : devBuy.quoteAmount
         );
         _validateAntiSniperConfig(antiSniperConfigs);
-        bool hasAllocation = _validateAllocation(taxAllocationConfigs, pairs);
+        bool hasAllocation = _validateAllocation(taxAllocationConfigs);
 
         token = _createWithAllocation(
             setup, pairs, ticks[0], taxAllocationConfigs, antiSniperConfigs, creatorVaults, hasAllocation
@@ -294,26 +291,15 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         _validateTotalFee(setup.lpFeeBps, taxConfigs);
         _allocationPending = hasAllocation;
         token = _launch(setup, pairs, firstLaunchTick, taxConfigs, antiSniperConfigs, creatorVaults);
-        if (hasAllocation) _initializeAllocation(token, c, pairs);
+        if (hasAllocation) _initializeAllocation(token, c);
     }
 
-    /// @dev Its own frame purely for the stack: seven calldata arguments do not fit beside the launch's.
-    function _initializeAllocation(
-        address token,
-        TaxConfigsWithDirectAllocation calldata c,
-        DirectPair[] calldata pairs
-    ) private {
-        bytes[] memory quoteRoutes = _quoteRoutes(c.quoteRoutes, pairs);
+    /// @dev Its own frame purely for the stack: the allocation's arguments do not fit beside the launch's.
+    function _initializeAllocation(address token, TaxConfigsWithDirectAllocation calldata c) private {
         EarningsAllocationMultiConfig calldata alloc = c.earningsAllocation;
         IRealmTaxableToken(payable(token))
             .initializeEarningsAllocation(
-                alloc.burnBps,
-                alloc.dividendsBps,
-                alloc.liquidityBps,
-                alloc.dividendTokens,
-                alloc.dividendWeightsBps,
-                alloc.dividendRoutes,
-                quoteRoutes
+                alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps, alloc.dividendTokens, alloc.dividendWeightsBps
             );
     }
 
@@ -364,46 +350,12 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     }
 
     /// @dev The allocation overload's own checks. Returns whether any bucket is configured.
-    function _validateAllocation(TaxConfigsWithDirectAllocation calldata c, DirectPair[] calldata pairs)
-        private
-        pure
-        returns (bool hasAllocation)
-    {
+    function _validateAllocation(TaxConfigsWithDirectAllocation calldata c) private pure returns (bool hasAllocation) {
         EarningsAllocationMultiConfig calldata alloc = c.earningsAllocation;
         hasAllocation = _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps);
         // Naming payout assets with a zero share would leave dividends silently OFF, forever: clones
         // are not upgradeable and `initializeEarningsAllocation` only ever runs here, at creation.
         require(alloc.dividendTokens.length == 0 || alloc.dividendsBps != 0, DividendAssetWithoutShare());
-        uint256 n = c.quoteRoutes.length;
-        require(n <= pairs.length, InvalidQuoteRoutes());
-        // A route on a native pair, or with no dividends to convert into, is a caller who believes
-        // something is being converted that is not: the token only registers routes for a dividends leg.
-        for (uint256 i = 0; i < n; ++i) {
-            require(
-                c.quoteRoutes[i].length == 0 || (pairs[i].quote != address(0) && alloc.dividendsBps != 0),
-                InvalidQuoteRoutes()
-            );
-        }
-    }
-
-    /// @dev Compacts the per-PAIR `quoteRoutes` into the per-ERC20-QUOTE list the token takes: same
-    ///      order as `_registerExtraQuotes` registers them, native pairs skipped, missing entries empty.
-    function _quoteRoutes(bytes[] calldata routes, DirectPair[] calldata pairs)
-        private
-        pure
-        returns (bytes[] memory out)
-    {
-        uint256 n = pairs.length;
-        out = new bytes[](n);
-        uint256 count;
-        for (uint256 i = 0; i < n; ++i) {
-            if (pairs[i].quote == address(0)) continue;
-            if (i < routes.length) out[count] = routes[i];
-            ++count;
-        }
-        assembly ("memory-safe") {
-            mstore(out, count)
-        }
     }
 
     /// @dev Tells the token which ERC20 currencies it will earn in, so its buffers and its

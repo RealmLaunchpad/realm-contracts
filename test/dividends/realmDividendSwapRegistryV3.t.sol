@@ -6,7 +6,6 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
-import {SwapRejection} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 
@@ -75,8 +74,6 @@ contract RealmDividendSwapRegistryV3Tests is Test {
     address internal constant V3_FACTORY = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
     /// @dev AAPLon's real, liquid WETH pool.
     address internal constant AAPL_WETH_005 = 0x8bb3514e2204E1cDF3Ac149EFEe7Ff04D91B719f;
-    /// @dev Robinhood asset with NO V2 pair, reachable on V3 only through USDG.
-    address internal constant SHY = 0xBE274710Bf3d9567e1B290eF6a5F9f90ca016FD8;
 
     RealmDividendSwapRegistry internal registry;
 
@@ -91,10 +88,6 @@ contract RealmDividendSwapRegistryV3Tests is Test {
 
         vm.prank(owner);
         registry.setAdmin(admin, true);
-
-        // Robinhood's xStock/WETH V2 pairs hold ~0.005 ETH a side, under the shipped default floor.
-        vm.prank(admin);
-        registry.setDefaultThreshold(0.001 ether);
     }
 
     /// @dev `token | fee | token`, Uniswap V3's own encoding.
@@ -106,18 +99,14 @@ contract RealmDividendSwapRegistryV3Tests is Test {
         return abi.encodePacked(a, f1, b, f2, c);
     }
 
-    /// @dev This test contract stands in for the TOKEN: routes are keyed by the caller, so registering
-    ///      here and converting here is exactly the shape a clone has.
+    /// @dev Lists `asset`'s route as an admin. This test contract then converts exactly as a token does.
     function _route(address asset, bytes memory path) internal {
-        registry.registerRoute(asset, DividendRouteLib.encodeV3(path));
+        vm.prank(admin);
+        registry.setRoute(asset, DividendRouteLib.encodeV3(path));
     }
 
-    function _supported(address asset) internal view returns (bool ok) {
-        (ok,) = registry.checkSwapSupported(address(this), asset);
-    }
-
-    function _expectRejected(SwapRejection why) internal {
-        vm.expectRevert(abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, why));
+    function _expectMalformed() internal {
+        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
     }
 
     /// @dev A fresh 1% AAPLon/WETH pool opened at the live 0.05% pool's price, holding one AAPLon-only
@@ -139,24 +128,6 @@ contract RealmDividendSwapRegistryV3Tests is Test {
 
     //////////////////////// admission //////////////////////
 
-    /// @dev An asset with no V2 pair is refused until a route admits it. The route IS the curation.
-    function test_aV3RouteAdmitsAnAssetTheV2TestCannotSee() public {
-        assertEq(
-            uint8(registry.validateRoute(SHY, "")), uint8(SwapRejection.NoPair), "no V2 pair, so refused on its own"
-        );
-
-        vm.prank(admin);
-        registry.setAllowedQuoteToken(USDG, true);
-        _route(SHY, _path(WETH, FEE_001, USDG, FEE_030, SHY));
-
-        assertTrue(_supported(SHY), "the route admits it");
-        assertEq(
-            registry.routeOf(address(this), SHY),
-            DividendRouteLib.encodeV3(_path(WETH, FEE_001, USDG, FEE_030, SHY)),
-            "and is readable back"
-        );
-    }
-
     /// @dev ⚠️ THE REGRESSION GUARD. An AAPLon/WETH pool holding essentially no WETH — its liquidity is
     ///      single-sided in the asset, which is what a sell-side maker looks like and what a buyer
     ///      wants. Any depth gate that read the quote-side balance would reject it. It converts fine.
@@ -171,29 +142,6 @@ contract RealmDividendSwapRegistryV3Tests is Test {
         uint256 out = registry.swapNativeToAsset{value: 0.005 ether}(AAPLon, 1, recipient);
         assertGt(out, 0, "and yet it converts");
         assertEq(IERC20(AAPLon).balanceOf(recipient), out, "delivered in full");
-    }
-
-    /// @dev There is no clearing any more. A route is chosen once, by the creator, and is the token's
-    ///      venue for life — including when the pool it names dies. That permanence is the cost of
-    ///      dropping the review step, and it is why registration validates rather than trusts.
-    function test_aRouteCannotBeClearedOrReplaced() public {
-        _route(AAPLon, _path(WETH, FEE_030, AAPLon));
-
-        vm.expectRevert(RealmDividendSwapRegistry.RouteAlreadyRegistered.selector);
-        registry.registerRoute(AAPLon, "");
-    }
-
-    /// @dev A blacklist still overrides a curated route. The one admin veto outranks the one admin
-    ///      admission, or blacklisting a routed asset would do nothing.
-    function test_aBlacklistBeatsAV3Route() public {
-        _route(AAPLon, _path(WETH, FEE_030, AAPLon));
-
-        vm.prank(admin);
-        registry.setBlacklisted(AAPLon, true);
-
-        (bool ok, SwapRejection why) = registry.checkSwapSupported(address(this), AAPLon);
-        assertFalse(ok);
-        assertEq(uint8(why), uint8(SwapRejection.Blacklisted));
     }
 
     //////////////////////// execution //////////////////////
@@ -213,8 +161,6 @@ contract RealmDividendSwapRegistryV3Tests is Test {
     /// @dev The two-hop case, and the whole reason multi-hop is supported: SPYon has no direct WETH
     ///      pool and is only reachable through USDG.
     function test_twoHopConvertsThroughTheIntermediate() public {
-        vm.prank(admin);
-        registry.setAllowedQuoteToken(USDG, true);
         _route(SPYon, _path(WETH, FEE_001, USDG, FEE_030, SPYon));
 
         vm.deal(address(this), 0.005 ether);
@@ -256,9 +202,9 @@ contract RealmDividendSwapRegistryV3Tests is Test {
         assertEq(IERC20(AAPLon).balanceOf(recipient), 0, "and nothing was delivered on a half-spent swap");
     }
 
-    /// @dev A route registered on the wrong fee tier names a pool that does not exist. Nothing on-chain
-    ///      refuses it at write time — this is what the off-chain admission bar is for — but the swap
-    ///      fails loudly rather than converting at a bad price.
+    /// @dev A route set on the wrong fee tier names a pool that does not exist. Nothing on-chain refuses
+    ///      it at write time — the fork probe before listing is for that — but the swap fails loudly and
+    ///      the route can be repointed.
     function test_aRouteOnTheWrongFeeTierFailsAtSwapTime() public {
         // AAPLon's WETH pool is on 0.05%; there is none on 0.3%.
         _route(AAPLon, _path(WETH, FEE_030, AAPLon));
@@ -268,85 +214,56 @@ contract RealmDividendSwapRegistryV3Tests is Test {
         registry.swapNativeToAsset{value: 0.005 ether}(AAPLon, 1, recipient);
     }
 
-    //////////////////////// resolution order //////////////////////
+    //////////////////////// isolation //////////////////////
 
-    /// @dev An asset that ALSO passes the V2 test is redirected by its route: the curated pool wins,
-    ///      because an asset only carries a route when an admin judged it the better venue.
-    function test_aV3RouteWinsOverAViableV2Pair() public {
-        assertEq(uint8(registry.validateRoute(HOODon, "")), uint8(SwapRejection.OK), "HOODon passes the V2 test");
-
-        _route(HOODon, _path(WETH, FEE_030, HOODon));
-
-        vm.deal(address(this), 0.01 ether);
-        uint256 out = registry.swapNativeToAsset{value: 0.01 ether}(HOODon, 1, recipient);
-        assertGt(out, 0, "still converts");
-        assertEq(IERC20(HOODon).balanceOf(recipient), out, "and through the route, not the pair");
-    }
-
-    /// @dev Adding a route for one asset must not move any other asset's venue.
+    /// @dev Setting a route for one asset must not give any other asset one.
     function test_aRouteDoesNotDisturbAnotherAsset() public {
         _route(AAPLon, _path(WETH, FEE_030, AAPLon));
-
-        (address pair,) = registry.pairFor(WETH, MSFT);
-        assertTrue(pair != address(0), "MSFT still resolves to its V2 pair");
-        assertEq(registry.routeOf(address(this), MSFT).length, 0, "and has no route of its own");
+        assertEq(registry.routeOf(MSFT).length, 0, "MSFT has no route of its own");
     }
 
     //////////////////////// path validation //////////////////////
 
     function test_aPathThatDoesNotStartAtTheQuoteIsRejected() public {
-        _expectRejected(SwapRejection.MalformedRoute);
+        _expectMalformed();
         _route(AAPLon, _path(MSFT, FEE_030, AAPLon));
     }
 
     function test_aPathThatDoesNotEndAtTheAssetIsRejected() public {
-        _expectRejected(SwapRejection.MalformedRoute);
+        _expectMalformed();
         _route(AAPLon, _path(WETH, FEE_030, HOODon));
     }
 
     function test_aMalformedPathIsRejected() public {
-        _expectRejected(SwapRejection.MalformedRoute);
+        _expectMalformed();
         _route(AAPLon, abi.encodePacked(WETH, FEE_030)); // no destination
-        _expectRejected(SwapRejection.MalformedRoute);
+        _expectMalformed();
         _route(AAPLon, abi.encodePacked(WETH, FEE_030, AAPLon, hex"00")); // a trailing byte
     }
 
     /// @dev Three hops is refused: each extra hop is another pool that can drain, and the safety of a
     ///      two-hop route rests on its first leg being a major pool that will not.
     function test_aRouteLongerThanTwoHopsIsRejected() public {
-        vm.prank(admin);
-        registry.setAllowedQuoteToken(USDG, true);
-        _expectRejected(SwapRejection.MalformedRoute);
+        _expectMalformed();
         _route(SPYon, abi.encodePacked(WETH, FEE_001, USDG, FEE_005, MSFT, FEE_030, SPYon));
-    }
-
-    /// @dev A middle token has to be one the protocol already trusts to route through. Without this a
-    ///      two-hop route could put a long-tail pool in the middle, giving the path two fragile legs.
-    function test_anUnapprovedIntermediateIsRejected() public {
-        _expectRejected(SwapRejection.IntermediateNotAllowed);
-        _route(SPYon, _path(WETH, FEE_005, MSFT, FEE_030, SPYon));
     }
 
     //////////////////////// discoverability + access //////////////////////
 
-    /// @dev An indexer learns which pools a token's dividends cross by replaying this event; nothing
-    ///      else records it, since the route is not derivable from the asset.
-    function test_everyRegistrationIsAnnounced() public {
+    /// @dev An indexer learns which pools an asset's conversions cross by replaying this event.
+    function test_everyRouteChangeIsAnnounced() public {
         bytes memory route = DividendRouteLib.encodeV3(_path(WETH, FEE_030, AAPLon));
 
-        vm.expectEmit(true, true, false, true, address(registry));
-        emit RealmDividendSwapRegistry.DividendRouteRegistered(address(this), AAPLon, route);
-        registry.registerRoute(AAPLon, route);
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit RealmDividendSwapRegistry.DividendRouteSet(AAPLon, route);
+        vm.prank(admin);
+        registry.setRoute(AAPLon, route);
     }
 
-    /// @dev NOBODY IS ASKED. A stranger registers their own token's route with no role at all — the
-    ///      inverse of what this test asserted before the review step was dropped.
-    function test_anyoneCanRegisterTheirOwnRoute() public {
+    function test_aStrangerCannotSetARoute() public {
         vm.prank(stranger);
-        registry.registerRoute(AAPLon, DividendRouteLib.encodeV3(_path(WETH, FEE_030, AAPLon)));
-
-        (bool ok,) = registry.checkSwapSupported(stranger, AAPLon);
-        assertTrue(ok);
+        vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
+        registry.setRoute(AAPLon, DividendRouteLib.encodeV3(_path(WETH, FEE_030, AAPLon)));
     }
 
     receive() external payable {}

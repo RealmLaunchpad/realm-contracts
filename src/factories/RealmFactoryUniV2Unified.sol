@@ -114,8 +114,7 @@ contract RealmFactoryUniV2Unified is RealmFactoryCurveAbstract {
                     alloc.dividendsBps,
                     alloc.liquidityBps,
                     alloc.dividendTokens,
-                    alloc.dividendWeightsBps,
-                    alloc.dividendRoutes
+                    alloc.dividendWeightsBps
                 );
         }
         if (referral != address(0)) emit TokenReferral(token, referral);

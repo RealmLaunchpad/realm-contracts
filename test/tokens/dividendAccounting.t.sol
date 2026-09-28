@@ -6,6 +6,8 @@ import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.so
 import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
+import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @notice A bare `DividendDistributionLogic` whose balances move through `_onDividendTransfer`, in the
@@ -33,16 +35,7 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
 
     function configure(address asset) external {
         (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
-        assetCount = _initializeDividends(assets, weights, new bytes[](0));
-    }
-
-    /// @notice Same, naming the pools explicitly. No routes at all means the permissionless V2 pair,
-    ///         which is what every other helper here relies on.
-    function configureRouted(address asset, bytes calldata route) external {
-        (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
-        bytes[] memory routes = new bytes[](1);
-        routes[0] = route;
-        assetCount = _initializeDividends(assets, weights, routes);
+        assetCount = _initializeDividends(assets, weights);
     }
 
     /// @dev How many payout assets the harness was configured with. The production token keeps this in
@@ -55,7 +48,7 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
 
     /// @notice Configure a multi-asset payout set, as `initializeEarningsAllocation`'s array overload does.
     function configureMulti(address[] calldata assets, uint16[] calldata weights) external {
-        assetCount = _initializeDividends(assets, weights, new bytes[](0));
+        assetCount = _initializeDividends(assets, weights);
     }
 
     function activate() external {
@@ -114,10 +107,6 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
     ///      not size-bound, so the tests keep reading them by name.
     function dividendPrecisionExp() external view returns (uint8) {
         return dividendAssets[0].precisionExp;
-    }
-
-    function failedConversionBlock() external view returns (uint40) {
-        return dividendAssets[0].failedConversionBlock;
     }
 
     function _dividendBalanceOf(address account) internal view override returns (uint256) {
@@ -425,12 +414,12 @@ contract DividendAccountingTests is Test {
     ///      better placed than a compile-time constant to decide when a conversion earns itself.
     function test_aSubThresholdBufferFundsAnyway() public {
         _live();
-        uint256 dust = h.DIVIDEND_THRESHOLD() / 2;
+        uint256 dust = 0.0001 ether;
         _fund(dust);
 
         h.processDividends(0, _noHolders());
 
-        assertEq(h.dividendsOwed(), dust, "a buffer far under the threshold distributed");
+        assertEq(h.dividendsOwed(), dust, "a dust buffer distributed");
         assertEq(h.pendingNative(), 0, "buffer drained");
     }
 
@@ -459,43 +448,31 @@ contract DividendAccountingTests is Test {
         assertGt(alice.balance, 0, "the payouts went out anyway");
     }
 
-    ///////////////////////// what the threshold still governs /////////////////////////
+    ///////////////////////// the global switch /////////////////////////
 
-    /// @dev Its one remaining job is the staleness bypass — and only on an asset that SWAPS. A native
-    ///      payout has no swap for a caller to sandwich, so once it goes stale ANYONE may fund it at
-    ///      any size, which is what keeps a residual from stranding when the keepers are gone.
-    function test_aStaleNativeAssetGoesPermissionlessAtAnySize() public {
+    /// @dev The keepers registry's switch opens funding to anyone, on every token at once, and closing it
+    ///      shuts the gate again. It is the only way past the gate: nothing ages into it.
+    function test_theGlobalSwitchOpensAndClosesTheGate() public {
         _live();
-        uint256 dust = h.DIVIDEND_THRESHOLD() / 2;
+        uint256 dust = 0.0001 ether;
         _fund(dust);
 
         address stranger = makeAddr("stranger");
+        skip(3650 days); // time alone opens nothing
         vm.prank(stranger);
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
         h.processDividends(0, _noHolders());
 
-        skip(h.STALE_DIVIDEND_WINDOW() + 1);
+        RealmKeepersRegistry keepers = RealmKeepersRegistry(DeploymentAddresses.REALM_KEEPERS_REGISTRY);
+        keepers.setPermissionless(true);
         vm.prank(stranger);
         h.processDividends(0, _noHolders());
+        assertEq(h.dividendsOwed(), dust, "anyone funded while the switch was on");
 
-        assertEq(h.dividendsOwed(), dust, "the residual reached holders with no keeper left to ask");
-        assertEq(h.pendingNative(), 0, "buffer drained");
-    }
-
-    /// @dev The bypass must stay shut for a token that is merely QUIET. `lastDistribution` resets on
-    ///      every distribution, so a token still distributing never ages into it however small its
-    ///      buffer, and the keeper gate stays on.
-    function test_staleBypassStaysShutWhileDistributionsKeepHappening() public {
-        _live();
-        for (uint256 i; i < 3; ++i) {
-            skip(h.STALE_DIVIDEND_WINDOW() / 2);
-            _distribute(1 ether);
-        }
-
-        _fund(h.DIVIDEND_THRESHOLD() / 2);
-        assertFalse(h.dividendsStale(0), "a token that keeps distributing never goes stale");
-
-        vm.prank(makeAddr("stranger"));
+        keepers.setPermissionless(false);
+        _fund(dust);
+        vm.roll(block.number + 1);
+        vm.prank(stranger);
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
         h.processDividends(0, _noHolders());
     }

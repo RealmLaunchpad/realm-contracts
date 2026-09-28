@@ -10,7 +10,8 @@ import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {SwapRejection} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
@@ -33,15 +34,11 @@ contract PartialFillRouterStub {
 contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function setUp() public virtual override {
         super.setUp();
-        // Robinhood's xStock/WETH V2 pairs hold ~0.005 ETH a side, under the default depth floor of
-        // 10x MAX_EARNINGS_PER_PROCESS. The floor is per-chain configurable; drop it so the V2 route
-        // is exercised rather than rejected as too shallow.
-        vm.prank(admin);
-        dividendSwapRegistry.setDefaultThreshold(0.001 ether);
+        setDividendRoute(dividendSwapRegistry, MSFT, DividendRouteLib.encodeV2());
     }
 
-    /// @dev A second dividend asset reached over the empty (V2) route. Robinhood xStock, so the
-    ///      WETH pair it needs actually exists on this chain.
+    /// @dev A second dividend asset, routed through its V2 pair. Robinhood xStock, so the WETH pair it
+    ///      needs actually exists on this chain.
     address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
 
     address internal holder2 = makeAddr("holder2");
@@ -134,12 +131,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationMultiConfig({
-                burnBps: 0,
-                dividendsBps: 5_000,
-                liquidityBps: 0,
-                dividendTokens: assets,
-                dividendWeightsBps: weights,
-                dividendRoutes: new bytes[](0)
+                burnBps: 0, dividendsBps: 5_000, liquidityBps: 0, dividendTokens: assets, dividendWeightsBps: weights
             })
         });
         token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
@@ -169,8 +161,8 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         assertEq(token.dividendAssetCount(), 2, "two payout assets");
         assertTrue(token.hasDividends(), "and the warm flag is on");
-        (,,,, address first,,,) = token.dividendAssets(0);
-        (,,,, address second,,,) = token.dividendAssets(1);
+        (,,,, address first,,) = token.dividendAssets(0);
+        (,,,, address second,,) = token.dividendAssets(1);
         assertEq(first, address(0), "asset 0 is native");
         assertEq(second, MSFT, "asset 1 is MSFT");
         assertEq(token.dividendWeightsBps(0), 2_000, "20% to the native leg");
@@ -182,8 +174,8 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_multiAsset_graduationActivatesEveryAsset() public {
         RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
 
-        (, uint40 live0,,,,,,) = token.dividendAssets(0);
-        (, uint40 live1,,,,,,) = token.dividendAssets(1);
+        (, uint40 live0,,,,,) = token.dividendAssets(0);
+        (, uint40 live1,,,,,) = token.dividendAssets(1);
         assertGt(live0, 0, "asset 0 is live");
         assertEq(live1, live0, "and asset 1 went live in the same instant");
     }
@@ -194,12 +186,12 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
         _accrue(token, 1 ether);
 
-        (,,,,,, uint88 buffer0,) = token.dividendAssets(0);
-        (,,,,,, uint88 buffer1,) = token.dividendAssets(1);
+        (,,,,,, uint88 buffer0) = token.dividendAssets(0);
+        (,,,,,, uint88 buffer1) = token.dividendAssets(1);
         assertEq(uint256(buffer0) * 4, uint256(buffer1), "the 20/80 split reached the buffers");
 
-        token.processDividends(0, true, 0, _noHolders());
-        token.processDividends(1, true, 0, _noHolders());
+        token.processDividends(0, true, 0, 0, _noHolders());
+        token.processDividends(1, true, 0, 0, _noHolders());
 
         uint256 ethBefore = buyer.balance;
         vm.prank(buyer);
@@ -217,15 +209,15 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
         _accrue(token, 1 ether);
 
-        (,,,,,, uint88 buffer0,) = token.dividendAssets(0);
-        (,,,,,, uint88 buffer1,) = token.dividendAssets(1);
+        (,,,,,, uint88 buffer0) = token.dividendAssets(0);
+        (,,,,,, uint88 buffer1) = token.dividendAssets(1);
         uint256 balanceBefore = address(token).balance;
 
         token.sweepStrayEth();
 
         assertEq(address(token).balance, balanceBefore, "nothing was stray, so nothing moved");
-        (,,,,,, uint88 after0,) = token.dividendAssets(0);
-        (,,,,,, uint88 after1,) = token.dividendAssets(1);
+        (,,,,,, uint88 after0) = token.dividendAssets(0);
+        (,,,,,, uint88 after1) = token.dividendAssets(1);
         assertEq(after0, buffer0, "asset 0's buffer is intact");
         assertEq(after1, buffer1, "asset 1's buffer is intact");
     }
@@ -235,7 +227,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function test_multiAsset_rescueTokensCannotTakeAPayoutPot() public {
         RealmTaxableTokenUniV4 token = _nativeAndDaiToken();
         _accrue(token, 1 ether);
-        token.processDividends(1, true, 0, _noHolders());
+        token.processDividends(1, true, 0, 0, _noHolders());
 
         uint256 pot = IERC20(MSFT).balanceOf(address(token));
         assertGt(pot, 0, "precondition: a MSFT pot exists");
@@ -290,18 +282,23 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     }
 
     /// @dev THE ESCAPE HATCH. A keeper set that goes away for good must not strand holders' money in the
-    ///      buffer forever, so once the token is stale anyone may fund it. A buffer someone can convert
-    ///      badly beats a buffer nobody can convert at all.
-    function test_processDividends_goesPermissionlessOnceStale() public {
+    ///      buffer forever, so the keepers registry's admins can open the gate to everyone, globally.
+    function test_processDividends_goesPermissionlessWithTheGlobalSwitch() public {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
+        address randomCaller = makeAddr("randomCaller");
 
-        skip(token.STALE_DIVIDEND_WINDOW() + 1);
-        assertTrue(token.dividendsStale(0), "precondition: the token is stale");
-
-        vm.prank(makeAddr("randomCaller"));
+        vm.prank(admin);
+        keepersRegistry.setPermissionless(true);
+        vm.prank(randomCaller);
         token.processDividends(0, new address[](0));
+        assertGt(token.dividendsOwed(), 0, "anyone can fund while the switch is on");
 
-        assertGt(token.dividendsOwed(), 0, "a stale token can be funded by anyone");
+        vm.prank(admin);
+        keepersRegistry.setPermissionless(false);
+        vm.roll(block.number + 1);
+        vm.prank(randomCaller);
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
+        token.processDividends(0, new address[](0));
     }
 
     /// @dev The gate never stands between a holder and their own money. `claimDividends()` is open to
@@ -328,7 +325,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertEq(token.dividendsBps(), 5_000, "dividendsBps stored");
         assertTrue(token.hasDividends(), "warm-slot gate flipped on");
         assertEq(token.dividendToken(), address(0), "paid in native");
-        (, uint40 live,,,,,,) = token.dividendAssets(0);
+        (, uint40 live,,,,,) = token.dividendAssets(0);
         assertGt(live, 0, "the accumulator is live from creation on the direct venue");
     }
 
@@ -339,24 +336,13 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertEq(token.dividendToken(), address(token), "sentinel resolved");
     }
 
-    /// @dev An asset with no Uniswap V2 pair at all is refused at creation. A clone cannot be patched,
-    ///      so the buffer would accrue forever behind it.
-    function test_thirdAssetWithNoPairRejected() public {
-        vm.expectRevert(abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.NoPair));
-        _createDividendToken(5_000, makeAddr("xStock"));
-    }
-
-    /// @dev An asset the registry has blacklisted since is refused the same way. This is the ONE admin
-    ///      veto in the path — and it applies to tokens that already exist, not just new ones.
-    function test_blacklistedThirdAssetRejected() public {
-        // Read the constant BEFORE the prank: `vm.prank` applies to the next call, view calls included.
-        vm.prank(admin);
-        dividendSwapRegistry.setBlacklisted(MSFT, true);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(RealmDividendSwapRegistry.RouteRejected.selector, SwapRejection.Blacklisted)
-        );
-        _createDividendToken(5_000, MSFT);
+    /// @dev ANY ERC20 is accepted at creation, routed or not: how it is bought is the registry's
+    ///      business, and an asset without a route just does not convert until it gets one.
+    function test_anErc20WithoutARouteIsStillAccepted() public {
+        address asset = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9; // AAPL, no route set
+        assertEq(dividendSwapRegistry.routeOf(asset).length, 0, "precondition: no route");
+        RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(payable(_createDividendToken(5_000, asset)));
+        assertEq(token.dividendToken(), asset, "configured anyway");
     }
 
     ///////////////////////// activation and funding /////////////////////////
@@ -369,7 +355,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      distribution lands, and none can before the pool is funded.
     function test_dividendsActivateAtGraduation() public {
         RealmTaxableTokenUniV4 token = _graduatedDividendToken();
-        (, uint40 live,,,,,,) = token.dividendAssets(0);
+        (, uint40 live,,,,,) = token.dividendAssets(0);
         assertGt(live, 0, "activated by graduation itself");
         assertEq(token.dividendsOwed(), 0, "but nothing has been distributed yet");
         assertEq(token.previewDividend(buyer), 0, "so nobody has accrued anything");
@@ -380,8 +366,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertEq(token.pendingNative(), 0.5 ether + seededBuffer, "half of the earnings buffered for holders");
     }
 
-    /// @dev Funding has no size floor: a 0.005 ETH slice, far under the 0.1 ETH `DIVIDEND_THRESHOLD`,
-    ///      converts and credits like any other. Only an EMPTY buffer reports nothing to fund.
+    /// @dev Funding has no size floor: a 0.005 ETH slice converts and credits like any other. Only an EMPTY buffer reports nothing to fund.
     function test_processDividends_fundsASubThresholdSlice() public {
         RealmTaxableTokenUniV4 token = _graduatedDividendToken();
         _accrue(token, 0.01 ether); // 0.005 ETH to dividends
@@ -391,32 +376,6 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         vm.roll(block.number + 1);
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
         token.processDividends(0, _noHolders());
-    }
-
-    /// @dev V4 needs the staleness hatch: LP fees keep arriving while the pool is live, so "the earnings
-    ///      source is finished" is never true here. Without it a dead V4 token's residual is owed to
-    ///      holders and unreachable by them once the keepers stop coming. A native payout has no swap to
-    ///      sandwich, so the hatch opens to anyone at any size.
-    function test_staleTokenPaysItsResidualWithoutAKeeper() public {
-        RealmTaxableTokenUniV4 token = _graduatedDividendToken();
-        _accrue(token, 0.01 ether);
-        uint256 residual = token.pendingNative();
-        assertGt(residual, 0, "a residual is buffered");
-
-        address stranger = makeAddr("stranger");
-        vm.prank(stranger);
-        vm.expectRevert(KeeperGated.NotAKeeper.selector);
-        token.processDividends(0, _noHolders());
-
-        // Nothing happens to the token for a month — no trades, no distributions.
-        skip(token.STALE_DIVIDEND_WINDOW() + 1);
-        vm.prank(stranger);
-        token.processDividends(0, _noHolders());
-        assertEq(token.dividendsOwed(), residual, "the stranded residual was finally distributed");
-
-        uint256 before = buyer.balance;
-        token.processDividends(0, _batch(buyer));
-        assertApproxEqAbs(buyer.balance - before, residual, residual / 1000, "and reached the holder");
     }
 
     ///////////////////////// the keeper gate, and what it makes worthless /////////////////////////

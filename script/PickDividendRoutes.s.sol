@@ -7,16 +7,15 @@ import {console} from "lib/forge-std/src/console.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
-/// @notice Picks the Uniswap V4 or V3 route that actually buys the most of each payout asset, out of the
-///         candidates `discover_xstock_routes.py` shortlisted, and writes them out in the wire format a
-///         token creation takes. The output feeds the frontend's suggested-asset catalogue: a creator
-///         who picks a listed asset ships its route with it and never has to search for pools.
+/// @notice Picks the Uniswap V2, V3 or V4 route that actually buys the most of each payout asset AT A
+///         FULL CONVERSION (`MAX_EARNINGS_PER_PROCESS`), out of the candidates `discover_xstock_routes.py`
+///         shortlisted, and writes them out in the wire format `RealmDividendSwapRegistry.setRoute`
+///         takes. An asset no candidate can buy at that size is left out.
 ///
-/// @dev WRITES NOTHING ON-CHAIN. Routes belong to the token that converts through them and are
-///      registered by that token, at its own creation, via `registerRoute`. There is no admin route
-///      table any more and no asset-level approval — Realm does not review payout assets. This script is
-///      therefore a measurement, not an operation: it broadcasts nothing and needs no keys.
+/// @dev WRITES NOTHING ON-CHAIN. It is the proof an admin lists a route on: broadcasts nothing and needs
+///      no keys. Listing is a separate `setRoute` per asset.
 ///
 /// @dev THE PROBE PICKS THE ROUTE, the discovery script only shortlists. `discover_xstock_routes.py`
 ///      cannot rank an ETH-quoted pool against a USDG-quoted one — `liquidity` is denominated in each
@@ -30,9 +29,8 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 ///      swap through the real registry against real state, which is the only check that cannot disagree
 ///      with the contract it is validating.
 ///
-/// @dev IT IS ALSO THE CATALOGUE'S HEALTH CHECK. Re-run it and an asset whose pools have moved reports
-///      a different winner, or none at all. A route in the shipped catalogue that can no longer buy its
-///      asset is worse than no entry: it hands a creator a permanent, unfixable configuration.
+/// @dev IT IS ALSO THE ROUTES' HEALTH CHECK. Re-run it and an asset whose pools have moved reports a
+///      different winner, or none at all: repoint (or clear) that asset's route on the registry.
 ///
 /// Usage:  forge script PickDividendRoutes --rpc-url rh-mainnet
 ///
@@ -41,12 +39,12 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 ///   ROUTES_JSON             (optional) path to the discovery output
 ///   ROUTES_OUT              (optional) where to write the picked routes
 contract PickDividendRoutes is Script {
-    /// @dev Native spent by the probe swap. Small enough that any pool worth routing through can
-    ///      absorb it, large enough that a pool holding dust fails rather than passes.
-    uint256 internal constant PROBE_AMOUNT = 0.001 ether;
+    /// @dev Native spent by the probe swap: the largest conversion a token ever makes, so a route that
+    ///      passes can take any conversion a keeper sends it.
+    uint256 internal constant PROBE_AMOUNT = DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;
 
-    /// @dev Stands in as the token that registers and converts through each route. A fixed pranked
-    ///      address, not `address(this)`: forge refuses a script contract's own address.
+    /// @dev Stands in as the token that converts through each route. A fixed pranked address, not
+    ///      `address(this)`: forge refuses a script contract's own address.
     address internal constant PROBER = address(uint160(uint256(keccak256("PickDividendRoutes.prober"))));
 
     string internal constant DEFAULT_ROUTES_JSON = "script/operations/dividend-routes/routes.robinhood.mainnet.json";
@@ -101,9 +99,7 @@ contract PickDividendRoutes is Script {
         address[] memory assets,
         bytes[] memory encoded,
         bytes[] memory v3
-    ) internal
-        returns (bytes[] memory chosen)
-    {
+    ) internal returns (bytes[] memory chosen) {
         chosen = new bytes[](assets.length);
         uint256 snapshot = vm.snapshotState();
 
@@ -117,6 +113,11 @@ contract PickDividendRoutes is Script {
                     best = amountOut;
                     chosen[i] = route;
                 }
+            }
+            uint256 v2Out = _bought(registry, assets[i], DividendRouteLib.encodeV2());
+            if (v2Out > best) {
+                best = v2Out;
+                chosen[i] = DividendRouteLib.encodeV2();
             }
             bytes[] memory v3Routes = v3[i].length == 0 ? new bytes[](0) : abi.decode(v3[i], (bytes[]));
             for (uint256 j; j < v3Routes.length; ++j) {
@@ -134,31 +135,23 @@ contract PickDividendRoutes is Script {
 
     /// @dev How much of `asset` one probe-sized buy delivers through `route`, or 0 if it cannot.
     /// @dev Rolled back before returning, so every candidate for an asset is measured against the same
-    ///      pool state — otherwise the first probe would move the price the second one is judged on. The
-    ///      rollback is also what lets this script register the same (token, asset) pair repeatedly:
-    ///      `registerRoute` is write-once, and `PROBER` stands in as the token every time.
-    /// @dev `minOut` of 1: the probe asks whether the pools exist and hold anything, and compares
-    ///      candidates against each other. Pricing a real floor is the keeper's job, per conversion.
+    ///      pool state — otherwise the first probe would move the price the second one is judged on.
+    /// @dev `minOut` of 1: the probe asks whether the route can take a full conversion at all, and
+    ///      compares candidates against each other. Pricing a real floor is the keeper's job.
     function _bought(RealmDividendSwapRegistry registry, address asset, bytes memory route)
         internal
         returns (uint256 out)
     {
         uint256 snapshot = vm.snapshotState();
 
-        vm.deal(PROBER, PROBE_AMOUNT);
-        vm.startPrank(PROBER);
-        try registry.registerRoute(asset, route) {
+        vm.prank(registry.owner());
+        try registry.setRoute(asset, route) {
+            vm.deal(PROBER, PROBE_AMOUNT);
+            vm.prank(PROBER);
             try registry.swapNativeToAsset{value: PROBE_AMOUNT}(asset, 1, PROBER) returns (uint256 bought) {
                 out = bought;
-            } catch {
-                out = 0;
-            }
-        } catch {
-            // The route did not even validate — a dead pool, a malformed hop. Same answer as a swap that
-            // bought nothing, and the caller only compares magnitudes.
-            out = 0;
-        }
-        vm.stopPrank();
+            } catch {}
+        } catch {}
 
         vm.revertToState(snapshot);
     }

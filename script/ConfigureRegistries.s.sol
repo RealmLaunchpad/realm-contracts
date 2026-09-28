@@ -75,8 +75,8 @@ contract ConfigureRegistries is Script {
         _log("keepers.setAdmin", admin, keepers.isAdmin(admin));
         if (!keepers.isAdmin(admin)) keepers.setAdmin(admin, true);
 
-        _log("keepers.setKeeper", keeper, keepers.isKeeper(keeper));
-        if (!keepers.isKeeper(keeper)) keepers.setKeeper(keeper, true);
+        _log("keepers.setKeeper", keeper, keepers.keepers(keeper));
+        if (!keepers.keepers(keeper)) keepers.setKeeper(keeper, true);
 
         _log("dividends.setAdmin", admin, dividends.isAdmin(admin));
         if (!dividends.isAdmin(admin)) dividends.setAdmin(admin, true);

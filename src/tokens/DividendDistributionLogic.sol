@@ -43,15 +43,8 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         NotReady,
         /// @dev Holders are credited with `out` of the payout asset.
         Funded,
-        /// @dev Enough was buffered and the conversion did not happen. The buffer is untouched.
-        ConversionFailed,
-        /// @dev Same as `ConversionFailed`, but this call put the failure ON RECORD for the treasury
-        ///      sweep's persistence gate. Reported separately because it WROTE, so the caller must not
-        ///      revert it away.
-        FailureRecorded,
-        /// @dev The conversion could not happen at ANY price, so that slice of the buffer went to
-        ///      `DIVIDEND_TREASURY`. Nothing was credited, and nothing accrued was written off.
-        SweptToTreasury
+        /// @dev Something was buffered and the conversion did not happen. The buffer is untouched.
+        ConversionFailed
     }
 
     //////////////////////// the distribution //////////////////////
@@ -66,13 +59,14 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      `claimDividends()`. A keeper is free to push only to holders above whatever size threshold
     ///      it likes; the small ones are not forfeiting anything by being skipped.
     ///
-    /// @dev What gets funded, and when, is DERIVED: a function of that asset's buffer and the clock
-    ///      alone. The only things a caller supplies are which asset and the slippage floor for its
-    ///      conversion.
+    /// @dev The caller supplies which asset, how much of its buffer to convert and the slippage floor.
     ///
     /// @param assetIndex Which configured payout asset to service. Reverts past the configured count.
     /// @param fund False for a push-only call: skips the conversion (no block claimed, no
     ///        `DividendsFunded`); `holders` must then be non-empty, or it reverts `NoDividendWork`.
+    /// @param amount Native to convert, capped by the buffer and `MAX_DIVIDEND_PER_CONVERSION`; 0 means
+    ///        "up to the cap". Lets a keeper slice a buffer a thin pool cannot take in one go. Ignored
+    ///        by a payout that does not swap.
     /// @param minOut Slippage floor for the conversion, in that asset's own decimals. Ignored when the
     ///        asset is native or the token itself, and by any call that does not convert.
     /// @param holders Addresses to push accrued payouts to. May be empty — a fund-only call is a normal
@@ -86,64 +80,31 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      `processLiquidity` already hold this lock; this was the one earnings entry point that did
     ///      not. Costs no SSTORE (transient) and blocks nothing legitimate: `accrueFees`, which the V4
     ///      hook calls back mid-swap, deliberately takes neither lock.
-    function processDividends(uint8 assetIndex, bool fund, uint256 minOut, address[] calldata holders)
+    function processDividends(uint8 assetIndex, bool fund, uint256 amount, uint256 minOut, address[] calldata holders)
         public
         nonReentrant
         nonReentrantDividends
     {
-        _processDividends(assetIndex, fund, minOut, holders);
+        _processDividends(assetIndex, fund, amount, minOut, holders);
     }
 
     /// @dev The body of `processDividends`, without its locks, so a venue can service the same asset
     ///      out of a buffer the shared machine does not know — an ERC20 quote's — under locks of its own
-    ///      (`RealmDividendLogicUniV4.processDividends(uint8,address,uint256,address[])`).
-    function _processDividends(uint8 assetIndex, bool fund, uint256 minOut, address[] calldata holders) internal {
+    ///      (`RealmTaxableTokenUniV4.processDividends(uint8,address,uint256,uint256,address[])`).
+    function _processDividends(uint8 assetIndex, bool fund, uint256 amount, uint256 minOut, address[] calldata holders)
+        internal
+    {
         require(fund || holders.length != 0, NoDividendWork());
         require(assetIndex < _dividendAssetCount(), DividendAssetOutOfRange());
         DivAsset storage asset = dividendAssets[assetIndex];
         require(asset.lastDistribution != 0, DividendsNotActive());
 
-        // KEEPER-GATED, with staleness as the escape hatch. The conversion below takes its slippage
-        // floor from the caller, so a permissionless caller could manipulate the payout pool, call in
-        // with a zero floor and unwind, all in one transaction — see `RealmKeepersRegistry` for why no
-        // depth threshold bounds that. Holders never depend on a keeper to be PAID: `claimDividends()`
-        // is open to everyone and pays in full. What a keeper is needed for is moving the buffer.
-        // The stale branch is the backstop for a keeper set that has gone away for good: after
-        // `STALE_DIVIDEND_WINDOW` with no distribution, anyone may fund, because a buffer nobody can
-        // ever convert is a worse outcome than one someone can convert badly. That also opens the
-        // ATOMIC capture the base's docstring accepts — buy, fund, claim, sell in one transaction — on
-        // a token that has, by then, most likely died.
-        //
-        // ⚠️ STALENESS ALONE IS NOT THAT SIGNAL for an asset that SWAPS. `dividendsStale` reads "no
-        // distribution in a month", which a quiet token reaches in its ordinary steady state: a
-        // low-volume token may simply never buffer `DIVIDEND_THRESHOLD` inside one window, with every
-        // keeper present and working. Opening the gate there would hand any caller a zero-floor
-        // conversion of a real buffer, every month, on every quiet token — the exact sandwich the
-        // keeper set exists to prevent. So the bypass ALSO requires the buffer to have been worth
-        // converting all along: `DIVIDEND_THRESHOLD` is the size a keeper is expected to act on, so a
-        // buffer that has held it for `STALE_DIVIDEND_WINDOW` is what actually evidences a keeper set
-        // that is gone. A sub-threshold residual stays keeper-only — the smaller loss.
-        // THIS IS THE CONSTANT'S ONLY REMAINING JOB. Funding itself has no floor: a keeper may convert
-        // any non-zero buffer, because it pays the gas and is better placed than a compile-time
-        // constant to judge when a conversion earns it (`RealmDividendLogicUniV4`'s quote path, which
-        // never had one, is where that reasoning came from). The constant survives only as the yardstick
-        // this gate measures an absent keeper against.
-        // ACKNOWLEDGED GAP: the gate reads the CURRENT buffer, not how long it has held the threshold,
-        // and `accrueFees()` is open. On a stale token anyone can donate a sub-threshold buffer over the
-        // line and then fund it with `minOut = 0` inside a sandwich. Bounded to one buffer per asset per
-        // `STALE_DIVIDEND_WINDOW`, minus the donation; accepted. Fix if it matters: record when the
-        // buffer first crossed the threshold and require that point to be a window old.
-        // Assets whose funding does NOT swap keep the wide hatch (native, and the V2 self-token leg,
-        // which is carved in token space and merely credits a buffer): there is nothing
-        // for a caller to sandwich, so stranding is their only failure mode.
-        {
-            // Scoped: this function is already at the stack limit, so these must die before the loop.
-            address payout = asset.token;
-            bool swaps = payout != address(0) && !_isTokenSpaceDividendAsset(payout);
-            if (!dividendsStale(assetIndex) || (swaps && asset.pendingNative < DIVIDEND_THRESHOLD)) {
-                _requireKeeper();
-            }
-        }
+        // KEEPER-GATED. The conversion below takes its slippage floor from the caller, so a
+        // permissionless caller could manipulate the payout pool, call in with a zero floor and unwind,
+        // all in one transaction — see `RealmKeepersRegistry`, whose admins can open the gate to
+        // everyone if the keeper set is ever retired. Holders never depend on a keeper to be PAID:
+        // `claimDividends()` is open to everyone and pays in full.
+        _requireKeeper();
 
         // Once per block PER ASSET, for exactly the reason `processBurn` and `processLiquidity` are: the
         // per-call cap only bounds what a manipulated block can yield if the block allows ONE conversion.
@@ -161,10 +122,10 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         uint256 nativeIn;
         uint256 out;
         if (fund && !cooldown) {
-            (outcome, nativeIn, out) = _fundDividends(assetIndex, minOut);
+            (outcome, nativeIn, out) = _fundDividends(assetIndex, amount, minOut);
             // Claimed only when the buffer actually MOVED. A call that found nothing fundable, or whose
             // swap failed, spent nothing and must not lock the block against an honest keeper.
-            if (outcome == FundOutcome.Funded || outcome == FundOutcome.SweptToTreasury) {
+            if (outcome == FundOutcome.Funded) {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 asset.lastProcessBlock = uint40(block.number);
             }
@@ -185,15 +146,11 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
             // Two different situations, two different errors: a keeper that sees `BelowDividendThreshold`
             // has to wait for earnings, one that sees `DividendConversionFailed` has the earnings and a
             // swap problem — a `minOut` the pool has moved past, or a pool that is gone.
-            // ⚠️ The name predates the funding floor's removal and is kept for the keepers and scripts
-            // that decode it: with no floor left, "nothing to fund" now means an EMPTY buffer.
+            // The name predates the funding floor's removal: "nothing to fund" means an EMPTY buffer.
             revert BelowDividendThreshold();
         } else if (outcome == FundOutcome.ConversionFailed) {
             revert DividendConversionFailed();
         }
-        // `SweptToTreasury` and `FailureRecorded` fall through: neither could credit anything, but both
-        // CHANGED something — the buffer in one case, the sweep's persistence marker in the other — and
-        // reverting would undo the very write the call was made to perform.
         // A call carrying holders never reverts for the buffer being short or the swap being broken: it
         // asked to push payouts, and it pushed them.
     }
@@ -202,7 +159,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///         against single-asset tokens — which is what every token with one payout asset still is —
     ///         keep working unchanged.
     function processDividends(uint256 minOut, address[] calldata holders) external {
-        processDividends(0, true, minOut, holders);
+        processDividends(0, true, 0, minOut, holders);
     }
 
     /// @notice Self-serve payout of everything the caller has accrued, in EVERY configured asset.
@@ -278,7 +235,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     /// @dev Turns asset `i`'s accrued buffer into payout-asset units, or reports why it could not.
     ///      Overridable so a venue can source the payout from somewhere other than the native buffer
     ///      (the V2 self-token payout, which is carved from tax tokens).
-    function _fundDividends(uint256 i, uint256 minOut)
+    function _fundDividends(uint256 i, uint256 amount, uint256 minOut)
         internal
         virtual
         returns (FundOutcome, uint256 nativeIn, uint256 out)
@@ -288,67 +245,22 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         if (buffered == 0) return (FundOutcome.NotReady, 0, 0);
 
         // NO SIZE FLOOR. Any non-zero buffer converts. "Is this worth its gas" is the caller's question,
-        // not the contract's: the ordinary path is keeper-gated, so the only party this could restrain
-        // is a keeper spending its own gas on a call whose whole cost it can see. `DIVIDEND_THRESHOLD`
-        // survives as the staleness gate's yardstick (see `_processDividends`) and nothing else.
-        // ⚠️ What a floor DID bound, and no longer does: a keeper converting dust repeatedly pays the
-        // pool fee on each conversion out of holders' money, and every success resets `lastDistribution`
-        // and so pushes the staleness hatch out another `STALE_DIVIDEND_WINDOW`. Both are keeper
-        // misbehaviour, not caller griefing — `RealmKeepersRegistry` is what bounds them now.
-        bool stale = dividendsStale(i);
+        // not the contract's: the path is keeper-gated, so the only party this could restrain is a
+        // keeper spending its own gas on a call whose whole cost it can see.
         address asset = a.token;
-        // Only a payout that SWAPS is capped. Native is already denominated in the payout asset, so it
-        // has no swap to sandwich, and throttling it would delay real money for no security gain.
-        uint256 spend =
-            (asset != address(0) && buffered > MAX_DIVIDEND_PER_CONVERSION) ? MAX_DIVIDEND_PER_CONVERSION : buffered;
+        // Only a payout that SWAPS is capped, and only it honours `amount`. Native is already
+        // denominated in the payout asset, so it has no swap to sandwich and nothing to slice.
+        uint256 spend = buffered;
+        if (asset != address(0)) {
+            uint256 cap = amount == 0 || amount > MAX_DIVIDEND_PER_CONVERSION ? MAX_DIVIDEND_PER_CONVERSION : amount;
+            if (spend > cap) spend = cap;
+        }
         (out, nativeIn) = _acquireDividendAsset(asset, spend, minOut);
 
-        if (out == 0) {
-            // A conversion that did not happen must leave the buffer untouched, not burn it: the swap can
-            // fail for reasons outside anyone's control — most often a floor the pool has merely moved
-            // past — and the next call simply tries again with a floor priced off the live pool.
-            if (minOut != 0) return (FundOutcome.ConversionFailed, 0, 0);
-
-            // Zero floor and still nothing came back: the pool cannot produce a single wei at any price.
-            // That is a SNAPSHOT, though, and a snapshot is manufacturable — and cheaply, because the
-            // registry refuses whenever the pair's quote depth merely dips under its threshold, so one
-            // sell causes the failure and one buy undoes it. TWO gates stand between that and a sweep,
-            // and both have to hold:
-            //   1. staleness — this asset's `lastDistribution` only moves when a distribution SUCCEEDS,
-            //      so a genuinely dead pool reaches it on its own a `STALE_DIVIDEND_WINDOW` after the
-            //      last distribution, and an actively distributing asset never does;
-            //   2. persistence — the same failure has to be on record from an EARLIER block, which costs
-            //      a griefer a second round trip held across a block boundary, per slice.
-            //
-            // KNOWN LIMIT, accepted: staleness reads "no distribution in a month", which a dead pool
-            // guarantees but does not uniquely cause, and persistence proves only that the failure
-            // outlived a block. Neither is proof the pool is dead — they make manufacturing one cost real
-            // money for a griefer who cannot profit (the native lands in Realm's own treasury, never
-            // theirs) and holders are made whole off-chain. Do not read this gate as proof of anything
-            // stronger.
-            if (!stale) return (FundOutcome.ConversionFailed, 0, 0);
-
-            uint256 recorded = a.failedConversionBlock;
-            if (recorded == 0 || block.number <= recorded) {
-                // First sighting (or a second one inside the same block, which proves nothing new).
-                // Reported as `FailureRecorded`, not `ConversionFailed`: this branch WRITES, and the
-                // caller reverts on `ConversionFailed` — which would roll the record back and leave the
-                // gate unreachable forever. Same reasoning as the sweep's own fall-through below.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                if (recorded != block.number) a.failedConversionBlock = uint40(block.number);
-                return (FundOutcome.FailureRecorded, 0, 0);
-            }
-
-            // The pool has been failing across blocks, long enough that "try again" never terminates. The
-            // slice goes to the treasury instead of sitting owed to holders forever — see the contract
-            // docstring for why that beats repointing the asset.
-            _sweepFailedConversion(i, asset, spend);
-            return (FundOutcome.SweptToTreasury, 0, 0);
-        }
-
-        // A conversion went through, so whatever the marker was recording is over. Cleared under a guard
-        // so the common path (nothing on record) pays no SSTORE.
-        if (a.failedConversionBlock != 0) a.failedConversionBlock = 0;
+        // A conversion that did not happen leaves the buffer untouched: the swap can fail for reasons
+        // outside anyone's control — a floor the pool has moved past, a route not set yet or a pool
+        // that drained — and the next call retries, after the registry's route is fixed if need be.
+        if (out == 0) return (FundOutcome.ConversionFailed, 0, 0);
 
         // Debits only what the conversion CONSUMED: native a partial fill handed back stays owed to
         // holders. Re-read rather than reuse `buffered`: the swap is an external call, and earnings that
@@ -357,22 +269,6 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // forge-lint: disable-next-line(unsafe-typecast)
         a.pendingNative = uint88(a.pendingNative - nativeIn);
         return (FundOutcome.Funded, nativeIn, out);
-    }
-
-    /// @dev Hands `amount` of unconvertible native to `DIVIDEND_TREASURY`. Bounded by
-    ///      `MAX_DIVIDEND_PER_CONVERSION` per call, so clearing a dead pool's whole buffer takes as many
-    ///      calls as converting it would have.
-    /// @dev Debited BEFORE the send, and re-read rather than reusing the caller's snapshot: the failed
-    ///      conversion was an external call, so earnings that arrived during it must survive this write.
-    /// @dev Deliberately NOT a write-off of anything holders hold. The asset, its `owed`, its
-    ///      accumulator and every `Acct` are untouched — this moves native that had not been converted
-    ///      yet and therefore was never credited to anyone.
-    function _sweepFailedConversion(uint256 i, address asset, uint256 amount) private {
-        // forge-lint: disable-next-line(unsafe-typecast)
-        dividendAssets[i].pendingNative = uint88(dividendAssets[i].pendingNative - amount);
-        (bool sent,) = DIVIDEND_TREASURY.call{value: amount}("");
-        require(sent, DividendSweepFailed());
-        emit DividendBufferSweptToTreasury(asset, amount);
     }
 
     /// @dev Converts `nativeIn` into `asset`. Native needs no conversion; a third ERC20 is bought on the
@@ -399,8 +295,8 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     /// @dev Hands the conversion to the registry, which re-checks eligibility, swaps and forwards the
     ///      asset back here in one call. Nothing about the route is stored on the token: the registry
     ///      resolves it, so a token created before a venue existed can still use it.
-    /// @dev A LOW-LEVEL call, on purpose. The registry reverts on a dead pair, a missed floor or an
-    ///      asset blacklisted since creation, and this caller is a distribution that must not lose its
+    /// @dev A LOW-LEVEL call, on purpose. The registry reverts on a missing route, a dead pool or a missed
+    ///      floor, and this caller is a distribution that must not lose its
     ///      buffer to any of those — a reverted call leaves the native exactly where it was, and
     ///      `false` here becomes `ConversionFailed` rather than a reverted distribution.
     /// @dev The `extcodesize` check is what makes the low-level call fail CLOSED. A raw `call` to an

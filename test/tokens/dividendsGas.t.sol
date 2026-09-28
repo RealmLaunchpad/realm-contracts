@@ -8,6 +8,8 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice The hot-path gas measurement the dividends design hangs on.
 ///
@@ -21,11 +23,8 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 contract DividendsGasTests is TaxTokenUniV4BaseTests {
     function setUp() public virtual override {
         super.setUp();
-        // Robinhood's xStock/WETH V2 pairs hold ~0.005 ETH a side, under the default depth floor of
-        // 10x MAX_EARNINGS_PER_PROCESS. The floor is per-chain configurable; drop it so the V2 route is
-        // exercised rather than rejected as too shallow.
-        vm.prank(admin);
-        dividendSwapRegistry.setDefaultThreshold(0.001 ether);
+        setDividendRoute(dividendSwapRegistry, MSFT, DividendRouteLib.encodeV2());
+        setDividendRoute(dividendSwapRegistry, AAPL, DividendRouteLib.encodeV2());
     }
 
     address internal holderA = makeAddr("gasHolderA");
@@ -244,12 +243,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationMultiConfig({
-                burnBps: 0,
-                dividendsBps: 5_000,
-                liquidityBps: 0,
-                dividendTokens: assets,
-                dividendWeightsBps: weights,
-                dividendRoutes: new bytes[](0)
+                burnBps: 0, dividendsBps: 5_000, liquidityBps: 0, dividendTokens: assets, dividendWeightsBps: weights
             })
         });
         address token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
@@ -270,7 +264,7 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
         token.accrueFees{value: 3 ether}();
         uint256 n = token.dividendAssetCount();
         for (uint256 i; i < n; ++i) {
-            token.processDividends(uint8(i), true, 0, new address[](0));
+            token.processDividends(uint8(i), true, 0, 0, new address[](0));
         }
     }
 

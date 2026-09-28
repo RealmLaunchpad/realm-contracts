@@ -157,10 +157,6 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     /// @param quote Same as `BuyBackInitiated`'s: the pool swapped on and the currency of `amountIn`.
     event DividendBuyBackInitiated(address indexed quote, uint256 amountIn);
 
-    /// @notice A quote route was given, or found already registered, in a venue the registry cannot
-    ///         walk backwards (only V4 routes can be), for a quote a dividends leg has to be bought
-    ///         out of — or a route was given for a quote that uses none (see `_registerQuoteRoutes`).
-    error QuoteRouteUnsupported();
     error NothingToBurn();
 
     /// @notice The buy-back router call reverted — a missed `minTokensOut`, or an unswappable pool.

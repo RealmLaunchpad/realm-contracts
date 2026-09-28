@@ -178,24 +178,12 @@ library DeploymentsRobinhoodMainnet {
     }
 
     // --- Dividends ---
-    /// @dev NOTHING IS WHITELISTED PER ASSET, and there is no route table to fill in. A payout asset is
-    ///      permissionless: the token registers its own route at creation
-    ///      (`RealmDividendSwapRegistry.registerRoute`, `DIVIDEND_SWAP_REGISTRY` in
-    ///      `DeploymentAddresses.sol`) and the registry only proves the pools that route names are
-    ///      initialized and hold in-range liquidity. So the ~190 xStock routes need no transaction here:
-    ///      the only thing a V4 route reads from registry state is the quote-token allowlist, and mainnet
-    ///      already has it — quote = WETH `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`, allowed, with
-    ///      `defaultThreshold` 2e18 (that threshold only gates the empty V2 route anyway).
-    /// @dev WHAT IS STILL MISSING on the mainnet registry, both admin-tier, both harmless until
-    ///      dividends actually launch here:
-    ///        1. `setAdmin(...)` — the registry OWNER (the DEPRECATED deployer key, not the current
-    ///           `REALM_DEV`; it predates the rotation) is not an admin, and every operational lever
-    ///           (`setBlacklisted`, `setAllowedQuoteToken`, the thresholds) is admin-only. Until then a
-    ///           payout asset that turns hostile cannot be vetoed.
-    ///        2. `setKeeperFunding(REALM_KEEPER)` — unset, so a conversion hands the keeper no gas money.
-    ///      Only a V3 route's MIDDLE hops are allowlisted against `isAllowedQuoteToken` (USDG is not in
-    ///      it today); every route the picker generates for an xStock is V4, whose hops are not checked
-    ///      against that set, so this matters only if a V3 venue is ever used.
+    /// @dev ROUTES ARE PER ASSET, ON THE REGISTRY (`RealmDividendSwapRegistry.setRoute`, admin-only,
+    ///      `DIVIDEND_SWAP_REGISTRY` in `DeploymentAddresses.sol`). Any ERC20 can be a payout asset; one
+    ///      without a route does not convert until an admin sets one. List a route only after
+    ///      `test_catalogue_everyRouteConvertsAtMaxSize`-style fork proof that it absorbs a full
+    ///      conversion. Also needed before dividends launch: `setAdmin(...)` and
+    ///      `setKeeperFunding(REALM_KEEPER)`.
 
     // --- Accounts ---
     /// @notice The `realm.dev` deployer keystore: the broadcaster of every deploy script and the initial

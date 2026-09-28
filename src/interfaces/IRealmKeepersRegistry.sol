@@ -7,6 +7,7 @@ pragma solidity 0.8.28;
 ///      surface they depend on has to be the smallest thing that answers the question — everything about
 ///      how the set is administered stays on the concrete contract, where it can change freely.
 interface IRealmKeepersRegistry {
-    /// @notice Whether `account` may trigger the protocol's out-of-band earnings conversions.
+    /// @notice Whether `account` may trigger the protocol's out-of-band earnings conversions: an
+    ///         appointed keeper, or anyone while the registry's global permissionless switch is on.
     function isKeeper(address account) external view returns (bool);
 }

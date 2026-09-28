@@ -34,11 +34,8 @@ contract DeployRealmRegistries is Script {
 
         keepers = address(new RealmKeepersRegistry(owner));
         dividendImpl = address(new RealmDividendSwapRegistry());
-        dividendProxy = address(
-            new ERC1967Proxy(
-                dividendImpl, abi.encodeCall(RealmDividendSwapRegistry.initialize, (owner, _dividendDepthThreshold()))
-            )
-        );
+        dividendProxy =
+            address(new ERC1967Proxy(dividendImpl, abi.encodeCall(RealmDividendSwapRegistry.initialize, (owner))));
     }
 
     function _reportRegistries(address keepers, address dividendProxy, address dividendImpl) internal pure {
@@ -47,14 +44,5 @@ contract DeployRealmRegistries is Script {
         console.log("  DIVIDEND_SWAP_REGISTRY  =", dividendProxy);
         console.log("  (RealmDividendSwapRegistry impl, not in the manifest:", dividendImpl, ")");
         console.log("Then `forge build` (bytecode changes).");
-    }
-
-    /// @dev Depth an asset's V2 pair must hold to be an eligible dividend payout asset, in native
-    ///      18-dec. 2x the per-process cap: a max-size conversion is up to ~50% of the quote side, so the
-    ///      keeper sizes its own conversions below the cap on shallow pairs. NOT a sandwich defence (the
-    ///      keeper gate is) — it only keeps honest conversions out of dead pairs. Changed later with
-    ///      `setDefaultThreshold`.
-    function _dividendDepthThreshold() internal pure returns (uint256) {
-        return 2 ether;
     }
 }

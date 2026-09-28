@@ -32,9 +32,9 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 ///        - On a chain with a public mempool a searcher can bracket the keeper's own transaction. The
 ///          prize is their share of one capped distribution against a taxed round trip; the keeper's
 ///          cadence, not this contract, is what keeps that unattractive.
-///        - After `STALE_DIVIDEND_WINDOW` the gate opens to everyone and a distribution becomes an
-///          ATOMIC flash-buy capture: buy, fund, claim, sell. A token nobody has distributed for a
-///          month is most likely dead by then, and what is exposed is a buffer that sat that long.
+///        - If the keeper set is ever retired, `RealmKeepersRegistry`'s admins open the gate to everyone
+///          (one global switch), and a distribution then becomes an ATOMIC flash-buy capture: buy,
+///          fund, claim, sell. Accepted as the cost of never stranding a buffer.
 ///
 /// @dev ⚠️ THE ONE ORDERING RULE THE WHOLE DESIGN RESTS ON. `_onDividendTransfer` must run BEFORE the
 ///      balances move. Settling banks `balance x (accumulator - checkpoint)` and moves the checkpoint
@@ -51,31 +51,24 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 ///
 /// @dev ONE TO THREE ASSETS PER TOKEN, chosen at creation and permanent — never rewritten, by anyone,
 ///      for any reason. Each is native (`address(0)`), the token itself (`DIVIDEND_SELF_TOKEN`, and only
-///      when it is the ONLY asset), or any ERC20 the registry can reach. There is no whitelist and no
-///      per-asset approval — what makes an ERC20 eligible is the liquidity `DIVIDEND_SWAP_REGISTRY`
-///      measures at creation, nothing else.
+///      when it is the ONLY asset), or any ERC20. HOW an ERC20 is bought is not the token's business:
+///      `DIVIDEND_SWAP_REGISTRY` holds one admin-set, repointable route per asset.
 ///
 /// @dev EACH ASSET IS ITS OWN, INDEPENDENT MACHINE. `dividendWeightsBps` splits the dividends slice of
 ///      earnings between them at accrual time, and from that point on nothing is shared: each has its
 ///      own native buffer, its own conversion, its own accumulator, its own per-account checkpoint, its
-///      own per-block funding cooldown, its own staleness clock and its own treasury-sweep proof. A
+///      own per-block funding cooldown. A
 ///      20/80 split therefore fills the 20% asset roughly four times more slowly, and a keeper is
 ///      expected to service it roughly four times less often — nothing in here forces that, since
 ///      funding has no size floor; it is simply when a conversion earns its gas.
 ///      The ONLY things the assets share are the eligible supply (a property of the token, not of a
 ///      payout), the activation instant, and the reentrancy lock.
 ///
-/// @dev A CONVERSION THAT CAN NEVER HAPPEN IS THE TREASURY'S PROBLEM, NOT THE TOKEN'S. If a payout
-///      pool dies, the buffered native cannot be converted and would otherwise sit owed to holders
-///      forever. Rather than rewrite the asset and write off what holders had already accrued — paying
-///      an old-asset debt out of a new-asset balance at a 1:1 unit ratio between two assets that may
-///      not even share decimals — the unconvertible buffer goes to `DIVIDEND_TREASURY`, and Realm makes
-///      holders whole off-chain if it is ever worth doing. Nothing on-chain is written off: the
-///      accumulator and every accrual survive untouched. This is a backstop for a case that should
-///      not occur — a token whose payout asset has no liquidity has, by then, no activity either.
+/// @dev A CONVERSION THAT CANNOT HAPPEN LEAVES THE BUFFER WHERE IT IS. An asset with no route, or whose
+///      route cannot fill, keeps its native buffered and owed to nobody yet, until the registry gets a
+///      route that works. Nothing is swept anywhere and nothing accrued is written off.
 ///
-/// @dev ⚠️ ACCEPTED, AND THE ONE GAP THE SWEEP DOES NOT COVER: it moves UNCONVERTED native only. Once
-///      the native has been swapped, the asset sits in this contract and nothing can ever take it out
+/// @dev ⚠️ ACCEPTED: once native has been swapped, the asset sits in this contract and nothing can ever take it out
 ///      again — `_sweepableAsset` subtracts `committedDividends`, so `rescueTokens` cannot reach it
 ///      either, which is deliberate (that subtraction is what stops an owner draining holders' pot). So
 ///      a payout asset that becomes permanently undeliverable AFTER a conversion — it blacklists this
@@ -111,20 +104,6 @@ abstract contract DividendDistribution {
     ///         and impossible to grow after creation. Three is what the product asked for.
     uint256 public constant MAX_DIVIDEND_ASSETS = 3;
 
-    /// @notice The buffer size, per asset, a keeper is expected to act on — the reference point the
-    ///         staleness bypass measures an absent keeper set against, and NOTHING ELSE.
-    /// @dev ⚠️ THIS IS NOT A FUNDING FLOOR. Distribution has no minimum: any non-zero buffer converts,
-    ///      because the path is keeper-gated and a keeper paying its own gas judges "worth converting"
-    ///      better than a compile-time constant can (the ERC20-quote path in `RealmDividendLogicUniV4`
-    ///      never had one, for the same reason).
-    /// @dev Its ONE job is in `DividendDistributionLogic._processDividends`: a SWAPPING asset's buffer
-    ///      must have held at least this much for `STALE_DIVIDEND_WINDOW` before the keeper gate opens
-    ///      to everyone. Without that yardstick, "no distribution in a month" would also describe a
-    ///      perfectly healthy quiet token, and the hatch would hand any caller a zero-floor conversion
-    ///      of a live buffer every month. So it is a SECURITY parameter now, not a gas-economics one:
-    ///      lowering it widens the permissionless hatch, raising it narrows it.
-    uint256 public constant DIVIDEND_THRESHOLD = DeploymentAddresses.DIVIDEND_THRESHOLD;
-
     /// @notice Max native a token may convert in ONE distribution, per asset. Deliberately the SAME
     ///         constant `processBurn` and `processLiquidity` cap with, for the same reason and on the
     ///         same scale — roughly 15-55% of a graduated pool across the liquidity tiers.
@@ -139,21 +118,8 @@ abstract contract DividendDistribution {
     ///      configured assets, because the cooldown is per asset (three different pools, three different
     ///      manipulations, no shared cost). Keeper-gating is what actually bounds it.
     /// @dev The remainder above the cap stays buffered for a later distribution, so nothing is stranded.
-    ///      Still best kept >= `DIVIDEND_THRESHOLD`: a cap below it would let the permissionless stale
-    ///      hatch open on a buffer no single call can clear, so each caller converts one slice and the
-    ///      hatch stays open indefinitely.
+    ///      A keeper may ask for LESS (`processDividends`'s `amount`), for a pool too thin to take the cap.
     uint256 public constant MAX_DIVIDEND_PER_CONVERSION = DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;
-
-    /// @notice Time without a distribution after which an ASSET is treated as DEAD. Two things unlock
-    ///         there, both last resorts: funding by ANYONE, so a keeper set that is gone cannot strand
-    ///         the buffer (accepting the atomic capture the contract docstring records, and narrowed by
-    ///         `DIVIDEND_THRESHOLD` on any asset that swaps); and the treasury sweep of a buffer no swap
-    ///         can convert (see `DividendDistributionLogic._fundDividends`, which also records what that
-    ///         last use does and does not prove).
-    /// @dev Anchored on that asset's own `lastDistribution`, which every distribution resets, so an
-    ///      asset that is merely quiet never comes near this. Only an asset nobody is converting ages
-    ///      into it — which, with weights, one asset of a set can do while its siblings stay healthy.
-    uint256 public constant STALE_DIVIDEND_WINDOW = 30 days;
 
     /// @notice Gas stipend for a native payout inside a KEEPER BATCH. Bounded so one holder with an
     ///         expensive (or reverting) `receive()` cannot brick or grief the rest of the batch; a plain
@@ -226,13 +192,6 @@ abstract contract DividendDistribution {
     ///      is what `minOut` has to be computed from.
     address public constant DIVIDEND_SWAP_REGISTRY = DeploymentAddresses.DIVIDEND_SWAP_REGISTRY;
 
-    /// @notice Where a buffer the registry cannot convert AT ANY PRICE ends up. A safety net, not a fee:
-    ///         it only ever receives native that no holder could otherwise have been paid out of, and
-    ///         reaching it requires a zero-floor swap to have failed outright.
-    /// @dev A compile-time constant for the same reason the registry is one — a clone cannot be patched,
-    ///      so the escape hatch cannot be a stored address someone could repoint.
-    address public constant DIVIDEND_TREASURY = DeploymentAddresses.REALM_TREASURY;
-
     /// @notice One payout asset's entire machine. THREE SLOTS, packed so the transfer hot path reads
     ///         the first one alone.
     /// @dev Slot 0 (`rewardPerTokenStored` + the two clocks + `precisionExp`) is the hot slot: the
@@ -240,10 +199,6 @@ abstract contract DividendDistribution {
     ///      arithmetic both live entirely inside it. Slot 1 (`token`) is only touched when a payout is
     ///      made, and slot 2 (the ledger and the buffer) only out-of-band. That is what keeps a
     ///      single-asset token at the cost it had before this struct existed: one SLOAD per transfer.
-    /// @dev `failedConversionBlock` is a `uint40` here where it used to need a full word of its own: the
-    ///      old reason was that the compiler would otherwise pack it into the head of the tax slot that
-    ///      followed and evict `graduationTimestamp` from it. Inside a struct array it cannot leak into
-    ///      a neighbouring variable's slot, so that reason is gone.
     /// @dev `owed` is `uint128` (3.4e38 units) rather than the old `uint160`: it counts payout-asset
     ///      units this token still has to deliver, which is bounded by everything it has ever
     ///      distributed, and the accumulator's own documented ceiling is orders of magnitude below this.
@@ -253,11 +208,10 @@ abstract contract DividendDistribution {
         ///      `10 ** precisionExp`. Monotonic: it only ever advances, and only when a distribution
         ///      lands.
         uint128 rewardPerTokenStored;
-        /// @dev When this asset last distributed. Its staleness anchor, and its "dividends are active"
-        ///      flag: 0 until the token graduates, which sets it without distributing anything.
+        /// @dev When this asset last distributed, and its "dividends are active" flag: 0 until the token
+        ///      graduates, which sets it without distributing anything.
         uint40 lastDistribution;
-        /// @dev Block of the last call that actually moved this asset's buffer — a funded conversion or
-        ///      a treasury sweep. Gates the FUNDING leg of `processDividends` to once per block, per
+        /// @dev Block of the last call that actually moved this asset's buffer. Gates the FUNDING leg of `processDividends` to once per block, per
         ///      asset.
         uint40 lastProcessBlock;
         /// @dev `rewardPerTokenStored`'s fixed-point scale, as a power of ten:
@@ -268,8 +222,7 @@ abstract contract DividendDistribution {
         // --- slot 1 ---
         /// @dev The payout asset. `address(0)` = native, `address(this)` = the token itself, anything
         ///      else = a third ERC20 bought through `DIVIDEND_SWAP_REGISTRY`. Written ONCE, at creation,
-        ///      and never again — a pool that dies is handled by sweeping the unconvertible buffer to
-        ///      `DIVIDEND_TREASURY`, not by repointing the payout.
+        ///      and never again — a pool that dies is handled by repointing the ROUTE on the registry.
         address token;
         // --- slot 2: out-of-band only ---
         /// @dev Payout-asset units this token owes holders for this asset: everything credited to the
@@ -279,16 +232,6 @@ abstract contract DividendDistribution {
         /// @dev Native earnings accrued to THIS asset so far, awaiting a distribution.
         ///      ~309M units of the chain's native currency.
         uint88 pendingNative;
-        /// @dev Block in which a zero-floor conversion of this asset was last seen to return nothing,
-        ///      i.e. the first half of the treasury sweep's proof that the pool is really gone. 0 = no
-        ///      failure on record.
-        ///      The PERSISTENCE MARKER. "The pool produced nothing at any price" is a snapshot, and a
-        ///      snapshot is manufacturable — and far more cheaply than emptying the pool, because the
-        ///      registry also refuses whenever depth merely dips under its threshold. One sell is enough
-        ///      to cause the failure and one buy to undo it. Requiring the same failure in a LATER block
-        ///      forces the griefer to hold that position across a block boundary, twice, per slice
-        ///      swept. A genuinely dead pool just needs one extra call.
-        uint40 failedConversionBlock;
     }
 
     /// @notice Per-account, per-asset dividend state. One slot each, and the only per-account storage
@@ -359,7 +302,7 @@ abstract contract DividendDistribution {
     ///         and what share of the dividends slice it takes.
     event DividendAssetInitialized(uint256 indexed index, address asset, uint16 weightBps);
 
-    /// @notice Dividends went live: the accumulators start running and the staleness clocks start here.
+    /// @notice Dividends went live: the accumulators start running here.
     ///         Emitted once, at graduation, for all configured assets at once.
     event DividendsActivated();
 
@@ -372,18 +315,11 @@ abstract contract DividendDistribution {
     /// @notice One holder, one asset, one payout of everything they had accrued in it at that moment.
     event DividendPaid(address indexed holder, address indexed asset, uint256 amount);
 
-    /// @notice A fundable buffer could not be converted into `asset` at ANY price, so `nativeAmount` went
-    ///         to `DIVIDEND_TREASURY` instead of sitting owed to holders forever. The payout asset is
-    ///         unchanged and nothing accrued is written off — this only ever moves native that was still
-    ///         waiting to be converted.
-    event DividendBufferSweptToTreasury(address indexed asset, uint256 nativeAmount);
-
     //////////////////////// Errors //////////////////////
 
     error DividendsNotActive();
-    /// @notice The buffer is not yet worth a distribution. Distinct from `DividendConversionFailed`:
-    ///         this one means wait for more earnings, that one means the earnings are there and the
-    ///         swap is the problem.
+    /// @notice Nothing is buffered. Distinct from `DividendConversionFailed`: this one means wait for
+    ///         earnings, that one means the earnings are there and the swap is the problem.
     /// @dev Only ever raised by a call that asked for NOTHING ELSE. A `processDividends` carrying a
     ///      holder list pushes those payouts and returns quietly, because a keeper batching payouts
     ///      must not be punished for the buffer happening to be short.
@@ -395,9 +331,6 @@ abstract contract DividendDistribution {
     error DividendProcessCooldown();
     /// @notice A push-only call (`fund == false`) with no holders: nothing to do.
     error NoDividendWork();
-    /// @notice The treasury refused the swept buffer. Reverts the whole call, leaving the buffer where it
-    ///         was — the same state a caller who never tried would have seen.
-    error DividendSweepFailed();
     error DividendBufferOverflow();
     error DividendReentrancy();
     /// @notice The payout-asset set is not a valid configuration: no assets, more than
@@ -537,21 +470,13 @@ abstract contract DividendDistribution {
         }
     }
 
-    /// @notice Whether asset `i` has gone `STALE_DIVIDEND_WINDOW` without a distribution, i.e. it is
-    ///         treated as dead. Unlocks funding by anyone — narrowed by `DIVIDEND_THRESHOLD` on a
-    ///         swapping asset — and the treasury sweep.
-    function dividendsStale(uint256 i) public view returns (bool) {
-        uint256 last = dividendAssets[i].lastDistribution;
-        return last != 0 && block.timestamp >= last + STALE_DIVIDEND_WINDOW;
-    }
-
     //////////////////////// single-asset views //////////////////////
     // The most-read part of the surface a single-asset token had before several were possible, kept
     // verbatim and answering for asset 0.
     //
     // ⚠️ THIS SET IS SMALLER THAN IT WAS, and deliberately: `dividendPrecisionExp`,
-    // `failedConversionBlock`, `rewardPerTokenStored` and `lastDividendProcessBlock`, plus the
-    // no-argument `dividendRewardPerToken` / `dividendsStale`, are gone (and so are `dividendRate`,
+    // `rewardPerTokenStored` and `lastDividendProcessBlock`, plus the no-argument
+    // `dividendRewardPerToken`, are gone (and so are `dividendRate`,
     // `lastDividendUpdate` and `dividendPeriodFinish`, which went with the drip). Every one of them is
     // `dividendAssets(0).<field>` or the indexed view above, and the token
     // implementation is up against EIP-170 — a getter that only restates a field of a struct this
@@ -583,8 +508,7 @@ abstract contract DividendDistribution {
     //////////////////////// internal //////////////////////
 
     /// @dev Turns every configured asset on. Before this, `lastDistribution == 0` makes every dividend
-    ///      entry point revert `DividendsNotActive` and anchors nothing; after it, the staleness clocks
-    ///      are live.
+    ///      entry point revert `DividendsNotActive`.
     function _activateDividends() internal {
         uint256 n = _dividendAssetCount();
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -612,11 +536,4 @@ abstract contract DividendDistribution {
     ///      exact, because every path that can change it goes through `_update` and therefore settles
     ///      first.
     function _dividendEligibleSupply() internal view virtual returns (uint256);
-
-    /// @dev Whether the payout asset must be buffered in TOKEN space rather than as native. Only the
-    ///      Uniswap-V2 self-token payout answers true, and only a sole-asset token can configure it.
-    function _isTokenSpaceDividendAsset(address asset) internal view virtual returns (bool) {
-        asset; // silences the unused-parameter warning without naming the arg away in overrides
-        return false;
-    }
 }

@@ -33,7 +33,7 @@ abis:
 # Both runs share the `[profile.robinhood]` build, so the second one does not recompile. Leaves the tree
 # on ROBINHOOD MAINNET — run `just chain-rh-testnet` before committing, or the retarget diff rides along.
 fast-test: chain-rh
-    FOUNDRY_PROFILE=robinhood forge test --no-match-contract Invariants --no-match-path "test/integration/**"
+    FOUNDRY_PROFILE=robinhood forge test --no-match-path "test/integration/**"
     just test-rh-fork
 
 # Robinhood-mainnet fork suites (test/integration/fork/robinhood/): a Realm stack deployed on a Robinhood
@@ -44,22 +44,13 @@ test-rh-fork: chain-rh
     FOUNDRY_PROFILE=robinhood forge test --match-path "test/integration/fork/robinhood/**"
 
 gas-report:
-    forge test --no-match-contract Invariants --no-match-path "test/integration/**" --gas-report
+    forge test --no-match-path "test/integration/**" --gas-report
 
 test-curves:
     forge test --match-contract Curve
 
-invariant-tests:
-    forge test --match-contract Invariants
-
 integration-tests:
     forge test --match-path "test/integration/**"
-
-# Runs a super fast version of invariants for CI.(not so reliable at all) (runs=1, depth=5)
-lean-invariants:
-    sed -i 's/runs = [0-9]*/runs = 1/' foundry.toml
-    sed -i 's/depth = [0-9]*/depth = 5/' foundry.toml
-    forge test --match-contract Invariants
 
 ##################### INSPECTION ####################
 error-inspection errorhex:

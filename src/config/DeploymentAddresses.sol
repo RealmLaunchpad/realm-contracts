@@ -51,13 +51,6 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      `DividendDistribution.MAX_DIVIDEND_PER_CONVERSION`.
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 1 ether;
 
-    /// @notice Minimum accrued native amount the dividend buffer must hold before
-    ///         `processDividends` may convert it and stream it to holders. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
-    ///         token has gone `STALE_DIVIDEND_WINDOW` without a distribution, so a sub-threshold residual
-    ///         on a dead token can never strand.
-    uint256 public constant DIVIDEND_THRESHOLD = 0.1 ether;
-
     /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
     /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
     ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
@@ -69,13 +62,12 @@ library DeploymentAddressesRobinhoodMainnet {
     ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
     /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
     ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
-    ///      holders on a large one — and the conversion band is narrow anyway
-    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      holders on a large one. Deliberately generous: an underfunded
     ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
     ///      few basis points of one conversion.
     /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
     ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
-    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
+    ///      market. Per-chain because a wei value cannot be shared between chains.
     /// @dev THE ONE THAT MATTERS — dividends ship here. A conversion measured ~160k-330k gas on a mainnet
     ///      fork; at 0.02 gwei (2026-09-27, L1 calldata price 0) that is <= ~0.0000066 ETH, so this covers
     ///      the worst case ~15x — headroom for a gas spike, the L1 data fee returning and conversions that
@@ -172,13 +164,6 @@ library DeploymentAddressesRobinhoodTestnet {
     /// @dev See the Robinhood mainnet library for the rationale (sandwich-extraction cap).
     uint256 public constant MAX_EARNINGS_PER_PROCESS = 1 ether;
 
-    /// @notice Minimum accrued native amount the dividend buffer must hold before
-    ///         `processDividends` may convert it and stream it to holders. Per-chain because a wei value
-    ///         cannot be shared between an ETH chain and a USDC-native one. Bypassed only once the
-    ///         token has gone `STALE_DIVIDEND_WINDOW` without a distribution, so a sub-threshold residual
-    ///         on a dead token can never strand.
-    uint256 public constant DIVIDEND_THRESHOLD = 0.001 ether;
-
     /// @notice Gas forwarded to a holder's `receive()` on a NATIVE dividend payout in a keeper batch.
     /// @dev Bounded so one holder with an expensive (or reverting) fallback cannot starve the rest of a
     ///      batch. Per-chain because the wallets in common use differ per chain and the ceiling is a
@@ -190,14 +175,12 @@ library DeploymentAddressesRobinhoodTestnet {
     ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
     /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
     ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
-    ///      holders on a large one — and the conversion band is narrow anyway
-    ///      (`DIVIDEND_THRESHOLD`..`MAX_EARNINGS_PER_PROCESS`). Deliberately generous: an underfunded
+    ///      holders on a large one. Deliberately generous: an underfunded
     ///      keeper stops every token's distributions at once, while an over-generous one costs holders a
     ///      few basis points of one conversion.
     /// @dev A constant rather than a stored setting because the registry is a proxy — repricing it is an
     ///      upgrade, which is the right cadence for a number that moves with gas regimes, not with the
-    ///      market. Per-chain for the same reason `DIVIDEND_THRESHOLD` is.
-    /// @dev Scaled to this chain's 100x smaller `DIVIDEND_THRESHOLD`, same ratio as the mainnet pair.
+    ///      market. Per-chain because a wei value cannot be shared between chains.
     uint256 public constant KEEPER_FEE = 0.0002 ether;
 
     /// @notice The `RealmDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
