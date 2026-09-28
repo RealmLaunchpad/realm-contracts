@@ -321,8 +321,8 @@ deploy-keeper-lens-rh-testnet:
     forge script DeployRealmKeeperLens --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Deploys the dummy assets `DeployDummyXStocks._stocks()` lists (today: USDG at ~2700 per ETH), each with a
-# native V4 pool seeded with ETH_PER_POOL wei (default 2 ETH). Earlier runs deployed the six-stock set
+# Deploys the dummy assets `DeployDummyXStocks._stocks()` lists (today: GLD at ~6.85 per ETH), each with a
+# native V4 pool seeded with ETH_PER_POOL wei (default 2 ETH). Earlier runs deployed USDG and the six-stock set
 # (AAPL, TSLA, AMZN, GOOGL, META, NVDA). E.g. `ETH_PER_POOL=20000000000000000000 just deploy-dummy-xstocks-rh-testnet`.
 # That chain DOES carry Robinhood's own official stock
 # tokens (TSLA, AMZN, PLTR, NFLX, AMD), but none of them can be bought with native ETH — no V2 pair,

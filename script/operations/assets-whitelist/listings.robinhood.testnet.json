@@ -6,6 +6,7 @@
   "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
   "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
   "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
+  "0xd208c24b164c1ba134f7fe7e3b96e0fd1cff1865",
   "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
   "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
   "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
@@ -15,12 +16,14 @@
   "GOOGL",
   "TSLA",
   "AAPL",
+  "GLD",
   "USDG",
   "NVDA",
   "META",
   "AMZN"
  ],
  "venues": [
+  3,
   3,
   3,
   3,
@@ -36,9 +39,11 @@
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000"
  ],
  "currency0": [
+  "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
@@ -51,6 +56,7 @@
   "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
   "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
   "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
+  "0xd208c24b164c1ba134f7fe7e3b96e0fd1cff1865",
   "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
   "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
   "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
@@ -60,6 +66,7 @@
   10000,
   50000,
   50000,
+  3000,
   500,
   50000,
   50000,
@@ -69,6 +76,7 @@
   200,
   1000,
   1000,
+  60,
   10,
   1000,
   1000,
@@ -81,92 +89,89 @@
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000"
  ],
  "readable": [
   {
    "symbol": "GOOGL",
    "asset": "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
-   "marketCapUsd": 0,
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 22.6678,
+   "depthNative": 23.2041,
    "priceUsd": null,
-   "perNative": 6.90755556,
-   "coingeckoUsd": null
+   "perNative": 6.59195716
   },
   {
    "symbol": "TSLA",
    "asset": "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
-   "marketCapUsd": 0,
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 22.3665,
+   "depthNative": 23.5091,
    "priceUsd": null,
-   "perNative": 6.54627184,
-   "coingeckoUsd": null
+   "perNative": 5.92538273
   },
   {
    "symbol": "AAPL",
    "asset": "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
-   "marketCapUsd": 0,
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 22.8535,
+   "depthNative": 26.3999,
    "priceUsd": null,
-   "perNative": 7.06236403,
-   "coingeckoUsd": null
+   "perNative": 5.29242046
+  },
+  {
+   "symbol": "GLD",
+   "asset": "0xd208c24b164c1ba134f7fe7e3b96e0fd1cff1865",
+   "xstock": false,
+   "venue": "v4",
+   "quote": "native",
+   "depthNative": 1.2,
+   "priceUsd": null,
+   "perNative": 6.85
   },
   {
    "symbol": "USDG",
    "asset": "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
-   "marketCapUsd": 0,
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 20.0,
+   "depthNative": 20.1229,
    "priceUsd": null,
-   "perNative": 2700.0,
-   "coingeckoUsd": null
+   "perNative": 2667.10984581
   },
   {
    "symbol": "NVDA",
    "asset": "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
-   "marketCapUsd": 0,
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 22.2634,
+   "depthNative": 22.1276,
    "priceUsd": null,
-   "perNative": 10.65924952,
-   "coingeckoUsd": null
+   "perNative": 10.79047881
   },
   {
    "symbol": "META",
    "asset": "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
-   "marketCapUsd": 0,
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 19.3743,
+   "depthNative": 19.4436,
    "priceUsd": null,
-   "perNative": 3.4085661,
-   "coingeckoUsd": null
+   "perNative": 3.38432936
   },
   {
    "symbol": "AMZN",
    "asset": "0xe0b058d16920bc542bbc83a3dcf5c7afca541464",
-   "marketCapUsd": 0,
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 22.0025,
+   "depthNative": 24.2278,
    "priceUsd": null,
-   "perNative": 9.59268849,
-   "coingeckoUsd": null
+   "perNative": 7.91150494
   }
  ],
  "rejected": []

@@ -76,6 +76,7 @@ contract DummyXStock is ERC20 {
 ///                         NFTs still held by the deployer.)
 ///
 ///      USDG (dummy stablecoin, 18 decimals unlike the real one's 6): see `just deploy-dummy-xstocks-rh-testnet`.
+///      GLD (dummy commodity ETF, 12 ETH pool): see `just deploy-dummy-xstocks-rh-testnet`.
 ///
 /// Usage (dry run):  forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev
 /// Usage (deploy):   just deploy-dummy-xstocks-rh-testnet
@@ -149,11 +150,11 @@ contract DeployDummyXStocks is Script {
     /// @notice The assets to deploy. Each run deploys EVERY entry, so the list holds only what is new.
     /// @dev The six xStocks listed in the contract docs were deployed from an earlier version of this list
     ///      (AAPL 7.621e18 / 50000 / 1000, TSLA 6.7662e18, AMZN 9.5949e18, GOOGL 7.3333e18 / 10000 / 200,
-    ///      META 2.6435e18, NVDA 10.916e18). Fee/tick spacing must be one of the shapes
+    ///      META 2.6435e18, NVDA 10.916e18), then USDG 2700e18 / 500 / 10. Fee/tick spacing must be one of the shapes
     ///      `discover_whitelist_assets.py` probes, or the pool can never be listed.
     function _stocks() internal pure returns (XStock[] memory stocks) {
         stocks = new XStock[](1);
-        stocks[0] = XStock("USD Glitter", "USDG", 2700e18, 500, 10); // ~2700 USD per ETH
+        stocks[0] = XStock("SPDR Gold Trust", "GLD", 6.85e18, 3000, 60); // rh-mainnet GLD rate, 0.3% like its USDG V3 pool
     }
 
     /// @dev The chain's `RealmDividendSwapRegistry` proxy.
