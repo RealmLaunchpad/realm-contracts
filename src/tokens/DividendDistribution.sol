@@ -188,8 +188,8 @@ abstract contract DividendDistribution {
     ///      a swap route can be fixed for tokens that are ALREADY live. Nothing about the asset choice
     ///      is curated behind it for the V2 path — see `IRealmDividendSwapRegistry`.
     /// @dev Exposed so an off-chain keeper can price its slippage floor against the exact pools the swap
-    ///      will cross (`registry.pairFor`, or `registry.routeOf` when the asset has a V4 route), which
-    ///      is what `minOut` has to be computed from.
+    ///      will cross (`registry.routeOf(token, asset)`, and `quoteRouteOf` for a quote leg), which is
+    ///      what `minOut` has to be computed from.
     address public constant DIVIDEND_SWAP_REGISTRY = DeploymentAddresses.DIVIDEND_SWAP_REGISTRY;
 
     /// @notice One payout asset's entire machine. THREE SLOTS, packed so the transfer hot path reads

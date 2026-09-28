@@ -309,6 +309,13 @@
   },
   {
     "type": "function",
+    "name": "announceGraduator",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "createToken",
     "inputs": [
       {
@@ -1094,6 +1101,19 @@
         "type": "uint256[]",
         "indexed": false,
         "internalType": "uint256[]"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "GraduatorSet",
+    "inputs": [
+      {
+        "name": "graduator",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
       }
     ],
     "anonymous": false

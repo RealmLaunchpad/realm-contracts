@@ -53,11 +53,11 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
 
     //////////////////////// creation //////////////////////
 
-    /// @dev The route lives on the registry, per asset; the token names only the asset.
-    function test_creation_namesTheXStockAndTheRegistryHoldsItsRoute() public {
+    /// @dev The creator's route is registered on the registry against this token at creation.
+    function test_creation_registersTheCreatorsRouteForTheToken() public {
         address token = _createXStockToken(_sole(AAPL), _w(10_000));
 
-        assertEq(dividendSwapRegistry.routeOf(AAPL), _xstockRoute(AAPL), "the AAPL route is on record");
+        assertEq(dividendSwapRegistry.routeOf(token, AAPL), _xstockRoute(AAPL), "the AAPL route is on record");
         (,,,, address payout,,) = RealmTaxableTokenUniV4(payable(token)).dividendAssets(0);
         assertEq(payout, AAPL, "and AAPL is the payout asset");
         assertTrue(RealmTaxableTokenUniV4(payable(token)).hasDividends(), "dividends are on");

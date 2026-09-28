@@ -38,5 +38,5 @@ function installDividendSwapRegistry(address owner) returns (RealmDividendSwapRe
 /// @notice Sets `asset`'s route as the registry's owner. `route` empty clears it.
 function setDividendRoute(RealmDividendSwapRegistry registry, address asset, bytes memory route) {
     VM.prank(registry.owner());
-    registry.setRoute(asset, route);
+    registry.setRoute(address(0), asset, route);
 }

@@ -38,8 +38,8 @@ struct TaxConfigs {
 ///      - every weight non-zero, and the weights summing to exactly 10,000;
 ///      - the assets DISTINCT (a repeat would make the token under-report what it owes holders);
 ///      - `DividendDistribution.DIVIDEND_SELF_TOKEN` only as the sole entry;
-///      - any ERC20 otherwise: its route lives on `RealmDividendSwapRegistry`, set by an admin, and an
-///        asset without one simply does not convert until it gets one.
+///      - any ERC20 otherwise, with or without a route (one without simply does not convert until a
+///        registry admin sets one).
 /// @dev Each asset is independent from there on: its own native buffer, its own conversion, its own
 ///      accumulator. A 20/80 split fills the 20% asset roughly four times more slowly.
 struct EarningsAllocationMultiConfig {
@@ -48,6 +48,12 @@ struct EarningsAllocationMultiConfig {
     uint16 liquidityBps;
     address[] dividendTokens;
     uint16[] dividendWeightsBps;
+    /// @dev One route per asset, positionally, in the `DividendRouteLib` wire format: the pools this
+    ///      token converts that asset through, chosen by the creator and registered against this token
+    ///      on `RealmDividendSwapRegistry`, where an admin can repoint it later. An entry may be empty —
+    ///      no route yet — and the array may be SHORTER than `dividendTokens`, which means empty for the
+    ///      rest. The registry checks shape only: not liquidity, and not that the price is the real one.
+    bytes[] dividendRoutes;
 }
 
 /// @notice The full `TaxConfigs` fields (flattened) plus a nested `earningsAllocation` split, as the
@@ -71,8 +77,16 @@ struct TaxConfigsWithMultiAllocation {
 }
 
 /// @notice `TaxConfigsWithMultiAllocation` for the DIRECT venue, where a token's earnings can arrive in
-///         an ERC20 quote as well as in native. A dividends leg bought out of an ERC20 quote converts
-///         through that quote's registry route walked backwards, then the payout asset's own route.
+///         an ERC20 quote as well as in native. Same leading fields, same allocation rules, plus the
+///         swap routes the token's ERC20 quotes are converted THROUGH when a dividends leg has to move
+///         out of one of them.
+/// @dev `quoteRoutes` is positional to the factory's `pairs[]`: one V4 `DividendRouteLib` route per
+///      pair, from native to that pair's quote, empty for a native pair. It may be shorter than
+///      `pairs`, which means empty for the rest. The registry walks it BACKWARDS (quote -> native) and
+///      then forward along the payout asset's own route, so every conversion pivots through native.
+///      Needed only for an ERC20 quote some payout asset is bought out of; empty falls back to the
+///      quote's own `dividendRoutes` entry if it is a payout asset on V4, and otherwise leaves that leg
+///      unconvertible until an admin sets one. V4 only: anything else reverts the creation.
 struct TaxConfigsWithDirectAllocation {
     uint16 buyTaxBps;
     uint16 sellTaxBps;
@@ -82,6 +96,7 @@ struct TaxConfigsWithDirectAllocation {
     uint16 sellTaxDecayStartBps;
     uint32 taxDecayDuration;
     EarningsAllocationMultiConfig earningsAllocation;
+    bytes[] quoteRoutes;
 }
 
 /// @title IRealmTaxableToken
@@ -118,13 +133,29 @@ interface IRealmTaxableToken is IRealmToken {
     ///         so it is only callable during the deploy tx.
     function initializeEarningsAllocation(uint16 burnBps, uint16 dividendsBps, uint16 liquidityBps) external;
 
-    /// @notice Same again for a multi-asset payout: the set of assets and the bps split of the dividends
-    ///         slice between them. See `EarningsAllocationMultiConfig` for the rules.
+    /// @notice Same again for a multi-asset payout: the set of assets, the bps split of the dividends
+    ///         slice between them, and the swap route each one is bought through. See
+    ///         `EarningsAllocationMultiConfig` for the rules.
     function initializeEarningsAllocation(
         uint16 burnBps,
         uint16 dividendsBps,
         uint16 liquidityBps,
         address[] calldata dividendTokens,
-        uint16[] calldata dividendWeightsBps
+        uint16[] calldata dividendWeightsBps,
+        bytes[] calldata dividendRoutes
+    ) external;
+
+    /// @notice The multi-asset overload plus the routes of this token's ERC20 QUOTES, for a token whose
+    ///         earnings can arrive in a currency other than native. `quoteRoutes` is positional to the
+    ///         token's `quotes` from index 1 (index 0 is native and needs no route). See
+    ///         `TaxConfigsWithDirectAllocation` for when an entry is needed.
+    function initializeEarningsAllocation(
+        uint16 burnBps,
+        uint16 dividendsBps,
+        uint16 liquidityBps,
+        address[] calldata dividendTokens,
+        uint16[] calldata dividendWeightsBps,
+        bytes[] calldata dividendRoutes,
+        bytes[] calldata quoteRoutes
     ) external;
 }

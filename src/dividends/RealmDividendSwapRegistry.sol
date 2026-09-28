@@ -21,15 +21,23 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 /// @title RealmDividendSwapRegistry
-/// @notice Performs the native -> asset conversion behind every dividend payout, through the route an
-///         admin set for that asset.
+/// @notice Performs the native -> asset conversion behind every dividend payout, through the route the
+///         paying token registered for that asset, or the one an admin put in its place.
 ///
-/// @dev ONE ROUTE PER ASSET, ADMIN-SET, REPOINTABLE. Tokens are immutable clones; this proxy is not. So
-///      everything that decides HOW an asset is bought lives here, and a route that was set wrong, or
-///      whose pool drained or migrated, is fixed once for every token paying that asset. Any ERC20 may
-///      be configured as a payout asset — one without a route just does not convert until it gets one.
-///      No liquidity gate runs at conversion: the swap itself, and the keeper's `minOut`, are the
-///      truth about whether a pool can deliver. Clearing a route is the veto.
+/// @dev CREATOR-PICKED, ADMIN-REPOINTABLE. Each token registers its routes here at creation, keyed
+///      `token => asset`, so one creator's route never touches another token paying the same asset.
+///      Tokens are immutable clones; this proxy is not. So a route that was set wrong, or whose pool
+///      drained or migrated, is fixed here by an admin: for one token (`setRoute(token, …)`) or, through
+///      the `ALL_TOKENS` override, for every token paying that asset in one transaction. Any ERC20 may be
+///      configured as a payout asset — one without a route just does not convert until it gets one. No
+///      liquidity gate runs at registration or conversion: the swap itself, and the keeper's `minOut`,
+///      are the truth about whether a pool can deliver.
+///
+/// @dev TWO ROUTE KINDS. A BUY route (native -> asset, any venue) buys a payout asset. A QUOTE route
+///      (V4 only) is walked backwards to SELL an ERC20 quote into native when a dividends leg is bought
+///      out of it; only V4 names its pools outright, so only V4 can be reversed. Kept apart so a quote
+///      that is also a payout asset can be bought on V2/V3 and still be sold on V4. With no quote route,
+///      the sell falls back to the quote's buy route, which then has to be V4.
 ///
 /// @dev CUSTODIES NOTHING. `swapNativeToAsset` receives, swaps and forwards inside one call, and holds
 ///      no balance between calls. Its `receive()` exists only for the native a reverse V4 leg takes out
@@ -80,6 +88,11 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
 
     uint256 private constant BPS_TOTAL = 10_000;
 
+    /// @notice The `token` key an admin writes to repoint an asset for EVERY token paying it. A route
+    ///         stored here wins over each token's own until it is cleared (set empty).
+    /// @dev No token can register under it: `registerRoute` keys on `msg.sender`, never zero.
+    address public constant ALL_TOKENS = address(0);
+
     //////////////////////// storage //////////////////////
 
     /// @notice Addresses allowed to set routes and the keeper wallet. The owner manages THIS set and
@@ -88,9 +101,14 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     ///      multisig that should not be in that loop.
     mapping(address => bool) public isAdmin;
 
-    /// @notice The route each payout asset converts through, in the `DividendRouteLib` wire format.
-    ///         Empty: no route, so conversions into that asset fail until one is set.
-    mapping(address => bytes) internal _routes;
+    /// @notice Buy routes, `token => asset => route`, in the `DividendRouteLib` wire format. The
+    ///         `ALL_TOKENS` row is the admin override. Empty: no route, so that conversion fails until
+    ///         one is set.
+    mapping(address => mapping(address => bytes)) internal _routes;
+
+    /// @notice Quote (sell) routes, `token => quote => route`, V4 only, same wire format and same
+    ///         `ALL_TOKENS` override. Empty: fall back to the quote's buy route.
+    mapping(address => mapping(address => bytes)) internal _quoteRoutes;
 
     /// @notice Hot wallet that pays the gas for the out-of-band conversions, funded by `KEEPER_FEE` out
     ///          of every conversion it triggers. `address(0)` — the default — disables the fee entirely,
@@ -102,14 +120,18 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
 
     /// @dev Reserved for future storage. Appending past this on an upgrade is safe; reordering anything
     ///      above it is not.
-    uint256[47] private __gap;
+    uint256[46] private __gap;
 
     //////////////////////// events //////////////////////
 
     event AdminSet(address indexed account, bool allowed);
-    /// @notice `asset`'s route changed. Empty `route`: removed. Replaying these is how an indexer learns
-    ///         which pools a payout asset's conversions cross.
-    event DividendRouteSet(address indexed asset, bytes route);
+    /// @notice `token` registered its route for `asset` at creation. `quote`: a sell route for one of
+    ///         its ERC20 quotes rather than a payout asset's buy route. Replaying these, then
+    ///         `DividendRouteSet`, is how an indexer learns which pools each conversion crosses.
+    event DividendRouteRegistered(address indexed token, address indexed asset, bool quote, bytes route);
+    /// @notice An admin repointed `token`'s route for `asset` (`token == ALL_TOKENS`: the override for
+    ///         every token). Empty `route`: removed. `quote` as in `DividendRouteRegistered`.
+    event DividendRouteSet(address indexed token, address indexed asset, bool quote, bytes route);
     event DividendAssetPurchased(address indexed asset, address indexed recipient, uint256 nativeIn, uint256 assetOut);
     /// @notice The wallet the per-conversion `KEEPER_FEE` is paid to changed. `address(0)` turns the fee
     ///          off. Named for the funding, not for the keeper set — the allowlist lives in
@@ -138,8 +160,10 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     /// @notice The asset has no route (or, for `swapAssetToAsset`'s first leg, none that can be walked
     ///         backwards — only V4 can).
     error NoRoute();
-    /// @notice The route is not well-formed for the asset it was set for.
+    /// @notice The route is not well-formed for the asset it was set for (a quote route: or not V4).
     error MalformedRoute();
+    /// @notice The token already registered a route for this asset; only an admin can change it now.
+    error RouteAlreadyRegistered();
     error NothingToSwap();
     /// @notice The venue call reverted: a drained pool, a missed floor, a token that refuses the swap.
     ///         Reported as a revert because the caller (a dividend freeze) must keep its native.
@@ -175,15 +199,52 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     }
 
     /// @inheritdoc IRealmDividendSwapRegistry
-    function routeOf(address asset) external view returns (bytes memory) {
-        return _routes[asset];
+    function routeOf(address token, address asset) public view returns (bytes memory route) {
+        route = _routes[ALL_TOKENS][asset];
+        if (route.length == 0) route = _routes[token][asset];
+    }
+
+    /// @inheritdoc IRealmDividendSwapRegistry
+    function quoteRouteOf(address token, address quote) public view returns (bytes memory route) {
+        route = _quoteRoutes[ALL_TOKENS][quote];
+        if (route.length == 0) route = _quoteRoutes[token][quote];
+        if (route.length == 0) route = routeOf(token, quote);
+    }
+
+    //////////////////////// route registration //////////////////////
+
+    /// @inheritdoc IRealmDividendSwapRegistry
+    function registerRoute(address asset, bytes calldata route) external {
+        _register(_routes, asset, route, false);
+    }
+
+    /// @inheritdoc IRealmDividendSwapRegistry
+    function registerQuoteRoute(address quote, bytes calldata route) external {
+        _register(_quoteRoutes, quote, route, true);
+    }
+
+    /// @dev Write-once per (`msg.sender`, asset): a token registers at creation and never again, so
+    ///      anything after that is an admin's. Shape-checked only; anyone may call, but only ever writes
+    ///      its own row, which nothing reads unless that caller is a token converting through here.
+    function _register(
+        mapping(address => mapping(address => bytes)) storage routes,
+        address asset,
+        bytes calldata route,
+        bool quote
+    ) private {
+        require(routes[msg.sender][asset].length == 0, RouteAlreadyRegistered());
+        require(_wellFormed(asset, route, quote), MalformedRoute());
+        routes[msg.sender][asset] = route;
+        emit DividendRouteRegistered(msg.sender, asset, quote, route);
     }
 
     /// @dev Shape only — no liquidity read. Catches a route set for the wrong asset or a garbled path;
     ///      whether its pools can absorb a conversion is proven off-chain before listing (fork probe) and
     ///      re-proven by every swap.
-    function _wellFormed(address asset, bytes memory route) internal pure returns (bool) {
+    ///      A quote route (`quote`) must be V4: it is walked backwards, which only V4 can be.
+    function _wellFormed(address asset, bytes memory route, bool quote) internal pure returns (bool) {
         uint8 venue = DividendRouteLib.venue(route);
+        if (quote && venue != DividendRouteLib.VENUE_V4) return false;
         if (venue == DividendRouteLib.VENUE_V2) return route.length == 1;
         if (venue == DividendRouteLib.VENUE_V4) {
             Hop[] memory hops = DividendRouteLib.toV4Hops(route);
@@ -218,9 +279,9 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         }
     }
 
-    /// @dev `asset`'s route, decoded, or `NoRoute`.
+    /// @dev The caller's buy route for `asset`, decoded, or `NoRoute`.
     function _route(address asset) private view returns (DividendRouteLib.Decoded memory route) {
-        route = DividendRouteLib.decode(_routes[asset]);
+        route = DividendRouteLib.decode(routeOf(msg.sender, asset));
         require(route.venue != 0, NoRoute());
     }
 
@@ -298,13 +359,12 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         _payKeeper(keeperWallet, cut);
     }
 
-    /// @dev Leg 1 of `swapAssetToAsset`: `source`'s route walked BACKWARDS to native. Only a
-    ///      V4 route can be: it names its pools outright, whereas a V3 path is one-directional calldata
-    ///      and a V2 pair swap needs the router's ETH-out entry point this registry does not wire.
-    // ponytail: V4 only; every chain this venue ships on routes on V4. Add the V3/V2 reverses if a
-    // quote ever needs one.
+    /// @dev Leg 1 of `swapAssetToAsset`: the caller's quote route for `source` (`quoteRouteOf`) walked
+    ///      BACKWARDS to native. Only a V4 route can be: it names its pools outright, whereas a V3 path is
+    ///      one-directional calldata and a V2 pair swap needs the router's ETH-out entry point this
+    ///      registry does not wire. A quote route is V4 by construction; the buy-route fallback may not be.
     function _swapToNative(address source, uint256 amountIn, uint256 minOut) private returns (uint256 native) {
-        DividendRouteLib.Decoded memory route = _route(source);
+        DividendRouteLib.Decoded memory route = DividendRouteLib.decode(quoteRouteOf(msg.sender, source));
         require(route.venue == DividendRouteLib.VENUE_V4, NoRoute());
         Hop[] memory hops = route.hops;
         uint256 n = hops.length;
@@ -413,13 +473,28 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         emit AdminSet(account, allowed);
     }
 
-    /// @notice Set, repoint or (empty `route`) remove `asset`'s route, for every token paying it.
-    /// @dev List a route only after a fork probe shows it absorbs a full conversion
-    ///      (`MAX_EARNINGS_PER_PROCESS`); this checks shape, not depth.
-    function setRoute(address asset, bytes calldata route) external onlyAdmin {
-        require(route.length == 0 || _wellFormed(asset, route), MalformedRoute());
-        _routes[asset] = route;
-        emit DividendRouteSet(asset, route);
+    /// @notice Set, repoint or (empty `route`) remove `token`'s buy route for `asset`. `token ==
+    ///         ALL_TOKENS` sets the override every token paying `asset` converts through instead.
+    /// @dev Checks shape, not depth: probe a route on a fork before listing it (`PickDividendRoutes`).
+    function setRoute(address token, address asset, bytes calldata route) external onlyAdmin {
+        _set(_routes, token, asset, route, false);
+    }
+
+    /// @notice Same for `token`'s quote (sell) route for `quote`. V4 only.
+    function setQuoteRoute(address token, address quote, bytes calldata route) external onlyAdmin {
+        _set(_quoteRoutes, token, quote, route, true);
+    }
+
+    function _set(
+        mapping(address => mapping(address => bytes)) storage routes,
+        address token,
+        address asset,
+        bytes calldata route,
+        bool quote
+    ) private {
+        require(route.length == 0 || _wellFormed(asset, route, quote), MalformedRoute());
+        routes[token][asset] = route;
+        emit DividendRouteSet(token, asset, quote, route);
     }
 
     /// @notice The wallet each conversion's `KEEPER_FEE` funds. `address(0)` turns the fee off.

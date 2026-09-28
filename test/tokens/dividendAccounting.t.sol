@@ -35,7 +35,7 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
 
     function configure(address asset) external {
         (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
-        assetCount = _initializeDividends(assets, weights);
+        assetCount = _initializeDividends(assets, weights, new bytes[](0));
     }
 
     /// @dev How many payout assets the harness was configured with. The production token keeps this in
@@ -48,7 +48,7 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
 
     /// @notice Configure a multi-asset payout set, as `initializeEarningsAllocation`'s array overload does.
     function configureMulti(address[] calldata assets, uint16[] calldata weights) external {
-        assetCount = _initializeDividends(assets, weights);
+        assetCount = _initializeDividends(assets, weights, new bytes[](0));
     }
 
     function activate() external {

@@ -131,7 +131,12 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationMultiConfig({
-                burnBps: 0, dividendsBps: 5_000, liquidityBps: 0, dividendTokens: assets, dividendWeightsBps: weights
+                burnBps: 0,
+                dividendsBps: 5_000,
+                liquidityBps: 0,
+                dividendTokens: assets,
+                dividendWeightsBps: weights,
+                dividendRoutes: new bytes[](0)
             })
         });
         token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
@@ -340,7 +345,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      business, and an asset without a route just does not convert until it gets one.
     function test_anErc20WithoutARouteIsStillAccepted() public {
         address asset = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9; // AAPL, no route set
-        assertEq(dividendSwapRegistry.routeOf(asset).length, 0, "precondition: no route");
+        assertEq(dividendSwapRegistry.routeOf(address(0), asset).length, 0, "precondition: no route");
         RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(payable(_createDividendToken(5_000, asset)));
         assertEq(token.dividendToken(), asset, "configured anyway");
     }

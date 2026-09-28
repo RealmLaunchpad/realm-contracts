@@ -57,8 +57,9 @@ contract DummyXStock is ERC20 {
 /// @dev The position NFT goes to the BROADCASTER, not to a locked contract like graduation does, so the
 ///      testnet ETH can be pulled back out when the experiment is over.
 ///
-/// @dev Routes are only PRINTED here (see `_reportRoute`); an admin lists each one on the chain's
-///      `DIVIDEND_SWAP_REGISTRY` with `setRoute`.
+/// @dev Routes are only PRINTED here (see `_reportRoute`); creators pass them at token creation, and
+///      an admin can set one for every token on the chain's `DIVIDEND_SWAP_REGISTRY` with
+///      `setRoute(ALL_TOKENS, …)`.
 ///
 /// @dev DEPLOYED SO FAR. The consumer of these is the frontend's payout catalogue
 ///      (`dividendAssets.<chain>.mjs`), which carries the matching route bytes; they are recorded here
@@ -190,7 +191,7 @@ contract DeployDummyXStocks is Script {
     }
 
     /// @notice Prints the one-hop native -> stock route, in the wire format
-    ///         `RealmDividendSwapRegistry.setRoute` takes.
+    ///         `RealmDividendSwapRegistry` takes.
     function _reportRoute(address token, XStock memory stock) internal pure {
         Hop[] memory hops = new Hop[](1);
         hops[0] = Hop({currency: token, fee: stock.fee, tickSpacing: stock.tickSpacing, hooks: address(0)});

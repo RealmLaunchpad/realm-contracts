@@ -21,6 +21,7 @@ import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IA
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {V4PoolSeeding} from "test/helpers/V4PoolSeeding.sol";
 import {setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 
 /// @notice Stand-in for the universal router on a PARTIAL fill of an ERC20-quoted buy-back: the pool
 ///         pulls half the quote through Permit2, the other half never leaves the token, and a fixed
@@ -107,8 +108,10 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
                 dividendsBps: 5_000,
                 liquidityBps: 0,
                 dividendTokens: _one(asset),
-                dividendWeightsBps: weights
-            })
+                dividendWeightsBps: weights,
+                dividendRoutes: new bytes[](0)
+            }),
+            quoteRoutes: new bytes[](0)
         });
     }
 
@@ -643,5 +646,65 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         token.processDividends(0, AAPL, 0, type(uint128).max, _one(alice));
         assertGt(_pending(token), 0, "the conversion failed and kept the buffer");
         assertEq(IERC20(AAPL).allowance(address(token), address(dividendSwapRegistry)), 0, "no allowance left");
+    }
+
+    //////////////////////// CREATION-TIME ROUTES ///////////////////////////
+
+    /// @dev The creator's payout route is registered against the token, not for every token.
+    function test_dividendRoutes_registeredForTheTokenAtCreation() public {
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(MSFT);
+        cfg.earningsAllocation.dividendRoutes = new bytes[](1);
+        cfg.earningsAllocation.dividendRoutes[0] = DividendRouteLib.encodeV2();
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), cfg);
+        setDividendRoute(dividendSwapRegistry, MSFT, ""); // drop the setUp override to read the token's own
+        assertEq(dividendSwapRegistry.routeOf(address(token), MSFT), DividendRouteLib.encodeV2(), "the token's");
+        assertEq(dividendSwapRegistry.routeOf(stranger, MSFT).length, 0, "and nobody else's");
+    }
+
+    /// @dev `quoteRoutes` is per PAIR; the token takes it per ERC20 QUOTE, native pairs skipped.
+    function test_quoteRoutes_nativePairFirstShiftsTheErc20RouteIntoPlace() public {
+        RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](2);
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 5_000});
+        pairs[1] = RealmFactoryUniV4Direct.DirectPair({quote: AAPL, weightBps: 5_000});
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(MSFT);
+        cfg.quoteRoutes = new bytes[](2);
+        cfg.quoteRoutes[1] = _v4Route(AAPL);
+        RealmTaxableTokenUniV4 token = _launch(pairs, cfg);
+        setDividendRoute(dividendSwapRegistry, AAPL, ""); // no buy-route fallback in the way
+        assertEq(dividendSwapRegistry.quoteRouteOf(address(token), AAPL), _v4Route(AAPL), "registered for AAPL");
+    }
+
+    /// @dev F1: the quote is bought on V2 as a payout asset elsewhere, but this token sells it on its V4
+    ///      quote route, so its AAPL-quoted leg still converts into MSFT.
+    function test_quoteRoutes_sellOnV4EvenWhenTheQuotesBuyRouteIsNot() public {
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(MSFT);
+        cfg.quoteRoutes = new bytes[](1);
+        cfg.quoteRoutes[0] = _v4Route(AAPL);
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), cfg);
+        setDividendRoute(dividendSwapRegistry, AAPL, DividendRouteLib.encodeV2()); // buy route not walkable
+        _buyAndSettle(address(token), 10_000e18);
+        assertGt(_pending(token), 0, "a buffer to convert");
+
+        token.processDividends(0, AAPL, 0, 1, _one(alice));
+        assertGt(IERC20(MSFT).balanceOf(alice), 0, "paid in MSFT through the V4 quote route");
+    }
+
+    /// @dev A quote route has to be walkable backwards: anything but V4 reverts the creation.
+    function test_quoteRoutes_refusesANonV4RouteAtCreation() public {
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(MSFT);
+        cfg.quoteRoutes = new bytes[](1);
+        cfg.quoteRoutes[0] = DividendRouteLib.encodeV2();
+        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        _launch(_aaplPair(), cfg);
+    }
+
+    function test_quoteRoutes_rejectsARouteOnANativePair() public {
+        RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](1);
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(0), weightBps: 10_000});
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(MSFT);
+        cfg.quoteRoutes = new bytes[](1);
+        cfg.quoteRoutes[0] = _v4Route(AAPL);
+        vm.expectRevert(RealmFactoryUniV4Direct.InvalidQuoteRoutes.selector);
+        _launch(pairs, cfg);
     }
 }

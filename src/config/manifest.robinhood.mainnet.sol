@@ -178,11 +178,12 @@ library DeploymentsRobinhoodMainnet {
     }
 
     // --- Dividends ---
-    /// @dev ROUTES ARE PER ASSET, ON THE REGISTRY (`RealmDividendSwapRegistry.setRoute`, admin-only,
-    ///      `DIVIDEND_SWAP_REGISTRY` in `DeploymentAddresses.sol`). Any ERC20 can be a payout asset; one
-    ///      without a route does not convert until an admin sets one. List a route only after
-    ///      `test_catalogue_everyRouteConvertsAtMaxSize`-style fork proof that it absorbs a full
-    ///      conversion. Also needed before dividends launch: `setAdmin(...)` and
+    /// @dev ROUTES ARE PER TOKEN, ON THE REGISTRY (`DIVIDEND_SWAP_REGISTRY` in `DeploymentAddresses.sol`):
+    ///      the creator passes them at creation, and an admin can repoint them per token or for every
+    ///      token paying an asset (`RealmDividendSwapRegistry.setRoute(ALL_TOKENS, …)`). Any ERC20 can
+    ///      be a payout asset; one without a route does not convert until it gets one. Set an override
+    ///      only after `test_catalogue_everyRouteConvertsAtMaxSize`-style fork proof that it absorbs a
+    ///      full conversion. Also needed before dividends launch: `setAdmin(...)` and
     ///      `setKeeperFunding(REALM_KEEPER)`.
 
     // --- Accounts ---

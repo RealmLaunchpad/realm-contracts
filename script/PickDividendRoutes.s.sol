@@ -11,11 +11,14 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 
 /// @notice Picks the Uniswap V2, V3 or V4 route that actually buys the most of each payout asset AT A
 ///         FULL CONVERSION (`MAX_EARNINGS_PER_PROCESS`), out of the candidates `discover_xstock_routes.py`
-///         shortlisted, and writes them out in the wire format `RealmDividendSwapRegistry.setRoute`
-///         takes. An asset no candidate can buy at that size is left out.
+///         shortlisted, and writes them out in the `RealmDividendSwapRegistry` wire format. An asset no
+///         candidate can buy at that size is left out.
 ///
-/// @dev WRITES NOTHING ON-CHAIN. It is the proof an admin lists a route on: broadcasts nothing and needs
-///      no keys. Listing is a separate `setRoute` per asset.
+/// @dev WRITES NOTHING ON-CHAIN: broadcasts nothing and needs no keys. The output is the frontend's
+///      payout catalogue (the routes creators pass at creation) and the proof an admin sets an
+///      `ALL_TOKENS` override on. The probe sets the route for its own prober address only.
+/// @dev Needs a registry built from this tree at `DIVIDEND_SWAP_REGISTRY`: an older one lacks the
+///      per-token `setRoute`, and every probe would silently score 0.
 ///
 /// @dev THE PROBE PICKS THE ROUTE, the discovery script only shortlists. `discover_xstock_routes.py`
 ///      cannot rank an ETH-quoted pool against a USDG-quoted one — `liquidity` is denominated in each
@@ -24,13 +27,13 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 ///      keeps whichever delivers most.
 ///
 /// @dev That probing is the whole reason this is a forge script rather than a Python quoter. A route
-///      naming the wrong pool does not fail loudly — it fails at some future `processDividends`, on a
-///      clone nobody can patch, for a creator who picked that asset in good faith. The probe is a real
+///      naming the wrong pool does not fail loudly — it fails at some future `processDividends`, for a
+///      creator who picked that asset in good faith, until an admin repoints it. The probe is a real
 ///      swap through the real registry against real state, which is the only check that cannot disagree
 ///      with the contract it is validating.
 ///
 /// @dev IT IS ALSO THE ROUTES' HEALTH CHECK. Re-run it and an asset whose pools have moved reports a
-///      different winner, or none at all: repoint (or clear) that asset's route on the registry.
+///      different winner, or none at all: repoint that asset on the registry (`ALL_TOKENS` override).
 ///
 /// Usage:  forge script PickDividendRoutes --rpc-url rh-mainnet
 ///
@@ -145,7 +148,7 @@ contract PickDividendRoutes is Script {
         uint256 snapshot = vm.snapshotState();
 
         vm.prank(registry.owner());
-        try registry.setRoute(asset, route) {
+        try registry.setRoute(PROBER, asset, route) {
             vm.deal(PROBER, PROBE_AMOUNT);
             vm.prank(PROBER);
             try registry.swapNativeToAsset{value: PROBE_AMOUNT}(asset, 1, PROBER) returns (uint256 bought) {

@@ -243,7 +243,12 @@ contract DividendsGasTests is TaxTokenUniV4BaseTests {
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
             earningsAllocation: EarningsAllocationMultiConfig({
-                burnBps: 0, dividendsBps: 5_000, liquidityBps: 0, dividendTokens: assets, dividendWeightsBps: weights
+                burnBps: 0,
+                dividendsBps: 5_000,
+                liquidityBps: 0,
+                dividendTokens: assets,
+                dividendWeightsBps: weights,
+                dividendRoutes: new bytes[](0)
             })
         });
         address token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));

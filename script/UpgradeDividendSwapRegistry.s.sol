@@ -15,6 +15,10 @@ import {BuildTarget} from "script/BuildTarget.sol";
 ///         keeper wallet live in proxy storage and are kept; the proxy never moves, so the token masters
 ///         that bake it are untouched.
 ///
+/// @dev    NOT for a registry deployed before per-token routes + quote routes: the storage layout
+///         changed (per-asset `_routes` became `token => asset`, keeper moved). Deploy a fresh proxy
+///         instead (`DeployRealmRegistries`) and rebuild the token impls against it.
+///
 /// @dev    The registry's venue addresses are compile-time constants from the `just chain-*` retarget, so
 ///         the script refuses to broadcast a build targeted at another chain.
 ///

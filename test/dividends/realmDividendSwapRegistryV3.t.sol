@@ -102,7 +102,7 @@ contract RealmDividendSwapRegistryV3Tests is Test {
     /// @dev Lists `asset`'s route as an admin. This test contract then converts exactly as a token does.
     function _route(address asset, bytes memory path) internal {
         vm.prank(admin);
-        registry.setRoute(asset, DividendRouteLib.encodeV3(path));
+        registry.setRoute(address(0), asset, DividendRouteLib.encodeV3(path));
     }
 
     function _expectMalformed() internal {
@@ -219,7 +219,7 @@ contract RealmDividendSwapRegistryV3Tests is Test {
     /// @dev Setting a route for one asset must not give any other asset one.
     function test_aRouteDoesNotDisturbAnotherAsset() public {
         _route(AAPLon, _path(WETH, FEE_030, AAPLon));
-        assertEq(registry.routeOf(MSFT).length, 0, "MSFT has no route of its own");
+        assertEq(registry.routeOf(address(0), MSFT).length, 0, "MSFT has no route of its own");
     }
 
     //////////////////////// path validation //////////////////////
@@ -255,15 +255,15 @@ contract RealmDividendSwapRegistryV3Tests is Test {
         bytes memory route = DividendRouteLib.encodeV3(_path(WETH, FEE_030, AAPLon));
 
         vm.expectEmit(true, false, false, true, address(registry));
-        emit RealmDividendSwapRegistry.DividendRouteSet(AAPLon, route);
+        emit RealmDividendSwapRegistry.DividendRouteSet(address(0), AAPLon, false, route);
         vm.prank(admin);
-        registry.setRoute(AAPLon, route);
+        registry.setRoute(address(0), AAPLon, route);
     }
 
     function test_aStrangerCannotSetARoute() public {
         vm.prank(stranger);
         vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
-        registry.setRoute(AAPLon, DividendRouteLib.encodeV3(_path(WETH, FEE_030, AAPLon)));
+        registry.setRoute(address(0), AAPLon, DividendRouteLib.encodeV3(_path(WETH, FEE_030, AAPLon)));
     }
 
     receive() external payable {}

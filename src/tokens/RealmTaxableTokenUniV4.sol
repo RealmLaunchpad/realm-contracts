@@ -381,6 +381,40 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         return _acquireFromQuote(address(0), address(this), nativeIn, minOut);
     }
 
+    //////////////////////// CREATION-TIME CONFIGURATION //////////////////////
+
+    /// @notice The multi-asset overload plus the routes of this token's ERC20 quotes. See
+    ///         `RealmTaxableToken.initializeEarningsAllocation(uint16,uint16,uint16,address[],uint16[],bytes[],bytes[])`.
+    function initializeEarningsAllocation(
+        uint16 _burnBps,
+        uint16 _dividendsBps,
+        uint16 _liquidityBps,
+        address[] calldata _dividendTokens,
+        uint16[] calldata _dividendWeightsBps,
+        bytes[] calldata _dividendRoutes,
+        bytes[] calldata _quoteRoutes
+    ) external override {
+        require(msg.sender == tokenFactory, Unauthorized());
+        _initializeEarningsAllocation(_burnBps, _dividendsBps, _liquidityBps);
+        if (_dividendsBps != 0) {
+            dividendAssetCount = _initializeDividends(_dividendTokens, _dividendWeightsBps, _dividendRoutes);
+            hasDividends = true;
+            _registerQuoteRoutes(_quoteRoutes);
+        }
+    }
+
+    /// @dev Registers each supplied quote (sell) route on the registry, which refuses anything but a
+    ///      well-formed V4 route for that quote. Positional to `quotes` from index 1; an empty or
+    ///      missing entry registers nothing (the registry then falls back to the quote's buy route).
+    function _registerQuoteRoutes(bytes[] calldata routes) private {
+        uint256 n = routes.length;
+        require(n < quoteCount || n == 0, InvalidQuotes());
+        IRealmDividendSwapRegistry registry = IRealmDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
+        for (uint256 q; q < n; ++q) {
+            if (routes[q].length != 0) registry.registerQuoteRoute(quotes[q + 1], routes[q]);
+        }
+    }
+
     ////////////////////// INTERNAL FUNCTIONS //////////////////////
 
     /// @inheritdoc RealmTaxableToken

@@ -1,15 +1,24 @@
 # Dividend swap routes
 
 A dividend payout asset is bought, not held: the token accrues native currency and converts it into the
-asset on every distribution. Which pools that conversion crosses is the **route**. Routes live on
-`RealmDividendSwapRegistry`, **one per asset**, set and repointed by the registry's admins
-(`setRoute(asset, route)`); tokens name only their payout assets.
+asset on every distribution. Which pools that conversion crosses is the **route**. The **creator**
+picks it: the token passes one route per payout asset at creation (`dividendRoutes`, plus `quoteRoutes`
+on the direct venue) and registers it on `RealmDividendSwapRegistry` against itself, so no creator
+can affect another token's routes. The frontend fills these from its payout catalogue.
 
-**Any ERC20 can be a payout asset.** One without a route simply does not convert: its buffer waits,
-whole, until an admin sets a route. The bar a listed route must meet is that it converts a FULL
-conversion (`MAX_EARNINGS_PER_PROCESS`), proven on a fork before listing. If a listed pool drains or
-migrates, repoint the route: every token paying that asset, existing ones included, follows. Clearing
-a route (`setRoute(asset, "")`) is the veto.
+**Any ERC20 can be a payout asset.** The registry checks a route's shape only, not its liquidity, and
+an empty route is allowed. An asset without a working route simply does not convert: its buffer waits,
+whole, until it gets one. Admins can always repoint:
+
+- `setRoute(token, asset, route)`: one token's route.
+- `setRoute(ALL_TOKENS, asset, route)` (`ALL_TOKENS == address(0)`): an override for every token paying
+  `asset`, existing ones included, in one transaction. The fix for a drained or migrated pool. Clearing
+  it (`route = ""`) hands each token its own route back.
+- `setQuoteRoute(token | ALL_TOKENS, quote, route)`: the same for the V4 route an ERC20 **quote** is
+  sold through (see below).
+
+The bar an override must meet is that it converts a FULL conversion (`MAX_EARNINGS_PER_PROCESS`),
+proven on a fork first.
 
 ## Picking routes
 
@@ -27,13 +36,14 @@ ETH-quoted pool and a USDG-quoted one are not comparable, and a fat 5% pool lose
 `PickDividendRoutes.s.sol` settles it by buying `MAX_EARNINGS_PER_PROCESS` of every asset through every
 candidate (V4, V3, and the asset's V2 pair) against forked state and keeping whichever delivers most. An
 asset no candidate can buy at that size is left out. It **broadcasts nothing**. Its output,
-`catalogue.robinhood.mainnet.json`, maps asset address to route bytes: list each with `setRoute`, and ship
-the same set in the frontend's payout catalogue.
+`catalogue.robinhood.mainnet.json`, maps asset address to route bytes: ship it in the frontend's payout
+catalogue, which creators' routes come from. The probe needs a registry built from this tree at
+`DIVIDEND_SWAP_REGISTRY` (it calls the per-token `setRoute`); against an older one every probe scores 0.
 
 Re-run it as the routes' health check, together with the opt-in fork sweep
 (`CHECK_DIVIDEND_CATALOGUE=true`, `test_catalogue_everyRouteConvertsAtMaxSize`), which logs each listed
 route's price impact at a full conversion. An asset whose pools have moved reports a different winner, or
-none: repoint or clear it on the registry.
+none: set an `ALL_TOKENS` override on the registry, and update the frontend catalogue.
 
 ## Adding one asset
 
@@ -56,6 +66,11 @@ One `bytes` per asset, decoded by `DividendRouteLib`:
 | `0x04` + `abi.encode(Hop[])` | a Uniswap V4 path from the native coin; each hop is `{currency, fee, tickSpacing, hooks}` and the last `currency` is the asset |
 | `0x03` + `token \| fee \| token…` | a Uniswap V3 path from WETH to the asset, one or two hops |
 
-`setRoute` checks shape only (right asset at the end, hop counts, a V3 path from WETH). Depth is the
-fork probe's job. Only a V4 route can be walked backwards, which an ERC20 QUOTE's route must be for a
-dividends leg to be bought out of that quote.
+Registration and `setRoute` check shape only (right asset at the end, hop counts, a V3 path from WETH).
+Depth is the fork probe's job.
+
+**Quote (sell) routes.** A dividends leg bought out of an ERC20 quote first sells the quote into native
+by walking a V4 route backwards; only V4 names its pools outright, so a quote route must be V4. It is
+kept apart from the buy route, so a quote that is also a payout asset can be bought on V2/V3 and still
+be sold on V4. Resolution: the quote override, else the token's quote route, else the quote's buy route
+(which must then be V4, or that leg does not convert).

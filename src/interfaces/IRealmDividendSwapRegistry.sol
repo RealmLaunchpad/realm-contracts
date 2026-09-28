@@ -21,21 +21,34 @@ struct Hop {
 /// @title IRealmDividendSwapRegistry
 /// @notice The venue every dividend payout conversion crosses, and the ONE place its routes live.
 ///
-/// @dev WHO PICKS THE ROUTE. A registry admin, per asset. Tokens name only their payout assets, never a
-///      route, so a route that turns out wrong or whose pool drains is repointed here, once, for every
-///      token paying that asset — existing ones included. Any ERC20 can be a payout asset; one without a
-///      route simply does not convert until an admin sets one.
+/// @dev WHO PICKS THE ROUTE. The token's creator, at creation, per payout asset: the token registers
+///      it here (`registerRoute`), keyed by the token, so no creator can affect another token's routes.
+///      A registry admin can repoint any of them afterwards, per token or for every token paying an
+///      asset at once, which is the fix for a route that was wrong or whose pool drained. Any ERC20 can
+///      be a payout asset; one without a route simply does not convert until it gets one.
 interface IRealmDividendSwapRegistry {
-    /// @notice The route `asset` converts through, in the `DividendRouteLib` wire format. Empty: none,
-    ///         so conversions into `asset` fail until one is set.
-    function routeOf(address asset) external view returns (bytes memory route);
+    /// @notice The buy route `token` converts native into `asset` through, in the `DividendRouteLib`
+    ///         wire format: the admin override if set, else the token's own. Empty: none.
+    function routeOf(address token, address asset) external view returns (bytes memory route);
+
+    /// @notice The V4 route `token` sells its ERC20 `quote` into native through, walked backwards: the
+    ///         admin override, else the token's own quote route, else `routeOf(token, quote)`.
+    function quoteRouteOf(address token, address quote) external view returns (bytes memory route);
+
+    /// @notice Registers the caller's buy route for `asset`. Called by a token at creation; write-once
+    ///         per (caller, asset). Shape-checked only.
+    function registerRoute(address asset, bytes calldata route) external;
+
+    /// @notice Registers the caller's quote (sell) route for `quote`. V4 only; otherwise as
+    ///         `registerRoute`.
+    function registerQuoteRoute(address quote, bytes calldata route) external;
 
     /// @notice Buys `asset` with `msg.value` through its route and sends it to `recipient`.
     /// @param minOut floor on the asset received, net of the keeper's cut.
     function swapNativeToAsset(address asset, uint256 minOut, address recipient) external payable returns (uint256 out);
 
-    /// @notice Pulls `amountIn` of `source` from the caller, sells it to native along `source`'s route
-    ///         walked backwards, and buys `asset` with the proceeds (`asset == address(0)`: delivers the
+    /// @notice Pulls `amountIn` of `source` from the caller, sells it to native along the caller's
+    ///         `quoteRouteOf(source)` walked backwards, and buys `asset` with the proceeds (`asset == address(0)`: delivers the
     ///         native itself).
     function swapAssetToAsset(address source, address asset, uint256 amountIn, uint256 minOut, address recipient)
         external

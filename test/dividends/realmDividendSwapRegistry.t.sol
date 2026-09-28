@@ -56,8 +56,8 @@ contract PartialPullV4RouterStub {
     }
 }
 
-/// @notice The swap venue for third-asset dividends, and the one place their routes live: one admin-set,
-///         repointable route per asset, shared by every token paying it.
+/// @notice The swap venue for third-asset dividends, and the one place their routes live: each token's
+///         own, registered at creation, repointable by an admin per token or for every token at once.
 /// @dev This test contract stands in for a TOKEN throughout: it converts exactly as a clone does.
 contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     uint256 internal constant BLOCKNUMBER = 58_000_000;
@@ -99,21 +99,21 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     ///      checked beyond that.
     function test_anAssetWithoutARouteDoesNotConvert() public {
         address ghost = address(new Ghost());
-        assertEq(registry.routeOf(ghost).length, 0, "no route by default");
+        assertEq(registry.routeOf(address(0), ghost).length, 0, "no route by default");
         vm.deal(address(this), 1 ether);
         vm.expectRevert(RealmDividendSwapRegistry.NoRoute.selector);
         registry.swapNativeToAsset{value: 1 ether}(ghost, 1, recipient);
     }
 
-    /// @dev ONE ROUTE PER ASSET, shared by every caller: whoever converts MSFT converts it the same way.
-    function test_aRouteServesEveryCaller() public {
+    /// @dev The `ALL_TOKENS` override is shared by every caller: whoever converts MSFT converts it the same way.
+    function test_theOverrideServesEveryCaller() public {
         _set(MSFT, V2_ROUTE);
         vm.deal(stranger, 1 ether);
         vm.prank(stranger);
         assertGt(registry.swapNativeToAsset{value: 1 ether}(MSFT, 1, stranger), 0, "a caller that set nothing");
     }
 
-    /// @dev THE POINT OF CENTRALIZING: a wrong or dead route is repointed once, for everyone.
+    /// @dev A wrong or dead route is repointed once, for everyone.
     function test_aRouteCanBeRepointed() public {
         _set(AAPL, _v4(AAPL, 3_000, 60)); // a pool nobody initialized: shape is fine, the swap is not
         vm.deal(address(this), 0.02 ether);
@@ -136,9 +136,9 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     function test_everyRouteChangeIsAnnounced() public {
         bytes memory route = _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL);
         vm.expectEmit(true, false, false, true, address(registry));
-        emit RealmDividendSwapRegistry.DividendRouteSet(AAPL, route);
+        emit RealmDividendSwapRegistry.DividendRouteSet(address(0), AAPL, false, route);
         _set(AAPL, route);
-        assertEq(registry.routeOf(AAPL), route, "stored as given");
+        assertEq(registry.routeOf(address(0), AAPL), route, "stored as given");
     }
 
     /// @dev Shape only, no liquidity read: a route set for the wrong asset or with a garbled body is
@@ -146,7 +146,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     function test_aMalformedRouteIsRefused() public {
         vm.startPrank(admin);
         vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
-        registry.setRoute(MSFT, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL)); // ends at AAPL
+        registry.setRoute(address(0), MSFT, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL)); // ends at AAPL
 
         Hop[] memory tooLong = new Hop[](registry.MAX_ROUTE_HOPS() + 1);
         for (uint256 i; i < tooLong.length; ++i) {
@@ -154,13 +154,101 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         }
         tooLong[tooLong.length - 1].currency = AAPL;
         vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
-        registry.setRoute(AAPL, DividendRouteLib.encodeV4(tooLong));
+        registry.setRoute(address(0), AAPL, DividendRouteLib.encodeV4(tooLong));
 
         vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
-        registry.setRoute(MSFT, hex"07"); // unknown venue tag
+        registry.setRoute(address(0), MSFT, hex"07"); // unknown venue tag
         vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
-        registry.setRoute(MSFT, hex"0200"); // V2 carries no body
+        registry.setRoute(address(0), MSFT, hex"0200"); // V2 carries no body
         vm.stopPrank();
+    }
+
+    //////////////////////// per-token routes //////////////////////
+
+    /// @dev A token's own route serves that token only: another caller has none.
+    function test_aTokenRegistersItsOwnRoute() public {
+        vm.expectEmit(address(registry));
+        emit RealmDividendSwapRegistry.DividendRouteRegistered(address(this), MSFT, false, V2_ROUTE);
+        registry.registerRoute(MSFT, V2_ROUTE);
+        assertEq(registry.routeOf(address(this), MSFT), V2_ROUTE, "stored against the caller");
+
+        vm.deal(address(this), 1 ether);
+        assertGt(registry.swapNativeToAsset{value: 0.5 ether}(MSFT, 1, recipient), 0, "the token converts");
+
+        vm.deal(stranger, 1 ether);
+        vm.prank(stranger);
+        vm.expectRevert(RealmDividendSwapRegistry.NoRoute.selector);
+        registry.swapNativeToAsset{value: 1 ether}(MSFT, 1, stranger);
+    }
+
+    /// @dev Write-once: after creation only an admin changes a token's route.
+    function test_registrationIsWriteOnce() public {
+        registry.registerRoute(MSFT, V2_ROUTE);
+        vm.expectRevert(RealmDividendSwapRegistry.RouteAlreadyRegistered.selector);
+        registry.registerRoute(MSFT, V2_ROUTE);
+    }
+
+    /// @dev Shape only: an asset with no pool at all is accepted; a garbled or empty route is not.
+    function test_registrationChecksShapeOnly() public {
+        address ghost = address(new Ghost());
+        registry.registerRoute(ghost, V2_ROUTE); // no pair exists
+        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        registry.registerRoute(MSFT, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL)); // ends at AAPL
+        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        registry.registerRoute(AAPL, "");
+    }
+
+    /// @dev An admin repoints ONE token's route without touching anyone else's.
+    function test_anAdminRepointsOneTokensRoute() public {
+        registry.registerRoute(AAPL, _v4(AAPL, 3_000, 60)); // a pool nobody initialized
+        vm.prank(stranger);
+        registry.registerRoute(AAPL, _v4(AAPL, 3_000, 60));
+
+        vm.expectEmit(address(registry));
+        emit RealmDividendSwapRegistry.DividendRouteSet(
+            address(this), AAPL, false, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL)
+        );
+        vm.prank(admin);
+        registry.setRoute(address(this), AAPL, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
+
+        vm.deal(address(this), 0.01 ether);
+        assertGt(registry.swapNativeToAsset{value: 0.01 ether}(AAPL, 1, recipient), 0, "repointed token converts");
+        assertEq(registry.routeOf(stranger, AAPL), _v4(AAPL, 3_000, 60), "the other token's route is untouched");
+    }
+
+    /// @dev The override wins over every token's own route, and clearing it hands each its own back.
+    function test_theOverrideWinsUntilCleared() public {
+        registry.registerRoute(MSFT, V2_ROUTE);
+        _set(MSFT, _v4(MSFT, 3_000, 60));
+        assertEq(registry.routeOf(address(this), MSFT), _v4(MSFT, 3_000, 60), "override first");
+        _set(MSFT, "");
+        assertEq(registry.routeOf(address(this), MSFT), V2_ROUTE, "own route again");
+    }
+
+    /// @dev Only a V4 route can be walked backwards, so a quote route is V4 or nothing.
+    function test_aQuoteRouteMustBeV4() public {
+        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        registry.registerQuoteRoute(AAPL, V2_ROUTE);
+        vm.prank(admin);
+        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        registry.setQuoteRoute(address(this), AAPL, V2_ROUTE);
+
+        registry.registerQuoteRoute(AAPL, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
+        assertEq(registry.quoteRouteOf(address(this), AAPL), _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
+    }
+
+    /// @dev Resolution: quote override, else the token's quote route, else the buy route.
+    function test_quoteRouteResolution() public {
+        bytes memory buy = _v4(AAPL, 3_000, 60);
+        bytes memory own = _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL);
+        bytes memory all = _v4(AAPL, 10_000, 200);
+        registry.registerRoute(AAPL, buy);
+        assertEq(registry.quoteRouteOf(address(this), AAPL), buy, "falls back to the buy route");
+        registry.registerQuoteRoute(AAPL, own);
+        assertEq(registry.quoteRouteOf(address(this), AAPL), own, "own quote route");
+        vm.prank(admin);
+        registry.setQuoteRoute(address(0), AAPL, all);
+        assertEq(registry.quoteRouteOf(address(this), AAPL), all, "override");
     }
 
     //////////////////////// the swap //////////////////////
@@ -328,7 +416,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     function test_strangersCannotTouchEntries() public {
         vm.startPrank(stranger);
         vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
-        registry.setRoute(MSFT, V2_ROUTE);
+        registry.setRoute(address(0), MSFT, V2_ROUTE);
         vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
         registry.setKeeperFunding(stranger);
         vm.stopPrank();
@@ -337,8 +425,8 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     /// @dev The owner is an admin implicitly, so a deployment is usable before any admin is appointed.
     function test_theOwnerCanActAsAnAdmin() public {
         vm.prank(owner);
-        registry.setRoute(MSFT, V2_ROUTE);
-        assertEq(registry.routeOf(MSFT), V2_ROUTE);
+        registry.setRoute(address(0), MSFT, V2_ROUTE);
+        assertEq(registry.routeOf(address(0), MSFT), V2_ROUTE);
     }
 
     //////////////////////// swapAssetToAsset //////////////////////
@@ -402,6 +490,16 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
 
         vm.expectRevert(RealmDividendSwapRegistry.NoRoute.selector);
         registry.swapAssetToAsset(AAPL, MSFT, 1e16, 1, recipient);
+    }
+
+    /// @dev F1: a quote bought on V2 as a payout asset is still sold on its own V4 quote route.
+    function test_swapAssetToAsset_sellsThroughTheQuoteRouteNotTheBuyRoute() public {
+        registry.registerRoute(AAPL, V2_ROUTE);
+        registry.registerQuoteRoute(AAPL, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
+        deal(AAPL, address(this), 1e16);
+        IERC20(AAPL).approve(address(registry), 1e16);
+
+        assertGt(registry.swapAssetToAsset(AAPL, address(0), 1e16, 1, recipient), 0, "sold on V4");
     }
 
     /// @dev The floor is on the FINAL asset, however many pools the conversion crossed.
@@ -529,6 +627,6 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
 
     function _set(address asset, bytes memory route) internal {
         vm.prank(admin);
-        registry.setRoute(asset, route);
+        registry.setRoute(address(0), asset, route);
     }
 }

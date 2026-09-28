@@ -51,9 +51,10 @@ contract RobinhoodDividendRoutesAtMaxSizeTests is Test {
         registry = installDividendSwapRegistry(makeAddr("owner"));
     }
 
-    /// @dev Lists `route` for `asset` and buys `amount` with it as `buyer`; 0 if the swap reverts.
+    /// @dev Sets `buyer`'s route for `asset` and buys `amount` with it as `buyer`; 0 if the swap reverts.
     function _buy(address buyer, address asset, bytes memory route, uint256 amount) internal returns (uint256 out) {
-        setDividendRoute(registry, asset, route);
+        vm.prank(registry.owner());
+        registry.setRoute(buyer, asset, route);
         vm.deal(buyer, amount);
         vm.prank(buyer);
         try registry.swapNativeToAsset{value: amount}(asset, 1, buyer) returns (uint256 o) {
@@ -126,25 +127,27 @@ contract RobinhoodDividendRoutesAtMaxSizeTests is Test {
     }
 }
 
-/// @notice A real factory-created token paying SPCX, end to end: route problems are fixed on the
-///         registry and reach the existing token, and the keeper sizes conversions for thin pools.
+/// @notice A real factory-created token paying SPCX, end to end: the creator's route converts, route
+///         problems are fixed by an admin on the registry and reach the existing token, and the keeper
+///         sizes conversions for thin pools.
 contract RobinhoodDividendRoutesTokenE2ETests is RobinhoodForkBase {
     function _forkInfra() internal view override returns (ForkInfra memory infra) {
         infra = super._forkInfra();
         infra.blockNumber = ROUTES_BLOCK;
     }
 
-    /// @dev A graduated SPCX-paying token with a buffer past the per-conversion cap, created with NO
-    ///      route listed — any ERC20 is accepted.
-    function _spcxToken() internal returns (RealmTaxableTokenUniV4 token) {
-        token = _graduatedXStockToken(_createXStockTokenUnrouted(_sole(SPCX), _w(10_000)));
+    /// @dev A graduated SPCX-paying token with a buffer past the per-conversion cap, created with the
+    ///      creator's `route` (empty: none — any ERC20 is accepted).
+    function _spcxToken(bytes memory route) internal returns (RealmTaxableTokenUniV4 token) {
+        bytes[] memory routes = new bytes[](1);
+        routes[0] = route;
+        token = _graduatedXStockToken(_createXStockToken(_sole(SPCX), _w(10_000), routes));
         token.accrueFees{value: 2 ether}();
         assertGt(token.pendingNative(), token.MAX_DIVIDEND_PER_CONVERSION(), "precondition: past the cap");
     }
 
     function _convertsAtMaxSize(bytes memory route) internal {
-        RealmTaxableTokenUniV4 token = _spcxToken();
-        setDividendRoute(dividendSwapRegistry, SPCX, route);
+        RealmTaxableTokenUniV4 token = _spcxToken(route);
         uint256 buffered = token.pendingNative();
 
         token.processDividends(0, true, 0, 1, _noHolders());
@@ -168,31 +171,38 @@ contract RobinhoodDividendRoutesTokenE2ETests is RobinhoodForkBase {
         _convertsAtMaxSize(spcxV3());
     }
 
-    /// @dev THE SCENARIO THIS DESIGN EXISTS FOR: a token whose payout route is missing or wrong keeps its
-    ///      buffer intact, and fixing the route on the registry fixes the EXISTING token.
-    function test_aWrongRouteIsFixedOnTheRegistryForAnExistingToken() public {
-        RealmTaxableTokenUniV4 token = _spcxToken();
+    /// @dev THE SCENARIO THE ADMIN SETTER EXISTS FOR: a token created with a wrong route keeps its buffer
+    ///      intact, and an admin repointing THAT token's route on the registry fixes it.
+    function test_aWrongRouteIsFixedByAnAdminForAnExistingToken() public {
+        Hop[] memory wrong = new Hop[](1);
+        wrong[0] = Hop({currency: SPCX, fee: 500, tickSpacing: 10, hooks: address(0)}); // never initialized
+        RealmTaxableTokenUniV4 token = _spcxToken(DividendRouteLib.encodeV4(wrong));
         uint256 buffered = token.pendingNative();
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        token.processDividends(0, true, 0, 1, _noHolders()); // no route yet
-
-        Hop[] memory wrong = new Hop[](1);
-        wrong[0] = Hop({currency: SPCX, fee: 500, tickSpacing: 10, hooks: address(0)}); // never initialized
-        setDividendRoute(dividendSwapRegistry, SPCX, DividendRouteLib.encodeV4(wrong));
-        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
         token.processDividends(0, true, 0, 1, _noHolders());
-        assertEq(token.pendingNative(), buffered, "nothing was lost to the failures");
+        assertEq(token.pendingNative(), buffered, "nothing was lost to the failure");
 
-        setDividendRoute(dividendSwapRegistry, SPCX, spcxV3());
+        vm.prank(dividendSwapRegistry.owner());
+        dividendSwapRegistry.setRoute(address(token), SPCX, spcxV3());
         token.processDividends(0, true, 0, 1, _noHolders());
         assertGt(IERC20(SPCX).balanceOf(address(token)), 0, "the repointed route converts for this token");
     }
 
+    /// @dev A token created with no route waits, whole, until the per-asset override gives it one.
+    function test_anUnroutedTokenConvertsOnceTheAssetOverrideIsSet() public {
+        RealmTaxableTokenUniV4 token = _spcxToken("");
+        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
+        token.processDividends(0, true, 0, 1, _noHolders());
+
+        setDividendRoute(dividendSwapRegistry, SPCX, spcxV4Direct());
+        token.processDividends(0, true, 0, 1, _noHolders());
+        assertGt(IERC20(SPCX).balanceOf(address(token)), 0, "the override converts for this token");
+    }
+
     /// @dev The keeper sizes a conversion below the cap for a pool too thin to take all of it at once.
     function test_theKeeperCanConvertASliceSmallerThanTheCap() public {
-        RealmTaxableTokenUniV4 token = _spcxToken();
-        setDividendRoute(dividendSwapRegistry, SPCX, spcxV4Direct());
+        RealmTaxableTokenUniV4 token = _spcxToken(spcxV4Direct());
         uint256 buffered = token.pendingNative();
 
         token.processDividends(0, true, 0.3 ether, 1, _noHolders());
