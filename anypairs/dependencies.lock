@@ -1,0 +1,55 @@
+# Realm AnyPairs — pinned Solidity dependencies
+#
+# WHY THIS FILE EXISTS. Until audit round 12 this repository declared no dependency versions at all: no .gitmodules,
+# no lockfile, no package.json, and no lib/ directory — only remapping PATHS in foundry.toml. Two machines therefore
+# built two different trees from the same source, which is how a stack-too-deep in
+# `RealmAnyPairsV4PairLauncherImmutable._finishLaunch` compiled on one and failed on the other, and it meant no test
+# result could be reproduced from the repository alone. Everything below is pinned by COMMIT HASH, because a tag can
+# be moved and a version string in someone's package.json is not a pin.
+#
+# HOW TO RESTORE: `bash scripts/install-deps.sh` (idempotent; safe to re-run). See docs/DEPLOY_UNIFIED.md §0.
+#
+# HOW TO CHANGE ONE: edit the hash here, re-run the script, rebuild, and run the FULL suite. A dependency bump is a
+# source change — the launcher frames sit close enough to the via-IR stack limit that a different inlining decision in
+# v4-core has broken the build before.
+
+[v4-core]
+url     = "https://github.com/Uniswap/v4-core"
+commit  = "d153b048868a60c2403a3ef5b2301bb247884d46"   # 2025-10-23
+version = "1.0.2"                                      # per its package.json at this commit
+path    = "lib/v4-core"
+usage   = "381 imports across src/ and test/ — the core dependency."
+
+[openzeppelin-contracts]
+url     = "https://github.com/OpenZeppelin/openzeppelin-contracts"
+commit  = "cab19933c33c2ad1d4c7a84864a3601dddfd16f3"   # 2026-07-29, the "Release v5.7.0" commit itself
+version = "5.7.0"
+path    = "lib/openzeppelin-contracts"
+usage   = "69 imports — IERC20, SafeERC20, Ownable, math utils."
+
+[uniswap-hooks]
+url     = "https://github.com/OpenZeppelin/uniswap-hooks"
+commit  = "2ae32be4906d300fc49b4384842ef6bc3e902d73"   # 2026-08-29
+version = "1.2.2"                                      # per its package.json at this commit
+path    = "lib/uniswap-hooks"
+# ── READ THIS BEFORE DELETING IT AS UNUSED ──
+# Exactly ONE file is imported from this entire repository:
+#     @openzeppelin/uniswap-hooks/src/utils/CurrencySettler.sol
+# imported by RealmAnyPairsTaxHookPairImmutable, RealmAnyPairsV4PairLpLockerImmutable and
+# RealmAnyPairsPlatformFeeConverter. A dependency audit that counts imports per PACKAGE will make this look like dead
+# weight; removing it breaks the build of the three largest contracts in the tree.
+usage   = "1 file: src/utils/CurrencySettler.sol."
+
+[forge-std]
+url     = "https://github.com/foundry-rs/forge-std"
+# Test-only: forge-std links into no deployed bytecode, so a drift here can change whether a TEST compiles but never
+# what ships. Pinned by hash anyway — the point of a lockfile is that nothing in it is "probably fine".
+commit  = "bf647bd6046f2f7da30d0c2bf435e5c76a780c1b"   # 2026-06-30, tag v1.16.2
+version = "1.16.2"
+path    = "lib/forge-std"
+usage   = "21 imports, test-only."
+
+# ── DELIBERATELY ABSENT ──
+# `v4-periphery` and `solmate` had remappings in foundry.toml and are imported by NOTHING in src/ or test/ (verified
+# by exhaustive grep, audit round 12). Both remappings were removed. Do not re-add either without an import to justify
+# it — a remapping that resolves to a directory nobody ships is how a phantom dependency gets into a deploy.
