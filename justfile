@@ -392,7 +392,8 @@ unfunded-creators:
     uv run script/operations/unfunded-accounts/check_unfunded_creators.py
 
 # Rebuild the Uniswap V4 route CANDIDATES for Robinhood Chain's xStocks by scanning the pool manager
-# on-chain. Writes script/operations/dividend-routes/routes.robinhood.mainnet.json.
+# on-chain, plus the fixed USDG-hop candidate of each Arcus pToken. Writes
+# script/operations/dividend-routes/routes.robinhood.mainnet.json.
 discover-dividend-routes:
     uv run script/operations/dividend-routes/discover_xstock_routes.py
 
@@ -406,11 +407,12 @@ pick-dividend-routes:
     just chain-rh
     forge script PickDividendRoutes --rpc-url rh-mainnet
 
-# Re-pick, from live state, the Uniswap pool that prices USDG and each of Robinhood's own xStocks (the
-# only assets mainnet lists), into script/operations/assets-whitelist/listings.robinhood.mainnet.json,
-# and print every xStock, deepest first, IN or OUT. This is the maintenance loop, not
-# a one-off: re-running refreshes every rate, re-picks every pool, and delists what stopped qualifying
-# but is still live on chain. Review the git diff of that file: it is what the script below broadcasts.
+# Re-pick, from live state, the Uniswap pool that prices USDG and each of Robinhood's own xStocks, plus
+# the fixed USDG pool of each Arcus pToken (the only assets mainnet lists), into
+# script/operations/assets-whitelist/listings.robinhood.mainnet.json, and print every one IN or OUT.
+# This is the maintenance loop, not a one-off: re-running refreshes every rate, re-picks every pool, and
+# delists what stopped qualifying but is still live on chain. Review the git diff of that file: it is
+# what the script below broadcasts.
 discover-whitelist-assets:
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py
 

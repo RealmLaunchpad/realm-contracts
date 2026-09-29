@@ -53,6 +53,20 @@ contract MultiAssetHarness is DividendDistributionLogic, DividendInitLogic {
         return assetCount;
     }
 
+    uint8 internal fallbackMask;
+
+    function _dividendFallbackMask() internal view override returns (uint256) {
+        return fallbackMask;
+    }
+
+    function _setDividendFallbackMask(uint256 mask) internal override {
+        fallbackMask = uint8(mask);
+    }
+
+    function _fallbackCurrency(uint256) internal pure override returns (address) {
+        return address(0);
+    }
+
     function _dividendBalanceOf(address account) internal view override returns (uint256) {
         return balances[account];
     }

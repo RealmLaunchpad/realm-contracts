@@ -411,6 +411,24 @@ abstract contract RealmTaxableToken is
     }
 
     /// @inheritdoc DividendDistribution
+    /// @dev In the `pair` slot too, so it is as warm as `dividendAssetCount`.
+    function _dividendFallbackMask() internal view override returns (uint256) {
+        return dividendFallbackMask;
+    }
+
+    /// @inheritdoc DividendDistributionLogic
+    function _setDividendFallbackMask(uint256 mask) internal override {
+        // Safe cast: bits `< MAX_QUOTES` only.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        dividendFallbackMask = uint8(mask);
+    }
+
+    /// @inheritdoc DividendDistributionLogic
+    function _fallbackCurrency(uint256 q) internal view override returns (address) {
+        return quotes[q];
+    }
+
+    /// @inheritdoc DividendDistribution
     function _dividendBalanceOf(address account) internal view override returns (uint256) {
         return balanceOf(account);
     }
@@ -512,6 +530,8 @@ abstract contract RealmTaxableToken is
             reserved += a.pendingNative;
             if (a.token == address(0)) reserved += a.owed;
         }
+        // The native fallback pot, read only once it exists (the mask is warm, the pot is not).
+        if (dividendFallbackMask & 1 != 0) reserved += dividendFallbacks[0].owed;
     }
 
     //////////////////////// VIEW FUNCTIONS //////////////////////

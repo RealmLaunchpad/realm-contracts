@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IRealmDividendSwapRegistry} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
@@ -121,8 +122,19 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         FundOutcome outcome = FundOutcome.NotReady;
         uint256 nativeIn;
         uint256 out;
+        bool fellBack;
         if (fund && !cooldown) {
-            (outcome, nativeIn, out) = _fundDividends(assetIndex, amount, minOut);
+            // A retired payout asset is not bought: the native buffer goes to the native fallback pot.
+            if (_retiredPayout(asset.token)) {
+                uint256 buffered = asset.pendingNative;
+                if (buffered != 0) {
+                    asset.pendingNative = 0;
+                    _creditFallback(assetIndex, 0, address(0), buffered);
+                    (outcome, fellBack) = (FundOutcome.Funded, true);
+                }
+            } else {
+                (outcome, nativeIn, out) = _fundDividends(assetIndex, amount, minOut);
+            }
             // Claimed only when the buffer actually MOVED. A call that found nothing fundable, or whose
             // swap failed, spent nothing and must not lock the block against an honest keeper.
             if (outcome == FundOutcome.Funded) {
@@ -131,13 +143,14 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
             }
         }
 
-        if (outcome == FundOutcome.Funded) {
+        if (outcome == FundOutcome.Funded && !fellBack) {
             _creditDividends(assetIndex, out);
             emit DividendsFunded(address(0), asset.token, nativeIn, out);
         }
 
         if (holders.length != 0) {
             _pushDividends(assetIndex, holders);
+            _pushFallbacks(holders);
         } else if (cooldown) {
             // Distinct from the two below on purpose: this keeper has to wait a block, not wait for
             // earnings or re-price a floor.
@@ -178,7 +191,92 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
             DivAsset storage a = dividendAssets[i];
             _reduceDividendsOwed(i, _payHolder(msg.sender, i, a.token, a.rewardPerTokenStored, gasleft()));
         }
+        uint256 mask = _dividendFallbackMask();
+        for (uint256 q; mask != 0; ++q) {
+            if (mask & 1 != 0) _payFallback(msg.sender, q, gasleft());
+            mask >>= 1;
+        }
     }
+
+    //////////////////////// fallback pots //////////////////////
+
+    /// @dev Whether the registry has retired `asset`. Fails OPEN (false) against a registry that cannot
+    ///      answer — codeless, or an implementation older than the flag — which is the behaviour every
+    ///      token had before retirement existed: keep trying to convert.
+    function _isRetired(address asset) internal view returns (bool) {
+        (bool ok, bytes memory ret) =
+            DIVIDEND_SWAP_REGISTRY.staticcall(abi.encodeCall(IRealmDividendSwapRegistry.isRetired, (asset)));
+        return ok && ret.length >= 32 && abi.decode(ret, (bool));
+    }
+
+    /// @dev Whether `payout` is a THIRD asset the registry retired. Native and the token itself are never
+    ///      bought through the registry, so there is nothing for a retirement of them to stop.
+    function _retiredPayout(address payout) internal view returns (bool) {
+        return payout != address(0) && payout != address(this) && _isRetired(payout);
+    }
+
+    /// @dev Credits `amount` of `currency` (`quotes(q)`) to the balances held right now, through pot `q`:
+    ///      `_creditDividends` for a fallback. The first credit opens the pot — its scale from the
+    ///      currency's decimals, its bit in the mask so transfers start settling it.
+    function _creditFallback(uint256 i, uint256 q, address currency, uint256 amount) internal {
+        uint256 supply = _dividendEligibleSupply();
+        require(supply >= MIN_DIVIDEND_SUPPLY, NoDividendSupply());
+        FallbackPot storage pot = dividendFallbacks[q];
+        uint256 mask = _dividendFallbackMask();
+        if (mask & (1 << q) == 0) {
+            uint256 decimals = currency == address(0) ? 18 : IERC20Metadata(currency).decimals();
+            // forge-lint: disable-next-line(unsafe-typecast)
+            pot.precisionExp =
+                decimals >= DIVIDEND_PRECISION_DECIMALS ? 0 : uint8(DIVIDEND_PRECISION_DECIMALS - decimals);
+            _setDividendFallbackMask(mask | (1 << q));
+        }
+        // Bounds as `_creditDividends`'s: `MIN_DIVIDEND_SUPPLY` caps the accumulator, and `amount` is a
+        // buffer that was itself a `uint128` at most.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        pot.rewardPerTokenStored = uint128(pot.rewardPerTokenStored + amount * 10 ** pot.precisionExp / supply);
+        uint256 owed = pot.owed + amount;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        pot.owed = owed > type(uint120).max ? type(uint120).max : uint120(owed);
+        emit DividendFallbackFunded(i, currency, amount);
+    }
+
+    /// @dev Pushes every existing pot to `holders`. All pots, whichever leg the call serviced, so a
+    ///      keeper's ordinary native batches also deliver the quote pots.
+    function _pushFallbacks(address[] calldata holders) internal {
+        uint256 mask = _dividendFallbackMask();
+        for (uint256 q; mask != 0; ++q) {
+            if (mask & 1 != 0) {
+                uint256 stipend = _fallbackCurrency(q) == address(0) ? NATIVE_PAYOUT_GAS : ASSET_PAYOUT_GAS;
+                for (uint256 h; h < holders.length; ++h) {
+                    _payFallback(holders[h], q, stipend);
+                }
+            }
+            mask >>= 1;
+        }
+    }
+
+    /// @dev `_payHolder` for pot `q`: settle, send, and only then zero the banked amount and the debt.
+    function _payFallback(address holder, uint256 q, uint256 gasStipend) internal {
+        if (_dividendExcluded(holder)) return;
+        FallbackPot storage pot = dividendFallbacks[q];
+        Acct storage acct = fallbackAccounts[holder][q];
+        _settleAcct(acct, holder, pot.rewardPerTokenStored, 10 ** pot.precisionExp);
+        uint256 amount = acct.rewards;
+        address currency = _fallbackCurrency(q);
+        if (amount == 0 || !_payDividend(currency, holder, amount, gasStipend)) return;
+        acct.rewards = 0;
+        uint256 owed = pot.owed;
+        // Saturating, as `_reduceDividendsOwed`.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        pot.owed = amount >= owed ? 0 : uint120(owed - amount);
+        emit DividendFallbackPaid(holder, currency, amount);
+    }
+
+    /// @dev The currency of pot `q`: the token's `quotes(q)`.
+    function _fallbackCurrency(uint256 q) internal view virtual returns (address);
+
+    /// @dev Writes the token's `dividendFallbackMask`.
+    function _setDividendFallbackMask(uint256 mask) internal virtual;
 
     //////////////////////// internal //////////////////////
 

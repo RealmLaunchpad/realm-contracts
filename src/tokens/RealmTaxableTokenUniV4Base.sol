@@ -225,6 +225,8 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
         for (uint256 i; i < n; ++i) {
             reserved += b.dividendPending[i];
         }
+        // This quote's fallback pot, once it exists.
+        if (dividendFallbackMask & (1 << (idx - 1)) != 0) reserved += dividendFallbacks[idx - 1].owed;
         return reserved;
     }
 

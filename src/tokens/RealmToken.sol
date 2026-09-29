@@ -85,6 +85,11 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     /// @dev Packs into the `pair` slot, so the transfer hook gates the milestone check for free.
     bool public graduationReached;
 
+    /// @notice Which dividend fallback pots exist: bit `q` is set once `quotes(q)`'s pot has been credited
+    ///         (see `DividendDistribution.dividendFallbacks`). Zero on a token that never fell back.
+    /// @dev Packs into the `pair` slot, so the transfer hook learns there is no pot to settle for free.
+    uint8 public dividendFallbackMask;
+
     /// @notice Launchpad address
     RealmLaunchpad public launchpad;
 

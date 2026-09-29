@@ -2,8 +2,8 @@
 # requires-python = ">=3.11"
 # dependencies = ["requests", "eth-abi", "eth-utils", "eth-hash[pycryptodome]"]
 # ///
-"""Pick the Uniswap pool that prices USDG and each of Robinhood's own xStocks, and write the file
-`WhitelistRobinhoodAssets` lists them from.
+"""Pick the Uniswap pool that prices USDG, each of Robinhood's own xStocks and each Arcus pToken, and
+write the file `WhitelistRobinhoodAssets` lists them from.
 
 The whitelist stores a SNAPSHOT of each asset's rate, read from one pool the approver names, so the
 only question this script answers is: for every asset worth listing, which pool should that be? A pool
@@ -14,8 +14,9 @@ the deepest wins.
 How it works:
   1. The universe is policy: USDG (the reference) plus Robinhood's own ~195 xStocks, from its asset
      API -- the list behind docs.robinhood.com/chain/contracts. Every one with a pool is listed, however
-     thin: liquidity is shown to creators as a low/ok/deep tier rather than gated here. `--assets`
-     replaces the universe with a list given by the caller, which is how the testnet is done.
+     thin: liquidity is shown to creators as a low/ok/deep tier rather than gated here. Plus Arcus's
+     leveraged pTokens (`ARCUS`), whose pool is fixed, so they skip steps 2-3 (see `ARCUS`).
+     `--assets` replaces the universe with a list given by the caller, which is how the testnet is done.
   2. The chain for the pools: `PairCreated`, `PoolCreated` and `Initialize` logs, filtered to those
      assets, then Uniswap's own state (reserves / slot0 + liquidity) read through Multicall3. Where the
      RPC will not serve a log scan (the testnet caps `eth_getLogs` at 10k blocks), pools are instead
@@ -28,12 +29,18 @@ How it works:
      retires an asset -- so one broadcast refreshes the list and empties out what fell off it. Without
      this step the whitelist only ever grows.
 
+Subset runs (`--only`, `--assets`) re-pick only the assets they name. Every other entry of the existing
+file is carried over unchanged, delistings included, and nothing new is delisted: only a FULL run knows
+what fell out of the policy, so only a full run may emit a `Venue.NONE` entry. A named asset that no
+longer qualifies keeps its previous entry too; retire it with a full run or by hand.
+
 Output: `listings.robinhood.<chain>.json`, which `WhitelistRobinhoodAssets` reads and broadcasts.
 Review it, and re-run before listing: the stored rate is a snapshot, and a coin whose liquidity has
 moved gets a different pool. Its `rejected` section says why every asset that did not make it was left
 out.
 
 Usage:  uv run script/operations/assets-whitelist/discover_whitelist_assets.py [--chain testnet …]
+        … --only arcus            re-pick the Arcus pTokens only (also takes tickers / addresses)
         The chain's RPC env var (`ROBINHOOD_RPC_URL` / `ROBINHOOD_TESTNET_RPC_URL`) must point at an
         archive-capable node: the mainnet log scan walks the whole chain.
 """
@@ -113,6 +120,31 @@ SESSION.headers["user-agent"] = "realm-assets-whitelist"
 
 OUT_JSON = Path(__file__).with_name("listings.robinhood.mainnet.json")
 
+# Arcus's leveraged pTokens (mainnet only): address -> (ticker, hook, lpFee). Their only market is one
+# Uniswap V4 pool against USDG behind an Arcus hook, at tick spacing 10, so the pool is policy rather
+# than discovered and no depth ranking applies. Their in-range liquidity can read 0 while swaps fill
+# (the price parks between Arcus's bid and ask ranges), which is why nothing here gates on it. The
+# API below is Arcus's own list (entries named "Arcus …"): it decides which of these are still offered,
+# but carries no pool, so a pToken it adds has to be added here by hand. Twin of the table in
+# `dividend-routes/discover_xstock_routes.py`.
+ARCUS_API = "https://api.arcus.xyz/v1/api-meta/spot/overview"
+ARCUS_TICK_SPACING = 10
+_ARCUS_HOOK_A = "0xfa3da20ec661aa26f9f93e4421fab6989c4b4800"
+_ARCUS_HOOK_B = "0xf28a89af20fabdb89af9d033bb0a98d17212c880"
+ARCUS = {
+    "0xe24cabdf76dd1c2576049167eb1755c84b985c36": ("pHOOD3x", _ARCUS_HOOK_A, 8500),
+    "0x8b9d2eb675e33e541cb7de25a55724d2e70e8dab": ("pSPCX3x", _ARCUS_HOOK_B, 4250),
+    "0x17271bd2a1eaa350a002d25236bcc4dc07ceb6a9": ("sSPCX3x", _ARCUS_HOOK_B, 4250),
+    "0x4472c69d299382f8847ebce4fc6ed8e295510e3e": ("pBTC3x", _ARCUS_HOOK_A, 8500),
+    "0x1a596466cb593bee293be8366d9ce493582189c2": ("sGME5x", _ARCUS_HOOK_B, 4250),
+    "0x5c3b9a9b021e86b54202abcb4580f1f5c271875b": ("pGME5x", _ARCUS_HOOK_B, 4250),
+    "0xb2cb7371bc45a460f856712a3088c23acd385df8": ("sGLD5x", _ARCUS_HOOK_B, 4250),
+    "0x37a2afaa98648f2e13658623885f821ac8365609": ("pGLD5x", _ARCUS_HOOK_B, 4250),
+    "0x925f92f055edb79c42b5d45e64a1b74143b90ea0": ("pBTC", _ARCUS_HOOK_A, 8500),
+    "0xadcceee8e422050f890522fa798f8a93a4857083": ("sBTC3x", _ARCUS_HOOK_A, 8500),
+    "0xc25c966168a8e933b0aba0dc8a25cac4a2b2b91d": ("sBTC", _ARCUS_HOOK_A, 8500),
+}
+
 
 def selector(signature: str) -> str:
     return "0x" + keccak(text=signature)[:4].hex()
@@ -130,6 +162,36 @@ def xstocks() -> dict[str, str]:
         for deployment in asset.get("deployments", [])
         if deployment.get("chainId") == CHAIN_ID
     }
+
+
+def arcus() -> dict[str, dict]:
+    """The Arcus pTokens to list, address to `{symbol, pool}`, each with its fixed USDG pool.
+
+    `ARCUS` intersected with what Arcus's API still offers; the whole table when the API cannot be read
+    or names none of them, so an outage never reads as "delist everything". Empty off mainnet."""
+    if CHAIN_ID != 4663:
+        return {}
+    try:
+        offered = {e["contractAddress"].lower(): e["ticker"] for e in SESSION.get(ARCUS_API, timeout=30).json()
+                   if str(e.get("name", "")).startswith("Arcus ")}
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as exc:
+        print(f"Arcus API unreadable ({exc!r}); using the built-in list", file=sys.stderr)
+        offered = {}
+    if unknown := sorted(set(offered) - set(ARCUS)):
+        print(f"! Arcus offers {', '.join(offered[a] for a in unknown)} with no known pool: add to `ARCUS` to list",
+              file=sys.stderr)
+    kept = [a for a in ARCUS if a in offered] if set(offered) & set(ARCUS) else list(ARCUS)
+    if gone := [ARCUS[a][0] for a in ARCUS if a not in kept]:
+        print(f"! no longer offered by Arcus, left out: {', '.join(gone)}", file=sys.stderr)
+    out = {}
+    for asset in kept:
+        symbol, hooks, fee = ARCUS[asset]
+        t0, t1 = sorted((asset, REFERENCE))  # a PoolKey's currencies are address-ordered
+        pool_id = "0x" + keccak(abi_encode(["(address,address,uint24,int24,address)"],
+                                           [(t0, t1, fee, ARCUS_TICK_SPACING, hooks)])).hex()
+        out[asset] = {"symbol": symbol, "pool": {"v": 4, "t0": t0, "t1": t1, "fee": fee,
+                                                 "ts": ARCUS_TICK_SPACING, "hooks": hooks, "id": pool_id}}
+    return out
 
 
 def rpc(method: str, params: list) -> dict:
@@ -359,28 +421,62 @@ def candidates(asset: str, pools: list[dict], decimals: dict, reference_rate: fl
     return sorted(out, key=lambda c: -c["depth"])
 
 
+def arcus_listing(asset: str, pool: dict, decimals: dict, reference_rate: float) -> dict | None:
+    """An Arcus pToken's listing out of its fixed pool, or None if that pool is not initialized.
+
+    The rate comes from the price alone, not from `candidates`' virtual amounts, because in-range
+    liquidity can be 0 on a pool that trades. Depth is still reported where there is any, else None
+    ("n/a" in the tier column)."""
+    sqrt_p, d0, d1 = pool.get("sqrtP"), decimals.get(pool["t0"]), decimals.get(pool["t1"])
+    if not sqrt_p or d0 is None or d1 is None:
+        return None
+    price = (sqrt_p / Q96) ** 2 * 10 ** (d0 - d1)  # whole t1 per whole t0
+    per_reference = 1 / price if pool["t0"] == asset else price
+    depth = None
+    if pool.get("L"):
+        a0, a1 = pool["L"] * Q96 // sqrt_p / 10**d0, pool["L"] * sqrt_p // Q96 / 10**d1
+        depth = (a1 if pool["t0"] == asset else a0) / reference_rate
+    return {"pool": pool, "quote": REFERENCE, "rate": per_reference * reference_rate, "depth": depth}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--chain", choices=sorted(CHAINS), default="mainnet")
     parser.add_argument("--assets", default="", help="comma-separated addresses to list INSTEAD of "
                         "USDG + the xStocks. The only mode the testnet has; the caller vouches for them.")
+    parser.add_argument("--only", default="", help="comma-separated tickers or addresses out of the policy "
+                        "(USDG, the xStocks, the Arcus pTokens; `arcus` names all of those) to re-pick. Every "
+                        "other entry of the existing file is carried over unchanged and nothing is delisted.")
     parser.add_argument("--min-depth", type=float, default=0.0, help="quote-side depth a pool needs, in native")
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
+    if args.assets and args.only:
+        parser.error("--assets and --only are two ways of naming a subset: pass one")
     out = args.json or Path(__file__).with_name(f"listings.robinhood.{args.chain}.json")
     _use_chain(args.chain)
 
+    fixed = arcus()
     named = [a.strip().lower() for a in args.assets.split(",") if a.strip()]
     if named:
         coins = _named_coins(named)
     else:
         coins = [{"asset": a, "symbol": s, "xstock": True} for a, s in sorted(xstocks().items())]
-        print(f"{len(coins)} Robinhood xStocks", file=sys.stderr)
-    print(f"scanning pools for {len(coins)} {'assets' if named else 'coins'}…", file=sys.stderr)
-    addresses = [c["asset"] for c in coins]
+        print(f"{len(coins)} Robinhood xStocks, {len(fixed)} Arcus pTokens", file=sys.stderr)
+        coins += [{"asset": a, "symbol": f["symbol"]} for a, f in fixed.items()]
+        if args.only:
+            coins = _only(coins, args.only)
+            if coins is None:
+                return 1
+    for coin in coins:
+        if coin["asset"] in fixed:
+            coin.update(symbol=fixed[coin["asset"]]["symbol"], arcus=True)
+    subset = bool(named or args.only)
+    # Arcus pools are fixed, so they are read rather than scanned for.
+    addresses = [c["asset"] for c in coins if not c.get("arcus")]
+    print(f"scanning pools for {len(addresses)} {'assets' if subset else 'coins'}…", file=sys.stderr)
     pools = scan_pools(addresses) if SCAN_LOGS else probe_pools(addresses)
     print(f"{len(pools)} pools; reading state…", file=sys.stderr)
-    decimals = read_state(pools)
+    decimals = read_state(pools + [fixed[c["asset"]]["pool"] for c in coins if c.get("arcus")])
 
     by_token: dict[str, list[dict]] = {}
     for p in pools:
@@ -404,6 +500,14 @@ def main() -> int:
     for coin in coins:
         if coin["asset"] == REFERENCE:
             continue
+        if coin.get("arcus"):
+            listing = arcus_listing(coin["asset"], fixed[coin["asset"]]["pool"], decimals, reference_rate)
+            if listing:
+                listings.append({**coin, **listing})
+            else:
+                rejected.append({"symbol": coin["symbol"], "asset": coin["asset"], "xstock": False, "arcus": True,
+                                 "reason": "its Arcus pool is not initialized", "venue": "v4", "depthNative": 0.0})
+            continue
         found = candidates(coin["asset"], by_token.get(coin["asset"], []), decimals, reference_rate)
         priced = [c for c in found if c["depth"] >= args.min_depth]
         if priced:
@@ -411,13 +515,74 @@ def main() -> int:
         else:
             rejected.append(_rejection(coin, found, args))
 
-    keeping = {l["asset"] for l in listings}
-    delistings = stale_listings(out, keeping, args.min_depth)
-    out.write_text(render(listings + delistings, reference_rate, rejected) + "\n")
-    print(f"wrote {len(listings)} listings and {len(delistings)} delistings to {out}", file=sys.stderr)
+    reference = listings[0]["symbol"] if REFERENCE else None
+    rows = [_row(l, reference_rate, reference) for l in listings]
+    if subset:
+        rows, kept_rejected, carried = carry_over(out, rows, rejected, {c["asset"] for c in coins})
+        delistings = []
+        out.write_text(render(rows, reference_rate, kept_rejected) + "\n")
+        print(f"subset run: re-picked {len(rows) - carried}, carried {carried} existing entries (delistings "
+              f"included) over unchanged, delisted nothing; wrote {len(rows)} entries to {out}", file=sys.stderr)
+    else:
+        delistings = stale_listings(out, {l["asset"] for l in listings}, args.min_depth)
+        rows += [_row(d, reference_rate, reference) for d in delistings]
+        out.write_text(render(rows, reference_rate, rejected) + "\n")
+        print(f"wrote {len(listings)} listings and {len(delistings)} delistings to {out}", file=sys.stderr)
+    # This run's verdicts only: a subset run's carried-over rejections are in the file, not re-reported.
     _report(rejected, delistings)
     _xstock_table(listings, rejected)
+    _arcus_table(listings, rejected)
     return 0
+
+
+def _only(universe: list[dict], only: str) -> list[dict] | None:
+    """The policy assets `--only` names, by ticker or address; `arcus` is every Arcus pToken. None, after
+    saying which, if a name is not in the policy — a subset run never widens it."""
+    universe = [{"asset": REFERENCE, "symbol": "USDG"}] * bool(REFERENCE) + universe
+    words = {w.strip().lower() for w in only.split(",") if w.strip()}
+    picked = [c for c in universe if c["asset"] in words or c["symbol"].lower() in words
+              or ("arcus" in words and c["asset"] in ARCUS)]
+    if missing := words - {"arcus"} - {c["asset"] for c in picked} - {c["symbol"].lower() for c in picked}:
+        print(f"not in the listing policy on this chain: {', '.join(sorted(missing))}", file=sys.stderr)
+        return None
+    print(f"--only: {', '.join(c['symbol'] for c in picked)}", file=sys.stderr)
+    return picked
+
+
+def carry_over(previous: Path, fresh: list[dict], rejected: list[dict], named: set[str]):
+    """A subset run's file: the existing one, with only the re-picked assets' rows replaced in place and
+    any new ones appended. Rows outside the subset — delistings included — are copied verbatim, and a
+    named asset that failed to qualify keeps its old row. Returns (rows, rejected, carried count).
+
+    The reference is always priced fresh (every reference-quoted rate goes through it) but, like any
+    other entry, replaces the existing one only when named, or when the file has none to keep."""
+    old = _previous(previous)
+    if REFERENCE and REFERENCE not in named and any(r["asset"] == REFERENCE for r in old["rows"]):
+        fresh = [r for r in fresh if r["asset"] != REFERENCE]
+    by_asset = {r["asset"]: r for r in fresh}
+    rows = [by_asset.pop(r["asset"], r) for r in old["rows"]] + list(by_asset.values())
+    rows.sort(key=lambda r: r["asset"] != REFERENCE)  # stable: only moves the reference to the front
+    fresh_assets = {r["asset"] for r in fresh}
+    rejected = [r for r in old["rejected"] if r["asset"] not in named] + rejected
+    for r in rejected:
+        if r["asset"] in named and any(o["asset"] == r["asset"] for o in old["rows"]):
+            print(f"  ! {r['symbol']} no longer qualifies; its existing entry is kept", file=sys.stderr)
+    return rows, rejected, sum(r["asset"] not in fresh_assets for r in rows)
+
+
+def _previous(path: Path) -> dict:
+    """The existing file's entries, in the row shape `render` writes back, and its rejections."""
+    if not path.exists():
+        return {"rows": [], "rejected": []}
+    was = json.loads(path.read_text())
+    columns = zip(was["assets"], was["symbols"], was["venues"], was["pools"], was["currency0"],
+                  was["currency1"], was["fees"], was["tickSpacings"], was["hooks"], was["readable"])
+    rows = [
+        {"asset": a.lower(), "symbol": sym, "readable": readable,
+         "source": {"venue": v, "pool": pool, "c0": c0, "c1": c1, "fee": fee, "ts": ts, "hooks": hooks}}
+        for a, sym, v, pool, c0, c1, fee, ts, hooks, readable in columns
+    ]
+    return {"rows": rows, "rejected": was.get("rejected", [])}
 
 
 def _report(rejected: list[dict], delistings: list[dict]) -> None:
@@ -450,6 +615,19 @@ def _xstock_table(listings: list[dict], rejected: list[dict]) -> None:
     print("| # | symbol | address | depth (native) | venue | status | liquidity / reason |\n|---|---|---|---:|---|---|---|")
     for i, (symbol, asset, depth, venue, status, reason) in enumerate(sorted(rows, key=lambda r: -r[2]), 1):
         print(f"| {i} | {symbol} | `{asset}` | {depth:,.2f} | {venue} | **{status}** | {reason} |")
+
+
+def _arcus_table(listings: list[dict], rejected: list[dict]) -> None:
+    """The Arcus pTokens, same columns. Depth "n/a" where the pool reads no in-range liquidity."""
+    rows = [(l["symbol"], l["asset"], l["depth"], "IN", tier(l["depth"]) if l["depth"] is not None else "n/a")
+            for l in listings if l.get("arcus")]
+    rows += [(r["symbol"], r["asset"], None, "OUT", r["reason"]) for r in rejected if r.get("arcus")]
+    if not rows:
+        return
+    print(f"\n{sum(r[3] == 'IN' for r in rows)}/{len(rows)} Arcus pTokens listed (fixed pool, quoted in USDG)\n")
+    print("| # | symbol | address | depth (native) | status | liquidity / reason |\n|---|---|---|---:|---|---|")
+    for i, (symbol, asset, depth, status, reason) in enumerate(rows, 1):
+        print(f"| {i} | {symbol} | `{asset}` | {'n/a' if depth is None else f'{depth:,.2f}'} | **{status}** | {reason} |")
 
 
 def _use_chain(name: str) -> None:
@@ -567,32 +745,40 @@ def _readable(listing: dict, reference_rate: float, reference: str | None) -> di
         "symbol": listing["symbol"],
         "asset": listing["asset"],
         "xstock": listing.get("xstock", False),
+        **({"arcus": True} if listing.get("arcus") else {}),
         "venue": f'v{listing["pool"]["v"]}',
         "quote": "native" if listing["quote"] == NATIVE else reference,
-        "depthNative": round(listing["depth"], 4),
+        # None for an Arcus pool reading no in-range liquidity; it is listed regardless.
+        "depthNative": None if listing["depth"] is None else round(listing["depth"], 4),
         # Priced in the reference asset, which on a chain that has one is a dollar stablecoin.
         "priceUsd": round(reference_rate / listing["rate"], 8) if REFERENCE else None,
         "perNative": round(listing["rate"], 8),
     }
 
 
-def render(listings: list[dict], reference_rate: float, rejected: list[dict]) -> str:
+def _row(listing: dict, reference_rate: float, reference: str | None) -> dict:
+    """One entry of the file: what `render` writes, and what a subset run carries over verbatim."""
+    return {"asset": listing["asset"], "symbol": listing["symbol"], "source": _source(listing),
+            "readable": _readable(listing, reference_rate, reference)}
+
+
+def render(rows: list[dict], reference_rate: float, rejected: list[dict]) -> str:
     """The file `WhitelistRobinhoodAssets` reads.
 
     Two halves: the arrays the forge script parses (one entry per listing, same order), and the
     `readable`/`rejected` sections, which are there for the human reviewing the list and are never read
     on chain. Parallel arrays rather than an array of structs because `vm.parseJson` can only decode one
     JSON value at a time."""
-    sources = [_source(l) for l in listings]
-    reference = listings[0]["symbol"] if REFERENCE else None
+    sources = [r["source"] for r in rows]
+    reference = rows[0]["symbol"] if REFERENCE else None
     return json.dumps(
         {
             "chainId": CHAIN_ID,
             # Whole reference units per native, the rate every reference-quoted listing prices through.
             "reference": reference,
             "referencePerNative": round(reference_rate, 6) if REFERENCE else None,
-            "assets": [l["asset"] for l in listings],
-            "symbols": [l["symbol"] for l in listings],  # labels for the script's log, nothing more
+            "assets": [r["asset"] for r in rows],
+            "symbols": [r["symbol"] for r in rows],  # labels for the script's log, nothing more
             "venues": [s["venue"] for s in sources],
             "pools": [s["pool"] for s in sources],
             "currency0": [s["c0"] for s in sources],
@@ -600,10 +786,10 @@ def render(listings: list[dict], reference_rate: float, rejected: list[dict]) ->
             "fees": [s["fee"] for s in sources],
             "tickSpacings": [s["ts"] for s in sources],
             "hooks": [s["hooks"] for s in sources],
-            "readable": [_readable(l, reference_rate, reference) for l in listings],
+            "readable": [r["readable"] for r in rows],
             # Everything considered and left out, with the number that decided it. Reviewing this is
             # how the depth threshold gets retuned, and how an xStock missing from the list is explained.
-            "rejected": sorted(rejected, key=lambda r: (not r["xstock"], -r["depthNative"])),
+            "rejected": sorted(rejected, key=lambda r: (not r["xstock"], -(r["depthNative"] or 0))),
         },
         indent=1,
     )

@@ -118,9 +118,18 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     ///      address: splitting a cut across several would need a schedule nobody has asked for.
     address public keeper;
 
+    /// @notice Assets an admin has declared dead as a dividend payout or a quote: a pool gone for good, a
+    ///         token that stopped transferring. Tokens read it at every funding and, for a leg that would
+    ///         convert into or out of a retired asset, pay the buffer in its own currency instead (their
+    ///         fallback pots) — so a dead asset strands nothing. Reversible: un-retiring resumes
+    ///         conversions, and what the fallback already credited stays claimable.
+    /// @dev A flag, not a route: a route can be repointed, a dead asset has nowhere to point. Read only by
+    ///      token implementations that know it; older clones keep converting (and failing) as before.
+    mapping(address asset => bool) public isRetired;
+
     /// @dev Reserved for future storage. Appending past this on an upgrade is safe; reordering anything
     ///      above it is not.
-    uint256[46] private __gap;
+    uint256[45] private __gap;
 
     //////////////////////// events //////////////////////
 
@@ -141,6 +150,8 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     ///          less than `KEEPER_FEE` on a small one. `DividendAssetPurchased.nativeIn` for the same
     ///          conversion is the FULL amount the token sent, this included, not the amount swapped.
     event KeeperFunded(address indexed keeper, uint256 amount);
+    /// @notice `asset` was retired (`true`) or brought back (`false`). Emitted on every `setRetired`.
+    event AssetRetired(address indexed asset, bool retired);
 
     /// @notice A `swapAssetToAsset` conversion: `amountIn` of `source` became `nativeVia` native on the
     ///         way — the keeper's cut, if any, came out of that — and `assetOut` of `asset` for
@@ -495,6 +506,12 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         require(route.length == 0 || _wellFormed(asset, route, quote), MalformedRoute());
         routes[token][asset] = route;
         emit DividendRouteSet(token, asset, quote, route);
+    }
+
+    /// @notice Retires `asset`, or brings it back. See `isRetired`. Admin or owner.
+    function setRetired(address asset, bool retired) external onlyAdmin {
+        isRetired[asset] = retired;
+        emit AssetRetired(asset, retired);
     }
 
     /// @notice The wallet each conversion's `KEEPER_FEE` funds. `address(0)` turns the fee off.

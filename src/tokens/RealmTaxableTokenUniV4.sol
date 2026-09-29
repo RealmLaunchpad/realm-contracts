@@ -280,7 +280,17 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         uint256 spend;
         uint256 spent;
         uint256 out;
-        if (!cooldown) (spend, spent, out) = _fundFromQuote(assetIndex, quote, payout, amount, minOut);
+        bool fellBack;
+        if (!cooldown) {
+            // A leg that would sell a retired quote, or buy a retired asset, pays the buffer in the quote
+            // itself through the quote's fallback pot. Not a passthrough: that one already pays the quote.
+            if (payout != quote && (_isRetired(quote) || _retiredPayout(payout))) {
+                fellBack = true;
+                spend = _fallbackFromQuote(assetIndex, quote);
+            } else {
+                (spend, spent, out) = _fundFromQuote(assetIndex, quote, payout, amount, minOut);
+            }
+        }
         if (out != 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
             asset.lastProcessBlock = uint40(block.number);
@@ -290,13 +300,28 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
 
         if (holders.length != 0) {
             _pushDividends(assetIndex, holders);
+            _pushFallbacks(holders);
         } else if (cooldown) {
             revert DividendProcessCooldown();
         } else if (spend == 0) {
             revert BelowDividendThreshold();
-        } else if (out == 0) {
+        } else if (out == 0 && !fellBack) {
             revert DividendConversionFailed();
         }
+    }
+
+    /// @dev Moves asset `i`'s whole buffer on `quote` into the quote's fallback pot, claiming the asset's
+    ///      block as a conversion would. No swap, so no cap and no floor.
+    /// @return spend the amount credited, 0 when nothing was buffered.
+    function _fallbackFromQuote(uint8 i, address quote) private returns (uint256 spend) {
+        uint256 qi = _quoteIndex(quote);
+        uint128[MAX_DIVIDEND_ASSETS] storage pending = quoteBuffers[qi].dividendPending;
+        spend = pending[i];
+        if (spend == 0) return 0;
+        pending[i] = 0;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        dividendAssets[i].lastProcessBlock = uint40(block.number);
+        _creditFallback(i, qi, quote, spend);
     }
 
     /// @dev Debits asset `i`'s buffer on `quote` — the whole of it for a passthrough, `_maxSpend`'s

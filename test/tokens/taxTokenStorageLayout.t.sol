@@ -39,11 +39,12 @@ contract TaxTokenStorageLayoutTests is LaunchpadBaseTestsWithUniv2Graduator {
     ///      word of its own — inside a struct array it cannot leak into the head of this slot — but the
     ///      arrays that replaced it occupy whole slots, so the effect is the same. Then 30 -> 31 when
     ///      `quotes` grew to four entries (native + three ERC20s), pushing everything after it by a slot, and
-    ///      31 -> 32 when `graduationPoolId` (the direct venue's graduation milestone) took a word.
-    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 32;
+    ///      31 -> 32 when `graduationPoolId` (the direct venue's graduation milestone) took a word, and
+    ///      32 -> 37 when the dividend fallback pots landed (`dividendFallbacks[4]` + `fallbackAccounts`).
+    uint256 internal constant TAX_AND_ALLOCATION_SLOT = 37;
 
     /// @dev The V2 swap-back counters, which the packing above pushes into the following slot.
-    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 33;
+    uint256 internal constant SWAPBACK_COUNTERS_SLOT = 38;
 
     /// @dev First `DivAsset` of the payout set. Three slots each: the hot slot (accumulator + the three
     ///      clocks + the precision exponent), then `token` + `rate`, then the ledger + the buffer.

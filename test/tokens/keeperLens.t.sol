@@ -37,6 +37,10 @@ abstract contract LensHarness is DividendDistribution {
         return dividendAssetCount;
     }
 
+    function _dividendFallbackMask() internal pure override returns (uint256) {
+        return 0;
+    }
+
     function _dividendBalanceOf(address account) internal view override returns (uint256) {
         return balances[account];
     }

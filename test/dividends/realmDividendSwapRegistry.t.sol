@@ -419,7 +419,24 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         registry.setRoute(address(0), MSFT, V2_ROUTE);
         vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
         registry.setKeeperFunding(stranger);
+        vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
+        registry.setRetired(MSFT, true);
         vm.stopPrank();
+    }
+
+    /// @dev An admin retires and un-retires an asset; each call is reported.
+    function test_anAdminRetiresAndUnretiresAnAsset() public {
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit RealmDividendSwapRegistry.AssetRetired(MSFT, true);
+        vm.prank(admin);
+        registry.setRetired(MSFT, true);
+        assertTrue(registry.isRetired(MSFT), "retired");
+
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit RealmDividendSwapRegistry.AssetRetired(MSFT, false);
+        vm.prank(admin);
+        registry.setRetired(MSFT, false);
+        assertFalse(registry.isRetired(MSFT), "back");
     }
 
     /// @dev The owner is an admin implicitly, so a deployment is usable before any admin is appointed.

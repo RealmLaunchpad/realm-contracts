@@ -109,7 +109,7 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
 
     error NotApprover();
     /// @notice The source's venue is unavailable here, its pool is not Uniswap's, does not hold `asset`,
-    ///         is not live with liquidity, or its other side is neither native (nor WETH) nor an asset
+    ///         is not live (V2/V3: with liquidity; V4: initialized), or its other side is neither native (nor WETH) nor an asset
     ///         listed directly against native.
     error InvalidPriceSource();
 
@@ -213,14 +213,19 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
     }
 
     /// @dev The source pool's two tokens (zero for native) and its spot price as raw token1 per raw
-    ///      token0 in Q128, after checking it is Uniswap's and live with liquidity.
+    ///      token0 in Q128, after checking it is Uniswap's and live: with liquidity for V2/V3, initialized
+    ///      for V4.
     function _spot(PriceSource memory source) private view returns (address t0, address t1, uint256 priceX128) {
         uint160 sqrtPriceX96;
         if (source.venue == Venue.V4) {
             (t0, t1) = (Currency.unwrap(source.key.currency0), Currency.unwrap(source.key.currency1));
             PoolId id = source.key.toId();
             (sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(id);
-            require(sqrtPriceX96 != 0 && POOL_MANAGER.getLiquidity(id) != 0, InvalidPriceSource());
+            // Initialized is enough: in-range liquidity is NOT required. A hooked pool can quote and fill
+            // with none in range (Arcus parks its price in the gap between its bid and ask ranges and
+            // re-centers them inside `beforeSwap`), so a liquidity check would refuse, or refresh-revert,
+            // pools that trade. Depth is the frontend's to show, as it is for thin pools.
+            require(sqrtPriceX96 != 0, InvalidPriceSource());
         } else if (source.venue == Venue.V3) {
             IUniswapV3PoolState pool = IUniswapV3PoolState(source.pool);
             (t0, t1) = (pool.token0(), pool.token1());

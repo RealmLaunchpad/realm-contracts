@@ -318,9 +318,18 @@ contract RealmAssetsWhitelistTest is Test {
         _expectListingReverts(coin, _v4(_key(coin, address(0))));
     }
 
-    function test_rejectsAPoolWithoutLiquidity() public {
+    /// @dev An initialized V4 pool lists with no liquidity in range: hooked pools (Arcus) fill swaps
+    ///      from ranges they re-center inside `beforeSwap`, so in-range liquidity reads 0 while they trade.
+    function test_listsAnInitializedV4PoolWithoutLiquidity() public {
         address coin = address(new Coin(18));
-        _expectListingReverts(coin, _pool(coin, address(0), false));
+        _list(coin, _pool(coin, address(0), false));
+        assertEq(whitelist.unitsPerNativeX18(coin), 1e18, "priced from sqrtPrice alone");
+    }
+
+    /// @dev An uninitialized V4 pool still does not.
+    function test_rejectsAnUninitializedV4Pool() public {
+        address coin = address(new Coin(18));
+        _expectListingReverts(coin, _v4(_key(coin, address(0))));
     }
 
     /// @dev A `NONE` source removes the asset; the next listing brings it back.

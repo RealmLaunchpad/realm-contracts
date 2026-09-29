@@ -98,6 +98,14 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 ///
 /// @dev Asset-agnostic: a payout may be native, the token itself, or a third ERC20, and the accounting
 ///      never knows the difference.
+///
+/// @dev FALLBACK POTS, for a leg the registry has RETIRED. A buffer whose conversion would buy a retired
+///      payout asset, or sell a retired quote, is not converted: it is credited to holders AS IS, in the
+///      currency it was buffered in, through one extra accumulator per currency (`dividendFallbacks`,
+///      indexed like the token's `quotes`). Never through the dead asset's own accumulator — its `owed`
+///      counts units of THAT asset, and what was already bought of it stays claimable there. A pot is
+///      settled on transfers only once it exists (`dividendFallbackMask`, a warm read), so a token that
+///      never falls back pays nothing for it. Un-retiring resumes conversions; the pot stays claimable.
 abstract contract DividendDistribution {
     /// @notice Hard ceiling on payout assets per token. A FIXED bound, not a policy knob: the transfer
     ///         hook loops the set on every balance change, so it has to be small, known at compile time
@@ -171,6 +179,10 @@ abstract contract DividendDistribution {
     /// @dev Denominator for `dividendWeightsBps`. Declared here rather than reached for from
     ///      `EarningsAllocation`, which this contract does not inherit.
     uint256 internal constant DIVIDEND_BPS_TOTAL = 10_000;
+
+    /// @dev One fallback pot per currency a buffer can be held in: one per entry of the token's `quotes`,
+    ///      so this mirrors `RealmToken.MAX_QUOTES`.
+    uint256 internal constant DIVIDEND_FALLBACK_POTS = 4;
 
     /// @notice Pass this as a payout asset to mean "the token itself". A creator configuring a token
     ///         cannot name its own address — it does not exist yet at the point the configuration is
@@ -266,6 +278,23 @@ abstract contract DividendDistribution {
     ///      clone bytecode to return a number every reader would then have to correct.
     mapping(address account => Acct[MAX_DIVIDEND_ASSETS]) internal dividendAccounts;
 
+    /// @notice One currency's fallback accumulator: the same machine as a `DivAsset`'s, minus the
+    ///         conversion. One slot.
+    /// @dev `precisionExp` is written on the pot's first credit, from the currency's decimals.
+    struct FallbackPot {
+        uint128 rewardPerTokenStored;
+        /// @dev Currency units credited and not yet delivered: reserved against sweeps and rescues.
+        uint120 owed;
+        uint8 precisionExp;
+    }
+
+    /// @notice Fallback pots, indexed like the token's `quotes` (0 = native). Only the entries whose
+    ///         `dividendFallbackMask` bit is set were ever credited.
+    FallbackPot[DIVIDEND_FALLBACK_POTS] public dividendFallbacks;
+
+    /// @notice Per-account checkpoint + banked payout for each fallback pot. See `Acct`.
+    mapping(address account => Acct[DIVIDEND_FALLBACK_POTS]) internal fallbackAccounts;
+
     /// @notice How the dividends slice of earnings is split between the configured assets, in bps of
     ///         that slice. Sums to `DIVIDEND_BPS_TOTAL` across the configured entries; every configured
     ///         entry is non-zero.
@@ -314,6 +343,14 @@ abstract contract DividendDistribution {
 
     /// @notice One holder, one asset, one payout of everything they had accrued in it at that moment.
     event DividendPaid(address indexed holder, address indexed asset, uint256 amount);
+
+    /// @notice Leg `index`'s buffer in `currency` (`address(0)` for native, else one of the token's
+    ///         quotes) was credited to holders AS IS, because its conversion runs through a retired asset.
+    ///         Takes the place of `DividendsFunded` for that call.
+    event DividendFallbackFunded(uint256 indexed index, address indexed currency, uint256 amount);
+
+    /// @notice One holder was paid everything they had accrued in `currency`'s fallback pot.
+    event DividendFallbackPaid(address indexed holder, address indexed currency, uint256 amount);
 
     //////////////////////// Errors //////////////////////
 
@@ -368,13 +405,28 @@ abstract contract DividendDistribution {
             if (settleFrom) _settleDividends(from, i, rpt);
             if (settleTo) _settleDividends(to, i, rpt);
         }
+
+        // Warm: packed into the slot `_update` loaded. Zero unless a leg ever fell back.
+        uint256 mask = _dividendFallbackMask();
+        for (uint256 q; mask != 0; ++q) {
+            if (mask & 1 != 0) {
+                FallbackPot storage pot = dividendFallbacks[q];
+                (uint256 rpt, uint256 precision) = (pot.rewardPerTokenStored, 10 ** pot.precisionExp);
+                if (settleFrom) _settleAcct(fallbackAccounts[from][q], from, rpt, precision);
+                if (settleTo) _settleAcct(fallbackAccounts[to][q], to, rpt, precision);
+            }
+            mask >>= 1;
+        }
     }
 
     /// @dev Banks everything `account` has accrued in asset `i` since it was last settled, at the
     ///      CURRENT balance — which is why every caller has to settle before the balance moves.
     function _settleDividends(address account, uint256 i, uint256 rpt) internal {
-        Acct storage acct = dividendAccounts[account][i];
+        _settleAcct(dividendAccounts[account][i], account, rpt, _dividendPrecision(i));
+    }
 
+    /// @dev `_settleDividends` for any accumulator: a payout asset's or a fallback pot's.
+    function _settleAcct(Acct storage acct, address account, uint256 rpt, uint256 precision) internal {
         uint256 paid = acct.rewardPerTokenPaid;
         // Nothing has been distributed since this account last moved — the common case for an active
         // trader, and the reason a transfer can cost zero account writes.
@@ -390,7 +442,7 @@ abstract contract DividendDistribution {
         // whole banked accrual silently; a revert would freeze their transfers for good. Capping loses
         // only the part above the ceiling and keeps both the token and the claim working, the same
         // trade `_reduceDividendsOwed` makes on the other side of the ledger.
-        uint256 accrued = uint256(acct.rewards) + _dividendBalanceOf(account) * (rpt - paid) / _dividendPrecision(i);
+        uint256 accrued = uint256(acct.rewards) + _dividendBalanceOf(account) * (rpt - paid) / precision;
         // Safe cast: clamped to `type(uint120).max`.
         // forge-lint: disable-next-line(unsafe-typecast)
         acct.rewards = accrued > type(uint120).max ? type(uint120).max : uint120(accrued);
@@ -461,6 +513,16 @@ abstract contract DividendDistribution {
             / _dividendPrecision(i);
     }
 
+    /// @notice What `holder` would receive from the fallback pot of `quotes(quoteIndex)` (0 = native) if
+    ///         they claimed right now. Zero when that pot was never credited.
+    function previewDividendFallback(address holder, uint256 quoteIndex) public view returns (uint256) {
+        if (_dividendExcluded(holder)) return 0;
+        FallbackPot storage pot = dividendFallbacks[quoteIndex];
+        Acct storage acct = fallbackAccounts[holder][quoteIndex];
+        return acct.rewards + _dividendBalanceOf(holder) * (pot.rewardPerTokenStored - acct.rewardPerTokenPaid) / 10
+            ** pot.precisionExp;
+    }
+
     /// @notice Dividend money already credited to holders in `asset` but not yet delivered.
     /// @dev THE single source of truth for "how much of this balance is not ours". Every sweep, swap-back
     ///      and rescue path subtracts this rather than open-coding its own subtraction, so a future
@@ -529,6 +591,9 @@ abstract contract DividendDistribution {
     /// @dev How many payout assets are configured. Lives on the token, packed into the `pair` slot
     ///      `_update` has already loaded, so reading it on the transfer path is a warm SLOAD.
     function _dividendAssetCount() internal view virtual returns (uint256);
+
+    /// @dev Bit `q` set: `quotes(q)`'s fallback pot exists. Lives on the token, in the `pair` slot.
+    function _dividendFallbackMask() internal view virtual returns (uint256);
 
     /// @dev The token's ERC20 balance of `account`.
     function _dividendBalanceOf(address account) internal view virtual returns (uint256);

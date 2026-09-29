@@ -45,6 +45,16 @@ Re-run it as the routes' health check, together with the opt-in fork sweep
 route's price impact at a full conversion. An asset whose pools have moved reports a different winner, or
 none: set an `ALL_TOKENS` override on the registry, and update the frontend catalogue.
 
+## Arcus pTokens
+
+Arcus's leveraged pTokens (`ARCUS` in the script) are not discovered: each trades in exactly one V4 pool
+against USDG behind an Arcus hook, so each gets one fixed two-hop candidate, native → USDG over the
+USDG/native pool (`USDG_HOP`: dynamic fee, tick spacing 10, hook `0x06a8…6080`), then USDG → pToken over
+its Arcus pool. They are appended after the xStocks on a full run and need no chain scan on their own
+(`--only arcus`). No liquidity read gates them — an Arcus pool can read 0 in range while swaps fill — so
+the probe alone decides: one that cannot take `MAX_EARNINGS_PER_PROCESS` is left out of the catalogue.
+A hop through an Arcus hook costs ~500-650k gas.
+
 ## Adding one asset
 
 ```
@@ -52,7 +62,8 @@ uv run script/operations/dividend-routes/discover_xstock_routes.py --only NVDA -
 DIVIDEND_SWAP_REGISTRY=0x… ROUTES_JSON=/tmp/nvda.json ROUTES_OUT=/tmp/nvda-catalogue.json just pick-dividend-routes
 ```
 
-`--only` takes ticker symbols or token addresses, comma-separated. The probe is the validation: do not
+`--only` takes ticker symbols or token addresses, comma-separated, of xStocks or Arcus pTokens; `arcus`
+names every Arcus pToken. The probe is the validation: do not
 reimplement it in Python, because an approximation of the swap can disagree with the contract.
 
 ## The wire format

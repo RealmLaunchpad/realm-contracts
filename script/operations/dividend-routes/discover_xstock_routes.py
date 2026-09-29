@@ -2,7 +2,8 @@
 # requires-python = ">=3.11"
 # dependencies = ["requests", "eth-abi", "eth-utils", "eth-hash[pycryptodome]"]
 # ///
-"""Discover the Uniswap V4 and V3 routes from native ETH to every Robinhood Chain stock token.
+"""Discover the Uniswap V4 and V3 routes from native ETH to every Robinhood Chain stock token, plus
+the fixed route to each Arcus pToken.
 
 Robinhood Chain's ~190 xStocks have no Uniswap V2 pair at all: their liquidity lives in V4, most
 of it in a pool against native ETH and the rest against USDG. `RealmDividendSwapRegistry` cannot
@@ -24,10 +25,16 @@ pools are drained). Those candidates are single-hop WETH -> stock, one per fee t
 liquidity, already in wire format under `v3Candidates`. The router executes V3 against the factory
 below, and the registry checks a V3 route for shape only, so the probe is what proves the pool is live.
 
+Arcus's leveraged pTokens (`ARCUS`) are not discovered: each trades in exactly one V4 pool against
+USDG behind an Arcus hook, so its one candidate is fixed -- native -> USDG over `USDG_HOP`, then USDG ->
+pToken over its Arcus pool. No liquidity read gates it (Arcus pools can read 0 in range while swaps
+fill); the probe is what says whether it takes a full conversion.
+
 Output is a JSON file that forge script reads. Review it before broadcasting -- this is the one
 place a wrong answer silently sends a token's dividends through somebody else's pool.
 
 Usage:  uv run script/operations/dividend-routes/discover_xstock_routes.py [-o out.json]
+        … --only arcus -o /tmp/arcus.json      the Arcus pTokens alone, no chain scan
         ROBINHOOD_RPC_URL overrides the public RPC.
 """
 
@@ -57,6 +64,30 @@ LIQUIDITY_SELECTOR = "0x1a686502"  # liquidity()
 USDG = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
 WETH = "0x0bd7d308f8e1639fab988df18a8011f41eacad73"
 NATIVE = "0x" + "00" * 20
+
+# The native/USDG leg every Arcus candidate starts with: the USDG/native V4 pool the xStock two-hop
+# candidates are built on (dynamic fee flag, 0x800000), pinned rather than re-ranked per run.
+USDG_HOP = {"currency": USDG, "fee": 0x800000, "tickSpacing": 10, "hooks": "0x06a889870c8f83640d6816319f72e2aa579b6080"}
+
+# Arcus's leveraged pTokens: address -> (ticker, hook, lpFee), each in one USDG pool at tick spacing 10.
+# Twin of the table in `assets-whitelist/discover_whitelist_assets.py`, which also cross-checks it
+# against Arcus's API (api.arcus.xyz/v1/api-meta/spot/overview); keep the two in step.
+ARCUS_TICK_SPACING = 10
+_ARCUS_HOOK_A = "0xfa3da20ec661aa26f9f93e4421fab6989c4b4800"
+_ARCUS_HOOK_B = "0xf28a89af20fabdb89af9d033bb0a98d17212c880"
+ARCUS = {
+    "0xe24cabdf76dd1c2576049167eb1755c84b985c36": ("pHOOD3x", _ARCUS_HOOK_A, 8500),
+    "0x8b9d2eb675e33e541cb7de25a55724d2e70e8dab": ("pSPCX3x", _ARCUS_HOOK_B, 4250),
+    "0x17271bd2a1eaa350a002d25236bcc4dc07ceb6a9": ("sSPCX3x", _ARCUS_HOOK_B, 4250),
+    "0x4472c69d299382f8847ebce4fc6ed8e295510e3e": ("pBTC3x", _ARCUS_HOOK_A, 8500),
+    "0x1a596466cb593bee293be8366d9ce493582189c2": ("sGME5x", _ARCUS_HOOK_B, 4250),
+    "0x5c3b9a9b021e86b54202abcb4580f1f5c271875b": ("pGME5x", _ARCUS_HOOK_B, 4250),
+    "0xb2cb7371bc45a460f856712a3088c23acd385df8": ("sGLD5x", _ARCUS_HOOK_B, 4250),
+    "0x37a2afaa98648f2e13658623885f821ac8365609": ("pGLD5x", _ARCUS_HOOK_B, 4250),
+    "0x925f92f055edb79c42b5d45e64a1b74143b90ea0": ("pBTC", _ARCUS_HOOK_A, 8500),
+    "0xadcceee8e422050f890522fa798f8a93a4857083": ("sBTC3x", _ARCUS_HOOK_A, 8500),
+    "0xc25c966168a8e933b0aba0dc8a25cac4a2b2b91d": ("sBTC", _ARCUS_HOOK_A, 8500),
+}
 
 # keccak("Initialize(bytes32,address,address,uint24,int24,address,uint160,int24)").
 # topics = [sig, poolId, currency0, currency1]; data = fee, tickSpacing, hooks, sqrtPriceX96, tick.
@@ -291,24 +322,77 @@ def main() -> int:
     parser.add_argument(
         "--only",
         default="",
-        help="comma-separated ticker symbols or token addresses to route; everything else is left "
-        "out of the output. Use it to add ONE new asset without regenerating the whole file -- "
-        "write it somewhere of its own with -o and point ROUTES_JSON at that.",
+        help="comma-separated ticker symbols or token addresses to route (xStocks or Arcus pTokens; "
+        "`arcus` names every Arcus pToken); everything else is left out of the output. Use it to add "
+        "ONE new asset without regenerating the whole file -- write it somewhere of its own with -o "
+        "and point ROUTES_JSON at that.",
     )
     args = parser.parse_args()
 
     tokens = stock_tokens()
-    print(f"{len(tokens)} stock tokens on chain {CHAIN_ID}", file=sys.stderr)
+    arcus = [(symbol, a) for a, (symbol, _, _) in ARCUS.items()]
+    print(f"{len(tokens)} stock tokens and {len(arcus)} Arcus pTokens on chain {CHAIN_ID}", file=sys.stderr)
 
     if args.only:
         picked = {w.strip().lower() for w in args.only.split(",") if w.strip()}
-        tokens = [t for t in tokens if t[0].lower() in picked or t[1] in picked]
-        missing = picked - {t[0].lower() for t in tokens} - {t[1] for t in tokens}
+        chosen = lambda t: t[0].lower() in picked or t[1] in picked
+        tokens = [t for t in tokens if chosen(t)]
+        arcus = [t for t in arcus if chosen(t) or "arcus" in picked]
+        named = tokens + arcus
+        missing = picked - {"arcus"} - {t[0].lower() for t in named} - {t[1] for t in named}
         if missing:
-            print(f"not a stock token on this chain: {', '.join(sorted(missing))}", file=sys.stderr)
+            print(f"not a stock token or Arcus pToken on this chain: {', '.join(sorted(missing))}", file=sys.stderr)
             return 1
-        print(f"--only: {', '.join(t[0] for t in tokens)}", file=sys.stderr)
+        print(f"--only: {', '.join(t[0] for t in named)}", file=sys.stderr)
 
+    assets, candidates, v3_candidates, readable, skipped = [], [], [], [], []
+
+    def emit(symbol: str, token: str, routes: list[list[dict]], v3_pools: list[dict], **extra) -> None:
+        assets.append(token)
+        candidates.append(
+            "0x"
+            + abi_encode(
+                ["(address,uint24,int24,address)[][]"],
+                [[[(h["currency"], h["fee"], h["tickSpacing"], h["hooks"]) for h in r] for r in routes]],
+            ).hex()
+        )
+        v3_candidates.append(
+            "0x" + abi_encode(["bytes[]"], [[bytes.fromhex(v3_wire(token, p["fee"])[2:]) for p in v3_pools]]).hex()
+        )
+        readable.append({"symbol": symbol, "asset": token, **extra, "candidates": routes, "v3": v3_pools})
+
+    # An `--only` naming nothing but Arcus pTokens has nothing to scan for.
+    if tokens:
+        _stock_routes(args, tokens, emit, skipped)
+    for symbol, token in arcus:
+        _, hooks, fee = ARCUS[token]
+        hop = {"currency": token, "fee": fee, "tickSpacing": ARCUS_TICK_SPACING, "hooks": hooks}
+        emit(symbol, token, [[USDG_HOP, hop]], [], arcus=True)
+
+    args.out.write_text(
+        json.dumps(
+            {
+                "chainId": CHAIN_ID,
+                "assets": assets,
+                # Flat, for forge: `parseJson` refuses a `[*]` path that yields more than one value.
+                "symbols": [r["symbol"] for r in readable],
+                "candidates": candidates,
+                "v3Candidates": v3_candidates,
+                "readable": readable,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    total = sum(len(r["candidates"]) + len(r["v3"]) for r in readable)
+    print(f"wrote {len(assets)} assets / {total} candidate routes to {args.out}", file=sys.stderr)
+    if skipped:
+        print(f"no pool found for {len(skipped)}: {', '.join(skipped)}", file=sys.stderr)
+    return 0
+
+
+def _stock_routes(args, tokens: list[tuple[str, str]], emit, skipped: list[str]) -> None:
+    """The xStocks' candidates, discovered on chain, handed to `emit` one asset at a time."""
     print("collecting V4 pools…", file=sys.stderr)
     stocks = {a for _, a in tokens}
     # The scan's topic filter narrows with `--only`, so adding one asset does not replay the pools of
@@ -334,7 +418,6 @@ def main() -> int:
     if not usdg_legs:
         print("no native/USDG pool with liquidity — cannot build two-hop candidates", file=sys.stderr)
 
-    assets, candidates, v3_candidates, readable, skipped = [], [], [], [], []
     for symbol, token in tokens:
         routes = [[as_hop(p, token)] for p in deepest(pools, NATIVE, token, CANDIDATES_PER_PAIR)]
         for hop in deepest(pools, USDG, token, CANDIDATES_PER_PAIR):
@@ -344,40 +427,7 @@ def main() -> int:
         if not routes and not v3_pools:
             skipped.append(symbol)
             continue
-
-        assets.append(token)
-        candidates.append(
-            "0x"
-            + abi_encode(
-                ["(address,uint24,int24,address)[][]"],
-                [[[(h["currency"], h["fee"], h["tickSpacing"], h["hooks"]) for h in r] for r in routes]],
-            ).hex()
-        )
-        v3_candidates.append(
-            "0x" + abi_encode(["bytes[]"], [[bytes.fromhex(v3_wire(token, p["fee"])[2:]) for p in v3_pools]]).hex()
-        )
-        readable.append({"symbol": symbol, "asset": token, "candidates": routes, "v3": v3_pools})
-
-    args.out.write_text(
-        json.dumps(
-            {
-                "chainId": CHAIN_ID,
-                "assets": assets,
-                # Flat, for forge: `parseJson` refuses a `[*]` path that yields more than one value.
-                "symbols": [r["symbol"] for r in readable],
-                "candidates": candidates,
-                "v3Candidates": v3_candidates,
-                "readable": readable,
-            },
-            indent=2,
-        )
-        + "\n"
-    )
-    total = sum(len(r["candidates"]) + len(r["v3"]) for r in readable)
-    print(f"wrote {len(assets)} assets / {total} candidate routes to {args.out}", file=sys.stderr)
-    if skipped:
-        print(f"no pool found for {len(skipped)}: {', '.join(skipped)}", file=sys.stderr)
-    return 0
+        emit(symbol, token, routes, v3_pools)
 
 
 if __name__ == "__main__":

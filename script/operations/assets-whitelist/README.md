@@ -9,6 +9,9 @@ from.
 just discover-whitelist-assets    # re-pick every pool from live state
 just whitelist-assets-rh          # list them, then read them back off the chain
 
+# re-pick a subset only, leaving every other entry of the file as it is
+uv run script/operations/assets-whitelist/discover_whitelist_assets.py --only arcus   # or NVDA,pBTC3x,0x…
+
 just discover-whitelist-assets-rh-testnet         # and the same two steps for 46630
 just whitelist-assets-rh-testnet
 ```
@@ -24,19 +27,27 @@ redeployed — reports success from inside itself and lists nothing. `verify()` 
 writes `listings.robinhood.mainnet.json`, which `WhitelistRobinhoodAssets` reads and broadcasts — the
 arrays it parses, plus `readable` and `rejected` sections that exist for whoever reviews the list and are
 never read on chain — and prints every xStock, deepest pool first, marked IN or OUT with its liquidity
-tier.
+tier, then the Arcus pTokens the same way.
 
 ## What mainnet lists
 
-Only two kinds of asset, by policy:
+Only three kinds of asset, by policy:
 
 - **USDG**, the reference asset.
 - **Robinhood's own stock tokens** (~195), from its asset API (`api.robinhood.com/rhj/assets`, the list
   behind docs.robinhood.com/chain/contracts) — every one with a price pool the contract can read,
   however thin.
+- **Arcus's leveraged pTokens** (11: pBTC, pBTC3x, sBTC, sBTC3x, pHOOD3x, pSPCX3x, sSPCX3x, pGME5x,
+  sGME5x, pGLD5x, sGLD5x), each priced against USDG in the one Uniswap V4 pool it trades in, behind an
+  Arcus hook. That pool is fixed, so they skip discovery and ranking: the pools live in `ARCUS` in the
+  script, and Arcus's API (`api.arcus.xyz/v1/api-meta/spot/overview`, entries named "Arcus …") only
+  decides which of them are still offered — the built-in list stands in when it cannot be read, and a
+  pToken it adds has to be added to `ARCUS` by hand. They are listed even when their pool reads **no
+  in-range liquidity** (tier "n/a"): Arcus parks the price between its bid and ask ranges, so swaps
+  still fill. Some of them cannot absorb a $1k buy; the frontend shows the depth, the list does not gate.
 
 Nothing else, however large its market cap; anything listed earlier outside that set is delisted on the
-next run. Their address comes from Robinhood, so identity needs no vouching.
+next full run. Their address comes from Robinhood or Arcus, so identity needs no vouching.
 
 Thin pools are listed on purpose. Liquidity is not gated here but shown to creators, as a tier of the
 pool's quote-side depth in native: **low** under 10, **ok** from 10 to 50, **deep** above 50 (`TIERS` in
@@ -91,10 +102,16 @@ it **delists**: an asset the previous file listed that no longer qualifies, and 
 still prices, comes back as a `Venue.NONE` entry, which is how `setWhitelisted` retires an asset. Without
 that last step the whitelist would only ever grow.
 
-The script prints what it is retiring and the IN/OUT table of every xStock; the git diff of the file is the
-rest of the review. The delisting candidates come from the file being overwritten, so an asset an
+The script prints what it is retiring and the IN/OUT table of every xStock and Arcus pToken; the git
+diff of the file is the rest of the review. The delisting candidates come from the file being overwritten, so an asset an
 approver listed **by hand** — never in a generated file — is invisible to this and has to be retired by
 hand too.
+
+Only a **full** run delists. A subset run (`--only`, or `--assets`) re-picks the assets it names and
+copies every other entry of the existing file verbatim — pending `NONE` entries included — and emits no
+new `NONE` entry: it cannot tell "fell out of the policy" from "was not asked about". A named asset that
+no longer qualifies keeps its previous entry, with a warning. Use it to add or refresh a few assets
+without re-picking the other 390.
 
 The stored rate is a **snapshot**, read when `WhitelistRobinhoodAssets` runs, out of a pool picked when
 the generator ran. Both age, which is the reason to re-run before every broadcast and not only when the

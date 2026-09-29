@@ -583,6 +583,21 @@ across several transactions in one block works exactly as before.
    simply omits loses nothing at all, so a keeper is free to push only above whatever size threshold
    it likes.
 
+4. After the leg's payouts, when the token has fallback pots (`dividendFallbackMask() != 0`), one
+   **`DividendFallbackPaid`** (`holder, currency, amount`) per holder actually paid from each pot, pots in
+   index order (pot `q` is `quotes(q)`, 0 = native), holders in list order. EVERY pot is pushed, whichever
+   leg or quote the call serviced, so ordinary native batches deliver the quote pots too.
+
+   **Retired legs (fallback).** When the registry has retired the leg's third payout asset
+   (`isRetired(asset)`), or — on the quote overload — the ERC20 quote whose buffer is being serviced, and
+   the payout is not the quote itself, step 1 does NOT convert. The leg's WHOLE buffer in that currency
+   (no cap, `amount`/`minOut` ignored) is credited to holders as is, through that currency's fallback
+   pot, and step 1 emits **`DividendFallbackFunded`** (`index, currency, amount`) INSTEAD of
+   `DividendsFunded` — no registry events, no buy-back. It claims the asset's block like a conversion and
+   reverts `NoDividendSupply` under the same condition. Read live from the registry at every funding;
+   un-retiring resumes conversions from the next call, and the pot stays claimable. Units of the dead
+   asset bought earlier stay owed in its own ledger and keep paying through `DividendPaid`.
+
    A call that funds nothing AND was given no holders reverts rather than emitting:
    `DividendConversionFailed` when the buffer was fundable and the conversion did not happen (an
    unreachable floor, no route, or a dead pool — the buffer stays whole), `BelowDividendThreshold` when
@@ -591,7 +606,8 @@ across several transactions in one block works exactly as before.
 
 **`claimDividends()`** — the self-serve backstop, emitting one **`DividendPaid`** for `msg.sender` PER
 CONFIGURED ASSET that had anything accrued, in index order. It is the holder's one call for the whole
-set, so a holder never has to know how many assets there are. It differs from a batch payout in one respect: a native payout inside `processDividends`
+set, so a holder never has to know how many assets there are — followed by one **`DividendFallbackPaid`**
+per fallback pot with anything accrued, in pot index order. It differs from a batch payout in one respect: a native payout inside `processDividends`
 is gas-capped, so one expensive holder cannot starve the batch — at the chain's `NATIVE_PAYOUT_GAS` for
 a native payout, and at the far larger `ASSET_PAYOUT_GAS` for an ERC20 one, whose `transfer` is a
 contract nobody vetted. `claimDividends` forwards all remaining gas for
@@ -699,6 +715,11 @@ token's own `DividendsFunded`:
   leading `0x04` is an abi-encoded `Hop[]` of `{currency, fee, tickSpacing, hooks}` running from the
   native coin, and a leading `0x03` is Uniswap V3's own packed `token | fee | token` path running from
   WETH.
+- **`AssetRetired`** (`asset`, `retired`) — an admin retired `asset` (`true`) or brought it back
+  (`false`); emitted on every `setRetired`. From the next funding on, legs converting into (or quotes
+  selling out of) a retired asset pay their buffer in its own currency (`DividendFallbackFunded`). Only
+  token implementations that read `isRetired` react; older clones keep converting. Not checked at
+  creation: a token may name a retired asset and simply falls back until it is brought back.
 - **`KeeperFundingSet`** (`keeper`) — the wallet the fee above is paid to; `address(0)` turns the fee
   off, which is the state a freshly deployed registry is in. The fee AMOUNT is not here and never
   changes without an upgrade: it is the compile-time `KEEPER_FEE`. Applies to tokens that ALREADY exist,

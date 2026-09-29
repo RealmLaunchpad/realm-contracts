@@ -53,4 +53,9 @@ interface IRealmDividendSwapRegistry {
     function swapAssetToAsset(address source, address asset, uint256 amountIn, uint256 minOut, address recipient)
         external
         returns (uint256 out);
+
+    /// @notice Whether an admin has declared `asset` dead: tokens (from the implementation that reads
+    ///         this) stop converting into it, or out of it as a quote, and pay the buffer in its own
+    ///         currency instead. See `DividendDistribution`'s fallback pots.
+    function isRetired(address asset) external view returns (bool);
 }
