@@ -28,7 +28,7 @@
 | RealmVoting (proxy)                          | `0xd1fDE1598C7617fc6D987f1C93717aEE17735Fa5` |
 | RealmVoting (impl)                           | `0x110A9EB4A1B1913a705652Da1BA185D3398e1f8F` |
 | RealmQuoter                                  | `0xDD6C23cc9fD2113eDD11139d9BC695dD02d51883` |
-| RealmKeeperLens                              | `0x3101f0F56708ef2b57559849a6A31218d1a17260` |
+| RealmKeeperLens                              | `0xEaE1241eb290Ddd1161edB74A6451A879c4Ba992` |
 | RealmKeepersRegistry                         | `0x179E307249366f0036e1aC1791588828E12F439D` |
 | RealmDividendSwapRegistry (proxy)            | `0x48be6ac8729B86B0339BA0d3f6c7D773c0aa83e4` |
 | RealmDividendSwapRegistry (impl)             | `0xF51f36Ca0bd160c9b8876EBa38E916110A6550d1` |

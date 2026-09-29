@@ -86,7 +86,7 @@ library DeploymentsRobinhoodTestnet {
     /// @notice `RealmKeeperLens`: the stateless, view-only batch reader the dividend keeper drives its
     ///         per-token reads through. Consumed OFF chain only — no Realm contract references it — so it
     ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
-    address internal constant KEEPER_LENS = 0x3101f0F56708ef2b57559849a6A31218d1a17260;
+    address internal constant KEEPER_LENS = 0xEaE1241eb290Ddd1161edB74A6451A879c4Ba992;
 
     /// @notice Implementation behind the `RealmDividendSwapRegistry` proxy, which lives in
     ///         `DeploymentAddresses.sol` (`DIVIDEND_SWAP_REGISTRY`). Update on every registry upgrade;
