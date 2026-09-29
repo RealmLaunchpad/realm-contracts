@@ -189,13 +189,14 @@ contract RobinhoodDividendRoutesTokenE2ETests is RobinhoodForkBase {
         assertGt(IERC20(SPCX).balanceOf(address(token)), 0, "the repointed route converts for this token");
     }
 
-    /// @dev A token created with no route waits, whole, until the per-asset override gives it one.
-    function test_anUnroutedTokenConvertsOnceTheAssetOverrideIsSet() public {
-        RealmTaxableTokenUniV4 token = _spcxToken("");
-        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        token.processDividends(0, true, 0, 1, _noHolders());
+    /// @dev A token created with no route reverts, unless the per-asset override already routes the
+    ///      asset: then it is accepted and converts through the override.
+    function test_anUnroutedTokenNeedsTheAssetOverride() public {
+        vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingDividendRoute.selector, SPCX));
+        _createXStockTokenUnrouted(_sole(SPCX), _w(10_000));
 
         setDividendRoute(dividendSwapRegistry, SPCX, spcxV4Direct());
+        RealmTaxableTokenUniV4 token = _spcxToken("");
         token.processDividends(0, true, 0, 1, _noHolders());
         assertGt(IERC20(SPCX).balanceOf(address(token)), 0, "the override converts for this token");
     }

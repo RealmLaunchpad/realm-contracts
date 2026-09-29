@@ -422,13 +422,12 @@ contract DividendsMultiAssetTests is Test {
         assertEq(sole.assetCount(), 1, "one asset");
     }
 
-    /// @dev Any ERC20 is accepted in the set, routed or not: a member with no route (or no market at
-    ///      all) just does not convert until it gets one.
-    function test_multiAsset_anAssetWithoutARouteIsAccepted() public {
+    /// @dev A member with no route, supplied or already in the registry, reverts the whole set.
+    function test_multiAsset_anAssetWithoutARouteReverts() public {
         address ghost = address(new NoPoolToken());
         MultiAssetHarness harness = new MultiAssetHarness();
+        vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingDividendRoute.selector, ghost));
         harness.configure(_assets(MSFT, ghost), _weights(W_BIG, W_SMALL));
-        assertEq(harness.tokenOf(1), ghost, "configured");
     }
 
     function _weights(uint16 a) internal pure returns (uint16[] memory list) {

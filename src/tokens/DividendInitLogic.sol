@@ -18,8 +18,9 @@ abstract contract DividendInitLogic is DividendDistribution {
     ///
     /// @dev ANY ERC20 IS ACCEPTED, with the creator's route for it: registered on
     ///      `RealmDividendSwapRegistry` against this token, shape-checked only (no liquidity gate). An
-    ///      asset with no route, or a dead one, simply does not convert until a registry admin repoints
-    ///      it; nothing about the route is fixed here.
+    ///      asset with NO route reverts the creation (`MissingDividendRoute`) unless the registry already
+    ///      holds one for it (an admin `ALL_TOKENS` route): otherwise its buffer would strand until an
+    ///      admin stepped in. A dead route is not detectable here and is an admin's to repoint.
     ///
     /// @dev THE SET RULES, and why each one is a `require` rather than a normalization:
     ///      - 1..`MAX_DIVIDEND_ASSETS` assets. The transfer hook loops the set, so it is bounded in the
@@ -40,7 +41,7 @@ abstract contract DividendInitLogic is DividendDistribution {
     ///
     /// @param routes one per asset, in the `DividendRouteLib` wire format: the pools this token converts
     ///        that asset through until an admin repoints it. Empty (or past the end of a shorter array):
-    ///        no route yet, and nothing is registered.
+    ///        nothing is registered, and the registry must already route the asset.
     /// @return count How many assets were configured, for the caller to store on the token.
     function _initializeDividends(address[] memory tokens, uint16[] memory weights, bytes[] memory routes)
         internal
@@ -77,6 +78,7 @@ abstract contract DividendInitLogic is DividendDistribution {
                 // The registry refuses a malformed route (wrong asset, garbled path), which is the one
                 // mistake worth reverting the creation over; a thin or dead pool is an admin's to repoint.
                 if (i < routes.length && routes[i].length != 0) registry.registerRoute(token, routes[i]);
+                else require(registry.routeOf(address(this), token).length != 0, MissingDividendRoute(token));
                 // Not `try`/`catch`: an asset with no `decimals()` reverts the CREATION, which is the only
                 // moment this is cheap to discover. Defaulting to 18 instead would silently under-scale
                 // the accumulator for the rest of that token's life, and a clone cannot be patched.

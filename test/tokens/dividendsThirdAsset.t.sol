@@ -37,6 +37,14 @@ contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
         assetCount = _initializeDividends(assets, weights, new bytes[](0));
     }
 
+    /// @dev Same, with the creator's own route for `asset`.
+    function configureRouted(address asset, bytes calldata route) external {
+        (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
+        bytes[] memory routes = new bytes[](1);
+        routes[0] = route;
+        assetCount = _initializeDividends(assets, weights, routes);
+    }
+
     /// @dev How many payout assets the harness was configured with. The production token keeps this in
     ///      its `pair` slot; here it is plain storage.
     uint8 public assetCount;
@@ -224,30 +232,43 @@ contract DividendsThirdAssetTests is Test {
 
     //////////////////////// the liquidity proof //////////////////////
 
-    /// @dev ANY ERC20 is configurable, routed or not: nothing about the asset is checked at creation.
+    /// @dev ANY ERC20 is configurable as long as it has a route: the registry's (MSFT) or the creator's.
+    ///      Liquidity is not checked: a token with no pool is accepted on the creator's say-so.
     function test_anyErc20IsConfigurable() public {
         assertEq(_harness(MSFT).dividendToken(), MSFT, "MSFT");
-        assertEq(_harness(address(new GhostToken())).dividendToken() != address(0), true, "a token with no pool");
+        address ghost = address(new GhostToken());
+        DividendHarness h = new DividendHarness();
+        h.configureRouted(ghost, DividendRouteLib.encodeV2());
+        assertEq(h.dividendToken(), ghost, "a token with no pool");
     }
 
-    /// @dev An asset without a route converts nothing and loses nothing: the buffer waits for a route.
-    function test_anAssetWithoutARouteKeepsItsBufferUntilItGetsOne() public {
+    /// @dev No route at all, neither supplied nor in the registry, reverts the creation.
+    function test_anAssetWithoutARouteRevertsCreation() public {
+        address ghost = address(new GhostToken());
+        DividendHarness h = new DividendHarness();
+        vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingDividendRoute.selector, ghost));
+        h.configure(ghost);
+    }
+
+    /// @dev A creator route with no market behind it converts nothing and loses nothing: the buffer
+    ///      waits, and converts through that same route, with no admin step, once the market exists.
+    function test_aRouteWithoutAMarketKeepsItsBufferUntilOneExists() public {
         GhostToken ghost = new GhostToken();
-        DividendHarness h = _harness(address(ghost));
+        DividendHarness h = new DividendHarness();
+        h.configureRouted(address(ghost), DividendRouteLib.encodeV2());
         _fundAndActivate(h);
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
         h.processDividends(0, _noHolders());
         assertEq(h.pendingNative(), 1 ether, "the buffer is intact");
 
-        // A market appears and an admin lists it: the SAME token converts.
+        // A market appears: the SAME token converts through the route it registered at creation.
         IUniswapV2Router router = IUniswapV2Router(DeploymentAddresses.UNIV2_ROUTER);
         vm.deal(address(this), 10 ether);
         ghost.approve(address(router), type(uint256).max);
         router.addLiquidityETH{value: 10 ether}(address(ghost), 500_000e18, 0, 0, address(this), block.timestamp);
-        setDividendRoute(registry, address(ghost), DividendRouteLib.encodeV2());
         h.processDividends(0, _noHolders());
-        assertGt(h.dividendsOwed(), 0, "converts once routed");
+        assertGt(h.dividendsOwed(), 0, "converts once the market exists");
     }
 
     /// @dev Native and the token itself buy nothing, so they never touch the registry.

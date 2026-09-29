@@ -341,13 +341,13 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertEq(token.dividendToken(), address(token), "sentinel resolved");
     }
 
-    /// @dev ANY ERC20 is accepted at creation, routed or not: how it is bought is the registry's
-    ///      business, and an asset without a route just does not convert until it gets one.
-    function test_anErc20WithoutARouteIsStillAccepted() public {
+    /// @dev An ERC20 with no route, supplied or already in the registry, reverts the creation: its
+    ///      buffer could never convert.
+    function test_anErc20WithoutARouteRevertsCreation() public {
         address asset = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9; // AAPL, no route set
         assertEq(dividendSwapRegistry.routeOf(address(0), asset).length, 0, "precondition: no route");
-        RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(payable(_createDividendToken(5_000, asset)));
-        assertEq(token.dividendToken(), asset, "configured anyway");
+        vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingDividendRoute.selector, asset));
+        _createDividendToken(5_000, asset);
     }
 
     ///////////////////////// activation and funding /////////////////////////

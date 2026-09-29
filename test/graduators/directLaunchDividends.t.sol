@@ -208,11 +208,39 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         );
     }
 
-    /// @dev A quote with no route is accepted at creation; a leg that has to leave it simply does not
-    ///      convert — the buffer stays whole — until an admin sets the quote's route.
-    function test_directAlloc_aQuoteWithoutARouteKeepsItsBufferUntilRouted() public {
+    /// @dev A quote the registry cannot walk back to native, with no route supplied, reverts the
+    ///      creation when a payout asset has to be bought out of it.
+    function test_directAlloc_aQuoteWithoutARouteRevertsCreation() public {
         setDividendRoute(dividendSwapRegistry, AAPL, "");
+        vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingQuoteRoute.selector, AAPL));
+        _launch(_aaplPair(), _cfg(MSFT));
+    }
+
+    /// @dev The creator's own quote route satisfies it, with no registry route for the quote.
+    function test_directAlloc_aCreatorQuoteRouteIsEnough() public {
+        setDividendRoute(dividendSwapRegistry, AAPL, "");
+        TaxConfigsWithDirectAllocation memory cfg = _cfg(MSFT);
+        cfg.quoteRoutes = new bytes[](1);
+        cfg.quoteRoutes[0] = _v4Route(AAPL);
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), cfg);
+        _buyAndSettle(address(token), 10_000e18);
+        token.processDividends(0, AAPL, 0, 0, _one(alice));
+        assertGt(IERC20(MSFT).balanceOf(alice), 0, "converts through the creator's quote route");
+    }
+
+    /// @dev A token paying in the quote itself needs no quote route: nothing leaves the quote. A V2 buy
+    ///      route (never walkable backwards) is the only route AAPL has here.
+    function test_directAlloc_payingInTheQuoteNeedsNoQuoteRoute() public {
+        setDividendRoute(dividendSwapRegistry, AAPL, DividendRouteLib.encodeV2());
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), _cfg(AAPL));
+        assertEq(token.dividendToken(), AAPL, "created");
+    }
+
+    /// @dev A quote route cleared AFTER creation: a leg that has to leave it simply does not convert —
+    ///      the buffer stays whole — until an admin sets the quote's route again.
+    function test_directAlloc_aQuoteWithoutARouteKeepsItsBufferUntilRouted() public {
         RealmTaxableTokenUniV4 token = _earningToken(MSFT);
+        setDividendRoute(dividendSwapRegistry, AAPL, "");
         uint256 buffered = _pending(token);
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
@@ -526,15 +554,12 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         assertLt(token.quoteDividendPending(MSFT)[0], daiBuffered, "out of the MSFT buffer");
     }
 
-    /// @dev Only a V4 route can be walked backwards: a quote routed through its V2 pair keeps the buffer
-    ///      whole rather than converting.
-    function test_quoteDividends_aQuoteWithANonV4RouteKeepsItsBuffer() public {
+    /// @dev Only a V4 route can be walked backwards: a quote whose only route is its V2 pair reverts the
+    ///      creation rather than buffering what it could never convert.
+    function test_quoteDividends_aQuoteWithANonV4RouteRevertsCreation() public {
         setDividendRoute(dividendSwapRegistry, AAPL, DividendRouteLib.encodeV2());
-        RealmTaxableTokenUniV4 token = _earningToken(MSFT);
-        uint256 buffered = _pending(token);
-        vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        token.processDividends(0, AAPL, 0, 0, new address[](0));
-        assertEq(_pending(token), buffered, "the buffer is whole");
+        vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingQuoteRoute.selector, AAPL));
+        _launch(_aaplPair(), _cfg(MSFT));
     }
 
     /////////////////////////// QUOTE-LEG GUARDS ///////////////////////////
