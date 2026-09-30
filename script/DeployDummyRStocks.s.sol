@@ -19,26 +19,26 @@ import {ChainConfig} from "script/ChainConfig.sol";
 import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
-/// @notice Stand-in for a Robinhood xStock: a plain 18-decimal ERC20, whole supply to the deployer.
-/// @dev The real xStocks are 18-decimal ERC20s with no hooks of their own, so a stock ERC20 is a
+/// @notice Stand-in for a Robinhood rStock: a plain 18-decimal ERC20, whole supply to the deployer.
+/// @dev The real rStocks are 18-decimal ERC20s with no hooks of their own, so a stock ERC20 is a
 ///      faithful replica. No faucet and no mint: whatever the pool does not take stays with the
 ///      deployer to hand out.
-contract DummyXStock is ERC20 {
+contract DummyRStock is ERC20 {
     constructor(string memory name_, string memory symbol_, address holder, uint256 supply) ERC20(name_, symbol_) {
         _mint(holder, supply);
     }
 }
 
-/// @notice Deploys a handful of dummy xStocks on a testnet, each with a Uniswap V4 pool against native
+/// @notice Deploys a handful of dummy rStocks on a testnet, each with a Uniswap V4 pool against native
 ///         ETH, so the dividend feature can be exercised where the real payout assets cannot be.
 ///
-/// @dev WHY THIS EXISTS. Third-asset dividends are built for Robinhood Chain's xStocks, and NEITHER
-///      testnet has a usable one. Sepolia has no xStocks at all. Robinhood testnet does — five official
+/// @dev WHY THIS EXISTS. Third-asset dividends are built for Robinhood Chain's rStocks, and NEITHER
+///      testnet has a usable one. Sepolia has no rStocks at all. Robinhood testnet does — five official
 ///      ones (TSLA, AMZN, PLTR, NFLX, AMD) from Robinhood's `StockFactory` — but they cannot be bought:
 ///      there is no V2 pair, nothing in the V4 pool manager, and the only real depth sits on a
 ///      third-party V3 DEX quoted in USDC and in a non-canonical WETH, so no native-ETH route to them
 ///      exists. A payout asset that cannot be swapped for is not a payout asset. This puts the ASSET
-///      SIDE of the setup on both chains instead: tokens that look like xStocks, in pools shaped like
+///      SIDE of the setup on both chains instead: tokens that look like rStocks, in pools shaped like
 ///      the real ones, routable by the same registry.
 ///
 /// @dev THE POOLS MIRROR THE LIVE ROBINHOOD ONES. Symbols, fee tier, tick spacing and the initial price
@@ -72,19 +72,19 @@ contract DummyXStock is ERC20 {
 ///                         0x4b8B412f…, 0xE456E445… and 0x3b80B1a4… — all six are abandoned, their pool
 ///                         NFTs still held by the deployer.)
 ///
-///      USDG (dummy stablecoin, 18 decimals unlike the real one's 6): see `just deploy-dummy-xstocks-rh-testnet`.
-///      GLD (dummy commodity ETF, 12 ETH pool): see `just deploy-dummy-xstocks-rh-testnet`.
+///      USDG (dummy stablecoin, 18 decimals unlike the real one's 6): see `just deploy-dummy-rstocks-rh-testnet`.
+///      GLD (dummy commodity ETF, 12 ETH pool): see `just deploy-dummy-rstocks-rh-testnet`.
 ///
-/// Usage (dry run):  forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev
-/// Usage (deploy):   just deploy-dummy-xstocks-rh-testnet
+/// Usage (dry run):  forge script DeployDummyRStocks --rpc-url rh-testnet --account realm.dev
+/// Usage (deploy):   just deploy-dummy-rstocks-rh-testnet
 ///
 /// Env:
 ///   ETH_PER_POOL   (optional) native seeded into each pool, in wei. Default 2 ETH.
-contract DeployDummyXStocks is Script {
+contract DeployDummyRStocks is Script {
     /// @notice One dummy stock: its identity, its pool's shape, and the price the pool opens at.
     /// @param tokensPerEth 18-decimal price as `currency1 per currency0` — how many of the stock one ETH
     ///        buys, which is exactly what a V4 `sqrtPriceX96` encodes for a `(native, token)` pool.
-    struct XStock {
+    struct RStock {
         string name;
         string symbol;
         uint256 tokensPerEth;
@@ -101,9 +101,9 @@ contract DeployDummyXStocks is Script {
     function run() external {
         require(ChainConfig.isRobinhoodTestnet(), "Robinhood testnet only");
         uint256 ethPerPool = vm.envOr("ETH_PER_POOL", DEFAULT_ETH_PER_POOL);
-        XStock[] memory stocks = _stocks();
+        RStock[] memory stocks = _stocks();
 
-        console.log("=== Deploy dummy xStocks (%s) ===", ChainConfig.name());
+        console.log("=== Deploy dummy rStocks (%s) ===", ChainConfig.name());
         console.log("Stocks:       %d", stocks.length);
         console.log("ETH per pool: %d wei", ethPerPool);
 
@@ -114,7 +114,7 @@ contract DeployDummyXStocks is Script {
         console.log("Deployer:     %s", deployer);
 
         for (uint256 i; i < stocks.length; ++i) {
-            address token = address(new DummyXStock(stocks[i].name, stocks[i].symbol, deployer, SUPPLY));
+            address token = address(new DummyRStock(stocks[i].name, stocks[i].symbol, deployer, SUPPLY));
 
             PoolKey memory pool = PoolKey({
                 currency0: Currency.wrap(address(0)), // native ETH sorts below every ERC20
@@ -136,13 +136,13 @@ contract DeployDummyXStocks is Script {
     }
 
     /// @notice The assets to deploy. Each run deploys EVERY entry, so the list holds only what is new.
-    /// @dev The six xStocks listed in the contract docs were deployed from an earlier version of this list
+    /// @dev The six rStocks listed in the contract docs were deployed from an earlier version of this list
     ///      (AAPL 7.621e18 / 50000 / 1000, TSLA 6.7662e18, AMZN 9.5949e18, GOOGL 7.3333e18 / 10000 / 200,
     ///      META 2.6435e18, NVDA 10.916e18), then USDG 2700e18 / 500 / 10. Fee/tick spacing must be one of the shapes
     ///      `discover_whitelist_assets.py` probes, or the pool can never be listed.
-    function _stocks() internal pure returns (XStock[] memory stocks) {
-        stocks = new XStock[](1);
-        stocks[0] = XStock("SPDR Gold Trust", "GLD", 6.85e18, 3000, 60); // rh-mainnet GLD rate, 0.3% like its USDG V3 pool
+    function _stocks() internal pure returns (RStock[] memory stocks) {
+        stocks = new RStock[](1);
+        stocks[0] = RStock("SPDR Gold Trust", "GLD", 6.85e18, 3000, 60); // rh-mainnet GLD rate, 0.3% like its USDG V3 pool
     }
 
     /// @dev `sqrt(price) * 2^96` with the price given as a WAD. `mulDiv` carries the 512-bit intermediate,
@@ -192,7 +192,7 @@ contract DeployDummyXStocks is Script {
 
     /// @notice Prints the one-hop native -> stock route, in the wire format
     ///         `RealmDividendSwapRegistry` takes.
-    function _reportRoute(address token, XStock memory stock) internal pure {
+    function _reportRoute(address token, RStock memory stock) internal pure {
         Hop[] memory hops = new Hop[](1);
         hops[0] = Hop({currency: token, fee: stock.fee, tickSpacing: stock.tickSpacing, hooks: address(0)});
         console.logBytes(DividendRouteLib.encodeV4(hops));

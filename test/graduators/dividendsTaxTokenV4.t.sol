@@ -37,7 +37,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         setDividendRoute(dividendSwapRegistry, MSFT, DividendRouteLib.encodeV2());
     }
 
-    /// @dev A second dividend asset, routed through its V2 pair. Robinhood xStock, so the WETH pair it
+    /// @dev A second dividend asset, routed through its V2 pair. Robinhood rStock, so the WETH pair it
     ///      needs actually exists on this chain.
     address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
 

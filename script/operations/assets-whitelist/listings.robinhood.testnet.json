@@ -116,7 +116,7 @@
   {
    "symbol": "USDG",
    "asset": "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
-   "xstock": false,
+   "rstock": false,
    "venue": "v4",
    "quote": "native",
    "depthNative": 20.1229,
@@ -126,7 +126,7 @@
   {
    "symbol": "GOOGL",
    "asset": "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
-   "xstock": false,
+   "rstock": false,
    "venue": "v4",
    "quote": "native",
    "depthNative": 23.7982,
@@ -136,7 +136,7 @@
   {
    "symbol": "TSLA",
    "asset": "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
-   "xstock": false,
+   "rstock": false,
    "venue": "v4",
    "quote": "native",
    "depthNative": 23.6226,
@@ -146,7 +146,7 @@
   {
    "symbol": "AAPL",
    "asset": "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
-   "xstock": false,
+   "rstock": false,
    "venue": "v4",
    "quote": "native",
    "depthNative": 26.7483,
@@ -156,7 +156,7 @@
   {
    "symbol": "GLD",
    "asset": "0xd208c24b164c1ba134f7fe7e3b96e0fd1cff1865",
-   "xstock": false,
+   "rstock": false,
    "venue": "v4",
    "quote": "native",
    "depthNative": 1.2,
@@ -166,7 +166,7 @@
   {
    "symbol": "NVDA",
    "asset": "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
-   "xstock": false,
+   "rstock": false,
    "venue": "v4",
    "quote": "native",
    "depthNative": 22.1301,
@@ -176,7 +176,7 @@
   {
    "symbol": "META",
    "asset": "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
-   "xstock": false,
+   "rstock": false,
    "venue": "v4",
    "quote": "native",
    "depthNative": 19.4686,
@@ -186,7 +186,7 @@
   {
    "symbol": "AMZN",
    "asset": "0xe0b058d16920bc542bbc83a3dcf5c7afca541464",
-   "xstock": false,
+   "rstock": false,
    "venue": "v4",
    "quote": "native",
    "depthNative": 24.2278,
@@ -196,7 +196,7 @@
   {
    "symbol": "pHOOD3x",
    "asset": "0x9120ff9c69b1a5b35ffff837ee17e90ef8950c18",
-   "xstock": false,
+   "rstock": false,
    "venue": "v4",
    "quote": "USDG",
    "depthNative": 1.8747,

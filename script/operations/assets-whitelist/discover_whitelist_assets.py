@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["requests", "eth-abi", "eth-utils", "eth-hash[pycryptodome]"]
 # ///
-"""Pick the Uniswap pool that prices USDG, each of Robinhood's own xStocks and each Arcus pToken, and
+"""Pick the Uniswap pool that prices USDG, each of Robinhood's own rStocks and each Arcus pToken, and
 write the file `WhitelistRobinhoodAssets` lists them from.
 
 The whitelist stores a SNAPSHOT of each asset's rate, read from one pool the approver names, so the
@@ -12,7 +12,7 @@ its other side is native/WETH or the chain's reference asset (itself listed agai
 the deepest wins.
 
 How it works:
-  1. The universe is policy: USDG (the reference) plus Robinhood's own ~195 xStocks, from its asset
+  1. The universe is policy: USDG (the reference) plus Robinhood's own ~195 rStocks, from its asset
      API -- the list behind docs.robinhood.com/chain/contracts. Every one with a pool is listed, however
      thin: liquidity is shown to creators as a low/ok/deep tier rather than gated here. Plus Arcus's
      leveraged pTokens (`ARCUS`), whose pool is fixed, so they skip steps 2-3 (see `ARCUS`).
@@ -79,8 +79,8 @@ CHAINS = {
         "pool_manager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
         "scan_logs": True,
     },
-    # The testnet has no Robinhood xStocks, so it is only ever run with `--assets`: the dummy dividend
-    # xStocks, each in its own native-quoted V4 pool, plus the dummies `DeployDummyUsdgPair` pairs with
+    # The testnet has no Robinhood rStocks, so it is only ever run with `--assets`: the dummy dividend
+    # rStocks, each in its own native-quoted V4 pool, plus the dummies `DeployDummyUsdgPair` pairs with
     # the dummy USDG only — hence that USDG as the reference.
     # Its RPC also caps `eth_getLogs` at 10k blocks, which is 12,000 queries per filter over a chain this
     # long, so pools are probed by key instead of discovered from logs.
@@ -113,7 +113,7 @@ BEFORE_SWAP_RETURNS_DELTA = 1 << 3
 Q96 = 1 << 96
 
 # Robinhood's public list of its own stock tokens, and where their addresses come from.
-XSTOCKS_API = "https://api.robinhood.com/rhj/assets"
+RSTOCKS_API = "https://api.robinhood.com/rhj/assets"
 HTTP_TIMEOUT = 180
 SESSION = requests.Session()
 SESSION.headers["user-agent"] = "realm-assets-whitelist"
@@ -126,7 +126,7 @@ OUT_JSON = Path(__file__).with_name("listings.robinhood.mainnet.json")
 # (the price parks between Arcus's bid and ask ranges), which is why nothing here gates on it. The
 # API below is Arcus's own list (entries named "Arcus …"): it decides which of these are still offered,
 # but carries no pool, so a pToken it adds has to be added here by hand. The table in
-# `dividend-routes/discover_xstock_routes.py` holds the ones enabled here.
+# `dividend-routes/discover_rstock_routes.py` holds the ones enabled here.
 ARCUS_API = "https://api.arcus.xyz/v1/api-meta/spot/overview"
 ARCUS_TICK_SPACING = 10
 _ARCUS_HOOK_A = "0xfa3da20ec661aa26f9f93e4421fab6989c4b4800"
@@ -154,12 +154,12 @@ def selector(signature: str) -> str:
     return "0x" + keccak(text=signature)[:4].hex()
 
 
-def xstocks() -> dict[str, str]:
+def rstocks() -> dict[str, str]:
     """Robinhood's own stock tokens on this chain, address to ticker, from its public asset list.
 
     With USDG, the only assets mainnet lists. Their identity needs no vouching: the address comes from
     Robinhood."""
-    data = SESSION.get(XSTOCKS_API, timeout=HTTP_TIMEOUT).json()
+    data = SESSION.get(RSTOCKS_API, timeout=HTTP_TIMEOUT).json()
     return {
         deployment["contractAddress"].lower(): asset["tokenSymbol"]
         for asset in data["assets"]
@@ -284,7 +284,7 @@ def scan_pools(assets: list[str]) -> list[dict]:
 
 
 # What a probed V4 pool can look like: the fee/tick-spacing pairs Uniswap's own interface offers, plus
-# the two shapes `DeployDummyXStocks` mirrors off Robinhood's live xStock pools. Probing only finds
+# the two shapes `DeployDummyRStocks` mirrors off Robinhood's live rStock pools. Probing only finds
 # hookless pools, which is all a chain without a log scan is expected to hold.
 PROBE_SHAPES = ((100, 1), (500, 10), (3000, 60), (10000, 200), (50000, 1000))
 
@@ -447,9 +447,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--chain", choices=sorted(CHAINS), default="mainnet")
     parser.add_argument("--assets", default="", help="comma-separated addresses to list INSTEAD of "
-                        "USDG + the xStocks. The only mode the testnet has; the caller vouches for them.")
+                        "USDG + the rStocks. The only mode the testnet has; the caller vouches for them.")
     parser.add_argument("--only", default="", help="comma-separated tickers or addresses out of the policy "
-                        "(USDG, the xStocks, the Arcus pTokens; `arcus` names all of those) to re-pick. Every "
+                        "(USDG, the rStocks, the Arcus pTokens; `arcus` names all of those) to re-pick. Every "
                         "other entry of the existing file is carried over unchanged, its flag included.")
     parser.add_argument("--enable", default="", help="comma-separated tickers or addresses already in the file "
                         "to switch ON. With --disable: flips the flags, writes the file, reads no chain.")
@@ -469,8 +469,8 @@ def main() -> int:
     if named:
         coins = _named_coins(named)
     else:
-        coins = [{"asset": a, "symbol": s, "xstock": True} for a, s in sorted(xstocks().items())]
-        print(f"{len(coins)} Robinhood xStocks, {len(fixed)} Arcus pTokens", file=sys.stderr)
+        coins = [{"asset": a, "symbol": s, "rstock": True} for a, s in sorted(rstocks().items())]
+        print(f"{len(coins)} Robinhood rStocks, {len(fixed)} Arcus pTokens", file=sys.stderr)
         coins += [{"asset": a, "symbol": f["symbol"]} for a, f in fixed.items()]
         if args.only:
             coins = _only(coins, args.only)
@@ -515,7 +515,7 @@ def main() -> int:
             if listing:
                 listings.append({**coin, **listing})
             else:
-                rejected.append({"symbol": coin["symbol"], "asset": coin["asset"], "xstock": False, "arcus": True,
+                rejected.append({"symbol": coin["symbol"], "asset": coin["asset"], "rstock": False, "arcus": True,
                                  "reason": "its Arcus pool is not initialized", "venue": "v4", "depthNative": 0.0})
             continue
         found = candidates(coin["asset"], by_token.get(coin["asset"], []), decimals, reference_rate)
@@ -550,7 +550,7 @@ def main() -> int:
     # This run's verdicts only: a subset run's carried-over rejections are in the file, not re-reported.
     _report(rejected, switched_off, [r for r in rows if not r["enabled"] and r["asset"] in {l["asset"] for l in listings}])
     enabled = {r["asset"] for r in rows if r["enabled"]}
-    _xstock_table(listings, rejected, enabled)
+    _rstock_table(listings, rejected, enabled)
     _arcus_table(listings, rejected, enabled)
     return 0
 
@@ -630,7 +630,7 @@ def _previous(path: Path) -> dict:
 
 def _report(rejected: list[dict], switched_off: list[dict], held_off: list[dict]) -> None:
     """What this run switched off, and what it found a pool for but left off because the file says so.
-    The xStocks' fate is `_xstock_table`; everything else that was rejected is one line of counts."""
+    The rStocks' fate is `_rstock_table`; everything else that was rejected is one line of counts."""
     if switched_off:
         print(f"\nSWITCHED OFF — enabled before, no longer qualifying ({len(switched_off)}):", file=sys.stderr)
         for r in switched_off:
@@ -638,7 +638,7 @@ def _report(rejected: list[dict], switched_off: list[dict], held_off: list[dict]
     if held_off:
         print(f"\n{len(held_off)} qualify but stay disabled (`--enable` to list): "
               f"{', '.join(r['symbol'] for r in held_off)}", file=sys.stderr)
-    rest = len([r for r in rejected if not r["xstock"]])
+    rest = len([r for r in rejected if not r["rstock"]])
     if rest:
         print(f"\n{rest} other coins rejected; see `rejected` in the output file.", file=sys.stderr)
 
@@ -651,14 +651,14 @@ def tier(depth: float) -> str:
     return next(name for floor, name in TIERS if depth >= floor)
 
 
-def _xstock_table(listings: list[dict], rejected: list[dict], enabled: set[str]) -> None:
-    """Every xStock, deepest pool first, IN or OUT of the list — a markdown table on stdout."""
+def _rstock_table(listings: list[dict], rejected: list[dict], enabled: set[str]) -> None:
+    """Every rStock, deepest pool first, IN or OUT of the list — a markdown table on stdout."""
     rows = [(l["symbol"], l["asset"], l["depth"], f'v{l["pool"]["v"]}', "IN" if l["asset"] in enabled else "OFF", tier(l["depth"]))
-            for l in listings if l.get("xstock")]
-    rows += [(r["symbol"], r["asset"], r["depthNative"], r["venue"] or "-", "OUT", r["reason"]) for r in rejected if r["xstock"]]
+            for l in listings if l.get("rstock")]
+    rows += [(r["symbol"], r["asset"], r["depthNative"], r["venue"] or "-", "OUT", r["reason"]) for r in rejected if r["rstock"]]
     if not rows:
         return
-    print(f"\n{sum(r[4] == 'IN' for r in rows)}/{len(rows)} xStocks listed\n")
+    print(f"\n{sum(r[4] == 'IN' for r in rows)}/{len(rows)} rStocks listed\n")
     print("| # | symbol | address | depth (native) | venue | status | liquidity / reason |\n|---|---|---|---:|---|---|---|")
     for i, (symbol, asset, depth, venue, status, reason) in enumerate(sorted(rows, key=lambda r: -r[2]), 1):
         print(f"| {i} | {symbol} | `{asset}` | {depth:,.2f} | {venue} | **{status}** | {reason} |")
@@ -712,7 +712,7 @@ def _rejection(coin: dict, found: list[dict], args) -> dict:
     return {
         "symbol": coin["symbol"],
         "asset": coin["asset"],
-        "xstock": coin.get("xstock", False),
+        "rstock": coin.get("rstock", False),
         "reason": reason,
         "venue": f'v{best["pool"]["v"]}' if best else None,
         "depthNative": round(best["depth"], 4) if best else 0.0,
@@ -741,7 +741,7 @@ def _readable(listing: dict, reference_rate: float, reference: str | None) -> di
     return {
         "symbol": listing["symbol"],
         "asset": listing["asset"],
-        "xstock": listing.get("xstock", False),
+        "rstock": listing.get("rstock", False),
         **({"arcus": True} if listing.get("arcus") else {}),
         "venue": f'v{listing["pool"]["v"]}',
         "quote": "native" if listing["quote"] == NATIVE else reference,
@@ -787,8 +787,8 @@ def render(rows: list[dict], reference_rate: float, rejected: list[dict], old: d
             "hooks": [s["hooks"] for s in sources],
             "readable": [r["readable"] for r in rows],
             # Everything considered and left out, with the number that decided it. Reviewing this is
-            # how the depth threshold gets retuned, and how an xStock missing from the list is explained.
-            "rejected": sorted(rejected, key=lambda r: (not r["xstock"], -(r["depthNative"] or 0))),
+            # how the depth threshold gets retuned, and how an rStock missing from the list is explained.
+            "rejected": sorted(rejected, key=lambda r: (not r["rstock"], -(r["depthNative"] or 0))),
         },
         indent=1,
     )

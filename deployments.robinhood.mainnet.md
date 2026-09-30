@@ -70,7 +70,6 @@
 | Team Treasury (2/3 leg)                      | `0x24CF0733F2b6F9407ab34E2BE9059C16A33cFE8D` |
 | Vote Buyback Wallet (1/3 leg)                | `0x636A44e110a79d2a799BFe2F79ABdF9D6C2CE0A6` |
 | Legacy Treasury (pre-router)                 | `0x7826AaE926AfD2886257976770e93e0240D2426e` |
-| Realm Token Deployer                         | _(not deployed)_                             |
 | Realm Keeper                                 | `0xE092CB5868e1Ca091Ea975069bf2Afc9CDD1732C` |
 
 ## Integrations

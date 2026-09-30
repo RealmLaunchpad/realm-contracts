@@ -35,7 +35,7 @@ abstract contract V4PoolSeeding is Test {
             address c = i == 0 ? c0 : c1;
             if (c == address(0)) continue;
             deal(c, seeder, 1e27);
-            // xStocks' `approve` returns nothing.
+            // rStocks' `approve` returns nothing.
             SafeERC20.forceApprove(IERC20(c), address(lp), type(uint256).max);
         }
         lp.modifyLiquidity{value: c0 == address(0) ? 1e30 : 0}(

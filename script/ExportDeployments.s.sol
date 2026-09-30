@@ -67,7 +67,6 @@ contract ExportDeployments is Script {
         address teamTreasury;
         address voteBuybackWallet;
         address legacyTreasury;
-        address realmTokenDeployer;
         address realmKeeper;
         // --- Integrations ---
         address weth;
@@ -138,7 +137,6 @@ contract ExportDeployments is Script {
         d.teamTreasury = DeploymentAddressesRobinhoodMainnet.TEAM_TREASURY;
         d.voteBuybackWallet = DeploymentAddressesRobinhoodMainnet.VOTE_BUYBACK_WALLET;
         d.legacyTreasury = DeploymentAddressesRobinhoodMainnet.LEGACY_TREASURY;
-        d.realmTokenDeployer = DeploymentsRobinhoodMainnet.REALM_TOKEN_DEPLOYER;
         d.realmKeeper = DeploymentsRobinhoodMainnet.REALM_KEEPER;
         d.weth = DeploymentAddressesRobinhoodMainnet.WETH;
         d.univ2Router = DeploymentAddressesRobinhoodMainnet.UNIV2_ROUTER;
@@ -193,7 +191,6 @@ contract ExportDeployments is Script {
         d.thickVaultCurves = DeploymentsRobinhoodTestnet.thickVaultCurves();
         d.realmDev = DeploymentsRobinhoodTestnet.REALM_DEV;
         d.realmTreasury = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
-        d.realmTokenDeployer = DeploymentsRobinhoodTestnet.REALM_TOKEN_DEPLOYER;
         d.realmKeeper = DeploymentsRobinhoodTestnet.REALM_KEEPER;
         d.weth = DeploymentAddressesRobinhoodTestnet.WETH;
         d.univ2Router = DeploymentAddressesRobinhoodTestnet.UNIV2_ROUTER;
@@ -277,7 +274,6 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("Team Treasury (2/3 leg)", d.teamTreasury));
         s = string.concat(s, _row("Vote Buyback Wallet (1/3 leg)", d.voteBuybackWallet));
         s = string.concat(s, _row("Legacy Treasury (pre-router)", d.legacyTreasury));
-        s = string.concat(s, _row("Realm Token Deployer", d.realmTokenDeployer));
         s = string.concat(s, _row("Realm Keeper", d.realmKeeper));
 
         s = string.concat(s, "\n## Integrations\n\n", _tableHeader("Name"));

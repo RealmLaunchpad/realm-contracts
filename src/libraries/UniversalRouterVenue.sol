@@ -133,7 +133,7 @@ library UniversalRouterVenue {
 
     /// @notice Buys the currency at the END of `path` by spending `nativeIn` of the chain's native coin,
     ///         delivering it to `address(this)`. One hop or many: `path` is v4's own `PathKey` chain, so
-    ///         `native -> USDG -> xSTOCK` is the same call shape as `native -> asset`.
+    ///         `native -> USDG -> rSTOCK` is the same call shape as `native -> asset`.
     /// @dev The one venue that reaches an asset with no native pool of its own. Uniswap V4 pools are
     ///      keyed by `(fee, tickSpacing, hooks)`, which cannot be discovered from the two currencies —
     ///      so unlike the V2 path, somebody has to SUPPLY the route. See `RealmDividendSwapRegistry`.

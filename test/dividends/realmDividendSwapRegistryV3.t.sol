@@ -59,7 +59,7 @@ contract RealmDividendSwapRegistryV3Tests is Test {
     address internal constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
     address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
 
-    /// @dev Robinhood xStocks, the chain's tokenized equities. Single-hop WETH V3 pools.
+    /// @dev Robinhood rStocks, the chain's tokenized equities. Single-hop WETH V3 pools.
     address internal constant AAPLon = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
     address internal constant HOODon = 0x322F0929c4625eD5bAd873c95208D54E1c003b2d;
     /// @dev Reachable only through USDG — its WETH V3 pool is empty at the pinned block, which is

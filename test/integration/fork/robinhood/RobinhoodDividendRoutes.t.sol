@@ -14,7 +14,7 @@ import {installDividendSwapRegistry, setDividendRoute} from "test/helpers/Divide
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
-/// @dev A block with today's xStock liquidity (the old suites' 58M predates most of it).
+/// @dev A block with today's rStock liquidity (the old suites' 58M predates most of it).
 uint256 constant ROUTES_BLOCK = 74_900_000;
 
 address constant SPCX = 0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa;
@@ -141,7 +141,7 @@ contract RobinhoodDividendRoutesTokenE2ETests is RobinhoodForkBase {
     function _spcxToken(bytes memory route) internal returns (RealmTaxableTokenUniV4 token) {
         bytes[] memory routes = new bytes[](1);
         routes[0] = route;
-        token = _graduatedXStockToken(_createXStockToken(_sole(SPCX), _w(10_000), routes));
+        token = _graduatedRStockToken(_createRStockToken(_sole(SPCX), _w(10_000), routes));
         token.accrueFees{value: 2 ether}();
         assertGt(token.pendingNative(), token.MAX_DIVIDEND_PER_CONVERSION(), "precondition: past the cap");
     }
@@ -193,7 +193,7 @@ contract RobinhoodDividendRoutesTokenE2ETests is RobinhoodForkBase {
     ///      asset: then it is accepted and converts through the override.
     function test_anUnroutedTokenNeedsTheAssetOverride() public {
         vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingDividendRoute.selector, SPCX));
-        _createXStockTokenUnrouted(_sole(SPCX), _w(10_000));
+        _createRStockTokenUnrouted(_sole(SPCX), _w(10_000));
 
         setDividendRoute(dividendSwapRegistry, SPCX, spcxV4Direct());
         RealmTaxableTokenUniV4 token = _spcxToken("");

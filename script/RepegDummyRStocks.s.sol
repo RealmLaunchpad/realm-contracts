@@ -21,7 +21,7 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 import {ChainConfig} from "script/ChainConfig.sol";
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 
-/// @notice Puts the Robinhood-testnet dummy xStock pools (see `DeployDummyXStocks`) back at their whitelisted
+/// @notice Puts the Robinhood-testnet dummy rStock pools (see `DeployDummyRStocks`) back at their whitelisted
 ///         price, then thickens them with a fresh full-range position.
 /// @dev The pools were seeded with 2 ETH each and trading pushed some of them far off (AMZN ~19x). Per pool:
 ///      1. swap with `sqrtPriceLimitX96` = the whitelist snapshot (`unitsPerNativeX18`), so the swap stops
@@ -31,15 +31,15 @@ import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 ///      The pool key is read from the whitelist's price source, so the listing and the pool cannot disagree.
 ///
 /// @dev The broadcaster must hold the dummy tokens (sold during the re-peg, paired in the mint); they were
-///      all minted to the `DeployDummyXStocks` deployer 0x81f7d06a88223f5a2850411e72256aacc9e27035.
+///      all minted to the `DeployDummyRStocks` deployer 0x81f7d06a88223f5a2850411e72256aacc9e27035.
 ///
-/// Usage (dry run):  forge script RepegDummyXStocks --rpc-url rh-testnet --account livo.dev
-/// Usage (execute):  just repeg-dummy-xstocks-rh-testnet
+/// Usage (dry run):  forge script RepegDummyRStocks --rpc-url rh-testnet --account livo.dev
+/// Usage (execute):  just repeg-dummy-rstocks-rh-testnet
 ///
 /// Env:
 ///   ETH_PER_POOL  (optional) native added to each pool, in wei. Default 20 ETH (120 ETH for the six pools). Also caps the ETH spent
 ///                 re-pegging a pool whose token is too cheap.
-contract RepegDummyXStocks is Script {
+contract RepegDummyRStocks is Script {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -116,7 +116,7 @@ contract RepegDummyXStocks is Script {
         );
     }
 
-    /// @dev Same full-range mint as `DeployDummyXStocks._seedLiquidity`: ETH is the binding side.
+    /// @dev Same full-range mint as `DeployDummyRStocks._seedLiquidity`: ETH is the binding side.
     function _addLiquidity(PoolKey memory key, uint160 sqrtPriceX96) internal returns (uint128 liquidity) {
         address token = Currency.unwrap(key.currency1);
         uint256 tokenBudget = IERC20(token).balanceOf(deployer);
@@ -156,7 +156,7 @@ contract RepegDummyXStocks is Script {
         return Math.mulDiv(uint256(sqrtPriceX96) * sqrtPriceX96, 1e18, 1 << 192);
     }
 
-    /// @dev See `DeployDummyXStocks._broadcaster`: with `--account`, `msg.sender` is not the sender.
+    /// @dev See `DeployDummyRStocks._broadcaster`: with `--account`, `msg.sender` is not the sender.
     function _broadcaster() internal returns (address broadcaster) {
         VmSafe.CallerMode mode;
         (mode, broadcaster,) = vm.readCallers();

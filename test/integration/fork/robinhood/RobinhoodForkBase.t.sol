@@ -12,17 +12,17 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Forks Robinhood Chain mainnet and deploys the Realm stack on it, for suites that need what
-///         only that chain has: Robinhood's own Uniswap V4 and its xStocks — the tokenized stocks Realm
+///         only that chain has: Robinhood's own Uniswap V4 and its rStocks — the tokenized stocks Realm
 ///         tokens pay dividends in. Needs `ROBINHOOD_RPC_URL`, and the token implementations retargeted
 ///         to Robinhood (`just chain-rh`, or `just test-rh-fork`): they bake the chain's
 ///         addresses in and refuse to construct on any other chain id.
-/// @dev Pinned to a block, like every fork suite: the xStock pools below were probed at exactly this
+/// @dev Pinned to a block, like every fork suite: the rStock pools below were probed at exactly this
 ///      block, and a token's route is permanent, so a moving fork would turn a pool drying up into a
 ///      failing test about nothing.
 abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
     uint256 internal constant ROBINHOOD_FORK_BLOCK = 58_000_000;
 
-    /// @dev xStocks, each with the hookless native-ETH V4 pool it converts through. Picked by buying
+    /// @dev rStocks, each with the hookless native-ETH V4 pool it converts through. Picked by buying
     ///      through every candidate in `routes.robinhood.mainnet.json` at `ROBINHOOD_FORK_BLOCK` and
     ///      keeping the one that delivered most — the `PickDividendRoutes` method.
     address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
@@ -64,7 +64,7 @@ abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
     }
 
     /// @dev The route a creation ships for `asset`; empty for native, which needs none.
-    function _xstockRoute(address asset) internal pure returns (bytes memory) {
+    function _rstockRoute(address asset) internal pure returns (bytes memory) {
         if (asset == AAPL) return _v4Route(AAPL, 8_000, 80, address(0));
         if (asset == TSLA) return _v4Route(TSLA, 50_000, 1_000, address(0));
         if (asset == MSFT) return _v4Route(MSFT, 10_000, 200, address(0));
@@ -75,29 +75,29 @@ abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
     //////////////////////// tokens //////////////////////
 
     /// @dev A taxable V4 token paying `DIVIDENDS_BPS` of its tax to holders in `assets`, each created
-    ///      with its `_xstockRoute`, as a creator would.
-    function _createXStockToken(address[] memory assets, uint16[] memory weights) internal returns (address token) {
+    ///      with its `_rstockRoute`, as a creator would.
+    function _createRStockToken(address[] memory assets, uint16[] memory weights) internal returns (address token) {
         bytes[] memory routes = new bytes[](assets.length);
         for (uint256 i; i < assets.length; ++i) {
-            routes[i] = _xstockRoute(assets[i]);
+            routes[i] = _rstockRoute(assets[i]);
         }
-        return _createXStockToken(assets, weights, routes);
+        return _createRStockToken(assets, weights, routes);
     }
 
     /// @dev Same, with no route for any asset.
-    function _createXStockTokenUnrouted(address[] memory assets, uint16[] memory weights)
+    function _createRStockTokenUnrouted(address[] memory assets, uint16[] memory weights)
         internal
         returns (address token)
     {
-        return _createXStockToken(assets, weights, new bytes[](0));
+        return _createRStockToken(assets, weights, new bytes[](0));
     }
 
-    function _createXStockToken(address[] memory assets, uint16[] memory weights, bytes[] memory routes)
+    function _createRStockToken(address[] memory assets, uint16[] memory weights, bytes[] memory routes)
         internal
         returns (address token)
     {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
-            name: "xStock Dividends",
+            name: "rStock Dividends",
             symbol: "XDIV",
             salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
@@ -125,14 +125,14 @@ abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
 
     /// @dev Direct-launched onto Robinhood's V4 and bought into, with `buyer` holding the float.
     ///      Launching (graduation at creation) activates every dividend leg.
-    function _graduatedXStockToken(address[] memory assets, uint16[] memory weights)
+    function _graduatedRStockToken(address[] memory assets, uint16[] memory weights)
         internal
         returns (RealmTaxableTokenUniV4 token)
     {
-        return _graduatedXStockToken(_createXStockToken(assets, weights));
+        return _graduatedRStockToken(_createRStockToken(assets, weights));
     }
 
-    function _graduatedXStockToken(address addr) internal returns (RealmTaxableTokenUniV4 token) {
+    function _graduatedRStockToken(address addr) internal returns (RealmTaxableTokenUniV4 token) {
         testToken = addr;
         _poolBuy(addr, 2 ether);
         _graduateToken();

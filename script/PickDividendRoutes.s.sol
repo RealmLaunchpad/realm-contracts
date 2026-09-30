@@ -10,7 +10,7 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Picks the Uniswap V2, V3 or V4 route that actually buys the most of each payout asset AT A
-///         FULL CONVERSION (`MAX_EARNINGS_PER_PROCESS`), out of the candidates `discover_xstock_routes.py`
+///         FULL CONVERSION (`MAX_EARNINGS_PER_PROCESS`), out of the candidates `discover_rstock_routes.py`
 ///         shortlisted, and writes them out in the `RealmDividendSwapRegistry` wire format. An asset no
 ///         candidate can buy at that size is left out.
 ///
@@ -20,7 +20,7 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 /// @dev Needs a registry built from this tree at `DIVIDEND_SWAP_REGISTRY`: an older one lacks the
 ///      per-token `setRoute`, and every probe would silently score 0.
 ///
-/// @dev THE PROBE PICKS THE ROUTE, the discovery script only shortlists. `discover_xstock_routes.py`
+/// @dev THE PROBE PICKS THE ROUTE, the discovery script only shortlists. `discover_rstock_routes.py`
 ///      cannot rank an ETH-quoted pool against a USDG-quoted one — `liquidity` is denominated in each
 ///      pool's own currencies — and cannot see that a fat 5% pool loses to a thin 0.05% one. So it hands
 ///      over CANDIDATES, and this script buys the asset through each of them against forked state and

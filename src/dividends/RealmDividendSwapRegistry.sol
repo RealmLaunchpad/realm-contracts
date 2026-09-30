@@ -58,7 +58,7 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
 
     /// @notice Longest V4 route accepted.
     /// @dev Bounds the loop the swap path walks. Two hops already covers the case this exists for
-    ///      (native -> USDG -> xStock); the headroom is for an intermediate that needs one more.
+    ///      (native -> USDG -> rStock); the headroom is for an intermediate that needs one more.
     uint256 public constant MAX_ROUTE_HOPS = 4;
 
     /// @notice Longest V3 route accepted, in hops.

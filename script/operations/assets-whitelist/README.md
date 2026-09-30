@@ -29,7 +29,7 @@ redeployed — reports success from inside itself and lists nothing. `verify()` 
 `discover_whitelist_assets.py` answers, for each asset mainnet may list, which pool should price it. It
 writes `listings.robinhood.mainnet.json`, which `WhitelistRobinhoodAssets` reads and broadcasts — the
 arrays it parses, plus `readable` and `rejected` sections that exist for whoever reviews the list and are
-never read on chain — and prints every xStock, deepest pool first, marked IN or OUT with its liquidity
+never read on chain — and prints every rStock, deepest pool first, marked IN or OUT with its liquidity
 tier, then the Arcus pTokens the same way.
 
 ## What mainnet lists
@@ -60,7 +60,7 @@ transaction.
 ## The testnet
 
 Robinhood testnet gets the same file and the same forge script, from a much shorter list: the three
-dummy xStocks `DeployDummyXStocks.s.sol` seeds native-quoted V4 pools for, which is all that chain has
+dummy rStocks `DeployDummyRStocks.s.sol` seeds native-quoted V4 pools for, which is all that chain has
 worth quoting a launch in. Their addresses are named in the `just` recipe, since nothing off chain
 ranks a testnet token — update them there if the dummies are ever redeployed.
 
