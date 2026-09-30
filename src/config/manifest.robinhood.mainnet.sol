@@ -43,7 +43,7 @@ library DeploymentsRobinhoodMainnet {
     address public constant FACTORY_UNIV4_DIRECT = 0x7c3777357da3f2FB8911ddA946afB1Fc74f0A613;
 
     /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
-    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x84083D67C0CC576726AB5270e01315d728476dC5;
+    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0xff0F11E1B4A338C301B116d20b62D7d8bC566892;
 
     /// @notice `RealmAssetsWhitelist` proxy (UUPS): the quote currencies the direct venue will launch
     ///         against, each with the native rate derived from its price pool. `FACTORY_UNIV4_DIRECT`
@@ -51,7 +51,7 @@ library DeploymentsRobinhoodMainnet {
     address public constant ASSETS_WHITELIST = 0x540d02FFD93D22d33Da196b426A465DCdE6BfAa2;
 
     /// @notice Implementation behind `ASSETS_WHITELIST`. Tracked for verification and audit trails only.
-    address public constant ASSETS_WHITELIST_IMPL = 0x0AE35e0474C289c45d135772c326f161Bfb20eaf;
+    address public constant ASSETS_WHITELIST_IMPL = 0xdf703921E857Eb724313Bf98E5e0b60160F0f22b;
 
     /// @notice `RealmDividendLogicUniV4`: the LIVE V4 token impl's dividend extension, reached only by
     ///         `delegatecall`. Removed from the source (folded into the token); kept as a deploy record.
@@ -66,7 +66,7 @@ library DeploymentsRobinhoodMainnet {
     address internal constant LP_FEE_ROUTER = 0x823ca5B8041217Df052D9e64AC6E7c16A62FA957;
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
-    address internal constant LP_FEE_ROUTER_IMPL = 0x93C33E33ECA0Dd2923D26B76D58Ea33BAFb296EE;
+    address internal constant LP_FEE_ROUTER_IMPL = 0xAc2444639cEc9b5ED31937982F34f62280F9B273;
     /// @notice `RealmTreasuryRouter` proxy (UUPS): the treasury address every push lands on once live —
     ///         `LAUNCHPAD.treasury()` and the `SwapLpFeeRouter` impl's `TREASURY` point here. Forwards 1/3
     ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryStack`, which also
@@ -86,19 +86,19 @@ library DeploymentsRobinhoodMainnet {
     /// @notice `RealmKeeperLens`: the stateless, view-only batch reader the dividend keeper drives its
     ///         per-token reads through. Consumed OFF chain only — no Realm contract references it — so it
     ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
-    address internal constant KEEPER_LENS = address(0);
+    address internal constant KEEPER_LENS = 0x0aD42818CeF3849e34eFBBb8918469Dfb65568a9;
 
     /// @notice Implementation behind the `RealmDividendSwapRegistry` proxy, which lives in
     ///         `DeploymentAddresses.sol` (`DIVIDEND_SWAP_REGISTRY`). Update on every registry upgrade;
     ///         tracked for verification and audit trails only.
-    address internal constant DIVIDEND_SWAP_REGISTRY_IMPL = address(0);
+    address internal constant DIVIDEND_SWAP_REGISTRY_IMPL = 0xD184B23515792d3723906630026EEaaE3295B5F0;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0x90c602831FeEec9537915793572323C6f4C8CbB9;
-    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x06D2df9F1524820b86ef6e064B2480CdB3FCB785;
+    address internal constant TOKEN_IMPL = 0x90Ec28b1F31E576Bb368F873fEf209cFa6880c05;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0xf15562e731c05Fb9DD9c7BE0a2FD8C03b778c261;
 
     /// @notice V2 taxable token implementation (cloned by `RealmFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xB9aB764680D74aC220DB8D6740ec56a26f24e575;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xC5006Ba2E152DA37E8Ad44927775B4e5B0447f5f;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -107,7 +107,7 @@ library DeploymentsRobinhoodMainnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x73BA11122a5B92d14dfdF71606f76A440c95337C;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xa3e87b0236B9Fa1cbd10c6d9fDE8b72b627CfE4a;
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.
@@ -190,9 +190,7 @@ library DeploymentsRobinhoodMainnet {
     /// @notice The `realm.dev` deployer keystore: the broadcaster of every deploy script and the initial
     ///         owner of everything they deploy.
     /// @dev Rotated from the now-deprecated `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb`, which is what the
-    ///      `deprecated.realm.dev` keystore holds. That old key still owns the contracts deployed before the
-    ///      rotation — `REALM_KEEPERS_REGISTRY` and `DIVIDEND_SWAP_REGISTRY` in `DeploymentAddresses.sol` —
-    ///      so their `setAdmin` / `transferOwnership` must still be signed with it.
+    ///      `deprecated.realm.dev` keystore holds. Everything deployed on this chain is owned by the new key.
     address internal constant REALM_DEV = 0x81f7D06a88223f5a2850411E72256AacC9E27035;
     address internal constant REALM_TOKEN_DEPLOYER = address(0);
     /// @notice The keeper lambda's EOA. `address(0)` until configured here.
