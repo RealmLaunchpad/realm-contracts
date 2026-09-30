@@ -422,13 +422,13 @@ pick-dividend-routes:
 # switches off what stopped qualifying. The file is a registry: entries are never dropped, only flagged
 # `enabled` or not (flip one by hand with the script's --enable / --disable). Review the git diff of that
 # file: it is what the script below broadcasts.
-discover-whitelist-assets:
+discover-whitelist-assets-rh:
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py
 
 # Lists the file's ENABLED entries in RealmAssetsWhitelist as direct-venue quotes, and retires the
 # disabled ones the chain still prices (a disabled entry it does not price costs no transaction). The
 # proxy comes from the chain's manifest (ASSETS_WHITELIST) and the signer must already be an approver on
-# it. Re-run `discover-whitelist-assets` first: the rates are snapshots. The script simulates every entry
+# it. Re-run `discover-whitelist-assets-rh` first: the rates are snapshots. The script simulates every entry
 # before broadcasting anything and skips the ones a pool no longer supports. The second invocation reads
 # the result back off the live chain: a broadcast that never reached it (wrong RPC, stale proxy) fails
 # here instead of looking like a success.

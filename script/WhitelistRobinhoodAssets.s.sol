@@ -24,7 +24,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         prices it, skipped if it does not. So one file serves a fresh whitelist (list everything
 ///         enabled, send nothing for the rest) and a live one (refresh, and retire what was switched off).
 ///
-/// @dev RE-GENERATE THE FILE FIRST (`just discover-whitelist-assets`). A listing's rate is a snapshot
+/// @dev RE-GENERATE THE FILE FIRST (`just discover-whitelist-assets-rh`). A listing's rate is a snapshot
 ///      taken now, from the pool named in the file, and both the pool choice and the price in it age.
 ///
 /// @dev The FIRST entry is the reference asset (USDG), listed against native, because every entry

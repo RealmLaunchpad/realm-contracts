@@ -6,7 +6,7 @@ the asset, and the contract reads the rate out of it. This directory is where th
 from.
 
 ```
-just discover-whitelist-assets    # re-pick every pool from live state
+just discover-whitelist-assets-rh # re-pick every pool from live state
 just whitelist-assets-rh          # list them, then read them back off the chain
 
 # re-pick a subset only, leaving every other entry of the file as it is
@@ -93,7 +93,7 @@ cannot read since. So the same two commands are the maintenance
 loop, run as often as the list is worth trusting:
 
 ```
-just discover-whitelist-assets    # re-pick from live state
+just discover-whitelist-assets-rh # re-pick from live state
 git diff script/operations/assets-whitelist/listings.robinhood.mainnet.json   # review
 just whitelist-assets-rh          # apply
 ```
