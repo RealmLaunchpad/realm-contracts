@@ -45,10 +45,12 @@ jobs:
 
       # The token impls bake one chain's addresses; the unit suites fork Robinhood mainnet, so pin the
       # build to it (the committed tree may be retargeted at another chain).
+      # No `--sizes`: it fails on EIP-170's 24 KB regardless of `code_size_limit`, and the taxable tokens
+      # exceed it by design (Robinhood allows 96 KB). The tests deploy them under the 96 KB limit.
       - name: Forge build
         run: |
           just chain-rh
-          forge build --sizes
+          forge build
         id: build
 
       - name: Deployment manifest drift check
