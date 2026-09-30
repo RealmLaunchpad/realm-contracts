@@ -327,6 +327,14 @@ deploy-dummy-xstocks-rh-testnet: chain-rh-testnet
     forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Deploys ONE dummy token whose only pool is a V4 one against the dummy USDG (no native pair), and prints
+# its two-hop dividend route native -> USDG -> token. Env: TOKEN_NAME, TOKEN_SYMBOL, TOKENS_PER_USDG,
+# USDG_PER_POOL (default 5000e18). The account must hold the dummy USDG. Dry run:
+#   forge script DeployDummyUsdgPair --rpc-url rh-testnet --account realm.dev
+deploy-dummy-usdg-pair-rh-testnet: chain-rh-testnet
+    forge script DeployDummyUsdgPair --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
 # Re-pegs the six rh-testnet dummy xStock pools to their whitelisted price and adds ETH_PER_POOL (default
 # 20 ETH, 120 total) of full-range liquidity to each. The account must hold the dummy tokens. Dry run:
 #   forge script RepegDummyXStocks --rpc-url rh-testnet --account livo.dev
@@ -435,20 +443,21 @@ whitelist-assets-rh:
 # price sanity check does not apply. The pools are probed by key rather than scanned: that RPC caps
 # eth_getLogs at 10k blocks.
 #
-# The addresses are the LAST `deploy-dummy-xstocks-rh-testnet` broadcast PLUS every asset the current
-# listings file still lists, so a run that deploys one new asset keeps the older ones. To retire an asset,
-# mark it NONE in the listings file by hand.
+# The addresses are the LAST `deploy-dummy-xstocks-rh-testnet` and `deploy-dummy-usdg-pair-rh-testnet`
+# broadcasts PLUS every asset the current listings file still lists, so a run that deploys one new asset
+# keeps the older ones. A USDG-only dummy is listed against the dummy USDG, the testnet's reference asset.
+# To retire an asset, switch it off: discover_whitelist_assets.py --chain testnet --disable <ticker>.
 discover-whitelist-assets-rh-testnet:
     #!/usr/bin/env bash
     set -euo pipefail
-    RUN=broadcast/DeployDummyXStocks.s.sol/46630/run-latest.json
+    RUNS=$(ls broadcast/DeployDummyXStocks.s.sol/46630/run-latest.json broadcast/DeployDummyUsdgPair.s.sol/46630/run-latest.json 2>/dev/null || true)
     LISTINGS=script/operations/assets-whitelist/listings.robinhood.testnet.json
-    ASSETS=$(jq -rn --slurpfile run "$RUN" --slurpfile l "$LISTINGS" \
-        '[($run[0].transactions[] | select(.contractName=="DummyXStock" and .transactionType=="CREATE") | .contractAddress),
+    ASSETS=$(jq -rn --slurpfile l "$LISTINGS" \
+        '[(inputs | .transactions[] | select(.contractName=="DummyXStock" and .transactionType=="CREATE") | .contractAddress),
           ($l[0] | [.assets, .venues] | transpose[] | select(.[1] != 0) | .[0])]
-         | map(ascii_downcase) | unique | join(",")')
-    [ -n "$ASSETS" ] || { echo "no DummyXStock deploys in $RUN"; exit 1; }
-    echo "assets from $RUN: $ASSETS"
+         | map(ascii_downcase) | unique | join(",")' $RUNS)
+    [ -n "$ASSETS" ] || { echo "no DummyXStock deploys in the broadcast logs"; exit 1; }
+    echo "assets: $ASSETS"
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py --chain testnet --min-depth 0.05 \
         --assets "$ASSETS"
 
