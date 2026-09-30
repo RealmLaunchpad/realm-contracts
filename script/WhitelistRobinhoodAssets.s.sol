@@ -19,9 +19,10 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         exercised against. The file is chosen by chain id, and names its own chain so a mismatched
 ///         one cannot be broadcast.
 ///
-/// @notice The file also DELISTS. An entry whose venue is `NONE` is an asset an earlier run listed and
-///         this one dropped — a drained pool, a price that walked away — and the broadcast retires it.
-///         Curation in both directions is what keeps the list from only ever growing.
+/// @notice The file is a REGISTRY with an `enabled` flag per entry, and it also DELISTS. An enabled entry
+///         is listed; a disabled one keeps its pool in the file and is retired here if the chain still
+///         prices it, skipped if it does not. So one file serves a fresh whitelist (list everything
+///         enabled, send nothing for the rest) and a live one (refresh, and retire what was switched off).
 ///
 /// @dev RE-GENERATE THE FILE FIRST (`just discover-whitelist-assets`). A listing's rate is a snapshot
 ///      taken now, from the pool named in the file, and both the pool choice and the price in it age.
@@ -84,15 +85,19 @@ contract WhitelistRobinhoodAssets is Script {
         (string[] memory symbols, address[] memory assets, RealmAssetsWhitelist.PriceSource[] memory sources) =
             _listings();
         uint256 asExpected;
+        // Only a priced listing proves the broadcast landed: a disabled entry is "as the file says" on a
+        // chain nothing ever reached.
+        uint256 listed;
         for (uint256 i; i < assets.length; ++i) {
             bool priced = whitelist.unitsPerNativeX18(assets[i]) != 0;
+            if (priced && !_isDelisting(sources[i])) ++listed;
             if (priced != _isDelisting(sources[i])) ++asExpected;
             else if (priced) console.log("  STILL LISTED %s (%s)", symbols[i], assets[i]);
             else console.log("  MISSING %s (%s)", symbols[i], assets[i]);
         }
 
         console.log("=== As the file says: %d of %d entries ===", asExpected, assets.length);
-        require(asExpected != 0, "no entry is live on chain: the broadcast never reached it");
+        require(listed != 0, "no entry is live on chain: the broadcast never reached it");
     }
 
     function _isDelisting(RealmAssetsWhitelist.PriceSource memory source) internal pure returns (bool) {
@@ -114,6 +119,8 @@ contract WhitelistRobinhoodAssets is Script {
 
         vm.startPrank(approver);
         for (uint256 i; i < assets.length; ++i) {
+            // Nothing to retire: a disabled entry the chain does not price costs no transaction.
+            if (_isDelisting(sources[i]) && whitelist.unitsPerNativeX18(assets[i]) == 0) continue;
             try whitelist.setWhitelisted(assets[i], sources[i]) {
                 // A delisting succeeds by leaving the asset unpriced, a listing by pricing it.
                 live[i] = (whitelist.unitsPerNativeX18(assets[i]) != 0) != _isDelisting(sources[i]);
@@ -145,6 +152,7 @@ contract WhitelistRobinhoodAssets is Script {
 
         assets = vm.parseJsonAddressArray(json, ".assets");
         symbols = vm.parseJsonStringArray(json, ".symbols");
+        bool[] memory enabled = vm.parseJsonBoolArray(json, ".enabled");
         uint256[] memory venues = vm.parseJsonUintArray(json, ".venues");
         address[] memory pools = vm.parseJsonAddressArray(json, ".pools");
         address[] memory currency0 = vm.parseJsonAddressArray(json, ".currency0");
@@ -155,6 +163,8 @@ contract WhitelistRobinhoodAssets is Script {
 
         sources = new RealmAssetsWhitelist.PriceSource[](assets.length);
         for (uint256 i; i < assets.length; ++i) {
+            // Disabled: left as the zero source, `Venue.NONE`, which is how `setWhitelisted` retires.
+            if (!enabled[i]) continue;
             sources[i] = RealmAssetsWhitelist.PriceSource({
                 venue: RealmAssetsWhitelist.Venue(venues[i]),
                 pool: pools[i],

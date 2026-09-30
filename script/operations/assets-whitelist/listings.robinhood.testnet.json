@@ -1,28 +1,42 @@
 {
  "chainId": 46630,
- "reference": null,
- "referencePerNative": null,
+ "reference": "USDG",
+ "referencePerNative": 2667.109846,
  "assets": [
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
   "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
   "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
   "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
   "0xd208c24b164c1ba134f7fe7e3b96e0fd1cff1865",
-  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
   "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
   "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
-  "0xe0b058d16920bc542bbc83a3dcf5c7afca541464"
+  "0xe0b058d16920bc542bbc83a3dcf5c7afca541464",
+  "0x9120ff9c69b1a5b35ffff837ee17e90ef8950c18"
  ],
  "symbols": [
+  "USDG",
   "GOOGL",
   "TSLA",
   "AAPL",
   "GLD",
-  "USDG",
   "NVDA",
   "META",
-  "AMZN"
+  "AMZN",
+  "pHOOD3x"
+ ],
+ "enabled": [
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true
  ],
  "venues": [
+  3,
   3,
   3,
   3,
@@ -40,6 +54,7 @@
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000"
  ],
  "currency0": [
@@ -50,39 +65,44 @@
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
-  "0x0000000000000000000000000000000000000000"
+  "0x0000000000000000000000000000000000000000",
+  "0x9120ff9c69b1a5b35ffff837ee17e90ef8950c18"
  ],
  "currency1": [
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
   "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
   "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
   "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
   "0xd208c24b164c1ba134f7fe7e3b96e0fd1cff1865",
-  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
   "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
   "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
-  "0xe0b058d16920bc542bbc83a3dcf5c7afca541464"
+  "0xe0b058d16920bc542bbc83a3dcf5c7afca541464",
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24"
  ],
  "fees": [
+  500,
   10000,
   50000,
   50000,
   3000,
-  500,
   50000,
   50000,
-  50000
+  50000,
+  3000
  ],
  "tickSpacings": [
+  10,
   200,
   1000,
   1000,
   60,
-  10,
   1000,
   1000,
-  1000
+  1000,
+  60
  ],
  "hooks": [
+  "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
@@ -94,14 +114,24 @@
  ],
  "readable": [
   {
+   "symbol": "USDG",
+   "asset": "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
+   "xstock": false,
+   "venue": "v4",
+   "quote": "native",
+   "depthNative": 20.1229,
+   "priceUsd": 1.0,
+   "perNative": 2667.10984581
+  },
+  {
    "symbol": "GOOGL",
    "asset": "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 23.2041,
-   "priceUsd": null,
-   "perNative": 6.59195716
+   "depthNative": 23.7982,
+   "priceUsd": 425.58465726,
+   "perNative": 6.26693139
   },
   {
    "symbol": "TSLA",
@@ -109,9 +139,9 @@
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 23.5091,
-   "priceUsd": null,
-   "perNative": 5.92538273
+   "depthNative": 23.6226,
+   "priceUsd": 454.47153682,
+   "perNative": 5.86859601
   },
   {
    "symbol": "AAPL",
@@ -119,9 +149,9 @@
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 26.3999,
-   "priceUsd": null,
-   "perNative": 5.29242046
+   "depthNative": 26.7483,
+   "priceUsd": 517.34014931,
+   "perNative": 5.15542791
   },
   {
    "symbol": "GLD",
@@ -130,18 +160,8 @@
    "venue": "v4",
    "quote": "native",
    "depthNative": 1.2,
-   "priceUsd": null,
+   "priceUsd": 389.35910158,
    "perNative": 6.85
-  },
-  {
-   "symbol": "USDG",
-   "asset": "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
-   "xstock": false,
-   "venue": "v4",
-   "quote": "native",
-   "depthNative": 20.1229,
-   "priceUsd": null,
-   "perNative": 2667.10984581
   },
   {
    "symbol": "NVDA",
@@ -149,9 +169,9 @@
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 22.1276,
-   "priceUsd": null,
-   "perNative": 10.79047881
+   "depthNative": 22.1301,
+   "priceUsd": 247.22781953,
+   "perNative": 10.78806524
   },
   {
    "symbol": "META",
@@ -159,9 +179,9 @@
    "xstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 19.4436,
-   "priceUsd": null,
-   "perNative": 3.38432936
+   "depthNative": 19.4686,
+   "priceUsd": 790.11017109,
+   "perNative": 3.37561766
   },
   {
    "symbol": "AMZN",
@@ -170,8 +190,18 @@
    "venue": "v4",
    "quote": "native",
    "depthNative": 24.2278,
-   "priceUsd": null,
+   "priceUsd": 337.11788912,
    "perNative": 7.91150494
+  },
+  {
+   "symbol": "pHOOD3x",
+   "asset": "0x9120ff9c69b1a5b35ffff837ee17e90ef8950c18",
+   "xstock": false,
+   "venue": "v4",
+   "quote": "USDG",
+   "depthNative": 1.8747,
+   "priceUsd": 1.0,
+   "perNative": 2667.10984581
   }
  ],
  "rejected": []

@@ -70,23 +70,21 @@ NATIVE = "0x" + "00" * 20
 USDG_HOP = {"currency": USDG, "fee": 0x800000, "tickSpacing": 10, "hooks": "0x06a889870c8f83640d6816319f72e2aa579b6080"}
 
 # Arcus's leveraged pTokens: address -> (ticker, hook, lpFee), each in one USDG pool at tick spacing 10.
-# Twin of the table in `assets-whitelist/discover_whitelist_assets.py`, which also cross-checks it
-# against Arcus's API (api.arcus.xyz/v1/api-meta/spot/overview); keep the two in step.
+# These are the rows enabled by default in `assets-whitelist/discover_whitelist_assets.py`, whose table
+# holds all 11 (flagged) and cross-checks them against Arcus's API
+# (api.arcus.xyz/v1/api-meta/spot/overview); keep the two in step.
 ARCUS_TICK_SPACING = 10
 _ARCUS_HOOK_A = "0xfa3da20ec661aa26f9f93e4421fab6989c4b4800"
 _ARCUS_HOOK_B = "0xf28a89af20fabdb89af9d033bb0a98d17212c880"
+# Only the DEEP ones are listed (a 1 ETH buy through native -> USDG -> pToken moves the price < 2%).
+# Left out, measured 2026-09-30: pBTC, sBTC, sBTC3x (5-9% at 1 ETH, ~70% at 3 ETH) and sSPCX3x, sGME5x,
+# sGLD5x (about one token for sale: any buy over ~$100 reverts). Re-measure before adding one back.
 ARCUS = {
     "0xe24cabdf76dd1c2576049167eb1755c84b985c36": ("pHOOD3x", _ARCUS_HOOK_A, 8500),
     "0x8b9d2eb675e33e541cb7de25a55724d2e70e8dab": ("pSPCX3x", _ARCUS_HOOK_B, 4250),
-    "0x17271bd2a1eaa350a002d25236bcc4dc07ceb6a9": ("sSPCX3x", _ARCUS_HOOK_B, 4250),
     "0x4472c69d299382f8847ebce4fc6ed8e295510e3e": ("pBTC3x", _ARCUS_HOOK_A, 8500),
-    "0x1a596466cb593bee293be8366d9ce493582189c2": ("sGME5x", _ARCUS_HOOK_B, 4250),
     "0x5c3b9a9b021e86b54202abcb4580f1f5c271875b": ("pGME5x", _ARCUS_HOOK_B, 4250),
-    "0xb2cb7371bc45a460f856712a3088c23acd385df8": ("sGLD5x", _ARCUS_HOOK_B, 4250),
     "0x37a2afaa98648f2e13658623885f821ac8365609": ("pGLD5x", _ARCUS_HOOK_B, 4250),
-    "0x925f92f055edb79c42b5d45e64a1b74143b90ea0": ("pBTC", _ARCUS_HOOK_A, 8500),
-    "0xadcceee8e422050f890522fa798f8a93a4857083": ("sBTC3x", _ARCUS_HOOK_A, 8500),
-    "0xc25c966168a8e933b0aba0dc8a25cac4a2b2b91d": ("sBTC", _ARCUS_HOOK_A, 8500),
 }
 
 # keccak("Initialize(bytes32,address,address,uint24,int24,address,uint160,int24)").

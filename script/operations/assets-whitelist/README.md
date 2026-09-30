@@ -12,6 +12,9 @@ just whitelist-assets-rh          # list them, then read them back off the chain
 # re-pick a subset only, leaving every other entry of the file as it is
 uv run script/operations/assets-whitelist/discover_whitelist_assets.py --only arcus   # or NVDA,pBTC3x,0x…
 
+# switch entries of the file on or off, by ticker or address (reads no chain)
+uv run script/operations/assets-whitelist/discover_whitelist_assets.py --disable pBTC3x --enable CBBTC
+
 just discover-whitelist-assets-rh-testnet         # and the same two steps for 46630
 just whitelist-assets-rh-testnet
 ```
@@ -37,17 +40,16 @@ Only three kinds of asset, by policy:
 - **Robinhood's own stock tokens** (~195), from its asset API (`api.robinhood.com/rhj/assets`, the list
   behind docs.robinhood.com/chain/contracts) — every one with a price pool the contract can read,
   however thin.
-- **Arcus's leveraged pTokens** (11: pBTC, pBTC3x, sBTC, sBTC3x, pHOOD3x, pSPCX3x, sSPCX3x, pGME5x,
-  sGME5x, pGLD5x, sGLD5x), each priced against USDG in the one Uniswap V4 pool it trades in, behind an
-  Arcus hook. That pool is fixed, so they skip discovery and ranking: the pools live in `ARCUS` in the
+- **Arcus's leveraged pTokens** (the 5 deep ones: pHOOD3x, pSPCX3x, pGME5x, pGLD5x, pBTC3x), each
+  priced against USDG in the one Uniswap V4 pool it trades in, behind an Arcus hook. That pool is fixed, so they skip discovery and ranking: the pools live in `ARCUS` in the
   script, and Arcus's API (`api.arcus.xyz/v1/api-meta/spot/overview`, entries named "Arcus …") only
   decides which of them are still offered — the built-in list stands in when it cannot be read, and a
   pToken it adds has to be added to `ARCUS` by hand. They are listed even when their pool reads **no
   in-range liquidity** (tier "n/a"): Arcus parks the price between its bid and ask ranges, so swaps
   still fill. Some of them cannot absorb a $1k buy; the frontend shows the depth, the list does not gate.
 
-Nothing else, however large its market cap; anything listed earlier outside that set is delisted on the
-next full run. Their address comes from Robinhood or Arcus, so identity needs no vouching.
+Nothing else is ENABLED by a run, however large its market cap; anything a run does not find a pool for
+is switched off on the next full run, and stays in the file. Their address comes from Robinhood or Arcus, so identity needs no vouching.
 
 Thin pools are listed on purpose. Liquidity is not gated here but shown to creators, as a tier of the
 pool's quote-side depth in native: **low** under 10, **ok** from 10 to 50, **deep** above 50 (`TIERS` in
@@ -98,19 +100,24 @@ just whitelist-assets-rh          # apply
 
 Re-running does three things at once. It **refreshes** every rate, because listing an asset again
 overwrites it. It **re-picks** every pool, so a coin whose liquidity has moved gets a different one. And
-it **delists**: an asset the previous file listed that no longer qualifies, and that the live whitelist
-still prices, comes back as a `Venue.NONE` entry, which is how `setWhitelisted` retires an asset. Without
-that last step the whitelist would only ever grow.
+it **switches off** what no longer qualifies. Without that last step the whitelist would only ever grow.
 
-The script prints what it is retiring and the IN/OUT table of every xStock and Arcus pToken; the git
-diff of the file is the rest of the review. The delisting candidates come from the file being overwritten, so an asset an
-approver listed **by hand** — never in a generated file — is invisible to this and has to be retired by
-hand too.
+The file is a **registry**: every asset any run ever found a pool for stays in it, with its pool and an
+`enabled` flag. `WhitelistRobinhoodAssets` lists the enabled entries, retires (`Venue.NONE`) the
+disabled ones the chain still prices, and sends nothing for a disabled one it does not. So the same file
+fills a freshly deployed whitelist and curates a live one. It holds three kinds of disabled entry today:
+the non-stock coins listed before the policy narrowed, the six shallow Arcus pTokens, and whatever a
+full run found no pool for.
 
-Only a **full** run delists. A subset run (`--only`, or `--assets`) re-picks the assets it names and
-copies every other entry of the existing file verbatim — pending `NONE` entries included — and emits no
-new `NONE` entry: it cannot tell "fell out of the policy" from "was not asked about". A named asset that
-no longer qualifies keeps its previous entry, with a warning. Use it to add or refresh a few assets
+A flag in the file outlives every run. A run never switches an entry back on — that takes `--enable` —
+so a choice made by hand is not undone by the next refresh; the run prints the entries that qualify but
+stay off. A disabled entry's pool is as old as the run that last picked it: re-pick it (`--only`) when
+enabling it. An asset an approver listed **by hand**, never in the file, is invisible to all of this.
+
+Only a **full** run switches entries off. A subset run (`--only`, or `--assets`) re-picks the assets it
+names and copies every other entry of the existing file verbatim, flag included: it cannot tell "fell
+out of the policy" from "was not asked about". A named asset that no longer qualifies keeps its previous
+entry, with a warning. Use it to add or refresh a few assets
 without re-picking the other 390.
 
 The stored rate is a **snapshot**, read when `WhitelistRobinhoodAssets` runs, out of a pool picked when

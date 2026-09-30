@@ -411,17 +411,19 @@ pick-dividend-routes:
 # the fixed USDG pool of each Arcus pToken (the only assets mainnet lists), into
 # script/operations/assets-whitelist/listings.robinhood.mainnet.json, and print every one IN or OUT.
 # This is the maintenance loop, not a one-off: re-running refreshes every rate, re-picks every pool, and
-# delists what stopped qualifying but is still live on chain. Review the git diff of that file: it is
-# what the script below broadcasts.
+# switches off what stopped qualifying. The file is a registry: entries are never dropped, only flagged
+# `enabled` or not (flip one by hand with the script's --enable / --disable). Review the git diff of that
+# file: it is what the script below broadcasts.
 discover-whitelist-assets:
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py
 
-# Lists those coins in RealmAssetsWhitelist as direct-venue quotes, and retires the entries the file
-# marks NONE. The proxy comes from the chain's manifest (ASSETS_WHITELIST) and the signer must already be
-# an approver on it. Re-run `discover-whitelist-assets` first: the rates are snapshots. The script
-# simulates every entry before broadcasting anything and skips the ones a pool no longer supports. The
-# second invocation reads the result back off the live chain: a broadcast that never reached it (wrong
-# RPC, stale proxy) fails here instead of looking like a success.
+# Lists the file's ENABLED entries in RealmAssetsWhitelist as direct-venue quotes, and retires the
+# disabled ones the chain still prices (a disabled entry it does not price costs no transaction). The
+# proxy comes from the chain's manifest (ASSETS_WHITELIST) and the signer must already be an approver on
+# it. Re-run `discover-whitelist-assets` first: the rates are snapshots. The script simulates every entry
+# before broadcasting anything and skips the ones a pool no longer supports. The second invocation reads
+# the result back off the live chain: a broadcast that never reached it (wrong RPC, stale proxy) fails
+# here instead of looking like a success.
 whitelist-assets-rh:
     just chain-rh
     forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
