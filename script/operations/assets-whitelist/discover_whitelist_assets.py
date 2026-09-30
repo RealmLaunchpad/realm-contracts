@@ -15,7 +15,8 @@ How it works:
   1. The universe is policy: USDG (the reference) plus Robinhood's own ~195 rStocks, from its asset
      API -- the list behind docs.robinhood.com/chain/contracts. Every one with a pool is listed, however
      thin: liquidity is shown to creators as a low/ok/deep tier rather than gated here. Plus Arcus's
-     leveraged pTokens (`ARCUS`), whose pool is fixed, so they skip steps 2-3 (see `ARCUS`).
+     leveraged pTokens (`ARCUS`), whose pool is fixed, so they skip steps 2-3 (see `ARCUS`). Plus a
+     hand-picked list of memecoins (`MEMECOINS`), discovered and ranked like the rStocks.
      `--assets` replaces the universe with a list given by the caller, which is how the testnet is done.
   2. The chain for the pools: `PairCreated`, `PoolCreated` and `Initialize` logs, filtered to those
      assets, then Uniswap's own state (reserves / slot0 + liquidity) read through Multicall3. Where the
@@ -147,6 +148,40 @@ ARCUS = {
     "0x925f92f055edb79c42b5d45e64a1b74143b90ea0": ("pBTC", _ARCUS_HOOK_A, 8500, False),
     "0xadcceee8e422050f890522fa798f8a93a4857083": ("sBTC3x", _ARCUS_HOOK_A, 8500, False),
     "0xc25c966168a8e933b0aba0dc8a25cac4a2b2b91d": ("sBTC", _ARCUS_HOOK_A, 8500, False),
+}
+
+# Hand-picked Robinhood-chain memecoins (mainnet only): address -> ticker. Picked 2026-09-30 from the coins
+# the frontend has a logo for (`frontend-next/public/imgs/memecoins/`), deepest Uniswap pools first. Unlike
+# the Arcus pTokens their pool is discovered and ranked like an rStock's. Identity is vouched for HERE:
+# re-check an address before adding it, a copycat token can share any ticker. Checked 2026-09-30: each is
+# its ticker's top-24h-volume token on DexScreener (lookalikes had ~$0), and a 1 ETH buy through its listed
+# pool moves the price < 2% (`MeasureQuoteImpact.s.sol`). Rejected then: DOGO, HOOD (46% / 9% impact at
+# 0.1 ETH, dead volume), SQUEEZE (hooked pool, every buy reverts).
+MEMECOINS = {
+    "0x39dbed3a2bd333467115de45665cc57f813c4571": "PONS",
+    "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18": "AI",
+    "0x020bfc650a365f8bb26819deaabf3e21291018b4": "CASHCAT",
+    "0x5cb6f181081301b44905f3ae15419112ecabd8a6": "PIPEDOG",
+    "0x812486eaea648819853f8e372dc9f1516c7868bd": "UBIK",
+    "0x56910d4409f3a0c78c64dd8d0545ff0705389870": "INDEX",
+    "0xe8ffd7e24187f72afb08d75b1bb13088a989a791": "DELTA",
+    "0xe934e36a439c94017b64a3fece66af12099abf50": "STONKBROKER",
+    "0xaa07a0e9209e16ac99708c3ec70159c6ef3128a3": "ORBIO",
+    "0xd9db30bb0d2b8d2eae3826a1372117e058791e18": "MOO",
+    "0x45242320dbb855eea8fd36804c6487e10e97fcf9": "TENDIES",
+    "0x7dbf38976f6d3b9c529e7d9484a71898b409ee6a": "ZZZ",
+    "0xab093def657f15df31b33922a95e047add645b29": "SHROOM",
+    "0x91a2dae9699f0b82540b5886b0d8759c22820ba3": "MUSEBOOK",
+    "0x07ebb29a38fbcb41563817e5e19f2cec619c90d2": "BUN",
+    "0x98096d17e191b3da1d5f99a6d7b3584351b11e18": "BONER",
+    "0x18e674231a58c239dc7daedcffe15ec3a24cff5c": "HOOKR",
+    "0x7fe995a80075df3dc8ae11a9b82c7fe4202cd87f": "HMM",
+    "0x83a49b808f8d5e02cb2931cd2352988f498e5ba3": "AGRIPPA",
+    "0xb9972ca7188e511174947e3936a5315ac7073277": "PROLOGUE",
+    "0x451b42a15100c340ca12f7c66de06fac5ea2d751": "BOW",
+    "0x20024e485c0b22b42855589700721b28320a7777": "PRISM",
+    "0xd7321801caae694090694ff55a9323139f043b88": "JUGGERNAUT",
+    "0x57c0e45cb534413d1c20a4240955d6bb250bb4f1": "UP",
 }
 
 
@@ -449,7 +484,8 @@ def main() -> int:
     parser.add_argument("--assets", default="", help="comma-separated addresses to list INSTEAD of "
                         "USDG + the rStocks. The only mode the testnet has; the caller vouches for them.")
     parser.add_argument("--only", default="", help="comma-separated tickers or addresses out of the policy "
-                        "(USDG, the rStocks, the Arcus pTokens; `arcus` names all of those) to re-pick. Every "
+                        "(USDG, the rStocks, the Arcus pTokens, the memecoins; `arcus` / `memecoins` name all "
+                        "of those) to re-pick. Every "
                         "other entry of the existing file is carried over unchanged, its flag included.")
     parser.add_argument("--enable", default="", help="comma-separated tickers or addresses already in the file "
                         "to switch ON. With --disable: flips the flags, writes the file, reads no chain.")
@@ -472,6 +508,8 @@ def main() -> int:
         coins = [{"asset": a, "symbol": s, "rstock": True} for a, s in sorted(rstocks().items())]
         print(f"{len(coins)} Robinhood rStocks, {len(fixed)} Arcus pTokens", file=sys.stderr)
         coins += [{"asset": a, "symbol": f["symbol"]} for a, f in fixed.items()]
+        memes = MEMECOINS if CHAIN_ID == 4663 else {}
+        coins += [{"asset": a, "symbol": s, "memecoin": True} for a, s in memes.items()]
         if args.only:
             coins = _only(coins, args.only)
             if coins is None:
@@ -551,6 +589,7 @@ def main() -> int:
     _report(rejected, switched_off, [r for r in rows if not r["enabled"] and r["asset"] in {l["asset"] for l in listings}])
     enabled = {r["asset"] for r in rows if r["enabled"]}
     _rstock_table(listings, rejected, enabled)
+    _rstock_table(listings, rejected, enabled, kind="memecoin", label="memecoins")
     _arcus_table(listings, rejected, enabled)
     return 0
 
@@ -578,13 +617,14 @@ def toggle(path: Path, enable: str, disable: str) -> int:
 
 
 def _only(universe: list[dict], only: str) -> list[dict] | None:
-    """The policy assets `--only` names, by ticker or address; `arcus` is every Arcus pToken. None, after
+    """The policy assets `--only` names, by ticker or address; `arcus` is every Arcus pToken, `memecoins`
+    every entry of `MEMECOINS`. None, after
     saying which, if a name is not in the policy — a subset run never widens it."""
     universe = [{"asset": REFERENCE, "symbol": "USDG"}] * bool(REFERENCE) + universe
     words = {w.strip().lower() for w in only.split(",") if w.strip()}
     picked = [c for c in universe if c["asset"] in words or c["symbol"].lower() in words
-              or ("arcus" in words and c["asset"] in ARCUS)]
-    if missing := words - {"arcus"} - {c["asset"] for c in picked} - {c["symbol"].lower() for c in picked}:
+              or ("arcus" in words and c["asset"] in ARCUS) or ("memecoins" in words and c.get("memecoin"))]
+    if missing := words - {"arcus", "memecoins"} - {c["asset"] for c in picked} - {c["symbol"].lower() for c in picked}:
         print(f"not in the listing policy on this chain: {', '.join(sorted(missing))}", file=sys.stderr)
         return None
     print(f"--only: {', '.join(c['symbol'] for c in picked)}", file=sys.stderr)
@@ -651,14 +691,16 @@ def tier(depth: float) -> str:
     return next(name for floor, name in TIERS if depth >= floor)
 
 
-def _rstock_table(listings: list[dict], rejected: list[dict], enabled: set[str]) -> None:
-    """Every rStock, deepest pool first, IN or OUT of the list — a markdown table on stdout."""
+def _rstock_table(listings: list[dict], rejected: list[dict], enabled: set[str], kind: str = "rstock",
+                  label: str = "rStocks") -> None:
+    """Every rStock (or every coin of another `kind`), deepest pool first, IN or OUT of the list — a
+    markdown table on stdout."""
     rows = [(l["symbol"], l["asset"], l["depth"], f'v{l["pool"]["v"]}', "IN" if l["asset"] in enabled else "OFF", tier(l["depth"]))
-            for l in listings if l.get("rstock")]
-    rows += [(r["symbol"], r["asset"], r["depthNative"], r["venue"] or "-", "OUT", r["reason"]) for r in rejected if r["rstock"]]
+            for l in listings if l.get(kind)]
+    rows += [(r["symbol"], r["asset"], r["depthNative"], r["venue"] or "-", "OUT", r["reason"]) for r in rejected if r.get(kind)]
     if not rows:
         return
-    print(f"\n{sum(r[4] == 'IN' for r in rows)}/{len(rows)} rStocks listed\n")
+    print(f"\n{sum(r[4] == 'IN' for r in rows)}/{len(rows)} {label} listed\n")
     print("| # | symbol | address | depth (native) | venue | status | liquidity / reason |\n|---|---|---|---:|---|---|---|")
     for i, (symbol, asset, depth, venue, status, reason) in enumerate(sorted(rows, key=lambda r: -r[2]), 1):
         print(f"| {i} | {symbol} | `{asset}` | {depth:,.2f} | {venue} | **{status}** | {reason} |")
@@ -713,6 +755,7 @@ def _rejection(coin: dict, found: list[dict], args) -> dict:
         "symbol": coin["symbol"],
         "asset": coin["asset"],
         "rstock": coin.get("rstock", False),
+        **({"memecoin": True} if coin.get("memecoin") else {}),
         "reason": reason,
         "venue": f'v{best["pool"]["v"]}' if best else None,
         "depthNative": round(best["depth"], 4) if best else 0.0,
@@ -743,6 +786,7 @@ def _readable(listing: dict, reference_rate: float, reference: str | None) -> di
         "asset": listing["asset"],
         "rstock": listing.get("rstock", False),
         **({"arcus": True} if listing.get("arcus") else {}),
+        **({"memecoin": True} if listing.get("memecoin") else {}),
         "venue": f'v{listing["pool"]["v"]}',
         "quote": "native" if listing["quote"] == NATIVE else reference,
         # None for an Arcus pool reading no in-range liquidity; it is listed regardless.

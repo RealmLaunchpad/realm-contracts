@@ -34,7 +34,7 @@ tier, then the Arcus pTokens the same way.
 
 ## What mainnet lists
 
-Only three kinds of asset, by policy:
+Only four kinds of asset, by policy:
 
 - **USDG**, the reference asset.
 - **Robinhood's own stock tokens** (~195), from its asset API (`api.robinhood.com/rhj/assets`, the list
@@ -47,9 +47,15 @@ Only three kinds of asset, by policy:
   pToken it adds has to be added to `ARCUS` by hand. They are listed even when their pool reads **no
   in-range liquidity** (tier "n/a"): Arcus parks the price between its bid and ask ranges, so swaps
   still fill. Some of them cannot absorb a $1k buy; the frontend shows the depth, the list does not gate.
+- **Hand-picked memecoins** (`MEMECOINS` in the script, 24 today), discovered and ranked like the
+  rStocks. Refresh them alone with `--only memecoins`. Their address is vouched for by whoever edits
+  that table: a copycat token can share any ticker. Before adding one, check it is the ticker's
+  highest-volume token (DexScreener) and measure a 1 ETH buy through its listed pool:
+  `ASSETS=0x… forge script MeasureQuoteImpact --rpc-url rh-mainnet` (impact in bps; broadcasts nothing).
 
 Nothing else is ENABLED by a run, however large its market cap; anything a run does not find a pool for
-is switched off on the next full run, and stays in the file. Their address comes from Robinhood or Arcus, so identity needs no vouching.
+is switched off on the next full run, and stays in the file. rStock and pToken addresses come from
+Robinhood or Arcus, so their identity needs no vouching.
 
 Thin pools are listed on purpose. Liquidity is not gated here but shown to creators, as a tier of the
 pool's quote-side depth in native: **low** under 10, **ok** from 10 to 50, **deep** above 50 (`TIERS` in
