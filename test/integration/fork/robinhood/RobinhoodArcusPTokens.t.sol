@@ -31,7 +31,7 @@ contract RobinhoodArcusPTokensTests is RobinhoodForkBase {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
-    /// @dev Later than the xStock suites' block: the Arcus pools were probed here.
+    /// @dev Later than the rStock suites' block: the Arcus pools were probed here.
     uint256 internal constant ARCUS_FORK_BLOCK = 76_000_000;
 
     address internal constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
@@ -95,7 +95,7 @@ contract RobinhoodArcusPTokensTests is RobinhoodForkBase {
     function _pTokenPayer(address pToken) internal returns (RealmTaxableTokenUniV4 token) {
         bytes[] memory routes = new bytes[](1);
         routes[0] = _arcusRoute(pToken);
-        token = _graduatedXStockToken(_createXStockToken(_sole(pToken), _w(10_000), routes));
+        token = _graduatedRStockToken(_createRStockToken(_sole(pToken), _w(10_000), routes));
         uint256 third = token.balanceOf(buyer) / 3;
         vm.prank(buyer);
         token.transfer(holder2, third);

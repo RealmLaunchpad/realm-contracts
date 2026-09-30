@@ -133,10 +133,10 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
   threshold was the native-calibrated constant nobody could restate per quote, and the keeper (which
   pays the gas) decides instead, exactly as it does for `processBurn(quote)` — and `MAX_QUOTE_SPEND_BPS`
   as the per-call cap on any leg that swaps. Three shapes: payout == quote is a free passthrough (the
-  Robinhood flagship: xStock-paired, xStock-paid), payout == self buys back on the quote's own pool
+  Robinhood flagship: rStock-paired, rStock-paid), payout == self buys back on the quote's own pool
   (the `processBurn` primitive), anything else goes through the registry's `swapAssetToAsset`, which
   walks the quote's own registered route BACKWARDS to native and the payout asset's forward. Every
-  registry conversion therefore pivots through native — on Robinhood every xStock pool is ETH-paired,
+  registry conversion therefore pivots through native — on Robinhood every rStock pool is ETH-paired,
   so that is the deep path, not the weak one — and the keeper's `KEEPER_FEE` is taken there, in native,
   unchanged. Only a V4 route can be walked backwards; a quote registered with a V2/V3 route is refused
   at creation (`QuoteRouteUnsupported`). The direct factory's allocation overload carries the quotes'

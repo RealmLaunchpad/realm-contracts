@@ -11,11 +11,11 @@ import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice The whole dividend product, end to end, on the chain it ships on: a taxable token with a
-///         tax allocation is created naming xStocks as its payout assets, graduates onto Robinhood's
+///         tax allocation is created naming rStocks as its payout assets, graduates onto Robinhood's
 ///         Uniswap V4, gets traded there so the hook collects tax, the keeper converts the buffered tax
-///         into the xStock through Robinhood's own pools, and the holders end up holding the stock.
+///         into the rStock through Robinhood's own pools, and the holders end up holding the stock.
 ///         Nothing is injected: every wei the holders receive was charged on a real swap.
-contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
+contract RobinhoodRStockDividendsE2ETests is RobinhoodForkBase {
     address internal holder2 = makeAddr("holder2");
     address internal stranger = makeAddr("stranger");
     address internal keeperWallet = makeAddr("keeperWallet");
@@ -25,7 +25,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
     /// @dev A graduated AAPL-paying token with a buffer past the threshold, `buyer` holding two thirds
     ///      of the float and `holder2` the other third — so a pro-rata payout has a ratio to check.
     function _liveAppleToken() internal returns (RealmTaxableTokenUniV4 token) {
-        token = _graduatedXStockToken(_sole(AAPL), _w(10_000));
+        token = _graduatedRStockToken(_sole(AAPL), _w(10_000));
         uint256 third = token.balanceOf(buyer) / 3;
         vm.prank(buyer);
         token.transfer(holder2, third);
@@ -55,18 +55,18 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
 
     /// @dev The creator's route is registered on the registry against this token at creation.
     function test_creation_registersTheCreatorsRouteForTheToken() public {
-        address token = _createXStockToken(_sole(AAPL), _w(10_000));
+        address token = _createRStockToken(_sole(AAPL), _w(10_000));
 
-        assertEq(dividendSwapRegistry.routeOf(token, AAPL), _xstockRoute(AAPL), "the AAPL route is on record");
+        assertEq(dividendSwapRegistry.routeOf(token, AAPL), _rstockRoute(AAPL), "the AAPL route is on record");
         (,,,, address payout,,) = RealmTaxableTokenUniV4(payable(token)).dividendAssets(0);
         assertEq(payout, AAPL, "and AAPL is the payout asset");
         assertTrue(RealmTaxableTokenUniV4(payable(token)).hasDividends(), "dividends are on");
     }
 
-    /// @dev An xStock whose only pools are drained is still accepted: its conversions fail, the buffer
+    /// @dev An rStock whose only pools are drained is still accepted: its conversions fail, the buffer
     ///      stays whole, and the fix is a route on the registry — never the token.
     function test_aDrainedRouteLeavesTheBufferWhole() public {
-        RealmTaxableTokenUniV4 token = _graduatedXStockToken(_sole(NVDA), _w(10_000));
+        RealmTaxableTokenUniV4 token = _graduatedRStockToken(_sole(NVDA), _w(10_000));
         _churn(1, 2 ether);
         uint256 buffered = token.pendingNative();
         assertGt(buffered, 0, "precondition: something to convert");
@@ -83,7 +83,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
     ///      as earnings, and `DIVIDENDS_BPS` of every accrual lands in the buffer — the buffer being the
     ///      ONLY ETH the token holds, so nothing of it is reachable by a sweep.
     function test_swaps_hookTaxFromRobinhoodsPoolFundsTheDividendBuffer() public {
-        RealmTaxableTokenUniV4 token = _graduatedXStockToken(_sole(AAPL), _w(10_000));
+        RealmTaxableTokenUniV4 token = _graduatedRStockToken(_sole(AAPL), _w(10_000));
         // The buys that handed `buyer` its float already paid tax: the token is live from its launch.
         uint256 seeded = token.pendingNative();
 
@@ -104,7 +104,7 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
     /// @dev The tax has a window. Once it closes the hook charges none, and what still reaches the
     ///      holders from a trade is only their share of the creator's LP-fee cut.
     function test_swaps_taxWindowClosesAndOnlyTheLpShareKeepsFlowing() public {
-        RealmTaxableTokenUniV4 token = _graduatedXStockToken(_sole(AAPL), _w(10_000));
+        RealmTaxableTokenUniV4 token = _graduatedRStockToken(_sole(AAPL), _w(10_000));
         _churn(1, 1 ether);
         uint256 collectedInTheWindow = token.pendingNative();
         assertGt(collectedInTheWindow, 0, "precondition: the window collected something");
@@ -152,10 +152,10 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         assertLt(token.committedDividends(AAPL), pot / 1e6, "nothing meaningful left owed");
     }
 
-    /// @dev Two xStocks at once: the tax splits by weight into independent buffers, each converts
+    /// @dev Two rStocks at once: the tax splits by weight into independent buffers, each converts
     ///      through its own Robinhood pool, and the holder ends up with both stocks.
-    function test_keeper_twoXStocksSplitByWeightAndBothReachTheHolder() public {
-        RealmTaxableTokenUniV4 token = _graduatedXStockToken(_pair(AAPL, TSLA), _w(3_000, 7_000));
+    function test_keeper_twoRStocksSplitByWeightAndBothReachTheHolder() public {
+        RealmTaxableTokenUniV4 token = _graduatedRStockToken(_pair(AAPL, TSLA), _w(3_000, 7_000));
         _churn(3, 2 ether);
 
         uint256 apple = _buffered(token, 0);
@@ -175,10 +175,10 @@ contract RobinhoodXStockDividendsE2ETests is RobinhoodForkBase {
         assertGt(IERC20(TSLA).balanceOf(buyer), 0, "and in TSLA");
     }
 
-    /// @dev Native and an xStock side by side: the native leg needs no conversion and no route, the
+    /// @dev Native and an rStock side by side: the native leg needs no conversion and no route, the
     ///      MSFT leg crosses its pool, and one holder collects both.
-    function test_keeper_nativeAndXStockLegsPayTogether() public {
-        RealmTaxableTokenUniV4 token = _graduatedXStockToken(_pair(address(0), MSFT), _w(5_000, 5_000));
+    function test_keeper_nativeAndRStockLegsPayTogether() public {
+        RealmTaxableTokenUniV4 token = _graduatedRStockToken(_pair(address(0), MSFT), _w(5_000, 5_000));
         _churn(2, 2 ether);
         assertGt(_buffered(token, 1), 0, "precondition: both legs buffered");
 

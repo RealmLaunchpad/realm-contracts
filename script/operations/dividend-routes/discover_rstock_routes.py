@@ -5,7 +5,7 @@
 """Discover the Uniswap V4 and V3 routes from native ETH to every Robinhood Chain stock token, plus
 the fixed route to each Arcus pToken.
 
-Robinhood Chain's ~190 xStocks have no Uniswap V2 pair at all: their liquidity lives in V4, most
+Robinhood Chain's ~190 rStocks have no Uniswap V2 pair at all: their liquidity lives in V4, most
 of it in a pool against native ETH and the rest against USDG. `RealmDividendSwapRegistry` cannot
 measure a V4 asset the way it measures a long-tail ERC20 -- a V4 pool is identified by a
 (fee, tickSpacing, hooks) tuple that is not derivable from its two currencies, and one pair can
@@ -20,7 +20,7 @@ are not the same kind of thing, and a fat pool charging 5% still loses to a thin
 0.05%. Choosing between shortlisted candidates is `PickDividendRoutes.s.sol`'s job: it buys the
 asset through each of them against forked state and keeps whichever actually delivers most.
 
-V3 is shortlisted too: some xStocks' only live ETH market is a Uniswap V3 WETH pool (SPCX, whose V4
+V3 is shortlisted too: some rStocks' only live ETH market is a Uniswap V3 WETH pool (SPCX, whose V4
 pools are drained). Those candidates are single-hop WETH -> stock, one per fee tier holding in-range
 liquidity, already in wire format under `v3Candidates`. The router executes V3 against the factory
 below, and the registry checks a V3 route for shape only, so the probe is what proves the pool is live.
@@ -33,7 +33,7 @@ fill); the probe is what says whether it takes a full conversion.
 Output is a JSON file that forge script reads. Review it before broadcasting -- this is the one
 place a wrong answer silently sends a token's dividends through somebody else's pool.
 
-Usage:  uv run script/operations/dividend-routes/discover_xstock_routes.py [-o out.json]
+Usage:  uv run script/operations/dividend-routes/discover_rstock_routes.py [-o out.json]
         … --only arcus -o /tmp/arcus.json      the Arcus pTokens alone, no chain scan
         ROBINHOOD_RPC_URL overrides the public RPC.
 """
@@ -65,7 +65,7 @@ USDG = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
 WETH = "0x0bd7d308f8e1639fab988df18a8011f41eacad73"
 NATIVE = "0x" + "00" * 20
 
-# The native/USDG leg every Arcus candidate starts with: the USDG/native V4 pool the xStock two-hop
+# The native/USDG leg every Arcus candidate starts with: the USDG/native V4 pool the rStock two-hop
 # candidates are built on (dynamic fee flag, 0x800000), pinned rather than re-ranked per run.
 USDG_HOP = {"currency": USDG, "fee": 0x800000, "tickSpacing": 10, "hooks": "0x06a889870c8f83640d6816319f72e2aa579b6080"}
 
@@ -320,7 +320,7 @@ def main() -> int:
     parser.add_argument(
         "--only",
         default="",
-        help="comma-separated ticker symbols or token addresses to route (xStocks or Arcus pTokens; "
+        help="comma-separated ticker symbols or token addresses to route (rStocks or Arcus pTokens; "
         "`arcus` names every Arcus pToken); everything else is left out of the output. Use it to add "
         "ONE new asset without regenerating the whole file -- write it somewhere of its own with -o "
         "and point ROUTES_JSON at that.",
@@ -390,7 +390,7 @@ def main() -> int:
 
 
 def _stock_routes(args, tokens: list[tuple[str, str]], emit, skipped: list[str]) -> None:
-    """The xStocks' candidates, discovered on chain, handed to `emit` one asset at a time."""
+    """The rStocks' candidates, discovered on chain, handed to `emit` one asset at a time."""
     print("collecting V4 pools…", file=sys.stderr)
     stocks = {a for _, a in tokens}
     # The scan's topic filter narrows with `--only`, so adding one asset does not replay the pools of

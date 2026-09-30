@@ -27,7 +27,7 @@ just discover-dividend-routes    # scan the pool manager (and V3) for candidates
 just pick-dividend-routes        # probe them at a full conversion and keep the winners
 ```
 
-`discover_xstock_routes.py` pulls the stock-token list from Robinhood's public asset API, replays every
+`discover_rstock_routes.py` pulls the stock-token list from Robinhood's public asset API, replays every
 `Initialize` log on the V4 pool manager that pairs one of those tokens (or USDG) with a currency we care
 about, reads each pool's live in-range liquidity, and shortlists the deepest few per pair, plus the V3
 WETH pools. It does NOT pick a winner: `liquidity` is denominated in each pool's own currencies, so an
@@ -50,7 +50,7 @@ none: set an `ALL_TOKENS` override on the registry, and update the frontend cata
 Arcus's leveraged pTokens (`ARCUS` in the script) are not discovered: each trades in exactly one V4 pool
 against USDG behind an Arcus hook, so each gets one fixed two-hop candidate, native → USDG over the
 USDG/native pool (`USDG_HOP`: dynamic fee, tick spacing 10, hook `0x06a8…6080`), then USDG → pToken over
-its Arcus pool. They are appended after the xStocks on a full run and need no chain scan on their own
+its Arcus pool. They are appended after the rStocks on a full run and need no chain scan on their own
 (`--only arcus`). No liquidity read gates them — an Arcus pool can read 0 in range while swaps fill — so
 the probe alone decides: one that cannot take `MAX_EARNINGS_PER_PROCESS` is left out of the catalogue.
 A hop through an Arcus hook costs ~500-650k gas.
@@ -58,11 +58,11 @@ A hop through an Arcus hook costs ~500-650k gas.
 ## Adding one asset
 
 ```
-uv run script/operations/dividend-routes/discover_xstock_routes.py --only NVDA -o /tmp/nvda.json
+uv run script/operations/dividend-routes/discover_rstock_routes.py --only NVDA -o /tmp/nvda.json
 DIVIDEND_SWAP_REGISTRY=0x… ROUTES_JSON=/tmp/nvda.json ROUTES_OUT=/tmp/nvda-catalogue.json just pick-dividend-routes
 ```
 
-`--only` takes ticker symbols or token addresses, comma-separated, of xStocks or Arcus pTokens; `arcus`
+`--only` takes ticker symbols or token addresses, comma-separated, of rStocks or Arcus pTokens; `arcus`
 names every Arcus pToken. The probe is the validation: do not
 reimplement it in Python, because an approximation of the swap can disagree with the contract.
 

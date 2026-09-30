@@ -37,7 +37,7 @@ fast-test: chain-rh
     just test-rh-fork
 
 # Robinhood-mainnet fork suites (test/integration/fork/robinhood/): a Realm stack deployed on a Robinhood
-# fork, trading on Robinhood's Uniswap V4 and paying dividends in real xStocks. Needs ROBINHOOD_RPC_URL
+# fork, trading on Robinhood's Uniswap V4 and paying dividends in real rStocks. Needs ROBINHOOD_RPC_URL
 # (archive: the suites pin a block). Retargets the token impls to Robinhood and leaves them there, like
 # the deploy recipes do. `fast-test` ends on this recipe.
 test-rh-fork: chain-rh
@@ -312,9 +312,9 @@ deploy-keeper-lens-rh-testnet:
     forge script DeployRealmKeeperLens --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Deploys the dummy assets `DeployDummyXStocks._stocks()` lists (today: GLD at ~6.85 per ETH), each with a
+# Deploys the dummy assets `DeployDummyRStocks._stocks()` lists (today: GLD at ~6.85 per ETH), each with a
 # native V4 pool seeded with ETH_PER_POOL wei (default 2 ETH). Earlier runs deployed USDG and the six-stock set
-# (AAPL, TSLA, AMZN, GOOGL, META, NVDA). E.g. `ETH_PER_POOL=20000000000000000000 just deploy-dummy-xstocks-rh-testnet`.
+# (AAPL, TSLA, AMZN, GOOGL, META, NVDA). E.g. `ETH_PER_POOL=20000000000000000000 just deploy-dummy-rstocks-rh-testnet`.
 # That chain DOES carry Robinhood's own official stock
 # tokens (TSLA, AMZN, PLTR, NFLX, AMD), but none of them can be bought with native ETH — no V2 pair,
 # nothing in the V4 pool manager, and the only depth is a third-party V3 DEX quoted in USDC — so they are
@@ -322,9 +322,9 @@ deploy-keeper-lens-rh-testnet:
 # the pair artwork the frontend ships, which is why TSLA and AMZN now overlap the official ones.
 # AFTER RUNNING THIS: `just discover-whitelist-assets-rh-testnet` then `just whitelist-assets-rh-testnet`.
 # No addresses to paste — discovery reads them from this recipe's broadcast log. Dry run:
-#   forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev
-deploy-dummy-xstocks-rh-testnet: chain-rh-testnet
-    forge script DeployDummyXStocks --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+#   forge script DeployDummyRStocks --rpc-url rh-testnet --account realm.dev
+deploy-dummy-rstocks-rh-testnet: chain-rh-testnet
+    forge script DeployDummyRStocks --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Deploys ONE dummy token whose only pool is a V4 one against the dummy USDG (no native pair), and prints
@@ -335,11 +335,11 @@ deploy-dummy-usdg-pair-rh-testnet: chain-rh-testnet
     forge script DeployDummyUsdgPair --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Re-pegs the six rh-testnet dummy xStock pools to their whitelisted price and adds ETH_PER_POOL (default
+# Re-pegs the six rh-testnet dummy rStock pools to their whitelisted price and adds ETH_PER_POOL (default
 # 20 ETH, 120 total) of full-range liquidity to each. The account must hold the dummy tokens. Dry run:
-#   forge script RepegDummyXStocks --rpc-url rh-testnet --account livo.dev
-repeg-dummy-xstocks-rh-testnet:
-    forge script RepegDummyXStocks --rpc-url rh-testnet --account livo.dev --slow --broadcast \
+#   forge script RepegDummyRStocks --rpc-url rh-testnet --account livo.dev
+repeg-dummy-rstocks-rh-testnet:
+    forge script RepegDummyRStocks --rpc-url rh-testnet --account livo.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
 # --- DIRECT-LAUNCH VENUE -----------------------------------------------------
@@ -399,11 +399,11 @@ export-deployments:
 unfunded-creators:
     uv run script/operations/unfunded-accounts/check_unfunded_creators.py
 
-# Rebuild the Uniswap V4 route CANDIDATES for Robinhood Chain's xStocks by scanning the pool manager
+# Rebuild the Uniswap V4 route CANDIDATES for Robinhood Chain's rStocks by scanning the pool manager
 # on-chain, plus the fixed USDG-hop candidate of each Arcus pToken. Writes
 # script/operations/dividend-routes/routes.robinhood.mainnet.json.
 discover-dividend-routes:
-    uv run script/operations/dividend-routes/discover_xstock_routes.py
+    uv run script/operations/dividend-routes/discover_rstock_routes.py
 
 # Probe those candidates against forked state and keep whichever actually buys the most of each asset,
 # writing the winners to catalogue.robinhood.mainnet.json in the wire format a token creation takes.
@@ -415,7 +415,7 @@ pick-dividend-routes:
     just chain-rh
     forge script PickDividendRoutes --rpc-url rh-mainnet
 
-# Re-pick, from live state, the Uniswap pool that prices USDG and each of Robinhood's own xStocks, plus
+# Re-pick, from live state, the Uniswap pool that prices USDG and each of Robinhood's own rStocks, plus
 # the fixed USDG pool of each Arcus pToken (the only assets mainnet lists), into
 # script/operations/assets-whitelist/listings.robinhood.mainnet.json, and print every one IN or OUT.
 # This is the maintenance loop, not a one-off: re-running refreshes every rate, re-picks every pool, and
@@ -438,25 +438,25 @@ whitelist-assets-rh:
         --gas-estimate-multiplier 300
     forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --sig 'verify()'
 
-# The testnet's quote assets: the dummy xStocks `DeployDummyXStocks` seeds native-quoted V4 pools for,
+# The testnet's quote assets: the dummy rStocks `DeployDummyRStocks` seeds native-quoted V4 pools for,
 # which is everything on that chain worth quoting a launch in. Nothing there has a market price, so the
 # price sanity check does not apply. The pools are probed by key rather than scanned: that RPC caps
 # eth_getLogs at 10k blocks.
 #
-# The addresses are the LAST `deploy-dummy-xstocks-rh-testnet` and `deploy-dummy-usdg-pair-rh-testnet`
+# The addresses are the LAST `deploy-dummy-rstocks-rh-testnet` and `deploy-dummy-usdg-pair-rh-testnet`
 # broadcasts PLUS every asset the current listings file still lists, so a run that deploys one new asset
 # keeps the older ones. A USDG-only dummy is listed against the dummy USDG, the testnet's reference asset.
 # To retire an asset, switch it off: discover_whitelist_assets.py --chain testnet --disable <ticker>.
 discover-whitelist-assets-rh-testnet:
     #!/usr/bin/env bash
     set -euo pipefail
-    RUNS=$(ls broadcast/DeployDummyXStocks.s.sol/46630/run-latest.json broadcast/DeployDummyUsdgPair.s.sol/46630/run-latest.json 2>/dev/null || true)
+    RUNS=$(ls broadcast/DeployDummyRStocks.s.sol/46630/run-latest.json broadcast/DeployDummyUsdgPair.s.sol/46630/run-latest.json 2>/dev/null || true)
     LISTINGS=script/operations/assets-whitelist/listings.robinhood.testnet.json
     ASSETS=$(jq -rn --slurpfile l "$LISTINGS" \
-        '[(inputs | .transactions[] | select(.contractName=="DummyXStock" and .transactionType=="CREATE") | .contractAddress),
+        '[(inputs | .transactions[] | select(.contractName=="DummyRStock" and .transactionType=="CREATE") | .contractAddress),
           ($l[0] | [.assets, .venues] | transpose[] | select(.[1] != 0) | .[0])]
          | map(ascii_downcase) | unique | join(",")' $RUNS)
-    [ -n "$ASSETS" ] || { echo "no DummyXStock deploys in the broadcast logs"; exit 1; }
+    [ -n "$ASSETS" ] || { echo "no DummyRStock deploys in the broadcast logs"; exit 1; }
     echo "assets: $ASSETS"
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py --chain testnet --min-depth 0.05 \
         --assets "$ASSETS"
@@ -468,7 +468,7 @@ whitelist-assets-rh-testnet:
     forge script WhitelistRobinhoodAssets --rpc-url rh-testnet --sig 'verify()'
 
 # Lists the manifest's REALM_TOKEN as a direct-venue quote, priced from its native V4 pool (else its USDG one). ONCE per chain,
-# right after REALM graduates; separate from the xStock/USDG loop above, which never touches it. Keepers
+# right after REALM graduates; separate from the rStock/USDG loop above, which never touches it. Keepers
 # keep its rate fresh afterwards (`RealmAssetsWhitelist.refreshRates`). Signer must be an approver.
 whitelist-realm-rh:
     just chain-rh

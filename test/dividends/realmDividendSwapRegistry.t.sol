@@ -348,7 +348,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         assertEq(address(registry).balance, 0, "and no native");
     }
 
-    /// @dev THE xStock SHAPE. The asset has no native pool of its own, so the route goes through an
+    /// @dev THE rStock SHAPE. The asset has no native pool of its own, so the route goes through an
     ///      intermediate — AAPL here, USDG on Robinhood Chain — and the swap is still one call.
     function test_aTwoHopRouteReachesAnAssetWithNoNativePool() public {
         Hop[] memory hops = new Hop[](2);
@@ -531,7 +531,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         assertEq(IERC20(AAPL).balanceOf(address(this)), 1e16, "a refused conversion leaves the source whole");
     }
 
-    /// @dev THE xStock SHAPE, BACKWARDS. The source's route is native -> AAPL -> TSLA, so the reverse leg
+    /// @dev THE rStock SHAPE, BACKWARDS. The source's route is native -> AAPL -> TSLA, so the reverse leg
     ///      runs TSLA -> AAPL on the stable pool and AAPL -> native on the ETH pool: each hop outputs the
     ///      currency BEFORE it, and the last one outputs native. A multi-hop path, so the router's
     ///      `SWAP_EXACT_IN` branch runs rather than the single-pool one.

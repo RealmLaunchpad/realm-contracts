@@ -15,7 +15,7 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         what qualifies as a price pool and why most of CoinGecko's top 300 is not in it.
 ///
 /// @notice Both Robinhood chains, one script: mainnet lists the top coins by market cap plus every one
-///         of Robinhood's own xStocks, the testnet the three dummy xStocks the dividend feature is
+///         of Robinhood's own rStocks, the testnet the three dummy rStocks the dividend feature is
 ///         exercised against. The file is chosen by chain id, and names its own chain so a mismatched
 ///         one cannot be broadcast.
 ///

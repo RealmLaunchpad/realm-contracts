@@ -16,7 +16,7 @@ import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
-import {DummyXStock} from "script/DeployDummyXStocks.s.sol";
+import {DummyRStock} from "script/DeployDummyRStocks.s.sol";
 import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
@@ -24,7 +24,7 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 ///         dummy USDG, so a dividend payout asset with no native pair can be exercised: its route is
 ///         the two-hop native -> USDG -> token, the shape mainnet's Arcus pTokens have.
 /// @dev Full-range liquidity, position NFT to the broadcaster, who must hold the dummy USDG (the
-///      `DeployDummyXStocks` deployer does). The route is only PRINTED: pass it at token creation, or
+///      `DeployDummyRStocks` deployer does). The route is only PRINTED: pass it at token creation, or
 ///      set it for every token with `DIVIDEND_SWAP_REGISTRY.setRoute(ALL_TOKENS, token, route)`.
 ///      The asset cannot be listed as a quote: the testnet whitelist has no reference asset.
 ///
@@ -57,7 +57,7 @@ contract DeployDummyUsdgPair is Script {
         require(mode == VmSafe.CallerMode.Broadcast || mode == VmSafe.CallerMode.RecurrentBroadcast, "no broadcast");
 
         address token =
-            address(new DummyXStock(vm.envOr("TOKEN_NAME", string("Dummy HOOD 3x Long")), symbol, deployer, SUPPLY));
+            address(new DummyRStock(vm.envOr("TOKEN_NAME", string("Dummy HOOD 3x Long")), symbol, deployer, SUPPLY));
         uint128 liquidity = _seedPool(token, deployer);
         vm.stopBroadcast();
 

@@ -74,7 +74,7 @@ jobs:
           forge test --match-contract Invariants
         id: invariants
 
-      # Retargets the impls to Robinhood and runs the suites that fork it (real xStock dividends).
+      # Retargets the impls to Robinhood and runs the suites that fork it (real rStock dividends).
       - name: Robinhood mainnet fork tests
         run: |
           just test-rh-fork

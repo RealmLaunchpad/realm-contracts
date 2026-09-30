@@ -24,7 +24,7 @@ interface IHookFor {
 /// @notice Lists the manifest's `REALM_TOKEN` in `RealmAssetsWhitelist`, priced from one of its own V4
 ///         pools (the canonical Realm key, hook from its graduator): the native one if it is live, else
 ///         the first live pair against a quote listed directly against native (e.g. USDG). Touches no
-///         other asset: USDG and the xStocks go through `WhitelistRobinhoodAssets` and its discovery
+///         other asset: USDG and the rStocks go through `WhitelistRobinhoodAssets` and its discovery
 ///         loop, which never sees REALM.
 ///
 /// @dev ONCE per chain, right after REALM graduates (no pool before that). Keepers then keep its rate
