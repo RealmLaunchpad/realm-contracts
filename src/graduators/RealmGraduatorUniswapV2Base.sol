@@ -10,14 +10,9 @@ import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 
 /// @title RealmGraduatorUniswapV2Base
-/// @notice Shared Uniswap V2 graduation logic. The ETH-family and ARC (native = USDC) graduators are
-///         SEPARATE deployable contracts, not one import-swapped file, because their difference is
-///         behavioral, not just constants: ETH wraps native into WETH via `addLiquidityETH`, while ARC
-///         pairs `<token, USDC-ERC20>` via two-ERC20 `addLiquidity` with an 18↔6-decimal conversion.
-///         Everything that does NOT differ (fee split, pair prediction, price-matched liquidity,
-///         cleanup) lives here; the venue + fee specifics are `virtual` hooks each subclass fills in.
-/// @dev Abstract: never deployed directly. See `RealmGraduatorUniswapV2` (ETH) and
-///      `RealmGraduatorUniswapV2Arc` (ARC).
+/// @notice Shared Uniswap V2 graduation logic (fee split, pair prediction, price-matched liquidity,
+///         cleanup); the venue + fee specifics are `virtual` hooks the subclass fills in.
+/// @dev Abstract: never deployed directly. See `RealmGraduatorUniswapV2`.
 abstract contract RealmGraduatorUniswapV2Base is IRealmGraduator {
     using SafeERC20 for IRealmToken;
 
@@ -44,16 +39,13 @@ abstract contract RealmGraduatorUniswapV2Base is IRealmGraduator {
     /// @notice Uniswap V2 factory contract
     IUniswapV2Factory internal immutable UNISWAP_FACTORY;
 
-    /// @notice V2 quote token every graduated pair is paired against. ETH-family: the router's WETH.
-    ///         ARC (native = USDC, no WETH): the 6-dec USDC ERC-20 — provided by `_pairToken()`.
+    /// @notice V2 quote token every graduated pair is paired against. The router's WETH, from `_pairToken()`.
     address internal immutable PAIR_TOKEN;
 
     /// @notice Init code hash of the Uniswap V2 pair contract used by the configured factory.
     ///         Required to predict the CREATE2 pair address without deploying the pair upfront.
     /// @dev Per-chain value: must match `keccak256(type(<factory's pair>).creationCode)` exactly.
-    ///      Mainnet (stock UniswapV2 factory) is `0x96e8ac42...`. The Sepolia factory wired in
-    ///      `DeploymentAddressesEthereumSepolia` is a fork with different pair bytecode, so its hash
-    ///      differs from mainnet — see `DeploymentAddressesEthereumSepolia.UNIV2_PAIR_INIT_CODE_HASH`.
+    ///      The stock UniswapV2 factory's is `0x96e8ac42...`.
     ///      Wrong value here ⇒ `pair` is set to a non-existent CREATE2 address, taxes silently
     ///      stop accruing because the real pair is not recognized as the pair.
     bytes32 internal immutable PAIR_INIT_CODE_HASH;
@@ -68,23 +60,20 @@ abstract contract RealmGraduatorUniswapV2Base is IRealmGraduator {
 
     /////////////////////// VENUE + FEE HOOKS ///////////////////////
 
-    /// @dev Build-vs-target guard: reverts if this graduator's baked fees/venue don't match `chainId`.
-    function _assertDeployableOn(uint256 chainId) internal pure virtual;
-
     /// @dev Total graduation fee, in native 18-dec (chain-specific constant).
     function _graduationFee() internal pure virtual returns (uint256);
 
     /// @dev Triggerer compensation, in native 18-dec (chain-specific constant).
     function _triggererCompensation() internal pure virtual returns (uint256);
 
-    /// @dev Quote token to pair against. ETH: `router.WETH()`. ARC: the 6-dec USDC ERC-20.
+    /// @dev Quote token to pair against. `router.WETH()`.
     function _pairToken(IUniswapV2Router router) internal pure virtual returns (address);
 
-    /// @dev Multiplier from the pool's quote-reserve units to native 18-dec. 1 on ETH; 1e12 on ARC.
+    /// @dev Multiplier from the pool's quote-reserve units to native 18-dec. 1 for WETH.
     function _quoteToNativeScale() internal pure virtual returns (uint256);
 
     /// @dev Adds `tokenAmount` + `nativeValue` (18-dec) of liquidity to the venue. Returns the native
-    ///      amount used in 18-dec on both chains. ETH: `addLiquidityETH`. ARC: two-ERC20 `addLiquidity`.
+    ///      amount used in 18-dec (`addLiquidityETH`).
     function _supplyLiquidity(address token, address quote, uint256 tokenAmount, uint256 nativeValue, address to)
         internal
         virtual
@@ -97,10 +86,6 @@ abstract contract RealmGraduatorUniswapV2Base is IRealmGraduator {
     /// @param _launchpad Address of the RealmLaunchpad contract
     /// @param _pairInitCodeHash keccak256 of the pair contract creation code used by the configured factory
     constructor(address _uniswapRouter, address _launchpad, bytes32 _pairInitCodeHash) {
-        // Refuse graduator bytecode built with the wrong chain's baked fee/venue — fires on ANY deploy
-        // path (script, raw cast, test). Virtual dispatch resolves to the concrete subclass's chain.
-        _assertDeployableOn(block.chainid);
-
         REALM_LAUNCHPAD = _launchpad;
         UNISWAP_ROUTER = IUniswapV2Router(_uniswapRouter);
 
@@ -198,7 +183,7 @@ abstract contract RealmGraduatorUniswapV2Base is IRealmGraduator {
         address token0 = pairContract.token0();
 
         // Normalize the quote reserve to native 18-dec so the price-matching math below stays in one
-        // unit. Scale is 1 on ETH (18-dec WETH); 1e12 on ARC (6-dec USDC quote).
+        // unit (1 for 18-dec WETH).
         uint256 rawQuoteReserve = token0 == tokenAddress ? reserve1 : reserve0;
         ethReserve = rawQuoteReserve * _quoteToNativeScale();
     }
@@ -220,8 +205,7 @@ abstract contract RealmGraduatorUniswapV2Base is IRealmGraduator {
         IRealmToken(tokenAddress).safeTransfer(pair, tokensToTransfer);
         IUniswapV2Pair(pair).sync();
 
-        // Add remaining tokens and native value as liquidity via the per-chain venue (WETH path on
-        // ETH; two-ERC20 `<token, USDC>` on ARC). `amountEth` returns in native 18-dec on both.
+        // Add remaining tokens and native value as liquidity via the venue (WETH path).
         uint256 remainingTokens = tokenBalance - tokensToTransfer;
         (amountToken, amountEth, liquidity) =
             _supplyLiquidity(tokenAddress, PAIR_TOKEN, remainingTokens, ethValue, DEAD_ADDRESS);

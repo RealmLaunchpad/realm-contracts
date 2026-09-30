@@ -10,7 +10,7 @@ import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet} from "src/config/DeploymentAddresses.sol";
 
 /// @dev Minimal graduator mock — returns a caller-chosen `pair` address from `initialize()`
 ///      and lets the test drive `markGraduated` on the token.
@@ -254,6 +254,31 @@ abstract contract SniperProtectionBaseTest is Test {
         assertEq(_token().balanceOf(buyer2), MAX_WALLET * 2);
     }
 
+    /// @dev The caps live in `SniperProtection`'s own slot (`maxBuyPerTxBps` & co.); the window end sits in
+    ///      the `pair` slot `_update` already loads. A buy inside the window reads the caps; once the
+    ///      window has closed it must not — that cold read on every transfer is what the move saved.
+    function test_closedWindow_transferNeverReadsTheCapsSlot() public {
+        bytes32 capsSlot = bytes32(uint256(5));
+
+        vm.record();
+        _curveBuy(buyer, 1e18);
+        (bytes32[] memory reads,) = vm.accesses(address(_token()));
+        assertTrue(_contains(reads, capsSlot), "control: an open window reads the caps");
+
+        vm.warp(uint256(IRealmToken(address(_token())).launchTimestamp()) + DEFAULT_WINDOW);
+        vm.record();
+        _curveBuy(buyer, 1e18);
+        (reads,) = vm.accesses(address(_token()));
+        assertFalse(_contains(reads, capsSlot), "a closed window leaves the caps slot cold");
+    }
+
+    function _contains(bytes32[] memory list, bytes32 item) internal pure returns (bool) {
+        for (uint256 i; i < list.length; ++i) {
+            if (list[i] == item) return true;
+        }
+        return false;
+    }
+
     /// Whitelisted recipient bypasses caps on wallet-to-wallet transfers too, not just on curve
     /// buys.
     function test_walletToWallet_whitelistedRecipient_bypassesCaps() public {
@@ -278,10 +303,27 @@ abstract contract SniperProtectionBaseTest is Test {
         assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX + 1 + MAX_WALLET * 2);
     }
 
-    function test_postGraduationBypass_withinWindow() public {
+    /// @dev Graduation does NOT lift the caps: the window runs to its configured end on both venues.
+    ///      It has to — the direct-launch venue graduates a token in the transaction that creates it,
+    ///      so a rule that stopped at graduation would never apply there at all.
+    function test_postGraduation_capsStillApply_withinWindow() public {
         vm.warp(block.timestamp + 30 minutes);
         vm.prank(address(graduator));
         _token().markGraduated();
+
+        vm.expectRevert(SniperProtection.MaxBuyPerTxExceeded.selector);
+        _curveBuy(buyer, MAX_BUY_PER_TX + 1);
+
+        // ...and a sub-cap buy still goes through.
+        _curveBuy(buyer, MAX_BUY_PER_TX);
+        assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX);
+    }
+
+    /// @dev The caps lift when the WINDOW ends, graduated or not.
+    function test_postGraduation_capsLift_afterWindow() public {
+        vm.prank(address(graduator));
+        _token().markGraduated();
+        vm.warp(uint256(IRealmToken(address(_token())).launchTimestamp()) + DEFAULT_WINDOW + 1);
 
         _curveBuy(buyer, MAX_BUY_PER_TX + 1);
         assertEq(_token().balanceOf(buyer), MAX_BUY_PER_TX + 1);
@@ -562,10 +604,12 @@ abstract contract SniperProtectionBaseTest is Test {
         assertEq(_maxBuy(buyer), type(uint256).max);
     }
 
-    function test_maxTokenPurchase_afterGraduationReturnsMax() public {
+    /// @dev Mirrors `test_postGraduation_capsStillApply_withinWindow` on the view side: the quote a
+    ///      frontend reads must keep reporting the cap for as long as the cap is enforced.
+    function test_maxTokenPurchase_afterGraduationStillReportsCap() public {
         vm.prank(address(graduator));
         _token().markGraduated();
-        assertEq(_maxBuy(buyer), type(uint256).max);
+        assertEq(_maxBuy(buyer), MAX_BUY_PER_TX);
     }
 
     /// @dev With asymmetric configs (maxBuyPerTxBps < maxWalletBps), the tx cap binds for a
@@ -671,12 +715,12 @@ contract RealmTaxableTokenUniV4SniperProtectedTest is SniperProtectionBaseTest {
     RealmTaxableTokenUniV4 internal impl;
 
     function setUp() public {
-        vm.chainId(DeploymentAddressesEthereumMainnet.BLOCKCHAIN_ID);
+        vm.chainId(DeploymentAddressesRobinhoodMainnet.BLOCKCHAIN_ID);
 
         launchpadMock = new MockLaunchpad();
         launchpad = address(launchpadMock);
 
-        graduator = new MockGraduator(DeploymentAddressesEthereumMainnet.UNIV4_POOL_MANAGER);
+        graduator = new MockGraduator(DeploymentAddressesRobinhoodMainnet.UNIV4_POOL_MANAGER);
         impl = new RealmTaxableTokenUniV4();
         token = RealmTaxableTokenUniV4(payable(Clones.clone(address(impl))));
         token.initialize(

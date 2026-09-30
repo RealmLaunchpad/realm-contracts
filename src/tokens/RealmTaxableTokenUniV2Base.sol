@@ -5,19 +5,11 @@ import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
-/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
-/// or DeploymentAddressesArc{Mainnet,Testnet} (ARC: `WETH` is the 6-decimal USDC ERC-20 V2 quote).
-import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+/// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title RealmTaxableTokenUniV2Base
-/// @notice Everything the Uniswap-V2 taxable token and its dividend extension must AGREE on: the V2
-///         constants, the token's own storage, and the small reads either side may perform.
-/// @dev This exists so `RealmTaxableTokenUniV2` and `RealmDividendLogicUniV2` derive an IDENTICAL storage
-///      layout from the same declarations. The extension is `delegatecall`ed with the token's storage,
-///      so a layout that drifts would have it writing the wrong slots; splitting the declarations out
-///      here makes that structurally impossible rather than merely tested (it is tested too — see
-///      `just check-dividend-layout`). Nothing behavioural belongs here: put a function in
-///      this base only when BOTH sides need it, and everything else in the contract that uses it.
+/// @notice The Uniswap-V2 taxable token's venue constants, storage, and small shared reads.
 abstract contract RealmTaxableTokenUniV2Base is RealmTaxableToken {
     ///////////////////////////////// uniswap v2 related /////////////////////////////////////////
     // NB : THESE ARE HARDCODED FOR MAINNET TO SAVE GAS
@@ -89,13 +81,6 @@ abstract contract RealmTaxableTokenUniV2Base is RealmTaxableToken {
     ///      must use this field and not `ethAmount`. The two are equal for a token with no allocation.
     event CreatorTaxSwapback(uint256 tokenAmountIn, uint256 ethAmount, uint256 ethToFund);
 
-    /// @dev On V2 a payout in the token ITSELF must be buffered in token space: `UniswapV2Pair.swap`
-    ///      reverts `INVALID_TO` when the recipient is one of the pair's own tokens, so there is no
-    ///      ETH -> self-token route to buy it back with.
-    function _isTokenSpaceDividendAsset(address asset) internal view virtual override returns (bool) {
-        return asset == address(this);
-    }
-
     /// @dev The share of total earnings the self-token dividend payout takes, in token space: all of
     ///      the dividends slice when the payout asset IS this token, none of it otherwise.
     /// @dev Gated on the warm `hasDividends` flag first, as `_sweepableAsset` below is: without dividends
@@ -127,4 +112,8 @@ abstract contract RealmTaxableTokenUniV2Base is RealmTaxableToken {
         }
         return balance > reserved ? balance - reserved : 0;
     }
+
+    /// @dev A V2 token graduates at migration (`markGraduated`), so the direct-venue milestone check is
+    ///      unreachable here; overriding it drops its bytecode (EIP-170).
+    function _checkGraduationMilestone() internal pure override {}
 }

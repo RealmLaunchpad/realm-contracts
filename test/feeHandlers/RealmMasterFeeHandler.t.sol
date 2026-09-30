@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTests, LaunchpadBaseTestsWithDirectV4} from "test/launchpad/base.t.sol";
 import {RealmMasterFeeHandler} from "src/feeHandlers/RealmMasterFeeHandler.sol";
 import {IRealmMasterFeeHandler} from "src/interfaces/IRealmMasterFeeHandler.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
@@ -42,7 +42,7 @@ contract ReenterOnReceive {
     }
 }
 
-contract RealmMasterFeeHandlerReentrancyTest is LaunchpadBaseTestsWithUniv4Graduator {
+contract RealmMasterFeeHandlerReentrancyTest is LaunchpadBaseTestsWithDirectV4 {
     ReenterOnReceive internal malicious;
     address internal eoaClaimable = makeAddr("eoaClaimable");
 
@@ -64,17 +64,8 @@ contract RealmMasterFeeHandlerReentrancyTest is LaunchpadBaseTestsWithUniv4Gradu
     ///      swap/graduation hot path stays alive.
     function test_setSharesReentryFromDirectReceiver_doesNotDosDepositFees() public {
         // Deploy a token with malicious as tokenOwner + direct fee receiver, EOA as claimable.
-        vm.prank(address(malicious));
-        address token = factoryV4Unified.createToken(
-            "AttackToken",
-            "ATTK",
-            _nextValidSalt(address(factoryV4Unified), address(realmToken), address(malicious)),
-            _feeShares(),
-            _noSs(),
-            false, // do NOT renounce — owner = msg.sender = malicious
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
-        );
+        // Do NOT renounce — owner = msg.sender = malicious.
+        address token = _createDirectTokenAs(address(malicious), "AttackToken", "ATTK", _feeShares(), false);
         malicious.setToken(token);
 
         assertEq(IRealmToken(token).owner(), address(malicious), "owner = malicious");
@@ -118,23 +109,13 @@ contract RealmMasterFeeHandlerReentrancyTest is LaunchpadBaseTestsWithUniv4Gradu
     }
 }
 
-contract RealmMasterFeeHandlerAccessControlTest is LaunchpadBaseTestsWithUniv4Graduator {
+contract RealmMasterFeeHandlerAccessControlTest is LaunchpadBaseTestsWithDirectV4 {
     address internal token;
 
     function setUp() public override {
         super.setUp();
 
-        vm.prank(creator);
-        token = factoryV4Unified.createToken(
-            "AccessToken",
-            "ACCS",
-            _nextValidSalt(address(factoryV4Unified), address(realmToken)),
-            _fs(creator),
-            _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
-        );
+        token = _createDirectTokenAs(creator, "AccessToken", "ACCS", _fs(creator), false);
     }
 
     function _assertSingleRecipient(address targetToken, address expectedRecipient) internal view {
@@ -145,17 +126,7 @@ contract RealmMasterFeeHandlerAccessControlTest is LaunchpadBaseTestsWithUniv4Gr
     }
 
     function _createRenouncedToken() internal returns (address renouncedToken) {
-        vm.prank(creator);
-        renouncedToken = factoryV4Unified.createToken(
-            "RenouncedToken",
-            "RNCD",
-            _nextValidSalt(address(factoryV4Unified), address(realmToken)),
-            _fs(creator),
-            _noSs(),
-            true,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
-        );
+        renouncedToken = _createDirectTokenAs(creator, "RenouncedToken", "RNCD", _fs(creator), true);
         assertEq(IRealmToken(renouncedToken).owner(), address(0), "renounced token owner");
     }
 
@@ -199,7 +170,7 @@ contract RealmMasterFeeHandlerAccessControlTest is LaunchpadBaseTestsWithUniv4Gr
     }
 }
 
-contract RealmMasterFeeHandlerDirectReceiverCapTest is LaunchpadBaseTestsWithUniv4Graduator {
+contract RealmMasterFeeHandlerDirectReceiverCapTest is LaunchpadBaseTestsWithDirectV4 {
     address internal d0 = makeAddr("d0");
     address internal d1 = makeAddr("d1");
     address internal d2 = makeAddr("d2");
@@ -211,17 +182,7 @@ contract RealmMasterFeeHandlerDirectReceiverCapTest is LaunchpadBaseTestsWithUni
     function setUp() public override {
         super.setUp();
         // Plain V4 token, owner = creator, single claimable fee receiver.
-        vm.prank(creator);
-        token = factoryV4Unified.createToken(
-            "CapToken",
-            "CAP",
-            _nextValidSalt(address(factoryV4Unified), address(realmToken)),
-            _fs(creator),
-            _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
-        );
+        token = _createDirectTokenAs(creator, "CapToken", "CAP", _fs(creator), false);
     }
 
     function _shares(address[] memory directs) internal pure returns (IRealmFactory.FeeShare[] memory arr) {
@@ -281,7 +242,7 @@ contract RealmMasterFeeHandlerDirectReceiverCapTest is LaunchpadBaseTestsWithUni
 ///         retroactively earn from the pre-reclassification accumulator. Their pre-existing direct
 ///         payouts were already delivered synchronously; the accumulator was advanced only for the
 ///         claimable cohort, so there is no slice owed to the reclassified account.
-contract RealmMasterFeeHandlerReclassificationTest is LaunchpadBaseTestsWithUniv4Graduator {
+contract RealmMasterFeeHandlerReclassificationTest is LaunchpadBaseTestsWithDirectV4 {
     address internal directRecipient = makeAddr("direct");
     address internal claimableRecipient = makeAddr("claimable");
     address internal token;
@@ -293,17 +254,7 @@ contract RealmMasterFeeHandlerReclassificationTest is LaunchpadBaseTestsWithUniv
         fs[0] = IRealmFactory.FeeShare({account: directRecipient, shares: 5_000, directFeesEnabled: true});
         fs[1] = IRealmFactory.FeeShare({account: claimableRecipient, shares: 5_000, directFeesEnabled: false});
 
-        vm.prank(creator);
-        token = factoryV4Unified.createToken(
-            "Reclass",
-            "RCL",
-            _nextValidSalt(address(factoryV4Unified), address(realmToken)),
-            fs,
-            _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
-        );
+        token = _createDirectTokenAs(creator, "Reclass", "RCL", fs, false);
     }
 
     function test_directBecomesClaimable_doesNotInheritAccumulatedFees() public {

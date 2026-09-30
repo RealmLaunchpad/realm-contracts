@@ -438,6 +438,8 @@ contract RealmLaunchpad is IRealmLaunchpad2, Ownable2Step, ReentrancyGuardTransi
         uint256 total = uint256(fees.lpFeeBps) + fees.taxBps;
         require(total <= MAX_TRADING_FEE_BPS, InvalidLaunchpadFee());
         require(fees.treasuryShareBps <= BASIS_POINTS, InvalidLaunchpadFee());
+        // Safe cast: `total <= MAX_TRADING_FEE_BPS`.
+        // forge-lint: disable-next-line(unsafe-typecast)
         return (uint16(total), fees.lpFeeBps, fees.treasuryShareBps);
     }
 

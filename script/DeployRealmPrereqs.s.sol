@@ -28,8 +28,8 @@ import {DeployRealmRegistries} from "script/DeployRealmRegistries.s.sol";
 ///         the old `livo.dev` key and pinned to the Livo treasury). Later router policy changes ship by
 ///         `upgradeToAndCall`ing this proxy, whose owner is the `realm.dev` deployer.
 ///
-/// @dev    Run: just chain-<sepolia|robinhood> && forge script DeployRealmPrereqs \
-///                  --rpc-url <sepolia|rh-mainnet> --account realm.dev --slow --broadcast --verify
+/// @dev    Run: just chain-<rh|rh-testnet> && forge script DeployRealmPrereqs \
+///                  --rpc-url <rh-mainnet|rh-testnet> --account realm.dev --slow --broadcast --verify
 contract DeployRealmPrereqs is DeployRealmRegistries {
     function run() external override {
         address treasury = ChainConfig.infra().treasury;

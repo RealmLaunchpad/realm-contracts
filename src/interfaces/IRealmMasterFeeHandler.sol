@@ -17,11 +17,30 @@ interface IRealmMasterFeeHandler is IRealmClaims {
     error InvalidShares();
     error TooManyDirectReceivers();
     error TooManyFeeReceivers();
+    /// @notice Thrown when an ERC20 entry point is handed `address(0)`, which is the native sentinel
+    ///         and belongs on the payable overload instead.
+    error InvalidAsset();
+    /// @notice Thrown when a token has already been paid in `MAX_FEE_ASSETS` distinct ERC20s. Only
+    ///         the token itself can add one, so this bounds the `setShares` snapshot loop without being
+    ///         reachable by anyone else.
+    error TooManyFeeAssets();
 
     ////////////////// Events //////////////////
 
-    /// @notice Emitted on every `depositFees` call, before any direct forward attempt.
+    /// @notice Emitted on every NATIVE `depositFees` call, before any direct forward attempt.
     event CreatorFeesDeposited(address indexed token, uint256 amount);
+
+    /// @notice The ERC20 counterpart of `CreatorFeesDeposited`, emitted when a token pays its fees in
+    ///         the currency its pool is quoted in. A separate event rather than a widened one so every
+    ///         existing indexer handler for the native path keeps working untouched.
+    /// @dev `amount` is what ACTUALLY arrived, not what was requested — a fee-on-transfer quote
+    ///      delivers less, and the split is computed on the smaller number.
+    event CreatorAssetFeesDeposited(address indexed token, address indexed asset, uint256 amount);
+
+    /// @notice The ERC20 counterpart of `IRealmClaims.CreatorClaimed`: a receiver was paid in `asset`,
+    ///         either by a successful direct forward or by claiming. Same reasoning as
+    ///         `CreatorAssetFeesDeposited` for why it is a separate event.
+    event CreatorAssetClaimed(address indexed token, address indexed asset, address indexed account, uint256 amount);
 
     /// @notice Emitted when shares are (re)configured via `registerToken` or `setShares`. `token`
     ///         distinguishes per-token configs since this is a singleton handler.
@@ -47,6 +66,11 @@ interface IRealmMasterFeeHandler is IRealmClaims {
     ///      zero-value calls are no-ops and emit nothing.
     function depositFees(address token) external payable;
 
+    /// @notice Deposits ERC20 fees for `token`, in whichever currency its pool is quoted in. Callable
+    ///         ONLY by the token itself — see the implementation for why the native overload above can
+    ///         be permissionless and this one cannot.
+    function depositFees(address token, address asset, uint256 amount) external;
+
     /// @notice Registers initial fee-receiver config for a newly-deployed token. One-shot per
     ///         token. Callable only by the token itself; the token address is inferred from
     ///         `msg.sender`.
@@ -67,4 +91,17 @@ interface IRealmMasterFeeHandler is IRealmClaims {
 
     /// @notice Returns whether `account` is currently a direct receiver for `token`.
     function isDirectReceiver(address token, address account) external view returns (bool);
+
+    /// @notice Every asset `token` may hold fees in: native (`address(0)`) first, always, then every ERC20
+    ///         it has been paid in.
+    function assetsOf(address token) external view returns (address[] memory);
+
+    /// @notice Claims accumulated fees for `msg.sender` in one ERC20 `asset` across the given tokens.
+    function claim(address[] calldata tokens, address asset) external;
+
+    /// @notice Returns the pending claimable `asset` fees for `account` across the given tokens.
+    function getClaimable(address[] calldata tokens, address asset, address account)
+        external
+        view
+        returns (uint256[] memory);
 }

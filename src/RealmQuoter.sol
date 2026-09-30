@@ -5,7 +5,7 @@ import {IRealmLaunchpad2} from "src/interfaces/IRealmLaunchpad2.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmQuoter2} from "src/interfaces/IRealmQuoter2.sol";
 import {LimitReason} from "src/interfaces/IRealmQuoter.sol";
-import {TokenConfig, TokenState} from "src/types/tokenData.sol";
+import {TokenState} from "src/types/tokenData.sol";
 
 /// @title RealmQuoter
 /// @notice Single source of truth the frontend talks to for quoting trades. It composes

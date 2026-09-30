@@ -3,11 +3,7 @@ pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
-import {
-    LaunchpadBaseTests,
-    LaunchpadBaseTestsWithUniv2Graduator,
-    LaunchpadBaseTestsWithUniv4Graduator
-} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
@@ -17,7 +13,6 @@ import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
 import {IWETH} from "src/interfaces/IWETH.sol";
 
-import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {BaseUniswapV2GraduationTests} from "test/graduators/graduationUniv2.t.sol";
 import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
 import {ConstantProductBondingCurve} from "src/bondingCurves/ConstantProductBondingCurve.sol";
@@ -312,21 +307,5 @@ contract GraduationPriceTests_Univ2 is GraduationPricesTests, BaseUniswapV2Gradu
 
     function _uniswapSell(address account, uint256 tokenAmount) public override {
         _swapSell(account, testToken, tokenAmount, 0);
-    }
-}
-
-// This runs all the tests in GraduationPricesTests, but using the Univ4 graduator
-contract GraduationPriceTests_Univ4 is GraduationPricesTests, BaseUniswapV4GraduationTests {
-    function setUp() public override(GraduationPricesTests, BaseUniswapV4GraduationTests) {
-        super.setUp();
-    }
-
-    function _uniswapBuy(address account, uint256 ethAmount) public override {
-        deal(account, 2 * ethAmount);
-        _swapBuy(account, ethAmount, 0, true);
-    }
-
-    function _uniswapSell(address account, uint256 tokenAmount) public override {
-        _swapSell(account, tokenAmount, 0, true);
     }
 }

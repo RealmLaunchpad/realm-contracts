@@ -8,72 +8,53 @@ import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contrac
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
-import {IUniswapV2Factory} from "src/interfaces/IUniswapV2Factory.sol";
-import {IUniswapV2Pair} from "src/interfaces/IUniswapV2Pair.sol";
-import {IRealmDividendSwapRegistry, SwapRejection, Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {IRealmDividendSwapRegistry, Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
-/// constants baked into bytecode): DeploymentAddressesEthereumSepolia, DeploymentAddressesRobinhood*,
-/// or DeploymentAddressesArc{Mainnet,Testnet}.
-import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
-// Aliased so the `chain-arc-*` recipe can import-swap it: on ARC the "native" leg is 18-dec native USDC
-// and the V2 quote token is its 6-dec ERC-20 alias, so the depth check needs a scale factor.
-import {UniswapV2Venue as UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
+/// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
 import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
 import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
-import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
-import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
-// The pool-key types come from the ROOT v4-core checkout, which is a different compilation unit from
-// the one v4-periphery pins for `PathKey` above — so `Currency` and `IHooks` exist twice and are not
-// interchangeable. Aliased rather than deduplicated: the swap path must keep speaking the router's
-// dialect, and the validation path must keep speaking the pool manager's.
-import {Currency as CoreCurrency} from "lib/v4-core/src/types/Currency.sol";
-import {IHooks as ICoreHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 
 /// @title RealmDividendSwapRegistry
 /// @notice Performs the native -> asset conversion behind every dividend payout, through the route the
-///         paying token's creator chose at creation.
+///         paying token registered for that asset, or the one an admin put in its place.
 ///
-/// @dev NO WHITELIST, NO REVIEW. Realm does not vet payout assets. A creator names the pools, this
-///      contract checks they exist and hold liquidity, and the token converts through them forever
-///      after. The one admin lever left is the blacklist, for an asset that turns out to be hostile
-///      after the fact — it can only ever REFUSE, never admit.
+/// @dev CREATOR-PICKED, ADMIN-REPOINTABLE. Each token registers its routes here at creation, keyed
+///      `token => asset`, so one creator's route never touches another token paying the same asset.
+///      Tokens are immutable clones; this proxy is not. So a route that was set wrong, or whose pool
+///      drained or migrated, is fixed here by an admin: for one token (`setRoute(token, …)`) or, through
+///      the `ALL_TOKENS` override, for every token paying that asset in one transaction. Any ERC20 may be
+///      configured as a payout asset — one without a route just does not convert until it gets one. No
+///      liquidity gate runs at registration or conversion: the swap itself, and the keeper's `minOut`,
+///      are the truth about whether a pool can deliver.
 ///
-/// @dev ROUTES ARE PER (TOKEN, ASSET) AND WRITE-ONCE. Two tokens naming the same asset each carry their
-///      own route, so one creator's bad choice cannot reach another creator's holders, and nobody can
-///      grief a popular asset by registering a rotten route for it globally.
+/// @dev TWO ROUTE KINDS. A BUY route (native -> asset, any venue) buys a payout asset. A QUOTE route
+///      (V4 only) is walked backwards to SELL an ERC20 quote into native when a dividends leg is bought
+///      out of it; only V4 names its pools outright, so only V4 can be reversed. Kept apart so a quote
+///      that is also a payout asset can be bought on V2/V3 and still be sold on V4. With no quote route,
+///      the sell falls back to the quote's buy route, which then has to be V4.
 ///
 /// @dev CUSTODIES NOTHING. `swapNativeToAsset` receives, swaps and forwards inside one call, and holds
-///      no balance between calls. There is deliberately no `receive()`, so the only native that can
-///      reach it is native someone is actively converting. The one exception is ARC, where the venue
-///      floors the 18-dec native amount to 6-dec USDC and leaves sub-1e-6 dust behind; it is unreachable
-///      rather than owed to anyone, and a sweep for it would buy less than it costs to review.
+///      no balance between calls. Its `receive()` exists only for the native a reverse V4 leg takes out
+///      of the pool manager mid-`swapAssetToAsset`, which moves on in the same call; anything else sent
+///      there is a donation nobody can recover.
 contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
-    using PoolIdLibrary for PoolKey;
-    using StateLibrary for IPoolManager;
 
     /// @notice Router every V2 conversion goes through, and the source of the canonical quote token.
     address public constant SWAP_ROUTER = DeploymentAddresses.UNIV2_ROUTER;
 
-    /// @notice Factory the quote/asset pair is resolved through.
-    address public constant UNIV2_FACTORY = DeploymentAddresses.UNIV2_FACTORY;
-
     /// @notice Router a V4 or V3 route is executed on. One router, two commands.
-    /// @dev ETH-family chains only: the route pays the router in the native coin. On a chain whose
-    ///      native currency is an ERC20 (ARC) no route can convert, so none is ever registered there and
-    ///      every asset goes through the V2 path.
+    /// @dev The route pays the router in the native coin.
     address public constant UNIV4_UNIVERSAL_ROUTER = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
 
-    /// @notice The V4 singleton, read (never written) to prove a route's pools are real.
-    /// @dev `StateLibrary` reaches into it with `extsload`, so this needs no separate StateView
-    ///      deployment and no interface beyond the one v4-core already ships.
-    address public constant UNIV4_POOL_MANAGER = DeploymentAddresses.UNIV4_POOL_MANAGER;
+    /// @notice Permit2, through which the universal router pulls an ERC20 the registry sells.
+    address public constant PERMIT2 = DeploymentAddresses.PERMIT2;
 
     /// @notice Longest V4 route accepted.
     /// @dev Bounds the loop the swap path walks. Two hops already covers the case this exists for
@@ -81,9 +62,8 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     uint256 public constant MAX_ROUTE_HOPS = 4;
 
     /// @notice Longest V3 route accepted, in hops.
-    /// @dev TWO, not four. Every extra hop is another pool that can be drained and another price that
-    ///      can be wrong, and the second hop is only worth having because its FIRST leg is a pool that
-    ///      cannot realistically degrade — the intermediate allowlist is what makes that true.
+    /// @dev TWO, not four: every extra hop is another pool that can be drained and another price that
+    ///      can be wrong.
     uint256 public constant MAX_V3_ROUTE_HOPS = 2;
 
     /// @dev Byte widths of Uniswap V3's path encoding: `token | fee | token | fee | token…`.
@@ -101,53 +81,34 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     /// @dev NOT the fee — the fee is flat (`KEEPER_FEE`) and this only clips it. Gas is an absolute cost,
     ///      so a percentage would under-fund the keeper on a small conversion and overcharge holders on a
     ///      large one; a flat fee is what actually tracks the expense. It still needs a relative ceiling
-    ///      for the one case where "flat" breaks down: a conversion smaller than the fee itself, which
-    ///      the staleness bypass can produce. Without the clip that swap would be handed nothing and
+    ///      for the one case where "flat" breaks down: a conversion smaller than the fee itself, which a
+    ///      keeper slicing a thin pool can produce. Without the clip that swap would be handed nothing and
     ///      revert; with it the keeper simply eats the difference on a conversion it chose to trigger.
     uint16 public constant MAX_KEEPER_CUT_BPS = 2_000;
 
     uint256 private constant BPS_TOTAL = 10_000;
 
+    /// @notice The `token` key an admin writes to repoint an asset for EVERY token paying it. A route
+    ///         stored here wins over each token's own until it is cleared (set empty).
+    /// @dev No token can register under it: `registerRoute` keys on `msg.sender`, never zero.
+    address public constant ALL_TOKENS = address(0);
+
     //////////////////////// storage //////////////////////
 
-    /// @notice Addresses allowed to manage entries (thresholds, the blacklist, the quote allowlist).
-    ///         The owner manages THIS set and the upgrade; admins manage everything else.
-    /// @dev Two tiers because the entry-level operations are frequent and operational (blacklisting an
-    ///      asset that just turned hostile) while the owner is a cold multisig that should not be in
-    ///      that loop.
+    /// @notice Addresses allowed to set routes and the keeper wallet. The owner manages THIS set and
+    ///         the upgrade; admins manage everything else.
+    /// @dev Two tiers because route maintenance is frequent and operational while the owner is a cold
+    ///      multisig that should not be in that loop.
     mapping(address => bool) public isAdmin;
 
-    /// @notice Quote tokens a conversion may start from, and the currencies a multi-hop V3 path may
-    ///         route THROUGH. Always enforced.
-    /// @dev Today this holds exactly one entry — the router's WETH — because every Realm token's
-    ///      earnings are denominated in the chain's native currency. It is a mapping rather than a
-    ///      constant so a future non-ETH-quoted token needs a transaction here, not a new token
-    ///      implementation.
-    mapping(address => bool) public isAllowedQuoteToken;
-
-    /// @notice Per-quote-token depth override, in native 18-dec units. 0 means "use `defaultThreshold`".
-    mapping(address => uint256) public quoteTokenThreshold;
-
-    /// @notice Assets no token may convert into, whatever route it registered. The only veto left.
-    /// @dev Applies retroactively: a token that registered a route for an asset blacklisted later stops
-    ///      converting it, and its buffer reaches the treasury through the staleness sweep. That is the
-    ///      intended severity — the blacklist exists for an asset that is actively hurting holders.
-    mapping(address => bool) public isBlacklisted;
-
-    /// @notice Quote-side depth an asset's V2 pair must hold, in native 18-dec units, when its quote
-    ///         token has no override. Applies to the empty (V2) route only — a route names its pools,
-    ///         and those are measured for existence and liquidity instead.
-    uint256 public defaultThreshold;
-
-    /// @notice The route each token converts each of its payout assets through, keyed
-    ///         `token => asset => route`, in the `DividendRouteLib` wire format.
-    /// @dev Empty is a REAL ANSWER, not a missing one: it selects the permissionless V2 pair. Which is
-    ///      why `registerRoute` is write-once by (token, asset) rather than by emptiness.
+    /// @notice Buy routes, `token => asset => route`, in the `DividendRouteLib` wire format. The
+    ///         `ALL_TOKENS` row is the admin override. Empty: no route, so that conversion fails until
+    ///         one is set.
     mapping(address => mapping(address => bytes)) internal _routes;
 
-    /// @notice Whether `token` has already registered a route for `asset`. Separate from `_routes`
-    ///         because the empty route is a legitimate registration.
-    mapping(address => mapping(address => bool)) public routeRegistered;
+    /// @notice Quote (sell) routes, `token => quote => route`, V4 only, same wire format and same
+    ///         `ALL_TOKENS` override. Empty: fall back to the quote's buy route.
+    mapping(address => mapping(address => bytes)) internal _quoteRoutes;
 
     /// @notice Hot wallet that pays the gas for the out-of-band conversions, funded by `KEEPER_FEE` out
     ///          of every conversion it triggers. `address(0)` — the default — disables the fee entirely,
@@ -157,22 +118,29 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     ///      address: splitting a cut across several would need a schedule nobody has asked for.
     address public keeper;
 
+    /// @notice Assets an admin has declared dead as a dividend payout or a quote: a pool gone for good, a
+    ///         token that stopped transferring. Tokens read it at every funding and, for a leg that would
+    ///         convert into or out of a retired asset, pay the buffer in its own currency instead (their
+    ///         fallback pots) — so a dead asset strands nothing. Reversible: un-retiring resumes
+    ///         conversions, and what the fallback already credited stays claimable.
+    /// @dev A flag, not a route: a route can be repointed, a dead asset has nowhere to point. Read only by
+    ///      token implementations that know it; older clones keep converting (and failing) as before.
+    mapping(address asset => bool) public isRetired;
+
     /// @dev Reserved for future storage. Appending past this on an upgrade is safe; reordering anything
     ///      above it is not.
-    uint256[41] private __gap;
+    uint256[45] private __gap;
 
     //////////////////////// events //////////////////////
 
     event AdminSet(address indexed account, bool allowed);
-    event QuoteTokenAllowed(address indexed quote, bool allowed);
-    event QuoteTokenThresholdSet(address indexed quote, uint256 threshold);
-    event DefaultThresholdSet(uint256 threshold);
-    event BlacklistSet(address indexed asset, bool blacklisted);
-    /// @notice A token registered the route it will convert `asset` through. Emitted once per (token,
-    ///         asset), at the token's creation. Replaying these is how an indexer learns which pools a
-    ///         token's dividends actually cross — there is no other mechanism, and no hardcoded list
-    ///         should stand in for it.
-    event DividendRouteRegistered(address indexed token, address indexed asset, bytes route);
+    /// @notice `token` registered its route for `asset` at creation. `quote`: a sell route for one of
+    ///         its ERC20 quotes rather than a payout asset's buy route. Replaying these, then
+    ///         `DividendRouteSet`, is how an indexer learns which pools each conversion crosses.
+    event DividendRouteRegistered(address indexed token, address indexed asset, bool quote, bytes route);
+    /// @notice An admin repointed `token`'s route for `asset` (`token == ALL_TOKENS`: the override for
+    ///         every token). Empty `route`: removed. `quote` as in `DividendRouteRegistered`.
+    event DividendRouteSet(address indexed token, address indexed asset, bool quote, bytes route);
     event DividendAssetPurchased(address indexed asset, address indexed recipient, uint256 nativeIn, uint256 assetOut);
     /// @notice The wallet the per-conversion `KEEPER_FEE` is paid to changed. `address(0)` turns the fee
     ///          off. Named for the funding, not for the keeper set — the allowlist lives in
@@ -182,22 +150,38 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     ///          less than `KEEPER_FEE` on a small one. `DividendAssetPurchased.nativeIn` for the same
     ///          conversion is the FULL amount the token sent, this included, not the amount swapped.
     event KeeperFunded(address indexed keeper, uint256 amount);
+    /// @notice `asset` was retired (`true`) or brought back (`false`). Emitted on every `setRetired`.
+    event AssetRetired(address indexed asset, bool retired);
+
+    /// @notice A `swapAssetToAsset` conversion: `amountIn` of `source` became `nativeVia` native on the
+    ///         way — the keeper's cut, if any, came out of that — and `assetOut` of `asset` for
+    ///         `recipient` (`asset == address(0)`: native, and `assetOut` is what was delivered).
+    event DividendAssetSwapped(
+        address indexed source,
+        address indexed asset,
+        address indexed recipient,
+        uint256 amountIn,
+        uint256 nativeVia,
+        uint256 assetOut
+    );
 
     //////////////////////// errors //////////////////////
 
     error NotAdmin();
-    error ZeroThreshold();
-    error SwapNotSupported(SwapRejection rejection);
-    error RouteRejected(SwapRejection rejection);
-    /// @notice A token tried to register a second route for the same asset. Creation runs once, so this
-    ///         can only be a token implementation calling twice — or a rewrite attempt, which would be a
-    ///         rug lever the creator is not meant to have.
+    /// @notice The asset has no route (or, for `swapAssetToAsset`'s first leg, none that can be walked
+    ///         backwards — only V4 can).
+    error NoRoute();
+    /// @notice The route is not well-formed for the asset it was set for (a quote route: or not V4).
+    error MalformedRoute();
+    /// @notice The token already registered a route for this asset; only an admin can change it now.
     error RouteAlreadyRegistered();
     error NothingToSwap();
     /// @notice The venue call reverted: a drained pool, a missed floor, a token that refuses the swap.
     ///         Reported as a revert because the caller (a dividend freeze) must keep its native.
     error SwapFailed();
     error InsufficientOutput();
+    /// @notice A native payout could not be delivered to the recipient.
+    error NativeDeliveryFailed();
     /// @notice The keeper wallet refused its cut. Reverting is deliberate: the alternative is a keeper
     ///          that silently stops being funded while conversions keep spending its gas.
     error KeeperFundingFailed();
@@ -212,177 +196,91 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     }
 
     /// @param initialOwner cold multisig: manages admins and upgrades, nothing else
-    /// @param initialThreshold quote-side depth, native 18-dec, an asset's V2 pair must hold by default
-    function initialize(address initialOwner, uint256 initialThreshold) external initializer {
+    function initialize(address initialOwner) external initializer {
         __Ownable_init(initialOwner);
         __UUPSUpgradeable_init();
-
-        require(initialThreshold != 0, ZeroThreshold());
-        defaultThreshold = initialThreshold;
-        emit DefaultThresholdSet(initialThreshold);
-
-        // The chain's canonical quote token is the one every token's earnings already arrive in, so it
-        // is allowed from the start: a registry that had to be configured before the first token could
-        // name an asset would be a deployment-order footgun for no benefit.
-        address quote = UniswapV2Venue.pairToken(IUniswapV2Router(SWAP_ROUTER));
-        isAllowedQuoteToken[quote] = true;
-        emit QuoteTokenAllowed(quote, true);
     }
 
     //////////////////////// views //////////////////////
 
-    /// @inheritdoc IRealmDividendSwapRegistry
+    /// @notice The WETH every V2/V3 route starts from.
     /// @dev `pure` because Uniswap's router declares `WETH()` that way; it is a STATICCALL either way.
     function nativeQuoteToken() public pure returns (address) {
         return UniswapV2Venue.pairToken(IUniswapV2Router(SWAP_ROUTER));
     }
 
     /// @inheritdoc IRealmDividendSwapRegistry
-    function routeOf(address token, address asset) external view returns (bytes memory) {
-        return _routes[token][asset];
+    function routeOf(address token, address asset) public view returns (bytes memory route) {
+        route = _routes[ALL_TOKENS][asset];
+        if (route.length == 0) route = _routes[token][asset];
     }
 
     /// @inheritdoc IRealmDividendSwapRegistry
-    function checkSwapSupported(address token, address asset)
-        public
-        view
-        returns (bool supported, SwapRejection rejection)
-    {
-        rejection = _validate(asset, _routes[token][asset]);
-        supported = rejection == SwapRejection.OK;
-    }
-
-    /// @inheritdoc IRealmDividendSwapRegistry
-    function validateRoute(address asset, bytes calldata route) external view returns (SwapRejection) {
-        return _validate(asset, route);
-    }
-
-    /// @inheritdoc IRealmDividendSwapRegistry
-    /// @dev Reads the pair's own reserves rather than a `balanceOf`, so a donation that has not been
-    ///      `sync`ed cannot inflate the depth a swap will actually cross.
-    function pairFor(address quote, address asset) public view returns (address pair, uint256 quoteDepth) {
-        pair = IUniswapV2Factory(UNIV2_FACTORY).getPair(quote, asset);
-        if (pair == address(0)) return (address(0), 0);
-
-        (uint112 reserve0, uint112 reserve1,) = IUniswapV2Pair(pair).getReserves();
-        uint256 reserve = IUniswapV2Pair(pair).token0() == quote ? reserve0 : reserve1;
-        // `QUOTE_TO_NATIVE_SCALE` lifts the pool's quote units to native 18-dec, which is what every
-        // threshold here is denominated in. 1 on ETH-family chains, 1e12 on ARC.
-        quoteDepth = reserve * UniswapV2Venue.QUOTE_TO_NATIVE_SCALE;
+    function quoteRouteOf(address token, address quote) public view returns (bytes memory route) {
+        route = _quoteRoutes[ALL_TOKENS][quote];
+        if (route.length == 0) route = _quoteRoutes[token][quote];
+        if (route.length == 0) route = routeOf(token, quote);
     }
 
     //////////////////////// route registration //////////////////////
 
     /// @inheritdoc IRealmDividendSwapRegistry
     function registerRoute(address asset, bytes calldata route) external {
-        require(!routeRegistered[msg.sender][asset], RouteAlreadyRegistered());
-
-        SwapRejection rejection = _validate(asset, route);
-        require(rejection == SwapRejection.OK, RouteRejected(rejection));
-
-        routeRegistered[msg.sender][asset] = true;
-        _routes[msg.sender][asset] = route;
-        emit DividendRouteRegistered(msg.sender, asset, route);
+        _register(_routes, asset, route, false);
     }
 
-    /// @dev The view-side entry: decodes the route, then defers to the shared gate below. The
-    ///      conversion path decodes ONCE for itself and calls that gate directly, so the same bytes are
-    ///      never stripped and `abi.decode`d twice in one transaction.
-    function _validate(address asset, bytes memory route) internal view returns (SwapRejection) {
-        return _validate(asset, nativeQuoteToken(), DividendRouteLib.decode(route));
+    /// @inheritdoc IRealmDividendSwapRegistry
+    function registerQuoteRoute(address quote, bytes calldata route) external {
+        _register(_quoteRoutes, quote, route, true);
     }
 
-    /// @dev The one gate, shared by registration and by every conversion. Ordered cheapest-first, and
-    ///      the venue branch mirrors `_venueSwap` exactly — an asset judged eligible on one venue and
-    ///      then swapped on another would convert through a pool nobody chose.
-    function _validate(address asset, address quote, DividendRouteLib.Decoded memory route)
-        internal
-        view
-        returns (SwapRejection)
-    {
-        if (!isAllowedQuoteToken[quote]) return SwapRejection.QuoteNotAllowed;
-        if (isBlacklisted[asset]) return SwapRejection.Blacklisted;
-
-        uint8 venue = route.venue;
-        if (venue == DividendRouteLib.VENUE_V4) return _validateV4(asset, route.hops);
-        if (venue == DividendRouteLib.VENUE_V3) return _validateV3(asset, quote, route.path);
-        // Not a tag we know: refuse rather than fall through to V2, which would silently convert through
-        // a pool the creator did not pick.
-        if (venue != 0) return SwapRejection.MalformedRoute;
-
-        (address pair, uint256 quoteDepth) = pairFor(quote, asset);
-        if (pair == address(0)) return SwapRejection.NoPair;
-
-        uint256 threshold = quoteTokenThreshold[quote];
-        if (threshold == 0) threshold = defaultThreshold;
-        if (quoteDepth < threshold) return SwapRejection.InsufficientLiquidity;
-
-        return SwapRejection.OK;
+    /// @dev Write-once per (`msg.sender`, asset): a token registers at creation and never again, so
+    ///      anything after that is an admin's. Shape-checked only; anyone may call, but only ever writes
+    ///      its own row, which nothing reads unless that caller is a token converting through here.
+    function _register(
+        mapping(address => mapping(address => bytes)) storage routes,
+        address asset,
+        bytes calldata route,
+        bool quote
+    ) private {
+        require(routes[msg.sender][asset].length == 0, RouteAlreadyRegistered());
+        require(_wellFormed(asset, route, quote), MalformedRoute());
+        routes[msg.sender][asset] = route;
+        emit DividendRouteRegistered(msg.sender, asset, quote, route);
     }
 
-    /// @dev Walks the V4 route from the native coin and proves every pool it names is real.
-    ///      `sqrtPriceX96 != 0` is the typo gate: a fee/tickSpacing/hooks combination nobody ever
-    ///      initialized reads as an all-zero slot, and is indistinguishable from the right pool until
-    ///      this checks. The liquidity read is the depth gate.
-    /// @dev KNOWN LIMIT: `getLiquidity` is IN-RANGE liquidity at the current tick. A pool whose entire
-    ///      position sits outside the current price reads zero and is refused here, even though a swap
-    ///      could in principle push into range. Accepted — that pool is not one a token should be
-    ///      committing its dividends to for life, and the frontend ranks candidates by what they
-    ///      actually deliver, so it would not offer one.
-    function _validateV4(address asset, Hop[] memory hops) internal view returns (SwapRejection) {
-        uint256 n = hops.length;
-        if (n == 0 || n > MAX_ROUTE_HOPS) return SwapRejection.MalformedRoute;
-        if (hops[n - 1].currency != asset) return SwapRejection.MalformedRoute;
-
-        IPoolManager manager = IPoolManager(UNIV4_POOL_MANAGER);
-        // Every V4 route starts at the native coin, because that is what `swapNativeToAssetV4Path`
-        // settles. See `UniversalRouterVenue`.
-        address from = address(0);
-        for (uint256 i; i < n; ++i) {
-            address to = hops[i].currency;
-            if (to == from) return SwapRejection.MalformedRoute;
-
-            (address currency0, address currency1) = from < to ? (from, to) : (to, from);
-            PoolId id = PoolKey({
-                    currency0: CoreCurrency.wrap(currency0),
-                    currency1: CoreCurrency.wrap(currency1),
-                    fee: hops[i].fee,
-                    tickSpacing: hops[i].tickSpacing,
-                    hooks: ICoreHooks(hops[i].hooks)
-                }).toId();
-
-            (uint160 sqrtPriceX96,,,) = manager.getSlot0(id);
-            if (sqrtPriceX96 == 0) return SwapRejection.DeadPool;
-            if (manager.getLiquidity(id) == 0) return SwapRejection.DeadPool;
-
-            from = to;
+    /// @dev Shape only — no liquidity read. Catches a route set for the wrong asset or a garbled path;
+    ///      whether its pools can absorb a conversion is proven off-chain before listing (fork probe) and
+    ///      re-proven by every swap.
+    ///      A quote route (`quote`) must be V4: it is walked backwards, which only V4 can be.
+    function _wellFormed(address asset, bytes memory route, bool quote) internal pure returns (bool) {
+        uint8 venue = DividendRouteLib.venue(route);
+        if (quote && venue != DividendRouteLib.VENUE_V4) return false;
+        if (venue == DividendRouteLib.VENUE_V2) return route.length == 1;
+        if (venue == DividendRouteLib.VENUE_V4) {
+            Hop[] memory hops = DividendRouteLib.toV4Hops(route);
+            uint256 n = hops.length;
+            if (n == 0 || n > MAX_ROUTE_HOPS || hops[n - 1].currency != asset) return false;
+            // Every V4 route starts at the native coin (`swapNativeToAssetV4Path` settles it).
+            address from = address(0);
+            for (uint256 i; i < n; ++i) {
+                if (hops[i].currency == from) return false;
+                from = hops[i].currency;
+            }
+            return true;
         }
-        return SwapRejection.OK;
-    }
-
-    /// @dev Checks only what makes a V3 path executable at all: it spans quote -> asset, it is a whole
-    ///      number of hops, it is at most `MAX_V3_ROUTE_HOPS`, and any middle token is one the protocol
-    ///      routes through. There is no pool-liquidity read here to match the V4 one — a V3 pool address
-    ///      is derived from a factory this contract does not hold, and no chain the dividends feature
-    ///      ships on has a V3 deployment worth wiring one in for. A V3 route is therefore accepted on
-    ///      shape alone; if it names a dead pool the token's conversions for that asset simply fail.
-    function _validateV3(address asset, address quote, bytes memory path) internal view returns (SwapRejection) {
-        uint256 len = path.length;
-        if (
-            len < V3_ADDR_BYTES + V3_FEE_BYTES + V3_ADDR_BYTES
-                || (len - V3_ADDR_BYTES) % (V3_FEE_BYTES + V3_ADDR_BYTES) != 0
-                || (len - V3_ADDR_BYTES) / (V3_FEE_BYTES + V3_ADDR_BYTES) > MAX_V3_ROUTE_HOPS
-        ) return SwapRejection.MalformedRoute;
-
-        if (_v3PathToken(path, 0) != quote || _v3PathToken(path, len - V3_ADDR_BYTES) != asset) {
-            return SwapRejection.MalformedRoute;
+        if (venue == DividendRouteLib.VENUE_V3) {
+            bytes memory path = DividendRouteLib.toV3Path(route);
+            uint256 len = path.length;
+            if (
+                len < V3_ADDR_BYTES + V3_FEE_BYTES + V3_ADDR_BYTES
+                    || (len - V3_ADDR_BYTES) % (V3_FEE_BYTES + V3_ADDR_BYTES) != 0
+                    || (len - V3_ADDR_BYTES) / (V3_FEE_BYTES + V3_ADDR_BYTES) > MAX_V3_ROUTE_HOPS
+            ) return false;
+            // `WRAP_ETH` funds the router in WETH, so the path must start there.
+            return _v3PathToken(path, 0) == nativeQuoteToken() && _v3PathToken(path, len - V3_ADDR_BYTES) == asset;
         }
-
-        // Middle tokens only: the ends are already pinned above.
-        for (uint256 o = V3_ADDR_BYTES + V3_FEE_BYTES; o + V3_ADDR_BYTES < len; o += V3_FEE_BYTES + V3_ADDR_BYTES) {
-            if (!isAllowedQuoteToken[_v3PathToken(path, o)]) return SwapRejection.IntermediateNotAllowed;
-        }
-        return SwapRejection.OK;
+        return false;
     }
 
     /// @dev The 20-byte address starting at `offset` in a V3 encoded path.
@@ -392,12 +290,21 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         }
     }
 
+    /// @dev The caller's buy route for `asset`, decoded, or `NoRoute`.
+    function _route(address asset) private view returns (DividendRouteLib.Decoded memory route) {
+        route = DividendRouteLib.decode(routeOf(msg.sender, asset));
+        require(route.venue != 0, NoRoute());
+    }
+
     //////////////////////// the swap //////////////////////
 
+    /// @notice Accepts the native a reverse leg takes out of the pool manager: `swapAssetToAsset`'s
+    ///         first leg lands here before the keeper's cut and the second leg move it on. Nothing
+    ///         rests here between calls — `swapNativeToAsset` never needed this because its native
+    ///         arrives as `msg.value`.
+    receive() external payable {}
+
     /// @inheritdoc IRealmDividendSwapRegistry
-    /// @dev Re-validates on every conversion rather than trusting the creation-time proof. A pool can be
-    ///      drained, and an asset can be blacklisted, long after a token was configured for it; without
-    ///      this the blacklist would only ever apply to tokens created after it was set.
     function swapNativeToAsset(address asset, uint256 minOut, address recipient)
         external
         payable
@@ -405,29 +312,17 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     {
         require(msg.value != 0, NothingToSwap());
 
-        // Decoded once and handed to both legs: `_validate` and `_venueSwap` need the same body, and
-        // stripping plus `abi.decode`ing a 200-320 byte route twice is pure waste on a per-conversion
-        // path. `quote` is threaded for the same reason — it is a STATICCALL into the V2 router.
-        address quote = nativeQuoteToken();
-        DividendRouteLib.Decoded memory route = DividendRouteLib.decode(_routes[msg.sender][asset]);
-        SwapRejection rejection = _validate(asset, quote, route);
-        require(rejection == SwapRejection.OK, SwapNotSupported(rejection));
+        DividendRouteLib.Decoded memory route = _route(asset);
 
         // The keeper's fee comes off the top, so what follows only ever spends what is left. `minOut` is
         // therefore a floor on the SWAPPED amount, not on `msg.value` — the keeper computes it off-chain
         // and has to quote the net.
-        address keeperWallet = keeper;
-        uint256 cut;
-        if (keeperWallet != address(0)) {
-            uint256 maxCut = (MAX_KEEPER_CUT_BPS * msg.value) / BPS_TOTAL;
-            cut = KEEPER_FEE < maxCut ? KEEPER_FEE : maxCut;
-        }
-        uint256 nativeIn = msg.value - cut;
+        (uint256 nativeIn, uint256 cut, address keeperWallet) = _keeperCut(msg.value);
 
         // Buy to THIS contract, not straight to `recipient`: the amount forwarded has to be a balance
         // delta measured here, because a fee-on-transfer asset delivers less than the router reports.
         uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
-        bool swapped = _venueSwap(asset, quote, route, nativeIn, minOut);
+        bool swapped = _venueSwap(asset, route, nativeIn, minOut);
         require(swapped, SwapFailed());
         out = IERC20(asset).balanceOf(address(this)) - balanceBefore;
 
@@ -444,23 +339,111 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         // Paid LAST, and only on a conversion that worked: a reverted swap keeps the caller's native
         // whole, so the keeper must not have been paid out of it on the way. Still custodies nothing —
         // the cut only rests here for the length of this call.
-        if (cut != 0) {
-            (bool sent,) = keeperWallet.call{value: cut}("");
-            require(sent, KeeperFundingFailed());
-            emit KeeperFunded(keeperWallet, cut);
-        }
+        _payKeeper(keeperWallet, cut);
     }
 
-    /// @dev Spends `nativeIn` on the venue `route` names. Mirrors `_validate`'s branch order exactly.
+    /// @inheritdoc IRealmDividendSwapRegistry
+    /// @dev Two legs, each through its asset's route. The keeper's cut
+    ///      is taken from the native in between, so the ERC20 legs fund the keeper exactly as the native
+    ///      ones do and nothing but native ever rests here for it. `minOut` guards the FINAL amount:
+    ///      a sandwich on either leg shows up there, so the native leg carries no floor of its own except
+    ///      when native IS the destination.
+    function swapAssetToAsset(address source, address asset, uint256 amountIn, uint256 minOut, address recipient)
+        external
+        returns (uint256 out)
+    {
+        require(amountIn != 0, NothingToSwap());
+        require(source != address(0) && source != asset, NoRoute());
+        IERC20(source).safeTransferFrom(msg.sender, address(this), amountIn);
+        uint256 native = _swapToNative(source, amountIn, asset == address(0) ? minOut : 0);
+        (uint256 nativeIn, uint256 cut, address keeperWallet) = _keeperCut(native);
+        if (asset == address(0)) {
+            out = nativeIn;
+            require(out >= minOut, InsufficientOutput());
+            (bool sent,) = recipient.call{value: out}("");
+            require(sent, NativeDeliveryFailed());
+        } else {
+            out = _swapFromNative(asset, nativeIn, minOut);
+            IERC20(asset).safeTransfer(recipient, out);
+        }
+        emit DividendAssetSwapped(source, asset, recipient, amountIn, native, out);
+        _payKeeper(keeperWallet, cut);
+    }
+
+    /// @dev Leg 1 of `swapAssetToAsset`: the caller's quote route for `source` (`quoteRouteOf`) walked
+    ///      BACKWARDS to native. Only a V4 route can be: it names its pools outright, whereas a V3 path is
+    ///      one-directional calldata and a V2 pair swap needs the router's ETH-out entry point this
+    ///      registry does not wire. A quote route is V4 by construction; the buy-route fallback may not be.
+    function _swapToNative(address source, uint256 amountIn, uint256 minOut) private returns (uint256 native) {
+        DividendRouteLib.Decoded memory route = DividendRouteLib.decode(quoteRouteOf(msg.sender, source));
+        require(route.venue == DividendRouteLib.VENUE_V4, NoRoute());
+        Hop[] memory hops = route.hops;
+        uint256 n = hops.length;
+        PathKey[] memory path = new PathKey[](n);
+        // The route runs native -> ... -> source; walked back, hop `j` OUTPUTS the currency before it.
+        for (uint256 k; k < n; ++k) {
+            uint256 j = n - 1 - k;
+            path[k] = PathKey({
+                intermediateCurrency: Currency.wrap(j == 0 ? address(0) : hops[j - 1].currency),
+                fee: hops[j].fee,
+                tickSpacing: hops[j].tickSpacing,
+                hooks: IHooks(hops[j].hooks),
+                hookData: ""
+            });
+        }
+        UniversalRouterVenue.ensureRouterPull(PERMIT2, UNIV4_UNIVERSAL_ROUTER, source);
+        uint256 before = address(this).balance;
+        uint256 sourceBefore = IERC20(source).balanceOf(address(this));
+        // All of `amountIn` or nothing: a partial fill would leave the rest here, where nothing can sweep
+        // it, while the caller books the whole spend.
+        require(
+            UniversalRouterVenue.swapAssetToNativeV4Path(UNIV4_UNIVERSAL_ROUTER, source, path, amountIn, minOut)
+                && sourceBefore - IERC20(source).balanceOf(address(this)) == amountIn,
+            SwapFailed()
+        );
+        native = address(this).balance - before;
+        require(native != 0, InsufficientOutput());
+    }
+
+    /// @dev Leg 2 of `swapAssetToAsset`: the payout asset's own route, forward — `swapNativeToAsset`'s
+    ///      body without the pull and the delivery.
+    function _swapFromNative(address asset, uint256 nativeIn, uint256 minOut) private returns (uint256 out) {
+        DividendRouteLib.Decoded memory route = _route(asset);
+        uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
+        require(_venueSwap(asset, route, nativeIn, minOut), SwapFailed());
+        out = IERC20(asset).balanceOf(address(this)) - balanceBefore;
+        require(out != 0 && out >= minOut, InsufficientOutput());
+    }
+
+    /// @dev The keeper's cut off `native`: the flat `KEEPER_FEE`, clipped to `MAX_KEEPER_CUT_BPS` of the
+    ///      amount, and nothing while no keeper wallet is set.
+    function _keeperCut(uint256 native) private view returns (uint256 net, uint256 cut, address keeperWallet) {
+        keeperWallet = keeper;
+        if (keeperWallet != address(0)) {
+            uint256 maxCut = (MAX_KEEPER_CUT_BPS * native) / BPS_TOTAL;
+            cut = KEEPER_FEE < maxCut ? KEEPER_FEE : maxCut;
+        }
+        net = native - cut;
+    }
+
+    /// @dev Paid LAST, and only on a conversion that worked: a reverted swap keeps the caller's input
+    ///      whole, so the keeper must not have been paid out of it on the way. Still custodies nothing —
+    ///      the cut only rests here for the length of the call.
+    function _payKeeper(address keeperWallet, uint256 cut) private {
+        if (cut == 0) return;
+        (bool sent,) = keeperWallet.call{value: cut}("");
+        require(sent, KeeperFundingFailed());
+        emit KeeperFunded(keeperWallet, cut);
+    }
+
+    /// @dev Spends `nativeIn` on the venue `route` names. `_wellFormed` admitted only these three.
     /// @return ok false if the venue reverted; the caller turns that into `SwapFailed` and keeps the
     ///         native it was sent.
-    function _venueSwap(
-        address asset,
-        address quote,
-        DividendRouteLib.Decoded memory route,
-        uint256 nativeIn,
-        uint256 minOut
-    ) private returns (bool ok) {
+    function _venueSwap(address asset, DividendRouteLib.Decoded memory route, uint256 nativeIn, uint256 minOut)
+        private
+        returns (bool ok)
+    {
+        address quote = nativeQuoteToken();
         uint8 venue = route.venue;
 
         if (venue == DividendRouteLib.VENUE_V4) {
@@ -490,9 +473,6 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         address[] memory v2Path = new address[](2);
         v2Path[0] = quote;
         v2Path[1] = asset;
-        // Through the venue lib, not the router directly: the `chain-arc-*` recipe import-swaps it,
-        // and ARC has no WETH — its native USDC shares a balance with the 6-dec ERC-20 the pair is
-        // quoted in, so the same `msg.value` becomes a two-ERC20 swap there rather than an ETH-in one.
         return UniswapV2Venue.trySwapNativeToAsset(IUniswapV2Router(SWAP_ROUTER), quote, v2Path, nativeIn, minOut);
     }
 
@@ -504,33 +484,34 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         emit AdminSet(account, allowed);
     }
 
-    /// @notice Allow or disallow a currency as a conversion's starting point and as a V3 intermediate.
-    function setAllowedQuoteToken(address quote, bool allowed) external onlyAdmin {
-        isAllowedQuoteToken[quote] = allowed;
-        emit QuoteTokenAllowed(quote, allowed);
+    /// @notice Set, repoint or (empty `route`) remove `token`'s buy route for `asset`. `token ==
+    ///         ALL_TOKENS` sets the override every token paying `asset` converts through instead.
+    /// @dev Checks shape, not depth: probe a route on a fork before listing it (`PickDividendRoutes`).
+    function setRoute(address token, address asset, bytes calldata route) external onlyAdmin {
+        _set(_routes, token, asset, route, false);
     }
 
-    /// @notice Override the V2 depth threshold for one quote token. 0 restores `defaultThreshold`.
-    function setQuoteTokenThreshold(address quote, uint256 threshold) external onlyAdmin {
-        quoteTokenThreshold[quote] = threshold;
-        emit QuoteTokenThresholdSet(quote, threshold);
+    /// @notice Same for `token`'s quote (sell) route for `quote`. V4 only.
+    function setQuoteRoute(address token, address quote, bytes calldata route) external onlyAdmin {
+        _set(_quoteRoutes, token, quote, route, true);
     }
 
-    /// @notice The V2 depth threshold used when a quote token has no override.
-    function setDefaultThreshold(uint256 threshold) external onlyAdmin {
-        require(threshold != 0, ZeroThreshold());
-        defaultThreshold = threshold;
-        emit DefaultThresholdSet(threshold);
+    function _set(
+        mapping(address => mapping(address => bytes)) storage routes,
+        address token,
+        address asset,
+        bytes calldata route,
+        bool quote
+    ) private {
+        require(route.length == 0 || _wellFormed(asset, route, quote), MalformedRoute());
+        routes[token][asset] = route;
+        emit DividendRouteSet(token, asset, quote, route);
     }
 
-    /// @notice THE ONLY VETO. Stops every token — existing and future — from converting into `asset`.
-    /// @dev Deliberately blunt and deliberately retroactive. It is the answer to an asset that turns
-    ///      out to be hostile after tokens have already committed to it, which is the failure mode of
-    ///      not reviewing assets up front. It cannot admit anything: a blacklisted asset's tokens stop
-    ///      converting, their buffers go stale, and the staleness sweep sends those to the treasury.
-    function setBlacklisted(address asset, bool blacklisted) external onlyAdmin {
-        isBlacklisted[asset] = blacklisted;
-        emit BlacklistSet(asset, blacklisted);
+    /// @notice Retires `asset`, or brings it back. See `isRetired`. Admin or owner.
+    function setRetired(address asset, bool retired) external onlyAdmin {
+        isRetired[asset] = retired;
+        emit AssetRetired(asset, retired);
     }
 
     /// @notice The wallet each conversion's `KEEPER_FEE` funds. `address(0)` turns the fee off.

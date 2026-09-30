@@ -20,7 +20,7 @@ import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 
 /// @title RealmSwapHook V2
 /// @notice Uniswap V4 hook that collects LP fees and time-limited buy/sell taxes on swaps of
-///         tokens graduated via RealmGraduatorUniswapV4.
+///         tokens launched on native pools via RealmDirectGraduatorUniV4.
 /// @dev Singleton, ownerless hook shared by every taxable token. Per-token LP-fee + tax rates come
 ///      from `IRealmToken.getSwapFees(isBuy)`, which already windows the tax (zero outside the
 ///      post-graduation period) and returns only the swap's direction, so the hook stays agnostic to

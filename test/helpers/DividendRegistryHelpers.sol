@@ -5,19 +5,14 @@ import {Vm} from "forge-std/Vm.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
 // Swapped per target chain by `just chain-<name>`, together with the token implementations that bake
 // the same constant in.
-import {DeploymentAddressesRobinhoodTestnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 Vm constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
-// Default quote-side depth an asset's pair must hold to be eligible.
-// Sized off the freeze cap rather than picked: at 10x, the largest swap a token will ever send
-// through the pool is ~10% of its quote side. Lower would admit pools where a single freeze is most of
-// the liquidity; higher would exclude perfectly usable long-tail assets for no safety gain, since the
-// keeper's `minOut` is what protects each individual swap. The value a real deployment initializes the
-// registry proxy with, so tests share it rather than pick one.
 /// @dev OpenZeppelin v5 `Initializable`'s ERC-7201 slot (`openzeppelin.storage.Initializable`).
 bytes32 constant INITIALIZABLE_STORAGE = 0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00;
 
+/// @dev Native depth test payout pools are seeded with: 10x the largest conversion.
 uint256 constant DEFAULT_DIVIDEND_POOL_LIQUIDITY = 10 * DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;
 
 /// @notice Puts a working `RealmDividendSwapRegistry` at the address the token implementations bake in.
@@ -33,9 +28,15 @@ function installDividendSwapRegistry(address owner) returns (RealmDividendSwapRe
     VM.etch(at, address(deployed).code);
     VM.label(at, "DividendSwapRegistry");
 
-    registry = RealmDividendSwapRegistry(at);
+    registry = RealmDividendSwapRegistry(payable(at));
     // On a chain where the registry proxy is already live (Robinhood), the address carries the proxy's
     // storage, initialized flag included; clear it so the fresh copy can be initialized like the rest.
     VM.store(at, INITIALIZABLE_STORAGE, bytes32(0));
-    registry.initialize(owner, DEFAULT_DIVIDEND_POOL_LIQUIDITY);
+    registry.initialize(owner);
+}
+
+/// @notice Sets `asset`'s route as the registry's owner. `route` empty clears it.
+function setDividendRoute(RealmDividendSwapRegistry registry, address asset, bytes memory route) {
+    VM.prank(registry.owner());
+    registry.setRoute(address(0), asset, route);
 }

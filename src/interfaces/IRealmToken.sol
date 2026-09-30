@@ -7,7 +7,14 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 interface IRealmToken is IERC20 {
     //////////////////////// Events //////////////////////
 
+    /// @notice The token reached its graduation milestone. Curve venues: the migration to the DEX. Direct
+    ///         venue (no curve, tradable from birth): the first buy that takes its graduation pool to
+    ///         `GRADUATION_TARGET_MULTIPLE`x its launch market cap. Cosmetic only; see `graduationReached`.
     event Graduated();
+
+    /// @notice Emitted once at creation when a token is launched against ERC20 quotes on top of the
+    ///         native one every token carries at index 0. Absent on a native-only token.
+    event QuotesRegistered(address[] quotes);
     event NewOwnerProposed(address owner, address proposedOwner, address caller);
     event OwnershipTransferred(address newOwner);
 
@@ -80,12 +87,32 @@ interface IRealmToken is IERC20 {
 
     function markGraduated() external;
 
+    /// @notice Sets the pool and tick whose crossing emits `Graduated` on a direct-venue token.
+    /// @dev Callable only by the graduator, at launch.
+    function setGraduationTarget(bytes32 poolId, int24 tick, bool ascending) external;
+
     /// @notice Registers the token's initial fee receiver config in its fee handler.
     /// @dev Callable only by the factory that initialized the token.
     function registerFees(IRealmFactory.FeeShare[] calldata feeShares) external;
 
+    /// @notice Registers the ERC20 currencies this token's pools are quoted in, beyond the native one
+    ///         index 0 always holds. Callable only by the factory that created the token, in the
+    ///         creation transaction.
+    function registerQuotes(address[] calldata extraQuotes) external;
+
     /// @notice Routes ETH fees to the token's fee handler for the token's fee receiver
     function accrueFees() external payable;
+
+    /// @notice Routes ERC20 fees, for a pool quoted in something other than the chain's native
+    ///         currency. PULLS `amount` of `asset` from the caller, who must have approved this token.
+    ///         `asset` must be one of the token's registered `quotes`.
+    function accrueFees(address asset, uint256 amount) external;
+
+    /// @notice The currencies this token's pools are quoted in. Index 0 is always `address(0)`.
+    function quotes(uint256 index) external view returns (address);
+
+    /// @notice How many entries of `quotes` are configured. 1 for a native-only token.
+    function quoteCount() external view returns (uint8);
 
     /// @notice Allows the current owner or whitelisted address to propose a new owner
     function proposeNewOwner(address newOwner) external;
@@ -133,8 +160,13 @@ interface IRealmToken is IERC20 {
     /// @dev Must implement IRealmGraduator interface
     function graduator() external view returns (address);
 
-    /// @notice Returns true if already graduated
+    /// @notice True once DEX liquidity is live and the token is tradable there (the deployed V4 hooks
+    ///         refuse swaps until then). Direct-venue tokens are tradable from birth, so this is NOT the
+    ///         graduation milestone: that is `graduationReached`.
     function graduated() external view returns (bool);
+
+    /// @notice True once the token hit its graduation milestone, i.e. once `Graduated` was emitted.
+    function graduationReached() external view returns (bool);
 
     /// @notice Timestamp when this token was created (the `initialize` call). Anchors the
     ///         sniper-protection window and, on taxable variants, the creation-anchored tax window.

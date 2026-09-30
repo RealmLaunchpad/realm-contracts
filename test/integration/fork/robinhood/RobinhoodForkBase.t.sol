@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {DeploymentAddressesRobinhoodMainnet as Robinhood} from "src/config/DeploymentAddresses.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
@@ -41,7 +40,7 @@ abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
     uint32 internal constant TAX_DURATION = 14 days;
     uint16 internal constant DIVIDENDS_BPS = 8_000;
 
-    function _forkInfra() internal view override returns (ForkInfra memory) {
+    function _forkInfra() internal view virtual override returns (ForkInfra memory) {
         return ForkInfra({
             rpcUrlEnv: "ROBINHOOD_RPC_URL",
             blockNumber: ROBINHOOD_FORK_BLOCK,
@@ -75,18 +74,32 @@ abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
 
     //////////////////////// tokens //////////////////////
 
-    /// @dev A taxable V4 token paying `DIVIDENDS_BPS` of its tax to holders in `assets`, through the
-    ///      multi-allocation `createToken` overload — the only creation path that carries routes, and so
-    ///      the one a frontend uses for an xStock.
+    /// @dev A taxable V4 token paying `DIVIDENDS_BPS` of its tax to holders in `assets`, each created
+    ///      with its `_xstockRoute`, as a creator would.
     function _createXStockToken(address[] memory assets, uint16[] memory weights) internal returns (address token) {
         bytes[] memory routes = new bytes[](assets.length);
         for (uint256 i; i < assets.length; ++i) {
             routes[i] = _xstockRoute(assets[i]);
         }
+        return _createXStockToken(assets, weights, routes);
+    }
+
+    /// @dev Same, with no route for any asset.
+    function _createXStockTokenUnrouted(address[] memory assets, uint16[] memory weights)
+        internal
+        returns (address token)
+    {
+        return _createXStockToken(assets, weights, new bytes[](0));
+    }
+
+    function _createXStockToken(address[] memory assets, uint16[] memory weights, bytes[] memory routes)
+        internal
+        returns (address token)
+    {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "xStock Dividends",
             symbol: "XDIV",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
@@ -107,27 +120,21 @@ abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
                 dividendRoutes: routes
             })
         });
-        vm.prank(creator);
-        token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
     }
 
-    /// @dev Created, bought into on the launchpad and graduated onto Robinhood's V4, with `buyer`
-    ///      holding the float. Graduation activates every dividend leg.
+    /// @dev Direct-launched onto Robinhood's V4 and bought into, with `buyer` holding the float.
+    ///      Launching (graduation at creation) activates every dividend leg.
     function _graduatedXStockToken(address[] memory assets, uint16[] memory weights)
         internal
         returns (RealmTaxableTokenUniV4 token)
     {
-        address addr = _createXStockToken(assets, weights);
+        return _graduatedXStockToken(_createXStockToken(assets, weights));
+    }
+
+    function _graduatedXStockToken(address addr) internal returns (RealmTaxableTokenUniV4 token) {
         testToken = addr;
-        _launchpadBuy(addr, 2 ether);
+        _poolBuy(addr, 2 ether);
         _graduateToken();
         return RealmTaxableTokenUniV4(payable(addr));
     }
@@ -180,6 +187,6 @@ abstract contract RobinhoodForkBase is TaxTokenUniV4BaseTests {
     }
 
     function _buffered(RealmTaxableTokenUniV4 token, uint256 i) internal view returns (uint256 pendingNative) {
-        (,,,,,, pendingNative,) = token.dividendAssets(i);
+        (,,,,,, pendingNative) = token.dividendAssets(i);
     }
 }

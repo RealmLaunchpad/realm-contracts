@@ -3,15 +3,18 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
+import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @notice A bare `DividendDistributionLogic` whose balances move through `_onDividendTransfer`, in the
 ///         order a real token's `_update` moves them: SETTLE FIRST, then mutate. That order is the whole
 ///         of the anti-sandwich argument, so the harness has to reproduce it exactly — a harness that
 ///         mutated first would quietly test a different (and broken) contract.
-contract DividendHarness is DividendDistributionLogic {
+contract DividendHarness is DividendDistributionLogic, DividendInitLogic {
     mapping(address account => uint256 balance) public balances;
     uint256 public eligibleSupply;
 
@@ -22,18 +25,17 @@ contract DividendHarness is DividendDistributionLogic {
 
     address[3] internal excluded;
 
+    /// @dev A one-asset payout set taking the whole dividends slice.
+    function _soleAssetSet(address asset) internal pure returns (address[] memory assets, uint16[] memory weights) {
+        assets = new address[](1);
+        assets[0] = asset;
+        weights = new uint16[](1);
+        weights[0] = 10_000;
+    }
+
     function configure(address asset) external {
         (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
         assetCount = _initializeDividends(assets, weights, new bytes[](0));
-    }
-
-    /// @notice Same, naming the pools explicitly. No routes at all means the permissionless V2 pair,
-    ///         which is what every other helper here relies on.
-    function configureRouted(address asset, bytes calldata route) external {
-        (address[] memory assets, uint16[] memory weights) = _soleAssetSet(asset);
-        bytes[] memory routes = new bytes[](1);
-        routes[0] = route;
-        assetCount = _initializeDividends(assets, weights, routes);
     }
 
     /// @dev How many payout assets the harness was configured with. The production token keeps this in
@@ -42,6 +44,20 @@ contract DividendHarness is DividendDistributionLogic {
 
     function _dividendAssetCount() internal view override returns (uint256) {
         return assetCount;
+    }
+
+    uint8 internal fallbackMask;
+
+    function _dividendFallbackMask() internal view override returns (uint256) {
+        return fallbackMask;
+    }
+
+    function _setDividendFallbackMask(uint256 mask) internal override {
+        fallbackMask = uint8(mask);
+    }
+
+    function _fallbackCurrency(uint256) internal pure override returns (address) {
+        return address(0);
     }
 
     /// @notice Configure a multi-asset payout set, as `initializeEarningsAllocation`'s array overload does.
@@ -105,10 +121,6 @@ contract DividendHarness is DividendDistributionLogic {
     ///      not size-bound, so the tests keep reading them by name.
     function dividendPrecisionExp() external view returns (uint8) {
         return dividendAssets[0].precisionExp;
-    }
-
-    function failedConversionBlock() external view returns (uint40) {
-        return dividendAssets[0].failedConversionBlock;
     }
 
     function _dividendBalanceOf(address account) internal view override returns (uint256) {
@@ -409,62 +421,73 @@ contract DividendAccountingTests is Test {
         assertApproxEqRel(h.previewDividend(bob), 1 ether, 1e12, "credited to the holder who showed up");
     }
 
-    ///////////////////////// the threshold and its bypass /////////////////////////
+    ///////////////////////// funding has no floor /////////////////////////
 
-    /// @dev Below the threshold the buffer keeps accruing rather than paying for a distribution not
-    ///      worth its gas.
-    function test_subThresholdBufferDoesNotFund() public {
+    /// @dev There is NO minimum buffer. The path is keeper-gated, so the only party a floor could
+    ///      restrain is a keeper spending its own gas on a call whose whole cost it can see — it is
+    ///      better placed than a compile-time constant to decide when a conversion earns itself.
+    function test_aSubThresholdBufferFundsAnyway() public {
         _live();
-        _fund(h.DIVIDEND_THRESHOLD() / 2);
+        uint256 dust = 0.0001 ether;
+        _fund(dust);
+
+        h.processDividends(0, _noHolders());
+
+        assertEq(h.dividendsOwed(), dust, "a dust buffer distributed");
+        assertEq(h.pendingNative(), 0, "buffer drained");
+    }
+
+    /// @dev `BelowDividendThreshold` outlives the floor it was named for: with none left it means an
+    ///      EMPTY buffer, which is still the "wait for earnings" signal a keeper must be able to tell
+    ///      apart from a swap problem.
+    function test_anEmptyBufferStillReportsNothingToFund() public {
+        _live();
+        vm.roll(block.number + 1);
 
         vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
         h.processDividends(0, _noHolders());
     }
 
-    /// @dev A call carrying holders pushes their payouts and returns QUIETLY even when the buffer is
-    ///      short. A keeper batching payouts must not be punished for the buffer happening not to
-    ///      qualify — this is what makes `processDividends(0, holders)` usable as a plain `claimFor`.
-    function test_aPushOnlyCallDoesNotRevertOnAShortBuffer() public {
+    /// @dev A call carrying holders pushes their payouts and returns QUIETLY even when there is nothing
+    ///      to fund. A keeper batching payouts must not be punished for the buffer happening to be
+    ///      empty — this is what makes `processDividends(0, holders)` usable as a plain `claimFor`.
+    function test_aPushOnlyCallDoesNotRevertOnAnEmptyBuffer() public {
         _live();
         _distribute(1 ether);
-        _fund(h.DIVIDEND_THRESHOLD() / 2); // not fundable
+        vm.roll(block.number + 1);
+        assertEq(h.pendingNative(), 0, "precondition: nothing left to fund");
 
         h.processDividends(0, _everyone()); // must not revert
 
         assertGt(alice.balance, 0, "the payouts went out anyway");
-        assertEq(h.pendingNative(), h.DIVIDEND_THRESHOLD() / 2, "and the short buffer is untouched");
     }
 
-    /// @dev Staleness is the ONLY escape from the threshold: a token that has gone
-    ///      `STALE_DIVIDEND_WINDOW` without a distribution is dead, so the threshold stops applying and
-    ///      the residual can finally reach holders instead of stranding.
-    function test_thresholdBypassedOnceTheTokenGoesStale() public {
+    ///////////////////////// the global switch /////////////////////////
+
+    /// @dev The keepers registry's switch opens funding to anyone, on every token at once, and closing it
+    ///      shuts the gate again. It is the only way past the gate: nothing ages into it.
+    function test_theGlobalSwitchOpensAndClosesTheGate() public {
         _live();
-        uint256 dust = h.DIVIDEND_THRESHOLD() / 2;
+        uint256 dust = 0.0001 ether;
         _fund(dust);
 
-        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        address stranger = makeAddr("stranger");
+        skip(3650 days); // time alone opens nothing
+        vm.prank(stranger);
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
         h.processDividends(0, _noHolders());
 
-        skip(h.STALE_DIVIDEND_WINDOW() + 1);
+        RealmKeepersRegistry keepers = RealmKeepersRegistry(DeploymentAddresses.REALM_KEEPERS_REGISTRY);
+        keepers.setPermissionless(true);
+        vm.prank(stranger);
         h.processDividends(0, _noHolders());
+        assertEq(h.dividendsOwed(), dust, "anyone funded while the switch was on");
 
-        assertEq(h.dividendsOwed(), dust, "the residual was distributed once the token went stale");
-        assertEq(h.pendingNative(), 0, "buffer drained");
-    }
-
-    /// @dev The bypass must stay shut for a token that is merely QUIET. `lastDistribution` resets on
-    ///      every distribution, so a token still distributing never ages into it however small its
-    ///      buffer.
-    function test_staleBypassStaysShutWhileDistributionsKeepHappening() public {
-        _live();
-        for (uint256 i; i < 3; ++i) {
-            skip(h.STALE_DIVIDEND_WINDOW() / 2);
-            _distribute(1 ether);
-        }
-
-        _fund(h.DIVIDEND_THRESHOLD() / 2);
-        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
+        keepers.setPermissionless(false);
+        _fund(dust);
+        vm.roll(block.number + 1);
+        vm.prank(stranger);
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
         h.processDividends(0, _noHolders());
     }
 

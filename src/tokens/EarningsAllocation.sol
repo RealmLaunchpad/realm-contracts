@@ -83,8 +83,22 @@ abstract contract EarningsAllocation {
         internal
         returns (uint256 fundAmount)
     {
-        fundAmount = _splitEthEarnings(amount, burnShare, liquidityShare);
-        if (fundAmount > 0) _depositToFund(fundAmount);
+        return _allocateEarnings(address(0), amount, burnShare, liquidityShare);
+    }
+
+    /// @dev The general form: the same split, for earnings denominated in whatever currency the pool
+    ///      that produced them is quoted in. `asset == address(0)` is the chain's native currency and
+    ///      reproduces `_allocateEthEarnings` exactly.
+    /// @dev The asset is threaded to the LEGS, not decided here: the split arithmetic is unit-free, and
+    ///      which currency a slice is denominated in only matters to the buffer it lands in and the pool
+    ///      it will eventually be spent on. That is what lets one token hold a burn buffer per quote and
+    ///      buy itself back on each quote's own pool, rather than round-tripping through native.
+    function _allocateEarnings(address asset, uint256 amount, uint256 burnShare, uint256 liquidityShare)
+        internal
+        returns (uint256 fundAmount)
+    {
+        fundAmount = _splitEarnings(asset, amount, burnShare, liquidityShare);
+        if (fundAmount > 0) _depositToFund(asset, fundAmount);
     }
 
     /// @dev `_allocateEthEarnings` minus the final fund deposit: dispatches the burn / liquidity /
@@ -93,6 +107,14 @@ abstract contract EarningsAllocation {
     ///      swap-back must keep `CreatorTaxSwapback` first for the indexer). The caller MUST deposit the
     ///      returned amount itself.
     function _splitEthEarnings(uint256 amount, uint256 burnShare, uint256 liquidityShare)
+        internal
+        returns (uint256 fundAmount)
+    {
+        return _splitEarnings(address(0), amount, burnShare, liquidityShare);
+    }
+
+    /// @dev The general form of `_splitEthEarnings`, for any quote currency. See `_allocateEarnings`.
+    function _splitEarnings(address asset, uint256 amount, uint256 burnShare, uint256 liquidityShare)
         internal
         returns (uint256 fundAmount)
     {
@@ -133,9 +155,9 @@ abstract contract EarningsAllocation {
             fund = remaining - dividends;
         }
 
-        if (burn > 0) fund += _handleBurn(burn);
-        if (liquidity > 0) fund += _handleLiquidity(liquidity);
-        if (dividends > 0) fund += _handleDividends(dividends);
+        if (burn > 0) fund += _handleBurn(asset, burn);
+        if (liquidity > 0) fund += _handleLiquidity(asset, liquidity);
+        if (dividends > 0) fund += _handleDividends(asset, dividends);
         return fund;
     }
 
@@ -157,27 +179,52 @@ abstract contract EarningsAllocation {
     /// @dev True once the token has graduated (a live pool exists). Implemented by the token.
     function _earningsGraduated() internal view virtual returns (bool);
 
-    /// @dev Routes the fund-wallet slice to the master fee handler. Implemented by the token.
-    function _depositToFund(uint256 amount) internal virtual;
+    /// @dev Routes the fund-wallet slice to the master fee handler, in whichever currency it arrived
+    ///      in. Implemented by the token.
+    function _depositToFund(address asset, uint256 amount) internal virtual;
 
     /// @dev Buy-back-and-burn leg. Returns the amount it did NOT consume, which `_allocateEthEarnings`
     ///      folds back into the single fund deposit. The base consumes nothing (returns `amount`), so
     ///      until the burn module ships every configured burn share routes to the fund wallets. When
     ///      overridden it MUST only accrue for out-of-band processing (see the gas note above) and
     ///      return the residual it did not accrue (0 in the common full-accrual case).
-    function _handleBurn(uint256 amount) internal virtual returns (uint256 unconsumed) {
+    function _handleBurn(
+        address,
+        /* asset */
+        uint256 amount
+    )
+        internal
+        virtual
+        returns (uint256 unconsumed)
+    {
         return amount;
     }
 
     /// @dev Holder-dividends leg. Same contract as `_handleBurn`: accrue-only, return the unconsumed
     ///      residual. Falls back to the fund wallets until the dividends module ships (step 3).
-    function _handleDividends(uint256 amount) internal virtual returns (uint256 unconsumed) {
+    function _handleDividends(
+        address,
+        /* asset */
+        uint256 amount
+    )
+        internal
+        virtual
+        returns (uint256 unconsumed)
+    {
         return amount;
     }
 
     /// @dev Liquidity-additions leg. Same contract as `_handleBurn`: accrue-only, return the unconsumed
     ///      residual. Falls back to the fund wallets until the liquidity module ships (step 4).
-    function _handleLiquidity(uint256 amount) internal virtual returns (uint256 unconsumed) {
+    function _handleLiquidity(
+        address,
+        /* asset */
+        uint256 amount
+    )
+        internal
+        virtual
+        returns (uint256 unconsumed)
+    {
         return amount;
     }
 }

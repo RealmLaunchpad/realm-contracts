@@ -2,23 +2,22 @@
 pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {IUniversalRouter} from "src/interfaces/IUniswapV4UniversalRouter.sol";
-// The universal router is v4-periphery's client, so its `PoolKey` pin is the one `IV4Router` types
+import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
+// The universal router is v4-periphery's client, so its `PoolKey` pin is the one the router's params type
 // against — building the key from this import avoids the abi round-trip `RealmUniv4BuyBacks` needs for
 // the canonical `lib/v4-core` key it gets from `UniswapV4PoolConstants`.
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IV4Router} from "lib/v4-periphery/src/interfaces/IV4Router.sol";
 import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
+import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title UniversalRouterVenue
 /// @notice Native -> ERC20 swaps on Uniswap V3 and V4, both through the universal router. The V2 leg of
 ///         the same job lives in `UniswapV2Venue`, which talks to the V2 router directly.
-/// @dev ETH-family only: both helpers pay with `msg.value`. A chain whose native currency is an ERC20
-///      (Arc) has no counterpart here, which is why `DividendDistribution` refuses a third-asset leg
-///      there rather than configuring one that could never convert.
+/// @dev Both helpers pay with `msg.value`.
 /// @dev Every helper returns `false` instead of reverting when the swap fails. A dividend payout whose pool
 ///      dies must not take the token's other legs down with it — see `DividendDistribution._freezeLeg`.
 /// @dev All functions are `internal` so they inline into the caller's bytecode (no deployed library);
@@ -54,7 +53,11 @@ library UniversalRouterVenue {
         bytes[] memory inputs = new bytes[](2);
         inputs[0] = abi.encode(ROUTER_ITSELF, nativeIn);
         // `payerIsUser = false`: the router pays with the WETH the first command just wrapped for it.
-        inputs[1] = abi.encode(address(this), nativeIn, minOut, path, false);
+        // The trailing array is the V3 twin of `IV4RouterSwaps`'s `minHopPriceX36`: the deployed router
+        // decodes this input as `(address, uint256, uint256, bytes, bool, uint256[])` and slices index 5
+        // unconditionally, so omitting it reverts with `SliceOutOfBounds()` before the swap is reached.
+        // Zero-filled, one per hop — a V3 path is `token (20) | fee (3)` repeating, then a final token.
+        inputs[1] = abi.encode(address(this), nativeIn, minOut, path, false, new uint256[]((path.length - 20) / 23));
 
         // A DELTA, not an absolute: the router is not supposed to hold anything between calls, but dust
         // somebody else left there must not fail an otherwise good swap of ours.
@@ -104,11 +107,15 @@ library UniversalRouterVenue {
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
+            IV4RouterSwaps.ExactInputSingleParams({
                 poolKey: key,
                 zeroForOne: true, // native (currency0) -> asset (currency1)
+                // Safe cast: both bounded by `type(uint128).max` above.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountIn: uint128(nativeIn),
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountOutMinimum: uint128(minOut),
+                minHopPriceX36: 0,
                 hookData: bytes("")
             })
         );
@@ -162,10 +169,14 @@ library UniversalRouterVenue {
 
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
-            IV4Router.ExactInputParams({
+            IV4RouterSwaps.ExactInputParams({
                 currencyIn: Currency.wrap(NATIVE),
                 path: path,
+                minHopPriceX36: new uint256[](path.length),
+                // Safe cast: both bounded by `type(uint128).max` above.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountIn: uint128(nativeIn),
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountOutMinimum: uint128(minOut)
             })
         );
@@ -178,6 +189,90 @@ library UniversalRouterVenue {
         );
 
         ok = _executeAndRequireFullFill(router, inputs, nativeIn);
+    }
+
+    /// @dev The reverse leg: `amountIn` of `source` -> native along `path`, which is a native-anchored
+    ///      route already REVERSED by the caller (each hop's `intermediateCurrency` is that hop's OUTPUT,
+    ///      the last one native). The router pulls `source` through Permit2, so the caller must have
+    ///      granted `ensureRouterPull` first. Same `uint128` rule and the same one-hop special case as
+    ///      the forward legs. NOT the same full-fill rule: Permit2 pulls straight from the caller only
+    ///      what the swap owes, so a partial fill's remainder stays with the CALLER and `ok` stays true.
+    ///      A caller that needs a full fill measures its own `source` balance delta.
+    function swapAssetToNativeV4Path(
+        address router,
+        address source,
+        PathKey[] memory path,
+        uint256 amountIn,
+        uint256 minOut
+    ) internal returns (bool ok) {
+        if (minOut > type(uint128).max || amountIn > type(uint128).max) return false;
+        bytes[] memory params = new bytes[](3);
+        bool single = path.length == 1;
+        if (single) {
+            PathKey memory only = path[0];
+            // Native is `address(0)`, so it is always `currency0`; the source sells as `currency1`.
+            PoolKey memory key = PoolKey({
+                currency0: Currency.wrap(NATIVE),
+                currency1: Currency.wrap(source),
+                fee: only.fee,
+                tickSpacing: only.tickSpacing,
+                hooks: only.hooks
+            });
+            params[0] = abi.encode(
+                IV4RouterSwaps.ExactInputSingleParams({
+                    poolKey: key,
+                    zeroForOne: false,
+                    // Safe cast: both bounded by `type(uint128).max` above.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    amountIn: uint128(amountIn),
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    amountOutMinimum: uint128(minOut),
+                    minHopPriceX36: 0,
+                    hookData: bytes("")
+                })
+            );
+        } else {
+            params[0] = abi.encode(
+                IV4RouterSwaps.ExactInputParams({
+                    currencyIn: Currency.wrap(source),
+                    path: path,
+                    minHopPriceX36: new uint256[](path.length),
+                    // Safe cast: both bounded by `type(uint128).max` above.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    amountIn: uint128(amountIn),
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    amountOutMinimum: uint128(minOut)
+                })
+            );
+        }
+        params[1] = abi.encode(Currency.wrap(source), amountIn); // SETTLE_ALL the source, pulled via Permit2
+        params[2] = abi.encode(Currency.wrap(NATIVE), minOut); // TAKE_ALL the native to this contract
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = abi.encode(
+            abi.encodePacked(
+                uint8(single ? Actions.SWAP_EXACT_IN_SINGLE : Actions.SWAP_EXACT_IN),
+                uint8(Actions.SETTLE_ALL),
+                uint8(Actions.TAKE_ALL)
+            ),
+            params
+        );
+        uint256 routerHeld = IERC20(source).balanceOf(router);
+        (ok,) =
+            router.call(abi.encodeCall(IUniversalRouter.execute, (abi.encodePacked(V4_SWAP), inputs, block.timestamp)));
+        if (ok && IERC20(source).balanceOf(router) > routerHeld) ok = false;
+    }
+
+    /// @dev Grants Permit2, and through it `router`, the standing allowance an ERC20 settle needs. Read
+    ///      then write: after the first pull of a given token both allowances are at their maximum, and
+    ///      re-issuing them would cost two SSTOREs and two logs per swap.
+    function ensureRouterPull(address permit2, address router, address token) internal {
+        if (IERC20(token).allowance(address(this), permit2) == 0) {
+            SafeERC20.forceApprove(IERC20(token), permit2, type(uint256).max);
+        }
+        (uint160 allowed,,) = IAllowanceTransfer(permit2).allowance(address(this), token, router);
+        if (allowed == 0) {
+            IAllowanceTransfer(permit2).approve(token, router, type(uint160).max, type(uint48).max);
+        }
     }
 
     /// @dev Runs a single `V4_SWAP` command and reports a PARTIAL FILL as a failure.

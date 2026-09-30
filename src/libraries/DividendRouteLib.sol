@@ -5,29 +5,24 @@ import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
 
 /// @title DividendRouteLib
 /// @notice The one wire format for a dividend payout asset's swap route, and the only place it is
-///         decoded. A route travels frontend -> factory -> token -> registry as opaque `bytes`, so
-///         every layer in between forwards it without knowing which venue it names.
+///         decoded. An admin sets one route per asset on `RealmDividendSwapRegistry`, as opaque
+///         `bytes` tagged with the venue it names.
 ///
 /// @dev WHY ONE `bytes` FIELD AND NOT A STRUCT PER VENUE. A V4 route is a list of
 ///      `(currency, fee, tickSpacing, hooks)` hops; a V3 route is Uniswap's own packed
-///      `token | fee | token` path; a V2 route is nothing at all, because the pair is fully implied by
-///      its two currencies. Three shapes with nothing in common. Carrying them as three parallel
-///      arrays through the creation payload would leave two of them empty on every token; carrying
-///      them as one tagged blob costs one byte and keeps `EarningsAllocationMultiConfig` to a single
-///      new field.
+///      `token | fee | token` path; a V2 route is the tag alone, because the pair is fully implied by
+///      its two currencies. Three shapes with nothing in common, carried as one tagged blob.
 ///
-/// @dev THE EMPTY ROUTE IS NOT A MISSING ROUTE. It is the explicit choice of the permissionless V2
-///      pair, which is what the registry measured on its own before routes existed. That makes the
-///      common case free: a creator picking an asset with a deep V2 pair sends zero bytes.
+/// @dev THE EMPTY ROUTE MEANS "NO ROUTE": the asset does not convert until an admin sets one.
 library DividendRouteLib {
-    /// @notice Venue tag, first byte of a non-empty route.
-    /// @dev V2 has no tag because it has no route: the empty string IS the V2 selection. Numbered to
-    ///      match the Uniswap version so a hex dump reads as itself.
+    /// @notice Venue tag, first byte of a non-empty route. Numbered to match the Uniswap version so a
+    ///         hex dump reads as itself.
+    uint8 internal constant VENUE_V2 = 0x02;
     uint8 internal constant VENUE_V3 = 0x03;
     uint8 internal constant VENUE_V4 = 0x04;
 
     /// @notice The venue a route names, without decoding its body.
-    /// @dev Returns 0 for the empty route (V2). An unrecognized tag is returned as-is so the caller
+    /// @dev Returns 0 for the empty route (none). An unrecognized tag is returned as-is so the caller
     ///      rejects it with its own error rather than this library guessing an intent.
     function venue(bytes memory route) internal pure returns (uint8) {
         if (route.length == 0) return 0;
@@ -53,7 +48,7 @@ library DividendRouteLib {
     /// @notice The V4 hops a route carries. Reverts if the route is not a V4 route.
     /// @dev The body is `abi.encode(Hop[])` rather than a packed layout: `Hop` has an `int24` in the
     ///      middle, and hand-packing signed fields is exactly the kind of cleverness that produces a
-    ///      route naming the wrong pool. The extra calldata is paid once, at creation.
+    ///      route naming the wrong pool.
     function toV4Hops(bytes memory route) internal pure returns (Hop[] memory hops) {
         // Strip the tag byte, then decode the rest as the array it was encoded as.
         hops = abi.decode(_body(route), (Hop[]));
@@ -82,6 +77,11 @@ library DividendRouteLib {
     ///         exists so tests and scripts cannot drift from what the registry decodes.
     function encodeV4(Hop[] memory hops) internal pure returns (bytes memory) {
         return abi.encodePacked(VENUE_V4, abi.encode(hops));
+    }
+
+    /// @notice Builds the wire format for a route through the native quote's V2 pair with the asset.
+    function encodeV2() internal pure returns (bytes memory) {
+        return abi.encodePacked(VENUE_V2);
     }
 
     /// @notice Builds the wire format for a V3 route from Uniswap's packed path.

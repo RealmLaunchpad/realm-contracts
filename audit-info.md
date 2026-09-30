@@ -36,4 +36,4 @@ We want users to be able to deploy taxable tokens via Realm Launchpad. This requ
 
 ## Deployment chains
 
-- Only on ethereum mainnet
+- Only on Robinhood Chain (mainnet 4663, testnet 46630)

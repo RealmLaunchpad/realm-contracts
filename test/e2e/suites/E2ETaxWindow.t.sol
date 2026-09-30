@@ -13,6 +13,9 @@ abstract contract E2ETaxWindow is RealmE2EBase {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
         address token = _createTestToken(salt);
         _graduateE2E(token);
+        // The caps are not what these tests measure, and they now outlive graduation: step past the
+        // sniper window so the setup buy is not rejected on its pool -> buyer leg.
+        if (_hasSniperProtection()) _warpPastSniperWindow(token);
 
         vm.deal(alice, 1 ether);
         _swapBuyAuto(alice, token, 0.5 ether, 0);
@@ -38,6 +41,9 @@ abstract contract E2ETaxWindow is RealmE2EBase {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
         address token = _createTestToken(salt);
         _graduateE2E(token);
+        // The caps are not what these tests measure, and they now outlive graduation: step past the
+        // sniper window so the setup buy is not rejected on its pool -> buyer leg.
+        if (_hasSniperProtection()) _warpPastSniperWindow(token);
 
         vm.deal(alice, 1 ether);
         _swapBuyAuto(alice, token, 0.5 ether, 0);

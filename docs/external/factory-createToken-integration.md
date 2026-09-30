@@ -1,19 +1,20 @@
 # Unified Factory `createToken` — Integrator Guide
 
-How to deploy a Realm token by calling `RealmFactoryUniV2Unified` or `RealmFactoryUniV4Unified`. This doc is the contract surface only — for the off-chain CREATE2 mining step see [`salt-mining-guide.md`](../salt-mining-guide.md), and for the full per-tx event trace see [`events-per-entry-point.md`](../events-per-entry-point.md).
+How to deploy a Realm token by calling `RealmFactoryUniV2Unified`. This doc is the contract surface only — for the off-chain CREATE2 mining step see [`salt-mining-guide.md`](../salt-mining-guide.md), and for the full per-tx event trace see [`events-per-entry-point.md`](../events-per-entry-point.md).
 
 ---
 
 ## 1. Which factory to call
 
-Two factories are whitelisted on the launchpad. Pick by graduation venue:
+One factory is whitelisted on the launchpad:
 
 | Factory | Venue | Tax cap (`MAX_TAX_BPS`) | Ownership |
 |---|---|---|---|
 | `RealmFactoryUniV2Unified` | Uniswap V2 | 5% (500 bps) | Always renounced by default (`tokenOwner = address(0)`) |
-| `RealmFactoryUniV4Unified` | Uniswap V4 | 4% (400 bps) | Caller chooses via `renounceOwnership_` |
 
-Each factory dispatches between four token implementations at create time, based on whether you populate `taxCfg` and/or `antiSniperCfg`:
+Uniswap V4 tokens launch through `RealmFactoryUniV4Direct` instead (no bonding curve, no launchpad), which this guide does not cover — see [`events-per-entry-point.md`](../events-per-entry-point.md) §1.3. Its `DirectPair` is `{quote, weightBps}` with no price field: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (2.25 ETH) market cap, priced live per quote from the assets whitelist; read `previewLaunchTick(quote)` for the tick, price and market cap a launch would get.
+
+The factory dispatches between four token implementations at create time, based on whether you populate `taxCfg` and/or `antiSniperCfg`:
 
 - base, anti-sniper, tax, tax + anti-sniper.
 
@@ -23,8 +24,6 @@ The dispatched implementation determines the CREATE2 initcode, so you **must** m
 
 ## 2. Function signatures
 
-### V2
-
 ```solidity
 function createToken(
     string calldata  name,
@@ -36,23 +35,6 @@ function createToken(
     AntiSniperConfigs antiSniperCfg
 ) external payable returns (address token);
 ```
-
-### V4
-
-```solidity
-function createToken(
-    string calldata  name,
-    string calldata  symbol,
-    bytes32          salt,
-    FeeShare[]       feeReceivers,
-    SupplyShare[]    supplyShares,
-    bool             renounceOwnership_,
-    TaxConfigInit    taxCfg,
-    AntiSniperConfigs antiSniperCfg
-) external payable returns (address token);
-```
-
-The V4 form adds `renounceOwnership_`. Everything else is identical.
 
 ### Shared structs
 
@@ -88,8 +70,8 @@ struct AntiSniperConfigs {
 
 ## 3. Pre-flight workflow
 
-1. Build the exact `(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` you intend to submit. For V4 also decide `renounceOwnership_`.
-2. Call `factory.previewTokenImplementation(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` (view). This runs the same validation as `createToken` for the tax and anti-sniper sentinels, and returns the implementation that will be cloned. The V4 `renounceOwnership_` flag is **not** an input — preview always assumes the renounced path. If you intend to keep ownership, the charity-mode owner check in `createToken` will fire only at submit time.
+1. Build the exact `(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` you intend to submit.
+2. Call `factory.previewTokenImplementation(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` (view). This runs the same validation as `createToken` for the tax and anti-sniper sentinels, and returns the implementation that will be cloned.
 3. (Optional) If `msg.value > 0`, call `factory.quoteBuyOnDeploy(tokenAmount)` to get the ETH amount that yields exactly `tokenAmount` tokens after the launchpad buy fee. The deploy buy is uncapped except by graduation — call `factory.maxBuyOnDeploy(liquidityTier, totalLockedInVaultsBps)` for the max token amount that reaches graduation without reverting `MaxEthReservesExceeded`.
 4. Mine `salt` so that `Clones.predictDeterministicAddress(implementation, salt, factory)` ends in `0xeeaa` (see [`salt-mining-guide.md`](../salt-mining-guide.md)). Statistically ~65k iterations.
 5. Submit `factory.createToken(name, symbol, salt, … same args …)` with `value: ethToSpend`.
@@ -191,9 +173,8 @@ Extending tax beyond the standard one-year cap unlocks durations up to 120 years
 |---|---|
 | `feeReceivers.length != 1` | `CharityModeFeeReceiverInvalid` |
 | `feeReceivers[0].account == msg.sender` (the deployer) | `CharityModeFeeReceiverInvalid` |
-| `tokenOwner != address(0)` (V4 only, when `renounceOwnership_ == false`) | `CharityModeOwnerNotRenounced` |
 
-V2 tokens always deploy with `owner == address(0)`, so the renounced-ownership rule is satisfied for free. On V4 you must pass `renounceOwnership_ == true`.
+Tokens always deploy with `owner == address(0)`, so the renounced-ownership rule is satisfied for free.
 
 **On-chain enforcement stops at the structural rules** — the contract cannot tell whether the single fee receiver is a real charity. UI and curation own the social trust layer.
 
@@ -201,10 +182,10 @@ V2 tokens always deploy with `owner == address(0)`, so the renounced-ownership r
 
 ## 6. Events emitted
 
-In order, for a successful call (Realm-owned events only — ERC20 `Transfer`, OZ `Initialized`, and Uniswap V2/V4 events also appear):
+In order, for a successful call (Realm-owned events only — ERC20 `Transfer`, OZ `Initialized`, and Uniswap V2 events also appear):
 
 1. `RealmFactory.TokenCreated(token, name, symbol, tokenOwner, launchpad, graduator, feeHandler)`
-2. Graduator init events (`PairInitialized`, plus `PoolIdRegistered` on V4)
+2. Graduator init event (`PairInitialized`)
 3. `RealmTaxableTokenInitialized(buyTaxBps, sellTaxBps, taxDurationSeconds, startTaxFromLaunch, buyTaxDecayStartBps, sellTaxDecayStartBps, taxDecayDuration)` — only if `taxCfg` is configured. The three `*Decay*` fields are reserved for a future linear tax-decay feature and are always 0 today.
 4. `SniperProtectionInitialized(maxBuyPerTxBps, maxWalletBps, protectionWindowSeconds, whitelist)` — only if `antiSniperCfg` is configured
 5. `RealmLaunchpad.TokenLaunched(token, graduationThreshold, maxExcessOverThreshold)`
@@ -250,7 +231,7 @@ const feeReceivers = [{ account: creator, shares: 10_000n, directFeesEnabled: fa
 const supplyShares = [{ account: creator, shares: 10_000n }];
 
 // 1. Preview the implementation that will be cloned.
-const impl = await factoryV4.read.previewTokenImplementation(
+const impl = await factoryV2.read.previewTokenImplementation(
   [feeReceivers, supplyShares, taxCfg, antiSniperCfg],
 );
 
@@ -258,11 +239,11 @@ const impl = await factoryV4.read.previewTokenImplementation(
 const salt = findValidSalt(factoryAddress, impl);
 
 // 3. Quote ETH for the deployer buy (optional).
-const ethValue = await factoryV4.read.quoteBuyOnDeploy([50_000_000n * 10n ** 18n]);
+const ethValue = await factoryV2.read.quoteBuyOnDeploy([50_000_000n * 10n ** 18n]);
 
 // 4. Submit. Use the SAME taxCfg/antiSniperCfg you previewed against.
-const hash = await factoryV4.write.createToken(
-  ["My Token", "MTK", salt, feeReceivers, supplyShares, /*renounce*/ false, taxCfg, antiSniperCfg],
+const hash = await factoryV2.write.createToken(
+  ["My Token", "MTK", salt, feeReceivers, supplyShares, taxCfg, antiSniperCfg],
   { value: ethValue },
 );
 ```

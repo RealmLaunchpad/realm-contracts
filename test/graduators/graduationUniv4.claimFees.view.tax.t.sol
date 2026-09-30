@@ -35,16 +35,8 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
         override
         returns (address)
     {
-        vm.prank(creator);
-        address token = factoryTax.createToken(
-            name,
-            symbol,
-            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
-            _fs(creator),
-            _noSs(),
-            false,
-            _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)),
-            _emptyAntiSniperCfg()
+        address token = _createDirectTokenAs(
+            creator, name, symbol, _fs(creator), false, _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION))
         );
         return token;
     }

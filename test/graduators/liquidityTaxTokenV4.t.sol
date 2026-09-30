@@ -3,11 +3,10 @@ pragma solidity 0.8.28;
 
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
-import {RealmFactoryUniV4Unified} from "src/factories/RealmFactoryUniV4Unified.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
-import {TaxConfigsWithAllocation, EarningsAllocationConfig} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -17,7 +16,8 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IRealmUniV4LiquidityAdder, RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
-import {IRealmV4Graduator} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
+import {IRealmV4Graduator, RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
+import {WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 interface IERC721Minimal {
@@ -29,15 +29,11 @@ interface IERC721Minimal {
 ///         far below anything a Realm pool's tick range can produce, so the branch is mocked rather than
 ///         contrived.
 contract RefundingLiquidityAdderStub {
-    function addOrTopUpSingleSidedEth(
-        PoolKey calldata,
-        int24,
-        int24,
-        uint256[2] calldata,
-        int24[2] calldata,
-        address,
-        address
-    ) external payable returns (uint128, uint256, int24) {
+    function addOrTopUpSingleSided(PoolKey calldata, WallParams calldata, uint256[2] calldata, int24[2] calldata)
+        external
+        payable
+        returns (uint128, uint256, int24)
+    {
         (bool sent,) = msg.sender.call{value: msg.value}("");
         require(sent, "refund failed");
         return (0, 0, 0);
@@ -49,8 +45,8 @@ contract RefundingLiquidityAdderStub {
 contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     using StateLibrary for IPoolManager;
 
-    /// @dev Creates a taxable V4 token with a `liquidityBps` earnings allocation via the allocation-aware
-    ///      `createToken` overload. Configurable buy/sell tax, creation-anchored 14-day window.
+    /// @dev Creates a taxable V4 token with a `liquidityBps` earnings allocation via
+    ///      `createToken`. Configurable buy/sell tax, creation-anchored 14-day window.
     function _createLiquidityTaxToken(uint16 buyTaxBps, uint16 sellTaxBps, uint16 liquidityBps)
         internal
         returns (address token)
@@ -58,11 +54,11 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         IRealmFactory.TokenSetupTiered memory setup = IRealmFactory.TokenSetupTiered({
             name: "LiqToken",
             symbol: "LIQ",
-            salt: _nextValidSalt(address(factoryTax), address(realmTaxToken)),
+            salt: _nextValidSalt(address(directFactory), address(realmTaxToken)),
             feeShares: _fs(creator),
             liquidityTier: LiquidityTier.DEFAULT
         });
-        TaxConfigsWithAllocation memory cfg = TaxConfigsWithAllocation({
+        TaxConfigsWithMultiAllocation memory cfg = TaxConfigsWithMultiAllocation({
             buyTaxBps: buyTaxBps,
             sellTaxBps: sellTaxBps,
             taxDurationSeconds: uint32(14 days),
@@ -70,25 +66,14 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             buyTaxDecayStartBps: 0,
             sellTaxDecayStartBps: 0,
             taxDecayDuration: 0,
-            earningsAllocation: EarningsAllocationConfig({
-                burnBps: 0, dividendsBps: 0, liquidityBps: liquidityBps, dividendToken: address(0)
-            })
+            earningsAllocation: _multiAlloc(0, 0, liquidityBps, address(0))
         });
-        vm.prank(creator);
-        token = factoryTax.createToken(
-            setup,
-            cfg,
-            RealmFactoryUniV4Unified.UniV4Configs({renounceOwnership: false, lpFeeBps: 100}),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            new IRealmFactory.CreatorVault[](0),
-            address(0)
-        );
+        token = _createDirect(setup, cfg, _emptyAntiSniperCfg(), new IRealmFactory.CreatorVault[](0));
     }
 
     function test_liquidityBps_storedAtCreation() public {
         address token = _createLiquidityTaxToken(0, 400, 5000);
-        assertEq(RealmTaxableTokenUniV4(payable(token)).liquidityBps(), 5000, "liquidityBps stored via new overload");
+        assertEq(RealmTaxableTokenUniV4(payable(token)).liquidityBps(), 5000, "liquidityBps stored at creation");
     }
 
     function test_v4Liquidity_accruesThenProcessMintsPosition() public {
@@ -97,8 +82,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 liqToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
 
         // Sell to accrue tax: hook -> accrueFees -> _allocateEthEarnings -> liquidity slice buffered as ETH.
@@ -134,8 +118,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 liqToken = RealmTaxableTokenUniV4(payable(token));
 
         vm.deal(buyer, 5 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
         _swapSell(buyer, IERC20(token).balanceOf(buyer) / 2, 0, true);
 
@@ -165,7 +148,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
     function test_v4ProcessLiquidity_revertsWhenNothingPending() public {
         address token = _createLiquidityTaxToken(0, 400, 5000);
-        vm.expectRevert(RealmTaxableTokenUniV4.NothingToAdd.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.NothingToAdd.selector);
         RealmTaxableTokenUniV4(payable(token)).processLiquidity();
     }
 
@@ -176,8 +159,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         testToken = token;
         liqToken = RealmTaxableTokenUniV4(payable(token));
         vm.deal(buyer, 100 ether);
-        vm.prank(buyer);
-        launchpad.buyTokensWithExactEth{value: 2 ether}(token, 0, DEADLINE);
+        _swap(buyer, token, 2 ether, 0, true, true);
         _graduateToken();
     }
 
@@ -352,7 +334,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         liqToken.processLiquidity(); // top-up
 
         _swapBuy(buyer, 0.05 ether, 0, true);
-        vm.expectRevert(RealmTaxableTokenUniV4.ProcessCooldown.selector);
+        vm.expectRevert(RealmTaxableTokenUniV4Base.ProcessCooldown.selector);
         liqToken.processLiquidity();
     }
 

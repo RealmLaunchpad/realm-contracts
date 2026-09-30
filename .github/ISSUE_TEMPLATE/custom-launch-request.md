@@ -69,8 +69,8 @@ body:
       label: Target network
       description: Which chain to deploy on.
       options:
-        - mainnet
-        - sepolia
+        - robinhood mainnet
+        - robinhood testnet
       default: 0
     validations:
       required: true

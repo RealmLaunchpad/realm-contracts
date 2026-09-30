@@ -6,7 +6,7 @@ import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
-import {TaxConfigInit} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -33,10 +33,17 @@ contract Finding01_V2GraduationDOS is LaunchpadBaseTestsWithUniv2Graduator {
         super.setUp();
 
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2));
-        TaxConfigInit memory cfg = _taxCfg(100, 400, 7 days); // 1% buy / 4% sell
+        TaxConfigs memory cfg = _taxCfg(100, 400, 7 days); // 1% buy / 4% sell
 
         vm.prank(creator);
-        testToken = factoryV2Unified.createToken("Tax", "TAX", salt, _fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        testToken = factoryV2Unified.createToken(
+            _setupTiered("Tax", "TAX", salt, _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
         taxToken = RealmTaxableTokenUniV2(payable(testToken));
 
         vm.deal(attacker, 1 ether);

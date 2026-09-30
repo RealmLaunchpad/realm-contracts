@@ -3,17 +3,19 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
+import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
+import {installDividendSwapRegistry, setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
+import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice A bare `DividendDistributionLogic` with the token's hooks stubbed out, configured with a SET
 ///         of payout assets rather than one. Balances are set directly; what is under test is the
 ///         per-asset machinery, not the transfer hook (`dividendAccounting.t.sol` owns that).
-contract MultiAssetHarness is DividendDistributionLogic {
+contract MultiAssetHarness is DividendDistributionLogic, DividendInitLogic {
     mapping(address account => uint256 balance) public balances;
     uint256 public eligibleSupply;
     uint8 public assetCount;
@@ -51,6 +53,20 @@ contract MultiAssetHarness is DividendDistributionLogic {
         return assetCount;
     }
 
+    uint8 internal fallbackMask;
+
+    function _dividendFallbackMask() internal view override returns (uint256) {
+        return fallbackMask;
+    }
+
+    function _setDividendFallbackMask(uint256 mask) internal override {
+        fallbackMask = uint8(mask);
+    }
+
+    function _fallbackCurrency(uint256) internal pure override returns (address) {
+        return address(0);
+    }
+
     function _dividendBalanceOf(address account) internal view override returns (uint256) {
         return balances[account];
     }
@@ -82,9 +98,9 @@ contract NoPoolToken is ERC20 {
 ///      threshold, converting, streaming, failing or going stale must have no effect on any other — the
 ///      only things they share are the eligible supply, the activation instant and the reentrancy lock.
 contract DividendsMultiAssetTests is Test {
-    uint256 internal constant BLOCKNUMBER = 23327777;
-    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    uint256 internal constant BLOCKNUMBER = 58_000_000;
+    address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
+    address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
     address internal constant NATIVE = address(0);
 
     /// @dev 20% APPLE / 80% SPY, the product's own example, mapped onto two assets with real pools.
@@ -101,10 +117,12 @@ contract DividendsMultiAssetTests is Test {
     receive() external payable {}
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("MAINNET_RPC_URL"), BLOCKNUMBER);
+        vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
         registry = installDividendSwapRegistry(registryOwner);
+        setDividendRoute(registry, MSFT, DividendRouteLib.encodeV2());
+        setDividendRoute(registry, AAPL, DividendRouteLib.encodeV2());
         installKeepersRegistry(registryOwner, address(this));
-        h = _harness(_assets(NATIVE, DAI), _weights(W_SMALL, W_BIG));
+        h = _harness(_assets(NATIVE, MSFT), _weights(W_SMALL, W_BIG));
     }
 
     //////////////////////// helpers //////////////////////
@@ -193,7 +211,7 @@ contract DividendsMultiAssetTests is Test {
     }
 
     function test_multiAsset_threeWaySplitIsExact() public {
-        h = _harness(_assets(NATIVE, DAI, USDC), _weights(3_333, 3_333, 3_334));
+        h = _harness(_assets(NATIVE, MSFT, AAPL), _weights(3_333, 3_333, 3_334));
         _activateWith(1_000e18);
         _accrue(1 ether + 1 wei);
 
@@ -204,23 +222,24 @@ contract DividendsMultiAssetTests is Test {
 
     //////////////////////// independence //////////////////////
 
-    /// @dev THE HEADLINE PROPERTY. With a 20/80 split the small asset reaches `DIVIDEND_THRESHOLD` four
-    ///      times more slowly, so there is a window in which one asset is fundable and the other is not.
-    ///      Each must answer for itself.
-    function test_multiAsset_thresholdIsCrossedPerAsset() public {
+    /// @dev THE HEADLINE PROPERTY. Each leg funds out of its OWN buffer and answers for itself: with a
+    ///      20/80 split the two hold very different amounts, and servicing one must leave the other
+    ///      exactly where it was. Neither size gates the other — funding has no floor at all.
+    function test_multiAsset_eachLegFundsFromItsOwnBuffer() public {
         _activateWith(1_000e18);
-        // Sized so the 80% leg clears the threshold and the 20% leg does not.
-        _accrue(h.DIVIDEND_THRESHOLD() * 2);
+        _accrue(0.2 ether);
 
-        assertLt(h.bufferOf(0), h.DIVIDEND_THRESHOLD(), "precondition: the small leg is short");
-        assertGe(h.bufferOf(1), h.DIVIDEND_THRESHOLD(), "precondition: the big leg qualifies");
+        uint256 small = h.bufferOf(0);
+        uint256 big = h.bufferOf(1);
+        assertLt(small, big, "precondition: the 20% leg holds a quarter of the 80% leg");
 
-        vm.expectRevert(DividendDistribution.BelowDividendThreshold.selector);
-        h.processDividends(0, 0, _noHolders());
-
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(1, true, 0, 0, _noHolders());
         assertGt(h.owedOf(1), 0, "the big leg distributed");
-        assertEq(h.owedOf(0), 0, "the small leg is untouched");
+        assertEq(h.owedOf(0), 0, "and the small leg is untouched");
+        assertEq(h.bufferOf(0), small, "its buffer too");
+
+        h.processDividends(0, true, 0, 0, _noHolders());
+        assertGt(h.owedOf(0), 0, "the small leg distributes on its own terms, whatever its size");
     }
 
     /// @dev The per-block funding cooldown is per asset because the manipulation it bounds is of ONE
@@ -230,15 +249,15 @@ contract DividendsMultiAssetTests is Test {
         _activateWith(1_000e18);
         _accrue(10 ether);
 
-        h.processDividends(0, 0, _noHolders());
+        h.processDividends(0, true, 0, 0, _noHolders());
         // Same block, different asset: allowed.
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(1, true, 0, 0, _noHolders());
         assertGt(h.owedOf(0), 0, "asset 0 funded");
         assertGt(h.owedOf(1), 0, "asset 1 funded");
 
         // Same block, same asset: refused.
         vm.expectRevert(DividendDistribution.DividendProcessCooldown.selector);
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(1, true, 0, 0, _noHolders());
     }
 
     /// @dev Each asset accrues against its OWN accumulator, so a holder's two claims are independent
@@ -247,12 +266,12 @@ contract DividendsMultiAssetTests is Test {
         _activateWith(1_000e18);
         _accrue(10 ether);
 
-        h.processDividends(0, 0, _noHolders()); // native leg: no conversion
+        h.processDividends(0, true, 0, 0, _noHolders()); // native leg: no conversion
 
         assertGt(h.previewDividend(holder, 0), 0, "the native leg credited the holder");
-        assertEq(h.previewDividend(holder, 1), 0, "the DAI leg never distributed");
+        assertEq(h.previewDividend(holder, 1), 0, "the MSFT leg never distributed");
 
-        h.processDividends(1, 0, _noHolders()); // DAI leg: converts
+        h.processDividends(1, true, 0, 0, _noHolders()); // MSFT leg: converts
         assertGt(h.previewDividend(holder, 1), 0, "and now it has");
     }
 
@@ -260,12 +279,12 @@ contract DividendsMultiAssetTests is Test {
     function test_multiAsset_conversionFailureIsContained() public {
         _activateWith(1_000e18);
         _accrue(10 ether);
-        h.processDividends(0, 0, _noHolders());
+        h.processDividends(0, true, 0, 0, _noHolders());
         uint256 owedNative = h.owedOf(0);
 
-        // An unreachable floor on the DAI leg. The buffer stays put and nothing else moves.
+        // An unreachable floor on the MSFT leg. The buffer stays put and nothing else moves.
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
-        h.processDividends(1, type(uint256).max, _noHolders());
+        h.processDividends(1, true, 0, type(uint256).max, _noHolders());
 
         assertEq(h.bufferOf(1), 8 ether, "the failed leg's buffer is untouched");
         assertEq(h.owedOf(0), owedNative, "the healthy leg's ledger is untouched");
@@ -278,31 +297,59 @@ contract DividendsMultiAssetTests is Test {
     function test_multiAsset_claimPaysEveryAsset() public {
         _activateWith(1_000e18);
         _accrue(10 ether);
-        h.processDividends(0, 0, _noHolders());
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(0, true, 0, 0, _noHolders());
+        h.processDividends(1, true, 0, 0, _noHolders());
 
         uint256 ethBefore = holder.balance;
         vm.prank(holder);
         h.claimDividends();
 
         assertGt(holder.balance, ethBefore, "paid in native");
-        assertGt(IERC20(DAI).balanceOf(holder), 0, "and in DAI");
+        assertGt(IERC20(MSFT).balanceOf(holder), 0, "and in MSFT");
         assertEq(h.previewDividend(holder, 0), 0, "native accrual cleared");
-        assertEq(h.previewDividend(holder, 1), 0, "DAI accrual cleared");
+        assertEq(h.previewDividend(holder, 1), 0, "MSFT accrual cleared");
     }
 
     /// @dev A keeper batch is per asset, and pushing one asset must not zero another's accrual.
     function test_multiAsset_keeperBatchPaysOnlyItsOwnAsset() public {
         _activateWith(1_000e18);
         _accrue(10 ether);
-        h.processDividends(0, 0, _noHolders());
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(0, true, 0, 0, _noHolders());
+        h.processDividends(1, true, 0, 0, _noHolders());
 
         uint256 daiPending = h.previewDividend(holder, 1);
-        h.processDividends(0, 0, _holders());
+        h.processDividends(0, true, 0, 0, _holders());
 
         assertEq(h.previewDividend(holder, 0), 0, "the pushed asset is paid");
         assertEq(h.previewDividend(holder, 1), daiPending, "the other asset is untouched");
+    }
+
+    /// @dev `fund == false` pushes already-credited payouts and nothing else: the buffer is not
+    ///      converted and the block is not claimed, so a funding call can still follow in it.
+    function test_multiAsset_pushOnlyLeavesTheBufferAlone() public {
+        _activateWith(1_000e18);
+        _accrue(10 ether);
+        h.processDividends(0, true, 0, 0, _noHolders());
+        vm.roll(block.number + 1);
+        _accrue(1 ether);
+        uint256 buffer = h.bufferOf(0);
+        uint256 owed = h.owedOf(0);
+
+        vm.recordLogs();
+        h.processDividends(0, false, 0, 0, _holders());
+        assertEq(vm.getRecordedLogs().length, 1, "only the payout event, no DividendsFunded");
+        assertEq(h.bufferOf(0), buffer, "buffer untouched");
+        assertEq(h.previewDividend(holder, 0), 0, "holder pushed");
+        assertLt(h.owedOf(0), owed, "the push paid out of the ledger");
+
+        h.processDividends(0, true, 0, 0, _noHolders()); // same block: not claimed by the push
+        assertEq(h.bufferOf(0), 0, "funded");
+    }
+
+    function test_multiAsset_pushOnlyWithoutHoldersReverts() public {
+        _activateWith(1_000e18);
+        vm.expectRevert(DividendDistribution.NoDividendWork.selector);
+        h.processDividends(0, false, 0, 0, _noHolders());
     }
 
     /// @dev `committedDividends` is what keeps `rescueTokens` and `sweepStrayEth` off holders' money. It
@@ -310,17 +357,17 @@ contract DividendsMultiAssetTests is Test {
     function test_multiAsset_committedDividendsAnswersPerAsset() public {
         _activateWith(1_000e18);
         _accrue(10 ether);
-        h.processDividends(1, 0, _noHolders());
+        h.processDividends(1, true, 0, 0, _noHolders());
 
-        assertEq(h.committedDividends(DAI), h.owedOf(1), "the DAI debt is reported against DAI");
+        assertEq(h.committedDividends(MSFT), h.owedOf(1), "the MSFT debt is reported against MSFT");
         assertEq(h.committedDividends(NATIVE), 0, "and not against the native leg");
-        assertEq(h.committedDividends(USDC), 0, "nor against an asset this token does not pay in");
+        assertEq(h.committedDividends(AAPL), 0, "nor against an asset this token does not pay in");
     }
 
     function test_multiAsset_indexPastTheSetIsRejected() public {
         _activateWith(1_000e18);
         vm.expectRevert(DividendDistribution.DividendAssetOutOfRange.selector);
-        h.processDividends(2, 0, _noHolders());
+        h.processDividends(2, true, 0, 0, _noHolders());
     }
 
     //////////////////////// the set's shape //////////////////////
@@ -330,20 +377,20 @@ contract DividendsMultiAssetTests is Test {
     ///      difference to the owner out of holders' pot.
     function test_multiAsset_duplicateAssetIsRejected() public {
         _expectConfigureRevert(
-            DividendDistribution.InvalidDividendAssetSet.selector, _assets(DAI, DAI), _weights(W_SMALL, W_BIG)
+            DividendDistribution.InvalidDividendAssetSet.selector, _assets(MSFT, MSFT), _weights(W_SMALL, W_BIG)
         );
     }
 
     function test_multiAsset_weightsMustSumToBpsTotal() public {
         _expectConfigureRevert(
-            DividendDistribution.InvalidDividendAssetSet.selector, _assets(NATIVE, DAI), _weights(2_000, 7_000)
+            DividendDistribution.InvalidDividendAssetSet.selector, _assets(NATIVE, MSFT), _weights(2_000, 7_000)
         );
     }
 
     /// @dev A zero-weight asset can never be funded but is still settled on every transfer: pure cost.
     function test_multiAsset_zeroWeightIsRejected() public {
         _expectConfigureRevert(
-            DividendDistribution.InvalidDividendAssetSet.selector, _assets(NATIVE, DAI), _weights(10_000, 0)
+            DividendDistribution.InvalidDividendAssetSet.selector, _assets(NATIVE, MSFT), _weights(10_000, 0)
         );
     }
 
@@ -353,15 +400,15 @@ contract DividendsMultiAssetTests is Test {
 
     function test_multiAsset_mismatchedArrayLengthsAreRejected() public {
         _expectConfigureRevert(
-            DividendDistribution.InvalidDividendAssetSet.selector, _assets(NATIVE, DAI), _weights(10_000)
+            DividendDistribution.InvalidDividendAssetSet.selector, _assets(NATIVE, MSFT), _weights(10_000)
         );
     }
 
     function test_multiAsset_moreThanTheMaximumIsRejected() public {
         address[] memory four = new address[](4);
         four[0] = NATIVE;
-        four[1] = DAI;
-        four[2] = USDC;
+        four[1] = MSFT;
+        four[2] = AAPL;
         four[3] = address(new NoPoolToken());
         uint16[] memory weights = new uint16[](4);
         weights[0] = 2_500;
@@ -376,7 +423,7 @@ contract DividendsMultiAssetTests is Test {
     ///      split's denominator — a whole-slice operation with no per-asset fraction. Rejected in any
     ///      larger set, on both venues, so the rule reads the same wherever a creator finds it.
     function test_multiAsset_selfTokenMustBeSole() public {
-        address[] memory set = _assets(DAI, h.DIVIDEND_SELF_TOKEN());
+        address[] memory set = _assets(MSFT, h.DIVIDEND_SELF_TOKEN());
         _expectConfigureRevert(DividendDistribution.SelfTokenDividendMustBeSole.selector, set, _weights(W_BIG, W_SMALL));
     }
 
@@ -389,15 +436,12 @@ contract DividendsMultiAssetTests is Test {
         assertEq(sole.assetCount(), 1, "one asset");
     }
 
-    /// @dev Every member of the set is put to the registry, not just the first — an asset the token could
-    ///      never convert into must fail at CREATION, which is the only moment a clone can still be fixed.
-    function test_multiAsset_everyAssetIsCheckedAgainstTheRegistry() public {
+    /// @dev A member with no route, supplied or already in the registry, reverts the whole set.
+    function test_multiAsset_anAssetWithoutARouteReverts() public {
         address ghost = address(new NoPoolToken());
-        address[] memory set = _assets(DAI, ghost);
-        uint16[] memory weights = _weights(W_BIG, W_SMALL);
         MultiAssetHarness harness = new MultiAssetHarness();
-        vm.expectRevert();
-        harness.configure(set, weights);
+        vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingDividendRoute.selector, ghost));
+        harness.configure(_assets(MSFT, ghost), _weights(W_BIG, W_SMALL));
     }
 
     function _weights(uint16 a) internal pure returns (uint16[] memory list) {

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTestsWithDirectV4} from "test/launchpad/base.t.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 
-contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithUniv4Graduator {
+contract TokenOwnershipTransferTests is LaunchpadBaseTestsWithDirectV4 {
     modifier proposedOwner(address currentOwner, address nextOwner) {
         vm.prank(currentOwner);
         IRealmToken(testToken).proposeNewOwner(nextOwner);

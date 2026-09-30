@@ -3,11 +3,7 @@ pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
-import {
-    LaunchpadBaseTests,
-    LaunchpadBaseTestsWithUniv2Graduator,
-    LaunchpadBaseTestsWithUniv4Graduator
-} from "test/launchpad/base.t.sol";
+import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
@@ -355,16 +351,5 @@ contract UniswapV2AgnosticGraduationTests is ProtocolAgnosticGraduationTests, La
     /// @dev V2 graduator pays out 0.005 ether to the graduation triggerer (`tx.origin`)
     function _triggererCompensation() internal pure override returns (uint256) {
         return TRIGGERER_GRADUATION_COMPENSATION;
-    }
-}
-
-/// @dev run all the tests in ProtocolAgnosticGraduationTests, with Uniswap V4 graduator
-contract UniswapV4AgnosticGraduationTests is ProtocolAgnosticGraduationTests, LaunchpadBaseTestsWithUniv4Graduator {
-    function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv4Graduator) {
-        super.setUp();
-    }
-
-    function _tokenFeeHandler() internal view override returns (IRealmClaims) {
-        return IRealmClaims(IRealmToken(testToken).feeHandler());
     }
 }

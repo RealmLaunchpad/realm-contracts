@@ -94,10 +94,13 @@ interface IRealmFactory {
     ///         filter by token or by curve (e.g. "all tokens on curve X").
     event BondingCurveAssigned(address indexed token, address indexed bondingCurve);
 
+    /// @param quoteSpent What the buy spent in the quote of the pair it ran on, raw units: wei on a native
+    ///        pair (always, on the curve venue), the quote ERC20's units on a direct-venue ERC20 pair —
+    ///        the CONVERTED amount, not the native sent, when the creator paid in native.
     event BuyOnDeploy(
         address indexed token,
         address indexed buyer,
-        uint256 ethSpent,
+        uint256 quoteSpent,
         uint256 tokensBought,
         address[] recipients,
         uint256[] amounts
@@ -123,6 +126,10 @@ interface IRealmFactory {
     ///         by token or by referral (e.g. "all tokens referred by X").
     event TokenReferral(address indexed token, address indexed referral);
 
+    /// @notice Emitted once per graduator a factory proxy uses, before any token can graduate through it.
+    ///         The indexer registers the graduator from this event (not from `TokenCreated`).
+    event GraduatorSet(address graduator);
+
     ////////////////// Errors //////////////////////
 
     error InvalidNameOrSymbol();
@@ -145,8 +152,7 @@ interface IRealmFactory {
     error DividendAssetWithoutShare();
     /// @notice DEPRECATED and no longer thrown: the dividends module has shipped. Kept so the ABI is not
     ///         rewritten under integrators that already decode it. A misconfigured dividend allocation
-    ///         now reverts at creation from elsewhere: a payout asset whose route the registry refuses
-    ///         gives `RealmDividendSwapRegistry.RouteRejected(SwapRejection)`, and a malformed asset set
+    ///         now reverts at creation from elsewhere: a malformed asset set
     ///         (wrong lengths, a zero or non-summing weight, a duplicate) gives
     ///         `DividendDistribution.InvalidDividendAssetSet` or `SelfTokenDividendMustBeSole`. A
     ///         dividends share routed through an overload that names no payout asset still gives

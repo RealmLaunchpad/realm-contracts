@@ -30,29 +30,9 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 ///      list against an unfundable buffer — and they are there so a keeper's simulation gets a reason
 ///      rather than a silent success.
 ///
-/// @dev WHY THIS IS A SEPARATE CONTRACT. Taxable tokens are CLONES of a single implementation, and that
-///      implementation has to fit in EIP-170's 24,576 bytes. The dividend engine did not fit alongside
-///      the rest of the token, so this half — never on a hot path — lives behind a thin `delegatecall`
-///      stub per entry point (see `RealmTaxableToken._delegateToDividendLogic`), in a contract
-///      deployed ONCE per venue per chain by the token implementation's own constructor.
-///
-/// @dev The delegatecall means every line below runs in the TOKEN's context: `address(this)` is the
-///      token, the payouts come out of the token's own balance, the events are emitted from the token's
-///      address (so indexers see no change), and the `dividendLocked` transient guard is the token's.
-///      Nothing is pooled and nothing is custodied here.
-///
-/// @dev ⚠️ STORAGE LAYOUT. This contract writes the token's storage directly, so the two layouts must be
-///      byte-identical. The concrete extensions (`RealmDividendLogicUniV2` / `...UniV4`) inherit the same
-///      venue base the token does and add no state of their own, so the compiler derives the layout for
-///      both — never hand-maintain it. `just check-dividend-layout` fails if they ever drift.
-///      The same applies to TRANSIENT slots, which is why `dividendLocked` stays declared in
-///      `DividendDistribution` rather than moving here with the modifier's users.
+/// @dev A mixin of `RealmTaxableToken`, separate from `DividendDistribution` only so the test harnesses
+///      can build the hot half alone. Adds NO storage.
 abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated, ReentrancyGuardTransient {
-    /// @notice Thrown by every TOKEN entry point on an extension. An extension is an execution body for
-    ///         a token, not a token: deployed once, never cloned, holding no balance, and its own
-    ///         storage never read. Anyone reaching one of those entry points here has the wrong address.
-    error NotAToken();
-
     /// @notice The eligible supply is under `MIN_DIVIDEND_SUPPLY`: there is nobody to credit, so the
     ///         buffer stays where it is until a holder shows up.
     error NoDividendSupply();
@@ -64,126 +44,8 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         NotReady,
         /// @dev Holders are credited with `out` of the payout asset.
         Funded,
-        /// @dev Enough was buffered and the conversion did not happen. The buffer is untouched.
-        ConversionFailed,
-        /// @dev Same as `ConversionFailed`, but this call put the failure ON RECORD for the treasury
-        ///      sweep's persistence gate. Reported separately because it WROTE, so the caller must not
-        ///      revert it away.
-        FailureRecorded,
-        /// @dev The conversion could not happen at ANY price, so that slice of the buffer went to
-        ///      `DIVIDEND_TREASURY`. Nothing was credited, and nothing accrued was written off.
-        SweptToTreasury
-    }
-
-    //////////////////////// configuration //////////////////////
-
-    /// @dev Stores the creation-time payout configuration: one to `MAX_DIVIDEND_ASSETS` assets and the
-    ///      bps split of the dividends slice between them. Called once, by the token, only when the
-    ///      earnings allocation routes a non-zero share to dividends.
-    ///
-    /// @dev THE REGISTRY IS THE ONLY JUDGE, and the creator never names a route: any ERC20 with a
-    ///      Uniswap V2 pair deep enough to swap against is accepted with no whitelist and no per-asset
-    ///      approval, and so is one a registry admin has given a curated Uniswap V4 route (the only way
-    ///      an asset with no V2 pair at all — Robinhood Chain's xStocks — can be reached). Asking here
-    ///      is what stops a creator from configuring a payout their own token could never convert into
-    ///      — the failure mode a clone cannot be patched out of. Every asset in the set is asked.
-    /// @dev The registry is a proxy behind a constant address, so a token created today is bound to the
-    ///      RULE rather than to today's version of it: raising the threshold, blacklisting an asset or
-    ///      adding a venue reaches this token too, for every conversion it has not made yet.
-    ///
-    /// @dev THE SET RULES, and why each one is a `require` rather than a normalization:
-    ///      - 1..`MAX_DIVIDEND_ASSETS` assets. The transfer hook loops the set, so it is bounded in the
-    ///        type as well as here.
-    ///      - Weights non-zero and summing to `DIVIDEND_BPS_TOTAL`. A zero-weight asset is an asset that
-    ///        can never be funded but is still settled on every transfer, i.e. pure cost; weights that
-    ///        do not sum leave a slice of the dividends allocation stranded in no bucket at all.
-    ///      - NO DUPLICATES. `committedDividends` is what keeps `rescueTokens` and `sweepStrayEth` off
-    ///        holders' money, and it answers per asset — the same asset in two slots would have it report
-    ///        one slot's debt and hand the other slot's to the owner. This is the one rule here whose
-    ///        failure mode is a value leak rather than a dead configuration.
-    ///      - `DIVIDEND_SELF_TOKEN` only when it is the SOLE asset. On Uniswap V2 that payout is carved
-    ///        in token space out of the tax tokens and removes itself from the ETH split's denominator,
-    ///        which is a whole-slice operation with no per-asset fraction; a V2 token that configured it
-    ///        alongside others would buffer native it could never convert (a V2 pair reverts `INVALID_TO`
-    ///        when asked to deliver a token to its own address). Rejected on both venues so the rule is
-    ///        the same wherever a creator reads it.
-    ///
-    /// @dev ⚠️ ACCEPTED: THE ELIGIBILITY PROOF IS A SPOT READ AND CAN BE FLASH-PASSED. The registry
-    ///      measures the pair's reserves at this instant, so a creator can add liquidity, create the
-    ///      token, and pull the liquidity back out in the same transaction. What that buys them is
-    ///      nothing: the registry re-checks eligibility on EVERY conversion, so the token simply never
-    ///      converts that asset, and after `STALE_DIVIDEND_WINDOW` its buffer goes to `DIVIDEND_TREASURY`
-    ///      rather than to the creator. Nothing is stolen from holders — they were promised a payout
-    ///      asset the token cannot reach, which is a disclosure problem for the frontend, not a value
-    ///      leak here. Making it un-fakeable would need depth measured across blocks, which is not worth
-    ///      the permanent complexity for a gate whose only failure mode is a token that pays nobody.
-    /// @param routes one per asset, in the `DividendRouteLib` wire format: the pools this token will
-    ///        convert that asset through, for life. Empty for an asset bought on its permissionless V2
-    ///        pair, which is also what a shorter array means for the assets it does not reach.
-    /// @return count How many assets were configured, for the caller to store on the token.
-    function _initializeDividends(address[] memory tokens, uint16[] memory weights, bytes[] memory routes)
-        internal
-        returns (uint8 count)
-    {
-        uint256 n = tokens.length;
-        require(n != 0 && n <= MAX_DIVIDEND_ASSETS && weights.length == n, InvalidDividendAssetSet());
-        require(routes.length <= n, InvalidDividendAssetSet());
-        count = uint8(n);
-
-        IRealmDividendSwapRegistry registry = IRealmDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
-        uint256 weightSum;
-        for (uint256 i; i < count; ++i) {
-            address token = tokens[i];
-            // Resolve the "pay in the token itself" sentinel now, so every later read is a plain address.
-            if (token == DIVIDEND_SELF_TOKEN) token = address(this);
-            require(token != address(this) || count == 1, SelfTokenDividendMustBeSole());
-
-            require(weights[i] != 0, InvalidDividendAssetSet());
-            weightSum += weights[i];
-            // Pairwise against the slots already written. At most three comparisons, and the reason is
-            // on the docstring: a duplicate is the one misconfiguration that leaks value.
-            for (uint256 j; j < i; ++j) {
-                require(dividendAssets[j].token != token, InvalidDividendAssetSet());
-            }
-
-            // Native and the token itself are both 18-decimal and have nothing to buy: no pool, nothing
-            // to prove, and no `decimals()` to ask (native has no contract, and self-calling this token
-            // for a constant would be a wasted CALL).
-            uint8 assetDecimals = 18;
-            if (token != address(0) && token != address(this)) {
-                // Registers AND validates in one call: the registry refuses a route whose pools are not
-                // real, and stores the accepted one against this token. Write-once and unfixable
-                // afterwards, which is why the refusal has to happen here, while the mistake is free.
-                registry.registerRoute(token, i < routes.length ? routes[i] : bytes(""));
-                // Not `try`/`catch`: an asset with no `decimals()` reverts the CREATION, which is the only
-                // moment this is cheap to discover. Defaulting to 18 instead would silently under-scale
-                // the accumulator for the rest of that token's life, and a clone cannot be patched.
-                assetDecimals = IERC20Metadata(token).decimals();
-            }
-
-            dividendAssets[i].token = token;
-            // Clamped rather than reverted above 36 decimals: an exponent of 0 is simply the coarsest
-            // scale, and such an asset has so many units per whole token that it needs no help.
-            dividendAssets[i].precisionExp =
-                assetDecimals >= DIVIDEND_PRECISION_DECIMALS ? 0 : uint8(DIVIDEND_PRECISION_DECIMALS - assetDecimals);
-            dividendWeightsBps[i] = weights[i];
-            emit DividendAssetInitialized(i, token, weights[i]);
-        }
-        require(weightSum == DIVIDEND_BPS_TOTAL, InvalidDividendAssetSet());
-
-        // Kept for the indexers and integrators written against the single-asset shape, which read the
-        // payout asset off this event. Emitted last so the per-asset events describe the whole set first.
-        emit DividendsInitialized(dividendAssets[0].token);
-    }
-
-    /// @dev Lifts a single payout asset into the one-entry set `_initializeDividends` consumes, so the
-    ///      original single-asset `initializeEarningsAllocation` overload and the multi-asset one run
-    ///      through exactly the same rules. A sole asset takes the whole dividends slice by definition.
-    function _soleAssetSet(address asset) internal pure returns (address[] memory tokens, uint16[] memory weights) {
-        tokens = new address[](1);
-        tokens[0] = asset;
-        weights = new uint16[](1);
-        weights[0] = uint16(DIVIDEND_BPS_TOTAL);
+        /// @dev Something was buffered and the conversion did not happen. The buffer is untouched.
+        ConversionFailed
     }
 
     //////////////////////// the distribution //////////////////////
@@ -198,11 +60,14 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      `claimDividends()`. A keeper is free to push only to holders above whatever size threshold
     ///      it likes; the small ones are not forfeiting anything by being skipped.
     ///
-    /// @dev What gets funded, and when, is DERIVED: a function of that asset's buffer and the clock
-    ///      alone. The only things a caller supplies are which asset and the slippage floor for its
-    ///      conversion.
+    /// @dev The caller supplies which asset, how much of its buffer to convert and the slippage floor.
     ///
     /// @param assetIndex Which configured payout asset to service. Reverts past the configured count.
+    /// @param fund False for a push-only call: skips the conversion (no block claimed, no
+    ///        `DividendsFunded`); `holders` must then be non-empty, or it reverts `NoDividendWork`.
+    /// @param amount Native to convert, capped by the buffer and `MAX_DIVIDEND_PER_CONVERSION`; 0 means
+    ///        "up to the cap". Lets a keeper slice a buffer a thin pool cannot take in one go. Ignored
+    ///        by a payout that does not swap.
     /// @param minOut Slippage floor for the conversion, in that asset's own decimals. Ignored when the
     ///        asset is native or the token itself, and by any call that does not convert.
     /// @param holders Addresses to push accrued payouts to. May be empty — a fund-only call is a normal
@@ -216,46 +81,31 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      `processLiquidity` already hold this lock; this was the one earnings entry point that did
     ///      not. Costs no SSTORE (transient) and blocks nothing legitimate: `accrueFees`, which the V4
     ///      hook calls back mid-swap, deliberately takes neither lock.
-    function processDividends(uint8 assetIndex, uint256 minOut, address[] calldata holders)
+    function processDividends(uint8 assetIndex, bool fund, uint256 amount, uint256 minOut, address[] calldata holders)
         public
         nonReentrant
         nonReentrantDividends
     {
+        _processDividends(assetIndex, fund, amount, minOut, holders);
+    }
+
+    /// @dev The body of `processDividends`, without its locks, so a venue can service the same asset
+    ///      out of a buffer the shared machine does not know — an ERC20 quote's — under locks of its own
+    ///      (`RealmTaxableTokenUniV4.processDividends(uint8,address,uint256,uint256,address[])`).
+    function _processDividends(uint8 assetIndex, bool fund, uint256 amount, uint256 minOut, address[] calldata holders)
+        internal
+    {
+        require(fund || holders.length != 0, NoDividendWork());
         require(assetIndex < _dividendAssetCount(), DividendAssetOutOfRange());
         DivAsset storage asset = dividendAssets[assetIndex];
         require(asset.lastDistribution != 0, DividendsNotActive());
 
-        // KEEPER-GATED, with staleness as the escape hatch. The conversion below takes its slippage
-        // floor from the caller, so a permissionless caller could manipulate the payout pool, call in
-        // with a zero floor and unwind, all in one transaction — see `RealmKeepersRegistry` for why no
-        // depth threshold bounds that. Holders never depend on a keeper to be PAID: `claimDividends()`
-        // is open to everyone and pays in full. What a keeper is needed for is moving the buffer.
-        // The stale branch is the backstop for a keeper set that has gone away for good: after
-        // `STALE_DIVIDEND_WINDOW` with no distribution, anyone may fund, because a buffer nobody can
-        // ever convert is a worse outcome than one someone can convert badly. That also opens the
-        // ATOMIC capture the base's docstring accepts — buy, fund, claim, sell in one transaction — on
-        // a token that has, by then, most likely died.
-        //
-        // ⚠️ STALENESS ALONE IS NOT THAT SIGNAL for an asset that SWAPS. `dividendsStale` reads "no
-        // distribution in a month", which a quiet token reaches in its ordinary steady state: a
-        // low-volume token may simply never buffer `DIVIDEND_THRESHOLD` inside one window, with every
-        // keeper present and working. Opening the gate there would hand any caller a zero-floor
-        // conversion of a real buffer, every month, on every quiet token — the exact sandwich the
-        // keeper set exists to prevent. So the bypass ALSO requires the buffer to have been convertible
-        // all along: keepers are paid per conversion and fire as soon as the threshold is crossed, so
-        // `DIVIDEND_THRESHOLD` left sitting for `STALE_DIVIDEND_WINDOW` is what actually evidences a
-        // keeper set that is gone. A sub-threshold residual stays keeper-only — the smaller loss.
-        // Assets whose funding does NOT swap keep the wide hatch (native, and the V2 self-token leg,
-        // which is carved in token space and merely credits a buffer): there is nothing
-        // for a caller to sandwich, so stranding is their only failure mode.
-        {
-            // Scoped: this function is already at the stack limit, so these must die before the loop.
-            address payout = asset.token;
-            bool swaps = payout != address(0) && !_isTokenSpaceDividendAsset(payout);
-            if (!dividendsStale(assetIndex) || (swaps && asset.pendingNative < DIVIDEND_THRESHOLD)) {
-                _requireKeeper();
-            }
-        }
+        // KEEPER-GATED. The conversion below takes its slippage floor from the caller, so a
+        // permissionless caller could manipulate the payout pool, call in with a zero floor and unwind,
+        // all in one transaction — see `RealmKeepersRegistry`, whose admins can open the gate to
+        // everyone if the keeper set is ever retired. Holders never depend on a keeper to be PAID:
+        // `claimDividends()` is open to everyone and pays in full.
+        _requireKeeper();
 
         // Once per block PER ASSET, for exactly the reason `processBurn` and `processLiquidity` are: the
         // per-call cap only bounds what a manipulated block can yield if the block allows ONE conversion.
@@ -265,38 +115,42 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         // The gate is on the FUNDING leg ALONE. Pushing payouts is not rate-limited and must not be: a
         // keeper splitting a large holder set across several transactions in one block is ordinary, and
         // those calls read a buffer this one already resolved.
+        // `fund == false` is a push-only call: it never funds, so it neither claims the block nor emits
+        // `DividendsFunded` — a keeper pushing already-credited payouts must not convert buffer dust.
         bool cooldown = block.number <= asset.lastProcessBlock;
 
         FundOutcome outcome = FundOutcome.NotReady;
         uint256 nativeIn;
         uint256 out;
-        if (!cooldown) {
-            (outcome, nativeIn, out) = _fundDividends(assetIndex, minOut);
+        bool fellBack;
+        if (fund && !cooldown) {
+            // A retired payout asset is not bought: the native buffer goes to the native fallback pot.
+            if (_retiredPayout(asset.token)) {
+                uint256 buffered = asset.pendingNative;
+                if (buffered != 0) {
+                    asset.pendingNative = 0;
+                    _creditFallback(assetIndex, 0, address(0), buffered);
+                    (outcome, fellBack) = (FundOutcome.Funded, true);
+                }
+            } else {
+                (outcome, nativeIn, out) = _fundDividends(assetIndex, amount, minOut);
+            }
             // Claimed only when the buffer actually MOVED. A call that found nothing fundable, or whose
             // swap failed, spent nothing and must not lock the block against an honest keeper.
-            if (outcome == FundOutcome.Funded || outcome == FundOutcome.SweptToTreasury) {
+            if (outcome == FundOutcome.Funded) {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 asset.lastProcessBlock = uint40(block.number);
             }
         }
 
-        if (outcome == FundOutcome.Funded) {
+        if (outcome == FundOutcome.Funded && !fellBack) {
             _creditDividends(assetIndex, out);
-            emit DividendsFunded(asset.token, nativeIn, out);
+            emit DividendsFunded(address(0), asset.token, nativeIn, out);
         }
 
         if (holders.length != 0) {
-            // The asset leg gets its own, far larger stipend: `NATIVE_PAYOUT_GAS` is sized for a wallet's
-            // `receive()` and would starve an ordinary ERC20 `transfer`.
-            address payoutAsset = asset.token;
-            uint256 stipend = payoutAsset == address(0) ? NATIVE_PAYOUT_GAS : ASSET_PAYOUT_GAS;
-            // Read AFTER the credit above, so the push includes the distribution this call just made.
-            uint256 rpt = asset.rewardPerTokenStored;
-            uint256 paid;
-            for (uint256 i; i < holders.length; ++i) {
-                paid += _payHolder(holders[i], assetIndex, payoutAsset, rpt, stipend);
-            }
-            _reduceDividendsOwed(assetIndex, paid);
+            _pushDividends(assetIndex, holders);
+            _pushFallbacks(holders);
         } else if (cooldown) {
             // Distinct from the two below on purpose: this keeper has to wait a block, not wait for
             // earnings or re-price a floor.
@@ -305,13 +159,11 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
             // Two different situations, two different errors: a keeper that sees `BelowDividendThreshold`
             // has to wait for earnings, one that sees `DividendConversionFailed` has the earnings and a
             // swap problem — a `minOut` the pool has moved past, or a pool that is gone.
+            // The name predates the funding floor's removal: "nothing to fund" means an EMPTY buffer.
             revert BelowDividendThreshold();
         } else if (outcome == FundOutcome.ConversionFailed) {
             revert DividendConversionFailed();
         }
-        // `SweptToTreasury` and `FailureRecorded` fall through: neither could credit anything, but both
-        // CHANGED something — the buffer in one case, the sweep's persistence marker in the other — and
-        // reverting would undo the very write the call was made to perform.
         // A call carrying holders never reverts for the buffer being short or the swap being broken: it
         // asked to push payouts, and it pushed them.
     }
@@ -320,7 +172,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///         against single-asset tokens — which is what every token with one payout asset still is —
     ///         keep working unchanged.
     function processDividends(uint256 minOut, address[] calldata holders) external {
-        processDividends(0, minOut, holders);
+        processDividends(0, true, 0, minOut, holders);
     }
 
     /// @notice Self-serve payout of everything the caller has accrued, in EVERY configured asset.
@@ -339,7 +191,92 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
             DivAsset storage a = dividendAssets[i];
             _reduceDividendsOwed(i, _payHolder(msg.sender, i, a.token, a.rewardPerTokenStored, gasleft()));
         }
+        uint256 mask = _dividendFallbackMask();
+        for (uint256 q; mask != 0; ++q) {
+            if (mask & 1 != 0) _payFallback(msg.sender, q, gasleft());
+            mask >>= 1;
+        }
     }
+
+    //////////////////////// fallback pots //////////////////////
+
+    /// @dev Whether the registry has retired `asset`. Fails OPEN (false) against a registry that cannot
+    ///      answer — codeless, or an implementation older than the flag — which is the behaviour every
+    ///      token had before retirement existed: keep trying to convert.
+    function _isRetired(address asset) internal view returns (bool) {
+        (bool ok, bytes memory ret) =
+            DIVIDEND_SWAP_REGISTRY.staticcall(abi.encodeCall(IRealmDividendSwapRegistry.isRetired, (asset)));
+        return ok && ret.length >= 32 && abi.decode(ret, (bool));
+    }
+
+    /// @dev Whether `payout` is a THIRD asset the registry retired. Native and the token itself are never
+    ///      bought through the registry, so there is nothing for a retirement of them to stop.
+    function _retiredPayout(address payout) internal view returns (bool) {
+        return payout != address(0) && payout != address(this) && _isRetired(payout);
+    }
+
+    /// @dev Credits `amount` of `currency` (`quotes(q)`) to the balances held right now, through pot `q`:
+    ///      `_creditDividends` for a fallback. The first credit opens the pot — its scale from the
+    ///      currency's decimals, its bit in the mask so transfers start settling it.
+    function _creditFallback(uint256 i, uint256 q, address currency, uint256 amount) internal {
+        uint256 supply = _dividendEligibleSupply();
+        require(supply >= MIN_DIVIDEND_SUPPLY, NoDividendSupply());
+        FallbackPot storage pot = dividendFallbacks[q];
+        uint256 mask = _dividendFallbackMask();
+        if (mask & (1 << q) == 0) {
+            uint256 decimals = currency == address(0) ? 18 : IERC20Metadata(currency).decimals();
+            // forge-lint: disable-next-line(unsafe-typecast)
+            pot.precisionExp =
+                decimals >= DIVIDEND_PRECISION_DECIMALS ? 0 : uint8(DIVIDEND_PRECISION_DECIMALS - decimals);
+            _setDividendFallbackMask(mask | (1 << q));
+        }
+        // Bounds as `_creditDividends`'s: `MIN_DIVIDEND_SUPPLY` caps the accumulator, and `amount` is a
+        // buffer that was itself a `uint128` at most.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        pot.rewardPerTokenStored = uint128(pot.rewardPerTokenStored + amount * 10 ** pot.precisionExp / supply);
+        uint256 owed = pot.owed + amount;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        pot.owed = owed > type(uint120).max ? type(uint120).max : uint120(owed);
+        emit DividendFallbackFunded(i, currency, amount);
+    }
+
+    /// @dev Pushes every existing pot to `holders`. All pots, whichever leg the call serviced, so a
+    ///      keeper's ordinary native batches also deliver the quote pots.
+    function _pushFallbacks(address[] calldata holders) internal {
+        uint256 mask = _dividendFallbackMask();
+        for (uint256 q; mask != 0; ++q) {
+            if (mask & 1 != 0) {
+                uint256 stipend = _fallbackCurrency(q) == address(0) ? NATIVE_PAYOUT_GAS : ASSET_PAYOUT_GAS;
+                for (uint256 h; h < holders.length; ++h) {
+                    _payFallback(holders[h], q, stipend);
+                }
+            }
+            mask >>= 1;
+        }
+    }
+
+    /// @dev `_payHolder` for pot `q`: settle, send, and only then zero the banked amount and the debt.
+    function _payFallback(address holder, uint256 q, uint256 gasStipend) internal {
+        if (_dividendExcluded(holder)) return;
+        FallbackPot storage pot = dividendFallbacks[q];
+        Acct storage acct = fallbackAccounts[holder][q];
+        _settleAcct(acct, holder, pot.rewardPerTokenStored, 10 ** pot.precisionExp);
+        uint256 amount = acct.rewards;
+        address currency = _fallbackCurrency(q);
+        if (amount == 0 || !_payDividend(currency, holder, amount, gasStipend)) return;
+        acct.rewards = 0;
+        uint256 owed = pot.owed;
+        // Saturating, as `_reduceDividendsOwed`.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        pot.owed = amount >= owed ? 0 : uint120(owed - amount);
+        emit DividendFallbackPaid(holder, currency, amount);
+    }
+
+    /// @dev The currency of pot `q`: the token's `quotes(q)`.
+    function _fallbackCurrency(uint256 q) internal view virtual returns (address);
+
+    /// @dev Writes the token's `dividendFallbackMask`.
+    function _setDividendFallbackMask(uint256 mask) internal virtual;
 
     //////////////////////// internal //////////////////////
 
@@ -350,7 +287,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     /// @dev Integer division leaves a residue the accumulator cannot carry, which stays in `owed` and
     ///      simply never leaves the balance — dust (under `supply / 10**precisionExp` units, i.e. under a
     ///      gwei for an 18-decimal asset), and dust that errs towards holders rather than towards a sweep.
-    function _creditDividends(uint256 i, uint256 amount) private {
+    function _creditDividends(uint256 i, uint256 amount) internal {
         DivAsset storage a = dividendAssets[i];
         uint256 supply = _dividendEligibleSupply();
         require(supply >= MIN_DIVIDEND_SUPPLY, NoDividendSupply());
@@ -370,17 +307,33 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      `Σ payouts <= owed` holds by construction — but this runs in a non-upgradeable clone, and a
     ///      rounding surprise must degrade into a stale counter rather than into payouts that revert
     ///      forever.
-    function _reduceDividendsOwed(uint256 i, uint256 paid) private {
+    function _reduceDividendsOwed(uint256 i, uint256 paid) internal {
         if (paid == 0) return;
         uint256 owed = dividendAssets[i].owed;
         // forge-lint: disable-next-line(unsafe-typecast)
         dividendAssets[i].owed = paid >= owed ? 0 : uint128(owed - paid);
     }
 
+    /// @dev Pushes every holder's accrued payout in asset `i`. Reads the accumulator AFTER whatever the
+    ///      caller just credited, so the push includes that distribution.
+    function _pushDividends(uint256 i, address[] calldata holders) internal {
+        DivAsset storage asset = dividendAssets[i];
+        // The asset leg gets its own, far larger stipend: `NATIVE_PAYOUT_GAS` is sized for a wallet's
+        // `receive()` and would starve an ordinary ERC20 `transfer`.
+        address payoutAsset = asset.token;
+        uint256 stipend = payoutAsset == address(0) ? NATIVE_PAYOUT_GAS : ASSET_PAYOUT_GAS;
+        uint256 rpt = asset.rewardPerTokenStored;
+        uint256 paid;
+        for (uint256 h; h < holders.length; ++h) {
+            paid += _payHolder(holders[h], i, payoutAsset, rpt, stipend);
+        }
+        _reduceDividendsOwed(i, paid);
+    }
+
     /// @dev Turns asset `i`'s accrued buffer into payout-asset units, or reports why it could not.
     ///      Overridable so a venue can source the payout from somewhere other than the native buffer
     ///      (the V2 self-token payout, which is carved from tax tokens).
-    function _fundDividends(uint256 i, uint256 minOut)
+    function _fundDividends(uint256 i, uint256 amount, uint256 minOut)
         internal
         virtual
         returns (FundOutcome, uint256 nativeIn, uint256 out)
@@ -389,89 +342,31 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
         uint256 buffered = a.pendingNative;
         if (buffered == 0) return (FundOutcome.NotReady, 0, 0);
 
-        // The threshold exists so a distribution only fires when it is worth its gas, and staleness is
-        // its ONLY bypass: a residual below the threshold on an asset nobody has converted for
-        // `STALE_DIVIDEND_WINDOW` would otherwise strand forever. There is nothing to grief here any
-        // more — a dust distribution just credits dust, it cannot stall anything.
-        bool stale = dividendsStale(i);
-        if (buffered < DIVIDEND_THRESHOLD && !stale) return (FundOutcome.NotReady, 0, 0);
-
+        // NO SIZE FLOOR. Any non-zero buffer converts. "Is this worth its gas" is the caller's question,
+        // not the contract's: the path is keeper-gated, so the only party this could restrain is a
+        // keeper spending its own gas on a call whose whole cost it can see.
         address asset = a.token;
-        // Only a payout that SWAPS is capped. Native is already denominated in the payout asset, so it
-        // has no swap to sandwich, and throttling it would delay real money for no security gain.
-        uint256 spend =
-            (asset != address(0) && buffered > MAX_DIVIDEND_PER_CONVERSION) ? MAX_DIVIDEND_PER_CONVERSION : buffered;
-        out = _acquireDividendAsset(asset, spend, minOut);
-
-        if (out == 0) {
-            // A conversion that did not happen must leave the buffer untouched, not burn it: the swap can
-            // fail for reasons outside anyone's control — most often a floor the pool has merely moved
-            // past — and the next call simply tries again with a floor priced off the live pool.
-            if (minOut != 0) return (FundOutcome.ConversionFailed, 0, 0);
-
-            // Zero floor and still nothing came back: the pool cannot produce a single wei at any price.
-            // That is a SNAPSHOT, though, and a snapshot is manufacturable — and cheaply, because the
-            // registry refuses whenever the pair's quote depth merely dips under its threshold, so one
-            // sell causes the failure and one buy undoes it. TWO gates stand between that and a sweep,
-            // and both have to hold:
-            //   1. staleness — this asset's `lastDistribution` only moves when a distribution SUCCEEDS,
-            //      so a genuinely dead pool reaches it on its own a `STALE_DIVIDEND_WINDOW` after the
-            //      last distribution, and an actively distributing asset never does;
-            //   2. persistence — the same failure has to be on record from an EARLIER block, which costs
-            //      a griefer a second round trip held across a block boundary, per slice.
-            //
-            // KNOWN LIMIT, accepted: staleness reads "no distribution in a month", which a dead pool
-            // guarantees but does not uniquely cause, and persistence proves only that the failure
-            // outlived a block. Neither is proof the pool is dead — they make manufacturing one cost real
-            // money for a griefer who cannot profit (the native lands in Realm's own treasury, never
-            // theirs) and holders are made whole off-chain. Do not read this gate as proof of anything
-            // stronger.
-            if (!stale) return (FundOutcome.ConversionFailed, 0, 0);
-
-            uint256 recorded = a.failedConversionBlock;
-            if (recorded == 0 || block.number <= recorded) {
-                // First sighting (or a second one inside the same block, which proves nothing new).
-                // Reported as `FailureRecorded`, not `ConversionFailed`: this branch WRITES, and the
-                // caller reverts on `ConversionFailed` — which would roll the record back and leave the
-                // gate unreachable forever. Same reasoning as the sweep's own fall-through below.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                if (recorded != block.number) a.failedConversionBlock = uint40(block.number);
-                return (FundOutcome.FailureRecorded, 0, 0);
-            }
-
-            // The pool has been failing across blocks, long enough that "try again" never terminates. The
-            // slice goes to the treasury instead of sitting owed to holders forever — see the contract
-            // docstring for why that beats repointing the asset.
-            _sweepFailedConversion(i, asset, spend);
-            return (FundOutcome.SweptToTreasury, 0, 0);
+        // Only a payout that SWAPS is capped, and only it honours `amount`. Native is already
+        // denominated in the payout asset, so it has no swap to sandwich and nothing to slice.
+        uint256 spend = buffered;
+        if (asset != address(0)) {
+            uint256 cap = amount == 0 || amount > MAX_DIVIDEND_PER_CONVERSION ? MAX_DIVIDEND_PER_CONVERSION : amount;
+            if (spend > cap) spend = cap;
         }
+        (out, nativeIn) = _acquireDividendAsset(asset, spend, minOut);
 
-        // A conversion went through, so whatever the marker was recording is over. Cleared under a guard
-        // so the common path (nothing on record) pays no SSTORE.
-        if (a.failedConversionBlock != 0) a.failedConversionBlock = 0;
+        // A conversion that did not happen leaves the buffer untouched: the swap can fail for reasons
+        // outside anyone's control — a floor the pool has moved past, a route not set yet or a pool
+        // that drained — and the next call retries, after the registry's route is fixed if need be.
+        if (out == 0) return (FundOutcome.ConversionFailed, 0, 0);
 
-        // Re-read rather than reuse `buffered`: the swap is an external call, and earnings that arrived
-        // during it (`_accrueDividends` is not behind the dividend lock) must survive this write.
+        // Debits only what the conversion CONSUMED: native a partial fill handed back stays owed to
+        // holders. Re-read rather than reuse `buffered`: the swap is an external call, and earnings that
+        // arrived during it (`_accrueDividends` is not behind the dividend lock) must survive this write.
         // Bounded by the value read, which is already a `uint88`.
         // forge-lint: disable-next-line(unsafe-typecast)
-        a.pendingNative = uint88(a.pendingNative - spend);
-        return (FundOutcome.Funded, spend, out);
-    }
-
-    /// @dev Hands `amount` of unconvertible native to `DIVIDEND_TREASURY`. Bounded by
-    ///      `MAX_DIVIDEND_PER_CONVERSION` per call, so clearing a dead pool's whole buffer takes as many
-    ///      calls as converting it would have.
-    /// @dev Debited BEFORE the send, and re-read rather than reusing the caller's snapshot: the failed
-    ///      conversion was an external call, so earnings that arrived during it must survive this write.
-    /// @dev Deliberately NOT a write-off of anything holders hold. The asset, its `owed`, its
-    ///      accumulator and every `Acct` are untouched — this moves native that had not been converted
-    ///      yet and therefore was never credited to anyone.
-    function _sweepFailedConversion(uint256 i, address asset, uint256 amount) private {
-        // forge-lint: disable-next-line(unsafe-typecast)
-        dividendAssets[i].pendingNative = uint88(dividendAssets[i].pendingNative - amount);
-        (bool sent,) = DIVIDEND_TREASURY.call{value: amount}("");
-        require(sent, DividendSweepFailed());
-        emit DividendBufferSweptToTreasury(asset, amount);
+        a.pendingNative = uint88(a.pendingNative - nativeIn);
+        return (FundOutcome.Funded, nativeIn, out);
     }
 
     /// @dev Converts `nativeIn` into `asset`. Native needs no conversion; a third ERC20 is bought on the
@@ -482,23 +377,24 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     /// @return out asset actually received, measured as a balance delta so a fee-on-transfer asset is
     ///         counted for what it delivered. 0 when the conversion did not happen — see
     ///         `_fundDividends`.
+    /// @return spent native the conversion consumed. The registry takes all of `nativeIn` or reverts.
     function _acquireDividendAsset(address asset, uint256 nativeIn, uint256 minOut)
         internal
         virtual
-        returns (uint256 out)
+        returns (uint256 out, uint256 spent)
     {
-        if (asset == address(0)) return nativeIn; // native: the buffer already IS the payout asset
+        if (asset == address(0)) return (nativeIn, nativeIn); // native: the buffer already IS the payout
 
         uint256 balanceBefore = IERC20(asset).balanceOf(address(this));
-        if (!_swapNativeToDividendAsset(asset, nativeIn, minOut)) return 0;
-        return IERC20(asset).balanceOf(address(this)) - balanceBefore;
+        if (!_swapNativeToDividendAsset(asset, nativeIn, minOut)) return (0, 0);
+        return (IERC20(asset).balanceOf(address(this)) - balanceBefore, nativeIn);
     }
 
     /// @dev Hands the conversion to the registry, which re-checks eligibility, swaps and forwards the
     ///      asset back here in one call. Nothing about the route is stored on the token: the registry
     ///      resolves it, so a token created before a venue existed can still use it.
-    /// @dev A LOW-LEVEL call, on purpose. The registry reverts on a dead pair, a missed floor or an
-    ///      asset blacklisted since creation, and this caller is a distribution that must not lose its
+    /// @dev A LOW-LEVEL call, on purpose. The registry reverts on a missing route, a dead pool or a missed
+    ///      floor, and this caller is a distribution that must not lose its
     ///      buffer to any of those — a reverted call leaves the native exactly where it was, and
     ///      `false` here becomes `ConversionFailed` rather than a reverted distribution.
     /// @dev The `extcodesize` check is what makes the low-level call fail CLOSED. A raw `call` to an
@@ -523,7 +419,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///        uncapped call).
     /// @return The amount actually delivered, 0 if the holder was skipped or the send failed.
     function _payHolder(address holder, uint256 i, address asset, uint256 rpt, uint256 gasStipend)
-        private
+        internal
         returns (uint256)
     {
         // An excluded address never accrues, so its `Acct` is a stale checkpoint against a live balance

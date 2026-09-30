@@ -2,12 +2,10 @@
 pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
-import {LaunchpadBaseTestsWithUniv4Graduator} from "test/launchpad/base.t.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {TokenState} from "src/types/tokenData.sol";
-import {RealmGraduatorUniswapV4} from "src/graduators/RealmGraduatorUniswapV4.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -28,7 +26,6 @@ import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmClaims} from "src/interfaces/IRealmClaims.sol";
-import {DeploymentAddressesEthereumMainnet} from "src/config/DeploymentAddresses.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 
 contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
@@ -52,17 +49,7 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         virtual
         returns (address)
     {
-        vm.prank(creator);
-        address token = factoryV4.createToken(
-            name,
-            symbol,
-            _nextValidSalt(address(factoryV4), address(realmToken)),
-            _fs(creator),
-            _noSs(),
-            false,
-            _emptyTaxCfg(),
-            _emptyAntiSniperCfg()
-        );
+        address token = _createDirectTokenAs(creator, name, symbol, _fs(creator), false, _emptyTaxCfg());
         return token;
     }
 
@@ -111,16 +98,8 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         testToken1 = _createTokenForCreator("TestToken1", "TEST1", bytes32(0));
         testToken2 = _createTokenForCreator("TestToken2", "TEST2", bytes32(0));
 
-        // graduate token1 and token2
-        uint256 buyAmount1 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 3);
-        uint256 buyAmount2 = _increaseWithFees(GRADUATION_THRESHOLD + MAX_THRESHOLD_EXCESS / 2);
+        // both tokens are graduated at creation
         vm.deal(buyer, 100 ether);
-        vm.startPrank(buyer);
-        launchpad.buyTokensWithExactEth{value: buyAmount1}(testToken1, 0, DEADLINE);
-        launchpad.buyTokensWithExactEth{value: buyAmount2}(testToken2, 0, DEADLINE);
-
-        assertTrue(launchpad.getTokenState(testToken1).graduated, "Token1 should be graduated");
-        assertTrue(launchpad.getTokenState(testToken2).graduated, "Token2 should be graduated");
 
         graduationCreatorClaimable1 = _claimable(testToken1, creator);
         graduationCreatorClaimable2 = _claimable(testToken2, creator);
@@ -128,7 +107,6 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
         // buy from token1 and token2 from uniswap
         _swap(buyer, testToken1, buyAmount, 1, true, true);
         _swap(buyer, testToken2, buyAmount, 1, true, true);
-        vm.stopPrank();
         _;
     }
 
@@ -157,11 +135,11 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
     /// @notice test that the owner of the univ4 NFT position is the graduator (permanently locked)
     function test_liquidityNftOwnerAfterGraduation() public createAndGraduateToken {
         // The NFT ID is deterministic on the fork; check that graduator holds it
-        uint256 positionId = IPositionManager(positionManagerAddress).nextTokenId() - 2;
+        uint256 positionId = IPositionManager(positionManagerAddress).nextTokenId() - 1;
 
         assertEq(
             IERC721(positionManagerAddress).ownerOf(positionId),
-            address(graduatorV4),
+            address(directGraduator),
             "graduator should own the position NFT (permanently locked)"
         );
     }
@@ -361,76 +339,6 @@ abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
             10, // 10 wei error allowed
             "creator LP fees should be the creator share of every buy"
         );
-    }
-
-    /// @notice test that if price dips well below the graduation price and then there are buys, the fees are still correctly collected
-    /// @dev This is mainly covering the extra single-sided eth position below the graduation price
-    function test_viewFunction_collectFees_priceDipBelowGraduationAndThenBuys() public createAndGraduateToken {
-        address[] memory tokens = _singleToken(testToken);
-
-        uint256 claimableAfterGraduation = feeHandler.getClaimable(tokens, creator)[0];
-        // Right after graduation the creator's claimable is the graduation compensation PLUS the
-        // creator's share of the pre-graduation LP fee on the graduating buy. Scoped in a block so the
-        // intermediate locals free their stack slots (avoids stack-too-deep without via-ir).
-        {
-            uint256 gradMissing = (GRADUATION_THRESHOLD * 10000) / (10000 - BASE_BUY_FEE_BPS);
-            uint256 gradTradingFee = (gradMissing * BASE_BUY_FEE_BPS) / 10000;
-            uint256 creatorGradTradingShare = gradTradingFee - _treasuryShareOf(gradTradingFee);
-            assertEq(
-                claimableAfterGraduation,
-                CREATOR_GRADUATION_COMPENSATION + creatorGradTradingShare,
-                "claimable should be graduation deposit right after graduation"
-            );
-        }
-
-        // first, make the price dip below graduation price by selling a lot of tokens
-        uint256 sellAmount = 10_000_000e18;
-        uint256 ethReceived = _swapSell(buyer, sellAmount, 0.1 ether, true);
-
-        // Sell generates both LP creator share  and sell tax (if applicable)
-        // gross = ethReceived * 10000 / (10000 - LP_FEE_BPS - SELL_TAX_BPS)
-        uint256 denominator = 10000 - 100 - SELL_TAX_BPS;
-        // BPS of gross taken by the creator's LP share
-        uint256 creatorLpBpsOfGross = (LP_FEE_BPS_DEFAULT * (10_000 - LP_TREASURY_BPS)) / 10_000;
-        uint256 sellCreatorShare = ethReceived * (creatorLpBpsOfGross + SELL_TAX_BPS) / denominator;
-        uint256 expectedClaimableAfterSell = claimableAfterGraduation + sellCreatorShare;
-        assertApproxEqAbs(
-            feeHandler.getClaimable(tokens, creator)[0],
-            expectedClaimableAfterSell,
-            1,
-            "claimable should include graduation deposit + LP creator share + sell tax"
-        );
-
-        // then do a buy crossing again that liquidity position
-        uint256 buyAmount = 4 ether;
-        deal(buyer, 10 ether);
-        _swapBuy(buyer, buyAmount, 10e18, true);
-        uint256 expectedExtraFees = _lpCreatorShare(buyAmount);
-        uint256 expectedClaimableAfterBuy = expectedClaimableAfterSell + expectedExtraFees;
-        assertApproxEqAbs(
-            feeHandler.getClaimable(tokens, creator)[0],
-            expectedClaimableAfterBuy,
-            1,
-            "claimable fees should include graduation fees + LP creator share + sell taxes + buy share"
-        );
-        uint256 claimableAfterBuy = feeHandler.getClaimable(tokens, creator)[0];
-        uint256 expectedClaimable = expectedClaimableAfterSell + expectedExtraFees;
-        assertApproxEqAbs(
-            claimableAfterBuy,
-            expectedClaimable,
-            1,
-            "claimable fees should include graduation fees + LP creator share + sell taxes + buy share"
-        );
-
-        // uint256 creatorBalanceBefore = creator.balance;
-
-        // _collectFees(tokens);
-
-        // uint256 totalCreatorFees = creator.balance - creatorBalanceBefore;
-
-        // assertApproxEqAbsDecimal(
-        //     totalCreatorFees, claimableAfterBuy, 1, 18, "creator claim should match pre-claim claimable amount"
-        // );
     }
 }
 
@@ -1266,16 +1174,8 @@ contract BaseUniswapV4ClaimFees_TaxToken is TaxTokenUniV4BaseTests, BaseUniswapV
         override
         returns (address)
     {
-        vm.prank(creator);
-        address token = factoryTax.createToken(
-            name,
-            symbol,
-            _nextValidSalt(address(factoryTax), address(realmTaxToken)),
-            _fs(creator),
-            _noSs(),
-            false,
-            _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION)),
-            _emptyAntiSniperCfg()
+        address token = _createDirectTokenAs(
+            creator, name, symbol, _fs(creator), false, _taxCfg(0, DEFAULT_SELL_TAX_BPS, uint32(DEFAULT_TAX_DURATION))
         );
         return token;
     }

@@ -9,8 +9,8 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 /// @notice E2E suite for sniper-protected variants only. Verifies that the protection window
 ///         actually blocks oversized buys via the real launchpad path, that whitelisted addresses
 ///         bypass, that caps lift after the window, and that graduation succeeds during the window
-///         (graduator is whitelisted by the variant's default config) and disables sniper checks
-///         on subsequent post-graduation swaps.
+///         (graduator is whitelisted by the variant's default config) WITHOUT lifting the caps on
+///         subsequent post-graduation swaps — the window runs to its own end, on both venues.
 abstract contract E2ESniperWindow is RealmE2EBase {
     /// @dev Buy size that yields >3% of TOTAL_SUPPLY at curve start (~42M tokens vs 30M cap).
     uint256 internal constant OVERSIZED_BUY = 0.1 ether;
@@ -111,17 +111,32 @@ abstract contract E2ESniperWindow is RealmE2EBase {
         assertLe(received, maxTokens);
     }
 
-    function test_e2e_sniper_postGradSwap_unaffectedByCaps() public {
+    /// @dev Graduation is NOT an exemption: a pool buy inside the window is capped exactly as a curve
+    ///      buy was. This is the whole point of the one-window rule — the direct-launch venue graduates
+    ///      a token in its creation transaction, so a cap that stopped at graduation would never apply.
+    function test_e2e_sniper_postGradSwap_stillCapped() public {
         bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
         address token = _createTestToken(salt);
         _graduateInSmallBuys(token);
 
-        // We're still inside the protection window, but `graduated == true` lifts every cap.
+        // Deliberately NOT warping past the tax window here: on the tax variants that warp is weeks
+        // long and would close the (1 hour) sniper window with it, which is the thing under test.
+        vm.deal(alice, 2 ether);
+        // 2 ETH on one swap buys far more than the 3% per-tx cap, so the pool -> buyer leg reverts.
+        _swapBuyV4OrV2Expecting(alice, token, 2 ether, false);
+        assertEq(IERC20(token).balanceOf(alice), 0);
+    }
+
+    /// @dev ...and lifts the moment the window closes, pool buys included.
+    function test_e2e_sniper_postGradSwap_uncappedAfterWindow() public {
+        bytes32 salt = _nextValidSalt(_factory(), _tokenImpl());
+        address token = _createTestToken(salt);
+        _graduateInSmallBuys(token);
+
         if (_hasTax()) _warpPastTaxWindow(token);
+        _warpPastSniperWindow(token);
 
         vm.deal(alice, 2 ether);
-        // Spend 2 ETH on a single swap — far above any pre-grad cap. Must succeed because the
-        // sniper check no-ops once graduated.
         _swapBuyAuto(alice, token, 2 ether, 0);
         assertGt(IERC20(token).balanceOf(alice), 0);
     }

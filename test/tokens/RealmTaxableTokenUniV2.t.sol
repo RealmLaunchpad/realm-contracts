@@ -6,7 +6,7 @@ import {LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator} from "test/lau
 import {RealmTaxableTokenUniV2} from "src/tokens/RealmTaxableTokenUniV2.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
-import {TaxConfigInit} from "src/interfaces/IRealmTaxableToken.sol";
+import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {IRealmMasterFeeHandler} from "src/interfaces/IRealmMasterFeeHandler.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {V2SwapHelpers} from "test/e2e/base/V2SwapHelpers.t.sol";
@@ -30,11 +30,17 @@ contract RealmTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2
 
         // Deploy a tax token with 1% buy / 4% sell and a 7-day window. V2 tokens are ownerless.
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2));
-        TaxConfigInit memory cfg = _taxCfg(BUY_BPS, SELL_BPS, TAX_DURATION);
+        TaxConfigs memory cfg = _taxCfg(BUY_BPS, SELL_BPS, TAX_DURATION);
 
         vm.prank(creator);
-        address token =
-            factoryV2Unified.createToken("Tax", "TAX", salt, _fs(creator), _noSs(), cfg, _emptyAntiSniperCfg());
+        address token = factoryV2Unified.createToken(
+            _setupTiered("Tax", "TAX", salt, _fs(creator)),
+            _noAlloc(cfg),
+            _noSs(),
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
+        );
 
         testToken = token;
         taxToken = RealmTaxableTokenUniV2(payable(token));
@@ -162,13 +168,12 @@ contract RealmTaxableTokenUniV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2
         bytes32 salt = _nextValidSalt(address(factoryV2Unified), address(realmTaxTokenV2));
         vm.prank(creator);
         address gToken = factoryV2Unified.createToken(
-            "GTax",
-            "GTAX",
-            salt,
-            _fs(creator),
+            _setupTiered("GTax", "GTAX", salt, _fs(creator)),
+            _noAlloc(_taxCfg(BUY_BPS, SELL_BPS, TAX_DURATION, false)),
             _noSs(),
-            _taxCfg(BUY_BPS, SELL_BPS, TAX_DURATION, false),
-            _emptyAntiSniperCfg()
+            _emptyAntiSniperCfg(),
+            _noVaults(),
+            address(0)
         );
         testToken = gToken;
         taxToken = RealmTaxableTokenUniV2(payable(gToken));

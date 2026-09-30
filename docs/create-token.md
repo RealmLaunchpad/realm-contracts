@@ -1,0 +1,221 @@
+# Deploying a token: `createToken` (V2 curve factory)
+
+The curve factory, `RealmFactoryUniV2Unified` (bonding curve, graduates to Uniswap V2), has exactly ONE `createToken`.
+
+The direct-launch venue (`RealmFactoryUniV4Direct`) is documented in `docs/events-per-entry-point.md` §1.3. Its pairs carry no price: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (2.25 ETH) market cap, converted to an ERC20 quote at its live whitelist rate; `previewLaunchTick(quote)` shows the resulting tick, price and market cap.
+
+## Signatures
+
+```solidity
+function createToken(
+    TokenSetupTiered              tokenSetup,
+    TaxConfigsWithMultiAllocation taxAllocationConfigs,
+    SupplyShare[]                 buyOnDeployShares,
+    AntiSniperConfigs             antiSniperConfigs,
+    CreatorVault[]                creatorVaults,
+    address                       referral
+) external payable returns (address token);
+```
+
+`previewTokenImplementation` takes exactly the same arguments.
+
+`TOTAL_SUPPLY` is always `1_000_000_000e18`. All bps values are basis points (`10_000` = 100%).
+
+---
+
+## Arguments
+
+### `tokenSetup` — `TokenSetupTiered`
+
+| field | type | meaning / expected value |
+|---|---|---|
+| `name` | `string` | Token name. Non-empty. |
+| `symbol` | `string` | Token symbol. Non-empty, **≤ 96 bytes**. |
+| `salt` | `bytes32` | Mined so the token address ends in `0xeeaa` — see [Salt mining](#salt-mining). |
+| `feeShares` | `FeeShare[]` | Fee recipients (see below). |
+| `liquidityTier` | `uint8` enum | `LiquidityTier`: `0 = THIN`, `1 = DEFAULT`, `2 = THICK`. **Set it explicitly** — a zero-initialised field resolves to `THIN`, not `DEFAULT`. Controls post-graduation pool depth / graduation mcap (THIN 1.75 ETH / DEFAULT 3.5 ETH / THICK 7.0 ETH). |
+
+`FeeShare`:
+
+| field | type | expected value |
+|---|---|---|
+| `account` | `address` | Non-zero, unique across the array. |
+| `shares` | `uint256` | bps, `> 0`; the array must sum to exactly `10_000`. |
+| `directFeesEnabled` | `bool` | At most **one** entry may be `true`. |
+
+### `taxAllocationConfigs` — `TaxConfigsWithMultiAllocation`
+
+The tax fields below, flattened, plus a nested `earningsAllocation` (next section).
+
+Static tax and the optional linear launch-tax decay are configured **independently**: set
+either, both, or neither. A "decay-only" token (static fields zero, decay fields set) is valid.
+
+| field | type | meaning / expected value |
+|---|---|---|
+| `buyTaxBps` | `uint16` | Long-term buy tax. `0` disables static tax. Capped by the total-fee rule below. |
+| `sellTaxBps` | `uint16` | Long-term sell tax. `0` disables static tax. Capped by the total-fee rule below. |
+| `taxDurationSeconds` | `uint32` | Static-tax window length. `0` disables (then `buyTaxBps`/`sellTaxBps` must be `0`). Max `120 * 365 days`. |
+| `startTaxFromLaunch` | `bool` | Window anchor for **both** static and decay. `true`: `[launch, launch+duration]` (taxed pre-graduation too). `false`: `[graduation, graduation+duration]` (no tax before graduation). |
+| `buyTaxDecayStartBps` | `uint16` | Buy decay rate at the anchor, decaying linearly to 0. `0` = no buy decay. If set, must be `> buyTaxBps`. |
+| `sellTaxDecayStartBps` | `uint16` | Sell decay rate at the anchor. `0` = no sell decay. If set, must be `> sellTaxBps`. |
+| `taxDecayDuration` | `uint32` | Decay window length. `0` disables decay (then both decay-start fields must be `0`). Max `20 minutes`. `buy+sell` decay starts combined ≤ `2_000` bps (20%). |
+
+Effective rate a trade pays per direction is `max(decay, static)`.
+
+**Total-fee cap** (static bps only): `lpFeeBps + buyTaxBps ≤ 500` and `lpFeeBps + sellTaxBps ≤ 500`.
+The post-graduation V2 LP fee is `0`, so **each direction's static tax ≤ 500 bps (5%)**.
+
+### `taxAllocationConfigs.earningsAllocation` — `EarningsAllocationMultiConfig`
+
+Routes post-graduation earnings (swap tax + the creator's LP-fee share) to buy-back-and-burn, holder
+dividends and liquidity; the fee receivers take the remainder. All zero = no allocation.
+
+| field | type | expected value |
+|---|---|---|
+| `burnBps` | `uint16` | Share bought back and burned. |
+| `dividendsBps` | `uint16` | Share paid to holders. `burnBps + dividendsBps + liquidityBps ≤ 10_000`. |
+| `liquidityBps` | `uint16` | Share added as single-sided pool depth. |
+| `dividendTokens` | `address[]` | 1..3 distinct payout assets when `dividendsBps != 0`, else empty (`DividendAssetWithoutShare`). `address(0)` = native; `DIVIDEND_SELF_TOKEN` = the token itself, only as the sole entry. |
+| `dividendWeightsBps` | `uint16[]` | Each asset's share of the dividends slice, non-zero, summing to `10_000`. |
+| `dividendRoutes` | `bytes[]` | Per-asset swap route (`DividendRouteLib` format); empty or missing = the asset's Uniswap V2 pair. Checked by `RealmDividendSwapRegistry` at creation. |
+
+A non-zero allocation requires a long-term static tax (`taxDurationSeconds != 0`), else `EarningsAllocationRequiresTax`.
+
+Tokens from this factory are **always** ownerless and carry **no** post-graduation LP fee.
+
+### `buyOnDeployShares` — `SupplyShare[]`
+
+Optional buy-on-deploy: if `msg.value > 0`, the factory buys from the curve and splits the tokens
+across these recipients.
+
+| field | type | expected value |
+|---|---|---|
+| `account` | `address` | Non-zero, unique across the array. |
+| `shares` | `uint256` | bps, `> 0`; the array must sum to exactly `10_000`. |
+
+Rules:
+- `msg.value == 0` ⇔ `buyOnDeployShares.length == 0` (pass one without the other → revert).
+- There is **no** buy-on-deploy cap: the deploy buy is bounded only by graduation. A buy whose ETH would
+  push the curve past `graduationThreshold + maxExcessOverThreshold` reverts `MaxEthReservesExceeded`; a buy
+  that reaches the threshold **graduates the token in the same tx**.
+- Use `maxBuyOnDeploy(liquidityTier, totalLockedInVaultsBps)` for the max token amount that reaches
+  graduation without tripping that revert, then
+  `quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg)` (`taxCfg` is the tax
+  fields as a `TaxConfigs`) to compute the `msg.value` for a target token amount.
+
+### `antiSniperConfigs` — `AntiSniperConfigs`
+
+Opt-in via a non-zero `protectionWindowSeconds`. To **disable**, pass all zeros / empty array.
+
+| field | type | expected value (when enabled) |
+|---|---|---|
+| `maxBuyPerTxBps` | `uint16` | `10..300` (0.1%..3% of supply). |
+| `maxWalletBps` | `uint16` | `10..300`, and `≥ maxBuyPerTxBps`. |
+| `protectionWindowSeconds` | `uint40` | `0` disables. Otherwise `60 .. 86_400` (1 min .. 24 h). |
+| `whitelist` | `address[]` | Addresses that bypass caps during the window. **≤ 20** entries. |
+
+Sentinel: if `protectionWindowSeconds == 0`, then `maxBuyPerTxBps`, `maxWalletBps` and
+`whitelist.length` must all be `0`.
+
+### `creatorVaults` — `CreatorVault[]`
+
+Optional vesting vaults that lock part of the supply at deploy. Empty array = none.
+
+| field | type | expected value |
+|---|---|---|
+| `owner` | `address` | Non-zero. |
+| `supplyBps` | `uint256` | Non-zero **multiple of `500` (5%)**. Sum across all vaults ≤ `3_000` (30%). |
+| `cliffSeconds` | `uint256` | Unconstrained. |
+| `vestingSeconds` | `uint256` | Unconstrained. |
+
+At most **5** vaults. Locked supply selects an allocation-specific bonding curve for the chosen tier
+(so the same `liquidityTier` graduation invariants hold with a relaxed starting mcap).
+
+### `referral` — `address`
+
+Off-chain signal for relayers. If non-zero, emits `TokenReferral(token, referral)`. **No** on-chain
+storage or payout is wired to it (yet). Pass `address(0)` for none.
+
+---
+
+## Revert conditions
+
+All errors are 4-byte custom errors.
+
+| revert | when |
+|---|---|
+| `InvalidNameOrSymbol` | empty `name`; empty `symbol`; or `symbol` > 96 bytes. |
+| `InvalidTokenAddress` | cloned address doesn't end in `0xeeaa` (salt not mined against the dispatched impl / wrong deployer). |
+| `InvalidFeeReceiver` | `feeShares` empty, contains `address(0)`, or has duplicate accounts. |
+| `InvalidShares` | any `shares == 0`, or `feeShares` / `buyOnDeployShares` sum ≠ `10_000`. |
+| `MultipleDirectFeeReceivers` | more than one `feeShares` entry with `directFeesEnabled == true`. |
+| `InvalidSupplyShares` | `msg.value` and `buyOnDeployShares.length` disagree (one zero, one not); or zero/duplicate accounts. |
+| `MaxEthReservesExceeded` | deploy buy exceeds graduation (`graduationThreshold + maxExcessOverThreshold`); size it with `maxBuyOnDeploy`. |
+| `InvalidTaxConfig` | tax sentinel mismatch: `taxDurationSeconds == 0` with non-zero bps (or vice-versa); or `taxDecayDuration == 0` with non-zero decay-start bps (or vice-versa). |
+| `InvalidTaxBps` | `lpFeeBps + buyTaxBps` or `lpFeeBps + sellTaxBps` > `500`; combined decay start > `2_000`; or a decay start ≤ its direction's static rate. |
+| `InvalidTaxDuration` | `taxDurationSeconds` > 120 years; `taxDecayDuration` > 20 min; or (both set) `taxDurationSeconds < taxDecayDuration`. |
+| `InvalidAntiSniperConfig` | `protectionWindowSeconds == 0` but another anti-sniper field is non-zero/non-empty. |
+| `MaxBuyPerTxBpsTooLow` / `…TooHigh` | (window enabled) `maxBuyPerTxBps` outside `10..300`. |
+| `MaxWalletBpsTooLow` / `…TooHigh` | (window enabled) `maxWalletBps` outside `10..300`. |
+| `MaxBuyPerTxBpsExceedsMaxWalletBps` | (window enabled) `maxBuyPerTxBps > maxWalletBps`. |
+| `ProtectionWindowTooShort` / `…TooLong` | (window enabled) `protectionWindowSeconds` outside `60..86_400`. |
+| `WhitelistTooLong` | `whitelist.length > 50`. |
+| `InvalidCreatorVault` | a vault `owner == address(0)`, or `supplyBps` is zero / not a multiple of 500. |
+| `CreatorVaultAllocationTooHigh` | sum of `supplyBps` > `3_000` (30%). |
+| `TooManyCreatorVaults` | more than 5 vaults. |
+
+> Note: unlike the older frontend skill, this version has **no charity mode** — long tax durations
+> impose no fee-receiver or ownership constraints (only the 120-year overflow cap applies).
+
+---
+
+## Salt mining
+
+The token is a `Clones.cloneDeterministic` proxy; its address is a function of
+`(factory, impl, msg.sender, salt)`. The address **must end in `0xeeaa`** (else `InvalidTokenAddress`).
+
+Two things to get right:
+
+1. **Impl** — dispatch clones one of two impls: `TOKEN_IMPL_TAX` if the token is taxable
+   (`taxDurationSeconds != 0` **or** `taxDecayDuration != 0`) or configures an earnings allocation,
+   else `TOKEN_IMPL_BASE`. Anti-sniper does **not** change the impl. Get the exact impl from
+   `previewTokenImplementation(...)` called with the same arguments as `createToken` (view; it runs
+   the same tax/anti-sniper validation and returns the impl to mine against).
+2. **Deployer namespacing** — the effective CREATE2 salt is `keccak256(abi.encodePacked(msg.sender, salt))`.
+   Mine with the exact account that will send `createToken`. A salt mined for one sender yields a
+   different address for another (this is the front-run defense — a salt lifted from a pending tx is
+   useless to anyone else).
+
+Reference (viem):
+
+```javascript
+import { getCreate2Address, keccak256, concat, encodePacked, toHex, pad } from "viem";
+
+const PROXY_PREFIX = "0x3d602d80600a3d3981f3363d3d373d3d3d363d73";
+const PROXY_SUFFIX = "0x5af43d82803e903d91602b57fd5bf3";
+
+// impl = previewTokenImplementation(...); deployer = the createToken sender
+function findValidSalt(factory, impl, deployer) {
+  const initcodeHash = keccak256(concat([PROXY_PREFIX, impl, PROXY_SUFFIX]));
+  for (let i = 0n; ; i++) {
+    const salt = pad(toHex(i), { size: 32 });
+    const effectiveSalt = keccak256(encodePacked(["address", "bytes32"], [deployer, salt]));
+    const addr = getCreate2Address({ from: factory, salt: effectiveSalt, bytecodeHash: initcodeHash });
+    if (addr.toLowerCase().endsWith("eeaa")) return { salt, tokenAddress: addr };
+  }
+}
+```
+
+~65k iterations on average (sub-100ms). Recompute the initcode hash whenever the dispatch path
+(tax vs base) changes. If dispatch-relevant inputs differ between preview and submit, the mined
+address won't match and the call reverts with `InvalidTokenAddress`.
+
+---
+
+## Minimal call flow
+
+1. Build `(tokenSetup, taxAllocationConfigs, buyOnDeployShares, antiSniperConfigs, creatorVaults, referral)`.
+2. `impl = previewTokenImplementation(<the same arguments>)`.
+3. Mine `salt` against `(factory, impl, deployer)` → address ending in `0xeeaa`.
+4. *(optional)* `value = quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg)`.
+5. `createToken(...)` with `value` (`0` if not buying on deploy).

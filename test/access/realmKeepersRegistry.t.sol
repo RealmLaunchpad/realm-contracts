@@ -85,4 +85,32 @@ contract RealmKeepersRegistryTest is Test {
         vm.expectRevert(RealmKeepersRegistry.NotAdmin.selector);
         registry.setKeeper(stranger, true);
     }
+
+    /// @dev THE GLOBAL SWITCH: while on, everyone passes `isKeeper`, on every token at once; the raw
+    ///      keeper set is untouched, so switching it off restores exactly the appointed keepers.
+    function test_thePermissionlessSwitchOpensIsKeeperToEveryone() public {
+        vm.startPrank(owner);
+        registry.setKeeper(keeper, true);
+        vm.expectEmit(address(registry));
+        emit RealmKeepersRegistry.PermissionlessSet(true);
+        registry.setPermissionless(true);
+        vm.stopPrank();
+        assertTrue(registry.isKeeper(stranger), "anyone passes while the switch is on");
+        assertFalse(registry.keepers(stranger), "without joining the keeper set");
+
+        vm.prank(owner);
+        registry.setPermissionless(false);
+        assertFalse(registry.isKeeper(stranger), "closed again");
+        assertTrue(registry.isKeeper(keeper), "the appointed keeper is unaffected");
+    }
+
+    function test_onlyAnAdminFlipsTheSwitch() public {
+        vm.prank(stranger);
+        vm.expectRevert(RealmKeepersRegistry.NotAdmin.selector);
+        registry.setPermissionless(true);
+
+        vm.prank(keeper);
+        vm.expectRevert(RealmKeepersRegistry.NotAdmin.selector);
+        registry.setPermissionless(true);
+    }
 }

@@ -17,32 +17,8 @@ interface IUniswapV2Router {
         uint256 deadline
     ) external payable returns (uint256 amountToken, uint256 amountEth, uint256 liquidity);
 
-    /// @notice Two-ERC20 liquidity add. Used by the ARC V2 graduator to pair `<token, USDC>` (native
-    ///         = USDC has no wrappable WETH, so `addLiquidityETH` is dead there — see UniswapV2VenueArc).
-    function addLiquidity(
-        address tokenA,
-        address tokenB,
-        uint256 amountADesired,
-        uint256 amountBDesired,
-        uint256 amountAMin,
-        uint256 amountBMin,
-        address to,
-        uint256 deadline
-    ) external returns (uint256 amountA, uint256 amountB, uint256 liquidity);
-
-    /// @notice Sells `amountIn` of `path[0]` for at least `amountOutMin` of `path[last]`, supporting
-    ///         fee-on-transfer input tokens. ARC tax-token swap-back path (token → USDC ERC-20), the
-    ///         token-output analogue of `swapExactTokensForETHSupportingFeeOnTransferTokens`.
-    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
-        uint256 amountIn,
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external;
-
     /// @notice Buys at least `amountOutMin` of `path[last]` with `msg.value` ETH, supporting
-    ///         fee-on-transfer output tokens. Used on ETH-family chains by the dividend module to
+    ///         fee-on-transfer output tokens. Used by the dividend module to
     ///         convert an accrued native pot into a third payout asset.
     // forge-lint: disable-next-line(mixed-case-function)
     function swapExactETHForTokensSupportingFeeOnTransferTokens(

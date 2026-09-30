@@ -5,9 +5,7 @@ import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 
 /// @title UniswapV2Venue
 /// @notice Chain-specific Uniswap V2 venue helpers shared by the V2 graduator and the V2 taxable
-///         token. This is the ETH-family variant (native = ETH, pairs quoted in 18-dec WETH). The
-///         `chain-arc-*` recipe import-swaps this file for `UniswapV2VenueArc` (native = USDC, 6-dec
-///         ERC-20 quote), exactly like the fee/pool-geometry libs. See [[arc-chain-facts]].
+///         token. Native = ETH, pairs quoted in 18-dec WETH.
 /// @dev All functions are `internal` so they inline into the caller's bytecode (no deployed library).
 library UniswapV2Venue {
     /// @notice Multiplier from the pool's quote-reserve units to native 18-dec. WETH is 18-dec ⇒ 1.

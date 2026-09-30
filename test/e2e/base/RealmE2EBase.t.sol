@@ -58,6 +58,16 @@ abstract contract RealmE2EBase is V4SwapHelpers, V2SwapHelpers {
         }
     }
 
+    /// @dev Same, but asserting the swap's outcome — used where the anti-sniper caps are expected to
+    ///      reject a pool buy that is over the per-tx limit.
+    function _swapBuyV4OrV2Expecting(address caller, address token, uint256 ethIn, bool expectSuccess) internal {
+        if (_isV4Graduator()) {
+            _swapBuyV4(caller, token, ethIn, 0, expectSuccess);
+        } else {
+            _swapBuyV2(caller, token, ethIn, 0, expectSuccess);
+        }
+    }
+
     /// @dev Sells tokens on the post-graduation pool, picking V2 or V4 based on graduator type.
     function _swapSellAuto(address caller, address token, uint256 tokenIn, uint256 minEth)
         internal

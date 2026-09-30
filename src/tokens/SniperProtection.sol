@@ -14,11 +14,19 @@ struct AntiSniperConfigs {
 }
 
 /// @title SniperProtection
-/// @notice Anti-sniper mixin active for a window post-launch and disabled on graduation.
+/// @notice Anti-sniper mixin active for a fixed window after launch. The window runs to its configured
+///         end regardless of graduation — one rule for both venues, and the only rule the direct-launch
+///         venue (which graduates in its creation transaction) could have.
 ///         Per-wallet cap fires on every incoming transfer (blocks sybil → consolidate);
-///         per-tx cap fires only on curve buys.
-/// @dev Inheriting tokens call `_initializeSniperProtection(cfg, launchTimestamp)` in their
-///      initializer and `_checkSniperProtection(...)` at the top of `_update`.
+///         per-tx cap fires only on buys — off the curve before graduation, out of the pool after it.
+/// @dev Inheriting tokens call `_initializeSniperProtection(cfg)` in their initializer and
+///      `_checkSniperProtection(...)` at the top of `_update`. The WINDOW is the host's: it keeps the
+///      window end in the slot its `_update` already loads and calls the check functions here only
+///      while the window is open, so a closed or never-opened window costs no read of this contract's
+///      storage at all.
+/// @dev The caps are per TRANSFER and per ADDRESS, so they stop a naive single-wallet snipe, not a
+///      determined one: a buyer can split one pool buy across many fresh recipients (several `TAKE`s in
+///      one router call), or keep a V4 pool's output as ERC-6909 claims, which moves no tokens at all.
 abstract contract SniperProtection {
     /// @notice Min allowed value for max-per-tx and max-wallet caps, in bps.
     uint16 public constant ANTI_SNIPER_MIN_BPS = 10; // 0.1%
@@ -50,13 +58,6 @@ abstract contract SniperProtection {
     /// @notice Duration the protection remains active after the host token's `launchTimestamp`.
     uint40 public protectionWindowSeconds;
 
-    /// @notice Absolute timestamp at which the protection window closes: the host token's
-    ///         `launchTimestamp + protectionWindowSeconds`, cached at init so the hot-path window
-    ///         check is a single SLOAD from this slot (no read of the base `launchTimestamp` slot).
-    ///         Reads 0 until `_initializeSniperProtection` runs (after the initial mint), so the
-    ///         mint observes a closed window and stays uncapped. Packs into this slot.
-    uint40 public protectionWindowEnd;
-
     /// @notice Dev-supplied addresses that bypass the caps during the protection window.
     mapping(address account => bool isWhitelisted) public sniperBypass;
 
@@ -75,11 +76,9 @@ abstract contract SniperProtection {
         uint16 maxBuyPerTxBps, uint16 maxWalletBps, uint40 protectionWindowSeconds, address[] whitelist
     );
 
-    /// @dev Validates configs and records the whitelist. `launchTimestamp` is the host token's
-    ///      creation timestamp (set by `RealmToken._initializeRealmToken`, which runs first); it is
-    ///      cached here as the absolute `protectionWindowEnd` so the check functions below read a
-    ///      single slot instead of also touching the base `launchTimestamp` slot.
-    function _initializeSniperProtection(AntiSniperConfigs memory cfg, uint40 launchTimestamp) internal {
+    /// @dev Validates configs and records the caps and the whitelist. The window end is the host's to
+    ///      store (see the contract docs).
+    function _initializeSniperProtection(AntiSniperConfigs memory cfg) internal {
         require(cfg.maxBuyPerTxBps >= ANTI_SNIPER_MIN_BPS, MaxBuyPerTxBpsTooLow());
         require(cfg.maxBuyPerTxBps <= ANTI_SNIPER_MAX_BPS, MaxBuyPerTxBpsTooHigh());
         require(cfg.maxWalletBps >= ANTI_SNIPER_MIN_BPS, MaxWalletBpsTooLow());
@@ -92,7 +91,6 @@ abstract contract SniperProtection {
         maxBuyPerTxBps = cfg.maxBuyPerTxBps;
         maxWalletBps = cfg.maxWalletBps;
         protectionWindowSeconds = cfg.protectionWindowSeconds;
-        protectionWindowEnd = launchTimestamp + cfg.protectionWindowSeconds;
 
         uint256 n = cfg.whitelist.length;
         for (uint256 i; i < n; ++i) {
@@ -104,50 +102,70 @@ abstract contract SniperProtection {
         );
     }
 
+    /// @param launchpadAddr Host token's `launchpad`. `address(0)` on the direct-launch venue, which
+    ///        has none; the mint exemption below is what keeps that from aliasing onto a real address.
+    /// @param pairAddr Host token's `pair` — the V2 pair or the V4 pool manager. A transfer OUT of it
+    ///        is a pool buy and a transfer IN is a sell, which is what extends the per-tx cap past
+    ///        graduation without also capping the seller.
     /// @param factoryAddr Host token's `tokenFactory` transient slot; non-zero only inside the
     ///        deploy tx (the only window in which the launchpad → factory → supplyShares
     ///        deployer-buy hops happen). Reads `address(0)` afterwards.
     /// @param toBalance Recipient's balance BEFORE this transfer (`balanceOf(to)`).
     /// @dev Bypasses (any one short-circuits the check):
+    ///        - `from == address(0)`: a mint. Nothing to snipe, and nobody may hold the zero address,
+    ///          so it can never alias onto the `launchpadAddr` buy-source branch below.
+    ///        - `to == address(0)`: a burn. Nothing to snipe.
     ///        - `to == launchpadAddr`: sell back to the curve.
+    ///        - `to == pairAddr`: sell into the pool, and every hop that seeds it.
+    ///        - `to == address(this)`: the token receiving its own tokens — a V2 tax leg, a buy-back
+    ///          before its burn, a self-token dividend purchase. Protocol plumbing, not a buyer; capped,
+    ///          a token whose own balance crossed the wallet cap would revert every taxed trade.
     ///        - `to == factoryAddr`: launchpad → factory deployer-buy hop.
     ///        - `to == graduatorAddr`: launchpad → graduator graduation hop (~80% of supply,
     ///          pre-`markGraduated()`; would otherwise revert).
     ///        - `from == factoryAddr`: factory → supplyShare recipients during the deployer-buy
     ///          split. Dev-configured, may legitimately exceed the per-wallet cap.
+    ///        - `from == graduatorAddr`: the graduator moving the supply it holds into the pool, and
+    ///          handing a direct-launch dev buy back to the factory. Both are launch plumbing carrying
+    ///          far more than any cap, and both now happen INSIDE the window — the caps used to stop at
+    ///          graduation, which is what made this exemption unnecessary before.
     ///        - `sniperBypass[to]`: dev-supplied whitelist.
-    ///      `from == graduatorAddr` is intentionally NOT exempt: graduator outgoing transfers
-    ///      happen post-`markGraduated()`, which the caller's `!graduated` gate already skips.
-    /// @dev Mints (`from == 0`) only happen during `_initializeRealmToken`, before
-    ///      `_initializeSniperProtection` runs, so `protectionWindowEnd == 0` and the window
-    ///      early-return covers them. Burns (`to == 0`, `burn`/`burnFrom`) are exempt: nothing to snipe.
-    ///      Launchpad fees are ignored in the cap math.
+    /// @dev Launchpad fees are ignored in the cap math.
+    /// @dev Call only while the window is open: this does not check it.
     function _checkSniperProtection(
         address from,
         address to,
         uint256 amount,
         address launchpadAddr,
+        address pairAddr,
         address factoryAddr,
         address graduatorAddr,
         uint256 toBalance
     ) internal view {
-        if (block.timestamp >= protectionWindowEnd) return;
-
+        // Mints and burns, in that order: the mint check also guarantees the `from == launchpadAddr`
+        // branch below cannot fire on a zero `launchpadAddr` (the direct venue has no launchpad).
+        if (from == address(0)) return;
         if (to == address(0)) return;
 
-        // sells back to the curve
+        // sells, into the curve or into the pool
         if (to == launchpadAddr) return;
+        if (to == pairAddr) return;
 
-        // token creation / graduation hops
+        // the token's own tax, buy-backs and self-token dividends
+        if (to == address(this)) return;
+
+        // token creation / graduation / seeding hops
         if (to == factoryAddr) return;
         if (to == graduatorAddr) return;
         if (from == factoryAddr) return;
+        if (from == graduatorAddr) return;
 
         if (sniperBypass[to]) return;
 
-        // Per-tx cap: curve buys only. Checked before the per-wallet cap so an oversized buy
-        // reverts with the more specific `MaxBuyPerTxExceeded`.
-        if (from == launchpadAddr) {
+        // Per-tx cap: buys only — off the curve before graduation, out of the pool after it. Checked
+        // before the per-wallet cap so an oversized buy reverts with the more specific
+        // `MaxBuyPerTxExceeded`.
+        if (from == launchpadAddr || from == pairAddr) {
             uint256 maxTx = (_ANTI_SNIPER_TOTAL_SUPPLY * maxBuyPerTxBps) / 10_000;
             require(amount <= maxTx, MaxBuyPerTxExceeded());
         }
@@ -156,17 +174,17 @@ abstract contract SniperProtection {
         require(toBalance + amount <= maxWallet, MaxWalletExceeded());
     }
 
-    /// @notice Largest token amount `buyer` may receive from the launchpad right now without
-    ///         tripping the sniper caps. Returns `type(uint256).max` when no cap applies
-    ///         (window closed, graduated, or whitelisted).
+    /// @notice Largest token amount `buyer` may acquire in one purchase right now without tripping the
+    ///         sniper caps, while the window is open (the host answers for a closed one). Returns
+    ///         `type(uint256).max` for a whitelisted buyer.
+    /// @dev Graduation is NOT an exemption: the window runs to its configured end on both venues, so a
+    ///      post-graduation pool buy is capped exactly like a curve buy was.
     /// @dev Doesn't model launchpad-side limits; callers should `min()` with
     ///      `RealmLaunchpad.getMaxEthToSpend` converted via the bonding curve.
-    /// @dev Factory/graduator/launchpad bypasses from `_checkSniperProtection` are NOT mirrored
-    ///      here: none of those addresses ever buys via `buyTokensWithExactEth`.
-    function _maxTokenPurchase(address buyer, uint256 buyerBalance, bool graduated) internal view returns (uint256) {
-        if (graduated) return type(uint256).max;
+    /// @dev Factory/graduator/launchpad/pair bypasses from `_checkSniperProtection` are NOT mirrored
+    ///      here: none of those addresses ever buys on its own account.
+    function _maxTokenPurchase(address buyer, uint256 buyerBalance) internal view returns (uint256) {
         if (sniperBypass[buyer]) return type(uint256).max;
-        if (block.timestamp >= protectionWindowEnd) return type(uint256).max;
 
         uint256 maxTx = (_ANTI_SNIPER_TOTAL_SUPPLY * maxBuyPerTxBps) / 10_000;
         uint256 maxWallet = (_ANTI_SNIPER_TOTAL_SUPPLY * maxWalletBps) / 10_000;
