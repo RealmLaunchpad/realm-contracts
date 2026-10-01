@@ -122,10 +122,35 @@ apart: the router leg needs the broadcaster to own the launchpad and the LP rout
 does not, so a chain whose launchpad already belongs to the multisig deploys voting with `realm.dev`
 and the router through the multisig.
 
-Then set `REALM_TREASURY = TREASURY_ROUTER` in that chain's `DeploymentAddresses` library: token impls bake
-it as `DIVIDEND_TREASURY`, so impls deployed before this step keep sweeping to the multisig until redeployed.
+Then set `REALM_TREASURY = TREASURY_ROUTER` in that chain's `DeploymentAddresses` library. Bookkeeping only:
+no token impl bakes the treasury (they bake only the keepers registry, the swapper, the LP fee router and
+Uniswap infra), and the two runtime holders — `LAUNCHPAD.treasury()` and the LP fee router's `TREASURY` —
+were already repointed by `DeployRealmTreasuryStack`. No token impl redeploy is needed, so REALM and every
+later token run the same masters.
 The hook's fallback treasury is a constructor immutable and stays where it was (`LEGACY_TREASURY` on
 Robinhood mainnet), which is why that address is kept on record.
+
+## Full redeploy keeping the hooks and the LP fee router
+
+The hooks are Uniswap-whitelisted and bake the LP fee router proxy, so a "from scratch" redeploy keeps both
+and only upgrades the router behind its proxy. Everything else is new.
+
+```bash
+# 0. Point REALM_TREASURY (DeploymentAddresses) at TEAM_TREASURY until step 7 deploys the new treasury router.
+just deploy-registries-rh-testnet        # 1. paste REALM_KEEPERS_REGISTRY + REALM_SWAPPER (DeploymentAddresses), REALM_SWAPPER_IMPL (manifest)
+just upgrade-lp-fee-router-rh-testnet    # 2. paste LP_FEE_ROUTER_IMPL; proxy (and the hooks' FEE_ROUTER) unchanged
+just deploy-stack-rh-testnet             # 3. paste both printed blocks (incl. LP_LOCKER), just export-deployments; note the block
+just configure-registries-rh-testnet     # 4. admin + keeper on keepers registry and swapper, approver on the whitelist
+just deploy-keeper-lens-rh-testnet       # 5. paste KEEPER_LENS
+just discover-whitelist-assets-rh-testnet && just whitelist-assets-rh-testnet   # 6. re-list quotes on the new whitelist
+# 7. Create REALM via FACTORY_UNIV4_DIRECT, paste REALM_TOKEN, zero VOTING(_IMPL) + TREASURY_ROUTER(_IMPL), then:
+just deploy-treasury-stack-rh-testnet    #    paste VOTING(_IMPL), TREASURY_ROUTER(_IMPL), LP_FEE_ROUTER_IMPL;
+                                         #    set REALM_TREASURY = TREASURY_ROUTER (bookkeeping); just export-deployments
+# 8. just chain-rh before committing if HEAD targets mainnet; mirror addresses in the indexer configs,
+#    keeper configs.mjs / secret, and the frontend addresses JSON.
+```
+
+Mainnet: the same sequence with the `-rh` recipes.
 
 ## Upgrades
 
