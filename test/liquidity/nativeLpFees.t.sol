@@ -400,10 +400,34 @@ contract NativeLpFeesTests is TaxTokenUniV4BaseTests {
         assertEq(quoteOut, out, "for what the router split");
     }
 
-    /////////////////////////// SNIPER WINDOW ///////////////////////////
+    /// @dev when a keeper burns the pending token-side fees instead of converting them, then they leave the
+    ///      supply and no quote is split
+    function test_sellFees_assertKeeperBurnsPending() public plainToken buy(2 ether) {
+        _swap(buyer, testToken, IERC20(testToken).balanceOf(buyer) / 3, 0, false, true);
+        (, uint256 tokenFee) = _pending(testToken);
+        _collect(testToken);
+
+        vm.prank(alice);
+        vm.expectRevert(SwapLpFeeRouter.NotAKeeper.selector);
+        lpFeeRouter.burnTokenFees(testToken, address(0));
+
+        uint256 supplyBefore = IERC20(testToken).totalSupply();
+        uint256 treasuryBefore = treasury.balance;
+        assertEq(lpFeeRouter.burnTokenFees(testToken, address(0)), tokenFee, "burned the whole bucket");
+
+        assertEq(lpFeeRouter.pendingTokenFees(testToken, address(0)), 0, "bucket drained");
+        assertEq(IERC20(testToken).balanceOf(address(lpFeeRouter)), 0, "nothing left in the router");
+        assertEq(supplyBefore - IERC20(testToken).totalSupply(), tokenFee, "supply reduced");
+        assertEq(treasury.balance, treasuryBefore, "nothing split");
+
+        vm.expectRevert(SwapLpFeeRouter.NothingToConvert.selector);
+        lpFeeRouter.burnTokenFees(testToken, address(0));
+    }
 
     /// @dev A plain direct token with the tightest caps (0.1% per tx and per wallet) for an hour; `alice`
     ///      is whitelisted so she can trade enough to make the fees outgrow the caps.
+    /////////////////////////// SNIPER WINDOW ///////////////////////////
+
     modifier sniperCappedToken() {
         address[] memory whitelist = new address[](1);
         whitelist[0] = alice;

@@ -7,6 +7,7 @@ import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 
 import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 import {ISwapLpFeeRouterTokenFees} from "src/interfaces/ISwapLpFeeRouterTokenFees.sol";
@@ -22,7 +23,7 @@ import {IRealmKeepersRegistry} from "src/interfaces/IRealmKeepersRegistry.sol";
 ///         protocol-owned positions) and, on older tokens, the hooks.
 /// @dev    Fees a pool collected in the Realm TOKEN (sells pay the pool fee in their input) cannot be
 ///         split as they are: they wait in `pendingTokenFees` until a keeper sells them for the quote
-///         (`convertTokenFees`) and the proceeds take the usual split.
+///         (`convertTokenFees`) and the proceeds take the usual split, or burns them (`burnTokenFees`).
 /// @dev    The split, the treasury, the swapper and the keepers registry are baked into the
 ///         implementation's bytecode, so changing any is done by deploying a new implementation and
 ///         calling `upgradeTo` on the proxy. Its only storage is `pendingTokenFees`.
@@ -221,6 +222,18 @@ contract SwapLpFeeRouter is
 
         if (quote == address(0)) _splitNative(token, quoteOut);
         else _splitAsset(token, quote, quoteOut);
+    }
+
+    /// @inheritdoc ISwapLpFeeRouterTokenFees
+    /// @dev Every Realm token inherits `ERC20Burnable`, so this reduces `totalSupply`.
+    function burnTokenFees(address token, address quote) external returns (uint256 amount) {
+        require(IRealmKeepersRegistry(KEEPERS_REGISTRY).isKeeper(msg.sender), NotAKeeper());
+        amount = pendingTokenFees[token][quote];
+        require(amount != 0, NothingToConvert());
+        pendingTokenFees[token][quote] = 0;
+
+        ERC20Burnable(token).burn(amount);
+        emit LpTokenFeesBurned(token, quote, amount);
     }
 
     /// @dev Reserved for future storage variables. Decrement when adding new storage to keep the

@@ -774,6 +774,12 @@ Sells the whole `pendingTokenFees(token, quote)` bucket through `RealmSwapper.se
 
 Reverts `NotAKeeper`, `NothingToConvert` (empty bucket), or the swapper's `SwapFailed` / `InsufficientOutput` (bucket restored).
 
+### `SwapLpFeeRouter.burnTokenFees(address token, address quote)` — keeper-gated (`RealmKeepersRegistry`)
+
+Burns the whole `pendingTokenFees(token, quote)` bucket instead of selling it (used for the REALM token). In order: the token's `Transfer` router → `address(0)`; **`SwapLpFeeRouter.LpTokenFeesBurned`** (`token` indexed, `quote` indexed, `amount`). No routing events.
+
+Reverts `NotAKeeper` or `NothingToConvert` (empty bucket).
+
 ### `RealmSwapper.sellToken(address token, address quote, uint256 amountIn, uint256 minOut, address recipient)` — permissionless
 
 Single hop in the token's own Realm pool (`poolFee()`, `graduator.hookFor(quote)`). In order: the token's `Transfer` caller → swapper; **`RealmSwapper.RealmTokenSellInitiated`** (`token` indexed, `quote` indexed, `amountIn`) — emitted BEFORE the swap, the precursor that lets an indexer flag the following hook sell (`RealmSwapSell` / `RealmQuoteSwapSell`, plus the hook's tax events) as protocol-internal; the swap; on a native quote with a keeper wallet set, **`KeeperFunded`** after the proceeds are delivered (the keeper cut applies only where native flows; an ERC20-quote sale pays none).
