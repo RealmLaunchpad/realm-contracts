@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {DeploymentAddressesRobinhoodTestnet} from "src/config/DeploymentAddresses.sol";
+
 /// @title Realm deployment manifest — Robinhood Chain Testnet
 /// @notice Single source of truth for Realm's own deployed contracts on chain id 46630.
 /// @dev External infrastructure (Uniswap V2/V4, Permit2, WETH) lives in
@@ -67,7 +69,8 @@ library DeploymentsRobinhoodTestnet {
     ///         treasury/creator.
     /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook
     ///      (`DeployRealmPrereqs`). Router policy changes ship by `upgradeToAndCall`ing this proxy.
-    address internal constant LP_FEE_ROUTER = 0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0;
+    /// @dev Re-exported: the value lives in `DeploymentAddresses.sol`, which the token impls bake in.
+    address internal constant LP_FEE_ROUTER = DeploymentAddressesRobinhoodTestnet.LP_FEE_ROUTER;
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
     address internal constant LP_FEE_ROUTER_IMPL = 0xf3cFa580922c9266199818bFf756cC6E5C1bF826;
@@ -92,9 +95,11 @@ library DeploymentsRobinhoodTestnet {
     ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
     address internal constant KEEPER_LENS = 0xEaE1241eb290Ddd1161edB74A6451A879c4Ba992;
 
-    /// @notice Implementation behind the `RealmSwapper` proxy, which lives in
-    ///         `DeploymentAddresses.sol` (`REALM_SWAPPER`). Update on every registry upgrade;
-    ///         tracked for verification and audit trails only.
+    /// @notice `RealmSwapper` proxy: every protocol swap (dividend conversions, LP token-fee sells).
+    /// @dev Re-exported: the value lives in `DeploymentAddresses.sol`, which the token impls bake in.
+    address internal constant REALM_SWAPPER = DeploymentAddressesRobinhoodTestnet.REALM_SWAPPER;
+    /// @notice Implementation behind `REALM_SWAPPER`. Update on every registry upgrade; tracked for
+    ///         verification and audit trails only.
     address internal constant REALM_SWAPPER_IMPL = 0x8CaF04B4817FD3c8b7A126F0Fc337A1A71F1665b;
 
     // --- Token implementations (cloned by factories) ---

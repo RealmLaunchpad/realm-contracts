@@ -97,6 +97,14 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0xbc354a731940bDceBC0FAD24E609b3fa3c6A437e;
+
+    /// @notice The `SwapLpFeeRouter` PROXY (UUPS): where `RealmLpLocker` forwards collected LP fees and
+    ///         where token-side fees wait (`pendingTokenFees`) for a keeper's `convertTokenFees`.
+    /// @dev Source of truth (the manifest's `LP_FEE_ROUTER` re-exports it). Baked into the token impls as a
+    ///      constant: they exempt it from the sniper caps and exclude it from dividends, because it holds
+    ///      their tokens continuously. Deployed by `DeployRealmPrereqs` (phase 0) BEFORE the impls; the impl
+    ///      deploy scripts assert it has code. A new proxy means new token impls; an upgrade does not.
+    address public constant LP_FEE_ROUTER = 0x823ca5B8041217Df052D9e64AC6E7c16A62FA957;
     /// @notice The treasury before `TEAM_TREASURY`. Still baked into the deployed `SWAP_HOOK`'s fallback
     ///         and into the pre-upgrade `SwapLpFeeRouter` impl, so funds can keep landing here; kept so
     ///         nobody forgets to sweep it.
@@ -205,6 +213,14 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0x179E307249366f0036e1aC1791588828E12F439D;
+
+    /// @notice The `SwapLpFeeRouter` PROXY (UUPS): where `RealmLpLocker` forwards collected LP fees and
+    ///         where token-side fees wait (`pendingTokenFees`) for a keeper's `convertTokenFees`.
+    /// @dev Source of truth (the manifest's `LP_FEE_ROUTER` re-exports it). Baked into the token impls as a
+    ///      constant: they exempt it from the sniper caps and exclude it from dividends, because it holds
+    ///      their tokens continuously. Deployed by `DeployRealmPrereqs` (phase 0) BEFORE the impls; the impl
+    ///      deploy scripts assert it has code. A new proxy means new token impls; an upgrade does not.
+    address public constant LP_FEE_ROUTER = 0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0;
     /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
     ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
     ///         2026-09-14; the `realm.dev` EOA before that.
