@@ -579,7 +579,13 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         IERC20 erc = IERC20(address(token));
 
-        address[4] memory excluded = [address(token), token.pair(), address(token.launchpad()), address(0xdEaD)];
+        // The LP fee router parks token-side fees across rounds: give it a real balance to exclude.
+        uint256 parked = erc.balanceOf(buyer) / 4;
+        vm.prank(buyer);
+        erc.transfer(address(lpFeeRouter), parked);
+
+        address[5] memory excluded =
+            [address(token), token.pair(), address(token.launchpad()), address(0xdEaD), address(lpFeeRouter)];
 
         uint256 eligible = erc.totalSupply();
         for (uint256 i; i < excluded.length; ++i) {
@@ -596,7 +602,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             token.previewDividend(buyer),
             pot * erc.balanceOf(buyer) / eligible,
             1e14,
-            "the denominator is exactly supply minus the balances of the SAME four addresses"
+            "the denominator is exactly supply minus the balances of the SAME five addresses"
         );
     }
 

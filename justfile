@@ -78,19 +78,21 @@ _retarget taxlib:
     @just _taxtoken {{taxlib}}
 
 # (internal) Repoints the taxable-token impls' (and their venue bases, the V4 buy-backs, the dividend
-# mixin, the keeper gate, the `RealmSwapper` and the two test helpers that etch the registries
+# mixin, the keeper gate, the sniper mixin, the `RealmSwapper` and the two test helpers that etch the registries
 # at the address those bake in) `DeploymentAddresses` import to the target chain. Use a `chain-*` recipe.
 _taxtoken lib:
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
         src/tokens/RealmTaxableTokenUniV2.sol src/tokens/RealmTaxableTokenUniV4.sol src/tokens/RealmUniv4BuyBacks.sol \
         src/tokens/RealmTaxableTokenUniV2Base.sol src/tokens/RealmTaxableTokenUniV4Base.sol \
         src/tokens/DividendDistribution.sol src/swapper/RealmSwapper.sol src/tokens/KeeperGated.sol \
+        src/tokens/SniperProtection.sol \
         test/helpers/RealmSwapperHelpers.sol test/helpers/KeepersRegistryHelpers.sol
 
 # ============================ FRESH DEPLOY (two phases) ============================
 # Phase 0. Keepers registry + `RealmSwapper` + LP fee router. Their addresses are COMPILE-TIME
-# constants elsewhere, so they must exist before anything else is built. Paste the two printed
-# constants into src/config/DeploymentAddresses.sol, then rebuild.
+# constants elsewhere, so they must exist before anything else is built. Paste the three printed
+# constants (keepers registry, swapper proxy, LP fee router proxy) into src/config/DeploymentAddresses.sol,
+# then rebuild.
 
 deploy-prereqs-rh: chain-rh
     forge script DeployRealmPrereqs --rpc-url rh-mainnet --account realm.dev --slow --broadcast \

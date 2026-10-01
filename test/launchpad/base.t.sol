@@ -4,7 +4,9 @@ pragma solidity 0.8.28;
 import {Vm} from "forge-std/Vm.sol";
 
 import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
-import {installRealmSwapper} from "test/helpers/RealmSwapperHelpers.sol";
+import {installRealmSwapper, INITIALIZABLE_STORAGE} from "test/helpers/RealmSwapperHelpers.sol";
+// The chain constants the token impls are built with (retargeted by `just chain-<name>`).
+import {DeploymentAddresses as SniperBuild} from "src/tokens/SniperProtection.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 import "forge-std/Test.sol";
@@ -654,10 +656,17 @@ contract LaunchpadBaseTests is Test {
 
         // Deploy the LP fee router behind a UUPS proxy with the default tier configuration. The hook
         // forwards every LP fee to this router, which performs the marketcap-tiered treasury/creator split.
+        // Deployed AT the address the token impls bake in (sniper exemption, dividend exclusion). On a fork
+        // where that proxy is live, clear its initialized flag so the fresh proxy can initialize.
         address lpRouterImpl = address(new SwapLpFeeRouter(treasury, address(realmSwapper), address(keepersRegistry)));
-        lpFeeRouter = SwapLpFeeRouter(
-            payable(address(new ERC1967Proxy(lpRouterImpl, abi.encodeCall(SwapLpFeeRouter.initialize, ()))))
+        address lpRouterAt = SniperBuild.LP_FEE_ROUTER;
+        vm.store(lpRouterAt, INITIALIZABLE_STORAGE, bytes32(0));
+        deployCodeTo(
+            "ERC1967Proxy.sol:ERC1967Proxy",
+            abi.encode(lpRouterImpl, abi.encodeCall(SwapLpFeeRouter.initialize, ())),
+            lpRouterAt
         );
+        lpFeeRouter = SwapLpFeeRouter(payable(lpRouterAt));
 
         deployCodeTo(
             "RealmSwapHook.sol:RealmSwapHook",

@@ -11,7 +11,7 @@ from the Livo deployment.
 | **Phase 0 — compile-time constants** ||
 | 1 | `RealmKeepersRegistry` | plain, owner = treasury -> `DeploymentAddresses.REALM_KEEPERS_REGISTRY` |
 | 2 | `RealmSwapper` | impl + UUPS proxy -> `DeploymentAddresses.REALM_SWAPPER` (the PROXY) |
-| 3 | `SwapLpFeeRouter` | impl + UUPS proxy -> `LP_FEE_ROUTER_IMPL` / `LP_FEE_ROUTER`. Must precede the hook, which holds the proxy as an immutable |
+| 3 | `SwapLpFeeRouter` | impl + UUPS proxy -> manifest `LP_FEE_ROUTER_IMPL` / `DeploymentAddresses.LP_FEE_ROUTER` (the PROXY). Must precede the hook (constructor immutable) and the token impls (compile-time constant) |
 | **Phase 1 — the stack** ||
 | 4 | `RealmMasterFeeHandler` | |
 | 5 | `RealmLaunchpad` | owner = broadcaster, treasury from `DeploymentAddresses` |
@@ -39,9 +39,10 @@ Not deployed by `DeployRealmStack`: the hook (its own script, above) and the div
 # 0. Retarget the build to the chain, then phase 0.
 just deploy-prereqs-rh               # or: just deploy-prereqs-rh-testnet
 
-# 1. Paste REALM_KEEPERS_REGISTRY + REALM_SWAPPER into that chain's library in
-#    src/config/DeploymentAddresses.sol. They are baked into the taxable token bytecode and clones
-#    cannot be repointed, so this MUST happen before phase 1. Paste LP_FEE_ROUTER_IMPL into
+# 1. Paste REALM_KEEPERS_REGISTRY + REALM_SWAPPER + LP_FEE_ROUTER (the proxy) into that chain's library
+#    in src/config/DeploymentAddresses.sol (the manifest re-exports the last two). They are baked into the
+#    token bytecode and clones cannot be repointed, so this MUST happen before phase 1; DeployRealmStack
+#    refuses to run if any of them has no code. Paste LP_FEE_ROUTER_IMPL into
 #    src/config/manifest.<chain>.sol and upgrade the inherited router proxy onto it (see below).
 forge build
 
@@ -74,7 +75,10 @@ fees to an address Realm does not control, and the router proxy is owned by the 
 Neither is fixable without a new hook — hence the redeploy, which costs a fresh Uniswap whitelisting.
 
 Order matters: `DeployRealmPrereqs` deploys the `SwapLpFeeRouter` proxy first, because the hook takes it
-as a constructor immutable. Later router policy changes ship as an `upgradeToAndCall` on that proxy,
+as a constructor immutable and the token impls bake it in as a constant (it is exempt from the sniper caps
+and excluded from dividends, since it parks token-side LP fees). A NEW router proxy therefore means new
+token impls; an upgrade of the existing one does not. The `RealmLpLocker` imposes no order: the impls
+derive it from the token's graduator (its constructor's CREATE, nonce 1) instead of baking it in. Later router policy changes ship as an `upgradeToAndCall` on that proxy,
 whose owner is now the `realm.dev` deployer.
 
 **`RealmHook` is the deployed hook** (`DeployRealmHook` / `just deploy-realm-hook-<chain>`). Two variants

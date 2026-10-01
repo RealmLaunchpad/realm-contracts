@@ -21,6 +21,7 @@ import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.s
 import {IRealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
+import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import {PoolKey as CorePoolKey} from "lib/v4-core/src/types/PoolKey.sol";
@@ -397,6 +398,41 @@ contract NativeLpFeesTests is TaxTokenUniV4BaseTests {
         (uint256 tokenIn, uint256 quoteOut) = abi.decode(logs[converted].data, (uint256, uint256));
         assertEq(tokenIn, tokenFee, "sold the whole bucket");
         assertEq(quoteOut, out, "for what the router split");
+    }
+
+    /////////////////////////// SNIPER WINDOW ///////////////////////////
+
+    /// @dev A plain direct token with the tightest caps (0.1% per tx and per wallet) for an hour; `alice`
+    ///      is whitelisted so she can trade enough to make the fees outgrow the caps.
+    modifier sniperCappedToken() {
+        address[] memory whitelist = new address[](1);
+        whitelist[0] = alice;
+        vm.prank(creator);
+        testToken = directFactory.createToken(
+            _directSetup("CapToken", "CAP", false),
+            _nativePair(),
+            _noDirectAlloc(_emptyTaxCfg()),
+            _antiSniperCfg(10, 10, 1 hours, whitelist),
+            _noVaults(),
+            _noDevBuy(),
+            address(0)
+        );
+        _;
+    }
+
+    /// @dev when, inside the sniper window, collected token-side fees exceed both caps, then the pool ->
+    ///      locker hop (read as a buy) and the locker -> router deposit are not capped
+    function test_collect_inSniperWindow_assertTokenFeesAboveCapsDoNotRevert() public sniperCappedToken {
+        uint256 cap = 1_000_000_000e18 * 10 / 10_000;
+        vm.deal(alice, 50 ether);
+        _swap(alice, testToken, 50 ether, 0, true, true);
+        _swap(alice, testToken, IERC20(testToken).balanceOf(alice), 0, false, true);
+        (, uint256 tokenFee) = _pending(testToken);
+        assertGt(tokenFee, cap, "the token side alone exceeds the per-tx and per-wallet caps");
+
+        _collect(testToken);
+        assertEq(lpFeeRouter.pendingTokenFees(testToken, address(0)), tokenFee, "all of it parked in the router");
+        assertGt(IERC20(testToken).balanceOf(address(lpFeeRouter)), cap, "the router holds more than the wallet cap");
     }
 
     /// @dev when the swapper sells a Realm token, then `RealmTokenSellInitiated` precedes the hook's sell event

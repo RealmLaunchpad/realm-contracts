@@ -13,8 +13,8 @@ import {DeployRealmRegistries} from "script/DeployRealmRegistries.s.sol";
 ///         addresses are baked into other contracts' bytecode rather than passed at runtime:
 ///           1. `RealmKeepersRegistry`         -> `DeploymentAddresses.REALM_KEEPERS_REGISTRY`
 ///           2. `RealmSwapper`    -> `DeploymentAddresses.REALM_SWAPPER` (PROXY)
-///           3. `SwapLpFeeRouter` impl + UUPS proxy -> `LP_FEE_ROUTER_IMPL` / `LP_FEE_ROUTER` (wired to
-///              (1) and (2) through its constructor)
+///           3. `SwapLpFeeRouter` impl + UUPS proxy -> manifest `LP_FEE_ROUTER_IMPL` /
+///              `DeploymentAddresses.LP_FEE_ROUTER` (PROXY; wired to (1) and (2) through its constructor)
 ///
 ///         (1) and (2) are read by the taxable token implementations, which are non-upgradeable clone
 ///         masters: an impl compiled against the placeholder fails closed FOREVER — every
@@ -23,7 +23,8 @@ import {DeployRealmRegistries} from "script/DeployRealmRegistries.s.sol";
 ///         Both are owned by the broadcaster (`realm.dev`) and come from `DeployRealmRegistries`, which
 ///         also runs standalone to redeploy just them without touching the router or the hooks.
 ///
-///         (3) is not a compile-time constant but must exist before the hook: `RealmSwapHook.FEE_ROUTER`
+///         (3)'s proxy is baked into every token impl too (sniper-cap exemption and dividend exclusion,
+///         as it parks token-side LP fees), and must also exist before the hook: `RealmSwapHook.FEE_ROUTER`
 ///         is an immutable, so the router proxy has to be deployed and its address passed at hook
 ///         construction. Realm deploys its own proxy (it no longer inherits Livo's, which is owned by
 ///         the old `livo.dev` key and pinned to the Livo treasury). Later router policy changes ship by
@@ -55,13 +56,14 @@ contract DeployRealmPrereqs is DeployRealmRegistries {
 
         _reportRegistries(keepers, dividendProxy, dividendImpl);
         console.log("");
-        console.log("=== Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
+        console.log("=== Paste into src/config/DeploymentAddresses.sol (%s) ===", ChainConfig.name());
         console.log("  LP_FEE_ROUTER           =", routerProxy);
+        console.log("=== Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
         console.log("  LP_FEE_ROUTER_IMPL      =", routerImpl);
         console.log("");
         console.log("Next:");
-        console.log("  1. Paste the two DeploymentAddresses constants, then `forge build` (bytecode changes).");
-        console.log("  2. Paste LP_FEE_ROUTER into the manifest, then `just export-deployments`.");
+        console.log("  1. Paste the three DeploymentAddresses constants, then `forge build` (bytecode changes).");
+        console.log("  2. Paste LP_FEE_ROUTER_IMPL into the manifest, then `just export-deployments`.");
         console.log("  3. forge script DeployRealmSwapHook ...  (needs LP_FEE_ROUTER)");
         console.log("  4. forge script DeployRealmStack ...");
         console.log("  5. Appoint admins/keepers: setAdmin + setKeeper, from realm.dev (the registries owner).");
