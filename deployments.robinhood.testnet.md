@@ -30,8 +30,8 @@
 | RealmQuoter                                  | `0xDD6C23cc9fD2113eDD11139d9BC695dD02d51883` |
 | RealmKeeperLens                              | `0xEaE1241eb290Ddd1161edB74A6451A879c4Ba992` |
 | RealmKeepersRegistry                         | `0x179E307249366f0036e1aC1791588828E12F439D` |
-| RealmDividendSwapRegistry (proxy)            | `0x48be6ac8729B86B0339BA0d3f6c7D773c0aa83e4` |
-| RealmDividendSwapRegistry (impl)             | `0x8CaF04B4817FD3c8b7A126F0Fc337A1A71F1665b` |
+| RealmSwapper (proxy)            | `0x48be6ac8729B86B0339BA0d3f6c7D773c0aa83e4` |
+| RealmSwapper (impl)             | `0x8CaF04B4817FD3c8b7A126F0Fc337A1A71F1665b` |
 | RealmToken (impl)                            | `0xfF7Bc346867c56D2C8109515d0a3fE2f4459661C` |
 | RealmTaxableTokenUniV4 (impl)                | `0x1005da498a2527B7f92D26cf62503966b3a92128` |
 | RealmTaxableTokenUniV2 (impl)                | `0xd226167A09B27D5Ec9AF4eC7301F98a8273E6B9d` |

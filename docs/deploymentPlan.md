@@ -10,7 +10,7 @@ from the Livo deployment.
 |---|---|---|
 | **Phase 0 — compile-time constants** ||
 | 1 | `RealmKeepersRegistry` | plain, owner = treasury -> `DeploymentAddresses.REALM_KEEPERS_REGISTRY` |
-| 2 | `RealmDividendSwapRegistry` | impl + UUPS proxy -> `DeploymentAddresses.DIVIDEND_SWAP_REGISTRY` (the PROXY) |
+| 2 | `RealmSwapper` | impl + UUPS proxy -> `DeploymentAddresses.REALM_SWAPPER` (the PROXY) |
 | 3 | `SwapLpFeeRouter` | impl + UUPS proxy -> `LP_FEE_ROUTER_IMPL` / `LP_FEE_ROUTER`. Must precede the hook, which holds the proxy as an immutable |
 | **Phase 1 — the stack** ||
 | 4 | `RealmMasterFeeHandler` | |
@@ -39,7 +39,7 @@ Not deployed by `DeployRealmStack`: the hook (its own script, above) and the div
 # 0. Retarget the build to the chain, then phase 0.
 just deploy-prereqs-rh               # or: just deploy-prereqs-rh-testnet
 
-# 1. Paste REALM_KEEPERS_REGISTRY + DIVIDEND_SWAP_REGISTRY into that chain's library in
+# 1. Paste REALM_KEEPERS_REGISTRY + REALM_SWAPPER into that chain's library in
 #    src/config/DeploymentAddresses.sol. They are baked into the taxable token bytecode and clones
 #    cannot be repointed, so this MUST happen before phase 1. Paste LP_FEE_ROUTER_IMPL into
 #    src/config/manifest.<chain>.sol and upgrade the inherited router proxy onto it (see below).

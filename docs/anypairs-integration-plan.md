@@ -25,7 +25,7 @@ Every feature it has exists in Realm in an audited, pull-based, layout-checked f
 | Venue graduator | `RealmDirectGraduatorUniV4` (non-upgradeable, holds seed NFTs forever) | same `IRealmGraduator` shape plus `HOOK_ADDRESS()` / `LIQUIDITY_ADDER()`. `initialize()` creates the pool(s) at the caller's tick; `graduateToken()` calls `markGraduated()`, seeds the band(s), runs the dev buy. |
 | Token | the existing two impls (`RealmToken`, `RealmTaxableTokenUniV4`) + `RealmDividendLogicUniV4` | graduated from birth through the normal `markGraduated()`. Money path keyed by quote. |
 | Hook | `RealmHook` for native pools (unchanged); new `RealmHookAnyPair` for ERC20-quoted pools | `RealmHookAnyPair` = `RealmSwapHook` generalised: resolves which side is the token via `quote()`, caches per pool id, takes fees in the quote. |
-| Money path | `accrueFees()`, `EarningsAllocation`, `SwapLpFeeRouter`, `RealmMasterFeeHandler`, `RealmDividendSwapRegistry`, `RealmUniv4BuyBacks`, `RealmUniV4LiquidityAdder` | every "native" seam becomes "asset", `address(0)` meaning native. |
+| Money path | `accrueFees()`, `EarningsAllocation`, `SwapLpFeeRouter`, `RealmMasterFeeHandler`, `RealmSwapper`, `RealmUniv4BuyBacks`, `RealmUniV4LiquidityAdder` | every "native" seam becomes "asset", `address(0)` meaning native. |
 
 Token roles for the venue: `launchpad = address(0)` (mint target falls back to `graduator`, so the venue never
 inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorUniV4`, `pair = PoolManager`.
@@ -94,7 +94,7 @@ inherits the launchpad's infinite allowance), `graduator = RealmDirectGraduatorU
 - `RealmMasterFeeHandler`: `depositFees(token, asset, amount)`, per-asset accumulators and claims, direct receivers via try/catch transfer (D8).
 - `SwapLpFeeRouter`: ERC20 overload of `depositLpFees()`; treasury share to `RealmTreasuryRouter`, which gains `sweep(asset)` (D6).
 - `RealmHookAnyPair` (D1): per-pool token/quote resolution, exact-in/out matrix mirrored for token-as-currency0, fees taken in the quote, routed through the ERC20 overloads.
-- `RealmDividendSwapRegistry`: `swapToAsset(source, asset, amountIn, minOut, to)`; routes validated from the quote; asset == quote is passthrough.
+- `RealmSwapper`: `swapToAsset(source, asset, amountIn, minOut, to)`; routes validated from the quote; asset == quote is passthrough.
 - `RealmUniv4BuyBacks`: sorted key, `zeroForOne = quoteIsC0`, ERC20 settlement. Liquidity adder settles ERC20.
 - Launch sanity on a quote: not WETH (use native), not a Realm token, has `decimals()`, not fee-on-transfer (measured at first use).
 - Chain retargeting: add new files to the `_taxtoken` sed list; chain-id assert in impl constructors.
