@@ -6,67 +6,68 @@
 
 | Contract                                     | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| RealmLaunchpad                               | `0x8e0CdCF7842B0C383a36b2c569f84203F406eeAA` |
-| ConstantProductBondingCurve                  | `0x3A8923444AEBF1Da9950E7478386cf89E9c32074` |
-| RealmGraduatorUniswapV2                      | `0x849dcEAe7aE00fAcC46802D4cfa41D299EacfEAf` |
-| RealmMasterFeeHandler                        | `0xA0cbcF47Eb58D56f480047465C8f52aa984Fdd88` |
-| RealmUniV4LiquidityAdder                     | `0x20129911e18C775BBBC7388cfBe8D88F0371E96E` |
+| RealmLaunchpad                               | `0xC847726FA54b6d0E41043f0Aa20Bc6caBFA3eEAA` |
+| ConstantProductBondingCurve                  | `0xFfcc1DD49d72C614aeB957B6E667287aB1600b3B` |
+| RealmGraduatorUniswapV2                      | `0x0df553Cc64bfDe391a7dd6e00b13928b93Abc996` |
+| RealmMasterFeeHandler                        | `0x566eab62A5f768f17D4261eb123766C8F3A3B741` |
+| RealmUniV4LiquidityAdder                     | `0xD852F5FCC5511d71CcAA0820b3FcCD7D2Cf28a6d` |
 | RealmHook                                    | `0xCb31DF4846fd7aFaF4Ffdb074c733DE216F340Cc` |
 | RealmHookAnyPair                             | `0x87f077ebBE1D9d35D5E4522bf0a4e30adaaF40cc` |
-| RealmDirectGraduatorUniV4                    | `0xDaC64d8cB1182291a8586A39C6634d7BcD6a06fa` |
-| RealmFactoryUniV4Direct (proxy)              | `0x3307857e113E9fF6D53Cf5478F9320407232574E` |
-| RealmFactoryUniV4Direct (impl)               | `0x91eaBC4e08A3870DAA378CA1Dffb0307b4b7D0f8` |
-| RealmAssetsWhitelist (proxy)                 | `0x0f3629Bd715C17373d7E401eB3f0ed94B46991d5` |
-| RealmAssetsWhitelist (impl)                  | `0x18E70C1458744021980EDbd475f7D93574CB1c33` |
+| RealmDirectGraduatorUniV4                    | `0xDB19b9412d351536C907891E10601F2e85Ee3E1a` |
+| RealmFactoryUniV4Direct (proxy)              | `0xAB24A7B6b7CA47B64C4EC3BCCDd53FB91b5EBeC2` |
+| RealmFactoryUniV4Direct (impl)               | `0xAD67c9cab2aaDa04952c83a2ddd800Ae4219B5aE` |
+| RealmAssetsWhitelist (proxy)                 | `0x9C777eB8A40Dd70612148Daa39B4a6B1358aa00D` |
+| RealmAssetsWhitelist (impl)                  | `0x6c85A8Fc071862f5383BFe6392D6B8A87D7D994C` |
 | RealmDividendLogicUniV4                      | `0x6E45BfD35f4681b709079Dd886b3437fAd5996ff` |
 | RealmEarningsLogicUniV4                      | `0x1BC0878C4225DDB72075b4683cE28497cc703B6f` |
 | SwapLpFeeRouter (proxy)                      | `0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0` |
-| SwapLpFeeRouter (impl)                       | `0xf3cFa580922c9266199818bFf756cC6E5C1bF826` |
-| RealmTreasuryRouter (proxy)                  | `0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B` |
-| RealmTreasuryRouter (impl)                   | `0x2bBD05a8B7ac1D0Fe07C33397ff9D48e51F74Bcb` |
-| REALM token                                  | `0xedcA28e57E99379B3B4dc2c6C0BF0812a13cEEaA` |
-| RealmVoting (proxy)                          | `0xd1fDE1598C7617fc6D987f1C93717aEE17735Fa5` |
-| RealmVoting (impl)                           | `0x110A9EB4A1B1913a705652Da1BA185D3398e1f8F` |
-| RealmQuoter                                  | `0xDD6C23cc9fD2113eDD11139d9BC695dD02d51883` |
-| RealmKeeperLens                              | `0xEaE1241eb290Ddd1161edB74A6451A879c4Ba992` |
-| RealmKeepersRegistry                         | `0x179E307249366f0036e1aC1791588828E12F439D` |
-| RealmSwapper (proxy)            | `0x48be6ac8729B86B0339BA0d3f6c7D773c0aa83e4` |
-| RealmSwapper (impl)             | `0x8CaF04B4817FD3c8b7A126F0Fc337A1A71F1665b` |
-| RealmToken (impl)                            | `0xfF7Bc346867c56D2C8109515d0a3fE2f4459661C` |
-| RealmTaxableTokenUniV4 (impl)                | `0x1005da498a2527B7f92D26cf62503966b3a92128` |
-| RealmTaxableTokenUniV2 (impl)                | `0xd226167A09B27D5Ec9AF4eC7301F98a8273E6B9d` |
-| RealmFactoryUniV2Unified (proxy)             | `0xbC2Ce024f4425B4928De257f3F3f8813f6a80122` |
-| RealmFactoryUniV2Unified (impl)              | `0x046a5AC5e2cc7DDC5BeAABb739E14f5910c1858e` |
-| RealmCreatorVaultFactory (proxy)             | `0x7a0073E5bF9fCB85Cbfe8b8340987055aEc7E5EA` |
-| RealmCreatorVaultFactory (impl)              | `0x2af5d6a4dEC999446DC900e681Fe3E0Cb8f1DFc1` |
-| RealmCreatorVault (impl)                     | `0x4A2C4A74bFa4Db8039372E4caaFBfBd05C79304B` |
-| Creator-vault curve 5%                       | `0xfb2ca43D65BDF19529F65da1e9136db99205A4db` |
-| Creator-vault curve 10%                      | `0x1193ce7193535c5F88cf89278446D79D74d0ecc4` |
-| Creator-vault curve 15%                      | `0xD15720a23646B7aa0E2904f661B4683e46188B15` |
-| Creator-vault curve 20%                      | `0x06F24f0548960d1eF37005775f6f2566656CCfBF` |
-| Creator-vault curve 25%                      | `0x29d8a60461de79762bA1A2A8D679187AAc87f763` |
-| Creator-vault curve 30%                      | `0x91a61251f008D32f20b5c31893e464DEC71f8D68` |
-| THIN-tier curve base                         | `0xFa67a0fFdD8251081D6e9C6e78E8E09FbF5B8F2f` |
-| THIN-tier curve 5%                           | `0x543E241b7162cFf3d3Ca327B7ad980B61496F566` |
-| THIN-tier curve 10%                          | `0xfA532A47d6928F5AE76e7668C9FC49f8623fA7F8` |
-| THIN-tier curve 15%                          | `0xc1C85D4Bd0F15d75ADc7EEBbf85783318BD7a58c` |
-| THIN-tier curve 20%                          | `0x50AAB50eeD9791D0C4c623e1BaCA7aA3128fD171` |
-| THIN-tier curve 25%                          | `0xe717FF95Ee16C0F386398Ed2d48587A73221AAfE` |
-| THIN-tier curve 30%                          | `0x6bBd189dB47c6Ed2b95eD49119BB25C93e7702b9` |
-| THICK-tier curve base                        | `0x678b0211E93bC124E07E02AadCF36C32A8ec5898` |
-| THICK-tier curve 5%                          | `0x844A550258DC6CbE605A874e1E1F32202ecf2Ae7` |
-| THICK-tier curve 10%                         | `0x6db725e7774b6EEDA05eCD537eCfEfBD64B3b346` |
-| THICK-tier curve 15%                         | `0x15f158Ff08d1DCa065bDD5d2cE4082305CC25428` |
-| THICK-tier curve 20%                         | `0x0F9c018d31cEdd446d6fA55393dd74CA8fBa918E` |
-| THICK-tier curve 25%                         | `0x61aD1cd458D88B4CE9BE376b22eC0c06A0f13F49` |
-| THICK-tier curve 30%                         | `0x46d99056415AF11eBEd2a2C4Afaea4adf1Ed5133` |
+| RealmLpLocker                                | `0x8a6a403A4193FB6f31FF729CC986F1fEd70a1c44` |
+| SwapLpFeeRouter (impl)                       | `0xb2C47D2ED28C7286bcCe53E04F095aB07b37d0b1` |
+| RealmTreasuryRouter (proxy)                  | `0x2BE1D41df10E674f9E07195cAA0B16Cb1acB88C8` |
+| RealmTreasuryRouter (impl)                   | `0x47a9734c06e5C684be757177CD974AbFFDE40c2d` |
+| REALM token                                  | `0xAf5bc7F655618c3148dE9C4b36faF3D9cE75eeAa` |
+| RealmVoting (proxy)                          | `0x899657a6CCe27e1a865c051201344713e9b92fDD` |
+| RealmVoting (impl)                           | `0xC0b56623Bf3D49CaD97ff051f1f270e320C549F4` |
+| RealmQuoter                                  | `0x07f157b125395E1e3Ad85aB03a54EA1f1a6cB5B9` |
+| RealmKeeperLens                              | `0xCC128819B2E46bb042847aECA56AF1BE4BA0E38a` |
+| RealmKeepersRegistry                         | `0xC9f74AE2f185C21853744a2BfcaE84CfFD556815` |
+| RealmSwapper (proxy)                         | `0xabB85435eF1AAc5b0294742E2B0Eb34CE6936557` |
+| RealmSwapper (impl)                          | `0xa47C008C2abcee6cD6F796a7Dd18d162F28Bb927` |
+| RealmToken (impl)                            | `0xa6B76b57B3F2d494007e05Ef94Dd0AAB96BC8436` |
+| RealmTaxableTokenUniV4 (impl)                | `0xc2E3453FF2687cC10e1F5915577E4366257cc7F3` |
+| RealmTaxableTokenUniV2 (impl)                | `0xE4BdED43EBA13A0184DD233bAb149129eE204b6A` |
+| RealmFactoryUniV2Unified (proxy)             | `0x5D67E6480D3aeFD2B062369c86Ccb2637358c72c` |
+| RealmFactoryUniV2Unified (impl)              | `0xC3013795Ea9A38Cc7100fF1D43CAf328E7111b21` |
+| RealmCreatorVaultFactory (proxy)             | `0xB627A77aa44A2D61294560bcd478a10cf6BeD5d5` |
+| RealmCreatorVaultFactory (impl)              | `0x5D04A729BE86190a398d9aE45dC0308F5Abf0a0f` |
+| RealmCreatorVault (impl)                     | `0x398cceaa2A75b0f106925D6a2b0d3BF0b05FD78e` |
+| Creator-vault curve 5%                       | `0xFE695eE546Dd8eAB86B71788609Fe9c3Cc29A03A` |
+| Creator-vault curve 10%                      | `0x6620FD86496eb9B472D2C916e59C9D27EeF9D1a4` |
+| Creator-vault curve 15%                      | `0x613f03Bb1f2190f158cEd2ACcB174401C69ec643` |
+| Creator-vault curve 20%                      | `0xac5E380C3f941df93C74c9633D38F2e22147AD21` |
+| Creator-vault curve 25%                      | `0xed968fb1c91D97267dCF917c20213961DfFE02d4` |
+| Creator-vault curve 30%                      | `0x37DBB64f824Ef1a6d11bc68e1a28F4d4C5926099` |
+| THIN-tier curve base                         | `0x1b6DAfec68c0567398938Bcb19ce6a4C16F8c750` |
+| THIN-tier curve 5%                           | `0x3CFBd9056452b1E15079a7E52D15a7AF05F77B80` |
+| THIN-tier curve 10%                          | `0xcEB13de91dA7187949067b1A6A98329EAfEd117f` |
+| THIN-tier curve 15%                          | `0x1bC99A11895C126a3AF8c16D1791b04C3A58b511` |
+| THIN-tier curve 20%                          | `0x10Cd08caaf85F612E87e2F8030539e381A7c43AA` |
+| THIN-tier curve 25%                          | `0x52549d3F5896F35f7D338761f6C93470D0E3e2c4` |
+| THIN-tier curve 30%                          | `0xc01CD7FBC6b017aA3806d54D9C822D2Ea20F870e` |
+| THICK-tier curve base                        | `0xB27BBd70b2a4F2B3315a01AF274Ec9fb57665472` |
+| THICK-tier curve 5%                          | `0xa394a45889aA8ee8f97d3223d6C2dd0383BAA8F9` |
+| THICK-tier curve 10%                         | `0xF93B457f1dAE3216E20456A293a840dc33BEeb3F` |
+| THICK-tier curve 15%                         | `0xbA68B81Ce0E12bD665Eab7fd4507b40CCFADEDC6` |
+| THICK-tier curve 20%                         | `0x19472724D32a32fe069e3085eA3323500b5CA71D` |
+| THICK-tier curve 25%                         | `0xF17A18307bBCdfb76B5C29f01867627c994F44B5` |
+| THICK-tier curve 30%                         | `0x2F14f43424B6d4d9d1C0E346AdBC20A324cd51cC` |
 
 ## Accounts
 
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
 | Realm Deployer                               | `0x81f7D06a88223f5a2850411E72256AacC9E27035` |
-| Realm Treasury                               | `0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B` |
+| Realm Treasury                               | `0x2BE1D41df10E674f9E07195cAA0B16Cb1acB88C8` |
 | Team Treasury (2/3 leg)                      | _(not deployed)_                             |
 | Vote Buyback Wallet (1/3 leg)                | _(not deployed)_                             |
 | Legacy Treasury (pre-router)                 | _(not deployed)_                             |

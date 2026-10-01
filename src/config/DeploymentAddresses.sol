@@ -224,7 +224,7 @@ library DeploymentAddressesRobinhoodTestnet {
     /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
     ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
     ///         2026-09-14; the `realm.dev` EOA before that.
-    address public constant REALM_TREASURY = 0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B;
+    address public constant REALM_TREASURY = 0x2BE1D41df10E674f9E07195cAA0B16Cb1acB88C8;
 
     /// @notice The wallet on the 2/3 leg of `RealmTreasuryRouter`. Separate from `REALM_TREASURY`, which
     ///         became the router proxy itself once the router went live: resolving the leg from that would
