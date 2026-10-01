@@ -73,7 +73,7 @@ library DeploymentsRobinhoodTestnet {
     address internal constant LP_FEE_ROUTER = DeploymentAddressesRobinhoodTestnet.LP_FEE_ROUTER;
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
-    address internal constant LP_FEE_ROUTER_IMPL = 0xb2C47D2ED28C7286bcCe53E04F095aB07b37d0b1;
+    address internal constant LP_FEE_ROUTER_IMPL = 0xDF779aF022bB67471e6c908b3783B46f2fd6bb47;
     /// @notice `RealmTreasuryRouter` proxy (UUPS): the treasury address every push lands on once live —
     ///         `LAUNCHPAD.treasury()` and the `SwapLpFeeRouter` impl's `TREASURY` point here. Forwards 1/3
     ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryStack`, which also

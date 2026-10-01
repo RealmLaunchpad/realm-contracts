@@ -22,7 +22,7 @@
 | RealmEarningsLogicUniV4                      | `0x1BC0878C4225DDB72075b4683cE28497cc703B6f` |
 | SwapLpFeeRouter (proxy)                      | `0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0` |
 | RealmLpLocker                                | `0x8a6a403A4193FB6f31FF729CC986F1fEd70a1c44` |
-| SwapLpFeeRouter (impl)                       | `0xb2C47D2ED28C7286bcCe53E04F095aB07b37d0b1` |
+| SwapLpFeeRouter (impl)                       | `0xDF779aF022bB67471e6c908b3783B46f2fd6bb47` |
 | RealmTreasuryRouter (proxy)                  | `0x2BE1D41df10E674f9E07195cAA0B16Cb1acB88C8` |
 | RealmTreasuryRouter (impl)                   | `0x47a9734c06e5C684be757177CD974AbFFDE40c2d` |
 | REALM token                                  | `0xAf5bc7F655618c3148dE9C4b36faF3D9cE75eeAa` |
