@@ -14,15 +14,15 @@ library DeploymentsRobinhoodTestnet {
     uint256 internal constant BLOCKCHAIN_ID = 46630;
 
     // --- Core ---
-    address internal constant LAUNCHPAD = 0x8e0CdCF7842B0C383a36b2c569f84203F406eeAA;
-    address internal constant BONDING_CURVE = 0x3A8923444AEBF1Da9950E7478386cf89E9c32074;
-    address internal constant GRADUATOR_UNIV2 = 0x849dcEAe7aE00fAcC46802D4cfa41D299EacfEAf;
+    address internal constant LAUNCHPAD = 0xC847726FA54b6d0E41043f0Aa20Bc6caBFA3eEAA;
+    address internal constant BONDING_CURVE = 0xFfcc1DD49d72C614aeB957B6E667287aB1600b3B;
+    address internal constant GRADUATOR_UNIV2 = 0x0df553Cc64bfDe391a7dd6e00b13928b93Abc996;
 
     /// @notice Shared, permissionless `RealmUniV4LiquidityAdder` singleton — one per chain, passed to the
     ///         direct V4 graduator and used by taxable tokens' `processLiquidity`. Deploy with
     ///         `DeployRealmStack`; `address(0)` until first deployed on this chain.
-    address internal constant UNIV4_LIQUIDITY_ADDER = 0x20129911e18C775BBBC7388cfBe8D88F0371E96E;
-    address internal constant MASTER_FEE_HANDLER = 0xA0cbcF47Eb58D56f480047465C8f52aa984Fdd88;
+    address internal constant UNIV4_LIQUIDITY_ADDER = 0xD852F5FCC5511d71CcAA0820b3FcCD7D2Cf28a6d;
+    address internal constant MASTER_FEE_HANDLER = 0x566eab62A5f768f17D4261eb123766C8F3A3B741;
 
     /// @notice Swap hook: fee-agnostic, reads each token's fees via `getSwapFees` (taxes only on current
     ///         tokens; the LP fee is the pool's native tier) and forwards any LP fee to `LP_FEE_ROUTER`. The direct V4 graduator points here for native pools.
@@ -39,25 +39,25 @@ library DeploymentsRobinhoodTestnet {
 
     /// @notice `RealmDirectGraduatorUniV4`: the direct-launch venue's graduator. Non-upgradeable, holds
     ///         every launch's seed position NFTs forever.
-    address public constant GRADUATOR_UNIV4_DIRECT = 0xDaC64d8cB1182291a8586A39C6634d7BcD6a06fa;
+    address public constant GRADUATOR_UNIV4_DIRECT = 0xDB19b9412d351536C907891E10601F2e85Ee3E1a;
     /// @notice `RealmLpLocker` holding every seed band and bid wall of `GRADUATOR_UNIV4_DIRECT`'s tokens.
     ///         Deployed by that graduator's constructor (read it back as `LP_LOCKER()`); `address(0)` until
     ///         the graduator that deploys one is live on this chain.
-    address public constant LP_LOCKER = address(0);
+    address public constant LP_LOCKER = 0x8a6a403A4193FB6f31FF729CC986F1fEd70a1c44;
 
     /// @notice `RealmFactoryUniV4Direct` proxy — the direct-launch venue's entry point.
-    address public constant FACTORY_UNIV4_DIRECT = 0x3307857e113E9fF6D53Cf5478F9320407232574E;
+    address public constant FACTORY_UNIV4_DIRECT = 0xAB24A7B6b7CA47B64C4EC3BCCDd53FB91b5EBeC2;
 
     /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
-    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x91eaBC4e08A3870DAA378CA1Dffb0307b4b7D0f8;
+    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x07394E312089A9C04612d357D9F7B79c73c1C1C3;
 
     /// @notice `RealmAssetsWhitelist` proxy (UUPS): the quote currencies the direct venue will launch
     ///         against, each with the native rate derived from its price pool. `FACTORY_UNIV4_DIRECT`
     ///         holds it as an immutable, so replacing it means a new factory implementation.
-    address public constant ASSETS_WHITELIST = 0x0f3629Bd715C17373d7E401eB3f0ed94B46991d5;
+    address public constant ASSETS_WHITELIST = 0x9C777eB8A40Dd70612148Daa39B4a6B1358aa00D;
 
     /// @notice Implementation behind `ASSETS_WHITELIST`. Tracked for verification and audit trails only.
-    address public constant ASSETS_WHITELIST_IMPL = 0x18E70C1458744021980EDbd475f7D93574CB1c33;
+    address public constant ASSETS_WHITELIST_IMPL = 0x6c85A8Fc071862f5383BFe6392D6B8A87D7D994C;
 
     /// @notice `RealmDividendLogicUniV4`: the LIVE V4 token impl's dividend extension, reached only by
     ///         `delegatecall`. Removed from the source (folded into the token); kept as a deploy record.
@@ -73,7 +73,7 @@ library DeploymentsRobinhoodTestnet {
     address internal constant LP_FEE_ROUTER = DeploymentAddressesRobinhoodTestnet.LP_FEE_ROUTER;
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
-    address internal constant LP_FEE_ROUTER_IMPL = 0xf3cFa580922c9266199818bFf756cC6E5C1bF826;
+    address internal constant LP_FEE_ROUTER_IMPL = 0xea8976427E03A84b604fc3Ae2497aaF1Eb60134f;
     /// @notice `RealmTreasuryRouter` proxy (UUPS): the treasury address every push lands on once live —
     ///         `LAUNCHPAD.treasury()` and the `SwapLpFeeRouter` impl's `TREASURY` point here. Forwards 1/3
     ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryStack`, which also
@@ -89,51 +89,51 @@ library DeploymentsRobinhoodTestnet {
     address internal constant VOTING = 0xd1fDE1598C7617fc6D987f1C93717aEE17735Fa5;
     /// @notice Implementation behind `VOTING`. Tracked for verification and audit trails only.
     address internal constant VOTING_IMPL = 0x110A9EB4A1B1913a705652Da1BA185D3398e1f8F;
-    address internal constant QUOTER = 0xDD6C23cc9fD2113eDD11139d9BC695dD02d51883;
+    address internal constant QUOTER = 0x07f157b125395E1e3Ad85aB03a54EA1f1a6cB5B9;
     /// @notice `RealmKeeperLens`: the stateless, view-only batch reader the dividend keeper drives its
     ///         per-token reads through. Consumed OFF chain only — no Realm contract references it — so it
     ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
-    address internal constant KEEPER_LENS = 0xEaE1241eb290Ddd1161edB74A6451A879c4Ba992;
+    address internal constant KEEPER_LENS = 0xCC128819B2E46bb042847aECA56AF1BE4BA0E38a;
 
     /// @notice `RealmSwapper` proxy: every protocol swap (dividend conversions, LP token-fee sells).
     /// @dev Re-exported: the value lives in `DeploymentAddresses.sol`, which the token impls bake in.
     address internal constant REALM_SWAPPER = DeploymentAddressesRobinhoodTestnet.REALM_SWAPPER;
     /// @notice Implementation behind `REALM_SWAPPER`. Update on every registry upgrade; tracked for
     ///         verification and audit trails only.
-    address internal constant REALM_SWAPPER_IMPL = 0x8CaF04B4817FD3c8b7A126F0Fc337A1A71F1665b;
+    address internal constant REALM_SWAPPER_IMPL = 0xa47C008C2abcee6cD6F796a7Dd18d162F28Bb927;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0xfF7Bc346867c56D2C8109515d0a3fE2f4459661C;
-    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x1005da498a2527B7f92D26cf62503966b3a92128;
+    address internal constant TOKEN_IMPL = 0xd092081af0cA430A1a37607d2f56aB508CaEbD47;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x9aC98B257385f86E743D073FB48bFd5041373c42;
 
     /// @notice V2 taxable token implementation (cloned by `RealmFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xd226167A09B27D5Ec9AF4eC7301F98a8273E6B9d;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xbE6deB6e240b661D1C160f414FDA1948de417042;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
-    address internal constant FACTORY_UNIV2_UNIFIED = 0xbC2Ce024f4425B4928De257f3F3f8813f6a80122;
+    address internal constant FACTORY_UNIV2_UNIFIED = 0x5D67E6480D3aeFD2B062369c86Ccb2637358c72c;
 
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x046a5AC5e2cc7DDC5BeAABb739E14f5910c1858e;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xf3Be0a666c37feAfFc254c8bd6dfE7bd940F6F55;
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.
-    address internal constant CREATOR_VAULT_IMPL = 0x4A2C4A74bFa4Db8039372E4caaFBfBd05C79304B;
+    address internal constant CREATOR_VAULT_IMPL = 0x398cceaa2A75b0f106925D6a2b0d3BF0b05FD78e;
     /// @notice `RealmCreatorVaultFactory` UUPS proxy (stable across upgrades). Update after deploying.
-    address internal constant CREATOR_VAULT_FACTORY = 0x7a0073E5bF9fCB85Cbfe8b8340987055aEc7E5EA;
+    address internal constant CREATOR_VAULT_FACTORY = 0xB627A77aa44A2D61294560bcd478a10cf6BeD5d5;
     /// @notice `RealmCreatorVaultFactory` implementation behind the proxy. Update after deploying.
-    address internal constant CREATOR_VAULT_FACTORY_IMPL = 0x2af5d6a4dEC999446DC900e681Fe3E0Cb8f1DFc1;
+    address internal constant CREATOR_VAULT_FACTORY_IMPL = 0x5D04A729BE86190a398d9aE45dC0308F5Abf0a0f;
 
     /// @notice The six allocation-specific bonding curves (`ConstantProductBondingCurveConfigurable`),
     ///         one per locked allocation. Update after deploying with `DeployRealmStack`.
-    address internal constant VAULT_CURVE_5 = 0xfb2ca43D65BDF19529F65da1e9136db99205A4db;
-    address internal constant VAULT_CURVE_10 = 0x1193ce7193535c5F88cf89278446D79D74d0ecc4;
-    address internal constant VAULT_CURVE_15 = 0xD15720a23646B7aa0E2904f661B4683e46188B15;
-    address internal constant VAULT_CURVE_20 = 0x06F24f0548960d1eF37005775f6f2566656CCfBF;
-    address internal constant VAULT_CURVE_25 = 0x29d8a60461de79762bA1A2A8D679187AAc87f763;
-    address internal constant VAULT_CURVE_30 = 0x91a61251f008D32f20b5c31893e464DEC71f8D68;
+    address internal constant VAULT_CURVE_5 = 0xFE695eE546Dd8eAB86B71788609Fe9c3Cc29A03A;
+    address internal constant VAULT_CURVE_10 = 0x6620FD86496eb9B472D2C916e59C9D27EeF9D1a4;
+    address internal constant VAULT_CURVE_15 = 0x613f03Bb1f2190f158cEd2ACcB174401C69ec643;
+    address internal constant VAULT_CURVE_20 = 0xac5E380C3f941df93C74c9633D38F2e22147AD21;
+    address internal constant VAULT_CURVE_25 = 0xed968fb1c91D97267dCF917c20213961DfFE02d4;
+    address internal constant VAULT_CURVE_30 = 0x37DBB64f824Ef1a6d11bc68e1a28F4d4C5926099;
 
     /// @notice The six vault curves as the `address[6]` the unified-factory constructors expect.
     function vaultBondingCurves() internal pure returns (address[6] memory c) {
@@ -149,22 +149,22 @@ library DeploymentsRobinhoodTestnet {
     /// @notice THIN-tier bonding curves (`ConstantProductBondingCurveConfigurable`): the no-vault
     ///         base curve plus six vault curves (5%..30%). Update after deploying with
     ///         `DeployRealmStack`. Used by the V2 factory.
-    address internal constant THIN_CURVE_BASE = 0xFa67a0fFdD8251081D6e9C6e78E8E09FbF5B8F2f;
-    address internal constant THIN_VAULT_CURVE_5 = 0x543E241b7162cFf3d3Ca327B7ad980B61496F566;
-    address internal constant THIN_VAULT_CURVE_10 = 0xfA532A47d6928F5AE76e7668C9FC49f8623fA7F8;
-    address internal constant THIN_VAULT_CURVE_15 = 0xc1C85D4Bd0F15d75ADc7EEBbf85783318BD7a58c;
-    address internal constant THIN_VAULT_CURVE_20 = 0x50AAB50eeD9791D0C4c623e1BaCA7aA3128fD171;
-    address internal constant THIN_VAULT_CURVE_25 = 0xe717FF95Ee16C0F386398Ed2d48587A73221AAfE;
-    address internal constant THIN_VAULT_CURVE_30 = 0x6bBd189dB47c6Ed2b95eD49119BB25C93e7702b9;
+    address internal constant THIN_CURVE_BASE = 0x1b6DAfec68c0567398938Bcb19ce6a4C16F8c750;
+    address internal constant THIN_VAULT_CURVE_5 = 0x3CFBd9056452b1E15079a7E52D15a7AF05F77B80;
+    address internal constant THIN_VAULT_CURVE_10 = 0xcEB13de91dA7187949067b1A6A98329EAfEd117f;
+    address internal constant THIN_VAULT_CURVE_15 = 0x1bC99A11895C126a3AF8c16D1791b04C3A58b511;
+    address internal constant THIN_VAULT_CURVE_20 = 0x10Cd08caaf85F612E87e2F8030539e381A7c43AA;
+    address internal constant THIN_VAULT_CURVE_25 = 0x52549d3F5896F35f7D338761f6C93470D0E3e2c4;
+    address internal constant THIN_VAULT_CURVE_30 = 0xc01CD7FBC6b017aA3806d54D9C822D2Ea20F870e;
 
     /// @notice THICK-tier bonding curves. Same layout as the THIN tier above.
-    address internal constant THICK_CURVE_BASE = 0x678b0211E93bC124E07E02AadCF36C32A8ec5898;
-    address internal constant THICK_VAULT_CURVE_5 = 0x844A550258DC6CbE605A874e1E1F32202ecf2Ae7;
-    address internal constant THICK_VAULT_CURVE_10 = 0x6db725e7774b6EEDA05eCD537eCfEfBD64B3b346;
-    address internal constant THICK_VAULT_CURVE_15 = 0x15f158Ff08d1DCa065bDD5d2cE4082305CC25428;
-    address internal constant THICK_VAULT_CURVE_20 = 0x0F9c018d31cEdd446d6fA55393dd74CA8fBa918E;
-    address internal constant THICK_VAULT_CURVE_25 = 0x61aD1cd458D88B4CE9BE376b22eC0c06A0f13F49;
-    address internal constant THICK_VAULT_CURVE_30 = 0x46d99056415AF11eBEd2a2C4Afaea4adf1Ed5133;
+    address internal constant THICK_CURVE_BASE = 0xB27BBd70b2a4F2B3315a01AF274Ec9fb57665472;
+    address internal constant THICK_VAULT_CURVE_5 = 0xa394a45889aA8ee8f97d3223d6C2dd0383BAA8F9;
+    address internal constant THICK_VAULT_CURVE_10 = 0xF93B457f1dAE3216E20456A293a840dc33BEeb3F;
+    address internal constant THICK_VAULT_CURVE_15 = 0xbA68B81Ce0E12bD665Eab7fd4507b40CCFADEDC6;
+    address internal constant THICK_VAULT_CURVE_20 = 0x19472724D32a32fe069e3085eA3323500b5CA71D;
+    address internal constant THICK_VAULT_CURVE_25 = 0xF17A18307bBCdfb76B5C29f01867627c994F44B5;
+    address internal constant THICK_VAULT_CURVE_30 = 0x2F14f43424B6d4d9d1C0E346AdBC20A324cd51cC;
 
     /// @notice The six THIN-tier vault curves as the `address[6]` the factory tier config expects.
     function thinVaultCurves() internal pure returns (address[6] memory c) {
