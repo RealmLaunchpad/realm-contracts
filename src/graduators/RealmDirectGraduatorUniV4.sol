@@ -213,6 +213,9 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         HOOK_ADDRESS = hook;
         ANY_PAIR_HOOK = anyPairHook;
         LIQUIDITY_ADDER = liquidityAdder;
+        // ⚠️ MUST stay this contract's FIRST and ONLY contract creation (nonce 1): tokens derive the
+        // locker address from it (`SniperProtection._lpLockerOf`) to exempt it from the sniper caps.
+        // Deploying anything before it breaks that exemption and can brick `collect` in the window.
         LP_LOCKER = address(
             new RealmLpLocker(
                 poolManager,
