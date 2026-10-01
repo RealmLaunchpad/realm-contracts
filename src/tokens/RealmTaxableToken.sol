@@ -601,13 +601,12 @@ abstract contract RealmTaxableToken is
     }
 
     /// @notice Returns the fees `RealmSwapHook` charges on a V4 swap in direction `isBuy` right now (see
-    ///         `IRealmToken`): the always-on post-graduation LP fee, plus the CURRENT effective tax —
-    ///         `max(decay, static)` for that direction, which changes every second while the decay window
-    ///         is open — so the hook, which re-reads this on every swap, applies the right (possibly
-    ///         decaying) rate.
+    ///         `IRealmToken`): the CURRENT effective tax — `max(decay, static)` for that direction, which
+    ///         changes every second while the decay window is open — so the hook, which re-reads this on
+    ///         every swap, applies the right (possibly decaying) rate. No LP fee: see below.
     /// @dev The tax-window (and decay) logic lives here, in `_effectiveTaxBps(isBuy)`, so the hook stays
     ///      agnostic to the schedule: it gets zero tax once the window closes (or before a
-    ///      graduation-anchored token graduates). The LP fee is always effective.
+    ///      graduation-anchored token graduates).
     function getSwapFees(bool isBuy)
         external
         view
@@ -615,7 +614,9 @@ abstract contract RealmTaxableToken is
         override(IRealmToken, RealmToken)
         returns (IRealmToken.RealmTradeFees memory)
     {
-        return IRealmToken.RealmTradeFees({taxBps: _effectiveTaxBps(isBuy), lpFeeBps: swapLpFeeBps});
+        // The LP fee is charged natively by the Uniswap pool's fee tier (`poolFee()`); returning it here
+        // would make the hook charge it a second time.
+        return IRealmToken.RealmTradeFees({taxBps: _effectiveTaxBps(isBuy), lpFeeBps: LP_FEE_CHARGED_IN_SWAP_DELTA});
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////

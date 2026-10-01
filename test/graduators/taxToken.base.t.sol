@@ -72,7 +72,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(tokenAddress)),
-            fee: lpFee,
+            fee: _poolFee(tokenAddress),
             tickSpacing: tickSpacing,
             hooks: IHooks(address(taxHook))
         });
@@ -102,7 +102,7 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(token)),
-            fee: lpFee,
+            fee: _poolFee(token),
             tickSpacing: tickSpacing,
             hooks: IHooks(address(taxHook))
         });
@@ -147,5 +147,6 @@ contract TaxTokenUniV4BaseTests is BaseUniswapV4GraduationTests {
         uint256 valueIn = isBuy ? amountIn : 0;
         IUniversalRouter(universalRouter).execute{value: valueIn}(commands, inputs, block.timestamp);
         vm.stopPrank();
+        if (expectSuccess && !manualLpFees) _settleLpFees(token);
     }
 }

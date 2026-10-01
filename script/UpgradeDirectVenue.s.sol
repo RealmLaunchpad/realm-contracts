@@ -68,8 +68,10 @@ contract UpgradeDirectVenue is Script {
 
         vm.startBroadcast();
         // The factory takes the graduator as a constructor immutable, so the graduator comes first.
-        RealmDirectGraduatorUniV4 graduator =
-            new RealmDirectGraduatorUniV4(infra.univ4PoolManager, hook, anyPairHook, m.liquidityAdder);
+        // Deploys the `RealmLpLocker` in its constructor; the locker forwards fees to the LP fee router.
+        RealmDirectGraduatorUniV4 graduator = new RealmDirectGraduatorUniV4(
+            infra.univ4PoolManager, hook, anyPairHook, m.liquidityAdder, ChainConfig.lpFeeRouter()
+        );
         address newImpl = address(
             new RealmFactoryUniV4Direct(
                 IRealmFactory.TokenImpls({base: m.tokenImpl, tax: m.taxTokenV4Impl}),

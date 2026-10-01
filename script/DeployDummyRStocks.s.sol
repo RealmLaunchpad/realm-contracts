@@ -16,7 +16,7 @@ import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
-import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {Hop} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice Stand-in for a Robinhood rStock: a plain 18-decimal ERC20, whole supply to the deployer.
@@ -58,7 +58,7 @@ contract DummyRStock is ERC20 {
 ///      testnet ETH can be pulled back out when the experiment is over.
 ///
 /// @dev Routes are only PRINTED here (see `_reportRoute`); creators pass them at token creation, and
-///      an admin can set one for every token on the chain's `DIVIDEND_SWAP_REGISTRY` with
+///      an admin can set one for every token on the chain's `REALM_SWAPPER` with
 ///      `setRoute(ALL_TOKENS, …)`.
 ///
 /// @dev DEPLOYED SO FAR. The consumer of these is the frontend's payout catalogue
@@ -191,7 +191,7 @@ contract DeployDummyRStocks is Script {
     }
 
     /// @notice Prints the one-hop native -> stock route, in the wire format
-    ///         `RealmDividendSwapRegistry` takes.
+    ///         `RealmSwapper` takes.
     function _reportRoute(address token, RStock memory stock) internal pure {
         Hop[] memory hops = new Hop[](1);
         hops[0] = Hop({currency: token, fee: stock.fee, tickSpacing: stock.tickSpacing, hooks: address(0)});

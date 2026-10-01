@@ -37,6 +37,7 @@ contract ExportDeployments is Script {
         address dividendLogicV4;
         address earningsLogicV4;
         address lpFeeRouter;
+        address lpLocker;
         address lpFeeRouterImpl;
         address treasuryRouter;
         address treasuryRouterImpl;
@@ -46,8 +47,8 @@ contract ExportDeployments is Script {
         address quoter;
         address keeperLens;
         address keepersRegistry;
-        address dividendSwapRegistry;
-        address dividendSwapRegistryImpl;
+        address realmSwapper;
+        address realmSwapperImpl;
         address tokenImpl;
         address taxableTokenImpl;
         address taxableTokenV2Impl;
@@ -108,6 +109,7 @@ contract ExportDeployments is Script {
         d.dividendLogicV4 = DeploymentsRobinhoodMainnet.DIVIDEND_LOGIC_V4;
         d.earningsLogicV4 = DeploymentsRobinhoodMainnet.EARNINGS_LOGIC_V4;
         d.lpFeeRouter = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
+        d.lpLocker = DeploymentsRobinhoodMainnet.LP_LOCKER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER_IMPL;
         d.treasuryRouter = DeploymentsRobinhoodMainnet.TREASURY_ROUTER;
         d.treasuryRouterImpl = DeploymentsRobinhoodMainnet.TREASURY_ROUTER_IMPL;
@@ -117,8 +119,8 @@ contract ExportDeployments is Script {
         d.quoter = DeploymentsRobinhoodMainnet.QUOTER;
         d.keeperLens = DeploymentsRobinhoodMainnet.KEEPER_LENS;
         d.keepersRegistry = DeploymentAddressesRobinhoodMainnet.REALM_KEEPERS_REGISTRY;
-        d.dividendSwapRegistry = DeploymentAddressesRobinhoodMainnet.DIVIDEND_SWAP_REGISTRY;
-        d.dividendSwapRegistryImpl = DeploymentsRobinhoodMainnet.DIVIDEND_SWAP_REGISTRY_IMPL;
+        d.realmSwapper = DeploymentAddressesRobinhoodMainnet.REALM_SWAPPER;
+        d.realmSwapperImpl = DeploymentsRobinhoodMainnet.REALM_SWAPPER_IMPL;
         d.tokenImpl = DeploymentsRobinhoodMainnet.TOKEN_IMPL;
         d.taxableTokenImpl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsRobinhoodMainnet.TAXABLE_TOKEN_V2_IMPL;
@@ -165,6 +167,7 @@ contract ExportDeployments is Script {
         d.dividendLogicV4 = DeploymentsRobinhoodTestnet.DIVIDEND_LOGIC_V4;
         d.earningsLogicV4 = DeploymentsRobinhoodTestnet.EARNINGS_LOGIC_V4;
         d.lpFeeRouter = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
+        d.lpLocker = DeploymentsRobinhoodTestnet.LP_LOCKER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER_IMPL;
         d.treasuryRouter = DeploymentsRobinhoodTestnet.TREASURY_ROUTER;
         d.treasuryRouterImpl = DeploymentsRobinhoodTestnet.TREASURY_ROUTER_IMPL;
@@ -174,8 +177,8 @@ contract ExportDeployments is Script {
         d.quoter = DeploymentsRobinhoodTestnet.QUOTER;
         d.keeperLens = DeploymentsRobinhoodTestnet.KEEPER_LENS;
         d.keepersRegistry = DeploymentAddressesRobinhoodTestnet.REALM_KEEPERS_REGISTRY;
-        d.dividendSwapRegistry = DeploymentAddressesRobinhoodTestnet.DIVIDEND_SWAP_REGISTRY;
-        d.dividendSwapRegistryImpl = DeploymentsRobinhoodTestnet.DIVIDEND_SWAP_REGISTRY_IMPL;
+        d.realmSwapper = DeploymentAddressesRobinhoodTestnet.REALM_SWAPPER;
+        d.realmSwapperImpl = DeploymentsRobinhoodTestnet.REALM_SWAPPER_IMPL;
         d.tokenImpl = DeploymentsRobinhoodTestnet.TOKEN_IMPL;
         d.taxableTokenImpl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V4_IMPL;
         d.taxableTokenV2Impl = DeploymentsRobinhoodTestnet.TAXABLE_TOKEN_V2_IMPL;
@@ -228,6 +231,7 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmDividendLogicUniV4", d.dividendLogicV4));
         s = string.concat(s, _row("RealmEarningsLogicUniV4", d.earningsLogicV4));
         s = string.concat(s, _row("SwapLpFeeRouter (proxy)", d.lpFeeRouter));
+        s = string.concat(s, _row("RealmLpLocker", d.lpLocker));
         s = string.concat(s, _row("SwapLpFeeRouter (impl)", d.lpFeeRouterImpl));
         s = string.concat(s, _row("RealmTreasuryRouter (proxy)", d.treasuryRouter));
         s = string.concat(s, _row("RealmTreasuryRouter (impl)", d.treasuryRouterImpl));
@@ -237,8 +241,8 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmQuoter", d.quoter));
         s = string.concat(s, _row("RealmKeeperLens", d.keeperLens));
         s = string.concat(s, _row("RealmKeepersRegistry", d.keepersRegistry));
-        s = string.concat(s, _row("RealmDividendSwapRegistry (proxy)", d.dividendSwapRegistry));
-        s = string.concat(s, _row("RealmDividendSwapRegistry (impl)", d.dividendSwapRegistryImpl));
+        s = string.concat(s, _row("RealmSwapper (proxy)", d.realmSwapper));
+        s = string.concat(s, _row("RealmSwapper (impl)", d.realmSwapperImpl));
         s = string.concat(s, _row("RealmToken (impl)", d.tokenImpl));
         s = string.concat(s, _row("RealmTaxableTokenUniV4 (impl)", d.taxableTokenImpl));
         s = string.concat(s, _row("RealmTaxableTokenUniV2 (impl)", d.taxableTokenV2Impl));

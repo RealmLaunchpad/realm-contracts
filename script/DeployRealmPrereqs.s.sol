@@ -12,8 +12,9 @@ import {DeployRealmRegistries} from "script/DeployRealmRegistries.s.sol";
 /// @notice Deploys the three contracts that must exist before anything else is compiled, because their
 ///         addresses are baked into other contracts' bytecode rather than passed at runtime:
 ///           1. `RealmKeepersRegistry`         -> `DeploymentAddresses.REALM_KEEPERS_REGISTRY`
-///           2. `RealmDividendSwapRegistry`    -> `DeploymentAddresses.DIVIDEND_SWAP_REGISTRY` (PROXY)
-///           3. `SwapLpFeeRouter` impl + UUPS proxy -> `LP_FEE_ROUTER_IMPL` / `LP_FEE_ROUTER`
+///           2. `RealmSwapper`    -> `DeploymentAddresses.REALM_SWAPPER` (PROXY)
+///           3. `SwapLpFeeRouter` impl + UUPS proxy -> `LP_FEE_ROUTER_IMPL` / `LP_FEE_ROUTER` (wired to
+///              (1) and (2) through its constructor)
 ///
 ///         (1) and (2) are read by the taxable token implementations, which are non-upgradeable clone
 ///         masters: an impl compiled against the placeholder fails closed FOREVER — every
@@ -45,7 +46,9 @@ contract DeployRealmPrereqs is DeployRealmRegistries {
 
         // The hook takes this proxy as an immutable, so it must exist before `DeployRealmSwapHook`.
         // `initialize()` runs inside the proxy constructor so ownership cannot be front-run.
-        address routerImpl = address(new SwapLpFeeRouter(treasury));
+        // The router sells token-side LP fees through the swapper, keeper-gated by the registry: both are
+        // constructor immutables because their `DeploymentAddresses` constants do not exist yet.
+        address routerImpl = address(new SwapLpFeeRouter(treasury, dividendProxy, keepers));
         address routerProxy = address(new ERC1967Proxy(routerImpl, abi.encodeCall(SwapLpFeeRouter.initialize, ())));
 
         vm.stopBroadcast();

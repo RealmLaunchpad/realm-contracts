@@ -45,11 +45,15 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
         testToken = _createTaxToken(0, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
         _poolBuy(testToken, 2 ether);
         _graduateToken();
+        testPoolFee = _poolFee(testToken);
     }
+
+    /// @dev Cached so `_key()` makes no call that would consume a pending `expectRevert`.
+    uint24 internal testPoolFee;
 
     /// @dev The key in the type the ADDER expects.
     function _key() internal view returns (CorePoolKey memory) {
-        return UniswapV4PoolConstants.realmPoolKey(testToken, address(taxHook));
+        return UniswapV4PoolConstants.realmPoolKey(testToken, address(taxHook), testPoolFee);
     }
 
     function _currentTick() internal view returns (int24 tick) {

@@ -22,8 +22,8 @@ library DeploymentsRobinhoodMainnet {
     address internal constant UNIV4_LIQUIDITY_ADDER = 0x7738cB7BcdD535fBd8033c747d5b42AEb24F1448;
     address internal constant MASTER_FEE_HANDLER = 0x431cADEa3bbfb91bC7d065b6bfd234DccD760a3e;
 
-    /// @notice Swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
-    ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. The direct V4 graduator points here for native pools.
+    /// @notice Swap hook: fee-agnostic, reads each token's fees via `getSwapFees` (taxes only on current
+    ///         tokens; the LP fee is the pool's native tier) and forwards any LP fee to `LP_FEE_ROUTER`. The direct V4 graduator points here for native pools.
     /// @dev Realm deploys its OWN hook rather than reusing the Livo one, whose `TREASURY` and
     ///      `FEE_ROUTER` immutables are pinned to Livo addresses and cannot be repointed. Deploy with
     ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
@@ -38,6 +38,10 @@ library DeploymentsRobinhoodMainnet {
     /// @notice `RealmDirectGraduatorUniV4`: the direct-launch venue's graduator. Non-upgradeable, holds
     ///         every launch's seed position NFTs forever.
     address public constant GRADUATOR_UNIV4_DIRECT = 0xE46F23DcfFa51513C42978E7EE136383632cD76F;
+    /// @notice `RealmLpLocker` holding every seed band and bid wall of `GRADUATOR_UNIV4_DIRECT`'s tokens.
+    ///         Deployed by that graduator's constructor (read it back as `LP_LOCKER()`); `address(0)` until
+    ///         the graduator that deploys one is live on this chain.
+    address public constant LP_LOCKER = address(0);
 
     /// @notice `RealmFactoryUniV4Direct` proxy — the direct-launch venue's entry point.
     address public constant FACTORY_UNIV4_DIRECT = 0x7c3777357da3f2FB8911ddA946afB1Fc74f0A613;
@@ -88,10 +92,10 @@ library DeploymentsRobinhoodMainnet {
     ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
     address internal constant KEEPER_LENS = 0x0aD42818CeF3849e34eFBBb8918469Dfb65568a9;
 
-    /// @notice Implementation behind the `RealmDividendSwapRegistry` proxy, which lives in
-    ///         `DeploymentAddresses.sol` (`DIVIDEND_SWAP_REGISTRY`). Update on every registry upgrade;
+    /// @notice Implementation behind the `RealmSwapper` proxy, which lives in
+    ///         `DeploymentAddresses.sol` (`REALM_SWAPPER`). Update on every registry upgrade;
     ///         tracked for verification and audit trails only.
-    address internal constant DIVIDEND_SWAP_REGISTRY_IMPL = 0xD184B23515792d3723906630026EEaaE3295B5F0;
+    address internal constant REALM_SWAPPER_IMPL = 0xD184B23515792d3723906630026EEaaE3295B5F0;
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0x90Ec28b1F31E576Bb368F873fEf209cFa6880c05;
@@ -178,9 +182,9 @@ library DeploymentsRobinhoodMainnet {
     }
 
     // --- Dividends ---
-    /// @dev ROUTES ARE PER TOKEN, ON THE REGISTRY (`DIVIDEND_SWAP_REGISTRY` in `DeploymentAddresses.sol`):
+    /// @dev ROUTES ARE PER TOKEN, ON THE REGISTRY (`REALM_SWAPPER` in `DeploymentAddresses.sol`):
     ///      the creator passes them at creation, and an admin can repoint them per token or for every
-    ///      token paying an asset (`RealmDividendSwapRegistry.setRoute(ALL_TOKENS, …)`). Any ERC20 can
+    ///      token paying an asset (`RealmSwapper.setRoute(ALL_TOKENS, …)`). Any ERC20 can
     ///      be a payout asset; one without a route does not convert until it gets one. Set an override
     ///      only after `test_catalogue_everyRouteConvertsAtMaxSize`-style fork proof that it absorbs a
     ///      full conversion. Also needed before dividends launch: `setAdmin(...)` and

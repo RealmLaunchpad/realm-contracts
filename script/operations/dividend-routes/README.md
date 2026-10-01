@@ -3,7 +3,7 @@
 A dividend payout asset is bought, not held: the token accrues native currency and converts it into the
 asset on every distribution. Which pools that conversion crosses is the **route**. The **creator**
 picks it: the token passes one route per payout asset at creation (`dividendRoutes`, plus `quoteRoutes`
-on the direct venue) and registers it on `RealmDividendSwapRegistry` against itself, so no creator
+on the direct venue) and registers it on `RealmSwapper` against itself, so no creator
 can affect another token's routes. The frontend fills these from its payout catalogue.
 
 **Any ERC20 can be a payout asset.** The registry checks a route's shape only, not its liquidity, and
@@ -38,7 +38,7 @@ candidate (V4, V3, and the asset's V2 pair) against forked state and keeping whi
 asset no candidate can buy at that size is left out. It **broadcasts nothing**. Its output,
 `catalogue.robinhood.mainnet.json`, maps asset address to route bytes: ship it in the frontend's payout
 catalogue, which creators' routes come from. The probe needs a registry built from this tree at
-`DIVIDEND_SWAP_REGISTRY` (it calls the per-token `setRoute`); against an older one every probe scores 0.
+`REALM_SWAPPER` (it calls the per-token `setRoute`); against an older one every probe scores 0.
 
 Re-run it as the routes' health check, together with the opt-in fork sweep
 (`CHECK_DIVIDEND_CATALOGUE=true`, `test_catalogue_everyRouteConvertsAtMaxSize`), which logs each listed
@@ -59,7 +59,7 @@ A hop through an Arcus hook costs ~500-650k gas.
 
 ```
 uv run script/operations/dividend-routes/discover_rstock_routes.py --only NVDA -o /tmp/nvda.json
-DIVIDEND_SWAP_REGISTRY=0x… ROUTES_JSON=/tmp/nvda.json ROUTES_OUT=/tmp/nvda-catalogue.json just pick-dividend-routes
+REALM_SWAPPER=0x… ROUTES_JSON=/tmp/nvda.json ROUTES_OUT=/tmp/nvda-catalogue.json just pick-dividend-routes
 ```
 
 `--only` takes ticker symbols or token addresses, comma-separated, of rStocks or Arcus pTokens; `arcus`

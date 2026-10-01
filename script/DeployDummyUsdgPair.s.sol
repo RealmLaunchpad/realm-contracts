@@ -17,7 +17,7 @@ import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IA
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 import {DummyRStock} from "script/DeployDummyRStocks.s.sol";
-import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {Hop} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice Deploys one dummy token on Robinhood testnet whose ONLY pool is a Uniswap V4 one against the
@@ -25,7 +25,7 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 ///         the two-hop native -> USDG -> token, the shape mainnet's Arcus pTokens have.
 /// @dev Full-range liquidity, position NFT to the broadcaster, who must hold the dummy USDG (the
 ///      `DeployDummyRStocks` deployer does). The route is only PRINTED: pass it at token creation, or
-///      set it for every token with `DIVIDEND_SWAP_REGISTRY.setRoute(ALL_TOKENS, token, route)`.
+///      set it for every token with `REALM_SWAPPER.setRoute(ALL_TOKENS, token, route)`.
 ///      The asset cannot be listed as a quote: the testnet whitelist has no reference asset.
 ///
 /// Usage (dry run):  forge script DeployDummyUsdgPair --rpc-url rh-testnet --account realm.dev

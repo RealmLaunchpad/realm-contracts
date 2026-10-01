@@ -81,8 +81,8 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         );
     }
 
-    function _poolKey(address token) internal pure returns (CorePoolKey memory) {
-        return UniswapV4PoolConstants.realmPoolKey(token, address(0), TEST_HOOK_ADDRESS);
+    function _poolKey(address token) internal view returns (CorePoolKey memory) {
+        return UniswapV4PoolConstants.realmPoolKey(token, address(0), TEST_HOOK_ADDRESS, _poolFee(token));
     }
 
     /////////////////////////// TESTS ///////////////////////////
@@ -310,7 +310,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         assertEq(IERC20(token).balanceOf(address(directFactory)), 0, "factory must keep nothing");
     }
 
-    function test_taxableToken_launchesAndTaxesPostLaunchSwaps() public {
+    function test_taxableToken_launchesAndTaxesPostLaunchSwaps() public virtual {
         RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(true);
         vm.prank(creator);
         address token = directFactory.createToken(
@@ -325,7 +325,8 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
 
         IRealmToken.RealmTradeFees memory fees = IRealmToken(token).getSwapFees(true);
         assertEq(fees.taxBps, 300, "tax must be live from launch");
-        assertEq(fees.lpFeeBps, 100);
+        assertEq(fees.lpFeeBps, 0, "no hook-charged LP fee: the pool charges it natively");
+        assertEq(_poolFee(token), 10_000, "a 1% pool fee tier");
 
         _swapBuyV4(alice, token, 0.02 ether, 0, true);
         assertGt(IERC20(token).balanceOf(alice), 0);

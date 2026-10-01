@@ -78,17 +78,17 @@ _retarget taxlib:
     @just _taxtoken {{taxlib}}
 
 # (internal) Repoints the taxable-token impls' (and their venue bases, the V4 buy-backs, the dividend
-# mixin, the keeper gate, the dividend swap registry and the two test helpers that etch the registries
+# mixin, the keeper gate, the `RealmSwapper` and the two test helpers that etch the registries
 # at the address those bake in) `DeploymentAddresses` import to the target chain. Use a `chain-*` recipe.
 _taxtoken lib:
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
         src/tokens/RealmTaxableTokenUniV2.sol src/tokens/RealmTaxableTokenUniV4.sol src/tokens/RealmUniv4BuyBacks.sol \
         src/tokens/RealmTaxableTokenUniV2Base.sol src/tokens/RealmTaxableTokenUniV4Base.sol \
-        src/tokens/DividendDistribution.sol src/dividends/RealmDividendSwapRegistry.sol src/tokens/KeeperGated.sol \
-        test/helpers/DividendRegistryHelpers.sol test/helpers/KeepersRegistryHelpers.sol
+        src/tokens/DividendDistribution.sol src/swapper/RealmSwapper.sol src/tokens/KeeperGated.sol \
+        test/helpers/RealmSwapperHelpers.sol test/helpers/KeepersRegistryHelpers.sol
 
 # ============================ FRESH DEPLOY (two phases) ============================
-# Phase 0. Keepers registry + dividend swap registry + LP fee router. Their addresses are COMPILE-TIME
+# Phase 0. Keepers registry + `RealmSwapper` + LP fee router. Their addresses are COMPILE-TIME
 # constants elsewhere, so they must exist before anything else is built. Paste the two printed
 # constants into src/config/DeploymentAddresses.sol, then rebuild.
 
@@ -227,16 +227,16 @@ upgrade-assets-whitelist-rh-testnet: chain-rh-testnet
     forge script UpgradeAssetsWhitelist --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Deploys a new RealmDividendSwapRegistry implementation and repoints this chain's DIVIDEND_SWAP_REGISTRY
+# Deploys a new RealmSwapper implementation and repoints this chain's REALM_SWAPPER
 # proxy at it. Routes, thresholds and keeper wallet are kept; the proxy address never moves, so nothing to
 # paste. Dry-run first: the same command without --broadcast, plus --sender <realm.dev address>.
 
-upgrade-dividend-registry-rh: chain-rh
-    forge script UpgradeDividendSwapRegistry --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+upgrade-realm-swapper-rh: chain-rh
+    forge script UpgradeRealmSwapper --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
-upgrade-dividend-registry-rh-testnet: chain-rh-testnet
-    forge script UpgradeDividendSwapRegistry --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+upgrade-realm-swapper-rh-testnet: chain-rh-testnet
+    forge script UpgradeRealmSwapper --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Deploys a new RealmVoting implementation for the manifest's CURRENT REALM_TOKEN (the token it burns is

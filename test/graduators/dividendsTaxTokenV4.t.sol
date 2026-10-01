@@ -10,9 +10,9 @@ import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {setDividendRoute} from "test/helpers/RealmSwapperHelpers.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @notice Integration tests for the holder-dividends earnings-allocation leg on Uniswap V4: the
@@ -34,7 +34,7 @@ contract PartialFillRouterStub {
 contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function setUp() public virtual override {
         super.setUp();
-        setDividendRoute(dividendSwapRegistry, MSFT, DividendRouteLib.encodeV2());
+        setDividendRoute(realmSwapper, MSFT, DividendRouteLib.encodeV2());
     }
 
     /// @dev A second dividend asset, routed through its V2 pair. Robinhood rStock, so the WETH pair it
@@ -345,7 +345,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      buffer could never convert.
     function test_anErc20WithoutARouteRevertsCreation() public {
         address asset = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9; // AAPL, no route set
-        assertEq(dividendSwapRegistry.routeOf(address(0), asset).length, 0, "precondition: no route");
+        assertEq(realmSwapper.routeOf(address(0), asset).length, 0, "precondition: no route");
         vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingDividendRoute.selector, asset));
         _createDividendToken(5_000, asset);
     }

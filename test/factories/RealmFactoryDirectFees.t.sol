@@ -94,6 +94,8 @@ contract RealmFactoryDirectFeesTest is LaunchpadBaseTestsWithDirectV4 {
         );
 
         assertTrue(feeHandler.isDirectReceiver(token, creator), "registered before deployer-buy fees flow");
+        // The dev buy paid the pool's native fee into the seed band; a (permissionless) collect routes it.
+        _settleLpFees(token);
         assertGt(creator.balance, creatorBefore - 0.05 ether, "the dev buy's creator LP fee came straight back");
     }
 }

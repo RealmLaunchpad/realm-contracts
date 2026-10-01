@@ -68,6 +68,7 @@ contract V2Harness is LensHarness {
 
 /// @notice A V4-venue token: native buffers and the direct venue's ERC20-quote legs.
 contract V4Harness is LensHarness {
+    uint24 public constant poolFee = 5_000;
     uint256 public burnPendingEth;
     uint256 public liquidityPendingEth;
 
@@ -237,7 +238,14 @@ contract RealmKeeperLensTests is Test {
         RealmKeeperLens.TokenState memory s = _state(address(v4));
 
         assertEq(s.maxPerConversion, v4.MAX_DIVIDEND_PER_CONVERSION(), "max per conversion");
-        assertEq(s.swapRegistry, v4.DIVIDEND_SWAP_REGISTRY(), "swap registry");
+        assertEq(s.swapRegistry, v4.REALM_SWAPPER(), "swap registry");
+        assertEq(s.poolFee, 5_000, "pool fee tier");
+    }
+
+    /// @dev when a token predates the native pool fee, then its pool fee reads as 0 instead of reverting
+    function test_keeperState_poolFeeIsZeroWhereAbsent() public {
+        LegacyHarness legacy = new LegacyHarness(DAI, 42e18, 9e18, true);
+        assertEq(_state(address(legacy)).poolFee, 0, "no pool fee getter");
     }
 
     function test_keeperState_readsTheLegacyGenerationThroughItsOwnGetters() public {

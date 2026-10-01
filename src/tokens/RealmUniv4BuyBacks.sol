@@ -39,11 +39,13 @@ abstract contract RealmUniv4BuyBacks {
     ///         router-LEVEL command, not a v4 action: `V4Router` rejects `Actions.SWEEP` as unsupported.
     uint8 internal constant SWEEP_COMMAND = 0x04;
 
+    /// @dev This token's V4 pool fee tier in pips, which keys its pool (`RealmToken.poolFee()`).
+    function _poolFee() internal view virtual returns (uint24);
+
     /// @dev Buys this token with `ethIn` native ETH on its canonical graduated pool
     ///      (`UniswapV4PoolConstants.realmPoolKey` — the same key the graduator initialized), requiring at
     ///      least `minTokensOut`. Tokens are TAKEn to this contract.
-    /// @dev The swap routes through `RealmSwapHook`, which charges the usual LP fee (and, inside the tax
-    ///      window, tax). Callers must guard against reentrancy from those hooks themselves.
+    /// @dev The swap pays the pool's native fee and, inside the tax window, the hook's tax. Callers must guard against reentrancy from those hooks themselves.
     /// @dev A LOW-LEVEL call, on purpose, so a router revert becomes `false` here instead of taking down
     ///      the caller. The dividend freeze needs exactly that: it reads "no tokens bought" as "the
     ///      conversion did not happen" and keeps its buffer, and its escape hatch for a pool that has
@@ -75,8 +77,9 @@ abstract contract RealmUniv4BuyBacks {
         if (minTokensOut > type(uint128).max || amountIn > type(uint128).max) return false;
 
         // abi round-trip converts the canonical lib/v4-core key into v4-periphery's identical PoolKey.
-        PoolKey memory key =
-            abi.decode(abi.encode(UniswapV4PoolConstants.realmPoolKey(address(this), quote, hook)), (PoolKey));
+        PoolKey memory key = abi.decode(
+            abi.encode(UniswapV4PoolConstants.realmPoolKey(address(this), quote, hook, _poolFee())), (PoolKey)
+        );
         bool quoteIsC0 = quote < address(this);
         (Currency currencyIn, Currency currencyOut) =
             quoteIsC0 ? (key.currency0, key.currency1) : (key.currency1, key.currency0);

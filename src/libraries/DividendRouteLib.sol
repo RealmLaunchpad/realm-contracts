@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {Hop} from "src/interfaces/IRealmSwapper.sol";
 
 /// @title DividendRouteLib
 /// @notice The one wire format for a dividend payout asset's swap route, and the only place it is
-///         decoded. An admin sets one route per asset on `RealmDividendSwapRegistry`, as opaque
+///         decoded. An admin sets one route per asset on `RealmSwapper`, as opaque
 ///         `bytes` tagged with the venue it names.
 ///
 /// @dev WHY ONE `bytes` FIELD AND NOT A STRUCT PER VENUE. A V4 route is a list of

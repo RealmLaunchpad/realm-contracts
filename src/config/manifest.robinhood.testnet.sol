@@ -22,8 +22,8 @@ library DeploymentsRobinhoodTestnet {
     address internal constant UNIV4_LIQUIDITY_ADDER = 0x20129911e18C775BBBC7388cfBe8D88F0371E96E;
     address internal constant MASTER_FEE_HANDLER = 0xA0cbcF47Eb58D56f480047465C8f52aa984Fdd88;
 
-    /// @notice Swap hook: fee-agnostic, reads each token's `swapLpFeeBps` via
-    ///         `getSwapFees` and forwards LP fees to `LP_FEE_ROUTER`. The direct V4 graduator points here for native pools.
+    /// @notice Swap hook: fee-agnostic, reads each token's fees via `getSwapFees` (taxes only on current
+    ///         tokens; the LP fee is the pool's native tier) and forwards any LP fee to `LP_FEE_ROUTER`. The direct V4 graduator points here for native pools.
     /// @dev Realm deploys its OWN hook rather than reusing the Livo one, whose `TREASURY` and
     ///      `FEE_ROUTER` immutables are pinned to Livo addresses and cannot be repointed. Deploy with
     ///      `DeployRealmSwapHook` (`RealmSwapHook` or `RealmHook`, see that script) and paste whichever
@@ -38,6 +38,10 @@ library DeploymentsRobinhoodTestnet {
     /// @notice `RealmDirectGraduatorUniV4`: the direct-launch venue's graduator. Non-upgradeable, holds
     ///         every launch's seed position NFTs forever.
     address public constant GRADUATOR_UNIV4_DIRECT = 0xDaC64d8cB1182291a8586A39C6634d7BcD6a06fa;
+    /// @notice `RealmLpLocker` holding every seed band and bid wall of `GRADUATOR_UNIV4_DIRECT`'s tokens.
+    ///         Deployed by that graduator's constructor (read it back as `LP_LOCKER()`); `address(0)` until
+    ///         the graduator that deploys one is live on this chain.
+    address public constant LP_LOCKER = address(0);
 
     /// @notice `RealmFactoryUniV4Direct` proxy — the direct-launch venue's entry point.
     address public constant FACTORY_UNIV4_DIRECT = 0x3307857e113E9fF6D53Cf5478F9320407232574E;
@@ -88,10 +92,10 @@ library DeploymentsRobinhoodTestnet {
     ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
     address internal constant KEEPER_LENS = 0xEaE1241eb290Ddd1161edB74A6451A879c4Ba992;
 
-    /// @notice Implementation behind the `RealmDividendSwapRegistry` proxy, which lives in
-    ///         `DeploymentAddresses.sol` (`DIVIDEND_SWAP_REGISTRY`). Update on every registry upgrade;
+    /// @notice Implementation behind the `RealmSwapper` proxy, which lives in
+    ///         `DeploymentAddresses.sol` (`REALM_SWAPPER`). Update on every registry upgrade;
     ///         tracked for verification and audit trails only.
-    address internal constant DIVIDEND_SWAP_REGISTRY_IMPL = 0x8CaF04B4817FD3c8b7A126F0Fc337A1A71F1665b;
+    address internal constant REALM_SWAPPER_IMPL = 0x8CaF04B4817FD3c8b7A126F0Fc337A1A71F1665b;
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0xfF7Bc346867c56D2C8109515d0a3fE2f4459661C;

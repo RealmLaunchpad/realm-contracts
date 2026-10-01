@@ -20,23 +20,15 @@ import {IRealmV4Graduator, RealmTaxableTokenUniV4Base} from "src/tokens/RealmTax
 import {WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
-interface IERC721Minimal {
-    function balanceOf(address owner) external view returns (uint256);
-}
-
-/// @notice Stand-in for `RealmUniV4LiquidityAdder` on its zero-liquidity branch: an amount that sizes to
-///         no liquidity is handed straight back to the caller. Real pools only reach this with an amount
+/// @notice Stand-in for `RealmLpLocker.addWall` on the adder's zero-liquidity branch: an amount that sizes
+///         to no liquidity is handed straight back to the caller. Real pools only reach this with an amount
 ///         far below anything a Realm pool's tick range can produce, so the branch is mocked rather than
 ///         contrived.
-contract RefundingLiquidityAdderStub {
-    function addOrTopUpSingleSided(PoolKey calldata, WallParams calldata, uint256[2] calldata, int24[2] calldata)
-        external
-        payable
-        returns (uint128, uint256, int24)
-    {
+contract RefundingLpLockerStub {
+    function addWall(address, uint256) external payable returns (uint128, uint256, int24, uint256) {
         (bool sent,) = msg.sender.call{value: msg.value}("");
         require(sent, "refund failed");
-        return (0, 0, 0);
+        return (0, 0, 0, 0);
     }
 }
 
@@ -92,16 +84,14 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         uint256 pending = liqToken.liquidityPendingEth();
         assertGt(pending, 0, "liquidity ETH should accrue from the sell tax");
 
-        uint256 positionsBefore = IERC721Minimal(positionManagerAddress).balanceOf(token);
+        uint256 positionsBefore = lpLocker.positionIds(token).length;
         uint256 tokenEthBefore = token.balance;
 
         liqToken.processLiquidity();
 
         assertEq(liqToken.liquidityPendingEth(), 0, "liquidity buffer drained");
         assertEq(
-            IERC721Minimal(positionManagerAddress).balanceOf(token),
-            positionsBefore + 1,
-            "token owns one more single-sided ETH position"
+            lpLocker.positionIds(token).length, positionsBefore + 1, "the locker holds one more wall for the token"
         );
         // The buffered ETH left the token (into the position); only rounding dust may remain.
         assertLt(token.balance, tokenEthBefore, "buffered ETH deposited into the position");
@@ -125,10 +115,10 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         uint256 pending = liqToken.liquidityPendingEth();
         assertGt(pending, 0, "liquidity ETH should accrue from the sell tax");
 
-        // Swap in an adder that places nothing and refunds — the branch a real pool only reaches for an
+        // Swap in a locker that places nothing and refunds — the branch a real pool only reaches for an
         // amount too small for its tick range to size.
-        address stub = address(new RefundingLiquidityAdderStub());
-        vm.mockCall(liqToken.graduator(), abi.encodeWithSignature("LIQUIDITY_ADDER()"), abi.encode(stub));
+        address stub = address(new RefundingLpLockerStub());
+        vm.mockCall(liqToken.graduator(), abi.encodeWithSignature("LP_LOCKER()"), abi.encode(stub));
 
         uint256 ethBefore = token.balance;
         liqToken.processLiquidity();
@@ -169,7 +159,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     }
 
     function _positionCount() internal view returns (uint256) {
-        return IERC721Minimal(positionManagerAddress).balanceOf(testToken);
+        return lpLocker.positionIds(testToken).length;
     }
 
     /// @dev Rolls a block (the once-per-block cooldown) and processes, returning the wall memory after.
@@ -362,9 +352,9 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertApproxEqAbs(liqToken.liquidityPendingEth(), pending - cap, 1e12, "the remainder stays earmarked");
     }
 
-    /// @dev The token grants the adder an ERC721 approval so it can top up. That approval must not become
-    ///      a way for a passer-by to route the position's payouts to themselves: minting stays open to
-    ///      anyone, but topping up someone else's wall does not.
+    /// @dev The locker, which owns the walls, grants the adder an ERC721 approval so it can top up. That
+    ///      approval must not become a way for a passer-by to route the position's payouts to themselves:
+    ///      minting stays open to anyone, but topping up someone else's wall does not.
     function test_v4LiquidityAdder_topUpIsOwnerOnly() public {
         RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
@@ -374,21 +364,17 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
 
         address adder = IRealmV4Graduator(liqToken.graduator()).LIQUIDITY_ADDER();
         assertTrue(
-            IERC721(positionManagerAddress).isApprovedForAll(testToken, adder), "the adder is approved to top up"
+            IERC721(positionManagerAddress).isApprovedForAll(address(lpLocker), adder),
+            "the adder is approved to top up the locker's walls"
         );
 
         address attacker = makeAddr("attacker");
         vm.deal(attacker, 1 ether);
+        PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(testToken, address(taxHook), _poolFee(testToken));
         vm.prank(attacker);
         vm.expectRevert(RealmUniV4LiquidityAdder.NotPositionOwner.selector);
         IRealmUniV4LiquidityAdder(adder).addOrTopUpSingleSidedEth{value: 1 ether}(
-            UniswapV4PoolConstants.realmPoolKey(testToken, address(taxHook)),
-            14000,
-            2000,
-            ids,
-            tickLowers,
-            attacker,
-            attacker
+            key, 14000, 2000, ids, tickLowers, attacker, attacker
         );
     }
 }

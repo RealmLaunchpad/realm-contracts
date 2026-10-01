@@ -50,7 +50,7 @@ struct EarningsAllocationMultiConfig {
     uint16[] dividendWeightsBps;
     /// @dev One route per asset, positionally, in the `DividendRouteLib` wire format: the pools this
     ///      token converts that asset through, chosen by the creator and registered against this token
-    ///      on `RealmDividendSwapRegistry`, where an admin can repoint it later. An entry may be empty —
+    ///      on `RealmSwapper`, where an admin can repoint it later. An entry may be empty —
     ///      no route yet — and the array may be SHORTER than `dividendTokens`, which means empty for the
     ///      rest. The registry checks shape only: not liquidity, and not that the price is the real one.
     bytes[] dividendRoutes;

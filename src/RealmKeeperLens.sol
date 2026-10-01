@@ -28,7 +28,11 @@ interface IDividendTokenLegacy {
 ///      quote getters only on V4 — which is exactly what makes them venue discriminators.
 interface IDividendTokenCommon {
     function MAX_DIVIDEND_PER_CONVERSION() external view returns (uint256);
+    function REALM_SWAPPER() external view returns (address);
+    /// @dev The same getter under its pre-rename name, on older implementations.
     function DIVIDEND_SWAP_REGISTRY() external view returns (address);
+    /// @dev The V4 pool fee tier in pips. Absent on older implementations.
+    function poolFee() external view returns (uint24);
     function SWAP_THRESHOLD() external view returns (uint256);
     function dividendPendingTokens() external view returns (uint256);
     function liquidityPendingTokens() external view returns (uint256);
@@ -111,6 +115,10 @@ contract RealmKeeperLens {
         uint256 liquidityPendingTokens;
         /// @notice One entry per configured asset, in index order. Empty when `isDividendToken` is false.
         AssetState[] assets;
+        /// @notice The V4 pool fee tier in pips (10000 = 1%), what every swap pays the pool's LPs on top of
+        ///         the tax. 0 on V2 and on implementations that predate the native pool fee (whose LP fee
+        ///         the hook charged instead).
+        uint24 poolFee;
     }
 
     /// @notice One ERC20-quote leg's buffers on the direct venue.
@@ -218,7 +226,8 @@ contract RealmKeeperLens {
         s.assetCount = uint8(s.multiAsset ? (count > MAX_ASSETS ? MAX_ASSETS : count) : 1);
 
         (, s.maxPerConversion) = _word(token, abi.encodeCall(IDividendTokenCommon.MAX_DIVIDEND_PER_CONVERSION, ()));
-        (, uint256 registry) = _word(token, abi.encodeCall(IDividendTokenCommon.DIVIDEND_SWAP_REGISTRY, ()));
+        (bool renamed, uint256 registry) = _word(token, abi.encodeCall(IDividendTokenCommon.REALM_SWAPPER, ()));
+        if (!renamed) (, registry) = _word(token, abi.encodeCall(IDividendTokenCommon.DIVIDEND_SWAP_REGISTRY, ()));
         // casting to 'uint160' is safe because the word came back from an `address` getter; a wider
         // value means the callee is not what it claims, and truncating it to a junk address is exactly
         // as useful to the keeper as reverting the whole batch would be harmful.
@@ -233,6 +242,10 @@ contract RealmKeeperLens {
         (, s.liquidityPendingEth) = _word(token, abi.encodeCall(IDividendTokenCommon.liquidityPendingEth, ()));
 
         s.assets = s.multiAsset ? _multiAssets(token, s.assetCount) : _legacyAsset(token);
+        (, uint256 fee) = _word(token, abi.encodeCall(IDividendTokenCommon.poolFee, ()));
+        // casting to 'uint24' is safe because the word came back from a `uint24` getter.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        s.poolFee = uint24(fee);
     }
 
     /// @dev Current generation: one `dividendAssets(i)` per configured asset.

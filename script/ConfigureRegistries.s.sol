@@ -5,7 +5,7 @@ import {Script, console} from "forge-std/Script.sol";
 
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 import {BuildTarget} from "script/BuildTarget.sol";
 import {DeploymentAddresses as KeeperGateBuild} from "src/tokens/KeeperGated.sol";
@@ -16,8 +16,8 @@ import {DeploymentAddresses as DividendBuild} from "src/tokens/DividendDistribut
 ///         that holds every operational lever and the keeper that triggers `process*`:
 ///           1. `RealmKeepersRegistry.setAdmin(admin, true)`        — owner-only
 ///           2. `RealmKeepersRegistry.setKeeper(keeper, true)`      — admin-only, hence after (1)
-///           3. `RealmDividendSwapRegistry.setAdmin(admin, true)`   — owner-only
-///           4. `RealmDividendSwapRegistry.setKeeperFunding(keeper)` — admin-only, hence after (3)
+///           3. `RealmSwapper.setAdmin(admin, true)`   — owner-only
+///           4. `RealmSwapper.setKeeperFunding(keeper)` — admin-only, hence after (3)
 ///           5. `RealmAssetsWhitelist.setApprover(admin, true)`     — owner-only
 ///
 /// @dev (5) is the same appointment in the direct venue's registry: its owner cannot list a quote asset,
@@ -39,7 +39,7 @@ contract ConfigureRegistries is Script {
         BuildTarget.assertBuiltFor(block.chainid);
 
         RealmKeepersRegistry keepers = RealmKeepersRegistry(KeeperGateBuild.REALM_KEEPERS_REGISTRY);
-        RealmDividendSwapRegistry dividends = RealmDividendSwapRegistry(payable(DividendBuild.DIVIDEND_SWAP_REGISTRY));
+        RealmSwapper dividends = RealmSwapper(payable(DividendBuild.REALM_SWAPPER));
         address keeper = ChainConfig.realmKeeper();
 
         vm.startBroadcast();

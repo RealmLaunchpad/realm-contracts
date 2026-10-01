@@ -8,6 +8,8 @@ import {
 import {BaseUniswapV4GraduationTests} from "test/graduators/graduationUniv4.base.t.sol";
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
+import {RealmSwapHook} from "src/hooks/RealmSwapHook.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, UniswapV4ClaimFeesViewFunctionsBase {
     function setUp() public override(TaxTokenUniV4BaseTests, BaseUniswapV4FeesTests) {
@@ -43,26 +45,27 @@ contract UniswapV4ClaimFeesViewFunctions_TaxToken is TaxTokenUniV4BaseTests, Uni
 
     /// @notice Verify that sell tax math is correct: tax/gross == taxBps
     function test_sellTax_amountIsCorrect() public createAndGraduateToken {
-        uint256 claimableBefore = _creatorClaimable();
         uint256 ethBefore = buyer.balance;
-        uint256 treasuryBefore = treasury.balance;
 
         uint256 sellAmount = 100_000_000e18;
+        vm.recordLogs();
         _swapSell(buyer, sellAmount, 0.1 ether, true);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
 
         uint256 Y = buyer.balance - ethBefore; // ETH received by seller
-        uint256 creatorDelta = _creatorClaimable() - claimableBefore; // LP creator share + sell tax
-        uint256 treasuryDelta = treasury.balance - treasuryBefore; // LP treasury share
-        uint256 gross = Y + creatorDelta + treasuryDelta; // total ETH from pool
+        // The seller's sell is the first tax accrual; the swap helper's LP-fee conversion comes after it.
+        uint256 tax = abi.decode(
+            _firstLogData(
+                logs, address(taxHook), RealmSwapHook.CreatorTaxesAccrued.selector, bytes32(uint256(uint160(testToken)))
+            ),
+            (uint256)
+        );
+        // The hook takes nothing but the tax from the pool's output: the LP fee was paid in the token.
+        uint256 gross = Y + tax;
 
-        // creatorDelta = lpCreatorShare + taxAmount, so isolating the tax means subtracting the
-        // creator's LP share of the gross (the creator and treasury LP shares are no longer
-        // equal, so `creatorDelta - treasuryDelta` would leave the 20 bps gap in `taxOnly`).
-        uint256 taxOnly = creatorDelta - _lpCreatorShare(gross);
-
-        // taxOnly / gross == DEFAULT_SELL_TAX_BPS
+        // tax / gross == DEFAULT_SELL_TAX_BPS
         assertApproxEqRel(
-            taxOnly * 10_000, gross * DEFAULT_SELL_TAX_BPS, 0.0000001e18, "tax/gross should be ~DEFAULT_SELL_TAX_BPS"
+            tax * 10_000, gross * DEFAULT_SELL_TAX_BPS, 0.0000001e18, "tax/gross should be ~DEFAULT_SELL_TAX_BPS"
         );
     }
 

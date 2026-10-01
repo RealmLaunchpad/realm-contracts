@@ -7,10 +7,10 @@ import {RobinhoodForkBase} from "test/integration/fork/robinhood/RobinhoodForkBa
 import {DeploymentAddressesRobinhoodMainnet as Robinhood} from "src/config/DeploymentAddresses.sol";
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
+import {Hop} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
-import {installDividendSwapRegistry, setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {installRealmSwapper, setDividendRoute} from "test/helpers/RealmSwapperHelpers.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
@@ -44,11 +44,11 @@ function spcxV3() pure returns (bytes memory) {
 ///         multi-hop) is reachable. The test contract stands in for a token.
 contract RobinhoodDividendRoutesAtMaxSizeTests is Test {
     uint256 internal constant MAX_SPEND = Robinhood.MAX_EARNINGS_PER_PROCESS;
-    RealmDividendSwapRegistry internal registry;
+    RealmSwapper internal registry;
 
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), ROUTES_BLOCK);
-        registry = installDividendSwapRegistry(makeAddr("owner"));
+        registry = installRealmSwapper(makeAddr("owner"));
     }
 
     /// @dev Sets `buyer`'s route for `asset` and buys `amount` with it as `buyer`; 0 if the swap reverts.
@@ -183,8 +183,8 @@ contract RobinhoodDividendRoutesTokenE2ETests is RobinhoodForkBase {
         token.processDividends(0, true, 0, 1, _noHolders());
         assertEq(token.pendingNative(), buffered, "nothing was lost to the failure");
 
-        vm.prank(dividendSwapRegistry.owner());
-        dividendSwapRegistry.setRoute(address(token), SPCX, spcxV3());
+        vm.prank(realmSwapper.owner());
+        realmSwapper.setRoute(address(token), SPCX, spcxV3());
         token.processDividends(0, true, 0, 1, _noHolders());
         assertGt(IERC20(SPCX).balanceOf(address(token)), 0, "the repointed route converts for this token");
     }
@@ -195,7 +195,7 @@ contract RobinhoodDividendRoutesTokenE2ETests is RobinhoodForkBase {
         vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingDividendRoute.selector, SPCX));
         _createRStockTokenUnrouted(_sole(SPCX), _w(10_000));
 
-        setDividendRoute(dividendSwapRegistry, SPCX, spcxV4Direct());
+        setDividendRoute(realmSwapper, SPCX, spcxV4Direct());
         RealmTaxableTokenUniV4 token = _spcxToken("");
         token.processDividends(0, true, 0, 1, _noHolders());
         assertGt(IERC20(SPCX).balanceOf(address(token)), 0, "the override converts for this token");

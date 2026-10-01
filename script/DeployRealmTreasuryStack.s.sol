@@ -66,7 +66,7 @@ contract DeployRealmTreasuryStack is DeployRealmVoting {
             )
         );
         address routerProxy = address(new ERC1967Proxy(routerImpl, abi.encodeCall(RealmTreasuryRouter.initialize, ())));
-        address lpImpl = address(new SwapLpFeeRouter(routerProxy));
+        address lpImpl = address(new SwapLpFeeRouter(routerProxy, infra.realmSwapper, infra.keepersRegistry));
         UUPSUpgradeable(lpFeeRouter).upgradeToAndCall(lpImpl, "");
         RealmLaunchpad(launchpad).setTreasuryAddress(routerProxy);
         vm.stopBroadcast();
@@ -75,7 +75,7 @@ contract DeployRealmTreasuryStack is DeployRealmVoting {
         require(router.TREASURY() == teamTreasury, "post: router treasury mismatch");
         require(router.VOTING() == voting, "post: router voting mismatch");
         require(router.owner() == broadcaster, "post: router owner mismatch");
-        require(SwapLpFeeRouter(lpFeeRouter).TREASURY() == routerProxy, "post: LP router not repointed");
+        require(SwapLpFeeRouter(payable(lpFeeRouter)).TREASURY() == routerProxy, "post: LP router not repointed");
         require(RealmLaunchpad(launchpad).treasury() == routerProxy, "post: launchpad not repointed");
 
         console.log("=== Done. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());

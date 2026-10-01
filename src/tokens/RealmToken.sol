@@ -15,6 +15,7 @@ import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {IRealmMasterFeeHandler} from "src/interfaces/IRealmMasterFeeHandler.sol";
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
 /// @dev Anti-sniper protection is folded into every token as a gated feature: `SniperProtection`
 ///      supplies the caps, and the warm-slot `protectionWindowEnd` (packed into the `pair`/`graduated`
@@ -113,11 +114,17 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     ///         `accrueFees`. Fixed at launch.
     uint16 public treasuryShareBps;
 
-    /// @notice Post-graduation LP fee `RealmSwapHook` charges on every V4 swap (bps), surfaced via
-    ///         `getSwapFees`. 0 for Uniswap V2 (no hook LP fee); 50 or 100 for V4. Distinct from the
-    ///         pre-graduation `lpFeeBps` the launchpad charges on the bonding curve. Fixed at launch.
+    /// @notice The V4 pool's NATIVE fee tier in bps (100 = 1%, 50 = 0.5%): Uniswap charges it on every
+    ///         swap and pays it to whoever provides liquidity. 0 on Uniswap V2 (no V4 pool). Exposed in
+    ///         pips through `poolFee()`, which is the `fee` field of the token's pool keys. Distinct from
+    ///         the pre-graduation `lpFeeBps` the launchpad charges on the bonding curve, and from
+    ///         `LP_FEE_CHARGED_IN_SWAP_DELTA`, the hook-charged component (always 0). Fixed at launch.
     /// @dev Packs into the `feeHandler` + `launchTimestamp` slot alongside `lpFeeBps`/`treasuryShareBps`.
-    uint16 public swapLpFeeBps;
+    uint16 public poolLpFeeBps;
+
+    /// @notice The LP fee the swap hook charges through the swap's deltas, in bps: always 0. The LP fee
+    ///         is charged natively by the pool's fee tier (`poolFee()`); see `getSwapFees`.
+    uint16 internal constant LP_FEE_CHARGED_IN_SWAP_DELTA = 0;
 
     /// @notice Timestamp of token creation (the `initialize` call). Anchors both the sniper-protection
     ///         window (passed into `SniperProtection`) and, on taxable variants, the creation-anchored
@@ -213,6 +220,9 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         owner = params.tokenOwner;
         feeHandler = params.feeHandler;
         tokenFactory = msg.sender;
+        // Before the graduator's `initialize`: the direct V4 graduator reads `poolFee()` to key the pool
+        // it creates there.
+        poolLpFeeBps = params.swapLpFeeBps;
         pair = IRealmGraduator(params.graduator).initialize(address(this));
 
         // Defensive ordering: set `launchpad` before `_mint` so any future `_update()` override that
@@ -247,7 +257,6 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         // so the launchpad's per-trade `getLaunchpadFees` read is a single warm SLOAD.
         lpFeeBps = params.lpFeeBps;
         treasuryShareBps = params.treasuryShareBps;
-        swapLpFeeBps = params.swapLpFeeBps;
         emit LaunchpadFeesInitialized(params.lpFeeBps, params.treasuryShareBps);
 
         // Every token quotes against the chain's native currency at index 0, always. That index is
@@ -422,10 +431,18 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     /// @dev LEGACY, superseded by `getSwapFees` — kept for backwards compatibility (see `IRealmToken`).
     function getTaxConfig() external view virtual returns (IRealmToken.TaxConfig memory config) {}
 
-    /// @notice Default swap fees: the always-on post-graduation LP fee with zero tax. Taxable variants
-    ///         override to add the windowed tax for `isBuy`. `swapLpFeeBps` is set at init (0 for V2).
+    /// @notice Default swap fees: no tax and no hook-charged LP fee. Taxable variants override to add
+    ///         the windowed tax for `isBuy`.
     function getSwapFees(bool) external view virtual returns (IRealmToken.RealmTradeFees memory) {
-        return IRealmToken.RealmTradeFees({taxBps: 0, lpFeeBps: swapLpFeeBps});
+        // The LP fee is charged natively by the Uniswap pool's fee tier (`poolFee()`); returning it here
+        // would make the hook charge it a second time.
+        return IRealmToken.RealmTradeFees({taxBps: 0, lpFeeBps: LP_FEE_CHARGED_IN_SWAP_DELTA});
+    }
+
+    /// @notice The fee tier of this token's V4 pools in pips (10000 = 1%, 5000 = 0.5%): the `fee` field
+    ///         of every pool key the graduator, the buy-backs and the liquidity walls build. 0 on V2.
+    function poolFee() public view virtual returns (uint24) {
+        return uint24(poolLpFeeBps) * UniswapV4PoolConstants.PIPS_PER_BPS;
     }
 
     /// @notice Returns the pre-graduation fee policy for a trade. The base implementation returns the

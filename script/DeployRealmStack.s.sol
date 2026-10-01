@@ -251,8 +251,12 @@ contract DeployRealmStack is Script {
         );
         d.whitelist =
             address(new ERC1967Proxy(d.whitelistImpl, abi.encodeCall(RealmAssetsWhitelist.initialize, (deployer))));
-        d.graduator =
-            address(new RealmDirectGraduatorUniV4(infra.univ4PoolManager, hook, anyPairHook, c.liquidityAdder));
+        // Deploys the `RealmLpLocker` in its constructor; the locker forwards fees to the LP fee router.
+        d.graduator = address(
+            new RealmDirectGraduatorUniV4(
+                infra.univ4PoolManager, hook, anyPairHook, c.liquidityAdder, ChainConfig.lpFeeRouter()
+            )
+        );
         d.factoryImpl = address(
             new RealmFactoryUniV4Direct(
                 IRealmFactory.TokenImpls({base: t.token, tax: t.taxV4}),
@@ -318,10 +322,11 @@ contract DeployRealmStack is Script {
         console.log("      ../indexer config.yaml + config.{dev,prod}.yaml, and hand over ownerships.");
     }
 
-    function _reportDirect(Direct memory d, address deployer) internal pure {
+    function _reportDirect(Direct memory d, address deployer) internal view {
         console.log("");
         console.log("=== Direct venue (same manifest file) ===");
         _slot("GRADUATOR_UNIV4_DIRECT", d.graduator);
+        _slot("LP_LOCKER", RealmDirectGraduatorUniV4(payable(d.graduator)).LP_LOCKER());
         _slot("FACTORY_UNIV4_DIRECT", d.factory);
         _slot("FACTORY_UNIV4_DIRECT_IMPL", d.factoryImpl);
         console.log("");

@@ -17,7 +17,10 @@ import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.
 
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
-import {IRealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
+import {IRealmUniV4LiquidityAdder, RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
+import {RealmLpLocker} from "src/liquidity/RealmLpLocker.sol";
+import {IRealmPoolFee} from "src/interfaces/IRealmPoolFee.sol";
+import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {RealmLaunchPricing} from "src/libraries/RealmLaunchPricing.sol";
 // Self-aliased so the `chain-*` recipes can import-swap it for the target chain's pool constants.
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
@@ -36,13 +39,19 @@ import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 ///        and `graduateToken` is called by the FACTORY rather than by a launchpad.
 ///      - There is no graduation fee. A curve graduation splits the ETH the curve accumulated; here the
 ///        only ETH in the transaction is the creator's own dev buy, and taking a cut of that would just
-///        be a launch fee under another name. The protocol earns from the hook's LP fee, as always.
+///        be a launch fee under another name. The protocol earns from its positions' native pool
+///        fees, collected by `LP_LOCKER`.
 ///      - The launch price is an INPUT (`launchTick`), not a per-tier constant, so the seed band is
 ///        whatever the factory's tick implies rather than a fixed geometry.
 ///
-/// @dev Non-upgradeable and ownerless. It holds the seed position NFT forever — that is the liquidity
-///      lock — and ends every transaction with no balance of anything, so there is nothing to rescue and
-///      no admin needed to rescue it.
+/// @dev Non-upgradeable and ownerless. Every seed position NFT is minted to `LP_LOCKER`, which holds it
+///      forever — that is the liquidity lock — and pays out only its fees. This contract ends every
+///      transaction with no balance of anything, so there is nothing to rescue and no admin needed to
+///      rescue it.
+/// @dev The locker is DEPLOYED BY THIS CONSTRUCTOR. That is how the circular dependency resolves: the
+///      graduator needs the locker's address (seed recipient), and the locker must accept seed
+///      registrations from this graduator alone. `new` hands this contract the address and makes it the
+///      locker's deployer, which the locker records as its `GRADUATOR` — no predicted address, no setter.
 /// @dev It also names no factory. A launch is authorised by WHO CALLS `initialize` (the token, on
 ///      itself, from inside its own initializer) rather than by an address configured here, which keeps
 ///      the graduator and the factory from having to know each other's address at deploy time — they
@@ -86,6 +95,10 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     /// @notice The shared, permissionless `RealmUniV4LiquidityAdder` singleton. Used here for the seed
     ///         band and resolved through this same getter by the tokens' `processLiquidity`.
     address public immutable LIQUIDITY_ADDER;
+
+    /// @notice The `RealmLpLocker` holding every seed band and bid wall of this venue's tokens, deployed
+    ///         by this constructor. Also resolved through this getter by the tokens' `processLiquidity`.
+    address public immutable LP_LOCKER;
 
     /////////////////////// Launch parameters (transient) ///////////////////////
     // `IRealmGraduator.initialize(token)` is called by the TOKEN from inside its own initializer and
@@ -158,9 +171,9 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
 
     /////////////////////// Events ///////////////////////
 
-    /// @notice Lets an indexer map a token to its V4 pool id and the
-    ///         hook mediating its swaps without reconstructing the key.
-    event PoolIdRegistered(address indexed token, bytes32 poolId, address swapHookAddress);
+    /// @notice Lets an indexer map a token to its V4 pool id, the hook mediating its swaps and the
+    ///         pool's native fee tier (pips, the token's `poolFee()`) without reconstructing the key.
+    event PoolIdRegistered(address indexed token, bytes32 poolId, address swapHookAddress, uint24 fee);
 
     /// @notice Emitted once per pool seeded at launch, carrying everything an indexer needs to price the
     ///         pool before a single swap has happened.
@@ -194,16 +207,33 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
 
     //////////////////////////////////////////////////////
 
-    constructor(address poolManager, address hook, address anyPairHook, address liquidityAdder) {
+    /// @param lpFeeRouter `SwapLpFeeRouter` proxy the locker forwards collected fees to.
+    constructor(address poolManager, address hook, address anyPairHook, address liquidityAdder, address lpFeeRouter) {
         UNIV4_POOL_MANAGER = IPoolManager(poolManager);
         HOOK_ADDRESS = hook;
         ANY_PAIR_HOOK = anyPairHook;
         LIQUIDITY_ADDER = liquidityAdder;
+        LP_LOCKER = address(
+            new RealmLpLocker(
+                poolManager,
+                address(RealmUniV4LiquidityAdder(liquidityAdder).UNIV4_POSITION_MANAGER()),
+                liquidityAdder,
+                lpFeeRouter
+            )
+        );
     }
 
     /// @notice The hook mediating the pool this token shares with `quote`. See the two immutables.
     function hookFor(address quote) public view returns (address) {
         return quote == address(0) ? HOOK_ADDRESS : ANY_PAIR_HOOK;
+    }
+
+    /// @dev The canonical key of `tokenAddress`'s pool against `quote`, at the token's own fee tier.
+    function _poolKey(address tokenAddress, address quote) internal view returns (PoolKey memory) {
+        return
+            UniswapV4PoolConstants.realmPoolKey(
+                tokenAddress, quote, hookFor(quote), IRealmPoolFee(tokenAddress).poolFee()
+            );
     }
 
     /// @notice Defensive. Nothing routes native here: the dev buy settles exactly what it owes and
@@ -269,10 +299,9 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
 
     /// @dev Creates one pool at `launchTick` and announces it. Shared by the two entry points above.
     function _openPool(address tokenAddress, address quote, int24 launchTick) internal {
-        address hook = hookFor(quote);
-        PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, hook);
+        PoolKey memory key = _poolKey(tokenAddress, quote);
         UNIV4_POOL_MANAGER.initialize(key, TickMath.getSqrtPriceAtTick(_poolTickFor(tokenAddress, quote, launchTick)));
-        emit PoolIdRegistered(tokenAddress, PoolId.unwrap(key.toId()), hook);
+        emit PoolIdRegistered(tokenAddress, PoolId.unwrap(key.toId()), address(key.hooks), key.fee);
     }
 
     /// @notice Opens the token for trading and seeds its pool: marks it graduated and deposits
@@ -350,7 +379,7 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         }
         require(amountIn > 0, NoETHToGraduate());
 
-        PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, hookFor(quote));
+        PoolKey memory key = _poolKey(tokenAddress, quote);
         bool quoteIsC0 = Currency.unwrap(key.currency0) == quote;
         // Exactly what the swap delivered, not this contract's balance: the seed remainder is still
         // here, waiting for `burnSeedDust`.
@@ -386,7 +415,7 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
         internal
         returns (uint128 liquidity)
     {
-        PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(tokenAddress, quote, hookFor(quote));
+        PoolKey memory key = _poolKey(tokenAddress, quote);
         if (weightBps > _graduationWeightBps) {
             _graduationWeightBps = weightBps;
             // Target in the pool's orientation: the coin appreciating moves the tick up iff it is currency0.
@@ -482,8 +511,8 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
     /// @dev Deposits the whole seed as a single-sided COIN band through the shared adder. The band spans
     ///      from the launch price to the far end of the usable range on the side that holds only the
     ///      coin — above the current tick when the coin is `currency1`'s counterpart, below it otherwise
-    ///      — so every buy walks into it and no quote is ever needed to open the pool. The NFT stays
-    ///      here, permanently: that is the liquidity lock.
+    ///      — so every buy walks into it and no quote is ever needed to open the pool. The NFT is minted
+    ///      to `LP_LOCKER` and registered there, permanently: that is the liquidity lock.
     function _seed(PoolKey memory key, address token, address quote, uint256 amount, int24 launchTick, uint16 weightBps)
         internal
         returns (uint128 liquidity)
@@ -512,11 +541,22 @@ contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
             SeedLiquidityOutOfRange()
         );
 
-        IERC20(token).forceApprove(LIQUIDITY_ADDER, amount);
-        liquidity = IRealmUniV4LiquidityAdder(LIQUIDITY_ADDER)
-            .addSingleSided(key, Currency.wrap(token), amount, tickLower, tickUpper, address(this), address(this));
+        liquidity = _mintSeed(key, token, amount, tickLower, tickUpper);
 
         _emitPoolSeeded(token, quote, PoolId.unwrap(key.toId()), weightBps, launchTick, liquidity);
+    }
+
+    /// @dev Mints the seed band to `LP_LOCKER` and registers it there. Split out of `_seed` for the stack.
+    function _mintSeed(PoolKey memory key, address token, uint256 amount, int24 tickLower, int24 tickUpper)
+        internal
+        returns (uint128 liquidity)
+    {
+        IERC20(token).forceApprove(LIQUIDITY_ADDER, amount);
+        // The id the mint is about to consume: `nextTokenId` is assigned before it is incremented.
+        uint256 tokenId = IPositionManager(RealmLpLocker(payable(LP_LOCKER)).POSITION_MANAGER()).nextTokenId();
+        liquidity = IRealmUniV4LiquidityAdder(LIQUIDITY_ADDER)
+            .addSingleSided(key, Currency.wrap(token), amount, tickLower, tickUpper, LP_LOCKER, address(this));
+        RealmLpLocker(payable(LP_LOCKER)).registerSeed(token, tokenId);
     }
 
     /// @dev Split out of `_seed`, whose stack is already full.

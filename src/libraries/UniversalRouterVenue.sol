@@ -136,7 +136,7 @@ library UniversalRouterVenue {
     ///         `native -> USDG -> rSTOCK` is the same call shape as `native -> asset`.
     /// @dev The one venue that reaches an asset with no native pool of its own. Uniswap V4 pools are
     ///      keyed by `(fee, tickSpacing, hooks)`, which cannot be discovered from the two currencies —
-    ///      so unlike the V2 path, somebody has to SUPPLY the route. See `RealmDividendSwapRegistry`.
+    ///      so unlike the V2 path, somebody has to SUPPLY the route. See `RealmSwapper`.
     /// @param path each hop's destination currency and the pool key fields that identify its pool. Must
     ///        be non-empty; the last hop's `intermediateCurrency` is what the caller receives.
     /// @param minOut minimum output in the FINAL currency's own decimals.
@@ -260,6 +260,43 @@ library UniversalRouterVenue {
         (ok,) =
             router.call(abi.encodeCall(IUniversalRouter.execute, (abi.encodePacked(V4_SWAP), inputs, block.timestamp)));
         if (ok && IERC20(source).balanceOf(router) > routerHeld) ok = false;
+    }
+
+    /// @dev Sells `amountIn` of an ERC20 `currencyIn` on the single pool `key`, in whichever direction
+    ///      `zeroForOne` names, delivering the output currency (native or ERC20) to `address(this)`. The
+    ///      router pulls the input through Permit2, so the caller must have granted `ensureRouterPull`
+    ///      first. As with `swapAssetToNativeV4Path`, a partial fill leaves the remainder with the CALLER
+    ///      and `ok` stays true: a caller that needs a full fill measures its own input balance delta.
+    function swapExactInSingleV4(address router, PoolKey memory key, bool zeroForOne, uint256 amountIn, uint256 minOut)
+        internal
+        returns (bool ok)
+    {
+        if (minOut > type(uint128).max || amountIn > type(uint128).max) return false;
+        (Currency currencyIn, Currency currencyOut) =
+            zeroForOne ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(
+            IV4RouterSwaps.ExactInputSingleParams({
+                poolKey: key,
+                zeroForOne: zeroForOne,
+                // Safe cast: both bounded by `type(uint128).max` above.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                amountIn: uint128(amountIn),
+                // forge-lint: disable-next-line(unsafe-typecast)
+                amountOutMinimum: uint128(minOut),
+                minHopPriceX36: 0,
+                hookData: bytes("")
+            })
+        );
+        params[1] = abi.encode(currencyIn, amountIn); // SETTLE_ALL the input, pulled via Permit2
+        params[2] = abi.encode(currencyOut, minOut); // TAKE_ALL the output to this contract
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = abi.encode(
+            abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL)),
+            params
+        );
+        (ok,) =
+            router.call(abi.encodeCall(IUniversalRouter.execute, (abi.encodePacked(V4_SWAP), inputs, block.timestamp)));
     }
 
     /// @dev Grants Permit2, and through it `router`, the standing allowance an ERC20 settle needs. Read

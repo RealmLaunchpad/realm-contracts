@@ -174,10 +174,8 @@ abstract contract RealmFactoryCurveAbstract is RealmFactoryAbstract {
     ///
     ///      `graduator` is passed in by the caller (instead of read from the `GRADUATOR` immutable)
     ///      so V4 can pick the graduator matching the token's liquidity tier. V2 has a single graduator
-    ///      and always passes `address(GRADUATOR)`. `swapLpFeeBps` is the per-swap LP fee the
-    ///      post-graduation `RealmSwapHook` charges, stored on the token and surfaced via `getSwapFees`:
-    ///      0 for V2 (no hook LP fee), 50 or 100 for V4. A single hook reads it from the token, so one
-    ///      V4 graduator per tier serves both fee tiers.
+    ///      and always passes `address(GRADUATOR)`. `poolLpFeeBps` is the V4 pool's native fee tier
+    ///      in bps, stored on the token and exposed in pips via `poolFee()`: 0 for V2, 50 or 100 for V4.
     /// @dev `tokenSetup` is `memory`, a leftover of the removed positional overload that built one in
     ///      memory; the string/`FeeShare[]` fields cascade into `_validateInputs`/`_validateNameSymbol`/
     ///      `_validateFeeShares`/`_dispatchAndInitialize`/`_cloneAndCreateToken`/`_finalizeCreation`.
@@ -187,7 +185,7 @@ abstract contract RealmFactoryCurveAbstract is RealmFactoryAbstract {
         TokenSetupTiered memory tokenSetup,
         address tokenOwner,
         address graduator,
-        uint16 swapLpFeeBps,
+        uint16 poolLpFeeBps,
         SupplyShare[] calldata buyOnDeployShares,
         TaxConfigs memory taxConfigs,
         AntiSniperConfigs calldata antiSniperConfigs,
@@ -209,7 +207,7 @@ abstract contract RealmFactoryCurveAbstract is RealmFactoryAbstract {
             tokenSetup.salt,
             tokenOwner,
             graduator,
-            swapLpFeeBps,
+            poolLpFeeBps,
             vaultAllocation,
             taxConfigs,
             antiSniperConfigs

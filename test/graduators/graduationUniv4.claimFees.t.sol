@@ -134,14 +134,16 @@ contract BaseUniswapV4FeesTests is BaseUniswapV4GraduationTests {
 abstract contract BaseUniswapV4ClaimFeesBase is BaseUniswapV4FeesTests {
     /// @notice test that the owner of the univ4 NFT position is the graduator (permanently locked)
     function test_liquidityNftOwnerAfterGraduation() public createAndGraduateToken {
-        // The NFT ID is deterministic on the fork; check that graduator holds it
+        // The NFT ID is deterministic on the fork; check that the locker holds it
         uint256 positionId = IPositionManager(positionManagerAddress).nextTokenId() - 1;
 
         assertEq(
             IERC721(positionManagerAddress).ownerOf(positionId),
-            address(directGraduator),
-            "graduator should own the position NFT (permanently locked)"
+            address(lpLocker),
+            "the locker should own the position NFT (permanently locked)"
         );
+        (address token, address quote, bool isWall) = lpLocker.positionMeta(positionId);
+        assertTrue(token == testToken && quote == address(0) && !isWall, "registered as the token's seed");
     }
 
     function test_claimFees_happyPath_ethBalanceIncrease()
@@ -541,9 +543,10 @@ abstract contract UniswapV4ClaimFeesViewFunctionsBase is BaseUniswapV4FeesTests 
 
         uint256 expectedFeeDelta = _lpCreatorShare(buyAmount);
 
-        assertApproxEqAbsDecimal(
-            feeDelta, expectedFeeDelta, 1, 18, "claimable fees should include buy fees and pending taxes"
-        );
+        // Slightly above the buy's own share: this collect also takes the token-side fee the previous
+        // conversion's sale paid into the seed band, and converts it.
+        assertGe(feeDelta + 1, expectedFeeDelta, "claimable fees should include the buy's LP fee share");
+        assertApproxEqRel(feeDelta, expectedFeeDelta, 0.002e18, "and little else");
     }
 
     function test_claimFeesOfBothPositionsDontRevertIfNoFeesToClaim() public createAndGraduateToken {

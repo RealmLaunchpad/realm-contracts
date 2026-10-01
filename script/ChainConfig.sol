@@ -26,6 +26,7 @@ library ChainConfig {
         address permit2;
         address univ4UniversalRouter;
         address keepersRegistry;
+        address realmSwapper;
     }
 
     /// @notice The manifest slots the factory constructors consume. Only populated once the stack is
@@ -69,7 +70,8 @@ library ChainConfig {
                 univ4PositionManager: DeploymentAddressesRobinhoodMainnet.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesRobinhoodMainnet.PERMIT2,
                 univ4UniversalRouter: DeploymentAddressesRobinhoodMainnet.UNIV4_UNIVERSAL_ROUTER,
-                keepersRegistry: DeploymentAddressesRobinhoodMainnet.REALM_KEEPERS_REGISTRY
+                keepersRegistry: DeploymentAddressesRobinhoodMainnet.REALM_KEEPERS_REGISTRY,
+                realmSwapper: DeploymentAddressesRobinhoodMainnet.REALM_SWAPPER
             });
         } else if (isRobinhoodTestnet()) {
             i = Infra({
@@ -80,7 +82,8 @@ library ChainConfig {
                 univ4PositionManager: DeploymentAddressesRobinhoodTestnet.UNIV4_POSITION_MANAGER,
                 permit2: DeploymentAddressesRobinhoodTestnet.PERMIT2,
                 univ4UniversalRouter: DeploymentAddressesRobinhoodTestnet.UNIV4_UNIVERSAL_ROUTER,
-                keepersRegistry: DeploymentAddressesRobinhoodTestnet.REALM_KEEPERS_REGISTRY
+                keepersRegistry: DeploymentAddressesRobinhoodTestnet.REALM_KEEPERS_REGISTRY,
+                realmSwapper: DeploymentAddressesRobinhoodTestnet.REALM_SWAPPER
             });
         } else {
             revert(UNSUPPORTED);
@@ -203,7 +206,7 @@ library ChainConfig {
     }
 
     /// @notice The keeper lambda's EOA from the manifest: appointed on `RealmKeepersRegistry` and set as
-    ///         the `RealmDividendSwapRegistry`'s keeper-funding wallet by `ConfigureRegistries`.
+    ///         the `RealmSwapper`'s keeper-funding wallet by `ConfigureRegistries`.
     function realmKeeper() internal view returns (address keeper) {
         if (isRobinhood()) keeper = DeploymentsRobinhoodMainnet.REALM_KEEPER;
         else if (isRobinhoodTestnet()) keeper = DeploymentsRobinhoodTestnet.REALM_KEEPER;

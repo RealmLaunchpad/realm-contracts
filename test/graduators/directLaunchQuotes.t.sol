@@ -105,7 +105,8 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
     }
 
     function _qcPoolKey(address token) internal view returns (CorePoolKey memory) {
-        return UniswapV4PoolConstants.realmPoolKey(token, address(quoteCoin), TEST_ANYPAIR_HOOK_ADDRESS);
+        return
+            UniswapV4PoolConstants.realmPoolKey(token, address(quoteCoin), TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(token));
     }
 
     /// @dev An exact-input swap on an ERC20-quoted pool, through the universal router.
@@ -115,7 +116,8 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
 
     /// @dev The same, on the pool `token` shares with any ERC20 `quote`.
     function _swapQuotePool(address caller, address token, address quote, bool isBuy, uint256 amountIn) internal {
-        CorePoolKey memory coreKey = UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS);
+        CorePoolKey memory coreKey =
+            UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(token));
         PoolKey memory key = abi.decode(abi.encode(coreKey), (PoolKey));
         bool quoteIsC0 = quote < token;
         address tokenIn = isBuy ? quote : token;
@@ -145,6 +147,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         inputs[0] = abi.encode(actions, params);
         IUniversalRouter(universalRouter).execute(abi.encodePacked(uint8(0x10)), inputs, block.timestamp);
         vm.stopPrank();
+        if (!manualLpFees) _settleLpFees(token);
     }
 
     /////////////////////////// TESTS ///////////////////////////
@@ -211,17 +214,16 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
 
     /// @dev The whole point of the any-pair hook: the fee is collected in the pool's own currency and
     ///      reaches the creator as that currency, never converted on the way.
-    function test_erc20Quote_swapFeesReachTheCreatorInTheQuote() public {
+    function test_erc20Quote_swapFeesReachTheCreatorInTheQuote() public virtual {
         address token = _launchAgainstQuoteCoin(_noDevBuy());
 
         quoteCoin.mintTo(alice, 1_000e6);
         _swapQuotePool(alice, token, true, 100e6);
         assertGt(IERC20(token).balanceOf(alice), 0, "buy delivered nothing");
 
-        // The hook CLAIMS the fee during the swap and redeems it on demand — see `pendingLpFees`. The
-        // redemption is permissionless, so anyone (here, the test) can trigger it.
-        assertGt(anyPairHook.pendingLpFees(token, address(quoteCoin)), 0, "fee booked at the trade");
-        anyPairHook.settleFees(token, address(quoteCoin));
+        // The pool charged its native fee; the hook booked none. The swap helper already had the locker
+        // collect it, which routed the quote side through the 30/70 split on the spot.
+        assertEq(anyPairHook.pendingLpFees(token, address(quoteCoin)), 0, "no hook-charged LP fee");
 
         address[] memory tokens = new address[](1);
         tokens[0] = token;

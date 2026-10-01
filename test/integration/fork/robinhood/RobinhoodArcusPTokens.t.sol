@@ -6,11 +6,11 @@ import {DeploymentAddressesRobinhoodMainnet as Robinhood} from "src/config/Deplo
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {TaxConfigsWithDirectAllocation} from "src/interfaces/IRealmTaxableToken.sol";
-import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {Hop} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
@@ -110,7 +110,7 @@ contract RobinhoodArcusPTokensTests is RobinhoodForkBase {
 
     function _retire(address asset, bool retired) internal {
         vm.prank(admin);
-        dividendSwapRegistry.setRetired(asset, retired);
+        realmSwapper.setRetired(asset, retired);
     }
 
     //////////////////////// listing and launch //////////////////////

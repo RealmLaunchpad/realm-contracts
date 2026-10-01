@@ -58,7 +58,7 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      more can always call `claimDividends()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
 
-    /// @notice Flat amount of native the `RealmDividendSwapRegistry` diverts to the keeper wallet on each
+    /// @notice Flat amount of native the `RealmSwapper` diverts to the keeper wallet on each
     ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
     /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
     ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
@@ -75,19 +75,19 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      maximum one (1 ETH).
     uint256 public constant KEEPER_FEE = 0.0001 ether;
 
-    /// @notice The `RealmDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    /// @notice The `RealmSwapper` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
     /// @dev Deployed by `DeployRealmRegistries` (also via `DeployRealmPrereqs`); owner is the `realm.dev` deployer.
     /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
     ///      script that deploys a taxable token implementation requires
-    ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
+    ///      `REALM_SWAPPER.code.length != 0` before broadcasting. Deploy the registry proxy
     ///      first, paste it here, then deploy the impls — they bake this in as a constant and clones
     ///      cannot be repointed.
     /// @dev Left unset, everything fails closed: `_initializeDividends` reverts on the codeless registry
     ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
-    address public constant DIVIDEND_SWAP_REGISTRY = 0x00b87AAEd1D51675Fd1AF7731Da5fCe0eA008deF;
+    address public constant REALM_SWAPPER = 0x00b87AAEd1D51675Fd1AF7731Da5fCe0eA008deF;
 
     /// @notice The `RealmKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
     ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
@@ -171,7 +171,7 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      more can always call `claimDividends()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
 
-    /// @notice Flat amount of native the `RealmDividendSwapRegistry` diverts to the keeper wallet on each
+    /// @notice Flat amount of native the `RealmSwapper` diverts to the keeper wallet on each
     ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
     /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
     ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
@@ -183,19 +183,19 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      market. Per-chain because a wei value cannot be shared between chains.
     uint256 public constant KEEPER_FEE = 0.0002 ether;
 
-    /// @notice The `RealmDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    /// @notice The `RealmSwapper` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
     /// @dev Deployed by `DeployRealmRegistries` (also via `DeployRealmPrereqs`); owner is the `realm.dev` deployer.
     /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
     ///      script that deploys a taxable token implementation requires
-    ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
+    ///      `REALM_SWAPPER.code.length != 0` before broadcasting. Deploy the registry proxy
     ///      first, paste it here, then deploy the impls — they bake this in as a constant and clones
     ///      cannot be repointed.
     /// @dev Left unset, everything fails closed: `_initializeDividends` reverts on the codeless registry
     ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
-    address public constant DIVIDEND_SWAP_REGISTRY = 0x48be6ac8729B86B0339BA0d3f6c7D773c0aa83e4;
+    address public constant REALM_SWAPPER = 0x48be6ac8729B86B0339BA0d3f6c7D773c0aa83e4;
 
     /// @notice The `RealmKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
     ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).

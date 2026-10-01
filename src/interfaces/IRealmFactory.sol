@@ -106,9 +106,8 @@ interface IRealmFactory {
         uint256[] amounts
     );
 
-    /// @notice Per-token Uniswap V4 LP fee in basis points. Emitted only by the V4 unified factory
-    ///         (V2 has no LP-fee concept). Today the V4 hook hardcodes 100 bps; this event lets
-    ///         indexers attach the value as a per-token attribute ahead of the field being honoured.
+    /// @notice Per-token Uniswap V4 pool fee tier in basis points (100 | 50; the pool key's `fee` is this
+    ///         times 100, in pips). Emitted only by the V4 direct factory (V2 has no LP-fee concept).
     event LpFeeBpsSet(address indexed token, uint16 lpFeeBps);
 
     /// @notice Emitted once per token that locks supply in creator vaults, after the vaults are

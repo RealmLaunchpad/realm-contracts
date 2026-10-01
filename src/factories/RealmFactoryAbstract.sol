@@ -376,7 +376,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         bytes32 salt,
         address tokenOwner,
         address graduator,
-        uint16 swapLpFeeBps,
+        uint16 poolLpFeeBps,
         uint256 vaultAllocation
     ) internal returns (address token, IRealmToken.InitializeParams memory params) {
         token = Clones.cloneDeterministic(impl, keccak256(abi.encodePacked(msg.sender, salt)));
@@ -401,9 +401,9 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
             // identically pre- and post-graduation. Non-tax tokens carry none (`getLaunchpadFees` returns 0 tax).
             lpFeeBps: _launchpadLpFeeBps(graduator),
             treasuryShareBps: _launchpadTreasuryShareBps(),
-            // Post-graduation LP fee the `RealmSwapHook` charges on V4 swaps (50/100); 0 for V2. Surfaced
-            // by the token via `getSwapFees` so the single hook reads each token's fee tier directly.
-            swapLpFeeBps: swapLpFeeBps
+            // The V4 pool's native fee tier in bps (50/100); 0 for V2. The token exposes it in pips as
+            // `poolFee()`, which keys its pools. The hook charges no LP fee (`getSwapFees().lpFeeBps == 0`).
+            swapLpFeeBps: poolLpFeeBps
         });
     }
 
@@ -501,7 +501,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     /// @dev Caps the POST-graduation total fee a swapper pays (LP fee + tax) at `MAX_TOTAL_FEE_BPS`
     ///      (5%). Applied to buy and sell tax independently since a swap only ever pays one direction.
     ///      `lpFeeBps` is the venue's post-graduation LP fee — 0 for V2 (no LP fee, so tax can reach the
-    ///      full 5%), 50 or 100 for V4 (leaving 450/400 bps for tax). Pre-graduation the launchpad
+    ///      full 5%), the V4 pool's native fee tier, 50 or 100 (leaving 450/400 bps for tax). Pre-graduation the launchpad
     ///      additionally charges its own LP fee on top of the tax; that transient total is bounded by
     ///      the launchpad's (looser) `MAX_TRADING_FEE_BPS`, not here. `taxCfg` bps are unbounded here, so
     ///      the sum is widened to `uint256` to avoid a spurious overflow revert before this check fires.
@@ -575,7 +575,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         bytes32 salt,
         address tokenOwner,
         address graduator,
-        uint16 swapLpFeeBps,
+        uint16 poolLpFeeBps,
         uint256 vaultAllocation,
         TaxConfigs memory taxCfg,
         AntiSniperConfigs calldata antiSniperCfg
@@ -586,7 +586,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
 
         IRealmToken.InitializeParams memory params;
         (token, params) =
-            _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, swapLpFeeBps, vaultAllocation);
+            _cloneAndCreateToken(impl, name, symbol, salt, tokenOwner, graduator, poolLpFeeBps, vaultAllocation);
 
         if (impl == TOKEN_IMPL_TAX) {
             // Taxable impl: stores the tax rate from `taxCfg` in `_initializeTaxConfig`. With an
