@@ -686,8 +686,7 @@ contract LaunchpadBaseTests is Test {
 
         // Single shared liquidity adder, mirroring the production topology (deployed once, all graduators
         // and taxable tokens point at the same one).
-        univ4LiquidityAdder =
-            address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress, permit2Address));
+        univ4LiquidityAdder = address(new RealmUniV4LiquidityAdder(positionManagerAddress, permit2Address));
 
         realmTaxTokenV2 = new RealmTaxableTokenUniV2();
         // Sniper aliases point at the merged impls: anti-sniper is a gated feature, not a distinct impl.

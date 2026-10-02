@@ -159,8 +159,7 @@ contract DeployRealmStack is Script {
         c.quoter = address(new RealmQuoter(c.launchpad));
         // Chain-shared singleton: the direct graduator's launch band and taxable tokens'
         // `processLiquidity` both route through it.
-        c.liquidityAdder =
-            address(new RealmUniV4LiquidityAdder(infra.univ4PositionManager, infra.univ4PoolManager, infra.permit2));
+        c.liquidityAdder = address(new RealmUniV4LiquidityAdder(infra.univ4PositionManager, infra.permit2));
         c.graduatorV2 =
             address(new RealmGraduatorUniswapV2(infra.univ2Router, c.launchpad, infra.univ2PairInitCodeHash));
     }
