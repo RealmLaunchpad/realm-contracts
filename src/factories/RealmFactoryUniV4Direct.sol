@@ -61,8 +61,9 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
 
     /// @notice Token-identity bundle for `createToken`. Mirrors `TokenSetupTiered` minus the liquidity
     ///         tier — there is no curve here, so there is no tier — plus two V4 knobs.
-    /// @dev `lpFeeBps` is the per-swap LP fee the hook charges post-graduation, stored on the token and
-    ///      read back through `getSwapFees`. Only `100` (1%) and `50` (0.5%) are accepted.
+    /// @dev `lpFeeBps` is the V4 pools' NATIVE fee tier (bps), paid by every swap to every LP. Stored on
+    ///      the token and exposed in pips via `poolFee()` (10000 or 5000), which keys the pools. The hook
+    ///      charges no LP fee on top. Only `100` (1%) and `50` (0.5%) are accepted.
     struct DirectTokenSetup {
         string name;
         string symbol;
@@ -205,7 +206,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///      `LaunchpadFeesInitialized`, `RealmTaxableTokenInitialized`, `SniperProtectionInitialized`) →
     ///      `QuotesRegistered` → `CreatorVaultsCreated` → `SharesUpdated` → the allocation's events
     ///      (`EarningsAllocationInitialized`, `DividendAssetInitialized` per payout asset,
-    ///      `DividendsInitialized`, the registry's `DividendRouteRegistered` per route) →
+    ///      `DividendsInitialized`, the registry's `RouteRegistered` per route) →
     ///      `PoolIdRegistered` per extra pool → (`DividendsActivated`) → `PoolSeeded` (first pool) →
     ///      `TokenGraduated` → `PoolSeeded` per extra pool → the dev buy's own swap events → the
     ///      seed-remainder burn → `BuyOnDeploy` → `LpFeeBpsSet` → `TokenReferral`.

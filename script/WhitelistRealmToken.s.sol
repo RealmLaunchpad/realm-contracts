@@ -7,6 +7,7 @@ import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
+import {IRealmPoolFee} from "src/interfaces/IRealmPoolFee.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 
@@ -86,7 +87,9 @@ contract WhitelistRealmToken is Script {
             ) {
                 continue;
             }
-            PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(realm, quote, graduator.hookFor(quote));
+            PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(
+                realm, quote, graduator.hookFor(quote), IRealmPoolFee(realm).poolFee()
+            );
             if (manager.getLiquidity(key.toId()) == 0) continue;
             source.venue = RealmAssetsWhitelist.Venue.V4;
             source.key = key;

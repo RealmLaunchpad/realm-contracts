@@ -35,7 +35,6 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithDirectV4 {
     /// @dev The test token's sell tax; tax-token suites set it.
     uint256 public SELL_TAX_BPS;
 
-    uint24 constant lpFee = UniswapV4PoolConstants.LP_FEE;
     int24 constant tickSpacing = UniswapV4PoolConstants.TICK_SPACING;
 
     function setUp() public virtual override {
@@ -62,7 +61,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithDirectV4 {
         return PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(tokenAddress)),
-            fee: lpFee,
+            fee: _poolFee(tokenAddress),
             tickSpacing: tickSpacing,
             hooks: IHooks(address(taxHook))
         });
@@ -118,7 +117,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithDirectV4 {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)), // native ETH
             currency1: Currency.wrap(address(token)),
-            fee: lpFee,
+            fee: _poolFee(token),
             tickSpacing: tickSpacing,
             hooks: IHooks(address(taxHook))
         });
@@ -163,6 +162,7 @@ contract BaseUniswapV4GraduationTests is LaunchpadBaseTestsWithDirectV4 {
         uint256 valueIn = isBuy ? amountIn : 0;
         IUniversalRouter(universalRouter).execute{value: valueIn}(commands, inputs, block.timestamp);
         vm.stopPrank();
+        if (expectSuccess && !manualLpFees) _settleLpFees(token);
     }
 
     function _addLiquidity(

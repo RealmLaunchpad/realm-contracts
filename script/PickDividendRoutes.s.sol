@@ -4,20 +4,20 @@ pragma solidity 0.8.28;
 import {Script} from "lib/forge-std/src/Script.sol";
 import {console} from "lib/forge-std/src/console.sol";
 
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
+import {Hop} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Picks the Uniswap V2, V3 or V4 route that actually buys the most of each payout asset AT A
 ///         FULL CONVERSION (`MAX_EARNINGS_PER_PROCESS`), out of the candidates `discover_rstock_routes.py`
-///         shortlisted, and writes them out in the `RealmDividendSwapRegistry` wire format. An asset no
+///         shortlisted, and writes them out in the `RealmSwapper` wire format. An asset no
 ///         candidate can buy at that size is left out.
 ///
 /// @dev WRITES NOTHING ON-CHAIN: broadcasts nothing and needs no keys. The output is the frontend's
 ///      payout catalogue (the routes creators pass at creation) and the proof an admin sets an
 ///      `ALL_TOKENS` override on. The probe sets the route for its own prober address only.
-/// @dev Needs a registry built from this tree at `DIVIDEND_SWAP_REGISTRY`: an older one lacks the
+/// @dev Needs a registry built from this tree at `REALM_SWAPPER`: an older one lacks the
 ///      per-token `setRoute`, and every probe would silently score 0.
 ///
 /// @dev THE PROBE PICKS THE ROUTE, the discovery script only shortlists. `discover_rstock_routes.py`
@@ -38,7 +38,7 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 /// Usage:  forge script PickDividendRoutes --rpc-url rh-mainnet
 ///
 /// Env:
-///   DIVIDEND_SWAP_REGISTRY  the registry proxy on this chain
+///   REALM_SWAPPER  the registry proxy on this chain
 ///   ROUTES_JSON             (optional) path to the discovery output
 ///   ROUTES_OUT              (optional) where to write the picked routes
 contract PickDividendRoutes is Script {
@@ -54,7 +54,7 @@ contract PickDividendRoutes is Script {
     string internal constant DEFAULT_ROUTES_OUT = "script/operations/dividend-routes/catalogue.robinhood.mainnet.json";
 
     function run() external {
-        RealmDividendSwapRegistry registry = RealmDividendSwapRegistry(payable(vm.envAddress("DIVIDEND_SWAP_REGISTRY")));
+        RealmSwapper registry = RealmSwapper(payable(vm.envAddress("REALM_SWAPPER")));
         string memory json = vm.readFile(vm.envOr("ROUTES_JSON", DEFAULT_ROUTES_JSON));
 
         address[] memory assets = vm.parseJsonAddressArray(json, ".assets");
@@ -97,12 +97,10 @@ contract PickDividendRoutes is Script {
     ///      then rolls the whole thing back. Nothing here is broadcast; the return value is the wire
     ///      format of the route that bought the most of each asset, empty for an asset no candidate
     ///      could buy at all.
-    function _probe(
-        RealmDividendSwapRegistry registry,
-        address[] memory assets,
-        bytes[] memory encoded,
-        bytes[] memory v3
-    ) internal returns (bytes[] memory chosen) {
+    function _probe(RealmSwapper registry, address[] memory assets, bytes[] memory encoded, bytes[] memory v3)
+        internal
+        returns (bytes[] memory chosen)
+    {
         chosen = new bytes[](assets.length);
         uint256 snapshot = vm.snapshotState();
 
@@ -141,10 +139,7 @@ contract PickDividendRoutes is Script {
     ///      pool state — otherwise the first probe would move the price the second one is judged on.
     /// @dev `minOut` of 1: the probe asks whether the route can take a full conversion at all, and
     ///      compares candidates against each other. Pricing a real floor is the keeper's job.
-    function _bought(RealmDividendSwapRegistry registry, address asset, bytes memory route)
-        internal
-        returns (uint256 out)
-    {
+    function _bought(RealmSwapper registry, address asset, bytes memory route) internal returns (uint256 out) {
         uint256 snapshot = vm.snapshotState();
 
         vm.prank(registry.owner());

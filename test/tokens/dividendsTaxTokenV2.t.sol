@@ -14,7 +14,7 @@ import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.so
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
-import {setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {setDividendRoute} from "test/helpers/RealmSwapperHelpers.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice Integration tests for holder dividends on Uniswap V2. Two things are V2-specific and get the
@@ -27,7 +27,7 @@ contract DividendsTaxTokenV2Tests is LaunchpadBaseTestsWithUniv2Graduator, V2Swa
 
     function setUp() public override(LaunchpadBaseTests, LaunchpadBaseTestsWithUniv2Graduator) {
         super.setUp();
-        setDividendRoute(dividendSwapRegistry, MSFT, DividendRouteLib.encodeV2());
+        setDividendRoute(realmSwapper, MSFT, DividendRouteLib.encodeV2());
     }
 
     address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;

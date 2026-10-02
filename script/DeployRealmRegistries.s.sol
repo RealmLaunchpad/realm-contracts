@@ -5,10 +5,10 @@ import {Script, console} from "forge-std/Script.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
 
 /// @title The two keeper registries, owned by the broadcasting account
-/// @notice Deploys `RealmKeepersRegistry` and the `RealmDividendSwapRegistry` proxy, both owned by the
+/// @notice Deploys `RealmKeepersRegistry` and the `RealmSwapper` proxy, both owned by the
 ///         account that broadcasts (`realm.dev`), and prints the two `DeploymentAddresses` constants to
 ///         paste. Standalone so the registries can be redeployed without touching the LP fee router or
 ///         the hooks (whose Uniswap whitelisting must survive); `DeployRealmPrereqs` builds on it.
@@ -33,16 +33,15 @@ contract DeployRealmRegistries is Script {
         console.log("Registries owner:", owner);
 
         keepers = address(new RealmKeepersRegistry(owner));
-        dividendImpl = address(new RealmDividendSwapRegistry());
-        dividendProxy =
-            address(new ERC1967Proxy(dividendImpl, abi.encodeCall(RealmDividendSwapRegistry.initialize, (owner))));
+        dividendImpl = address(new RealmSwapper());
+        dividendProxy = address(new ERC1967Proxy(dividendImpl, abi.encodeCall(RealmSwapper.initialize, (owner))));
     }
 
     function _reportRegistries(address keepers, address dividendProxy, address dividendImpl) internal pure {
         console.log("=== Paste into src/config/DeploymentAddresses.sol (this chain's library) ===");
         console.log("  REALM_KEEPERS_REGISTRY  =", keepers);
-        console.log("  DIVIDEND_SWAP_REGISTRY  =", dividendProxy);
-        console.log("  (RealmDividendSwapRegistry impl, not in the manifest:", dividendImpl, ")");
+        console.log("  REALM_SWAPPER  =", dividendProxy);
+        console.log("  (RealmSwapper impl, not in the manifest:", dividendImpl, ")");
         console.log("Then `forge build` (bytecode changes).");
     }
 }

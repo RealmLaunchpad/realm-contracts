@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {useLegacyLpFeeTokens} from "test/helpers/LegacyLpFeeTokens.sol";
+
 import {TaxTokenUniV4BaseTests} from "test/graduators/taxToken.base.t.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
@@ -55,8 +57,11 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
     uint16 constant CREATOR_BPS = 10_000 - TREASURY_BPS;
     uint16 constant LP_FEE_BPS = 100; // 1%
 
+    /// @dev The hook's LP-fee path is reached only by tokens launched before the native pool fee, so this
+    ///      suite runs on their behaviour (see `LegacyLpFeeTokens`). Current tokens: `NativeLpFees.t.sol`.
     function setUp() public override {
         super.setUp();
+        useLegacyLpFeeTokens(address(realmToken), address(realmTaxToken));
     }
 
     function _pendingCreatorFees(address token) internal view returns (uint256) {
@@ -497,7 +502,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(token),
-            fee: lpFee,
+            fee: _poolFee(token),
             tickSpacing: tickSpacing,
             hooks: IHooks(address(taxHook))
         });
@@ -676,7 +681,7 @@ contract RealmSwapHookLpFeesTests is TaxTokenUniV4BaseTests {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(token),
-            fee: lpFee,
+            fee: _poolFee(token),
             tickSpacing: tickSpacing,
             hooks: IHooks(address(taxHook))
         });

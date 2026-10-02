@@ -36,6 +36,7 @@ import {HalfFillQuoteBuyBackRouterStub} from "test/graduators/directLaunchDivide
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {PoolModifyLiquidityTest} from "lib/v4-core/src/test/PoolModifyLiquidityTest.sol";
+import {IRealmLpLocker} from "src/interfaces/IRealmLpLocker.sol";
 
 /// @notice An 18-decimal `QuoteCoin`, for prices where a 6-decimal quote would fall outside the venue's
 ///         launch-price bounds.
@@ -175,7 +176,9 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         assertGt(ids[0], 0, "a wall was minted");
         (PoolKey memory key,) = posm.getPoolAndPositionInfo(ids[0]);
         assertEq(address(key.hooks), TEST_ANYPAIR_HOOK_ADDRESS, "on the token's own ERC20 pool");
-        assertEq(IERC721(positionManagerAddress).ownerOf(ids[0]), address(token), "held by the token");
+        assertEq(IERC721(positionManagerAddress).ownerOf(ids[0]), address(lpLocker), "held by the locker");
+        (address wallToken, address wallQuote, bool isWall) = lpLocker.positionMeta(ids[0]);
+        assertTrue(wallToken == address(token) && wallQuote == quote && isWall, "registered as the token's wall");
         assertEq(IERC20(quote).balanceOf(address(_adder())), 0, "the mint left no quote in the adder");
         uint128 minted = posm.getPositionLiquidity(ids[0]);
 
@@ -247,7 +250,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         int24[2] memory noTicks;
         (uint128 liquidity, uint256 id,) = _adder()
             .addOrTopUpSingleSided(
-                UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS),
+                UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(token)),
                 WallParams({
                     currency: Currency.wrap(quote),
                     amount: 1,
@@ -275,12 +278,12 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         QuoteCoin(quote).mintTo(alice, 1_000e6);
 
+        vm.recordLogs();
         _swapQuotePool(alice, address(token), quote, true, 100e6);
-        uint256 lpFee = anyPairHook.pendingLpFees(address(token), quote);
-        assertEq(lpFee, 100e6 / 100, "a 1% LP fee on the input");
+        uint256 lpFee = _collectedQuoteFee(vm.getRecordedLogs(), address(token), quote);
+        assertApproxEqAbs(lpFee, 100e6 / 100, 1, "the pool's 1% fee on the input, collected by the locker");
+        assertEq(anyPairHook.pendingLpFees(address(token), quote), 0, "the hook charged no LP fee");
         assertEq(anyPairHook.pendingTaxes(address(token), quote), 0, "and no tax: the LP fee is all there is");
-
-        anyPairHook.settleFees(address(token), quote);
 
         uint256 creatorShare = lpFee - lpFee * LP_TREASURY_BPS / 10_000;
         (uint256 burnPending, uint256 liquidityPending,,) = token.quoteBufferOf(quote);
@@ -295,6 +298,21 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
             "nothing but the rounding dust reached the fund wallets"
         );
         assertEq(IERC20(quote).balanceOf(address(token)), creatorShare, "and the token holds what it booked");
+    }
+
+    /// @dev The quote side of the `LpFeesCollected` the locker emitted for (`token`, `quote`) in `logs`.
+    function _collectedQuoteFee(Vm.Log[] memory logs, address token, address quote) internal view returns (uint256) {
+        for (uint256 i; i < logs.length; ++i) {
+            if (
+                logs[i].emitter == address(lpLocker) && logs[i].topics[0] == IRealmLpLocker.LpFeesCollected.selector
+                    && logs[i].topics[1] == bytes32(uint256(uint160(token)))
+                    && logs[i].topics[2] == bytes32(uint256(uint160(quote)))
+            ) {
+                (uint256 quoteAmount,) = abi.decode(logs[i].data, (uint256, uint256));
+                return quoteAmount;
+            }
+        }
+        revert("no LpFeesCollected");
     }
 
     /////////////////////////// per-call spend cap ///////////////////////////
@@ -492,7 +510,9 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         vm.prank(alice);
         IPoolManager(poolManagerAddress)
             .initialize(
-                UniswapV4PoolConstants.realmPoolKey(predicted, address(quoteCoin), TEST_ANYPAIR_HOOK_ADDRESS),
+                UniswapV4PoolConstants.realmPoolKey(
+                    predicted, address(quoteCoin), TEST_ANYPAIR_HOOK_ADDRESS, uint24(10_000)
+                ),
                 TickMath.getSqrtPriceAtTick(0)
             );
 
@@ -1271,7 +1291,9 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         // 20k QC into a ~1e5 QC market cap lifts the price ~44%, ~3,600 ticks.
         QuoteCoin(quote).mintTo(alice, 20_000e6);
         _swapQuotePool(alice, address(token), quote, true, 20_000e6);
-        CorePoolKey memory key = UniswapV4PoolConstants.realmPoolKey(address(token), quote, TEST_ANYPAIR_HOOK_ADDRESS);
+        CorePoolKey memory key = UniswapV4PoolConstants.realmPoolKey(
+            address(token), quote, TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(address(token))
+        );
         (, int24 tick,,) = IPoolManager(poolManagerAddress).getSlot0(key.toId());
         // A quote-only wall sits above the tick when the quote is currency0, below it (14,000 wide) otherwise.
         int24 gap = quote < address(token) ? firstLowers[0] - tick : tick - (firstLowers[0] + 14_000);
@@ -1282,7 +1304,9 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
         (uint256[2] memory ids, int24[2] memory lowers) = token.getLiquidityWalls(quote);
         assertGt(ids[0], first[0], "a fresh wall was minted");
-        assertEq(IERC721(positionManagerAddress).ownerOf(ids[0]), address(token), "held by the token");
+        assertEq(IERC721(positionManagerAddress).ownerOf(ids[0]), address(lpLocker), "held by the locker");
+        (address wallToken, address wallQuote, bool isWall) = lpLocker.positionMeta(ids[0]);
+        assertTrue(wallToken == address(token) && wallQuote == quote && isWall, "registered as the token's wall");
         assertTrue(lowers[0] != firstLowers[0], "at the moved price");
         assertEq(ids[1], first[0], "the first wall moved to the second entry");
         assertEq(lowers[1], firstLowers[0], "with its own lower tick");

@@ -10,9 +10,9 @@ import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {setDividendRoute} from "test/helpers/RealmSwapperHelpers.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @notice Integration tests for the holder-dividends earnings-allocation leg on Uniswap V4: the
@@ -34,7 +34,7 @@ contract PartialFillRouterStub {
 contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     function setUp() public virtual override {
         super.setUp();
-        setDividendRoute(dividendSwapRegistry, MSFT, DividendRouteLib.encodeV2());
+        setDividendRoute(realmSwapper, MSFT, DividendRouteLib.encodeV2());
     }
 
     /// @dev A second dividend asset, routed through its V2 pair. Robinhood rStock, so the WETH pair it
@@ -345,7 +345,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
     ///      buffer could never convert.
     function test_anErc20WithoutARouteRevertsCreation() public {
         address asset = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9; // AAPL, no route set
-        assertEq(dividendSwapRegistry.routeOf(address(0), asset).length, 0, "precondition: no route");
+        assertEq(realmSwapper.routeOf(address(0), asset).length, 0, "precondition: no route");
         vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingDividendRoute.selector, asset));
         _createDividendToken(5_000, asset);
     }
@@ -579,7 +579,13 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 token = _liveDividendToken();
         IERC20 erc = IERC20(address(token));
 
-        address[4] memory excluded = [address(token), token.pair(), address(token.launchpad()), address(0xdEaD)];
+        // The LP fee router parks token-side fees across rounds: give it a real balance to exclude.
+        uint256 parked = erc.balanceOf(buyer) / 4;
+        vm.prank(buyer);
+        erc.transfer(address(lpFeeRouter), parked);
+
+        address[5] memory excluded =
+            [address(token), token.pair(), address(token.launchpad()), address(0xdEaD), address(lpFeeRouter)];
 
         uint256 eligible = erc.totalSupply();
         for (uint256 i; i < excluded.length; ++i) {
@@ -596,7 +602,7 @@ contract DividendsTaxTokenV4Tests is TaxTokenUniV4BaseTests {
             token.previewDividend(buyer),
             pot * erc.balanceOf(buyer) / eligible,
             1e14,
-            "the denominator is exactly supply minus the balances of the SAME four addresses"
+            "the denominator is exactly supply minus the balances of the SAME five addresses"
         );
     }
 

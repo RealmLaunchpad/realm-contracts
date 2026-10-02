@@ -7,7 +7,7 @@ import {DeploymentAddressesRobinhoodMainnet as Robinhood} from "src/config/Deplo
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /// @notice The whole dividend product, end to end, on the chain it ships on: a taxable token with a
@@ -57,7 +57,7 @@ contract RobinhoodRStockDividendsE2ETests is RobinhoodForkBase {
     function test_creation_registersTheCreatorsRouteForTheToken() public {
         address token = _createRStockToken(_sole(AAPL), _w(10_000));
 
-        assertEq(dividendSwapRegistry.routeOf(token, AAPL), _rstockRoute(AAPL), "the AAPL route is on record");
+        assertEq(realmSwapper.routeOf(token, AAPL), _rstockRoute(AAPL), "the AAPL route is on record");
         (,,,, address payout,,) = RealmTaxableTokenUniV4(payable(token)).dividendAssets(0);
         assertEq(payout, AAPL, "and AAPL is the payout asset");
         assertTrue(RealmTaxableTokenUniV4(payable(token)).hasDividends(), "dividends are on");
@@ -238,12 +238,18 @@ contract RobinhoodRStockDividendsE2ETests is RobinhoodForkBase {
     ///      the spend to it — the keeper's gas money — before the swap, and the rest still converts.
     function test_registry_keeperFundingCutReachesTheKeeperWallet() public {
         vm.prank(admin);
-        dividendSwapRegistry.setKeeperFunding(keeperWallet);
+        realmSwapper.setKeeperFunding(keeperWallet);
         RealmTaxableTokenUniV4 token = _liveAppleToken();
+        // Measured from here: the setup's swaps already paid it for converting their token-side LP fees.
+        uint256 keeperBefore = keeperWallet.balance;
 
         token.processDividends(0, true, 0, 1, _noHolders());
 
-        assertEq(keeperWallet.balance, Robinhood.KEEPER_FEE, "the flat Robinhood keeper fee reached the wallet");
+        assertEq(
+            keeperWallet.balance - keeperBefore,
+            Robinhood.KEEPER_FEE,
+            "the flat Robinhood keeper fee reached the wallet"
+        );
         assertGt(IERC20(AAPL).balanceOf(address(token)), 0, "and the conversion still bought AAPL");
     }
 }

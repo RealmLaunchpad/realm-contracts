@@ -18,7 +18,7 @@ bytes32 constant OWNABLE_OWNER_SLOT = bytes32(uint256(0));
 ///         appoints `keeper`.
 /// @dev Token implementations reach the registry through a compile-time constant, so a test cannot
 ///      deploy one and pass the address — it has to appear AT that address. Same shape and same reason
-///      as `installDividendSwapRegistry`.
+///      as `installRealmSwapper`.
 /// @dev `owner` is set by `vm.store` rather than by a call, because this contract takes its owner in the
 ///      constructor and `etch` does not run constructors. The `require` below is what turns a wrong slot
 ///      into an immediate, obvious failure instead of a confusing `OwnableUnauthorizedAccount` later.

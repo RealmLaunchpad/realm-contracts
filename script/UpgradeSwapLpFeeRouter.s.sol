@@ -9,8 +9,8 @@ import {SwapLpFeeRouter} from "src/feeRouters/SwapLpFeeRouter.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 
 /// @title Ship a new `SwapLpFeeRouter` policy to the live proxy
-/// @notice Deploys a fresh `SwapLpFeeRouter` implementation from the current build (treasury from
-///         `DeploymentAddresses`) and points the manifest's `LP_FEE_ROUTER` proxy at it. The proxy
+/// @notice Deploys a fresh `SwapLpFeeRouter` implementation from the current build (treasury, swapper
+///         and keepers registry from `DeploymentAddresses`) and points the manifest's `LP_FEE_ROUTER` proxy at it. The proxy
 ///         address — the one the hook holds as an immutable — never moves, so the hook keeps its Uniswap
 ///         whitelisting and nothing else is touched. The broadcaster must own the proxy (`realm.dev`).
 ///
@@ -20,7 +20,8 @@ import {ChainConfig} from "script/ChainConfig.sol";
 contract UpgradeSwapLpFeeRouter is Script {
     function run() external {
         address proxy = ChainConfig.lpFeeRouter();
-        address treasury = ChainConfig.infra().treasury;
+        ChainConfig.Infra memory infra = ChainConfig.infra();
+        address treasury = infra.treasury;
         address oldImpl = address(uint160(uint256(vm.load(proxy, ERC1967Utils.IMPLEMENTATION_SLOT))));
 
         console.log("=== Upgrade SwapLpFeeRouter ===");
@@ -32,13 +33,14 @@ contract UpgradeSwapLpFeeRouter is Script {
         console.log("");
 
         vm.startBroadcast();
-        address newImpl = address(new SwapLpFeeRouter(treasury));
+        address newImpl = address(new SwapLpFeeRouter(treasury, infra.realmSwapper, infra.keepersRegistry));
         UUPSUpgradeable(proxy).upgradeToAndCall(newImpl, "");
         vm.stopBroadcast();
 
         // The proxy now answers with the new implementation's baked policy.
-        require(SwapLpFeeRouter(proxy).TREASURY() == treasury, "post-upgrade: treasury mismatch");
-        require(SwapLpFeeRouter(proxy).TREASURY_BPS() == 3_000, "post-upgrade: split mismatch");
+        require(SwapLpFeeRouter(payable(proxy)).TREASURY() == treasury, "post-upgrade: treasury mismatch");
+        require(SwapLpFeeRouter(payable(proxy)).TREASURY_BPS() == 3_000, "post-upgrade: split mismatch");
+        require(SwapLpFeeRouter(payable(proxy)).REALM_SWAPPER() == infra.realmSwapper, "post-upgrade: swapper mismatch");
 
         console.log("=== Upgraded. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
         console.log("  LP_FEE_ROUTER_IMPL =", newImpl);

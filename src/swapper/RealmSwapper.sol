@@ -8,7 +8,7 @@ import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contrac
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
-import {IRealmDividendSwapRegistry, Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {IRealmSwapper, Hop} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
@@ -19,10 +19,27 @@ import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
 import {PathKey} from "lib/v4-periphery/src/libraries/PathKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {IRealmPoolFee} from "src/interfaces/IRealmPoolFee.sol";
 
-/// @title RealmDividendSwapRegistry
-/// @notice Performs the native -> asset conversion behind every dividend payout, through the route the
-///         paying token registered for that asset, or the one an admin put in its place.
+/// @notice What `sellToken` reads off a Realm token and its graduator to key the token's pool.
+interface IRealmSwapperToken {
+    function graduator() external view returns (address);
+}
+
+interface IRealmSwapperGraduator {
+    function hookFor(address quote) external view returns (address);
+}
+
+/// @title RealmSwapper
+/// @notice The protocol's one swapper. Performs the native -> asset conversion behind every dividend
+///         payout, through the route the paying token registered for that asset (or the one an admin put
+///         in its place), and sells LP fees collected in a Realm token for its pool's quote (`sellToken`).
+///
+/// @dev KEEPER CUT. `KEEPER_FEE` is taken only where native flows: every dividend conversion, and a
+///      `sellToken` into the native quote. A `sellToken` into an ERC20 quote touches no native, so it pays
+///      no cut rather than inventing a quote-denominated one.
 ///
 /// @dev CREATOR-PICKED, ADMIN-REPOINTABLE. Each token registers its routes here at creation, keyed
 ///      `token => asset`, so one creator's route never touches another token paying the same asset.
@@ -43,7 +60,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 ///      no balance between calls. Its `receive()` exists only for the native a reverse V4 leg takes out
 ///      of the pool manager mid-`swapAssetToAsset`, which moves on in the same call; anything else sent
 ///      there is a donation nobody can recover.
-contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable, OwnableUpgradeable, UUPSUpgradeable {
+contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
     /// @notice Router every V2 conversion goes through, and the source of the canonical quote token.
@@ -136,27 +153,31 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     event AdminSet(address indexed account, bool allowed);
     /// @notice `token` registered its route for `asset` at creation. `quote`: a sell route for one of
     ///         its ERC20 quotes rather than a payout asset's buy route. Replaying these, then
-    ///         `DividendRouteSet`, is how an indexer learns which pools each conversion crosses.
-    event DividendRouteRegistered(address indexed token, address indexed asset, bool quote, bytes route);
+    ///         `RouteSet`, is how an indexer learns which pools each conversion crosses.
+    event RouteRegistered(address indexed token, address indexed asset, bool quote, bytes route);
     /// @notice An admin repointed `token`'s route for `asset` (`token == ALL_TOKENS`: the override for
-    ///         every token). Empty `route`: removed. `quote` as in `DividendRouteRegistered`.
-    event DividendRouteSet(address indexed token, address indexed asset, bool quote, bytes route);
-    event DividendAssetPurchased(address indexed asset, address indexed recipient, uint256 nativeIn, uint256 assetOut);
+    ///         every token). Empty `route`: removed. `quote` as in `RouteRegistered`.
+    event RouteSet(address indexed token, address indexed asset, bool quote, bytes route);
+    event AssetPurchased(address indexed asset, address indexed recipient, uint256 nativeIn, uint256 assetOut);
     /// @notice The wallet the per-conversion `KEEPER_FEE` is paid to changed. `address(0)` turns the fee
     ///          off. Named for the funding, not for the keeper set — the allowlist lives in
     ///          `RealmKeepersRegistry` and emits its own `KeeperSet`.
     event KeeperFundingSet(address indexed keeper);
     /// @notice A conversion paid the keeper its fee. Reported per conversion because the clip makes it
-    ///          less than `KEEPER_FEE` on a small one. `DividendAssetPurchased.nativeIn` for the same
+    ///          less than `KEEPER_FEE` on a small one. `AssetPurchased.nativeIn` for the same
     ///          conversion is the FULL amount the token sent, this included, not the amount swapped.
     event KeeperFunded(address indexed keeper, uint256 amount);
+    /// @notice `sellToken` is about to sell `amountIn` of the Realm `token` for `quote` in the token's own
+    ///         pool. Emitted BEFORE the swap: the precursor that lets an indexer flag the hook's
+    ///         `RealmSwapSell` / `RealmQuoteSwapSell` that follows as protocol-internal.
+    event RealmTokenSellInitiated(address indexed token, address indexed quote, uint256 amountIn);
     /// @notice `asset` was retired (`true`) or brought back (`false`). Emitted on every `setRetired`.
     event AssetRetired(address indexed asset, bool retired);
 
     /// @notice A `swapAssetToAsset` conversion: `amountIn` of `source` became `nativeVia` native on the
     ///         way — the keeper's cut, if any, came out of that — and `assetOut` of `asset` for
     ///         `recipient` (`asset == address(0)`: native, and `assetOut` is what was delivered).
-    event DividendAssetSwapped(
+    event AssetSwapped(
         address indexed source,
         address indexed asset,
         address indexed recipient,
@@ -209,13 +230,13 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         return UniswapV2Venue.pairToken(IUniswapV2Router(SWAP_ROUTER));
     }
 
-    /// @inheritdoc IRealmDividendSwapRegistry
+    /// @inheritdoc IRealmSwapper
     function routeOf(address token, address asset) public view returns (bytes memory route) {
         route = _routes[ALL_TOKENS][asset];
         if (route.length == 0) route = _routes[token][asset];
     }
 
-    /// @inheritdoc IRealmDividendSwapRegistry
+    /// @inheritdoc IRealmSwapper
     function quoteRouteOf(address token, address quote) public view returns (bytes memory route) {
         route = _quoteRoutes[ALL_TOKENS][quote];
         if (route.length == 0) route = _quoteRoutes[token][quote];
@@ -224,12 +245,12 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
 
     //////////////////////// route registration //////////////////////
 
-    /// @inheritdoc IRealmDividendSwapRegistry
+    /// @inheritdoc IRealmSwapper
     function registerRoute(address asset, bytes calldata route) external {
         _register(_routes, asset, route, false);
     }
 
-    /// @inheritdoc IRealmDividendSwapRegistry
+    /// @inheritdoc IRealmSwapper
     function registerQuoteRoute(address quote, bytes calldata route) external {
         _register(_quoteRoutes, quote, route, true);
     }
@@ -246,7 +267,7 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         require(routes[msg.sender][asset].length == 0, RouteAlreadyRegistered());
         require(_wellFormed(asset, route, quote), MalformedRoute());
         routes[msg.sender][asset] = route;
-        emit DividendRouteRegistered(msg.sender, asset, quote, route);
+        emit RouteRegistered(msg.sender, asset, quote, route);
     }
 
     /// @dev Shape only — no liquidity read. Catches a route set for the wrong asset or a garbled path;
@@ -304,7 +325,7 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     ///         arrives as `msg.value`.
     receive() external payable {}
 
-    /// @inheritdoc IRealmDividendSwapRegistry
+    /// @inheritdoc IRealmSwapper
     function swapNativeToAsset(address asset, uint256 minOut, address recipient)
         external
         payable
@@ -334,7 +355,7 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         require(out != 0 && out >= minOut, InsufficientOutput());
 
         IERC20(asset).safeTransfer(recipient, out);
-        emit DividendAssetPurchased(asset, recipient, msg.value, out);
+        emit AssetPurchased(asset, recipient, msg.value, out);
 
         // Paid LAST, and only on a conversion that worked: a reverted swap keeps the caller's native
         // whole, so the keeper must not have been paid out of it on the way. Still custodies nothing —
@@ -342,7 +363,7 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
         _payKeeper(keeperWallet, cut);
     }
 
-    /// @inheritdoc IRealmDividendSwapRegistry
+    /// @inheritdoc IRealmSwapper
     /// @dev Two legs, each through its asset's route. The keeper's cut
     ///      is taken from the native in between, so the ERC20 legs fund the keeper exactly as the native
     ///      ones do and nothing but native ever rests here for it. `minOut` guards the FINAL amount:
@@ -366,8 +387,63 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
             out = _swapFromNative(asset, nativeIn, minOut);
             IERC20(asset).safeTransfer(recipient, out);
         }
-        emit DividendAssetSwapped(source, asset, recipient, amountIn, native, out);
+        emit AssetSwapped(source, asset, recipient, amountIn, native, out);
         _payKeeper(keeperWallet, cut);
+    }
+
+    /// @inheritdoc IRealmSwapper
+    /// @dev Permissionless, like the dividend legs: the caller sells its own tokens. The pool is the one
+    ///      the token itself reports (`poolFee()`, its graduator's `hookFor`), so a token that is not a
+    ///      Realm token can only ever route the caller's own funds through its own pool.
+    /// @dev All of `amountIn` or revert, measured on this contract's balance: Permit2 pulls only what the
+    ///      swap owed, and a partial fill must not leave the rest here.
+    function sellToken(address token, address quote, uint256 amountIn, uint256 minOut, address recipient)
+        external
+        returns (uint256 out)
+    {
+        require(amountIn != 0, NothingToSwap());
+        require(token != quote, NoRoute());
+        PoolKey memory key = abi.decode(
+            abi.encode(
+                UniswapV4PoolConstants.realmPoolKey(
+                    token,
+                    quote,
+                    IRealmSwapperGraduator(IRealmSwapperToken(token).graduator()).hookFor(quote),
+                    IRealmPoolFee(token).poolFee()
+                )
+            ),
+            (PoolKey)
+        );
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amountIn);
+        UniversalRouterVenue.ensureRouterPull(PERMIT2, UNIV4_UNIVERSAL_ROUTER, token);
+
+        uint256 tokenBefore = IERC20(token).balanceOf(address(this));
+        uint256 quoteBefore = _holdings(quote);
+        emit RealmTokenSellInitiated(token, quote, amountIn);
+        require(
+            UniversalRouterVenue.swapExactInSingleV4(
+                UNIV4_UNIVERSAL_ROUTER, key, Currency.unwrap(key.currency0) == token, amountIn, minOut
+            ) && tokenBefore - IERC20(token).balanceOf(address(this)) == amountIn,
+            SwapFailed()
+        );
+        uint256 gross = _holdings(quote) - quoteBefore;
+
+        if (quote != address(0)) {
+            out = gross;
+            require(out != 0 && out >= minOut, InsufficientOutput());
+            IERC20(quote).safeTransfer(recipient, out);
+            return out;
+        }
+        (uint256 net, uint256 cut, address keeperWallet) = _keeperCut(gross);
+        out = net;
+        require(out != 0 && out >= minOut, InsufficientOutput());
+        (bool sent,) = recipient.call{value: out}("");
+        require(sent, NativeDeliveryFailed());
+        _payKeeper(keeperWallet, cut);
+    }
+
+    function _holdings(address currency) private view returns (uint256) {
+        return currency == address(0) ? address(this).balance : IERC20(currency).balanceOf(address(this));
     }
 
     /// @dev Leg 1 of `swapAssetToAsset`: the caller's quote route for `source` (`quoteRouteOf`) walked
@@ -505,7 +581,7 @@ contract RealmDividendSwapRegistry is IRealmDividendSwapRegistry, Initializable,
     ) private {
         require(route.length == 0 || _wellFormed(asset, route, quote), MalformedRoute());
         routes[token][asset] = route;
-        emit DividendRouteSet(token, asset, quote, route);
+        emit RouteSet(token, asset, quote, route);
     }
 
     /// @notice Retires `asset`, or brings it back. See `isRetired`. Admin or owner.

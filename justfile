@@ -78,19 +78,21 @@ _retarget taxlib:
     @just _taxtoken {{taxlib}}
 
 # (internal) Repoints the taxable-token impls' (and their venue bases, the V4 buy-backs, the dividend
-# mixin, the keeper gate, the dividend swap registry and the two test helpers that etch the registries
+# mixin, the keeper gate, the sniper mixin, the `RealmSwapper` and the two test helpers that etch the registries
 # at the address those bake in) `DeploymentAddresses` import to the target chain. Use a `chain-*` recipe.
 _taxtoken lib:
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
         src/tokens/RealmTaxableTokenUniV2.sol src/tokens/RealmTaxableTokenUniV4.sol src/tokens/RealmUniv4BuyBacks.sol \
         src/tokens/RealmTaxableTokenUniV2Base.sol src/tokens/RealmTaxableTokenUniV4Base.sol \
-        src/tokens/DividendDistribution.sol src/dividends/RealmDividendSwapRegistry.sol src/tokens/KeeperGated.sol \
-        test/helpers/DividendRegistryHelpers.sol test/helpers/KeepersRegistryHelpers.sol
+        src/tokens/DividendDistribution.sol src/swapper/RealmSwapper.sol src/tokens/KeeperGated.sol \
+        src/tokens/SniperProtection.sol \
+        test/helpers/RealmSwapperHelpers.sol test/helpers/KeepersRegistryHelpers.sol
 
 # ============================ FRESH DEPLOY (two phases) ============================
-# Phase 0. Keepers registry + dividend swap registry + LP fee router. Their addresses are COMPILE-TIME
-# constants elsewhere, so they must exist before anything else is built. Paste the two printed
-# constants into src/config/DeploymentAddresses.sol, then rebuild.
+# Phase 0. Keepers registry + `RealmSwapper` + LP fee router. Their addresses are COMPILE-TIME
+# constants elsewhere, so they must exist before anything else is built. Paste the three printed
+# constants (keepers registry, swapper proxy, LP fee router proxy) into src/config/DeploymentAddresses.sol,
+# then rebuild.
 
 deploy-prereqs-rh: chain-rh
     forge script DeployRealmPrereqs --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
@@ -227,16 +229,16 @@ upgrade-assets-whitelist-rh-testnet: chain-rh-testnet
     forge script UpgradeAssetsWhitelist --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Deploys a new RealmDividendSwapRegistry implementation and repoints this chain's DIVIDEND_SWAP_REGISTRY
+# Deploys a new RealmSwapper implementation and repoints this chain's REALM_SWAPPER
 # proxy at it. Routes, thresholds and keeper wallet are kept; the proxy address never moves, so nothing to
 # paste. Dry-run first: the same command without --broadcast, plus --sender <realm.dev address>.
 
-upgrade-dividend-registry-rh: chain-rh
-    forge script UpgradeDividendSwapRegistry --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+upgrade-realm-swapper-rh: chain-rh
+    forge script UpgradeRealmSwapper --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
-upgrade-dividend-registry-rh-testnet: chain-rh-testnet
-    forge script UpgradeDividendSwapRegistry --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+upgrade-realm-swapper-rh-testnet: chain-rh-testnet
+    forge script UpgradeRealmSwapper --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Deploys a new RealmVoting implementation for the manifest's CURRENT REALM_TOKEN (the token it burns is
@@ -486,7 +488,7 @@ whitelist-realm-rh-testnet:
 # `amount` is anything cast parses (0.01ether, 1000000gwei, raw wei); `net` is mainnet|testnet.
 # Route: the (ETH, token) pool when it is initialized, else ETH -> quote -> token through the token's
 # first ERC20 quote, whose ETH pool comes from the manifest's ASSETS_WHITELIST price source.
-# Token pool keys follow UniswapV4PoolConstants.realmPoolKey (fee 0, spacing 200, graduator.hookFor).
+# Token pool keys follow UniswapV4PoolConstants.realmPoolKey (fee token.poolFee(), spacing 200, graduator.hookFor).
 # ponytail: no slippage floor (minOut 0); Robinhood has no public mempool to sandwich it.
 # e.g. just buy 0xToken 0.01ether livo.dev testnet
 buy token amount account net:
@@ -502,12 +504,13 @@ buy token amount account net:
     TOKEN=$(cast to-check-sum-address '{{token}}')
     WEI=$(cast to-unit '{{amount}}' wei)
     GRAD=$(cast call --rpc-url $RPC $TOKEN 'graduator()(address)')
+    TFEE=$(cast call --rpc-url $RPC $TOKEN 'poolFee()(uint24)' | awk '{print $1}')
     # exact-in single swap; amountIn 0 = OPEN_DELTA, i.e. spend whatever the previous hop credited
     swap() { cast abi-encode "f(($KEY_T,bool,uint128,uint128,uint256,bytes))" "($1,$2,$3,0,0,0x)"; }
     HOOK=$(cast call --rpc-url $RPC $GRAD 'hookFor(address)(address)' $ETH)
-    NATIVE_KEY="($ETH,$TOKEN,0,200,$HOOK)"
+    NATIVE_KEY="($ETH,$TOKEN,$TFEE,200,$HOOK)"
     # pool initialized <=> slot0 (PoolManager `pools` mapping, slot 6) is nonzero
-    PID=$(cast keccak $(cast abi-encode 'f(address,address,uint24,int24,address)' $ETH $TOKEN 0 200 $HOOK))
+    PID=$(cast keccak $(cast abi-encode 'f(address,address,uint24,int24,address)' $ETH $TOKEN $TFEE 200 $HOOK))
     SLOT0=$(cast call --rpc-url $RPC $PM 'extsload(bytes32)(bytes32)' $(cast keccak $(cast concat-hex $PID $(cast to-uint256 6))))
     if [ $((16#${SLOT0:2:16} | 16#${SLOT0:18:16} | 16#${SLOT0:34:16} | 16#${SLOT0:50:16})) -ne 0 ]; then
         echo "route: ETH -> token (hook $HOOK)"
@@ -522,7 +525,7 @@ buy token amount account net:
         [ "$VENUE" = 3 ] && [ "$C0" = "$ETH" ] || { echo "quote $QUOTE has no V4 ETH pool in the whitelist: $SRC"; exit 1; }
         QTHOOK=$(cast call --rpc-url $RPC $GRAD 'hookFor(address)(address)' $QUOTE)
         # realmPoolKey sorts the pair; quote -> token is zeroForOne when the quote sorts first
-        if [[ "${QUOTE,,}" < "${TOKEN,,}" ]]; then TKEY="($QUOTE,$TOKEN,0,200,$QTHOOK)"; Z=true; else TKEY="($TOKEN,$QUOTE,0,200,$QTHOOK)"; Z=false; fi
+        if [[ "${QUOTE,,}" < "${TOKEN,,}" ]]; then TKEY="($QUOTE,$TOKEN,$TFEE,200,$QTHOOK)"; Z=true; else TKEY="($TOKEN,$QUOTE,$TFEE,200,$QTHOOK)"; Z=false; fi
         echo "route: ETH -> $QUOTE -> token"
         SWAPS="$(swap "($C0,$C1,$FEE,$TS,$QHOOK)" true $WEI),$(swap "$TKEY" $Z 0)"; ACTIONS=0x0606
     fi

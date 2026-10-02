@@ -3,18 +3,17 @@ pragma solidity 0.8.28;
 
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
 import {RealmUniv4BuyBacks} from "src/tokens/RealmUniv4BuyBacks.sol";
-// Self-aliased so the `chain-*` recipes can import-swap it for the target chain's pool constants.
-import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode) - see the justfile `_taxtoken` recipe.
 import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with (to rebuild the
-///         pool key) and the shared liquidity adder it uses (to mint the single-sided ETH wall).
+///         pool key), the shared liquidity adder, and the locker that owns the token's bid walls.
 interface IRealmV4Graduator {
     function HOOK_ADDRESS() external view returns (address);
     function LIQUIDITY_ADDER() external view returns (address);
+    function LP_LOCKER() external view returns (address);
 
     /// @notice The hook mediating the pool this token shares with `quote`. Native pools keep
     ///         `RealmHook`, which Uniswap whitelisted; an ERC20-quoted pool is served by
@@ -32,37 +31,11 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     /// @notice Pool manager for lock state checking
     address public constant UNIV4_POOL_MANAGER = DeploymentAddresses.UNIV4_POOL_MANAGER;
 
-    /// @notice Position manager holding this token's liquidity walls. Only `processLiquidity`'s top-up
-    ///         path calls it directly — minting still goes through the shared `RealmUniV4LiquidityAdder` —
-    ///         because `PositionManager._increase` is `onlyIfApproved` and this token owns the NFTs.
-    address public constant UNIV4_POSITION_MANAGER = DeploymentAddresses.UNIV4_POSITION_MANAGER;
-
     /// @notice Max ETH a single `processBurn` / `processLiquidity` call may spend. Combined with the
     ///         once-per-block cooldown, it caps what a price-manipulation sandwich can extract from the
     ///         buffers per block (the pump must be re-paid — or held, exposed to arbitrage — every
     ///         block), while honest keepers just drain in batches. The remainder stays buffered.
     uint256 public constant MAX_EARNINGS_PER_PROCESS = DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;
-
-    /// @notice Width, in TICKS, of the single-sided ETH liquidity wall minted by `processLiquidity`. The
-    ///         wall spans from just below the current price down to roughly -75%: ticks are log-price
-    ///         (price = 1.0001^tick), so 14000 ticks (70 * the current 200 spacing) is a price ratio of
-    ///         1.0001^14000 ≈ 4.05, i.e. the far end of the range is ~1/4.05 ≈ 0.25 of the current price
-    ///         (a ~-75% drop). A given % drop maps to a CONSTANT tick width regardless of the starting
-    ///         price. Derived from TICK_SPACING so the range stays spacing-aligned (and mints cleanly)
-    ///         even if the spacing is ever retargeted per chain.
-    int24 internal constant LIQUIDITY_WALL_TICK_WIDTH = 70 * UniswapV4PoolConstants.TICK_SPACING;
-
-    /// @notice Max distance, in TICKS, between the current tick and a remembered wall's lower tick for
-    ///         `processLiquidity` to top that wall up instead of minting a new one. 2000 ticks is a ~22%
-    ///         price rise since the wall was placed (1.0001^2000 ≈ 1.22), so a reused wall covers roughly
-    ///         -18% to -79% of the current price where a fresh one covers 0% to -75%.
-    /// @dev The bound is what stops the reuse path from degrading into "pile every future add into the
-    ///      first wall ever minted". Deliberately far below `LIQUIDITY_WALL_TICK_WIDTH` (the widest value
-    ///      that still leaves the old and the hypothetical fresh range overlapping): the dominant reason
-    ///      to mint is a price DROP, which disqualifies the old wall outright, so tightening this costs
-    ///      almost no reuse and buys a materially better-placed wall. It also caps how deep a
-    ///      price-pumping manipulator can steer an add.
-    int24 internal constant LIQUIDITY_WALL_REUSE_MAX_GAP = 10 * UniswapV4PoolConstants.TICK_SPACING;
 
     /// @notice Share of an ERC20 quote's buffer one `processBurn` / `processLiquidity` call may spend,
     ///         in bps. The unit-free counterpart of `MAX_EARNINGS_PER_PROCESS`, which is denominated in
@@ -163,6 +136,11 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     error BuyBackFailed();
     error NothingToAdd();
     error ProcessCooldown();
+
+    /// @inheritdoc RealmUniv4BuyBacks
+    function _poolFee() internal view override returns (uint24) {
+        return poolFee();
+    }
 
     //////////////////////// PER-QUOTE VIEWS //////////////////////
 

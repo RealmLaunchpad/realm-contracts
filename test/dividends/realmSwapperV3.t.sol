@@ -4,9 +4,9 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
-import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
+import {installRealmSwapper} from "test/helpers/RealmSwapperHelpers.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 
 /// @notice The curated Uniswap V3 venue, exercised against the real Ondo Global Markets pools — the
@@ -52,7 +52,7 @@ contract PartialFillV3RouterStub {
     }
 }
 
-contract RealmDividendSwapRegistryV3Tests is Test {
+contract RealmSwapperV3Tests is Test {
     uint256 internal constant BLOCKNUMBER = 58_000_000;
 
     address internal constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
@@ -75,7 +75,7 @@ contract RealmDividendSwapRegistryV3Tests is Test {
     /// @dev AAPLon's real, liquid WETH pool.
     address internal constant AAPL_WETH_005 = 0x8bb3514e2204E1cDF3Ac149EFEe7Ff04D91B719f;
 
-    RealmDividendSwapRegistry internal registry;
+    RealmSwapper internal registry;
 
     address internal owner = makeAddr("owner");
     address internal admin = makeAddr("admin");
@@ -84,7 +84,7 @@ contract RealmDividendSwapRegistryV3Tests is Test {
 
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
-        registry = installDividendSwapRegistry(owner);
+        registry = installRealmSwapper(owner);
 
         vm.prank(owner);
         registry.setAdmin(admin, true);
@@ -106,7 +106,7 @@ contract RealmDividendSwapRegistryV3Tests is Test {
     }
 
     function _expectMalformed() internal {
-        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
     }
 
     /// @dev A fresh 1% AAPLon/WETH pool opened at the live 0.05% pool's price, holding one AAPLon-only
@@ -195,7 +195,7 @@ contract RealmDividendSwapRegistryV3Tests is Test {
 
         vm.deal(address(this), 0.01 ether);
         uint256 balanceBefore = address(this).balance;
-        vm.expectRevert(RealmDividendSwapRegistry.SwapFailed.selector);
+        vm.expectRevert(RealmSwapper.SwapFailed.selector);
         registry.swapNativeToAsset{value: 0.01 ether}(AAPLon, 1, recipient);
 
         assertEq(address(this).balance, balanceBefore, "the native never left the caller");
@@ -210,7 +210,7 @@ contract RealmDividendSwapRegistryV3Tests is Test {
         _route(AAPLon, _path(WETH, FEE_030, AAPLon));
 
         vm.deal(address(this), 0.005 ether);
-        vm.expectRevert(RealmDividendSwapRegistry.SwapFailed.selector);
+        vm.expectRevert(RealmSwapper.SwapFailed.selector);
         registry.swapNativeToAsset{value: 0.005 ether}(AAPLon, 1, recipient);
     }
 
@@ -255,14 +255,14 @@ contract RealmDividendSwapRegistryV3Tests is Test {
         bytes memory route = DividendRouteLib.encodeV3(_path(WETH, FEE_030, AAPLon));
 
         vm.expectEmit(true, false, false, true, address(registry));
-        emit RealmDividendSwapRegistry.DividendRouteSet(address(0), AAPLon, false, route);
+        emit RealmSwapper.RouteSet(address(0), AAPLon, false, route);
         vm.prank(admin);
         registry.setRoute(address(0), AAPLon, route);
     }
 
     function test_aStrangerCannotSetARoute() public {
         vm.prank(stranger);
-        vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
+        vm.expectRevert(RealmSwapper.NotAdmin.selector);
         registry.setRoute(address(0), AAPLon, DividendRouteLib.encodeV3(_path(WETH, FEE_030, AAPLon)));
     }
 

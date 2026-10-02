@@ -19,7 +19,7 @@ abstract contract KeeperGated {
     ///         earnings conversions.
     /// @dev ⚠️ PLACEHOLDER — NOT DEPLOYED YET on this chain. The `CeEbEe95` tail is the tell; it is
     ///      deliberately NOT `address(0)` so tests can `etch` a working registry AT this address, the
-    ///      same convention `DIVIDEND_SWAP_REGISTRY` uses and for the same reason.
+    ///      same convention `REALM_SWAPPER` uses and for the same reason.
     /// @dev A compile-time constant because tokens are clones and cannot be repointed. Every script that
     ///      deploys a taxable token implementation asserts this has code before broadcasting.
     address public constant REALM_KEEPERS_REGISTRY = DeploymentAddresses.REALM_KEEPERS_REGISTRY;

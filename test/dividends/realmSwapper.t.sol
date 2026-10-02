@@ -5,11 +5,11 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {OwnableUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
+import {Hop} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
-import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
+import {installRealmSwapper} from "test/helpers/RealmSwapperHelpers.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
@@ -59,7 +59,7 @@ contract PartialPullV4RouterStub {
 /// @notice The swap venue for third-asset dividends, and the one place their routes live: each token's
 ///         own, registered at creation, repointable by an admin per token or for every token at once.
 /// @dev This test contract stands in for a TOKEN throughout: it converts exactly as a clone does.
-contract RealmDividendSwapRegistryTests is V4PoolSeeding {
+contract RealmSwapperTests is V4PoolSeeding {
     uint256 internal constant BLOCKNUMBER = 58_000_000;
     address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
     address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
@@ -75,7 +75,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     /// @dev A route through the asset's V2 pair with the native quote.
     bytes internal constant V2_ROUTE = hex"02";
 
-    RealmDividendSwapRegistry internal registry;
+    RealmSwapper internal registry;
 
     address internal owner = makeAddr("owner");
     address internal admin = makeAddr("admin");
@@ -87,7 +87,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
 
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
-        registry = installDividendSwapRegistry(owner);
+        registry = installRealmSwapper(owner);
 
         vm.prank(owner);
         registry.setAdmin(admin, true);
@@ -101,7 +101,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         address ghost = address(new Ghost());
         assertEq(registry.routeOf(address(0), ghost).length, 0, "no route by default");
         vm.deal(address(this), 1 ether);
-        vm.expectRevert(RealmDividendSwapRegistry.NoRoute.selector);
+        vm.expectRevert(RealmSwapper.NoRoute.selector);
         registry.swapNativeToAsset{value: 1 ether}(ghost, 1, recipient);
     }
 
@@ -117,7 +117,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     function test_aRouteCanBeRepointed() public {
         _set(AAPL, _v4(AAPL, 3_000, 60)); // a pool nobody initialized: shape is fine, the swap is not
         vm.deal(address(this), 0.02 ether);
-        vm.expectRevert(RealmDividendSwapRegistry.SwapFailed.selector);
+        vm.expectRevert(RealmSwapper.SwapFailed.selector);
         registry.swapNativeToAsset{value: 0.01 ether}(AAPL, 1, recipient);
 
         _set(AAPL, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
@@ -129,14 +129,14 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         _set(MSFT, V2_ROUTE);
         _set(MSFT, "");
         vm.deal(address(this), 1 ether);
-        vm.expectRevert(RealmDividendSwapRegistry.NoRoute.selector);
+        vm.expectRevert(RealmSwapper.NoRoute.selector);
         registry.swapNativeToAsset{value: 1 ether}(MSFT, 1, recipient);
     }
 
     function test_everyRouteChangeIsAnnounced() public {
         bytes memory route = _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL);
         vm.expectEmit(true, false, false, true, address(registry));
-        emit RealmDividendSwapRegistry.DividendRouteSet(address(0), AAPL, false, route);
+        emit RealmSwapper.RouteSet(address(0), AAPL, false, route);
         _set(AAPL, route);
         assertEq(registry.routeOf(address(0), AAPL), route, "stored as given");
     }
@@ -145,7 +145,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     ///      refused; whether its pools can deliver is the fork probe's job before listing.
     function test_aMalformedRouteIsRefused() public {
         vm.startPrank(admin);
-        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
         registry.setRoute(address(0), MSFT, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL)); // ends at AAPL
 
         Hop[] memory tooLong = new Hop[](registry.MAX_ROUTE_HOPS() + 1);
@@ -153,12 +153,12 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
             tooLong[i] = Hop({currency: address(uint160(i + 1)), fee: 3_000, tickSpacing: 60, hooks: address(0)});
         }
         tooLong[tooLong.length - 1].currency = AAPL;
-        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
         registry.setRoute(address(0), AAPL, DividendRouteLib.encodeV4(tooLong));
 
-        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
         registry.setRoute(address(0), MSFT, hex"07"); // unknown venue tag
-        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
         registry.setRoute(address(0), MSFT, hex"0200"); // V2 carries no body
         vm.stopPrank();
     }
@@ -168,7 +168,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     /// @dev A token's own route serves that token only: another caller has none.
     function test_aTokenRegistersItsOwnRoute() public {
         vm.expectEmit(address(registry));
-        emit RealmDividendSwapRegistry.DividendRouteRegistered(address(this), MSFT, false, V2_ROUTE);
+        emit RealmSwapper.RouteRegistered(address(this), MSFT, false, V2_ROUTE);
         registry.registerRoute(MSFT, V2_ROUTE);
         assertEq(registry.routeOf(address(this), MSFT), V2_ROUTE, "stored against the caller");
 
@@ -177,14 +177,14 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
 
         vm.deal(stranger, 1 ether);
         vm.prank(stranger);
-        vm.expectRevert(RealmDividendSwapRegistry.NoRoute.selector);
+        vm.expectRevert(RealmSwapper.NoRoute.selector);
         registry.swapNativeToAsset{value: 1 ether}(MSFT, 1, stranger);
     }
 
     /// @dev Write-once: after creation only an admin changes a token's route.
     function test_registrationIsWriteOnce() public {
         registry.registerRoute(MSFT, V2_ROUTE);
-        vm.expectRevert(RealmDividendSwapRegistry.RouteAlreadyRegistered.selector);
+        vm.expectRevert(RealmSwapper.RouteAlreadyRegistered.selector);
         registry.registerRoute(MSFT, V2_ROUTE);
     }
 
@@ -192,9 +192,9 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     function test_registrationChecksShapeOnly() public {
         address ghost = address(new Ghost());
         registry.registerRoute(ghost, V2_ROUTE); // no pair exists
-        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
         registry.registerRoute(MSFT, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL)); // ends at AAPL
-        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
         registry.registerRoute(AAPL, "");
     }
 
@@ -205,9 +205,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         registry.registerRoute(AAPL, _v4(AAPL, 3_000, 60));
 
         vm.expectEmit(address(registry));
-        emit RealmDividendSwapRegistry.DividendRouteSet(
-            address(this), AAPL, false, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL)
-        );
+        emit RealmSwapper.RouteSet(address(this), AAPL, false, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
         vm.prank(admin);
         registry.setRoute(address(this), AAPL, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
 
@@ -227,10 +225,10 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
 
     /// @dev Only a V4 route can be walked backwards, so a quote route is V4 or nothing.
     function test_aQuoteRouteMustBeV4() public {
-        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
         registry.registerQuoteRoute(AAPL, V2_ROUTE);
         vm.prank(admin);
-        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
         registry.setQuoteRoute(address(this), AAPL, V2_ROUTE);
 
         registry.registerQuoteRoute(AAPL, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
@@ -323,12 +321,12 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
 
     function test_theKeeperWalletIsAdminOnly() public {
         vm.prank(stranger);
-        vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
+        vm.expectRevert(RealmSwapper.NotAdmin.selector);
         registry.setKeeperFunding(makeAddr("keeper"));
     }
 
     function test_swapRevertsWithNothingToSwap() public {
-        vm.expectRevert(RealmDividendSwapRegistry.NothingToSwap.selector);
+        vm.expectRevert(RealmSwapper.NothingToSwap.selector);
         registry.swapNativeToAsset(MSFT, 1, recipient);
     }
 
@@ -374,7 +372,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         _set(AAPL, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
 
         vm.deal(address(this), 1 ether);
-        vm.expectRevert(RealmDividendSwapRegistry.SwapFailed.selector);
+        vm.expectRevert(RealmSwapper.SwapFailed.selector);
         registry.swapNativeToAsset{value: 1 ether}(AAPL, 1_000_000e18, recipient);
     }
 
@@ -392,7 +390,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
 
         vm.deal(address(this), 1 ether);
         uint256 balanceBefore = address(this).balance;
-        vm.expectRevert(RealmDividendSwapRegistry.SwapFailed.selector);
+        vm.expectRevert(RealmSwapper.SwapFailed.selector);
         registry.swapNativeToAsset{value: 1 ether}(AAPL, 1, recipient);
 
         assertEq(address(this).balance, balanceBefore, "the native never left the caller");
@@ -415,11 +413,11 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
 
     function test_strangersCannotTouchEntries() public {
         vm.startPrank(stranger);
-        vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
+        vm.expectRevert(RealmSwapper.NotAdmin.selector);
         registry.setRoute(address(0), MSFT, V2_ROUTE);
-        vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
+        vm.expectRevert(RealmSwapper.NotAdmin.selector);
         registry.setKeeperFunding(stranger);
-        vm.expectRevert(RealmDividendSwapRegistry.NotAdmin.selector);
+        vm.expectRevert(RealmSwapper.NotAdmin.selector);
         registry.setRetired(MSFT, true);
         vm.stopPrank();
     }
@@ -427,13 +425,13 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
     /// @dev An admin retires and un-retires an asset; each call is reported.
     function test_anAdminRetiresAndUnretiresAnAsset() public {
         vm.expectEmit(true, false, false, true, address(registry));
-        emit RealmDividendSwapRegistry.AssetRetired(MSFT, true);
+        emit RealmSwapper.AssetRetired(MSFT, true);
         vm.prank(admin);
         registry.setRetired(MSFT, true);
         assertTrue(registry.isRetired(MSFT), "retired");
 
         vm.expectEmit(true, false, false, true, address(registry));
-        emit RealmDividendSwapRegistry.AssetRetired(MSFT, false);
+        emit RealmSwapper.AssetRetired(MSFT, false);
         vm.prank(admin);
         registry.setRetired(MSFT, false);
         assertFalse(registry.isRetired(MSFT), "back");
@@ -505,7 +503,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         deal(AAPL, address(this), 1e16);
         IERC20(AAPL).approve(address(registry), 1e16);
 
-        vm.expectRevert(RealmDividendSwapRegistry.NoRoute.selector);
+        vm.expectRevert(RealmSwapper.NoRoute.selector);
         registry.swapAssetToAsset(AAPL, MSFT, 1e16, 1, recipient);
     }
 
@@ -559,13 +557,13 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
 
     /// @dev Nothing to swap, no source, or a source that already IS the asset: refused before any pull.
     function test_swapAssetToAsset_refusesDegenerateInputs() public {
-        vm.expectRevert(RealmDividendSwapRegistry.NothingToSwap.selector);
+        vm.expectRevert(RealmSwapper.NothingToSwap.selector);
         registry.swapAssetToAsset(AAPL, MSFT, 0, 1, recipient);
 
-        vm.expectRevert(RealmDividendSwapRegistry.NoRoute.selector);
+        vm.expectRevert(RealmSwapper.NoRoute.selector);
         registry.swapAssetToAsset(address(0), MSFT, 1e16, 1, recipient);
 
-        vm.expectRevert(RealmDividendSwapRegistry.NoRoute.selector);
+        vm.expectRevert(RealmSwapper.NoRoute.selector);
         registry.swapAssetToAsset(AAPL, AAPL, 1e16, 1, recipient);
     }
 
@@ -580,7 +578,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         vm.etch(router, address(new PartialPullV4RouterStub()).code);
         vm.deal(router, 1 ether);
 
-        vm.expectRevert(RealmDividendSwapRegistry.SwapFailed.selector);
+        vm.expectRevert(RealmSwapper.SwapFailed.selector);
         registry.swapAssetToAsset(AAPL, address(0), 1e16, 0, recipient);
 
         assertEq(IERC20(AAPL).balanceOf(address(this)), 1e16, "the source went back whole");
@@ -595,7 +593,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
         IERC20(AAPL).approve(address(registry), 1e16);
         address refuser = address(new Ghost()); // no `receive()`
 
-        vm.expectRevert(RealmDividendSwapRegistry.NativeDeliveryFailed.selector);
+        vm.expectRevert(RealmSwapper.NativeDeliveryFailed.selector);
         registry.swapAssetToAsset(AAPL, address(0), 1e16, 0, refuser);
         assertEq(IERC20(AAPL).balanceOf(address(this)), 1e16, "the source never left");
     }
@@ -621,7 +619,7 @@ contract RealmDividendSwapRegistryTests is V4PoolSeeding {
             DeploymentAddresses.UNIV4_POOL_MANAGER, bytes32(uint256(state) + StateLibrary.LIQUIDITY_OFFSET), bytes32(0)
         );
 
-        vm.expectRevert(RealmDividendSwapRegistry.SwapFailed.selector);
+        vm.expectRevert(RealmSwapper.SwapFailed.selector);
         registry.swapAssetToAsset(AAPL, MSFT, 1e16, 1, recipient);
         assertEq(IERC20(AAPL).balanceOf(address(this)), 1e16, "the source never left");
     }

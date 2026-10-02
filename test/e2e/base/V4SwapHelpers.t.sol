@@ -16,14 +16,13 @@ import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 ///         test/graduators/graduationUniv4.base.t.sol and test/graduators/taxToken.base.t.sol so
 ///         the E2E suite can swap on any Realm-graduated V4 pool regardless of token variant.
 abstract contract V4SwapHelpers is LaunchpadBaseTests {
-    uint24 internal constant E2E_LP_FEE = UniswapV4PoolConstants.LP_FEE;
     int24 internal constant E2E_TICK_SPACING = UniswapV4PoolConstants.TICK_SPACING;
 
     function _v4PoolKey(address token) internal view returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(token),
-            fee: E2E_LP_FEE,
+            fee: _poolFee(token),
             tickSpacing: E2E_TICK_SPACING,
             hooks: IHooks(address(taxHook))
         });
@@ -80,5 +79,6 @@ abstract contract V4SwapHelpers is LaunchpadBaseTests {
         uint256 valueIn = isBuy ? amountIn : 0;
         IUniversalRouter(universalRouter).execute{value: valueIn}(commands, inputs, block.timestamp);
         vm.stopPrank();
+        if (expectSuccess && !manualLpFees) _settleLpFees(token);
     }
 }

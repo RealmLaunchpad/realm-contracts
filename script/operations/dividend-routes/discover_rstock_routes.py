@@ -6,7 +6,7 @@
 the fixed route to each Arcus pToken.
 
 Robinhood Chain's ~190 rStocks have no Uniswap V2 pair at all: their liquidity lives in V4, most
-of it in a pool against native ETH and the rest against USDG. `RealmDividendSwapRegistry` cannot
+of it in a pool against native ETH and the rest against USDG. `RealmSwapper` cannot
 measure a V4 asset the way it measures a long-tail ERC20 -- a V4 pool is identified by a
 (fee, tickSpacing, hooks) tuple that is not derivable from its two currencies, and one pair can
 have hundreds of pools, most of them somebody's dust. This script finds the real ones, on chain,

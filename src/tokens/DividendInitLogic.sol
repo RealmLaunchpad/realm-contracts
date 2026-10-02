@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IRealmDividendSwapRegistry} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {IRealmSwapper} from "src/interfaces/IRealmSwapper.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 
 /// @title DividendInitLogic
@@ -17,7 +17,7 @@ abstract contract DividendInitLogic is DividendDistribution {
     ///      earnings allocation routes a non-zero share to dividends.
     ///
     /// @dev ANY ERC20 IS ACCEPTED, with the creator's route for it: registered on
-    ///      `RealmDividendSwapRegistry` against this token, shape-checked only (no liquidity gate). An
+    ///      `RealmSwapper` against this token, shape-checked only (no liquidity gate). An
     ///      asset with NO route reverts the creation (`MissingDividendRoute`) unless the registry already
     ///      holds one for it (an admin `ALL_TOKENS` route): otherwise its buffer would strand until an
     ///      admin stepped in. A dead route is not detectable here and is an admin's to repoint.
@@ -54,7 +54,7 @@ abstract contract DividendInitLogic is DividendDistribution {
         // forge-lint: disable-next-line(unsafe-typecast)
         count = uint8(n);
 
-        IRealmDividendSwapRegistry registry = IRealmDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
+        IRealmSwapper registry = IRealmSwapper(REALM_SWAPPER);
         uint256 weightSum;
         for (uint256 i; i < count; ++i) {
             address token = tokens[i];

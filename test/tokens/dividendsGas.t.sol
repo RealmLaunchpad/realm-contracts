@@ -8,7 +8,7 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {setDividendRoute} from "test/helpers/RealmSwapperHelpers.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
 /// @notice The hot-path gas measurement the dividends design hangs on.
@@ -23,8 +23,8 @@ import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 contract DividendsGasTests is TaxTokenUniV4BaseTests {
     function setUp() public virtual override {
         super.setUp();
-        setDividendRoute(dividendSwapRegistry, MSFT, DividendRouteLib.encodeV2());
-        setDividendRoute(dividendSwapRegistry, AAPL, DividendRouteLib.encodeV2());
+        setDividendRoute(realmSwapper, MSFT, DividendRouteLib.encodeV2());
+        setDividendRoute(realmSwapper, AAPL, DividendRouteLib.encodeV2());
     }
 
     address internal holderA = makeAddr("gasHolderA");

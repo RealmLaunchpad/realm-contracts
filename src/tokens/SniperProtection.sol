@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+// Swapped per target chain by `just chain-<name>`.
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
+
 /// @notice Dev-supplied anti-sniper config, passed to the token's initializer. Immutable once set.
 struct AntiSniperConfigs {
     /// @notice Max tokens per tx, in basis points of TOTAL_SUPPLY. Range: 10..300 (0.1%..3%).
@@ -48,6 +51,9 @@ abstract contract SniperProtection {
     ///      circulating float. Creator-vault tokens lock part of the supply, so a given bps is a
     ///      slightly larger share of their (smaller) tradable float — by design, not a bug.
     uint256 internal constant _ANTI_SNIPER_TOTAL_SUPPLY = 1_000_000_000e18;
+
+    /// @dev The `SwapLpFeeRouter` proxy. Also the dividend exclusion in `RealmTaxableToken`.
+    address internal constant LP_FEE_ROUTER = DeploymentAddresses.LP_FEE_ROUTER;
 
     /// @notice Max tokens per tx during the protection window, in bps of TOTAL_SUPPLY.
     uint16 public maxBuyPerTxBps;
@@ -129,6 +135,11 @@ abstract contract SniperProtection {
     ///          handing a direct-launch dev buy back to the factory. Both are launch plumbing carrying
     ///          far more than any cap, and both now happen INSIDE the window — the caps used to stop at
     ///          graduation, which is what made this exemption unnecessary before.
+    ///        - `to == LP_FEE_ROUTER`: the locker parking collected token-side LP fees until a keeper
+    ///          converts them. Capped, the bucket outgrowing the wallet cap would revert every `collect`.
+    ///        - `to == _lpLockerOf(graduatorAddr)`: the pool paying the locker its collected fees, which
+    ///          the per-tx cap would read as a buy. Capped, a large `collect` (and so `addWall`, which
+    ///          collects first, and `processLiquidity`) would revert.
     ///        - `sniperBypass[to]`: dev-supplied whitelist.
     /// @dev Launchpad fees are ignored in the cap math.
     /// @dev Call only while the window is open: this does not check it.
@@ -160,6 +171,10 @@ abstract contract SniperProtection {
         if (from == factoryAddr) return;
         if (from == graduatorAddr) return;
 
+        // LP fee plumbing
+        if (to == LP_FEE_ROUTER) return;
+        if (to == _lpLockerOf(graduatorAddr)) return;
+
         if (sniperBypass[to]) return;
 
         // Per-tx cap: buys only — off the curve before graduation, out of the pool after it. Checked
@@ -172,6 +187,14 @@ abstract contract SniperProtection {
 
         uint256 maxWallet = (_ANTI_SNIPER_TOTAL_SUPPLY * maxWalletBps) / 10_000;
         require(toBalance + amount <= maxWallet, MaxWalletExceeded());
+    }
+
+    /// @dev `RealmDirectGraduatorUniV4.LP_LOCKER`: its constructor's only CREATE, so the address at the
+    ///      graduator's nonce 1. Derived rather than baked in because the locker only exists once the
+    ///      graduator does; read for free from the graduator the host already passes. For a graduator
+    ///      that deploys no locker (V2) it names a codeless address only that graduator could ever fill.
+    function _lpLockerOf(address graduatorAddr) private pure returns (address) {
+        return address(uint160(uint256(keccak256(abi.encodePacked(bytes2(0xd694), graduatorAddr, bytes1(0x01))))));
     }
 
     /// @notice Largest token amount `buyer` may acquire in one purchase right now without tripping the

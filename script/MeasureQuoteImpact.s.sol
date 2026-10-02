@@ -4,8 +4,8 @@ pragma solidity 0.8.28;
 import {Script} from "lib/forge-std/src/Script.sol";
 import {console} from "lib/forge-std/src/console.sol";
 
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
+import {Hop} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
@@ -16,15 +16,14 @@ interface IV3Pool {
 /// @notice Price impact of a native buy of each `ASSETS` entry through the pool the mainnet listings file
 ///         names for it, simulated on forked state. BROADCASTS NOTHING.
 /// @dev Impact = 1 - (per-native out at SIZE) / (per-native out at 0.001 ETH); fees cancel out. Buys go through
-///      the dividend swap registry, which already routes native -> [USDG ->] asset on V2/V3/V4.
+///      the `RealmSwapper`, which already routes native -> [USDG ->] asset on V2/V3/V4.
 /// Usage:  ASSETS=0x..,0x.. forge script MeasureQuoteImpact --rpc-url rh-mainnet
 contract MeasureQuoteImpact is Script {
     string internal constant LISTINGS = "script/operations/assets-whitelist/listings.robinhood.mainnet.json";
     address internal constant PROBER = address(uint160(uint256(keccak256("MeasureQuoteImpact.prober"))));
     uint256 internal constant SMALL = 0.001 ether;
 
-    RealmDividendSwapRegistry internal registry =
-        RealmDividendSwapRegistry(payable(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY));
+    RealmSwapper internal registry = RealmSwapper(payable(DeploymentAddresses.REALM_SWAPPER));
 
     function run() external {
         string memory json = vm.readFile(LISTINGS);

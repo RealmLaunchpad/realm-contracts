@@ -7,8 +7,8 @@ import {DividendInitLogic} from "src/tokens/DividendInitLogic.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {installDividendSwapRegistry, setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
+import {installRealmSwapper, setDividendRoute} from "test/helpers/RealmSwapperHelpers.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 
@@ -108,7 +108,7 @@ contract DividendsMultiAssetTests is Test {
     uint16 internal constant W_BIG = 8_000;
 
     MultiAssetHarness internal h;
-    RealmDividendSwapRegistry internal registry;
+    RealmSwapper internal registry;
 
     address internal holder = makeAddr("holder");
     address internal other = makeAddr("other");
@@ -118,7 +118,7 @@ contract DividendsMultiAssetTests is Test {
 
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
-        registry = installDividendSwapRegistry(registryOwner);
+        registry = installRealmSwapper(registryOwner);
         setDividendRoute(registry, MSFT, DividendRouteLib.encodeV2());
         setDividendRoute(registry, AAPL, DividendRouteLib.encodeV2());
         installKeepersRegistry(registryOwner, address(this));

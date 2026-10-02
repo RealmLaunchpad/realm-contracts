@@ -86,8 +86,10 @@ contract DeployDirectVenue is Script {
 
         address whitelist = _deployWhitelist(infra.univ4PoolManager, wrappedNative, owner);
 
-        RealmDirectGraduatorUniV4 graduator =
-            new RealmDirectGraduatorUniV4(infra.univ4PoolManager, hook, anyPairHook, m.liquidityAdder);
+        // Deploys the `RealmLpLocker` in its constructor; the locker forwards fees to the LP fee router.
+        RealmDirectGraduatorUniV4 graduator = new RealmDirectGraduatorUniV4(
+            infra.univ4PoolManager, hook, anyPairHook, m.liquidityAdder, ChainConfig.lpFeeRouter()
+        );
 
         address factoryImpl = address(
             new RealmFactoryUniV4Direct(

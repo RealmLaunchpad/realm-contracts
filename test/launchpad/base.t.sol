@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
-import {installDividendSwapRegistry} from "test/helpers/DividendRegistryHelpers.sol";
+import {Vm} from "forge-std/Vm.sol";
+
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
+import {installRealmSwapper, INITIALIZABLE_STORAGE} from "test/helpers/RealmSwapperHelpers.sol";
+// The chain constants the token impls are built with (retargeted by `just chain-<name>`).
+import {DeploymentAddresses as SniperBuild} from "src/tokens/SniperProtection.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
 import "forge-std/Test.sol";
@@ -31,6 +35,10 @@ import {RealmCreatorVault} from "src/vaults/RealmCreatorVault.sol";
 import {RealmCreatorVaultFactory} from "src/vaults/RealmCreatorVaultFactory.sol";
 import {RealmGraduatorUniswapV2} from "src/graduators/RealmGraduatorUniswapV2.sol";
 import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
+import {RealmLpLocker} from "src/liquidity/RealmLpLocker.sol";
+import {IRealmLpLocker} from "src/interfaces/IRealmLpLocker.sol";
+import {ISwapLpFeeRouterTokenFees} from "src/interfaces/ISwapLpFeeRouterTokenFees.sol";
+import {IRealmPoolFee} from "src/interfaces/IRealmPoolFee.sol";
 import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {DeploymentAddressesRobinhoodMainnet} from "src/config/DeploymentAddresses.sol";
@@ -51,7 +59,7 @@ contract LaunchpadBaseTests is Test {
 
     /// @notice Eligibility gate + swap venue for third-asset dividends, installed at the constant
     ///         address every taxable token implementation compiles against.
-    RealmDividendSwapRegistry internal dividendSwapRegistry;
+    RealmSwapper internal realmSwapper;
     RealmKeepersRegistry internal keepersRegistry;
 
     RealmLaunchpad public launchpad;
@@ -74,6 +82,7 @@ contract LaunchpadBaseTests is Test {
 
     /// @notice The direct-launch V4 venue (the only V4 venue), deployed in `setUp`.
     RealmDirectGraduatorUniV4 internal directGraduator;
+    RealmLpLocker internal lpLocker;
     RealmFactoryUniV4Direct internal directFactory;
     RealmAssetsWhitelist internal assetsWhitelist;
     /// @dev Shared `RealmUniV4LiquidityAdder`, as in production.
@@ -625,7 +634,7 @@ contract LaunchpadBaseTests is Test {
 
         // Must precede the token implementations: they bake the registry's address in as a constant,
         // and a third-asset dividend configuration calls it at creation.
-        dividendSwapRegistry = installDividendSwapRegistry(admin);
+        realmSwapper = installRealmSwapper(admin);
         // Same: the three `process*` entry points fail closed without it. The test contract is the
         // keeper because that is who calls them; suites that need a NON-keeper caller prank one.
         keepersRegistry = installKeepersRegistry(admin, address(this));
@@ -647,10 +656,17 @@ contract LaunchpadBaseTests is Test {
 
         // Deploy the LP fee router behind a UUPS proxy with the default tier configuration. The hook
         // forwards every LP fee to this router, which performs the marketcap-tiered treasury/creator split.
-        address lpRouterImpl = address(new SwapLpFeeRouter(treasury));
-        lpFeeRouter = SwapLpFeeRouter(
-            payable(address(new ERC1967Proxy(lpRouterImpl, abi.encodeCall(SwapLpFeeRouter.initialize, ()))))
+        // Deployed AT the address the token impls bake in (sniper exemption, dividend exclusion). On a fork
+        // where that proxy is live, clear its initialized flag so the fresh proxy can initialize.
+        address lpRouterImpl = address(new SwapLpFeeRouter(treasury, address(realmSwapper), address(keepersRegistry)));
+        address lpRouterAt = SniperBuild.LP_FEE_ROUTER;
+        vm.store(lpRouterAt, INITIALIZABLE_STORAGE, bytes32(0));
+        deployCodeTo(
+            "ERC1967Proxy.sol:ERC1967Proxy",
+            abi.encode(lpRouterImpl, abi.encodeCall(SwapLpFeeRouter.initialize, ())),
+            lpRouterAt
         );
+        lpFeeRouter = SwapLpFeeRouter(payable(lpRouterAt));
 
         deployCodeTo(
             "RealmSwapHook.sol:RealmSwapHook",
@@ -716,8 +732,9 @@ contract LaunchpadBaseTests is Test {
     /// @dev The direct V4 venue: graduator, assets whitelist (no listings) and factory proxy.
     function _deployDirectVenue(ForkInfra memory infra) internal {
         directGraduator = new RealmDirectGraduatorUniV4(
-            poolManagerAddress, TEST_HOOK_ADDRESS, TEST_ANYPAIR_HOOK_ADDRESS, univ4LiquidityAdder
+            poolManagerAddress, TEST_HOOK_ADDRESS, TEST_ANYPAIR_HOOK_ADDRESS, univ4LiquidityAdder, address(lpFeeRouter)
         );
+        lpLocker = RealmLpLocker(payable(directGraduator.LP_LOCKER()));
         assetsWhitelist = RealmAssetsWhitelist(
             address(
                 new ERC1967Proxy(
@@ -745,6 +762,105 @@ contract LaunchpadBaseTests is Test {
         );
         directFactory = RealmFactoryUniV4Direct(
             address(new ERC1967Proxy(impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
+        );
+    }
+
+    /// @dev The V4 pool fee tier (pips) `token`'s pools are keyed by.
+    function _poolFee(address token) internal view returns (uint24) {
+        return IRealmPoolFee(token).poolFee();
+    }
+
+    /// @dev Set by suites that drive LP-fee collection themselves: the swap helpers then skip `_settleLpFees`.
+    bool internal manualLpFees;
+
+    /// @dev What happens to a trade's pool fee in production, run right after a test swap: the locker
+    ///      collects `token`'s protocol positions' fees (quote side split 30/70 on the spot), then this
+    ///      contract — a keeper — converts whatever the router now holds in the token itself. A no-op for
+    ///      a token with no locker positions (curve venue).
+    function _settleLpFees(address token) internal {
+        (address[] memory quotes, uint256[] memory quoteFees, uint256[] memory tokenFees) = lpLocker.pendingFees(token);
+        bool any;
+        for (uint256 i; i < quotes.length; ++i) {
+            any = any || quoteFees[i] != 0 || tokenFees[i] != 0;
+        }
+        if (!any) return;
+        address[] memory tokens = new address[](1);
+        tokens[0] = token;
+        lpLocker.collect(tokens);
+        for (uint256 i; i < quotes.length; ++i) {
+            if (tokenFees[i] != 0) lpFeeRouter.convertTokenFees(token, quotes[i], 0);
+        }
+    }
+
+    /// @dev Data of the first log in `logs` emitted by `emitter` with `topic0` and, when non-zero, `topic1`.
+    function _firstLogData(Vm.Log[] memory logs, address emitter, bytes32 topic0, bytes32 topic1)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        for (uint256 i; i < logs.length; ++i) {
+            if (
+                logs[i].emitter == emitter && logs[i].topics[0] == topic0
+                    && (topic1 == bytes32(0) || logs[i].topics[1] == topic1)
+            ) return logs[i].data;
+        }
+        revert("log not found");
+    }
+
+    /// @dev Checks what a native-pool sell of `sellAmount` of `testToken` paid, from the logs of the sell
+    ///      AND the swap helper's fee settlement after it (`_settleLpFees`):
+    ///      - the hook's tax is `taxBps` of the pool's ETH output, and is all the hook took (`ethReceived +
+    ///        tax` is that output);
+    ///      - the pool's LP fee is its fee tier of the TOKENS sold (paid in the token), collected by the
+    ///        locker — plus, at most, the token-side fee an earlier conversion's sale left behind;
+    ///      - the creator accrued exactly the tax, its 70% of the converted fee, and the conversion's own tax.
+    function _assertSellFees(
+        Vm.Log[] memory logs,
+        uint256 sellAmount,
+        uint256 ethReceived,
+        uint256 taxBps,
+        uint256 creatorAccrued
+    ) internal view {
+        bytes32 t = bytes32(uint256(uint160(testToken)));
+        uint256[2] memory taxes; // the sell's, then the conversion's
+        uint256 taxCount;
+        uint256 tokenFee;
+        uint256 converted;
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics.length < 2 || logs[i].topics[1] != t) continue;
+            if (logs[i].emitter == address(taxHook) && logs[i].topics[0] == RealmSwapHook.CreatorTaxesAccrued.selector)
+            {
+                taxes[taxCount == 0 ? 0 : 1] += abi.decode(logs[i].data, (uint256));
+                ++taxCount;
+            } else if (
+                logs[i].emitter == address(lpLocker) && logs[i].topics[0] == IRealmLpLocker.LpFeesCollected.selector
+            ) {
+                (, uint256 tokenAmount) = abi.decode(logs[i].data, (uint256, uint256));
+                tokenFee += tokenAmount;
+            } else if (
+                logs[i].emitter == address(lpFeeRouter)
+                    && logs[i].topics[0] == ISwapLpFeeRouterTokenFees.LpTokenFeesConverted.selector
+            ) {
+                (, uint256 quoteOut) = abi.decode(logs[i].data, (uint256, uint256));
+                converted += quoteOut;
+            }
+        }
+        if (taxBps == 0) {
+            assertEq(taxes[0] + taxes[1], 0, "no sell tax");
+        } else {
+            assertApproxEqRel(
+                taxes[0] * 10_000, (ethReceived + taxes[0]) * taxBps, 0.0000001e18, "tax rate on the output"
+            );
+        }
+        uint256 expectedTokenFee = sellAmount * _poolFee(testToken) / 1e6;
+        assertGe(tokenFee + 1, expectedTokenFee, "the pool fee is charged on the tokens sold");
+        assertApproxEqRel(tokenFee, expectedTokenFee, 0.02e18, "and collected by the locker");
+        assertGt(converted, 0, "the token-side fee was converted");
+        assertApproxEqAbs(
+            creatorAccrued,
+            taxes[0] + converted - converted * LP_TREASURY_BPS / 10_000 + taxes[1],
+            2,
+            "creator accrues the tax, its share of the converted LP fee, and the conversion's tax"
         );
     }
 

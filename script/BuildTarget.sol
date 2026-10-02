@@ -7,7 +7,8 @@ import {DeploymentAddresses as TaxV4Build} from "src/tokens/RealmTaxableTokenUni
 import {DeploymentAddresses as BuyBacksBuild} from "src/tokens/RealmUniv4BuyBacks.sol";
 import {DeploymentAddresses as DividendBuild} from "src/tokens/DividendDistribution.sol";
 import {DeploymentAddresses as KeeperGateBuild} from "src/tokens/KeeperGated.sol";
-import {DeploymentAddresses as RegistryBuild} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {DeploymentAddresses as RegistryBuild} from "src/swapper/RealmSwapper.sol";
+import {DeploymentAddresses as SniperBuild} from "src/tokens/SniperProtection.sol";
 
 /// @title Is this build targeted at the chain we are about to deploy to?
 /// @notice The taxable token masters are non-upgradeable and bake per-chain constants into their
@@ -25,14 +26,19 @@ library BuildTarget {
         require(BuyBacksBuild.BLOCKCHAIN_ID == chainId, "RealmUniv4BuyBacks built for another chain");
         require(DividendBuild.BLOCKCHAIN_ID == chainId, "DividendDistribution built for another chain");
         require(KeeperGateBuild.BLOCKCHAIN_ID == chainId, "KeeperGated built for another chain");
-        require(RegistryBuild.BLOCKCHAIN_ID == chainId, "RealmDividendSwapRegistry built for another chain");
+        require(RegistryBuild.BLOCKCHAIN_ID == chainId, "RealmSwapper built for another chain");
+        require(SniperBuild.BLOCKCHAIN_ID == chainId, "SniperProtection built for another chain");
         require(
             KeeperGateBuild.REALM_KEEPERS_REGISTRY.code.length != 0,
             "REALM_KEEPERS_REGISTRY has no code: run DeployRealmPrereqs, paste it, rebuild"
         );
         require(
-            DividendBuild.DIVIDEND_SWAP_REGISTRY.code.length != 0,
-            "DIVIDEND_SWAP_REGISTRY has no code: run DeployRealmPrereqs, paste the PROXY, rebuild"
+            DividendBuild.REALM_SWAPPER.code.length != 0,
+            "REALM_SWAPPER has no code: run DeployRealmPrereqs, paste the PROXY, rebuild"
+        );
+        require(
+            SniperBuild.LP_FEE_ROUTER.code.length != 0,
+            "LP_FEE_ROUTER has no code: run DeployRealmPrereqs, paste the PROXY, rebuild"
         );
     }
 }

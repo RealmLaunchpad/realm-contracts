@@ -434,8 +434,8 @@ abstract contract RealmTaxableToken is
     }
 
     /// @inheritdoc DividendDistribution
-    /// @dev Exactly four addresses. Three are free to test — `address(this)`, the `DEAD_ADDRESS`
-    ///      constant, and `pair`, which is in the slot `_update` has already loaded. `launchpad` is the
+    /// @dev Exactly five addresses. Four are free to test — `address(this)`, the `DEAD_ADDRESS` and
+    ///      `LP_FEE_ROUTER` constants, and `pair`, which is in the slot `_update` has already loaded. `launchpad` is the
     ///      one that costs: it lives in its own slot (no address fits beside `pair` and the three warm
     ///      flags), so it is a cold SLOAD on the first of the two calls per transfer and warm on the
     ///      second. It is ordered last so the pair side of a swap short-circuits before reaching it.
@@ -443,22 +443,26 @@ abstract contract RealmTaxableToken is
     ///      set: the denominator already subtracts the launchpad's balance, so a launchpad that earned
     ///      shares here would be paid out of a pot that never counted it — over-drawing the round.
     /// @dev Nothing else needs listing, and that is the minimum rule paying for itself: the V4 position
-    ///      manager, the routers, the liquidity adder and the GRADUATOR all hold a balance only within a
+    ///      manager, the swap routers, the liquidity adder and the GRADUATOR all hold a balance only within a
     ///      single transaction, and an address that is empty when a round opens is worth zero for that
     ///      whole round however much it holds in between. The exclusion list only has to name addresses
     ///      that hold a balance CONTINUOUSLY across a round. (This is also why the first round opens on
     ///      the first earnings rather than inside `markGraduated()` — see `_handleDividends`.)
+    /// @dev `LP_FEE_ROUTER` is here because it holds collected token-side LP fees until a keeper converts
+    ///      them, across rounds. The `RealmLpLocker` is not: `collect` forwards the token side to the router
+    ///      in the same transaction, so it is one of the single-transaction holders above.
     /// @dev Creator vaults are deliberately NOT here: they hold a real, merely-vested team allocation
     ///      continuously across rounds, so they are ordinary holders (and `RealmCreatorVault` accepts and
     ///      can sweep whatever it is paid).
     function _dividendExcluded(address account) internal view override returns (bool) {
-        return account == address(this) || account == pair || account == DEAD_ADDRESS || account == address(launchpad);
+        return account == address(this) || account == pair || account == DEAD_ADDRESS || account == LP_FEE_ROUTER
+            || account == address(launchpad);
     }
 
     /// @inheritdoc DividendDistribution
     function _dividendEligibleSupply() internal view override returns (uint256) {
         return totalSupply() - balanceOf(pair) - balanceOf(address(this)) - balanceOf(address(launchpad))
-            - balanceOf(DEAD_ADDRESS);
+            - balanceOf(DEAD_ADDRESS) - balanceOf(LP_FEE_ROUTER);
     }
 
     //////////////////////// COMMITTED FUNDS //////////////////////
@@ -601,13 +605,12 @@ abstract contract RealmTaxableToken is
     }
 
     /// @notice Returns the fees `RealmSwapHook` charges on a V4 swap in direction `isBuy` right now (see
-    ///         `IRealmToken`): the always-on post-graduation LP fee, plus the CURRENT effective tax —
-    ///         `max(decay, static)` for that direction, which changes every second while the decay window
-    ///         is open — so the hook, which re-reads this on every swap, applies the right (possibly
-    ///         decaying) rate.
+    ///         `IRealmToken`): the CURRENT effective tax — `max(decay, static)` for that direction, which
+    ///         changes every second while the decay window is open — so the hook, which re-reads this on
+    ///         every swap, applies the right (possibly decaying) rate. No LP fee: see below.
     /// @dev The tax-window (and decay) logic lives here, in `_effectiveTaxBps(isBuy)`, so the hook stays
     ///      agnostic to the schedule: it gets zero tax once the window closes (or before a
-    ///      graduation-anchored token graduates). The LP fee is always effective.
+    ///      graduation-anchored token graduates).
     function getSwapFees(bool isBuy)
         external
         view
@@ -615,7 +618,9 @@ abstract contract RealmTaxableToken is
         override(IRealmToken, RealmToken)
         returns (IRealmToken.RealmTradeFees memory)
     {
-        return IRealmToken.RealmTradeFees({taxBps: _effectiveTaxBps(isBuy), lpFeeBps: swapLpFeeBps});
+        // The LP fee is charged natively by the Uniswap pool's fee tier (`poolFee()`); returning it here
+        // would make the hook charge it a second time.
+        return IRealmToken.RealmTradeFees({taxBps: _effectiveTaxBps(isBuy), lpFeeBps: LP_FEE_CHARGED_IN_SWAP_DELTA});
     }
 
     ////////////////////// INTERNAL FUNCTIONS //////////////////////

@@ -9,9 +9,9 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 import {ERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
-import {installDividendSwapRegistry, setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
+import {installRealmSwapper, setDividendRoute} from "test/helpers/RealmSwapperHelpers.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {RealmKeepersRegistry} from "src/access/RealmKeepersRegistry.sol";
@@ -139,7 +139,7 @@ contract GhostToken is ERC20 {
 }
 
 /// @notice The third-token payout shape: an accrued native buffer is converted into an arbitrary ERC20
-///         through the route `RealmDividendSwapRegistry` holds for it, and pushed to holders in that
+///         through the route `RealmSwapper` holds for it, and pushed to holders in that
 ///         asset. Any ERC20 can be configured; one without a route just does not convert.
 contract DividendsThirdAssetTests is Test {
     uint256 internal constant BLOCKNUMBER = 58_000_000;
@@ -152,7 +152,7 @@ contract DividendsThirdAssetTests is Test {
     address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
 
     DividendHarness internal harness;
-    RealmDividendSwapRegistry internal registry;
+    RealmSwapper internal registry;
 
     address internal holder = makeAddr("holder");
     address internal registryOwner = makeAddr("registryOwner");
@@ -162,7 +162,7 @@ contract DividendsThirdAssetTests is Test {
 
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
-        registry = installDividendSwapRegistry(registryOwner);
+        registry = installRealmSwapper(registryOwner);
         // Every asset this suite converts goes through its V2 pair with WETH.
         setDividendRoute(registry, MSFT, DividendRouteLib.encodeV2());
         setDividendRoute(registry, AAPL, DividendRouteLib.encodeV2());
@@ -351,18 +351,14 @@ contract DividendsThirdAssetTests is Test {
     ///      must fail closed rather than hand the buffer to a codeless address on every call.
     function test_aCodelessRegistryFailsClosedInsteadOfBurningTheBuffer() public {
         _fundAndActivate(harness);
-        vm.etch(DeploymentAddresses.DIVIDEND_SWAP_REGISTRY, hex"");
+        vm.etch(DeploymentAddresses.REALM_SWAPPER, hex"");
 
         // A call CARRYING holders never reverts for a broken swap, so nothing rolls the transfer back:
         // this is the shape in which a codeless registry would silently pocket the buffer, every call.
-        uint256 registryBalanceBefore = DeploymentAddresses.DIVIDEND_SWAP_REGISTRY.balance;
+        uint256 registryBalanceBefore = DeploymentAddresses.REALM_SWAPPER.balance;
         harness.processDividends(0, _holders());
 
-        assertEq(
-            DeploymentAddresses.DIVIDEND_SWAP_REGISTRY.balance,
-            registryBalanceBefore,
-            "the codeless address got nothing"
-        );
+        assertEq(DeploymentAddresses.REALM_SWAPPER.balance, registryBalanceBefore, "the codeless address got nothing");
         assertEq(harness.pendingNative(), 1 ether, "the buffer is intact");
         assertEq(harness.dividendsOwed(), 0, "nothing was distributed");
     }

@@ -37,7 +37,7 @@ import {IRealmKeepersRegistry} from "src/interfaces/IRealmKeepersRegistry.sol";
 ///      re-opens exactly the atomic sandwich described above, which is why it is an admin decision and
 ///      not a timer.
 ///
-/// @dev NOT UPGRADEABLE, and not behind a proxy, unlike `RealmDividendSwapRegistry`. That one is a proxy
+/// @dev NOT UPGRADEABLE, and not behind a proxy, unlike `RealmSwapper`. That one is a proxy
 ///      because its ELIGIBILITY RULES have to be fixable for tokens that are already live. This contract
 ///      has no rules — it is a mapping and two setters, and there is nothing in it that could turn out
 ///      to be wrong. Tokens bake the address in as a constant, so replacing this contract would mean

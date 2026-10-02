@@ -58,7 +58,7 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      more can always call `claimDividends()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
 
-    /// @notice Flat amount of native the `RealmDividendSwapRegistry` diverts to the keeper wallet on each
+    /// @notice Flat amount of native the `RealmSwapper` diverts to the keeper wallet on each
     ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
     /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
     ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
@@ -75,19 +75,19 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      maximum one (1 ETH).
     uint256 public constant KEEPER_FEE = 0.0001 ether;
 
-    /// @notice The `RealmDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    /// @notice The `RealmSwapper` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
     /// @dev Deployed by `DeployRealmRegistries` (also via `DeployRealmPrereqs`); owner is the `realm.dev` deployer.
     /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
     ///      script that deploys a taxable token implementation requires
-    ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
+    ///      `REALM_SWAPPER.code.length != 0` before broadcasting. Deploy the registry proxy
     ///      first, paste it here, then deploy the impls — they bake this in as a constant and clones
     ///      cannot be repointed.
     /// @dev Left unset, everything fails closed: `_initializeDividends` reverts on the codeless registry
     ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
-    address public constant DIVIDEND_SWAP_REGISTRY = 0x00b87AAEd1D51675Fd1AF7731Da5fCe0eA008deF;
+    address public constant REALM_SWAPPER = 0x00b87AAEd1D51675Fd1AF7731Da5fCe0eA008deF;
 
     /// @notice The `RealmKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
     ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
@@ -97,6 +97,14 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
     address public constant REALM_KEEPERS_REGISTRY = 0xbc354a731940bDceBC0FAD24E609b3fa3c6A437e;
+
+    /// @notice The `SwapLpFeeRouter` PROXY (UUPS): where `RealmLpLocker` forwards collected LP fees and
+    ///         where token-side fees wait (`pendingTokenFees`) for a keeper's `convertTokenFees`.
+    /// @dev Source of truth (the manifest's `LP_FEE_ROUTER` re-exports it). Baked into the token impls as a
+    ///      constant: they exempt it from the sniper caps and exclude it from dividends, because it holds
+    ///      their tokens continuously. Deployed by `DeployRealmPrereqs` (phase 0) BEFORE the impls; the impl
+    ///      deploy scripts assert it has code. A new proxy means new token impls; an upgrade does not.
+    address public constant LP_FEE_ROUTER = 0x823ca5B8041217Df052D9e64AC6E7c16A62FA957;
     /// @notice The treasury before `TEAM_TREASURY`. Still baked into the deployed `SWAP_HOOK`'s fallback
     ///         and into the pre-upgrade `SwapLpFeeRouter` impl, so funds can keep landing here; kept so
     ///         nobody forgets to sweep it.
@@ -171,7 +179,7 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      more can always call `claimDividends()`, which forwards all remaining gas.
     uint256 public constant NATIVE_PAYOUT_GAS = 50_000;
 
-    /// @notice Flat amount of native the `RealmDividendSwapRegistry` diverts to the keeper wallet on each
+    /// @notice Flat amount of native the `RealmSwapper` diverts to the keeper wallet on each
     ///         `swapNativeToAsset`, as gas money for the conversion that keeper just paid for.
     /// @dev SIZED AS A MULTIPLE OF ONE CONVERSION'S GAS, not as a share of the conversion. Gas is an
     ///      absolute cost, so a percentage would starve the keeper on a small conversion and overcharge
@@ -183,19 +191,19 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      market. Per-chain because a wei value cannot be shared between chains.
     uint256 public constant KEEPER_FEE = 0.0002 ether;
 
-    /// @notice The `RealmDividendSwapRegistry` proxy: the eligibility gate for a third-asset dividend
+    /// @notice The `RealmSwapper` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
     /// @dev Deployed by `DeployRealmRegistries` (also via `DeployRealmPrereqs`); owner is the `realm.dev` deployer.
     /// @dev What actually enforces "remember to update this" is not the value but the assertion: every
     ///      script that deploys a taxable token implementation requires
-    ///      `DIVIDEND_SWAP_REGISTRY.code.length != 0` before broadcasting. Deploy the registry proxy
+    ///      `REALM_SWAPPER.code.length != 0` before broadcasting. Deploy the registry proxy
     ///      first, paste it here, then deploy the impls — they bake this in as a constant and clones
     ///      cannot be repointed.
     /// @dev Left unset, everything fails closed: `_initializeDividends` reverts on the codeless registry
     ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
-    address public constant DIVIDEND_SWAP_REGISTRY = 0x48be6ac8729B86B0339BA0d3f6c7D773c0aa83e4;
+    address public constant REALM_SWAPPER = 0xabB85435eF1AAc5b0294742E2B0Eb34CE6936557;
 
     /// @notice The `RealmKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
     ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
@@ -204,11 +212,19 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
-    address public constant REALM_KEEPERS_REGISTRY = 0x179E307249366f0036e1aC1791588828E12F439D;
+    address public constant REALM_KEEPERS_REGISTRY = 0xC9f74AE2f185C21853744a2BfcaE84CfFD556815;
+
+    /// @notice The `SwapLpFeeRouter` PROXY (UUPS): where `RealmLpLocker` forwards collected LP fees and
+    ///         where token-side fees wait (`pendingTokenFees`) for a keeper's `convertTokenFees`.
+    /// @dev Source of truth (the manifest's `LP_FEE_ROUTER` re-exports it). Baked into the token impls as a
+    ///      constant: they exempt it from the sniper caps and exclude it from dividends, because it holds
+    ///      their tokens continuously. Deployed by `DeployRealmPrereqs` (phase 0) BEFORE the impls; the impl
+    ///      deploy scripts assert it has code. A new proxy means new token impls; an upgrade does not.
+    address public constant LP_FEE_ROUTER = 0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0;
     /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
     ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
     ///         2026-09-14; the `realm.dev` EOA before that.
-    address public constant REALM_TREASURY = 0xE28B56Fd2409bEa3AA0e9861F8327502e6aB562B;
+    address public constant REALM_TREASURY = 0x2BE1D41df10E674f9E07195cAA0B16Cb1acB88C8;
 
     /// @notice The wallet on the 2/3 leg of `RealmTreasuryRouter`. Separate from `REALM_TREASURY`, which
     ///         became the router proxy itself once the router went live: resolving the leg from that would

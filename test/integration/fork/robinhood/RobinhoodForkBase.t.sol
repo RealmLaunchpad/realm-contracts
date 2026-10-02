@@ -7,7 +7,7 @@ import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {LiquidityTier} from "src/types/LiquidityTier.sol";
 import {TaxConfigsWithMultiAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
-import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {Hop} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 

@@ -18,15 +18,16 @@ struct Hop {
     address hooks;
 }
 
-/// @title IRealmDividendSwapRegistry
-/// @notice The venue every dividend payout conversion crosses, and the ONE place its routes live.
+/// @title IRealmSwapper
+/// @notice The venue every protocol conversion crosses — dividend payouts, and the sale of LP fees
+///         collected in a Realm token — and the ONE place the dividend routes live.
 ///
 /// @dev WHO PICKS THE ROUTE. The token's creator, at creation, per payout asset: the token registers
 ///      it here (`registerRoute`), keyed by the token, so no creator can affect another token's routes.
 ///      A registry admin can repoint any of them afterwards, per token or for every token paying an
 ///      asset at once, which is the fix for a route that was wrong or whose pool drained. Any ERC20 can
 ///      be a payout asset; one without a route simply does not convert until it gets one.
-interface IRealmDividendSwapRegistry {
+interface IRealmSwapper {
     /// @notice The buy route `token` converts native into `asset` through, in the `DividendRouteLib`
     ///         wire format: the admin override if set, else the token's own. Empty: none.
     function routeOf(address token, address asset) external view returns (bytes memory route);
@@ -51,6 +52,16 @@ interface IRealmDividendSwapRegistry {
     ///         `quoteRouteOf(source)` walked backwards, and buys `asset` with the proceeds (`asset == address(0)`: delivers the
     ///         native itself).
     function swapAssetToAsset(address source, address asset, uint256 amountIn, uint256 minOut, address recipient)
+        external
+        returns (uint256 out);
+
+    /// @notice Sells `amountIn` of the Realm `token` (pulled from the caller) for `quote` in the token's
+    ///         own Realm pool — a single hop, keyed by the token's `poolFee()` and its graduator's
+    ///         `hookFor(quote)` — and sends the proceeds to `recipient`. All of `amountIn` or revert.
+    /// @dev Emits `RealmTokenSellInitiated` BEFORE the swap, so an indexer can flag the hook's sell event
+    ///      that follows as protocol-internal.
+    /// @param minOut floor on what `recipient` receives (net of the keeper's cut on a native quote).
+    function sellToken(address token, address quote, uint256 amountIn, uint256 minOut, address recipient)
         external
         returns (uint256 out);
 

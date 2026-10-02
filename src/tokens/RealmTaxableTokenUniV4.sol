@@ -7,15 +7,11 @@ import {RealmToken} from "src/tokens/RealmToken.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
-import {IRealmDividendSwapRegistry} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {IRealmSwapper} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
-// Self-aliased so the `chain-*` recipes can import-swap it for the target chain's pool constants.
-import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
-import {IRealmUniV4LiquidityAdder, WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
+import {IRealmLpLocker} from "src/interfaces/IRealmLpLocker.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
-import {Currency} from "lib/v4-core/src/types/Currency.sol";
 
 /// this line below is swapped per target chain at deploy time (the addresses are compile-time
 /// constants baked into bytecode): DeploymentAddressesRobinhood{Mainnet,Testnet}.
@@ -118,13 +114,11 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     //////////////////////// LIQUIDITY //////////////////////
 
     /// @notice Deposits `quote`'s accrued liquidity buffer as a single-sided position just below the
-    ///         current price on that quote's pool — a protective bid wall. Both placing and reusing run
-    ///         through the shared `RealmUniV4LiquidityAdder`: this token only keeps the memory of the
-    ///         two walls it most recently used on that pool and the policy
-    ///         (`LIQUIDITY_WALL_TICK_WIDTH`, `LIQUIDITY_WALL_REUSE_MAX_GAP`) that decides between
-    ///         topping one up and minting a fresh one.
-    ///         Keeper-gated and off the swap hot path, mirroring `processBurn`. Positions are held by
-    ///         this token and never withdrawn, so they are permanent pool depth. Spends at most
+    ///         current price on that quote's pool — a protective bid wall. Placed through the venue's
+    ///         `RealmLpLocker` (`graduator.LP_LOCKER()`), which owns the position — permanent pool depth
+    ///         whose native fees it collects for the 30/70 split — and decides, from the two walls this
+    ///         token remembers per pool, between topping one up and minting a fresh one.
+    ///         Keeper-gated and off the swap hot path, mirroring `processBurn`. Spends at most
     ///         `_maxSpend` of the buffer, once per block per quote: a fresh wall is placed at the LIVE
     ///         tick, so a manipulator could pump the price and dump into a wall placed at the inflated
     ///         level — the cap and cooldown bound that per block (each needs a fresh, fee-paying pump).
@@ -148,6 +142,8 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         buf.liquidityPending = uint128(pending - amountIn);
 
         uint256 added = _addWall(qi, quote, amountIn);
+        // `+=` on the live slot: the locker collects the wall's fees before a top-up, and their creator
+        // share reaches this token's `accrueFees` mid-call, which may grow this buffer.
         // forge-lint: disable-next-line(unsafe-typecast)
         if (added < amountIn) buf.liquidityPending += uint128(amountIn - added);
     }
@@ -157,72 +153,22 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         processLiquidity(address(0));
     }
 
-    /// @dev Places or tops up `quote`'s wall with `amountIn` and reports what the pool actually took.
-    ///      Its own function so `processLiquidity` stays inside the stack limit without `via_ir`.
+    /// @dev Places or tops up `quote`'s wall with `amountIn` through the locker and records which wall
+    ///      took it. `added` is what the LOCKER reports the pool took (it returns the rest), not a balance
+    ///      delta here: fees the locker collects first reach this token through `accrueFees` mid-call.
     function _addWall(uint256 qi, address quote, uint256 amountIn) private returns (uint256 added) {
-        address adder = IRealmV4Graduator(graduator).LIQUIDITY_ADDER();
-
-        // The adder needs the position manager's `onlyIfApproved` to top up a wall this token owns.
-        // Granted on demand rather than once: it self-heals if the graduator ever points at a different
-        // adder — where a one-shot grant would leave `processLiquidity` reverting on every reusable
-        // wall. The adder is already trusted with the funds handed to it, cannot decrease, burn or
-        // transfer a position, and comes from the same graduator that names the hook mediating every
-        // swap. Read-then-write rather than an unconditional `setApprovalForAll`: the SSTORE is
-        // same-value after the first call but the `ApprovalForAll` LOG is not free, and re-emitting it
-        // on every single `processLiquidity` is noise every indexer has to filter.
-        if (!IERC721(UNIV4_POSITION_MANAGER).isApprovedForAll(address(this), adder)) {
-            IERC721(UNIV4_POSITION_MANAGER).setApprovalForAll(adder, true);
-        }
-        // The ERC20 leg is PULLED by the adder, so it needs an allowance sized to this call.
-        if (quote != address(0)) IERC20(quote).forceApprove(adder, amountIn);
-
-        uint256 before = _quoteHoldings(quote);
-        uint128 liquidity = _placeWall(qi, quote, amountIn, adder);
-
-        // ⚠️ CLAMPED, not a plain subtraction. The balance can come back HIGHER than it went out: the
-        // top-up path is `INCREASE_LIQUIDITY_FROM_DELTAS` + `TAKE_PAIR`, and v4 folds a position's
-        // `feesAccrued` into those deltas, so a reused wall whose accrued fees exceed the principal
-        // being added returns more than `amountIn`. Unreachable while `UniswapV4PoolConstants.LP_FEE`
-        // is 0 (the hook charges the fee instead, so these positions accrue nothing), but a non-zero or
-        // dynamic pool fee would turn a bare subtraction into a panic that bricks `processLiquidity` on
-        // the reuse path until the price moved far enough to force a fresh mint. Clamping degrades that
-        // into "nothing was placed": the full amount is re-earmarked and the surplus becomes stray —
-        // which `sweepStrayEth` routes back into the split on the native pool, but which on an ERC20
-        // quote only `rescueTokens` reaches (to the owner). Revisit if the pool fee ever becomes non-zero.
-        uint256 after_ = _quoteHoldings(quote);
-        added = before > after_ ? before - after_ : 0;
+        address locker = IRealmV4Graduator(graduator).LP_LOCKER();
+        // The ERC20 leg is PULLED by the locker, so it needs an allowance sized to this call.
+        if (quote != address(0)) IERC20(quote).forceApprove(locker, amountIn);
+        (uint128 liquidity, uint256 usedId, int24 usedTickLower, uint256 spent) =
+            IRealmLpLocker(locker).addWall{value: quote == address(0) ? amountIn : 0}(quote, amountIn);
+        // A zero id means nothing was placed and the deposit came back — no wall to record.
+        if (usedId != 0) _recordUsedWall(qi, usedId, usedTickLower);
+        added = spent;
 
         // Shared event signature; reports what the pool ACTUALLY took, as the V2 processor does. The
         // token side is always 0 for a single-sided quote wall.
         emit LiquidityAdded(quote, added, 0, liquidity);
-    }
-
-    /// @dev The adder call itself, split out of `_addWall` purely to keep both inside the stack limit
-    ///      without `via_ir`. The NFT and the remainder both return to this token — permanent depth, and
-    ///      whatever was not placed stays earmarked — and the adder reports which position took the
-    ///      deposit so the two-entry memory can be updated.
-    function _placeWall(uint256 qi, address quote, uint256 amountIn, address adder)
-        private
-        returns (uint128 liquidity)
-    {
-        (uint256[2] memory ids, int24[2] memory tickLowers) = _walls(qi);
-        uint256 usedId;
-        int24 usedTickLower;
-        (liquidity, usedId, usedTickLower) = IRealmUniV4LiquidityAdder(adder)
-        .addOrTopUpSingleSided{value: quote == address(0) ? amountIn : 0}(
-            UniswapV4PoolConstants.realmPoolKey(address(this), quote, IRealmV4Graduator(graduator).hookFor(quote)),
-            WallParams({
-                currency: Currency.wrap(quote),
-                amount: amountIn,
-                tickWidth: LIQUIDITY_WALL_TICK_WIDTH,
-                reuseMaxGap: LIQUIDITY_WALL_REUSE_MAX_GAP,
-                receiver: address(this)
-            }),
-            ids,
-            tickLowers
-        );
-        // A zero id means nothing was placed and the deposit came back — no wall to record.
-        if (usedId != 0) _recordUsedWall(qi, usedId, usedTickLower);
     }
 
     //////////////////////// QUOTE-DENOMINATED DIVIDENDS //////////////////////
@@ -375,17 +321,15 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
             return (out, _spent(quote, quoteBefore, reservedBefore));
         }
         // Fail CLOSED against a codeless registry, as `_swapNativeToDividendAsset` does.
-        if (DIVIDEND_SWAP_REGISTRY.code.length == 0) return (0, 0);
-        IERC20(quote).forceApprove(DIVIDEND_SWAP_REGISTRY, amountIn);
+        if (REALM_SWAPPER.code.length == 0) return (0, 0);
+        IERC20(quote).forceApprove(REALM_SWAPPER, amountIn);
         uint256 before = payout == address(0) ? address(this).balance : IERC20(payout).balanceOf(address(this));
-        (bool ok,) = DIVIDEND_SWAP_REGISTRY.call(
-            abi.encodeCall(
-                IRealmDividendSwapRegistry.swapAssetToAsset, (quote, payout, amountIn, minOut, address(this))
-            )
+        (bool ok,) = REALM_SWAPPER.call(
+            abi.encodeCall(IRealmSwapper.swapAssetToAsset, (quote, payout, amountIn, minOut, address(this)))
         );
         if (!ok) {
             // No standing allowance to an upgradeable registry for a spend that never happened.
-            IERC20(quote).forceApprove(DIVIDEND_SWAP_REGISTRY, 0);
+            IERC20(quote).forceApprove(REALM_SWAPPER, 0);
             return (0, 0);
         }
         uint256 after_ = payout == address(0) ? address(this).balance : IERC20(payout).balanceOf(address(this));
@@ -438,7 +382,7 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     function _registerQuoteRoutes(bytes[] calldata routes) private {
         uint256 n = routes.length;
         require(n < quoteCount || n == 0, InvalidQuotes());
-        IRealmDividendSwapRegistry registry = IRealmDividendSwapRegistry(DIVIDEND_SWAP_REGISTRY);
+        IRealmSwapper registry = IRealmSwapper(REALM_SWAPPER);
         for (uint256 q; q < n; ++q) {
             if (routes[q].length != 0) registry.registerQuoteRoute(quotes[q + 1], routes[q]);
         }

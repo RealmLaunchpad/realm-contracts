@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {useLegacyLpFeeTokens} from "test/helpers/LegacyLpFeeTokens.sol";
+
 import {Vm} from "forge-std/Vm.sol";
 import {DirectLaunchQuotesTests, QuoteCoin} from "test/graduators/directLaunchQuotes.t.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
@@ -83,6 +85,49 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         uint256 tax;
     }
 
+    /// @dev The hook's LP-fee path is reached only by tokens launched before the native pool fee, so this
+    ///      suite runs on their behaviour (see `LegacyLpFeeTokens`). Current tokens: `NativeLpFees.t.sol`.
+    function setUp() public override {
+        super.setUp();
+        useLegacyLpFeeTokens(address(realmToken), address(realmTaxToken));
+    }
+
+    /// @dev Legacy tokens: the hook charges the LP fee (see `setUp`).
+    function test_taxableToken_launchesAndTaxesPostLaunchSwaps() public override {
+        vm.prank(creator);
+        address token = directFactory.createToken(
+            _setup(true),
+            _pairs(address(0)),
+            _noDirectAlloc(_taxCfg(300, 300, uint32(14 days))),
+            _emptyAntiSniperCfg(),
+            new IRealmFactory.CreatorVault[](0),
+            _noDevBuy(),
+            address(0)
+        );
+        IRealmToken.RealmTradeFees memory fees = IRealmToken(token).getSwapFees(true);
+        assertEq(fees.taxBps, 300, "tax must be live from launch");
+        assertEq(fees.lpFeeBps, 100, "a legacy token's LP fee is the hook's");
+        _swapBuyV4(alice, token, 0.02 ether, 0, true);
+        assertGt(IERC20(token).balanceOf(alice), 0);
+    }
+
+    /// @dev Legacy tokens: the hook books the LP fee at the trade and redeems it on demand.
+    function test_erc20Quote_swapFeesReachTheCreatorInTheQuote() public override {
+        address token = _launchAgainstQuoteCoin(_noDevBuy());
+        quoteCoin.mintTo(alice, 1_000e6);
+        _swapQuotePool(alice, token, true, 100e6);
+        assertGt(anyPairHook.pendingLpFees(token, address(quoteCoin)), 0, "fee booked at the trade");
+        anyPairHook.settleFees(token, address(quoteCoin));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = token;
+        assertGt(
+            IRealmMasterFeeHandler(address(feeHandler)).getClaimable(tokens, address(quoteCoin), creator)[0],
+            0,
+            "creator's LP-fee share must be claimable IN THE QUOTE"
+        );
+    }
+
     /////////////////////////// HELPERS ///////////////////////////
 
     /// @dev A `QuoteCoin` etched at `where`, so its sort order against the token is fixed.
@@ -139,11 +184,12 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
 
     function _legParams(address token, address quote, bool isBuy, bool exactIn, uint256 amount, uint256 limit)
         internal
-        pure
+        view
         returns (bytes[] memory params)
     {
         PoolKey memory key = abi.decode(
-            abi.encode(UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS)), (PoolKey)
+            abi.encode(UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(token))),
+            (PoolKey)
         );
         // A buy moves quote -> token, so its direction is whichever way the quote sorted.
         bool zeroForOne = isBuy == (quote < token);
@@ -266,7 +312,8 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         Vm.Log[] memory logs = _logsFrom(all, address(anyPairHook));
         assertEq(logs.length, 4, "pool state, LP fee, tax, trade");
 
-        PoolId id = UniswapV4PoolConstants.realmPoolKey(t.token, t.quote, TEST_ANYPAIR_HOOK_ADDRESS).toId();
+        PoolId id =
+            UniswapV4PoolConstants.realmPoolKey(t.token, t.quote, TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(t.token)).toId();
         (uint160 sqrtPriceX96,,,) = IPoolManager(poolManagerAddress).getSlot0(id);
         assertEq(logs[0].topics[0], RealmHookAnyPair.RealmPoolState.selector, "pool state precedes the trade");
         assertEq(address(uint160(uint256(logs[0].topics[1]))), t.token, "pool state token");
@@ -306,7 +353,7 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
     /// @dev Opens a pool of `a` and `b` on this hook with the Realm fee and spacing, straight on the
     ///      manager as anyone could, and expects its first swap to revert with the hook's `inner` error.
     function _expectSwapReverts(address a, address b, bytes4 inner) internal {
-        CorePoolKey memory key = UniswapV4PoolConstants.realmPoolKey(a, b, TEST_ANYPAIR_HOOK_ADDRESS);
+        CorePoolKey memory key = UniswapV4PoolConstants.realmPoolKey(a, b, TEST_ANYPAIR_HOOK_ADDRESS, uint24(10_000));
         IPoolManager(poolManagerAddress).initialize(key, TickMath.getSqrtPriceAtTick(0));
         PoolSwapProbe probe = new PoolSwapProbe(IPoolManager(poolManagerAddress));
 
@@ -375,7 +422,8 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
     function _launchTradeAndSettle(address quote, bool quoteIsC0) internal {
         address token = _launchTaxed(quote, _noDevBuy());
         assertEq(quote < token, quoteIsC0, "quote sorts on the intended side");
-        CorePoolKey memory key = UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS);
+        CorePoolKey memory key =
+            UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(token));
         (, int24 tick,,) = IPoolManager(poolManagerAddress).getSlot0(key.toId());
         assertEq(tick, quoteIsC0 ? -QC_LAUNCH_TICK : QC_LAUNCH_TICK, "pool opened at the launch price");
 

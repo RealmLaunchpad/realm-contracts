@@ -11,7 +11,7 @@ import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {TaxConfigsWithDirectAllocation, EarningsAllocationMultiConfig} from "src/interfaces/IRealmTaxableToken.sol";
-import {Hop} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {Hop} from "src/interfaces/IRealmSwapper.sol";
 import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {RealmTaxableToken} from "src/tokens/RealmTaxableToken.sol";
@@ -20,8 +20,8 @@ import {TaxConfigsWithMultiAllocation} from "src/interfaces/IRealmTaxableToken.s
 import {IAllowanceTransfer} from "lib/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {V4PoolSeeding} from "test/helpers/V4PoolSeeding.sol";
-import {setDividendRoute} from "test/helpers/DividendRegistryHelpers.sol";
-import {RealmDividendSwapRegistry} from "src/dividends/RealmDividendSwapRegistry.sol";
+import {setDividendRoute} from "test/helpers/RealmSwapperHelpers.sol";
+import {RealmSwapper} from "src/swapper/RealmSwapper.sol";
 
 /// @notice Stand-in for the universal router on a PARTIAL fill of an ERC20-quoted buy-back: the pool
 ///         pulls half the quote through Permit2, the other half never leaves the token, and a fixed
@@ -67,8 +67,8 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         _whitelist(MSFT, 1e18);
         // Routes live on the registry, per asset: AAPL on its native V4 pool (walkable backwards, for the
         // AAPL-quoted legs), MSFT on its V2 pair.
-        setDividendRoute(dividendSwapRegistry, AAPL, _v4Route(AAPL));
-        setDividendRoute(dividendSwapRegistry, MSFT, DividendRouteLib.encodeV2());
+        setDividendRoute(realmSwapper, AAPL, _v4Route(AAPL));
+        setDividendRoute(realmSwapper, MSFT, DividendRouteLib.encodeV2());
 
         // AAPL's native pool holds ~4.5e18 of liquidity and part-fills an 8.75 AAPL buffer, which the
         // registry refuses. Deepen it, and open the native/MSFT pool `_daiRoute()` names (absent on
@@ -211,14 +211,14 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
     /// @dev A quote the registry cannot walk back to native, with no route supplied, reverts the
     ///      creation when a payout asset has to be bought out of it.
     function test_directAlloc_aQuoteWithoutARouteRevertsCreation() public {
-        setDividendRoute(dividendSwapRegistry, AAPL, "");
+        setDividendRoute(realmSwapper, AAPL, "");
         vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingQuoteRoute.selector, AAPL));
         _launch(_aaplPair(), _cfg(MSFT));
     }
 
     /// @dev The creator's own quote route satisfies it, with no registry route for the quote.
     function test_directAlloc_aCreatorQuoteRouteIsEnough() public {
-        setDividendRoute(dividendSwapRegistry, AAPL, "");
+        setDividendRoute(realmSwapper, AAPL, "");
         TaxConfigsWithDirectAllocation memory cfg = _cfg(MSFT);
         cfg.quoteRoutes = new bytes[](1);
         cfg.quoteRoutes[0] = _v4Route(AAPL);
@@ -231,7 +231,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
     /// @dev A token paying in the quote itself needs no quote route: nothing leaves the quote. A V2 buy
     ///      route (never walkable backwards) is the only route AAPL has here.
     function test_directAlloc_payingInTheQuoteNeedsNoQuoteRoute() public {
-        setDividendRoute(dividendSwapRegistry, AAPL, DividendRouteLib.encodeV2());
+        setDividendRoute(realmSwapper, AAPL, DividendRouteLib.encodeV2());
         RealmTaxableTokenUniV4 token = _launch(_aaplPair(), _cfg(AAPL));
         assertEq(token.dividendToken(), AAPL, "created");
     }
@@ -240,14 +240,14 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
     ///      the buffer stays whole — until an admin sets the quote's route again.
     function test_directAlloc_aQuoteWithoutARouteKeepsItsBufferUntilRouted() public {
         RealmTaxableTokenUniV4 token = _earningToken(MSFT);
-        setDividendRoute(dividendSwapRegistry, AAPL, "");
+        setDividendRoute(realmSwapper, AAPL, "");
         uint256 buffered = _pending(token);
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
         token.processDividends(0, AAPL, 0, 0, new address[](0));
         assertEq(_pending(token), buffered, "the buffer is whole");
 
-        setDividendRoute(dividendSwapRegistry, AAPL, _v4Route(AAPL));
+        setDividendRoute(realmSwapper, AAPL, _v4Route(AAPL));
         token.processDividends(0, AAPL, 0, 0, _one(alice));
         assertGt(IERC20(MSFT).balanceOf(alice), 0, "converts once the quote is routed");
     }
@@ -338,7 +338,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
     function test_quoteDividends_nativePayoutFromAnErc20Quote() public {
         address keeperWallet = makeAddr("keeperWallet");
         vm.prank(admin);
-        dividendSwapRegistry.setKeeperFunding(keeperWallet);
+        realmSwapper.setKeeperFunding(keeperWallet);
         RealmTaxableTokenUniV4 token = _earningToken(address(0));
 
         uint256 before = alice.balance;
@@ -530,7 +530,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         // 1e-8 MSFT per coin: a 10 MSFT opening market cap, inside the launch bounds.
         pairs[2] = RealmFactoryUniV4Direct.DirectPair({quote: MSFT, weightBps: 3_000});
         // MSFT is a quote here, so its route must be walkable backwards: V4.
-        setDividendRoute(dividendSwapRegistry, MSFT, _daiRoute());
+        setDividendRoute(realmSwapper, MSFT, _daiRoute());
 
         RealmTaxableTokenUniV4 token = _launch(pairs, _cfg(address(0)));
 
@@ -557,7 +557,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
     /// @dev Only a V4 route can be walked backwards: a quote whose only route is its V2 pair reverts the
     ///      creation rather than buffering what it could never convert.
     function test_quoteDividends_aQuoteWithANonV4RouteRevertsCreation() public {
-        setDividendRoute(dividendSwapRegistry, AAPL, DividendRouteLib.encodeV2());
+        setDividendRoute(realmSwapper, AAPL, DividendRouteLib.encodeV2());
         vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingQuoteRoute.selector, AAPL));
         _launch(_aaplPair(), _cfg(MSFT));
     }
@@ -611,7 +611,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         uint256 buffered = _pending(token);
         assertGt(buffered, 0, "a buffer to convert");
 
-        vm.etch(token.DIVIDEND_SWAP_REGISTRY(), "");
+        vm.etch(token.REALM_SWAPPER(), "");
 
         vm.expectRevert(DividendDistribution.DividendConversionFailed.selector);
         token.processDividends(0, AAPL, 0, 0, new address[](0));
@@ -670,7 +670,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         assertGt(_pending(token), 0, "a buffer to convert");
         token.processDividends(0, AAPL, 0, type(uint128).max, _one(alice));
         assertGt(_pending(token), 0, "the conversion failed and kept the buffer");
-        assertEq(IERC20(AAPL).allowance(address(token), address(dividendSwapRegistry)), 0, "no allowance left");
+        assertEq(IERC20(AAPL).allowance(address(token), address(realmSwapper)), 0, "no allowance left");
     }
 
     //////////////////////// CREATION-TIME ROUTES ///////////////////////////
@@ -681,9 +681,9 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         cfg.earningsAllocation.dividendRoutes = new bytes[](1);
         cfg.earningsAllocation.dividendRoutes[0] = DividendRouteLib.encodeV2();
         RealmTaxableTokenUniV4 token = _launch(_aaplPair(), cfg);
-        setDividendRoute(dividendSwapRegistry, MSFT, ""); // drop the setUp override to read the token's own
-        assertEq(dividendSwapRegistry.routeOf(address(token), MSFT), DividendRouteLib.encodeV2(), "the token's");
-        assertEq(dividendSwapRegistry.routeOf(stranger, MSFT).length, 0, "and nobody else's");
+        setDividendRoute(realmSwapper, MSFT, ""); // drop the setUp override to read the token's own
+        assertEq(realmSwapper.routeOf(address(token), MSFT), DividendRouteLib.encodeV2(), "the token's");
+        assertEq(realmSwapper.routeOf(stranger, MSFT).length, 0, "and nobody else's");
     }
 
     /// @dev `quoteRoutes` is per PAIR; the token takes it per ERC20 QUOTE, native pairs skipped.
@@ -695,8 +695,8 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         cfg.quoteRoutes = new bytes[](2);
         cfg.quoteRoutes[1] = _v4Route(AAPL);
         RealmTaxableTokenUniV4 token = _launch(pairs, cfg);
-        setDividendRoute(dividendSwapRegistry, AAPL, ""); // no buy-route fallback in the way
-        assertEq(dividendSwapRegistry.quoteRouteOf(address(token), AAPL), _v4Route(AAPL), "registered for AAPL");
+        setDividendRoute(realmSwapper, AAPL, ""); // no buy-route fallback in the way
+        assertEq(realmSwapper.quoteRouteOf(address(token), AAPL), _v4Route(AAPL), "registered for AAPL");
     }
 
     /// @dev F1: the quote is bought on V2 as a payout asset elsewhere, but this token sells it on its V4
@@ -706,7 +706,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         cfg.quoteRoutes = new bytes[](1);
         cfg.quoteRoutes[0] = _v4Route(AAPL);
         RealmTaxableTokenUniV4 token = _launch(_aaplPair(), cfg);
-        setDividendRoute(dividendSwapRegistry, AAPL, DividendRouteLib.encodeV2()); // buy route not walkable
+        setDividendRoute(realmSwapper, AAPL, DividendRouteLib.encodeV2()); // buy route not walkable
         _buyAndSettle(address(token), 10_000e18);
         assertGt(_pending(token), 0, "a buffer to convert");
 
@@ -719,7 +719,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         TaxConfigsWithDirectAllocation memory cfg = _cfg(MSFT);
         cfg.quoteRoutes = new bytes[](1);
         cfg.quoteRoutes[0] = DividendRouteLib.encodeV2();
-        vm.expectRevert(RealmDividendSwapRegistry.MalformedRoute.selector);
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
         _launch(_aaplPair(), cfg);
     }
 

@@ -77,7 +77,7 @@ dividends and liquidity; the fee receivers take the remainder. All zero = no all
 | `liquidityBps` | `uint16` | Share added as single-sided pool depth. |
 | `dividendTokens` | `address[]` | 1..3 distinct payout assets when `dividendsBps != 0`, else empty (`DividendAssetWithoutShare`). `address(0)` = native; `DIVIDEND_SELF_TOKEN` = the token itself, only as the sole entry. |
 | `dividendWeightsBps` | `uint16[]` | Each asset's share of the dividends slice, non-zero, summing to `10_000`. |
-| `dividendRoutes` | `bytes[]` | Per-asset swap route (`DividendRouteLib` format); empty or missing = the asset's Uniswap V2 pair. Checked by `RealmDividendSwapRegistry` at creation. |
+| `dividendRoutes` | `bytes[]` | Per-asset swap route (`DividendRouteLib` format); empty or missing = the asset's Uniswap V2 pair. Checked by `RealmSwapper` at creation. |
 
 A non-zero allocation requires a long-term static tax (`taxDurationSeconds != 0`), else `EarningsAllocationRequiresTax`.
 

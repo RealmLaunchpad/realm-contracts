@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IRealmDividendSwapRegistry} from "src/interfaces/IRealmDividendSwapRegistry.sol";
+import {IRealmSwapper} from "src/interfaces/IRealmSwapper.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
@@ -204,8 +204,7 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      answer — codeless, or an implementation older than the flag — which is the behaviour every
     ///      token had before retirement existed: keep trying to convert.
     function _isRetired(address asset) internal view returns (bool) {
-        (bool ok, bytes memory ret) =
-            DIVIDEND_SWAP_REGISTRY.staticcall(abi.encodeCall(IRealmDividendSwapRegistry.isRetired, (asset)));
+        (bool ok, bytes memory ret) = REALM_SWAPPER.staticcall(abi.encodeCall(IRealmSwapper.isRetired, (asset)));
         return ok && ret.length >= 32 && abi.decode(ret, (bool));
     }
 
@@ -402,9 +401,9 @@ abstract contract DividendDistributionLogic is DividendDistribution, KeeperGated
     ///      constant it would hand the buffer over and report success while `_acquireDividendAsset`
     ///      measured a zero delta — burning the native on every call instead of reverting once.
     function _swapNativeToDividendAsset(address asset, uint256 nativeIn, uint256 minOut) private returns (bool ok) {
-        if (DIVIDEND_SWAP_REGISTRY.code.length == 0) return false;
-        (ok,) = DIVIDEND_SWAP_REGISTRY.call{value: nativeIn}(
-            abi.encodeCall(IRealmDividendSwapRegistry.swapNativeToAsset, (asset, minOut, address(this)))
+        if (REALM_SWAPPER.code.length == 0) return false;
+        (ok,) = REALM_SWAPPER.call{value: nativeIn}(
+            abi.encodeCall(IRealmSwapper.swapNativeToAsset, (asset, minOut, address(this)))
         );
     }
 

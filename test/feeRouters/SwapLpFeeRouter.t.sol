@@ -78,7 +78,7 @@ contract SwapLpFeeRouterTests is Test {
         token = new MockRealmToken();
 
         vm.startPrank(admin);
-        impl = new SwapLpFeeRouter(treasury);
+        impl = new SwapLpFeeRouter(treasury, address(0), address(0));
         router = SwapLpFeeRouter(
             payable(address(new ERC1967Proxy(address(impl), abi.encodeCall(SwapLpFeeRouter.initialize, ()))))
         );
@@ -141,7 +141,7 @@ contract SwapLpFeeRouterTests is Test {
     ///         skips the treasury `.call` branch.
     function test_deposit_dust_skipsTreasuryCall() public {
         address rejectingTreasury = address(new RejectEth());
-        SwapLpFeeRouter implBad = new SwapLpFeeRouter(rejectingTreasury);
+        SwapLpFeeRouter implBad = new SwapLpFeeRouter(rejectingTreasury, address(0), address(0));
         SwapLpFeeRouter routerBad = SwapLpFeeRouter(
             payable(address(new ERC1967Proxy(address(implBad), abi.encodeCall(SwapLpFeeRouter.initialize, ()))))
         );
@@ -153,7 +153,7 @@ contract SwapLpFeeRouterTests is Test {
 
     function test_deposit_treasuryRejects_reverts() public {
         address rejectingTreasury = address(new RejectEth());
-        SwapLpFeeRouter implBad = new SwapLpFeeRouter(rejectingTreasury);
+        SwapLpFeeRouter implBad = new SwapLpFeeRouter(rejectingTreasury, address(0), address(0));
         SwapLpFeeRouter routerBad = SwapLpFeeRouter(
             payable(address(new ERC1967Proxy(address(implBad), abi.encodeCall(SwapLpFeeRouter.initialize, ()))))
         );
@@ -232,7 +232,7 @@ contract SwapLpFeeRouterTests is Test {
     }
 
     function test_upgradeTo_revertsForNonOwner() public {
-        SwapLpFeeRouter newImpl = new SwapLpFeeRouter(treasury);
+        SwapLpFeeRouter newImpl = new SwapLpFeeRouter(treasury, address(0), address(0));
         vm.prank(attacker);
         vm.expectRevert();
         router.upgradeToAndCall(address(newImpl), "");
@@ -240,7 +240,7 @@ contract SwapLpFeeRouterTests is Test {
 
     function test_upgradeTo_succeedsForOwner() public {
         address newTreasury = makeAddr("newTreasury");
-        SwapLpFeeRouter newImpl = new SwapLpFeeRouter(newTreasury);
+        SwapLpFeeRouter newImpl = new SwapLpFeeRouter(newTreasury, address(0), address(0));
         vm.prank(admin);
         router.upgradeToAndCall(address(newImpl), "");
         // Sanity-check the immutable comes from the new impl.
@@ -251,7 +251,7 @@ contract SwapLpFeeRouterTests is Test {
 
     function test_constructor_revertsOnZeroTreasury() public {
         vm.expectRevert(SwapLpFeeRouter.InvalidTreasury.selector);
-        new SwapLpFeeRouter(address(0));
+        new SwapLpFeeRouter(address(0), address(0), address(0));
     }
 
     // ───────────────────────── ISwapLpFeeRouter interface ─────────────────────────

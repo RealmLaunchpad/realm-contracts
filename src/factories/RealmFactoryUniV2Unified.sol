@@ -75,7 +75,7 @@ contract RealmFactoryUniV2Unified is RealmFactoryCurveAbstract {
     /// @dev A non-zero split requires a token with a LONG-TERM static tax (`taxDurationSeconds != 0`): V2
     ///      LP fees never reach the token, so the tax is its only earnings stream, and a decay-only token's
     ///      window lasts minutes. A non-zero `dividendsBps` must name its payout assets; each is checked
-    ///      with `RealmDividendSwapRegistry` at creation. Every rule of `EarningsAllocationMultiConfig`
+    ///      with `RealmSwapper` at creation. Every rule of `EarningsAllocationMultiConfig`
     ///      applies: distinct assets, non-zero weights summing to 10,000, and `DIVIDEND_SELF_TOKEN` only
     ///      on its own.
     function createToken(

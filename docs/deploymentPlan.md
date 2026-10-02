@@ -10,8 +10,8 @@ from the Livo deployment.
 |---|---|---|
 | **Phase 0 — compile-time constants** ||
 | 1 | `RealmKeepersRegistry` | plain, owner = treasury -> `DeploymentAddresses.REALM_KEEPERS_REGISTRY` |
-| 2 | `RealmDividendSwapRegistry` | impl + UUPS proxy -> `DeploymentAddresses.DIVIDEND_SWAP_REGISTRY` (the PROXY) |
-| 3 | `SwapLpFeeRouter` | impl + UUPS proxy -> `LP_FEE_ROUTER_IMPL` / `LP_FEE_ROUTER`. Must precede the hook, which holds the proxy as an immutable |
+| 2 | `RealmSwapper` | impl + UUPS proxy -> `DeploymentAddresses.REALM_SWAPPER` (the PROXY) |
+| 3 | `SwapLpFeeRouter` | impl + UUPS proxy -> manifest `LP_FEE_ROUTER_IMPL` / `DeploymentAddresses.LP_FEE_ROUTER` (the PROXY). Must precede the hook (constructor immutable) and the token impls (compile-time constant) |
 | **Phase 1 — the stack** ||
 | 4 | `RealmMasterFeeHandler` | |
 | 5 | `RealmLaunchpad` | owner = broadcaster, treasury from `DeploymentAddresses` |
@@ -39,9 +39,10 @@ Not deployed by `DeployRealmStack`: the hook (its own script, above) and the div
 # 0. Retarget the build to the chain, then phase 0.
 just deploy-prereqs-rh               # or: just deploy-prereqs-rh-testnet
 
-# 1. Paste REALM_KEEPERS_REGISTRY + DIVIDEND_SWAP_REGISTRY into that chain's library in
-#    src/config/DeploymentAddresses.sol. They are baked into the taxable token bytecode and clones
-#    cannot be repointed, so this MUST happen before phase 1. Paste LP_FEE_ROUTER_IMPL into
+# 1. Paste REALM_KEEPERS_REGISTRY + REALM_SWAPPER + LP_FEE_ROUTER (the proxy) into that chain's library
+#    in src/config/DeploymentAddresses.sol (the manifest re-exports the last two). They are baked into the
+#    token bytecode and clones cannot be repointed, so this MUST happen before phase 1; DeployRealmStack
+#    refuses to run if any of them has no code. Paste LP_FEE_ROUTER_IMPL into
 #    src/config/manifest.<chain>.sol and upgrade the inherited router proxy onto it (see below).
 forge build
 
@@ -74,7 +75,10 @@ fees to an address Realm does not control, and the router proxy is owned by the 
 Neither is fixable without a new hook — hence the redeploy, which costs a fresh Uniswap whitelisting.
 
 Order matters: `DeployRealmPrereqs` deploys the `SwapLpFeeRouter` proxy first, because the hook takes it
-as a constructor immutable. Later router policy changes ship as an `upgradeToAndCall` on that proxy,
+as a constructor immutable and the token impls bake it in as a constant (it is exempt from the sniper caps
+and excluded from dividends, since it parks token-side LP fees). A NEW router proxy therefore means new
+token impls; an upgrade of the existing one does not. The `RealmLpLocker` imposes no order: the impls
+derive it from the token's graduator (its constructor's CREATE, nonce 1) instead of baking it in. Later router policy changes ship as an `upgradeToAndCall` on that proxy,
 whose owner is now the `realm.dev` deployer.
 
 **`RealmHook` is the deployed hook** (`DeployRealmHook` / `just deploy-realm-hook-<chain>`). Two variants
@@ -118,10 +122,35 @@ apart: the router leg needs the broadcaster to own the launchpad and the LP rout
 does not, so a chain whose launchpad already belongs to the multisig deploys voting with `realm.dev`
 and the router through the multisig.
 
-Then set `REALM_TREASURY = TREASURY_ROUTER` in that chain's `DeploymentAddresses` library: token impls bake
-it as `DIVIDEND_TREASURY`, so impls deployed before this step keep sweeping to the multisig until redeployed.
+Then set `REALM_TREASURY = TREASURY_ROUTER` in that chain's `DeploymentAddresses` library. Bookkeeping only:
+no token impl bakes the treasury (they bake only the keepers registry, the swapper, the LP fee router and
+Uniswap infra), and the two runtime holders — `LAUNCHPAD.treasury()` and the LP fee router's `TREASURY` —
+were already repointed by `DeployRealmTreasuryStack`. No token impl redeploy is needed, so REALM and every
+later token run the same masters.
 The hook's fallback treasury is a constructor immutable and stays where it was (`LEGACY_TREASURY` on
 Robinhood mainnet), which is why that address is kept on record.
+
+## Full redeploy keeping the hooks and the LP fee router
+
+The hooks are Uniswap-whitelisted and bake the LP fee router proxy, so a "from scratch" redeploy keeps both
+and only upgrades the router behind its proxy. Everything else is new.
+
+```bash
+# 0. Point REALM_TREASURY (DeploymentAddresses) at TEAM_TREASURY until step 7 deploys the new treasury router.
+just deploy-registries-rh-testnet        # 1. paste REALM_KEEPERS_REGISTRY + REALM_SWAPPER (DeploymentAddresses), REALM_SWAPPER_IMPL (manifest)
+just upgrade-lp-fee-router-rh-testnet    # 2. paste LP_FEE_ROUTER_IMPL; proxy (and the hooks' FEE_ROUTER) unchanged
+just deploy-stack-rh-testnet             # 3. paste both printed blocks (incl. LP_LOCKER), just export-deployments; note the block
+just configure-registries-rh-testnet     # 4. admin + keeper on keepers registry and swapper, approver on the whitelist
+just deploy-keeper-lens-rh-testnet       # 5. paste KEEPER_LENS
+just discover-whitelist-assets-rh-testnet && just whitelist-assets-rh-testnet   # 6. re-list quotes on the new whitelist
+# 7. Create REALM via FACTORY_UNIV4_DIRECT, paste REALM_TOKEN, zero VOTING(_IMPL) + TREASURY_ROUTER(_IMPL), then:
+just deploy-treasury-stack-rh-testnet    #    paste VOTING(_IMPL), TREASURY_ROUTER(_IMPL), LP_FEE_ROUTER_IMPL;
+                                         #    set REALM_TREASURY = TREASURY_ROUTER (bookkeeping); just export-deployments
+# 8. just chain-rh before committing if HEAD targets mainnet; mirror addresses in the indexer configs,
+#    keeper configs.mjs / secret, and the frontend addresses JSON.
+```
+
+Mainnet: the same sequence with the `-rh` recipes.
 
 ## Upgrades
 
