@@ -457,6 +457,9 @@ contract NativeLpFeesTests is TaxTokenUniV4BaseTests {
         _collect(testToken);
         assertEq(lpFeeRouter.pendingTokenFees(testToken, address(0)), tokenFee, "all of it parked in the router");
         assertGt(IERC20(testToken).balanceOf(address(lpFeeRouter)), cap, "the router holds more than the wallet cap");
+
+        // router -> swapper hands over the whole bucket, also above the wallet cap
+        assertGt(lpFeeRouter.convertTokenFees(testToken, address(0), 1), 0, "the bucket converts inside the window");
     }
 
     /// @dev when the swapper sells a Realm token, then `RealmTokenSellInitiated` precedes the hook's sell event

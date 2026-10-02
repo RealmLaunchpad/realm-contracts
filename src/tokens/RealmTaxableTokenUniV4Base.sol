@@ -9,10 +9,8 @@ import {RealmUniv4BuyBacks} from "src/tokens/RealmUniv4BuyBacks.sol";
 import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with (to rebuild the
-///         pool key), the shared liquidity adder, and the locker that owns the token's bid walls.
+///         pool key) and the locker that owns the token's bid walls.
 interface IRealmV4Graduator {
-    function HOOK_ADDRESS() external view returns (address);
-    function LIQUIDITY_ADDER() external view returns (address);
     function LP_LOCKER() external view returns (address);
 
     /// @notice The hook mediating the pool this token shares with `quote`. Native pools keep
@@ -225,8 +223,8 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
 
     /// @notice The single-sided walls this token remembers on ONE quote's pool, most-recently-used
     ///         first: their position-manager NFT ids and lower ticks. A zero id is an empty entry.
-    ///         Positions this token minted but has since forgotten are still owned by it and still pool
-    ///         depth — only the two entries here are candidates for a top-up.
+    ///         Walls it has since forgotten stay in `RealmLpLocker`, still pool depth and still earning
+    ///         fees — only the two entries here are candidates for a top-up.
     /// @dev One packed view rather than four generated getters: on this contract, which sits close to
     ///      the EIP-170 limit, the getters cost more bytecode than the reuse path they describe.
     function getLiquidityWalls(address quote) public view returns (uint256[2] memory ids, int24[2] memory tickLowers) {

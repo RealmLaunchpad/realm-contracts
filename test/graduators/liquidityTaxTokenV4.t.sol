@@ -16,7 +16,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IRealmUniV4LiquidityAdder, RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
-import {IRealmV4Graduator, RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
+import {RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
 import {WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
@@ -362,7 +362,7 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
         assertGt(ids[0], 0, "precondition: the token owns a wall");
 
-        address adder = IRealmV4Graduator(liqToken.graduator()).LIQUIDITY_ADDER();
+        address adder = lpLocker.LIQUIDITY_ADDER();
         assertTrue(
             IERC721(positionManagerAddress).isApprovedForAll(address(lpLocker), adder),
             "the adder is approved to top up the locker's walls"

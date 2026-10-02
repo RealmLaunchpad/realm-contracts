@@ -217,7 +217,11 @@ contract SwapLpFeeRouter is
         pendingTokenFees[token][quote] = 0;
 
         IERC20(token).forceApprove(REALM_SWAPPER, tokenIn);
+        // ERC20: split what arrived, not what the swapper reports, so a fee-on-transfer quote cannot
+        // overdraw the split.
+        uint256 balanceBefore = quote == address(0) ? 0 : IERC20(quote).balanceOf(address(this));
         quoteOut = IRealmSwapper(REALM_SWAPPER).sellToken(token, quote, tokenIn, minOut, address(this));
+        if (quote != address(0)) quoteOut = IERC20(quote).balanceOf(address(this)) - balanceBefore;
         emit LpTokenFeesConverted(token, quote, tokenIn, quoteOut);
 
         if (quote == address(0)) _splitNative(token, quoteOut);

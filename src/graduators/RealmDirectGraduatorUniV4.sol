@@ -31,7 +31,7 @@ import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 ///         SINGLE-SIDED token band, and the creator's own dev buy is the first trade — all inside the
 ///         one `createToken` transaction.
 ///
-/// @dev Implements `IRealmGraduator` plus the `HOOK_ADDRESS()` / `LIQUIDITY_ADDER()` views the taxable
+/// @dev Implements `IRealmGraduator` plus the `hookFor()` / `LP_LOCKER()` views the taxable
 ///      tokens read for their keeper paths, so a direct-launched token is an ORDINARY graduated Realm token from every other contract's
 ///      point of view. What differs is only how it got there:
 ///      - There is no launchpad and no curve. The token's supply is minted straight here (its

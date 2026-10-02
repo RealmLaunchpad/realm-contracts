@@ -17,8 +17,8 @@ interface IRealmLpLocker {
     function collect(address[] calldata tokens) external;
 
     /// @notice Places or tops up the caller's bid wall in its `quote` pool with `amount` of `quote`
-    ///         (native: `msg.value`; ERC20: pulled, so the caller approves first). Callable only by the
-    ///         token itself: positions are keyed by `msg.sender`, so nobody can reach another's.
+    ///         (native: `msg.value`; ERC20: pulled, so the caller approves first). Permissionless:
+    ///         positions are keyed by `msg.sender`, so a caller only ever reaches its own.
     /// @return liquidity Liquidity added (0 when nothing was placed).
     /// @return usedTokenId Position that took the deposit, 0 when nothing was placed.
     /// @return usedTickLower Its lower tick, for the token's two-entry wall memory.
