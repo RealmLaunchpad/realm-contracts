@@ -19,14 +19,21 @@ interface IRealmLpLocker {
     /// @notice Places or tops up the caller's bid wall in its `quote` pool with `amount` of `quote`
     ///         (native: `msg.value`; ERC20: pulled, so the caller approves first). Permissionless:
     ///         positions are keyed by `msg.sender`, so a caller only ever reaches its own.
+    ///         The wall goes in the fixed grid range just below the current price (see `nextWall`).
     /// @return liquidity Liquidity added (0 when nothing was placed).
-    /// @return usedTokenId Position that took the deposit, 0 when nothing was placed.
-    /// @return usedTickLower Its lower tick, for the token's two-entry wall memory.
+    /// @return tokenId Position that took the deposit, 0 when nothing was placed.
     /// @return spent Quote the pool took; the rest was returned to the caller.
     function addWall(address quote, uint256 amount)
         external
         payable
-        returns (uint128 liquidity, uint256 usedTokenId, int24 usedTickLower, uint256 spent);
+        returns (uint128 liquidity, uint256 tokenId, uint256 spent);
+
+    /// @notice Where `token`'s next `addWall` on `quote` would go at the current price: the grid range
+    ///         and the wall already there (0: the add would mint it).
+    function nextWall(address token, address quote)
+        external
+        view
+        returns (int24 tickLower, int24 tickUpper, uint256 tokenId);
 
     /// @notice Uncollected fees of `token`'s positions, aggregated per pool (one entry per quote, in the
     ///         order its pools were seeded). Exact: what `collect` would take right now.

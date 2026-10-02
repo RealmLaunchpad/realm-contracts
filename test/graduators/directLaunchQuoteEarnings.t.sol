@@ -5,7 +5,7 @@ import {DirectLaunchQuotesTests, QuoteCoin} from "test/graduators/directLaunchQu
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
-import {RealmUniV4LiquidityAdder, WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
+import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {TaxConfigsWithDirectAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
@@ -172,21 +172,20 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         vm.expectEmit(true, false, false, false, address(token));
         emit RealmTaxableToken.LiquidityAdded(quote, 0, 0, 0);
         token.processLiquidity(quote);
-        (uint256[2] memory ids,) = token.getLiquidityWalls(quote);
-        assertGt(ids[0], 0, "a wall was minted");
-        (PoolKey memory key,) = posm.getPoolAndPositionInfo(ids[0]);
+        (,, uint256 wall) = lpLocker.nextWall(address(token), quote);
+        assertGt(wall, 0, "a wall was minted");
+        (PoolKey memory key,) = posm.getPoolAndPositionInfo(wall);
         assertEq(address(key.hooks), TEST_ANYPAIR_HOOK_ADDRESS, "on the token's own ERC20 pool");
-        assertEq(IERC721(positionManagerAddress).ownerOf(ids[0]), address(lpLocker), "held by the locker");
-        (address wallToken, address wallQuote, bool isWall) = lpLocker.positionMeta(ids[0]);
+        assertEq(IERC721(positionManagerAddress).ownerOf(wall), address(lpLocker), "held by the locker");
+        (address wallToken, address wallQuote, bool isWall) = lpLocker.positionMeta(wall);
         assertTrue(wallToken == address(token) && wallQuote == quote && isWall, "registered as the token's wall");
         assertEq(IERC20(quote).balanceOf(address(_adder())), 0, "the mint left no quote in the adder");
-        uint128 minted = posm.getPositionLiquidity(ids[0]);
+        uint128 minted = posm.getPositionLiquidity(wall);
 
         vm.roll(block.number + 1);
         token.processLiquidity(quote);
-        (uint256[2] memory idsAfter,) = token.getLiquidityWalls(quote);
-        assertEq(idsAfter[0], ids[0], "the second deposit reused the wall");
-        assertGt(posm.getPositionLiquidity(ids[0]), minted, "and deepened it");
+        assertEq(lpLocker.positionIds(address(token)).length, 2, "the second deposit reused the wall");
+        assertGt(posm.getPositionLiquidity(wall), minted, "and deepened it");
         assertEq(IERC20(quote).balanceOf(address(_adder())), 0, "the top-up left no quote in the adder");
     }
 
@@ -246,24 +245,19 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         QuoteCoin(quote).mintTo(address(this), 1);
         IERC20(quote).approve(address(_adder()), 1);
 
-        uint256[2] memory noIds;
-        int24[2] memory noTicks;
-        (uint128 liquidity, uint256 id,) = _adder()
-            .addOrTopUpSingleSided(
+        (int24 lower, int24 upper,) = lpLocker.nextWall(token, quote);
+        uint128 liquidity = _adder()
+            .addSingleSided(
                 UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(token)),
-                WallParams({
-                    currency: Currency.wrap(quote),
-                    amount: 1,
-                    tickWidth: 14_000,
-                    reuseMaxGap: 2_000,
-                    receiver: address(this)
-                }),
-                noIds,
-                noTicks
+                Currency.wrap(quote),
+                1,
+                lower,
+                upper,
+                address(this),
+                address(this)
             );
 
         assertEq(liquidity, 0, "nothing was placed");
-        assertEq(id, 0, "so no wall to remember");
         assertEq(IERC20(quote).balanceOf(address(this)), 1, "the deposit came back as the quote");
     }
 
@@ -996,8 +990,8 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
         _accrue(token, third, 4_000e6);
         token.processLiquidity(third);
-        (uint256[2] memory ids,) = token.getLiquidityWalls(third);
-        assertGt(ids[0], 0, "the last quote's liquidity buffer placed a wall");
+        (,, uint256 wall) = lpLocker.nextWall(address(token), third);
+        assertGt(wall, 0, "the last quote's liquidity buffer placed a wall");
     }
 
     /// @dev The `MAX_PAIRS` launch: native plus two ERC20s, one `PoolSeeded` per pool in pair order with
@@ -1276,49 +1270,40 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
     /////////////////////////// earnings legs on ERC20 quotes, edges ///////////////////////////
 
-    /// @dev Once the price has moved past `LIQUIDITY_WALL_REUSE_MAX_GAP` (2,000 ticks) away from the first
-    ///      wall, the next deposit mints a SECOND wall, and the two-entry memory rotates: the new one
-    ///      first, the old one second, untouched.
-    function _newWallRotatesTheMemory(address quote) internal {
+    /// @dev Once the price has moved into another grid range, the next deposit mints a SECOND wall
+    ///      there, leaving the first untouched — in either orientation of the quote.
+    function _newRangeMintsASecondWall(address quote) internal {
         RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         _accrue(token, quote, 4_000e6);
         IPositionManager posm = IPositionManager(positionManagerAddress);
 
         token.processLiquidity(quote);
-        (uint256[2] memory first, int24[2] memory firstLowers) = token.getLiquidityWalls(quote);
-        uint128 firstLiquidity = posm.getPositionLiquidity(first[0]);
+        (int24 firstLower,, uint256 first) = lpLocker.nextWall(address(token), quote);
+        uint128 firstLiquidity = posm.getPositionLiquidity(first);
 
-        // 20k QC into a ~1e5 QC market cap lifts the price ~44%, ~3,600 ticks.
-        QuoteCoin(quote).mintTo(alice, 20_000e6);
-        _swapQuotePool(alice, address(token), quote, true, 20_000e6);
-        CorePoolKey memory key = UniswapV4PoolConstants.realmPoolKey(
-            address(token), quote, TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(address(token))
-        );
-        (, int24 tick,,) = IPoolManager(poolManagerAddress).getSlot0(key.toId());
-        // A quote-only wall sits above the tick when the quote is currency0, below it (14,000 wide) otherwise.
-        int24 gap = quote < address(token) ? firstLowers[0] - tick : tick - (firstLowers[0] + 14_000);
-        assertGt(gap, 2_000, "precondition: the first wall is past the reuse gap");
+        QuoteCoin(quote).mintTo(alice, 100_000e6);
+        _swapQuotePool(alice, address(token), quote, true, 100_000e6);
+        (int24 lower,, uint256 next) = lpLocker.nextWall(address(token), quote);
+        assertTrue(lower != firstLower && next == 0, "precondition: the price moved into an unwalled range");
 
         vm.roll(block.number + 1);
         token.processLiquidity(quote);
 
-        (uint256[2] memory ids, int24[2] memory lowers) = token.getLiquidityWalls(quote);
-        assertGt(ids[0], first[0], "a fresh wall was minted");
-        assertEq(IERC721(positionManagerAddress).ownerOf(ids[0]), address(lpLocker), "held by the locker");
-        (address wallToken, address wallQuote, bool isWall) = lpLocker.positionMeta(ids[0]);
+        (,, uint256 wall) = lpLocker.nextWall(address(token), quote);
+        assertGt(wall, first, "a fresh wall was minted");
+        assertEq(IERC721(positionManagerAddress).ownerOf(wall), address(lpLocker), "held by the locker");
+        (address wallToken, address wallQuote, bool isWall) = lpLocker.positionMeta(wall);
         assertTrue(wallToken == address(token) && wallQuote == quote && isWall, "registered as the token's wall");
-        assertTrue(lowers[0] != firstLowers[0], "at the moved price");
-        assertEq(ids[1], first[0], "the first wall moved to the second entry");
-        assertEq(lowers[1], firstLowers[0], "with its own lower tick");
-        assertEq(posm.getPositionLiquidity(first[0]), firstLiquidity, "and was not topped up");
+        assertEq(lpLocker.wallAt(address(token), quote, firstLower), first, "the first wall keeps its range");
+        assertEq(posm.getPositionLiquidity(first), firstLiquidity, "and was not topped up");
     }
 
-    function test_processLiquidity_quoteAsCurrency0_newWallRotatesTheMemory() public {
-        _newWallRotatesTheMemory(_placeQuote(LOW_QUOTE, false));
+    function test_processLiquidity_quoteAsCurrency0_newRangeMintsASecondWall() public {
+        _newRangeMintsASecondWall(_placeQuote(LOW_QUOTE, false));
     }
 
-    function test_processLiquidity_quoteAsCurrency1_newWallRotatesTheMemory() public {
-        _newWallRotatesTheMemory(_placeQuote(HIGH_QUOTE, false));
+    function test_processLiquidity_quoteAsCurrency1_newRangeMintsASecondWall() public {
+        _newRangeMintsASecondWall(_placeQuote(HIGH_QUOTE, false));
     }
 
     /// @dev Once per block per quote, for each leg separately; the next block reopens both.

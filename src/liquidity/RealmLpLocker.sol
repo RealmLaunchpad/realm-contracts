@@ -14,6 +14,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionInfo, PositionInfoLibrary} from "lib/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
@@ -24,17 +25,12 @@ import {IRealmLpLocker} from "src/interfaces/IRealmLpLocker.sol";
 import {IRealmPoolFee} from "src/interfaces/IRealmPoolFee.sol";
 import {ISwapLpFeeRouter} from "src/interfaces/ISwapLpFeeRouter.sol";
 import {ISwapLpFeeRouterTokenFees} from "src/interfaces/ISwapLpFeeRouterTokenFees.sol";
-import {IRealmUniV4LiquidityAdder, WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
+import {IRealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 
 /// @notice The graduator's view the locker needs to key a wall's pool.
 interface IRealmLpLockerGraduator {
     function hookFor(address quote) external view returns (address);
-}
-
-/// @notice The token's wall memory, read back by `addWall`.
-interface IRealmWallToken {
-    function getLiquidityWalls(address quote) external view returns (uint256[2] memory ids, int24[2] memory tickLowers);
 }
 
 /// @title RealmLpLocker
@@ -52,32 +48,27 @@ interface IRealmWallToken {
 ///      Safe for the reason the adder documents: it is non-upgradeable, can only ever INCREASE a
 ///      position, and tops one up only for its owner as caller — this contract.
 /// @dev Hostile callers. Positions are keyed by the address that registered them: the graduator for a
-///      seed, `msg.sender` for a wall. A contract posing as a token can therefore only mint walls into
-///      ITS OWN pool, keyed under itself, and the wall candidates it hands back are dropped unless they
-///      are walls of that same caller and quote — so no caller can top up, or collect early, another
+///      seed, `msg.sender` for a wall. A contract posing as a token can therefore only mint or top up
+///      walls in ITS OWN pool, keyed under itself — so no caller can top up, or collect early, another
 ///      token's position. `collect` on a fake token only moves that fake's own pool fees. Every entry
 ///      point is `nonReentrant`, and the contract holds no balance between calls (each fee collection
 ///      and each refund is a measured delta forwarded in the same call), so nothing a reentering token
 ///      or router could do changes what another call measures.
-/// @dev Gas. Walls accumulate (a fresh one is minted whenever the price leaves the old ones behind), so
-///      `collect` is O(positions) of a token. It skips positions with nothing owed (a wall the price
-///      never reached costs one fee-growth read) and folds each pool's positions into ONE position-manager
-///      call, so the cost that grows is mostly reads. The growth itself is bounded by the token's
-///      keeper-gated, once-per-block `processLiquidity` and its wall-reuse policy.
+/// @dev Walls live on a FIXED grid of `WALL_RANGE_TICKS`-wide ranges. Each add goes to the grid range
+///      just below the one holding the current price (in the token's price), topping up the wall
+///      already there or minting it. So a token has at most one wall per range its price has ever
+///      visited, per quote: a 1000x run is ~10 ranges. `collect` is O(positions), and that bound is
+///      what keeps it cheap; it skips positions with nothing owed and folds each pool's positions into
+///      ONE position-manager call.
 contract RealmLpLocker is IRealmLpLocker, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using PositionInfoLibrary for PositionInfo;
 
-    /// @notice Width, in TICKS, of a fresh bid wall: from just below the current price to roughly -75%
-    ///         (1.0001^14000 ≈ 4.05). Spacing-derived so the range always mints cleanly.
-    int24 public constant WALL_TICK_WIDTH = 70 * UniswapV4PoolConstants.TICK_SPACING;
-
-    /// @notice Max distance, in TICKS (~22% of price), between the current tick and a remembered wall for
-    ///         `addWall` to top it up instead of minting a fresh one. Stops every future add piling into
-    ///         the first wall ever minted, and caps how deep a price pump can steer an add.
-    int24 public constant WALL_REUSE_MAX_GAP = 10 * UniswapV4PoolConstants.TICK_SPACING;
+    /// @notice Width, in TICKS, of every grid range a wall can occupy: 1.0001^7000 ≈ 2.01, so each range
+    ///         spans a ~50% price drop. Spacing-aligned, and ranges start at its multiples.
+    int24 public constant WALL_RANGE_TICKS = 35 * UniswapV4PoolConstants.TICK_SPACING;
 
     IPoolManager public immutable POOL_MANAGER;
     IPositionManager public immutable POSITION_MANAGER;
@@ -100,6 +91,9 @@ contract RealmLpLocker is IRealmLpLocker, ReentrancyGuardTransient {
     mapping(address token => address[]) internal _quotesOf;
     /// @notice Owner token, quote and kind of every registered position. Zero token: not registered.
     mapping(uint256 tokenId => PositionMeta) public positionMeta;
+    /// @notice The wall `token` holds in its `quote` pool's grid range starting at tick `rangeStart` (a
+    ///         multiple of `WALL_RANGE_TICKS`). Zero: no wall there yet.
+    mapping(address token => mapping(address quote => mapping(int24 rangeStart => uint256))) public wallAt;
 
     error OnlyGraduator();
     error NotOwnedByLocker();
@@ -112,6 +106,8 @@ contract RealmLpLocker is IRealmLpLocker, ReentrancyGuardTransient {
     error NativeTransferFailed();
     /// @notice Native from anyone but the pool manager, the position manager or the adder.
     error UnexpectedNative();
+    /// @notice The price sits at the edge of the usable tick band, with no range left below it.
+    error WallOutOfRange();
 
     constructor(address poolManager, address positionManager, address liquidityAdder, address lpFeeRouter) {
         POOL_MANAGER = IPoolManager(poolManager);
@@ -236,15 +232,14 @@ contract RealmLpLocker is IRealmLpLocker, ReentrancyGuardTransient {
     ////////////////////////////// WALLS //////////////////////////////
 
     /// @inheritdoc IRealmLpLocker
-    /// @dev Order matters: the walls the adder may top up have their fees collected FIRST, because a v4
-    ///      increase folds a position's accrued fees into its deltas, where they would mix with the
-    ///      principal refund. After that collection (same transaction, no swap in between) a top-up's
-    ///      `TAKE_PAIR` returns principal remainder only, and the token side is exactly 0.
+    /// @dev A top-up collects the wall's fees FIRST, because a v4 increase folds a position's accrued
+    ///      fees into its deltas, where they would mix with the principal refund. After that collection
+    ///      (same transaction, no swap in between) the top-up returns principal remainder only.
     function addWall(address quote, uint256 amount)
         external
         payable
         nonReentrant
-        returns (uint128 liquidity, uint256 usedTokenId, int24 usedTickLower, uint256 spent)
+        returns (uint128 liquidity, uint256 tokenId, uint256 spent)
     {
         require(amount != 0, ZeroAmount());
         address token = msg.sender;
@@ -252,31 +247,40 @@ contract RealmLpLocker is IRealmLpLocker, ReentrancyGuardTransient {
         require(msg.value == (native ? amount : 0), ValueMismatch());
         if (!native) IERC20(quote).safeTransferFrom(token, address(this), amount);
 
-        uint256 refund;
-        (liquidity, usedTokenId, usedTickLower, refund) = _placeWall(token, quote, amount);
-        spent = amount - refund;
-
-        if (usedTokenId != 0 && positionMeta[usedTokenId].token == address(0)) {
-            _register(token, quote, usedTokenId, true);
+        CorePoolKey memory key = _wallKey(token, quote);
+        (int24 rangeStart, int24 tickLower, int24 tickUpper) = _wallRange(key, quote);
+        tokenId = wallAt[token][quote][rangeStart];
+        if (tokenId != 0) {
+            (, uint256 owed0, uint256 owed1) = _owed(tokenId);
+            if (owed0 != 0 || owed1 != 0) {
+                uint256[] memory ids = new uint256[](1);
+                ids[0] = tokenId;
+                _collectIds(token, quote, ids);
+            }
         }
-        if (refund != 0) _send(quote, token, refund);
-    }
 
-    /// @dev The adder call, with the caller's validated candidates. Split out of `addWall` for the stack.
-    ///      `refund` is the quote the adder handed back (rounding remainder, or everything when nothing
-    ///      was placed), measured on this contract's balance, which holds `amount` going in.
-    function _placeWall(address token, address quote, uint256 amount)
-        private
-        returns (uint128 liquidity, uint256 usedTokenId, int24 usedTickLower, uint256 refund)
-    {
-        (uint256[2] memory ids, int24[2] memory lowers) = _candidates(token, quote);
-        if (quote != address(0)) IERC20(quote).forceApprove(LIQUIDITY_ADDER, amount);
-        refund = _balance(quote); // the balance before, until the line after the call
-        (liquidity, usedTokenId, usedTickLower) = IRealmUniV4LiquidityAdder(LIQUIDITY_ADDER)
-        .addOrTopUpSingleSided{value: quote == address(0) ? amount : 0}(
-            _wallKey(token, quote), _wallParams(quote, amount), ids, lowers
-        );
-        refund = _balance(quote) + amount - refund;
+        if (!native) IERC20(quote).forceApprove(LIQUIDITY_ADDER, amount);
+        uint256 balanceBefore = _balance(quote); // holds `amount`
+        if (tokenId != 0) {
+            liquidity = IRealmUniV4LiquidityAdder(LIQUIDITY_ADDER).topUpSingleSided{value: native ? amount : 0}(
+                key, CoreCurrency.wrap(quote), amount, tokenId, address(this)
+            );
+        } else {
+            // The id the mint is about to consume: `nextTokenId` is assigned before it is incremented.
+            tokenId = POSITION_MANAGER.nextTokenId();
+            liquidity = IRealmUniV4LiquidityAdder(LIQUIDITY_ADDER).addSingleSided{value: native ? amount : 0}(
+                key, CoreCurrency.wrap(quote), amount, tickLower, tickUpper, address(this), address(this)
+            );
+            if (liquidity == 0) {
+                tokenId = 0; // dust: nothing minted, all of it came back
+            } else {
+                wallAt[token][quote][rangeStart] = tokenId;
+                _register(token, quote, tokenId, true);
+            }
+        }
+        uint256 refund = _balance(quote) + amount - balanceBefore;
+        spent = amount - refund;
+        if (refund != 0) _send(quote, token, refund);
     }
 
     /// @dev The canonical key of `token`'s pool against `quote`, at the token's own fee tier.
@@ -286,41 +290,30 @@ contract RealmLpLocker is IRealmLpLocker, ReentrancyGuardTransient {
         );
     }
 
-    /// @dev This contract's wall policy for an `amount` of `quote`; the NFT and any remainder come back here.
-    function _wallParams(address quote, uint256 amount) private view returns (WallParams memory) {
-        return WallParams({
-            currency: CoreCurrency.wrap(quote),
-            amount: amount,
-            tickWidth: WALL_TICK_WIDTH,
-            reuseMaxGap: WALL_REUSE_MAX_GAP,
-            receiver: address(this)
-        });
-    }
-
-    /// @dev The caller's remembered walls, with anything that is not one of ITS walls on `quote` dropped
-    ///      and each lower tick replaced by the position's real one, so a caller can neither steer the
-    ///      adder into someone else's position nor mislead its reuse check. Valid candidates have their
-    ///      fees collected here, before the adder can fold them into a top-up.
-    function _candidates(address token, address quote) private returns (uint256[2] memory ids, int24[2] memory lowers) {
-        (ids,) = IRealmWallToken(token).getLiquidityWalls(quote);
-        uint256[] memory owing = new uint256[](2);
-        uint256 m;
-        for (uint256 i; i < 2; ++i) {
-            PositionMeta memory meta = positionMeta[ids[i]];
-            if (ids[i] == 0 || meta.token != token || meta.quote != quote || !meta.isWall) {
-                ids[i] = 0;
-                continue;
-            }
-            (, PositionInfo info) = POSITION_MANAGER.getPoolAndPositionInfo(ids[i]);
-            lowers[i] = info.tickLower();
-            (, uint256 owed0, uint256 owed1) = _owed(ids[i]);
-            if ((owed0 != 0 || owed1 != 0) && (i == 0 || ids[0] != ids[1])) owing[m++] = ids[i];
-        }
-        if (m == 0) return (ids, lowers);
-        assembly ("memory-safe") {
-            mstore(owing, m)
-        }
-        _collectIds(token, quote, owing);
+    /// @dev The grid range just below the one holding the current price, in the TOKEN's price, clamped
+    ///      to the usable tick band. A quote at `currency0` (native, always) holds alone ABOVE the
+    ///      current tick, a quote at `currency1` BELOW it: a higher tick is a cheaper token in the first
+    ///      case and a dearer one in the second. Either way the range clears the current tick, so the
+    ///      wall stays quote-only: `tick < tickLower` for `currency0`, `tickUpper <= tick` for `currency1`.
+    function _wallRange(CorePoolKey memory key, address quote)
+        private
+        view
+        returns (int24 rangeStart, int24 tickLower, int24 tickUpper)
+    {
+        // The two v4-core copies share the key layout, so its id is the same hash `toId` takes.
+        (, int24 tick,,) = POOL_MANAGER.getSlot0(PoolId.wrap(keccak256(abi.encode(key))));
+        int24 w = WALL_RANGE_TICKS;
+        int24 current = tick / w;
+        if (tick % w < 0) --current; // floor, not truncation, for negative ticks
+        bool quoteIs0 = CoreCurrency.unwrap(key.currency0) == quote;
+        rangeStart = (quoteIs0 ? current + 1 : current - 1) * w;
+        tickLower = rangeStart;
+        tickUpper = rangeStart + w;
+        int24 minTick = TickMath.minUsableTick(key.tickSpacing);
+        int24 maxTick = TickMath.maxUsableTick(key.tickSpacing);
+        if (tickLower < minTick) tickLower = minTick;
+        if (tickUpper > maxTick) tickUpper = maxTick;
+        require(tickLower < tickUpper, WallOutOfRange());
     }
 
     ////////////////////////////// VIEWS //////////////////////////////
@@ -347,6 +340,17 @@ contract RealmLpLocker is IRealmLpLocker, ReentrancyGuardTransient {
             quoteAmounts[q] += quoteSide;
             tokenAmounts[q] += tokenSide;
         }
+    }
+
+    /// @inheritdoc IRealmLpLocker
+    function nextWall(address token, address quote)
+        external
+        view
+        returns (int24 tickLower, int24 tickUpper, uint256 tokenId)
+    {
+        int24 rangeStart;
+        (rangeStart, tickLower, tickUpper) = _wallRange(_wallKey(token, quote), quote);
+        tokenId = wallAt[token][quote][rangeStart];
     }
 
     /// @notice Every position registered under `token`, in registration order.

@@ -98,10 +98,11 @@ contract UpgradeRealmFactories is Script {
         _requireCurrentGraduatorV4(m.graduatorV4Direct, "GRADUATOR_UNIV4_DIRECT");
     }
 
-    /// @dev The V4 token impl calls `hookFor` on its graduator and tops liquidity up through the
-    ///      graduator's `LIQUIDITY_ADDER` with the ERC20-aware `addOrTopUpSingleSided` (which shipped
-    ///      with `PERMIT2`). Wiring either from before that change bricks every clone's burn, liquidity
-    ///      and self-token dividend paths for good, so refuse it here.
+    /// @dev The V4 token impl calls `hookFor` on its graduator and places liquidity through the
+    ///      graduator's `LP_LOCKER`, whose `addWall` must be the grid-range one (`WALL_RANGE_TICKS`): an
+    ///      older locker returns a different tuple that the token would misread. The adder must settle
+    ///      ERC20s (`PERMIT2`). Wiring any of them from before those changes bricks every clone's burn,
+    ///      liquidity and self-token dividend paths for good, so refuse it here.
     function _requireCurrentGraduatorV4(address graduator, string memory slot) internal view {
         require(
             _answers(graduator, abi.encodeWithSignature("hookFor(address)", address(0))),
@@ -112,6 +113,11 @@ contract UpgradeRealmFactories is Script {
         require(
             _answers(abi.decode(ret, (address)), abi.encodeWithSignature("PERMIT2()")),
             string.concat("manifest: ", slot, "'s liquidity adder predates ERC20 settlement, redeploy it")
+        );
+        (, ret) = graduator.staticcall(abi.encodeWithSignature("LP_LOCKER()"));
+        require(
+            ret.length == 32 && _answers(abi.decode(ret, (address)), abi.encodeWithSignature("WALL_RANGE_TICKS()")),
+            string.concat("manifest: ", slot, "'s LP locker predates grid-range walls, redeploy it")
         );
     }
 

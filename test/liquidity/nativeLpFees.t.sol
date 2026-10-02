@@ -37,21 +37,10 @@ import {Actions} from "lib/v4-periphery/src/libraries/Actions.sol";
 import {IPermit2} from "lib/v4-periphery/lib/permit2/src/interfaces/IPermit2.sol";
 import {IUniversalRouter, IV4RouterSwaps} from "src/interfaces/IUniswapV4UniversalRouter.sol";
 
-/// @notice Poses as a Realm token to reach the locker: it names another token's wall as its candidate.
+/// @notice Poses as a Realm token to reach the locker.
 contract FakeWallToken {
-    uint256 internal immutable VICTIM_WALL;
-
-    constructor(uint256 victimWall) {
-        VICTIM_WALL = victimWall;
-    }
-
     function poolFee() external pure returns (uint24) {
         return 10_000;
-    }
-
-    function getLiquidityWalls(address) external view returns (uint256[2] memory ids, int24[2] memory lowers) {
-        ids[0] = VICTIM_WALL;
-        lowers;
     }
 
     function attack(RealmLpLocker locker) external payable {
@@ -482,37 +471,36 @@ contract NativeLpFeesTests is TaxTokenUniV4BaseTests {
 
     /////////////////////////// WALLS ///////////////////////////
 
-    /// @dev when a remembered wall has accrued fees and is topped up, then its fees are collected first and
+    /// @dev when the grid range below the price already holds a wall that has accrued fees and is topped up, then its fees are collected first and
     ///      only principal comes back as the refund
     function test_addWall_topUp_assertCollectsFeesFirstAndRefundsPrincipal() public liquidityToken buy(3 ether) {
         RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(payable(testToken));
         _swap(buyer, testToken, IERC20(testToken).balanceOf(buyer) / 4, 0, false, true);
         vm.roll(block.number + 1);
         token.processLiquidity();
-        (uint256[2] memory ids, int24[2] memory lowers) = token.getLiquidityWalls();
-        assertGt(ids[0], 0, "precondition: a wall");
+        (,, uint256 wall) = lpLocker.nextWall(testToken, address(0));
+        assertGt(wall, 0, "precondition: a wall");
 
         // Trade through the wall and back above it, so it earns on both sides and is reusable again.
         uint256 ethBefore = buyer.balance;
         _swap(buyer, testToken, IERC20(testToken).balanceOf(buyer) / 10, 0, false, true);
         _swap(buyer, testToken, (buyer.balance - ethBefore) * 3 / 2, 0, true, true);
-        int24 gap = lowers[0] - _tick(testToken);
-        assertTrue(gap > 0 && gap <= 2_000, "precondition: the wall is above the price, within the reuse gap");
-        (uint256 owedEth, uint256 owedToken) = _owed(ids[0]);
+        (,, uint256 next) = lpLocker.nextWall(testToken, address(0));
+        assertEq(next, wall, "precondition: the price is back in the range above the wall");
+        (uint256 owedEth, uint256 owedToken) = _owed(wall);
         assertGt(owedEth, 1e12, "precondition: the wall owes ETH fees");
         assertGt(owedToken, 0, "and token fees");
 
         vm.roll(block.number + 1);
         uint256 amountIn = token.liquidityPendingEth();
         if (amountIn > 1 ether) amountIn = 1 ether;
-        uint128 liquidityBefore = IPositionManager(positionManagerAddress).getPositionLiquidity(ids[0]);
+        uint128 liquidityBefore = IPositionManager(positionManagerAddress).getPositionLiquidity(wall);
         vm.recordLogs();
         token.processLiquidity();
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        (uint256[2] memory idsAfter,) = token.getLiquidityWalls();
-        assertEq(idsAfter[0], ids[0], "precondition: the top-up path");
-        assertGt(IPositionManager(positionManagerAddress).getPositionLiquidity(ids[0]), liquidityBefore, "topped up");
+        assertEq(lpLocker.positionIds(testToken).length, 2, "the top-up path: seed + one wall");
+        assertGt(IPositionManager(positionManagerAddress).getPositionLiquidity(wall), liquidityBefore, "topped up");
         (uint256 collectedEth, uint256 collectedToken) = abi.decode(
             _firstLogData(
                 logs, address(lpLocker), IRealmLpLocker.LpFeesCollected.selector, bytes32(uint256(uint160(testToken)))
@@ -521,7 +509,7 @@ contract NativeLpFeesTests is TaxTokenUniV4BaseTests {
         );
         assertEq(collectedEth, owedEth, "the wall's ETH fees were collected first");
         assertEq(collectedToken, owedToken, "and its token fees");
-        (owedEth, owedToken) = _owed(ids[0]);
+        (owedEth, owedToken) = _owed(wall);
         assertEq(owedEth + owedToken, 0, "nothing left owed on the wall");
 
         (uint256 added,,) = abi.decode(
@@ -534,25 +522,25 @@ contract NativeLpFeesTests is TaxTokenUniV4BaseTests {
         assertEq(IERC20(testToken).balanceOf(address(lpLocker)), 0, "nor tokens");
     }
 
-    /// @dev when a contract posing as a token names another token's wall, then it cannot touch that wall
+    /// @dev when a contract posing as a token calls `addWall`, then it cannot touch another token's wall
     function test_addWall_fromNonToken_assertCannotTouchOthersPositions() public liquidityToken buy(3 ether) {
         RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(payable(testToken));
         _swap(buyer, testToken, IERC20(testToken).balanceOf(buyer) / 4, 0, false, true);
         vm.roll(block.number + 1);
         token.processLiquidity();
-        (uint256[2] memory ids,) = token.getLiquidityWalls();
-        uint128 liquidityBefore = IPositionManager(positionManagerAddress).getPositionLiquidity(ids[0]);
+        (,, uint256 wall) = lpLocker.nextWall(testToken, address(0));
+        uint128 liquidityBefore = IPositionManager(positionManagerAddress).getPositionLiquidity(wall);
 
-        FakeWallToken fake = new FakeWallToken(ids[0]);
+        FakeWallToken fake = new FakeWallToken();
         vm.deal(address(fake), 1 ether);
-        // Its candidate is dropped (not its wall) and its own "pool" does not exist: nothing to mint into.
+        // Walls are keyed by the caller, and its own "pool" does not exist: nothing to mint into.
         vm.expectRevert();
         fake.attack{value: 1 ether}(lpLocker);
 
         assertEq(
-            IPositionManager(positionManagerAddress).getPositionLiquidity(ids[0]), liquidityBefore, "victim untouched"
+            IPositionManager(positionManagerAddress).getPositionLiquidity(wall), liquidityBefore, "victim untouched"
         );
-        (address owner,,) = lpLocker.positionMeta(ids[0]);
+        (address owner,,) = lpLocker.positionMeta(wall);
         assertEq(owner, testToken, "still the victim's wall");
         assertEq(lpLocker.positionIds(address(fake)).length, 0, "and nothing registered for the fake");
     }

@@ -17,7 +17,6 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IRealmUniV4LiquidityAdder, RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {RealmTaxableTokenUniV4Base} from "src/tokens/RealmTaxableTokenUniV4Base.sol";
-import {WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
 /// @notice Stand-in for `RealmLpLocker.addWall` on the adder's zero-liquidity branch: an amount that sizes
@@ -25,10 +24,10 @@ import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721
 ///         far below anything a Realm pool's tick range can produce, so the branch is mocked rather than
 ///         contrived.
 contract RefundingLpLockerStub {
-    function addWall(address, uint256) external payable returns (uint128, uint256, int24, uint256) {
+    function addWall(address, uint256) external payable returns (uint128, uint256, uint256) {
         (bool sent,) = msg.sender.call{value: msg.value}("");
         require(sent, "refund failed");
-        return (0, 0, 0, 0);
+        return (0, 0, 0);
     }
 }
 
@@ -162,151 +161,141 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         return lpLocker.positionIds(testToken).length;
     }
 
-    /// @dev Rolls a block (the once-per-block cooldown) and processes, returning the wall memory after.
-    function _rollAndProcess(RealmTaxableTokenUniV4 liqToken)
-        internal
-        returns (uint256[2] memory ids, int24[2] memory tickLowers)
-    {
+    /// @dev Rolls a block (the once-per-block cooldown) and processes, returning the wall the next add
+    ///      would use — the one this add used, since processing moves no price.
+    function _rollAndProcess(RealmTaxableTokenUniV4 liqToken) internal returns (uint256 wall, int24 tickLower) {
         vm.roll(block.number + 1);
         liqToken.processLiquidity();
-        (ids, tickLowers) = liqToken.getLiquidityWalls();
+        (tickLower,, wall) = lpLocker.nextWall(testToken, address(0));
     }
 
-    /// @dev The point of the whole reuse path: a second `processLiquidity` while the price is still just
-    ///      below the wall thickens the SAME position instead of minting a second NFT.
-    function test_v4ProcessLiquidity_topsUpTheWallWhilePriceStaysNear() public {
+    /// @dev The grid range the next add would use: its lower tick.
+    function _nextRange() internal view returns (int24 tickLower) {
+        (tickLower,,) = lpLocker.nextWall(testToken, address(0));
+    }
+
+    /// @dev The point of the fixed grid: a second `processLiquidity` while the price stays in the same
+    ///      range thickens the SAME position instead of minting a second NFT.
+    function test_v4ProcessLiquidity_topsUpTheWallWhilePriceStaysInRange() public {
         RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
-        (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
-        assertGt(ids[0], 0, "first call mints and remembers a wall");
+        (uint256 wall, int24 lower) = _rollAndProcess(liqToken);
+        assertGt(wall, 0, "first call mints a wall");
+        assertEq(lower % lpLocker.WALL_RANGE_TICKS(), 0, "on the grid");
+        assertGt(lower, _currentTick(), "entirely below the price (above the tick: the pair is (ETH, token))");
         uint256 positionsAfterMint = _positionCount();
-        uint128 liquidityAfterMint = IPositionManager(positionManagerAddress).getPositionLiquidity(ids[0]);
+        uint128 liquidityAfterMint = IPositionManager(positionManagerAddress).getPositionLiquidity(wall);
 
-        // A small buy nudges the price UP (the tick DOWN, since the pair is (ETH, token)) and, thanks to
-        // the buy tax, refills the buffer. The wall stays above the tick and within the reuse gap.
+        // A small buy refills the buffer (buy tax) without leaving the range.
         _swapBuy(buyer, 0.05 ether, 0, true);
-        int24 tickAfter = _currentTick();
-        assertLt(tickAfter, tickLowers[0], "precondition: the wall is still entirely below the price");
-        assertLt(tickLowers[0] - tickAfter, int24(2000), "precondition: and within the reuse gap");
+        assertEq(_nextRange(), lower, "precondition: the price is still in the same range");
         uint256 pending = liqToken.liquidityPendingEth();
         assertGt(pending, 0, "precondition: the buy refilled the buffer");
         uint256 tokenEthBefore = testToken.balance;
 
-        (uint256[2] memory idsAfter, int24[2] memory tickLowersAfter) = _rollAndProcess(liqToken);
+        (uint256 wallAfter,) = _rollAndProcess(liqToken);
 
         // Same money-safety property as the mint path: the buffer is spent, not stranded or leaked.
         assertApproxEqAbs(
             tokenEthBefore - testToken.balance, pending, 1e12, "almost the whole buffer went into the wall"
         );
-
         assertEq(_positionCount(), positionsAfterMint, "no second NFT was minted");
-        assertEq(idsAfter[0], ids[0], "the same wall is still the most recent one");
-        assertEq(tickLowersAfter[0], tickLowers[0], "and its range did not move");
+        assertEq(wallAfter, wall, "the same wall");
         assertGt(
-            IPositionManager(positionManagerAddress).getPositionLiquidity(ids[0]),
+            IPositionManager(positionManagerAddress).getPositionLiquidity(wall),
             liquidityAfterMint,
             "the existing position got thicker"
         );
     }
 
-    /// @dev A price DROP puts the current tick inside the old wall, which then holds token rather than
-    ///      pure ETH. An ETH-only top-up cannot settle there, so the call must mint a fresh wall.
-    function test_v4ProcessLiquidity_mintsAgainWhenPriceFallsIntoTheWall() public {
+    /// @dev A price DROP into the wall's range makes the range below it the target: a fresh wall there.
+    function test_v4ProcessLiquidity_mintsTheNextRangeDownWhenPriceFallsIntoTheWall() public {
         RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
-        (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
+        (uint256 wall, int24 lower) = _rollAndProcess(liqToken);
         uint256 positionsAfterMint = _positionCount();
 
         // Selling pushes the tick UP, through the wall's lower tick.
-        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 2, 0, true);
-        assertGe(_currentTick(), tickLowers[0], "precondition: the price fell into the old wall");
+        _swapSell(buyer, IERC20(testToken).balanceOf(buyer), 0, true);
+        assertGe(_currentTick(), lower, "precondition: the price fell into the wall");
 
-        (uint256[2] memory idsAfter,) = _rollAndProcess(liqToken);
+        (uint256 wallAfter, int24 lowerAfter) = _rollAndProcess(liqToken);
 
         assertEq(_positionCount(), positionsAfterMint + 1, "a fresh wall was minted");
-        assertGt(idsAfter[0], ids[0], "the new wall is the most recent one");
-        assertEq(idsAfter[1], ids[0], "and the old one is remembered in the second slot");
+        assertTrue(wallAfter != wall, "a different position");
+        assertGe(lowerAfter, lower + lpLocker.WALL_RANGE_TICKS(), "in a range further down");
     }
 
-    /// @dev A price rise beyond `LIQUIDITY_WALL_REUSE_MAX_GAP` leaves the old wall stranded far below the
-    ///      market. Topping it up would park the ETH as deep depth instead of a protective bid, so the
-    ///      call mints at the live tick instead.
-    function test_v4ProcessLiquidity_mintsAgainWhenPriceRanFarAboveTheWall() public {
+    /// @dev A price RISE across a range boundary makes a higher range the target: a fresh wall there.
+    function test_v4ProcessLiquidity_mintsAHigherRangeWhenPriceRisesAcrossABoundary() public {
         RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
-        (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
+        (uint256 wall, int24 lower) = _rollAndProcess(liqToken);
         uint256 positionsAfterMint = _positionCount();
 
-        // A large buy moves the tick far DOWN — the wall is still ETH-only, just far too deep to be a bid.
         vm.deal(buyer, 20 ether);
         _swapBuy(buyer, 20 ether, 0, true);
-        int24 tickAfter = _currentTick();
-        assertLt(tickAfter, tickLowers[0], "precondition: the wall is still entirely below the price");
-        assertGt(tickLowers[0] - tickAfter, int24(2000), "precondition: but beyond the reuse gap");
+        assertLt(_nextRange(), lower, "precondition: the price crossed into a higher range");
 
-        (uint256[2] memory idsAfter,) = _rollAndProcess(liqToken);
+        (uint256 wallAfter,) = _rollAndProcess(liqToken);
 
         assertEq(_positionCount(), positionsAfterMint + 1, "a fresh wall was minted");
-        assertEq(idsAfter[1], ids[0], "the stranded wall is kept as the second entry");
+        assertTrue(wallAfter != wall, "a different position");
     }
 
-    /// @dev The reason the memory holds TWO walls. Price runs up (wall 2 minted far below wall 1), then
-    ///      falls back to between them: wall 2 is now in-range and unusable, but wall 1 is once again just
-    ///      below the price. A one-entry memory would mint a third position here.
-    function test_v4ProcessLiquidity_reusesTheOlderWallAfterAZigzag() public {
+    /// @dev Positions are bounded by the ranges visited, not by how often the price moves: back in a
+    ///      range it has already walled, the old wall is topped up rather than a new one minted.
+    function test_v4ProcessLiquidity_reusesTheWallWhenPriceReturnsToItsRange() public {
         RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
-        (uint256[2] memory first,) = _rollAndProcess(liqToken);
+        (uint256 first, int24 firstLower) = _rollAndProcess(liqToken);
 
-        // Run the price up far enough that the next call mints rather than tops up.
+        // Up into a higher range: a second wall.
         vm.deal(buyer, 20 ether);
         _swapBuy(buyer, 20 ether, 0, true);
-        (uint256[2] memory second, int24[2] memory secondLowers) = _rollAndProcess(liqToken);
-        assertEq(second[1], first[0], "precondition: both walls are remembered");
+        (uint256 second,) = _rollAndProcess(liqToken);
+        assertTrue(second != first, "precondition: a second wall");
         uint256 positionsAfterTwoMints = _positionCount();
 
-        // Fall back to between the two walls: above the newer wall's lower tick, below the older one's.
-        _swapSell(buyer, IERC20(testToken).balanceOf(buyer) * 4 / 10, 0, true);
-        int24 tickAfter = _currentTick();
-        assertGe(tickAfter, secondLowers[0], "precondition: the newer wall is now in range and unusable");
-        assertLt(tickAfter, secondLowers[1], "precondition: the older wall is above the price again");
-        assertLt(secondLowers[1] - tickAfter, int24(2000), "precondition: and within the reuse gap");
+        // Back down, in small steps, until the first wall's range is the target again.
+        for (uint256 i; i < 50 && _nextRange() < firstLower; ++i) {
+            _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 20, 0, true);
+        }
+        assertEq(_nextRange(), firstLower, "precondition: back in the first wall's range");
 
-        uint128 olderLiquidityBefore = IPositionManager(positionManagerAddress).getPositionLiquidity(first[0]);
-        (uint256[2] memory third,) = _rollAndProcess(liqToken);
+        uint128 firstLiquidityBefore = IPositionManager(positionManagerAddress).getPositionLiquidity(first);
+        (uint256 third,) = _rollAndProcess(liqToken);
 
         assertEq(_positionCount(), positionsAfterTwoMints, "no third NFT was minted");
+        assertEq(third, first, "the first wall took the deposit");
         assertGt(
-            IPositionManager(positionManagerAddress).getPositionLiquidity(first[0]),
-            olderLiquidityBefore,
-            "the older wall took the ETH"
+            IPositionManager(positionManagerAddress).getPositionLiquidity(first),
+            firstLiquidityBefore,
+            "and got thicker"
         );
-        assertEq(third[0], first[0], "and was promoted to the most-recently-used slot");
-        assertEq(third[1], second[0], "with the newer wall demoted behind it");
     }
 
-    /// @dev The assumption the whole reuse rule rests on: a topped-up wall is ETH-ONLY, so the call
-    ///      settles native and nothing else. If the eligibility check ever let a wall through that the
-    ///      price had entered, the position would demand token1 — and the token would be spending the
+    /// @dev The assumption the grid rests on: a topped-up wall is ETH-ONLY, so the call settles native
+    ///      and nothing else. If the target range ever included the price, the position would demand token1 — and the token would be spending the
     ///      supply it holds for other buckets.
     function test_v4ProcessLiquidity_topUpSpendsNoTokens() public {
         RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
-        (uint256[2] memory ids,) = _rollAndProcess(liqToken);
-        assertGt(ids[0], 0, "precondition: a wall exists");
+        (uint256 wall,) = _rollAndProcess(liqToken);
+        assertGt(wall, 0, "precondition: a wall exists");
 
         _swapBuy(buyer, 0.05 ether, 0, true);
         uint256 tokenBalanceBefore = IERC20(testToken).balanceOf(testToken);
         uint256 supplyBefore = IERC20(testToken).totalSupply();
 
-        (uint256[2] memory idsAfter,) = _rollAndProcess(liqToken);
+        (uint256 wallAfter,) = _rollAndProcess(liqToken);
 
-        assertEq(idsAfter[0], ids[0], "precondition: this call took the top-up path");
+        assertEq(wallAfter, wall, "precondition: this call took the top-up path");
         assertEq(IERC20(testToken).balanceOf(testToken), tokenBalanceBefore, "no tokens left the contract");
         assertEq(IERC20(testToken).totalSupply(), supplyBefore, "and none were minted or burned");
     }
@@ -334,9 +323,9 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
-        (uint256[2] memory ids,) = _rollAndProcess(liqToken);
+        (uint256 wall,) = _rollAndProcess(liqToken);
 
-        // Overfill the buffer well past the cap, without moving the price out of the reuse window.
+        // Overfill the buffer well past the cap, without moving the price out of the range.
         uint256 cap = liqToken.MAX_EARNINGS_PER_PROCESS();
         _swapBuy(buyer, 0.05 ether, 0, true);
         vm.deal(address(liqToken), address(liqToken).balance + 5 * cap);
@@ -345,9 +334,9 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         assertGt(pending, cap, "precondition: the buffer exceeds the per-call cap");
 
         uint256 ethBefore = testToken.balance;
-        (uint256[2] memory idsAfter,) = _rollAndProcess(liqToken);
+        (uint256 wallAfter,) = _rollAndProcess(liqToken);
 
-        assertEq(idsAfter[0], ids[0], "precondition: this call took the top-up path");
+        assertEq(wallAfter, wall, "precondition: this call took the top-up path");
         assertApproxEqAbs(ethBefore - testToken.balance, cap, 1e12, "at most one cap's worth was spent");
         assertApproxEqAbs(liqToken.liquidityPendingEth(), pending - cap, 1e12, "the remainder stays earmarked");
     }
@@ -359,8 +348,8 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         RealmTaxableTokenUniV4 liqToken = _graduatedLiquidityToken();
 
         _swapSell(buyer, IERC20(testToken).balanceOf(buyer) / 4, 0, true);
-        (uint256[2] memory ids, int24[2] memory tickLowers) = _rollAndProcess(liqToken);
-        assertGt(ids[0], 0, "precondition: the token owns a wall");
+        (uint256 wall,) = _rollAndProcess(liqToken);
+        assertGt(wall, 0, "precondition: the token owns a wall");
 
         address adder = lpLocker.LIQUIDITY_ADDER();
         assertTrue(
@@ -373,8 +362,6 @@ contract LiquidityTaxTokenV4Tests is TaxTokenUniV4BaseTests {
         PoolKey memory key = UniswapV4PoolConstants.realmPoolKey(testToken, address(taxHook), _poolFee(testToken));
         vm.prank(attacker);
         vm.expectRevert(RealmUniV4LiquidityAdder.NotPositionOwner.selector);
-        IRealmUniV4LiquidityAdder(adder).addOrTopUpSingleSidedEth{value: 1 ether}(
-            key, 14000, 2000, ids, tickLowers, attacker, attacker
-        );
+        IRealmUniV4LiquidityAdder(adder).topUpSingleSided{value: 1 ether}(key, key.currency0, 1 ether, wall, attacker);
     }
 }
