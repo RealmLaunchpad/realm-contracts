@@ -222,9 +222,10 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      deploy scripts assert it has code. A new proxy means new token impls; an upgrade does not.
     address public constant LP_FEE_ROUTER = 0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0;
     /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
-    ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
-    ///         2026-09-14; the `realm.dev` EOA before that.
-    address public constant REALM_TREASURY = 0x2BE1D41df10E674f9E07195cAA0B16Cb1acB88C8;
+    ///         lands on. `TEAM_TREASURY` while REALM and its treasury stack are redeployed (2026-10-03);
+    ///         the `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) 2026-09-14 to then
+    ///         (`0x2BE1D41df10E674f9E07195cAA0B16Cb1acB88C8`); the `realm.dev` EOA before that.
+    address public constant REALM_TREASURY = 0x81f7D06a88223f5a2850411E72256AacC9E27035;
 
     /// @notice The wallet on the 2/3 leg of `RealmTreasuryRouter`. Separate from `REALM_TREASURY`, which
     ///         became the router proxy itself once the router went live: resolving the leg from that would

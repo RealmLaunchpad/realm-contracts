@@ -73,22 +73,22 @@ library DeploymentsRobinhoodTestnet {
     address internal constant LP_FEE_ROUTER = DeploymentAddressesRobinhoodTestnet.LP_FEE_ROUTER;
     /// @notice The `SwapLpFeeRouter` implementation behind `LP_FEE_ROUTER`. Update on every router
     ///         upgrade; tracked for verification and audit trails only.
-    address internal constant LP_FEE_ROUTER_IMPL = 0x82aCD37F79e93D30bED05A4C62A3D784b5A4ef37;
+    address internal constant LP_FEE_ROUTER_IMPL = 0xD575E0a07438929966C018762367448b67691589;
     /// @notice `RealmTreasuryRouter` proxy (UUPS): the treasury address every push lands on once live —
     ///         `LAUNCHPAD.treasury()` and the `SwapLpFeeRouter` impl's `TREASURY` point here. Forwards 1/3
     ///         to `VOTING`, the rest to the team multisig. Deployed by `DeployRealmTreasuryStack`, which also
     ///         does that repointing; `address(0)` until then.
-    address internal constant TREASURY_ROUTER = 0x2BE1D41df10E674f9E07195cAA0B16Cb1acB88C8;
+    address internal constant TREASURY_ROUTER = 0x49cCD62E9A4F713761F3E121a053dd9CBf67860F;
     /// @notice Implementation behind `TREASURY_ROUTER`. Tracked for verification and audit trails only.
-    address internal constant TREASURY_ROUTER_IMPL = 0x47a9734c06e5C684be757177CD974AbFFDE40c2d;
+    address internal constant TREASURY_ROUTER_IMPL = 0x82CEC809404EaE07Ee2A5CFa32bdAC222c5b77Df;
     /// @notice The REALM token (a launchpad token like any other; the one `VOTING` burns). `address(0)`
     ///         until it is launched on this chain.
-    address internal constant REALM_TOKEN = 0xAf5bc7F655618c3148dE9C4b36faF3D9cE75eeAa;
+    address internal constant REALM_TOKEN = 0x0F4536A356C649129806f91010e3d91266eEEEAA;
     /// @notice `RealmVoting` proxy (UUPS): REALM burn-to-vote rounds. Needs the REALM token, so it is
     ///         deployed after the first token; `TREASURY_ROUTER` bakes it in, so it comes BEFORE that.
-    address internal constant VOTING = 0x899657a6CCe27e1a865c051201344713e9b92fDD;
+    address internal constant VOTING = 0x5026DC7fF53e95147362421Aac2Cf4c15f37Edc7;
     /// @notice Implementation behind `VOTING`. Tracked for verification and audit trails only.
-    address internal constant VOTING_IMPL = 0xC0b56623Bf3D49CaD97ff051f1f270e320C549F4;
+    address internal constant VOTING_IMPL = 0x97aE707A21eb832c563c10013d2dCA4B82F63801;
     address internal constant QUOTER = 0x84083D67C0CC576726AB5270e01315d728476dC5;
     /// @notice `RealmKeeperLens`: the stateless, view-only batch reader the dividend keeper drives its
     ///         per-token reads through. Consumed OFF chain only — no Realm contract references it — so it
