@@ -75,6 +75,11 @@
             "internalType": "uint256"
           },
           {
+            "name": "canGraduate",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
             "name": "reason",
             "type": "uint8",
             "internalType": "enum LimitReason"
@@ -124,6 +129,11 @@
             "name": "tokensToReceive",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "canGraduate",
+            "type": "bool",
+            "internalType": "bool"
           },
           {
             "name": "reason",

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {IRealmLaunchpad2} from "src/interfaces/IRealmLaunchpad2.sol";
+import {IRealmLaunchpad} from "src/interfaces/IRealmLaunchpad.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
-import {IRealmQuoter2} from "src/interfaces/IRealmQuoter2.sol";
+import {IRealmQuoter} from "src/interfaces/IRealmQuoter.sol";
 import {LimitReason} from "src/interfaces/IRealmQuoter.sol";
 import {TokenState} from "src/types/tokenData.sol";
 
@@ -17,12 +17,12 @@ import {TokenState} from "src/types/tokenData.sol";
 ///         revert.
 /// @dev Stateless and view-only. The launchpad address is immutable; deploy a new quoter per
 ///      launchpad.
-contract RealmQuoter is IRealmQuoter2 {
+contract RealmQuoter is IRealmQuoter {
     /// @notice Version of the Realm stack this contract belongs to
     string public constant VERSION = "2.0";
 
     /// @notice The launchpad this quoter reads from.
-    IRealmLaunchpad2 public immutable launchpad;
+    IRealmLaunchpad public immutable launchpad;
 
     /// @dev Upper bound on the forward-decrement loop used to neutralize the bonding curve's
     ///      non-symmetric invertibility (`forward(inverse(T)) > T`). In practice the loop
@@ -33,10 +33,10 @@ contract RealmQuoter is IRealmQuoter2 {
 
     constructor(address _launchpad) {
         require(_launchpad != address(0), InvalidLaunchpad());
-        launchpad = IRealmLaunchpad2(_launchpad);
+        launchpad = IRealmLaunchpad(_launchpad);
     }
 
-    /// @inheritdoc IRealmQuoter2
+    /// @inheritdoc IRealmQuoter
     function quoteBuyTokensWithExactEth(address token, address buyer, uint256 ethValue)
         external
         view
@@ -63,7 +63,7 @@ contract RealmQuoter is IRealmQuoter2 {
         }
     }
 
-    /// @inheritdoc IRealmQuoter2
+    /// @inheritdoc IRealmQuoter
     function quoteBuyExactTokens(address token, address buyer, uint256 tokenAmount)
         external
         view
@@ -115,7 +115,7 @@ contract RealmQuoter is IRealmQuoter2 {
             launchpad.quoteBuyTokensWithExactEth(token, q.totalEthNeeded);
     }
 
-    /// @inheritdoc IRealmQuoter2
+    /// @inheritdoc IRealmQuoter
     function quoteSellExactTokens(address token, uint256 tokenAmount)
         external
         view
@@ -153,7 +153,7 @@ contract RealmQuoter is IRealmQuoter2 {
         }
     }
 
-    /// @inheritdoc IRealmQuoter2
+    /// @inheritdoc IRealmQuoter
     function quoteSellTokensForExactEth(address token, uint256 ethAmount)
         external
         view
@@ -197,7 +197,7 @@ contract RealmQuoter is IRealmQuoter2 {
         q.ethReceived = q.ethPulledFromReserves - q.ethFee;
     }
 
-    /// @inheritdoc IRealmQuoter2
+    /// @inheritdoc IRealmQuoter
     function getMaxEthToSpend(address token, address buyer) external view returns (uint256 maxEth, LimitReason reason) {
         LimitReason validity = _checkValidity(token);
         if (validity != LimitReason.NONE) return (0, validity);

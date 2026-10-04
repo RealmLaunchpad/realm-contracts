@@ -16,8 +16,7 @@ abis:
     @mkdir -p abis
     @jq '.abi' out/RealmLaunchpad.sol/RealmLaunchpad.json > abis/RealmLaunchpad.json
     @jq '.abi' out/IRealmQuoter.sol/IRealmQuoter.json > abis/IRealmQuoter.json
-    @jq '.abi' out/IRealmQuoter2.sol/IRealmQuoter2.json > abis/IRealmQuoter2.json
-    @jq '.abi' out/IRealmLaunchpad2.sol/IRealmLaunchpad2.json > abis/IRealmLaunchpad2.json
+    @jq '.abi' out/IRealmLaunchpad.sol/IRealmLaunchpad.json > abis/IRealmLaunchpad.json
     @jq '.abi' out/IRealmToken.sol/IRealmToken.json > abis/IRealmToken.json
     @jq '.abi' out/IRealmClaims.sol/IRealmClaims.json > abis/IRealmClaims.json
     @jq '.abi' out/RealmFactoryUniV2Unified.sol/RealmFactoryUniV2Unified.json > abis/RealmFactoryUniV2Unified.json

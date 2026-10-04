@@ -4,7 +4,12 @@ pragma solidity 0.8.28;
 import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 
+/// @title IRealmLaunchpad
+/// @notice The buy-quote views also return `canGraduate`: `true` when broadcasting the corresponding
+///         buy would top the bonding curve past its graduation threshold and trigger graduation
+///         within the same tx.
 interface IRealmLaunchpad {
+    function VERSION() external view returns (string memory);
     function treasury() external view returns (address);
     function whitelistedFactories(address factory) external view returns (bool);
     function launchToken(address token, IRealmBondingCurve curve) external;
@@ -13,15 +18,19 @@ interface IRealmLaunchpad {
         payable
         returns (uint256 receivedTokens);
 
+    function sellExactTokens(address token, uint256 tokenAmount, uint256 minEthAmount, uint256 deadline)
+        external
+        returns (uint256 receivedEth);
+
     function quoteBuyTokensWithExactEth(address token, uint256 ethValue)
         external
         view
-        returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive);
+        returns (uint256 ethForPurchase, uint256 ethFee, uint256 tokensToReceive, bool canGraduate);
 
     function quoteBuyExactTokens(address token, uint256 tokenAmount)
         external
         view
-        returns (uint256 ethFee, uint256 ethForReserves, uint256 totalEthNeeded);
+        returns (uint256 ethFee, uint256 ethForReserves, uint256 totalEthNeeded, bool canGraduate);
 
     function quoteSellExactTokens(address token, uint256 tokenAmount)
         external
