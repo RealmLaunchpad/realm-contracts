@@ -59,12 +59,6 @@ library DeploymentsRobinhoodTestnet {
     /// @notice Implementation behind `ASSETS_WHITELIST`. Tracked for verification and audit trails only.
     address public constant ASSETS_WHITELIST_IMPL = 0xC5006Ba2E152DA37E8Ad44927775B4e5B0447f5f;
 
-    /// @notice `RealmDividendLogicUniV4`: the LIVE V4 token impl's dividend extension, reached only by
-    ///         `delegatecall`. Removed from the source (folded into the token); kept as a deploy record.
-    address public constant DIVIDEND_LOGIC_V4 = 0x6E45BfD35f4681b709079Dd886b3437fAd5996ff;
-
-    /// @notice `RealmEarningsLogicUniV4`: the V4 token's buy-back / liquidity extension. Same shape.
-    address public constant EARNINGS_LOGIC_V4 = 0x1BC0878C4225DDB72075b4683cE28497cc703B6f;
     /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees 30/70
     ///         treasury/creator.
     /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook
