@@ -1,5 +1,8 @@
 livo-timesheet.md
 
+*.pyc
+**__pycache__
+
 .claude/
 
 cache/
