@@ -22,7 +22,10 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
-GRAPHQL_URL = "https://indexer.livo.trade/v1/graphql"
+# Realm prod indexer (Robinhood mainnet); same endpoint the frontend uses in prod. Still on the
+# legacy livo.trade domain until the prod stage moves to realm.trade.
+GRAPHQL_URL = "https://indexer-cdn.livo.trade/v1/graphql"
+NATIVE_ASSET = "0x0000000000000000000000000000000000000000"
 JSONRPC_BATCH_SIZE = 100
 HTTP_TIMEOUT = 30
 MIN_ACCRUED_WEI = 5 * 10**16  # 0.05 ETH: ignore dust claims not worth funding gas for
@@ -42,19 +45,21 @@ CHAINS = [
     },
 ]
 
-# No claimedEth filter here: rows are per-token, so we must aggregate every token a
+# No claimed filter here: rows are per-token, so we must aggregate every token a
 # creator has on the chain to know whether they have EVER claimed. Filtering rows by
-# claimedEth == 0 would keep a creator who claimed on one token but not another.
+# claimed == 0 would keep a creator who claimed on one token but not another.
+# Rows are per (token, asset): only the native-ETH asset row counts here.
 QUERY = """
 query MyQuery {{
-  RewardsTokenCreator(
+  RewardsTokenCreatorAsset(
     where: {{
       chainId: {{_eq: "{chain_id}"}},
-      accountedEth: {{_gt: "0"}}
+      asset: {{_eq: "{asset}"}},
+      accounted: {{_gt: "0"}}
     }}
   ) {{
-    accruedEth
-    claimedEth
+    accrued
+    claimed
     creator
   }}
 }}
@@ -65,23 +70,23 @@ console = Console(highlight=False)
 
 def fetch_creators(chain_id: str) -> list[dict]:
     resp = requests.post(
-        GRAPHQL_URL, json={"query": QUERY.format(chain_id=chain_id)}, timeout=HTTP_TIMEOUT
+        GRAPHQL_URL, json={"query": QUERY.format(chain_id=chain_id, asset=NATIVE_ASSET)}, timeout=HTTP_TIMEOUT
     )
     if resp.status_code != 200:
         raise RuntimeError(f"GraphQL HTTP {resp.status_code}: {resp.text}")
     payload = resp.json()
     if "errors" in payload:
         raise RuntimeError(f"GraphQL errors: {payload['errors']}")
-    return payload["data"]["RewardsTokenCreator"]
+    return payload["data"]["RewardsTokenCreatorAsset"]
 
 
 def unique_creators(rows: list[dict]) -> dict[str, tuple[int, int]]:
-    """Return {lowercased address: (total accruedEth, total claimedEth) in wei}."""
+    """Return {lowercased address: (total accrued, total claimed) in wei}."""
     totals: dict[str, tuple[int, int]] = {}
     for row in rows:
         addr = row["creator"].lower()
         accrued, claimed = totals.get(addr, (0, 0))
-        totals[addr] = (accrued + int(row["accruedEth"]), claimed + int(row["claimedEth"]))
+        totals[addr] = (accrued + int(row["accrued"]), claimed + int(row["claimed"]))
     return totals
 
 
