@@ -12,7 +12,7 @@ One factory is whitelisted on the launchpad:
 |---|---|---|---|
 | `RealmFactoryUniV2Unified` | Uniswap V2 | 5% (500 bps) | Always renounced by default (`tokenOwner = address(0)`) |
 
-Uniswap V4 tokens launch through `RealmFactoryUniV4Direct` instead (no bonding curve, no launchpad), which this guide does not cover — see [`events-per-entry-point.md`](../events-per-entry-point.md) §1.3. Its `DirectPair` is `{quote, weightBps}` with no price field: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (2.25 ETH) market cap, priced live per quote from the assets whitelist; read `previewLaunchTick(quote)` for the tick, price and market cap a launch would get.
+Uniswap V4 tokens launch through `RealmFactoryUniV4Direct` instead (no bonding curve, no launchpad), which this guide does not cover — see [`events-per-entry-point.md`](../events-per-entry-point.md) §1.3. Its `DirectPair` is `{quote, weightBps}` with no price field: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (1.125 ETH) market cap, priced live per quote from the assets whitelist; read `previewLaunchTick(quote)` for the tick, price and market cap a launch would get.
 
 The factory dispatches between four token implementations at create time, based on whether you populate `taxCfg` and/or `antiSniperCfg`:
 

@@ -425,6 +425,18 @@ upgrade-direct-venue-rh-testnet: chain-rh-testnet
     forge script UpgradeDirectVenue --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Deploys ONLY a new RealmFactoryUniV4Direct implementation (same graduator, whitelist, token impls from
+# the manifest) and upgrades FACTORY_UNIV4_DIRECT in place. For factory code/constant changes. Paste the
+# printed FACTORY_UNIV4_DIRECT_IMPL into the manifest and `just export-deployments`. Dry-run first.
+
+upgrade-direct-factory-rh: chain-rh
+    forge script UpgradeDirectFactory --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+upgrade-direct-factory-rh-testnet: chain-rh-testnet
+    forge script UpgradeDirectFactory --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
 # Regenerates deployments.robinhood.{mainnet,testnet}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
 export-deployments:

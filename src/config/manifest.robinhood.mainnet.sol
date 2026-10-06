@@ -49,7 +49,7 @@ library DeploymentsRobinhoodMainnet {
     address public constant FACTORY_UNIV4_DIRECT = 0x7d02298989f2cE2Af36F7dCcadbB9985E30BCD53;
 
     /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
-    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x24185B5Bf3D40d01f8c8f7DC5494317A2fD1b913;
+    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0xd49fE1AD76fB206041284187bBBb47ac60342A71;
 
     /// @notice `RealmAssetsWhitelist` proxy (UUPS): the quote currencies the direct venue will launch
     ///         against, each with the native rate derived from its price pool. `FACTORY_UNIV4_DIRECT`

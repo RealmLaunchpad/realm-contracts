@@ -473,7 +473,7 @@ contract NativeLpFeesTests is TaxTokenUniV4BaseTests {
 
     /// @dev when the grid range below the price already holds a wall that has accrued fees and is topped up, then its fees are collected first and
     ///      only principal comes back as the refund
-    function test_addWall_topUp_assertCollectsFeesFirstAndRefundsPrincipal() public liquidityToken buy(3 ether) {
+    function test_addWall_topUp_assertCollectsFeesFirstAndRefundsPrincipal() public liquidityToken buy(1.5 ether) {
         RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(payable(testToken));
         _swap(buyer, testToken, IERC20(testToken).balanceOf(buyer) / 4, 0, false, true);
         vm.roll(block.number + 1);

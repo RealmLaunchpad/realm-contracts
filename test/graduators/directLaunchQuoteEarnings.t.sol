@@ -230,8 +230,8 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     ///      (~22.5 raw quote per raw coin) one raw unit of quote is worth less than one unit of liquidity.
     function test_adder_zeroLiquidityErc20Currency0IsRefundedInKind() public {
         address quote = _placeQuote(LOW_QUOTE, true);
-        // Worth 1e-10 ETH a unit, so the 2.25 ETH opening cap is ~2.25e10 units.
-        _whitelist(quote, 1e28);
+        // Worth 5e-11 ETH a unit, so the 1.125 ETH opening cap is ~2.25e10 units.
+        _whitelist(quote, 2e28);
         vm.prank(creator);
         address token = directFactory.createToken(
             _setup(false),
@@ -543,8 +543,8 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     }
 
     /////////////////////////// launch price ///////////////////////////
-    // Every pair opens at `LAUNCH_MARKET_CAP_X18` (2.25 ETH) of native value, an ERC20 quote converted at
-    // its LIVE whitelist rate. The [1, 250] ETH bounds are checked at that same live rate, so drift from
+    // Every pair opens at `LAUNCH_MARKET_CAP_X18` (1.125 ETH) of native value, an ERC20 quote converted at
+    // its LIVE whitelist rate. The [0.5, 125] ETH bounds are checked at that same live rate, so drift from
     // the listed snapshot rate is not refused.
 
     /// @dev The opening market cap in whole `quote` units (X18) of a launch against it, read off the pool.
@@ -563,37 +563,37 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     }
 
     function test_launchPrice_nativeOpensAtTheFixedMarketCap() public {
-        assertApproxEqRel(_openingCapInQuote(address(0), 18), 2.25 ether, 0.0101e18, "2.25 ETH");
+        assertApproxEqRel(_openingCapInQuote(address(0), 18), 1.125 ether, 0.0101e18, "1.125 ETH");
     }
 
-    /// @dev Six decimals at 3,500 QC per ETH: 2.25 ETH is 7,875 QC, and it follows the LIVE rate.
+    /// @dev Six decimals at 3,500 QC per ETH: 1.125 ETH is 3,937.5 QC, and it follows the LIVE rate.
     function test_launchPrice_erc20OpensAtTheFixedMarketCapAtTheLiveRate() public {
         address quote = address(quoteCoin);
-        assertApproxEqRel(_openingCapInQuote(quote, 6), 7_875e18, 0.0101e18, "7,875 QC at the snapshot rate");
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 3_937.5e18, 0.0101e18, "3,937.5 QC at the snapshot rate");
 
         _mockLiveRate(quote, 2 * QC_PER_ETH);
-        assertApproxEqRel(_openingCapInQuote(quote, 6), 15_750e18, 0.0101e18, "15,750 QC at twice the rate");
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 7_875e18, 0.0101e18, "7,875 QC at twice the rate");
     }
 
-    /// @dev A live rate 100x ABOVE the listed one (the quote pushed cheap) opens at 225 ETH in snapshot
-    ///      terms, inside the 250 ETH cap: it launches, at 2.25 ETH of the live rate, and the preview agrees.
+    /// @dev A live rate 100x ABOVE the listed one (the quote pushed cheap) opens at 112.5 ETH in snapshot
+    ///      terms, inside the 125 ETH cap: it launches, at 1.125 ETH of the live rate, and the preview agrees.
     function test_launchPrice_liveRateAboveTheSnapshotWithinTheCapLaunches() public {
         address quote = address(quoteCoin);
         _mockLiveRate(quote, QC_PER_ETH * 100);
         (,, uint256 preview) = directFactory.previewLaunchTick(quote);
-        assertApproxEqRel(preview, 787_500e18, 0.0101e18, "preview: 2.25 ETH at 100x the rate");
-        assertApproxEqRel(_openingCapInQuote(quote, 6), 787_500e18, 0.0101e18, "2.25 ETH at 100x the rate");
+        assertApproxEqRel(preview, 393_750e18, 0.0101e18, "preview: 1.125 ETH at 100x the rate");
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 393_750e18, 0.0101e18, "1.125 ETH at 100x the rate");
     }
 
     /// @dev Half the listed rate (the quote pushed 2x dear) opens at 1.125 ETH in snapshot terms, still
-    ///      above the 1 ETH floor.
+    ///      above the 0.5 ETH floor.
     function test_launchPrice_liveRateBelowTheSnapshotAboveTheFloorLaunches() public {
         address quote = address(quoteCoin);
         _mockLiveRate(quote, QC_PER_ETH / 2);
-        assertApproxEqRel(_openingCapInQuote(quote, 6), 3_937.5e18, 0.0101e18, "2.25 ETH at half the rate");
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 1_968.75e18, 0.0101e18, "1.125 ETH at half the rate");
     }
 
-    /// @dev A price pool pushed so the quote looks 100x dearer would open the pair at 0.0225 ETH of real
+    /// @dev A price pool pushed so the quote looks 100x dearer would open the pair at 0.01125 ETH of real
     ///      value: the snapshot bound refuses it, in the preview and in `createToken`.
     function test_launchPrice_pushedLiveRateUnderTheFloorReverts() public {
         address quote = address(quoteCoin);
@@ -603,19 +603,19 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         _launchAt(quote, abi.encodeWithSelector(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector));
     }
 
-    /// @dev A live rate 200x above the listed one would open at 450 ETH in snapshot terms, over the cap.
+    /// @dev A live rate 200x above the listed one would open at 225 ETH in snapshot terms, over the cap.
     function test_launchPrice_liveRateOverTheCapReverts() public {
         address quote = address(quoteCoin);
         _mockLiveRate(quote, QC_PER_ETH * 200);
         _launchAt(quote, abi.encodeWithSelector(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector));
     }
 
-    /// @dev Twenty-seven decimals at 1:1 with ETH: 2.25 units, as for native.
+    /// @dev Twenty-seven decimals at 1:1 with ETH: 1.125 units, as for native.
     function test_launchPrice_27DecimalQuote() public {
         address quote = HIGH_QUOTE;
         vm.etch(quote, address(new QuoteCoin27()).code);
         _whitelist(quote, 1e18);
-        assertApproxEqRel(_openingCapInQuote(quote, 27), 2.25e18, 0.0101e18, "2.25 units");
+        assertApproxEqRel(_openingCapInQuote(quote, 27), 1.125e18, 0.0101e18, "1.125 units");
     }
 
     /// @dev At an absurd rate (4.4e19 units per ETH, a ~9.9e19-unit cap) Uniswap's per-tick liquidity
@@ -1079,8 +1079,8 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     }
 
     /// @dev A dev buy that buys out the whole band and still has quote left reverts rather than stranding
-    ///      the remainder. At ~7.9e-18 raw QC per raw coin (the 7,875 QC opening cap) the full band costs
-    ///      ~7.9e37 raw QC, so 1e39 cannot be filled.
+    ///      the remainder. At ~3.9e-18 raw QC per raw coin (the 3,937.5 QC opening cap) the full band costs
+    ///      ~3.9e37 raw QC, so 1e39 cannot be filled.
     function test_devBuy_largerThanTheBandCanFillReverts() public {
         uint256 spend = 1e39;
         quoteCoin.mintTo(creator, spend);

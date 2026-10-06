@@ -35,7 +35,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
     using StateLibrary for IPoolManager;
 
     /// @dev The native pair's launch price as QUOTE PER COIN, as the factory derives it from
-    ///      `LAUNCH_MARKET_CAP_X18` (2.25 ETH across the 1e27 supply).
+    ///      `LAUNCH_MARKET_CAP_X18` (1.125 ETH across the 1e27 supply).
     int24 internal LAUNCH_TICK;
 
     function setUp() public virtual override {
@@ -127,18 +127,18 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         assertEq(_graduatedEvents(token), 0, "Graduated must not fire at deploy");
     }
 
-    /// @dev 2.25 ETH opening market cap: ~2 ETH in takes it to ~3.5x, ~3.5 ETH to ~6.4x.
+    /// @dev 1.125 ETH opening market cap: ~1 ETH in takes it to ~3.5x, ~1.75 ETH to ~6.4x.
     function test_graduation_firesOnceOnTheBuyThatCrossesFiveTimesTheLaunchMarketCap() public {
         address token = _launch(0, _noDevBuy());
         vm.deal(alice, 10 ether);
 
         vm.recordLogs();
-        _swapBuyV4(alice, token, 2 ether, 0, true);
+        _swapBuyV4(alice, token, 1 ether, 0, true);
         assertFalse(IRealmToken(token).graduationReached(), "below 5x must not graduate");
         assertEq(_graduatedEvents(token), 0);
 
         vm.recordLogs();
-        _swapBuyV4(alice, token, 1.5 ether, 0, true);
+        _swapBuyV4(alice, token, 0.75 ether, 0, true);
         assertTrue(IRealmToken(token).graduationReached(), "past 5x must graduate");
         assertEq(_graduatedEvents(token), 1, "Graduated fires on the crossing buy");
         // Coin is currency1: quote-per-coin up is the pool tick down.
@@ -147,7 +147,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
 
         vm.recordLogs();
         _swapSellV4(alice, token, IERC20(token).balanceOf(alice), 0, true);
-        _swapBuyV4(alice, token, 3.5 ether, 0, true);
+        _swapBuyV4(alice, token, 1.75 ether, 0, true);
         assertTrue(IRealmToken(token).graduationReached(), "the milestone is one-way");
         assertEq(_graduatedEvents(token), 0, "Graduated fires once");
     }
@@ -186,8 +186,8 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
                 // `priceAtTick` flooring the per-coin price before scaling by the supply.
                 (, uint256 capX18) = RealmLaunchPricing.priceAtTick(LAUNCH_TICK, 18);
                 assertApproxEqAbs(launchCap, capX18, 1e9, "launch market cap in wei");
-                // ...which is the fixed 2.25 ETH, within the half-spacing (~1%) the tick rounds to.
-                assertApproxEqRel(launchCap, directFactory.LAUNCH_MARKET_CAP_X18(), 0.0101e18, "2.25 ETH open");
+                // ...which is the fixed 1.125 ETH, within the half-spacing (~1%) the tick rounds to.
+                assertApproxEqRel(launchCap, directFactory.LAUNCH_MARKET_CAP_X18(), 0.0101e18, "1.125 ETH open");
                 assertEq(targetCap, launchCap * directGraduator.GRADUATION_TARGET_MULTIPLE(), "target = 5x launch");
                 found = true;
             }
@@ -355,7 +355,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
             address(0)
         );
 
-        // 0.05 ETH buys ~2% of supply out of a 2.25 ETH-cap pool — far over the cap — so the
+        // 0.05 ETH buys ~2% of supply out of a 1.125 ETH-cap pool — far over the cap — so the
         // pool -> buyer leg is rejected.
         _swapBuyV4(alice, token, 0.05 ether, 0, false);
         assertEq(IERC20(token).balanceOf(alice), 0);
@@ -374,7 +374,7 @@ contract DirectLaunchUniV4Tests is V4SwapHelpers {
         (int24 tick, uint256 priceX18, uint256 capX18) = directFactory.previewLaunchTick(address(0));
         assertEq(tick % UniswapV4PoolConstants.TICK_SPACING, 0, "spacing-aligned");
         assertEq(capX18, priceX18 * 1_000_000_000);
-        assertApproxEqRel(capX18, directFactory.LAUNCH_MARKET_CAP_X18(), 0.0101e18, "2.25 ETH open");
+        assertApproxEqRel(capX18, directFactory.LAUNCH_MARKET_CAP_X18(), 0.0101e18, "1.125 ETH open");
     }
 
     /// @dev The graduator still validates the tick it is handed, whoever derived it.

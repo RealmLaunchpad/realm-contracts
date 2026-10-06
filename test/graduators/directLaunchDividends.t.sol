@@ -63,7 +63,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
     function setUp() public virtual override {
         super.setUp();
         _whitelist(AAPL, QC_PER_ETH);
-        // Priced 1:1 with ETH: the launch opens at 2.25 MSFT of market cap.
+        // Priced 1:1 with ETH: the launch opens at 1.125 MSFT of market cap.
         _whitelist(MSFT, 1e18);
         // Routes live on the registry, per asset: AAPL on its native V4 pool (walkable backwards, for the
         // AAPL-quoted legs), MSFT on its V2 pair.

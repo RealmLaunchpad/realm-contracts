@@ -581,13 +581,13 @@ contract RealmHookAnyPairTests is DirectLaunchQuotesTests {
         anyPairHook.settleFees(token, quote);
 
         vm.recordLogs();
-        _swapLeg(alice, token, quote, false, false, 2e6, 500_000e18);
+        _swapLeg(alice, token, quote, false, false, 1e6, 500_000e18);
         logs = vm.getRecordedLogs();
         (lpFee, tax) = _pendingFees(token, quote);
         _assertTradeEvents(
             logs,
             ExpectedTrade(
-                token, quote, alice, false, 2e6 + lpFee + tax, 500_000e18 - IERC20(token).balanceOf(alice), lpFee, tax
+                token, quote, alice, false, 1e6 + lpFee + tax, 500_000e18 - IERC20(token).balanceOf(alice), lpFee, tax
             )
         );
     }

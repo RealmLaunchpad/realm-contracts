@@ -15,7 +15,7 @@
 | RealmHookAnyPair                             | `0x24d9308561c322a603370A0c3BeAD39E05DA00CC` |
 | RealmDirectGraduatorUniV4                    | `0x09e01A80b2c555233B90E3AD7Ebc8F63d1a671AB` |
 | RealmFactoryUniV4Direct (proxy)              | `0x7d02298989f2cE2Af36F7dCcadbB9985E30BCD53` |
-| RealmFactoryUniV4Direct (impl)               | `0x24185B5Bf3D40d01f8c8f7DC5494317A2fD1b913` |
+| RealmFactoryUniV4Direct (impl)               | `0xd49fE1AD76fB206041284187bBBb47ac60342A71` |
 | RealmAssetsWhitelist (proxy)                 | `0x551B32cB9f7A6379Cec3907b5be1e0D3c1653AfE` |
 | RealmAssetsWhitelist (impl)                  | `0x642C06E754D97E0bD796bd669D5E7dA56E430D23` |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |

@@ -2,7 +2,7 @@
 
 The curve factory, `RealmFactoryUniV2Unified` (bonding curve, graduates to Uniswap V2), has exactly ONE `createToken`.
 
-The direct-launch venue (`RealmFactoryUniV4Direct`) is documented in `docs/events-per-entry-point.md` §1.3. Its pairs carry no price: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (2.25 ETH) market cap, converted to an ERC20 quote at its live whitelist rate; `previewLaunchTick(quote)` shows the resulting tick, price and market cap.
+The direct-launch venue (`RealmFactoryUniV4Direct`) is documented in `docs/events-per-entry-point.md` §1.3. Its pairs carry no price: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (1.125 ETH) market cap, converted to an ERC20 quote at its live whitelist rate; `previewLaunchTick(quote)` shows the resulting tick, price and market cap.
 
 ## Signatures
 
