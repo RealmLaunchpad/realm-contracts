@@ -191,5 +191,5 @@ library DeploymentsRobinhoodMainnet {
 
     // --- Accounts ---
     /// @notice The keeper lambda's EOA. `address(0)` until configured here.
-    address internal constant REALM_KEEPER = 0xE092CB5868e1Ca091Ea975069bf2Afc9CDD1732C;
+    address internal constant REALM_KEEPER = 0x622E3d8a1283d5ccbB4F36c6eFC2eccbdBcA4075;
 }
