@@ -82,7 +82,7 @@ _verify chainid *scripts:
         echo "== $f"
         # top-level CREATE/CREATE2 txs + contracts created inside any tx (e.g. by a factory)
         while read -r name addr; do
-            forge verify-contract "$addr" "$name" --chain {{chainid}} --verifier sourcify || failed+=("$name $addr")
+            forge verify-contract "$addr" "$name" --chain {{chainid}} --verifier sourcify --watch || failed+=("$name $addr")
         done < <(jq -r '.transactions[] | (select(.transactionType != "CALL") | "\(.contractName) \(.contractAddress)"),
             (.additionalContracts[]? | "\(.contractName) \(.address)")' "$f" | grep -v '^null ')
     done
