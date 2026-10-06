@@ -59,6 +59,9 @@ import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
 ///      off that one: `prepare` only writes transient storage, and `graduateToken` only works on the
 ///      token the same transaction just initialized. A second factory can reuse this same graduator.
 contract RealmDirectGraduatorUniV4 is IRealmGraduator, IUnlockCallback {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;

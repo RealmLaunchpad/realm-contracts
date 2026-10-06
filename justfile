@@ -55,10 +55,38 @@ integration-tests:
 error-inspection errorhex:
     forge inspect RealmLaunchpad errors | grep {{errorhex}}
 
-# Robinhood deploys verify on Sourcify (supports 4663 + 46630). The mainnet Blockscout API sits behind a
+# Deploy recipes do NOT verify: deploy first, then `just verify-rh` / `just verify-rh-testnet` from the SAME
+# commit. Verification is on Sourcify (supports 4663 + 46630); the mainnet Blockscout API sits behind a
 # Cloudflare bot challenge that rejects forge's verification requests.
-robinhood_verify := "--verify --verifier sourcify"
-robinhood_testnet_verify := "--verify --verifier sourcify"
+robinhood_verify := ""
+robinhood_testnet_verify := ""
+
+# Verifies every contract created by the latest broadcast of the given scripts (default: all), read from
+# broadcast/<Script>.s.sol/<chainId>/run-latest.json. Read-only on chain; re-runnable (already-verified
+# contracts are skipped by Sourcify). Must run on the deploy commit + build target, or bytecode won't match.
+# e.g. `just verify-rh DeployRealmPrereqs DeployRealmStack`
+verify-rh *scripts: chain-rh
+    @just _verify 4663 {{scripts}}
+
+verify-rh-testnet *scripts: chain-rh-testnet
+    @just _verify 46630 {{scripts}}
+
+_verify chainid *scripts:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    files=()
+    if [ -z "{{scripts}}" ]; then files=(broadcast/*/{{chainid}}/run-latest.json)
+    else for s in {{scripts}}; do files+=("broadcast/$s.s.sol/{{chainid}}/run-latest.json"); done; fi
+    failed=()
+    for f in "${files[@]}"; do
+        echo "== $f"
+        # top-level CREATE/CREATE2 txs + contracts created inside any tx (e.g. by a factory)
+        while read -r name addr; do
+            forge verify-contract "$addr" "$name" --chain {{chainid}} --verifier sourcify || failed+=("$name $addr")
+        done < <(jq -r '.transactions[] | (select(.transactionType != "CALL") | "\(.contractName) \(.contractAddress)"),
+            (.additionalContracts[]? | "\(.contractName) \(.address)")' "$f" | grep -v '^null ')
+    done
+    if [ ${#failed[@]} -gt 0 ]; then printf 'FAILED: %s\n' "${failed[@]}"; exit 1; fi
 
 # --- Per-chain build retarget ------------------------------------------------
 # ONE rule per target chain repoints EVERY per-chain compile-time import across ALL contracts at once
@@ -91,7 +119,8 @@ _taxtoken lib:
 # Phase 0. Keepers registry + `RealmSwapper` + LP fee router. Their addresses are COMPILE-TIME
 # constants elsewhere, so they must exist before anything else is built. Paste the three printed
 # constants (keepers registry, swapper proxy, LP fee router proxy) into src/config/DeploymentAddresses.sol,
-# then rebuild.
+# then rebuild. VERIFY FIRST (`just verify-rh DeployRealmPrereqs`): the paste changes the source those
+# contracts compiled from, so they no longer verify afterwards. Commit after the paste.
 
 deploy-prereqs-rh: chain-rh
     forge script DeployRealmPrereqs --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
@@ -117,7 +146,7 @@ deploy-registries-rh-testnet: chain-rh-testnet
 # three V4 graduators, 22 bonding curves, the creator-vault system, the three token impls and both
 # unified factories (impl + proxy), then whitelists the factories on the launchpad. Refuses to run
 # until phase 0 is pasted and the build is retargeted. Paste the printed manifest block afterwards and
-# run `just export-deployments`.
+# run `just export-deployments`. Verify (`just verify-rh DeployRealmStack`) before editing any source.
 
 # `--disable-code-size-limit` on every recipe that deploys the taxable tokens: they exceed EIP-170's 24 KB
 # (Robinhood allows 96 KB), and forge's pre-broadcast size check is hardcoded to 24 KB, ignoring

@@ -43,6 +43,9 @@ import {IRealmKeepersRegistry} from "src/interfaces/IRealmKeepersRegistry.sol";
 ///      to be wrong. Tokens bake the address in as a constant, so replacing this contract would mean
 ///      redeploying the implementations; keeping it this dumb is what makes that never necessary.
 contract RealmKeepersRegistry is Ownable2Step, IRealmKeepersRegistry {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     /// @notice Addresses allowed to manage the keeper set. The owner manages THIS set; admins manage
     ///         the keepers.
     mapping(address account => bool) public isAdmin;

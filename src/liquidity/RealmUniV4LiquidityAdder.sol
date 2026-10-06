@@ -61,6 +61,9 @@ interface IRealmUniV4LiquidityAdder {
 ///      settles every delta inside the unlock and holds no native across transactions. Sweeping "all"
 ///      rather than "mine" is the only shape v4 offers, and the two are the same amount here.
 contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     /// @notice Uniswap V4 position manager that mints the liquidity positions.

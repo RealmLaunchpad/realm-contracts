@@ -61,6 +61,9 @@ interface IRealmSwapperGraduator {
 ///      of the pool manager mid-`swapAssetToAsset`, which moves on in the same call; anything else sent
 ///      there is a donation nobody can recover.
 contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     /// @notice Router every V2 conversion goes through, and the source of the canonical quote token.

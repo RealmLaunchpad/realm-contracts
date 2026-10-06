@@ -56,7 +56,11 @@ interface IRealmDirectGraduator {
 ///      reserved and must be empty: the dev-buy zap's route is derived from `ASSETS_WHITELIST`, never
 ///      taken from the caller. Anything not supported is REJECTED rather than ignored, so a caller can
 ///      never believe a field took effect when it did not.
+/// @dev Release: October 2026 redeploy.
 contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     /// @notice Token-identity bundle for `createToken`. Mirrors `TokenSetupTiered` minus the liquidity

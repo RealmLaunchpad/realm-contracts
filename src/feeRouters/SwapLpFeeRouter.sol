@@ -34,6 +34,9 @@ contract SwapLpFeeRouter is
     OwnableUpgradeable,
     UUPSUpgradeable
 {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     /// @notice Basis points denominator (10000 = 100%).

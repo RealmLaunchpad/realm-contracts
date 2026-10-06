@@ -61,6 +61,9 @@ interface IRealmLpLockerGraduator {
 ///      what keeps it cheap; it skips positions with nothing owed and folds each pool's positions into
 ///      ONE position-manager call.
 contract RealmLpLocker is IRealmLpLocker, ReentrancyGuardTransient {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;

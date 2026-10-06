@@ -10,6 +10,9 @@ import {GraduationFeeConstants} from "src/libraries/GraduationFeeConstants.sol";
 /// @notice Uniswap V2 graduator (native = ETH, WETH-quoted). Shared logic in the base;
 ///         this fills the venue hooks with the WETH `addLiquidityETH` path and the ETH fee amounts.
 contract RealmGraduatorUniswapV2 is RealmGraduatorUniswapV2Base {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     constructor(address _uniswapRouter, address _launchpad, bytes32 _pairInitCodeHash)
         RealmGraduatorUniswapV2Base(_uniswapRouter, _launchpad, _pairInitCodeHash)
     {}

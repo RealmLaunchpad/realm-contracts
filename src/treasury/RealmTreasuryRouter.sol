@@ -21,6 +21,9 @@ import {IRealmKeepersRegistry} from "src/interfaces/IRealmKeepersRegistry.sol";
 ///         the destinations and venue addresses are immutables of the implementation, so repointing any of
 ///         them is a new impl + `upgradeTo`.
 contract RealmTreasuryRouter is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     /// @notice The treasury multisig. Gets everything the voting contract does not.

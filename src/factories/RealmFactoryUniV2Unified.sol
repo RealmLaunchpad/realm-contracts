@@ -24,7 +24,11 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///         `MAX_TOTAL_FEE_BPS` (5%). Pre-graduation the launchpad additionally charges
 ///         `V2_LAUNCHPAD_LP_FEE_BPS`, so a trader transiently pays up to 6% on the bonding curve —
 ///         bounded by the launchpad's own (looser) per-trade cap, not by `_validateTotalFee`.
+/// @dev Release: October 2026 redeploy.
 contract RealmFactoryUniV2Unified is RealmFactoryCurveAbstract {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     /// @notice Pre-graduation launchpad LP fee for V2 tokens (bps), charged on every bonding-curve
     ///         trade and split treasury/creator by `V2_LAUNCHPAD_TREASURY_SHARE_BPS`. It exists only
     ///         pre-graduation (V2 has no post-graduation LP fee) and does NOT count against the tax cap
