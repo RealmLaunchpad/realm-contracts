@@ -16,8 +16,8 @@ contract RealmLaunchpad is IRealmLaunchpad, Ownable2Step, ReentrancyGuardTransie
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
 
-    /// @notice Version of the Realm stack this contract belongs to
-    string public constant VERSION = "2.0";
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
 
     /// @notice Authorized factories
     mapping(address factory => bool authorized) public whitelistedFactories;

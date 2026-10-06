@@ -9,7 +9,7 @@ import {TokenConfig, TokenState} from "src/types/tokenData.sol";
 ///         buy would top the bonding curve past its graduation threshold and trigger graduation
 ///         within the same tx.
 interface IRealmLaunchpad {
-    function VERSION() external view returns (string memory);
+    function VERSION() external view returns (uint256);
     function treasury() external view returns (address);
     function whitelistedFactories(address factory) external view returns (bool);
     function launchToken(address token, IRealmBondingCurve curve) external;

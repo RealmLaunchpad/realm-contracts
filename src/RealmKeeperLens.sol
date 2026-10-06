@@ -66,8 +66,8 @@ interface IDividendTokenCommon {
 ///      the V2 and V4 venues apart, and it lets an address that is not a Realm token at all come back
 ///      as a zeroed row instead of reverting the whole batch.
 contract RealmKeeperLens {
-    /// @notice Version of the Realm stack this contract belongs to.
-    string public constant VERSION = "2.0";
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
 
     /// @notice The lens's copy of the token's payout-asset cap. Asserted equal to the token's in the
     ///         lens tests, so a token that grows its set cannot silently outgrow this.

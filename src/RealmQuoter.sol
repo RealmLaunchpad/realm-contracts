@@ -18,8 +18,8 @@ import {TokenState} from "src/types/tokenData.sol";
 /// @dev Stateless and view-only. The launchpad address is immutable; deploy a new quoter per
 ///      launchpad.
 contract RealmQuoter is IRealmQuoter {
-    /// @notice Version of the Realm stack this contract belongs to
-    string public constant VERSION = "2.0";
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
 
     /// @notice The launchpad this quoter reads from.
     IRealmLaunchpad public immutable launchpad;

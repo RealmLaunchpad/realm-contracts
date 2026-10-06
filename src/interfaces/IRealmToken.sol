@@ -126,7 +126,7 @@ interface IRealmToken is IERC20 {
     ////////////////// VIEW FUNCTIONS ////////////////////
 
     /// @notice Version of the Realm stack this token belongs to
-    function VERSION() external view returns (string memory);
+    function VERSION() external view returns (uint256);
 
     /// @notice Returns the tax configuration for this token
     /// @return config The complete tax configuration
