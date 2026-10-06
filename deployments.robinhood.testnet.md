@@ -64,7 +64,7 @@
 
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
-| Realm Treasury                               | `0x49cCD62E9A4F713761F3E121a053dd9CBf67860F` |
+| Realm Treasury                               | `0x81f7D06a88223f5a2850411E72256AacC9E27035` |
 | Team Treasury (2/3 leg)                      | _(not deployed)_                             |
 | Vote Buyback Wallet (1/3 leg)                | _(not deployed)_                             |
 | Legacy Treasury (pre-router)                 | _(not deployed)_                             |
