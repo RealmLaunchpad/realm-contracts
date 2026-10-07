@@ -89,7 +89,7 @@ contract RealmFactoryUniV2Unified is RealmFactoryCurveAbstract {
         AntiSniperConfigs calldata antiSniperConfigs,
         CreatorVault[] calldata creatorVaults,
         address referral
-    ) external payable returns (address token) {
+    ) external payable whileNotPaused returns (address token) {
         EarningsAllocationMultiConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
         bool hasAllocation = alloc.burnBps != 0 || alloc.dividendsBps != 0 || alloc.liquidityBps != 0;
         // Naming payout assets with a zero share would leave dividends silently OFF, forever: clones

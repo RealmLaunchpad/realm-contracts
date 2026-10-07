@@ -224,7 +224,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         CreatorVault[] calldata creatorVaults,
         DevBuy calldata devBuy,
         address referral
-    ) external payable returns (address token) {
+    ) external payable whileNotPaused returns (address token) {
         int24[] memory ticks = _validateDirectInputs(setup, pairs, devBuy);
         _validateInputs(
             setup.name, setup.symbol, setup.feeShares, devBuy.recipients, msg.value > 0 ? msg.value : devBuy.quoteAmount

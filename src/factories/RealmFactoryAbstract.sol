@@ -39,6 +39,13 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
 
     uint256 internal constant BASIS_POINTS = 10_000;
 
+    error FactoryPaused();
+
+    modifier whileNotPaused() {
+        require(!paused, FactoryPaused());
+        _;
+    }
+
     /// @notice Max configurable tax duration. Capped at 120 years purely to prevent overflow —
     ///         the upper bound is driven by `TaxConfigs.taxDurationSeconds`'s `uint32` packing.
     ///         Any deployer can use any duration up to this cap; no fee-receiver or
@@ -140,6 +147,11 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         if (_announcedGraduator == address(GRADUATOR)) return;
         _announcedGraduator = address(GRADUATOR);
         emit GraduatorSet(address(GRADUATOR));
+    }
+
+    /// @notice Pauses or unpauses token creation.
+    function setPaused(bool paused_) external onlyOwner {
+        paused = paused_;
     }
 
     /// @dev UUPS upgrade gate: only the owner can swap the implementation.
@@ -600,6 +612,9 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
 
     /// @notice Last graduator announced via `GraduatorSet`; dedupes `announceGraduator()`.
     address private _announcedGraduator;
+
+    /// @notice When true, `createToken` reverts. Packs into `_announcedGraduator`'s slot, so `__gap` is unchanged.
+    bool public paused;
 
     /// @dev Reserved for future storage variables. Decrement when adding new storage to keep the
     ///      proxy's slot layout stable across upgrades. Never reorder existing storage.

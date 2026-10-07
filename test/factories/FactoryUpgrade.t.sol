@@ -156,4 +156,28 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithDirectV4 {
         address token = _createDirectToken(_emptyTaxCfg());
         assertTrue(token != address(0));
     }
+
+    // ───────────── Pause ─────────────
+
+    function test_setPaused_blocksCreateTokenUntilUnpaused() public {
+        vm.prank(admin);
+        directFactory.setPaused(true);
+        vm.expectRevert(RealmFactoryAbstract.FactoryPaused.selector);
+        this.createDirectTokenExternal();
+
+        vm.prank(admin);
+        directFactory.setPaused(false);
+        assertTrue(_createDirectToken(_emptyTaxCfg()) != address(0));
+    }
+
+    function test_setPaused_revertsForNonOwner() public {
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, creator));
+        vm.prank(creator);
+        directFactory.setPaused(true);
+    }
+
+    /// @dev External hop so `expectRevert` targets the factory call inside the helper.
+    function createDirectTokenExternal() external returns (address) {
+        return _createDirectToken(_emptyTaxCfg());
+    }
 }
