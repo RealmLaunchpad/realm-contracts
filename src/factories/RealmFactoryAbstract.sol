@@ -44,7 +44,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     event PausedSet(bool paused);
 
     modifier whileNotPaused() {
-        require(!paused, FactoryPaused());
+        require(!paused || canCreateWhilePaused[msg.sender], FactoryPaused());
         _;
     }
 
@@ -138,6 +138,8 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     function initialize() external initializer {
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
+        // Born paused: no one but `canCreateWhilePaused` accounts can create tokens until the owner unpauses.
+        _setPaused(true);
         announceGraduator();
     }
 
@@ -153,14 +155,23 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
 
     /// @notice Pauses or unpauses token creation.
     function setPaused(bool paused_) external onlyOwner {
-        paused = paused_;
-        emit PausedSet(paused_);
+        _setPaused(paused_);
+    }
+
+    /// @notice Lets `account` create tokens while the factory is paused.
+    function setCanCreateWhilePaused(address account, bool allowed) external onlyOwner {
+        canCreateWhilePaused[account] = allowed;
     }
 
     /// @dev UUPS upgrade gate: only the owner can swap the implementation.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
+
+    function _setPaused(bool paused_) internal {
+        paused = paused_;
+        emit PausedSet(paused_);
+    }
 
     /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0,
     ///      sum == 10 000, and at most one entry has `directFeesEnabled = true`. The factory caps
@@ -612,10 +623,13 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     /// @notice Last graduator announced via `GraduatorSet`; dedupes `announceGraduator()`.
     address private _announcedGraduator;
 
-    /// @notice When true, `createToken` reverts. Packs into `_announcedGraduator`'s slot, so `__gap` is unchanged.
+    /// @notice When true, `createToken` reverts unless `canCreateWhilePaused[msg.sender]`. Packs into `_announcedGraduator`'s slot, so `__gap` is unchanged.
     bool public paused;
+
+    /// @notice Accounts allowed to `createToken` while `paused`.
+    mapping(address => bool) public canCreateWhilePaused;
 
     /// @dev Reserved for future storage variables. Decrement when adding new storage to keep the
     ///      proxy's slot layout stable across upgrades. Never reorder existing storage.
-    uint256[49] private __gap;
+    uint256[48] private __gap;
 }

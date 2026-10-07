@@ -716,6 +716,7 @@ contract LaunchpadBaseTests is Test {
         factoryV2Sniper = factoryV2Unified;
 
         launchpad.whitelistFactory(address(factoryV2Unified));
+        factoryV2Unified.setPaused(false);
 
         _deployDirectVenue(infra);
 
@@ -756,6 +757,7 @@ contract LaunchpadBaseTests is Test {
         directFactory = RealmFactoryUniV4Direct(
             address(new ERC1967Proxy(impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
         );
+        directFactory.setPaused(false);
     }
 
     /// @dev The V4 pool fee tier (pips) `token`'s pools are keyed by.

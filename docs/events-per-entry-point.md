@@ -652,6 +652,8 @@ creation events are in §1 step 4b.
   `Initialized`), and from `announceGraduator()` passed as `upgradeToAndCall` data (after `Upgraded`),
   which is a no-op when the new implementation keeps the same graduator. Permissionless and idempotent.
   The indexer registers the graduator from this event, not from `TokenCreated`.
+- **`PausedSet`** (`paused = true`) — from `initialize()`, right before `GraduatorSet`: every new proxy
+  starts paused. See §15.
 
 ### `RealmKeepersRegistry` (one per chain)
 
@@ -791,4 +793,8 @@ Single hop in the token's own Realm pool (`poolFee()`, `graduator.hookFor(quote)
 
 ### `RealmFactoryUniV2Unified.setPaused(bool paused)` / `RealmFactoryUniV4Direct.setPaused(bool paused)` — owner only
 
-Emits **`RealmFactory.PausedSet`** (`paused`), on every call, even when the value is unchanged. While `paused()` is true, `createToken` reverts `FactoryPaused` and emits nothing; previews are unaffected.
+Emits **`RealmFactory.PausedSet`** (`paused`), on every call, even when the value is unchanged. While `paused()` is true, `createToken` reverts `FactoryPaused` and emits nothing, except for callers with `canCreateWhilePaused(msg.sender)`, whose `createToken` emits as usual; previews are unaffected. Proxies are born paused (`initialize()` emits `PausedSet(true)`).
+
+### `setCanCreateWhilePaused(address account, bool allowed)` — owner only
+
+Emits nothing.

@@ -170,6 +170,33 @@ contract FactoryUpgradeTests is LaunchpadBaseTestsWithDirectV4 {
         assertTrue(_createDirectToken(_emptyTaxCfg()) != address(0));
     }
 
+    function test_initialize_startsPaused() public {
+        address impl = _deployV4ImplSameArgs();
+        assertTrue(
+            RealmFactoryAbstract(address(new ERC1967Proxy(impl, abi.encodeCall(RealmFactoryAbstract.initialize, ()))))
+                .paused()
+        );
+    }
+
+    function test_canCreateWhilePaused_bypassesPause() public {
+        vm.startPrank(admin);
+        directFactory.setPaused(true);
+        directFactory.setCanCreateWhilePaused(creator, true);
+        vm.stopPrank();
+        assertTrue(_createDirectToken(_emptyTaxCfg()) != address(0));
+
+        vm.prank(admin);
+        directFactory.setCanCreateWhilePaused(creator, false);
+        vm.expectRevert(RealmFactoryAbstract.FactoryPaused.selector);
+        this.createDirectTokenExternal();
+    }
+
+    function test_setCanCreateWhilePaused_revertsForNonOwner() public {
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, creator));
+        vm.prank(creator);
+        directFactory.setCanCreateWhilePaused(creator, true);
+    }
+
     function test_setPaused_revertsForNonOwner() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, creator));
         vm.prank(creator);
