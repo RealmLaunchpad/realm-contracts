@@ -793,8 +793,4 @@ Single hop in the token's own Realm pool (`poolFee()`, `graduator.hookFor(quote)
 
 ### `RealmFactoryUniV2Unified.setPaused(bool paused)` / `RealmFactoryUniV4Direct.setPaused(bool paused)` — owner only
 
-Emits **`RealmFactory.PausedSet`** (`paused`), on every call, even when the value is unchanged. While `paused()` is true, `createToken` reverts `FactoryPaused` and emits nothing, except for callers with `canCreateWhilePaused(msg.sender)`, whose `createToken` emits as usual; previews are unaffected. Proxies are born paused (`initialize()` emits `PausedSet(true)`).
-
-### `setCanCreateWhilePaused(address account, bool allowed)` — owner only
-
-Emits nothing.
+Emits **`RealmFactory.PausedSet`** (`paused`), on every call, even when the value is unchanged. While `paused()` is true, `createToken` reverts `FactoryPaused` and emits nothing; previews are unaffected. Proxies are born paused (`initialize()` emits `PausedSet(true)`).

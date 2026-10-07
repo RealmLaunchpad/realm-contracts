@@ -44,7 +44,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     event PausedSet(bool paused);
 
     modifier whileNotPaused() {
-        require(!paused || canCreateWhilePaused[msg.sender], FactoryPaused());
+        require(!paused, FactoryPaused());
         _;
     }
 
@@ -138,7 +138,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     function initialize() external initializer {
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
-        // Born paused: no one but `canCreateWhilePaused` accounts can create tokens until the owner unpauses.
+        // Born paused: no one can create tokens until the owner unpauses.
         _setPaused(true);
         announceGraduator();
     }
@@ -156,11 +156,6 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     /// @notice Pauses or unpauses token creation.
     function setPaused(bool paused_) external onlyOwner {
         _setPaused(paused_);
-    }
-
-    /// @notice Lets `account` create tokens while the factory is paused.
-    function setCanCreateWhilePaused(address account, bool allowed) external onlyOwner {
-        canCreateWhilePaused[account] = allowed;
     }
 
     /// @dev UUPS upgrade gate: only the owner can swap the implementation.
@@ -623,11 +618,11 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     /// @notice Last graduator announced via `GraduatorSet`; dedupes `announceGraduator()`.
     address private _announcedGraduator;
 
-    /// @notice When true, `createToken` reverts unless `canCreateWhilePaused[msg.sender]`. Packs into `_announcedGraduator`'s slot, so `__gap` is unchanged.
+    /// @notice When true, `createToken` reverts. Packs into `_announcedGraduator`'s slot, so `__gap` is unchanged.
     bool public paused;
 
-    /// @notice Accounts allowed to `createToken` while `paused`.
-    mapping(address => bool) public canCreateWhilePaused;
+    /// @dev Retired `canCreateWhilePaused` whitelist; slot kept for the live proxies' layout (may hold stale entries).
+    mapping(address => bool) private __deprecatedCanCreateWhilePaused;
 
     /// @dev Reserved for future storage variables. Decrement when adding new storage to keep the
     ///      proxy's slot layout stable across upgrades. Never reorder existing storage.
