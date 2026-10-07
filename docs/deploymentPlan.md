@@ -62,10 +62,10 @@ just configure-registries-rh         # or: just configure-registries-rh-testnet
 #    (no dedicated script).
 ```
 
-Verification on Robinhood uses Blockscout, not Etherscan — the `*-rh*` recipes pass
-`--verify --verifier blockscout --verifier-url <explorer>/api/` (the `robinhood_verify` /
-`robinhood_testnet_verify` justfile variables). To verify a past broadcast after the fact, re-run its
-recipe's `forge script` with `--resume` and the same verify flags; it reads `broadcast/` and only verifies.
+Every deploy recipe verifies as it deploys, on Sourcify (`--verify --verifier sourcify`, the
+`robinhood_verify` / `robinhood_testnet_verify` justfile variables); the mainnet Blockscout API is
+Cloudflare-blocked. If verification fails mid-deploy, `just verify-rh [Script...]` /
+`just verify-rh-testnet [Script...]` re-verifies a broadcast from `broadcast/`, on the deploy commit only.
 
 ## The swap hook and the LP fee router
 

@@ -55,13 +55,12 @@ integration-tests:
 error-inspection errorhex:
     forge inspect RealmLaunchpad errors | grep {{errorhex}}
 
-# Deploy recipes do NOT verify: deploy first, then `just verify-rh` / `just verify-rh-testnet` from the SAME
-# commit. Verification is on Sourcify (supports 4663 + 46630); the mainnet Blockscout API sits behind a
-# Cloudflare bot challenge that rejects forge's verification requests.
-robinhood_verify := ""
-robinhood_testnet_verify := ""
+# Deploy recipes verify as they deploy, on Sourcify (supports 4663 + 46630); the mainnet Blockscout API sits
+# behind a Cloudflare bot challenge that rejects forge's verification requests.
+robinhood_verify := "--verify --verifier sourcify"
+robinhood_testnet_verify := "--verify --verifier sourcify"
 
-# Verifies every contract created by the latest broadcast of the given scripts (default: all), read from
+# Fallback for a deploy whose verification failed. Verifies every contract created by the latest broadcast of the given scripts (default: all), read from
 # broadcast/<Script>.s.sol/<chainId>/run-latest.json. Read-only on chain; re-runnable (already-verified
 # contracts are skipped by Sourcify). Must run on the deploy commit + build target, or bytecode won't match.
 # e.g. `just verify-rh DeployRealmPrereqs DeployRealmStack`
@@ -119,8 +118,8 @@ _taxtoken lib:
 # Phase 0. Keepers registry + `RealmSwapper` + LP fee router. Their addresses are COMPILE-TIME
 # constants elsewhere, so they must exist before anything else is built. Paste the three printed
 # constants (keepers registry, swapper proxy, LP fee router proxy) into src/config/DeploymentAddresses.sol,
-# then rebuild. VERIFY FIRST (`just verify-rh DeployRealmPrereqs`): the paste changes the source those
-# contracts compiled from, so they no longer verify afterwards. Commit after the paste.
+# then rebuild. Check verification succeeded BEFORE the paste: it changes the source those contracts
+# compiled from, so they no longer verify afterwards. Commit after the paste.
 
 deploy-prereqs-rh: chain-rh
     forge script DeployRealmPrereqs --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
@@ -146,7 +145,7 @@ deploy-registries-rh-testnet: chain-rh-testnet
 # three V4 graduators, 22 bonding curves, the creator-vault system, the three token impls and both
 # unified factories (impl + proxy), then whitelists the factories on the launchpad. Refuses to run
 # until phase 0 is pasted and the build is retargeted. Paste the printed manifest block afterwards and
-# run `just export-deployments`. Verify (`just verify-rh DeployRealmStack`) before editing any source.
+# run `just export-deployments`.
 
 # `--disable-code-size-limit` on every recipe that deploys the taxable tokens: they exceed EIP-170's 24 KB
 # (Robinhood allows 96 KB), and forge's pre-broadcast size check is hardcoded to 24 KB, ignoring
