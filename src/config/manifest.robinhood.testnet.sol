@@ -49,7 +49,7 @@ library DeploymentsRobinhoodTestnet {
     address public constant FACTORY_UNIV4_DIRECT = 0xF0399F67e359c08A18816E466364797b7fBc4df4;
 
     /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
-    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x26962e6EDb834B48dA6794d05265d37FD3a65E5F;
+    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x29E617DDF29645Ae3f25a73A0CD582B71DEd682A;
 
     /// @notice `RealmAssetsWhitelist` proxy (UUPS): the quote currencies the direct venue will launch
     ///         against, each with the native rate derived from its price pool. `FACTORY_UNIV4_DIRECT`
@@ -110,7 +110,7 @@ library DeploymentsRobinhoodTestnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x0fCd28d5eA4BAe04271DD1B23b45a4Bd3D283Bc1;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x6109De1F1A7C213be2B89a5aFd5C2763d14F8ec6;
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.
