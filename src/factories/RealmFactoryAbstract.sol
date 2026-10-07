@@ -41,6 +41,8 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
 
     error FactoryPaused();
 
+    event PausedSet(bool paused);
+
     modifier whileNotPaused() {
         require(!paused, FactoryPaused());
         _;
@@ -152,6 +154,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     /// @notice Pauses or unpauses token creation.
     function setPaused(bool paused_) external onlyOwner {
         paused = paused_;
+        emit PausedSet(paused_);
     }
 
     /// @dev UUPS upgrade gate: only the owner can swap the implementation.

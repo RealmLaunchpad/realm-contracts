@@ -66,6 +66,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 12. [`RealmVoting` entry points](#12-realmvoting-entry-points)
 13. [`RealmToken.burn` / `burnFrom`](#13-realmtokenburn--burnfrom)
 14. [LP fee collection — `RealmLpLocker` / `SwapLpFeeRouter` / `RealmSwapper.sellToken`](#14-lp-fee-collection--realmlplocker--swaplpfeerouter--realmswappersellToken)
+15. [Factory pause — `setPaused`](#15-factory-pause--setpaused)
 
 ---
 
@@ -784,3 +785,10 @@ Reverts `NotAKeeper` or `NothingToConvert` (empty bucket).
 
 Single hop in the token's own Realm pool (`poolFee()`, `graduator.hookFor(quote)`). In order: the token's `Transfer` caller → swapper; **`RealmSwapper.RealmTokenSellInitiated`** (`token` indexed, `quote` indexed, `amountIn`) — emitted BEFORE the swap, the precursor that lets an indexer flag the following hook sell (`RealmSwapSell` / `RealmQuoteSwapSell`, plus the hook's tax events) as protocol-internal; the swap; on a native quote with a keeper wallet set, **`KeeperFunded`** after the proceeds are delivered (the keeper cut applies only where native flows; an ERC20-quote sale pays none).
 
+---
+
+## 15. Factory pause — `setPaused`
+
+### `RealmFactoryUniV2Unified.setPaused(bool paused)` / `RealmFactoryUniV4Direct.setPaused(bool paused)` — owner only
+
+Emits **`RealmFactory.PausedSet`** (`paused`), on every call, even when the value is unchanged. While `paused()` is true, `createToken` reverts `FactoryPaused` and emits nothing; previews are unaffected.
