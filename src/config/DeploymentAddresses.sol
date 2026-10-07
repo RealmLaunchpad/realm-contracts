@@ -87,7 +87,7 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
-    address public constant REALM_SWAPPER = 0xb766Ce3d5Ac02c1358DcF8D0BFFAeA7E61dAbD4D;
+    address public constant REALM_SWAPPER = 0x5C8eaB542DF0F47983a0a588002044B2aAe6679B;
 
     /// @notice The `RealmKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
     ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
@@ -96,7 +96,7 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
-    address public constant REALM_KEEPERS_REGISTRY = 0xFE2b306CA51F3C135A6a48a32391fe862Dd7503A;
+    address public constant REALM_KEEPERS_REGISTRY = 0x1BC0ABC8131A8e3C721795874b09D2186B78Cb88;
 
     /// @notice The `SwapLpFeeRouter` PROXY (UUPS): where `RealmLpLocker` forwards collected LP fees and
     ///         where token-side fees wait (`pendingTokenFees`) for a keeper's `convertTokenFees`.
