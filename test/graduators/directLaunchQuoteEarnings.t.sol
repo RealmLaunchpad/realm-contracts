@@ -496,7 +496,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     ///      key straight on the pool manager: a pending `createToken` is public in the mempool, the salt
     ///      is namespaced by the creator so the token address is precomputable from it, and the real
     ///      launch then reverts inside `poolManager.initialize`. Cost to the griefer is one pool
-    ///      initialization; cost to the creator is a wasted mined `0xeeaa` salt.
+    ///      initialization; cost to the creator is a wasted salt.
     function test_frontRun_preInitializedPoolBlocksTheRealLaunch() public {
         RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(false);
         address predicted = _predictToken(address(directFactory), address(realmToken), creator, setup.salt);

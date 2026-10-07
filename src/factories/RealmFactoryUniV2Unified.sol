@@ -126,7 +126,7 @@ contract RealmFactoryUniV2Unified is RealmFactoryCurveAbstract {
     }
 
     /// @notice Returns which token implementation `createToken` would clone for the same arguments, so a
-    ///         frontend can compute the initcode hash before mining a `0xeeaa` salt. Takes EXACTLY
+    ///         frontend can compute the initcode hash to predict the token address. Takes EXACTLY
     ///         `createToken`'s arguments, so the ABI stays stable whichever inputs dispatch reads later;
     ///         today only the tax config and whether any allocation bucket is set matter.
     function previewTokenImplementation(

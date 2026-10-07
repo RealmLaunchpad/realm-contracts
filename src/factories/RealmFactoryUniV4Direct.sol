@@ -45,7 +45,7 @@ interface IRealmDirectGraduator {
 ///      holds (21 curve immutables, `_resolveBondingCurve`, `LAUNCHPAD.launchToken()`, the curve deploy
 ///      buy and its quotes) is meaningless here, and inheriting it would leave this factory carrying a
 ///      launchpad it must never call. What it does inherit is everything that makes a token a Realm
-///      token: the validation rules, the salt-namespaced `0xeeaa` clone, the tax/anti-sniper dispatch,
+///      token: the validation rules, the salt-namespaced clone, the tax/anti-sniper dispatch,
 ///      the creator vaults, the fee registration and the shared events.
 ///
 /// @dev The token this deploys is an ORDINARY graduated Realm token. `LAUNCHPAD` is `address(0)` — so
@@ -242,7 +242,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     }
 
     /// @notice Returns which token implementation `createToken` would clone for the same arguments, so a
-    ///         frontend can compute the initcode hash before mining a `0xeeaa` salt. Takes EXACTLY
+    ///         frontend can compute the initcode hash to predict the token address. Takes EXACTLY
     ///         `createToken`'s arguments, so the ABI stays stable whichever inputs dispatch reads later;
     ///         today only the tax config and whether any allocation bucket is set matter.
     /// @dev The salt is namespaced by the CALLER (`keccak256(msg.sender, salt)`), so a frontend mining
