@@ -117,7 +117,7 @@ library DeploymentAddressesRobinhoodMainnet {
     /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
     ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
     ///         2026-09-26; `TEAM_TREASURY` before that.
-    address public constant REALM_TREASURY = TEAM_TREASURY;
+    address public constant REALM_TREASURY = 0x8F597ad86F07F3d1CF3Eb90eB1089ed6BDCbb6E2;
 }
 
 /// @title Deployment Address Constants for Robinhood Chain Testnet (chain id 46630)
