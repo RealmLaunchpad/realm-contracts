@@ -21,6 +21,7 @@ contract RealmVotingTests is Test {
     event EthAllocated(uint256 indexed roundId, address indexed from, uint256 amount);
     event WinnerProcessed(uint256 indexed roundId, address indexed winner, uint256 amount, address to);
     event RoundDurationSet(uint256 duration, uint256 fromRoundId);
+    event RoundEndSet(uint256 indexed roundId, uint256 endTime);
 
     uint256 constant DURATION = 3 days;
 
@@ -231,6 +232,62 @@ contract RealmVotingTests is Test {
         vm.expectRevert();
         vm.prank(admin);
         voting.setRoundDuration(1 days);
+    }
+
+    function test_setCurrentRoundEnd_postponesLiveRound() public {
+        vm.warp(t0 + 1 days);
+        vm.expectEmit(true, false, false, true);
+        emit RoundEndSet(1, t0 + DURATION + 2 days);
+        vm.prank(owner);
+        voting.setCurrentRoundEnd(t0 + DURATION + 2 days);
+
+        vm.warp(t0 + DURATION + 1 days);
+        (uint256 id,, uint256 end) = voting.currentRound();
+        assertEq(id, 1, "still round 1 past its old end");
+        assertEq(end, t0 + DURATION + 2 days);
+        vm.expectRevert(RealmVoting.RoundNotEnded.selector);
+        vm.prank(admin);
+        voting.processWinner(1, 0);
+
+        vm.warp(t0 + DURATION + 2 days);
+        (id,, end) = voting.currentRound();
+        assertEq(id, 2);
+        assertEq(end, t0 + 2 * DURATION + 2 days, "next round keeps roundDuration");
+    }
+
+    function test_setCurrentRoundEnd_shortensLiveRound() public {
+        vm.warp(t0 + 1 days);
+        vm.prank(owner);
+        voting.setCurrentRoundEnd(t0 + 1 days + 1);
+        vm.warp(t0 + 1 days + 1);
+        (uint256 id, uint256 start,) = voting.currentRound();
+        assertEq(id, 2);
+        assertEq(start, t0 + 1 days + 1);
+    }
+
+    function test_setCurrentRoundEnd_thenSetRoundDuration() public {
+        vm.startPrank(owner);
+        voting.setCurrentRoundEnd(t0 + 10 days);
+        voting.setRoundDuration(1 days);
+        vm.stopPrank();
+        vm.warp(t0 + 10 days);
+        (uint256 id, uint256 start, uint256 end) = voting.currentRound();
+        assertEq(id, 2);
+        assertEq(start, t0 + 10 days);
+        assertEq(end, t0 + 11 days);
+    }
+
+    function test_setCurrentRoundEnd_rejectsPastOrNow() public {
+        vm.startPrank(owner);
+        vm.expectRevert(RealmVoting.InvalidAmount.selector);
+        voting.setCurrentRoundEnd(block.timestamp);
+        vm.stopPrank();
+    }
+
+    function test_setCurrentRoundEnd_onlyOwner() public {
+        vm.expectRevert();
+        vm.prank(admin);
+        voting.setCurrentRoundEnd(t0 + 10 days);
     }
 
     // ───────────────────────── upgrades ─────────────────────────

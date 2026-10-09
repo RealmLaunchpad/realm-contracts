@@ -27,7 +27,7 @@ import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/ex
 ///      who buys the winner off-chain-decided venues. Purchases are attributed by watching that wallet.
 contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Contract version.
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 2;
 
     struct Round {
         uint40 startTime;
@@ -61,6 +61,7 @@ contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event WinnerProcessed(uint256 indexed roundId, address indexed winner, uint256 amount, address to);
     /// @notice `fromRoundId` is the first round the new duration applies to.
     event RoundDurationSet(uint256 duration, uint256 fromRoundId);
+    event RoundEndSet(uint256 indexed roundId, uint256 endTime);
     event AdminSet(address indexed account, bool allowed);
 
     error NotAdmin();
@@ -140,6 +141,17 @@ contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         anchorTime = rounds[id].endTime;
         roundDuration = duration;
         emit RoundDurationSet(duration, id + 1);
+    }
+
+    /// @notice Moves the live round's end to any future `endTime`; later rounds keep `roundDuration` from there.
+    function setCurrentRoundEnd(uint256 endTime) external onlyOwner {
+        require(endTime > block.timestamp, InvalidAmount());
+        uint256 id = _sync();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        rounds[id].endTime = uint40(endTime);
+        anchorId = id + 1;
+        anchorTime = endTime;
+        emit RoundEndSet(id, endTime);
     }
 
     function setAdmin(address account, bool allowed) external onlyOwner {
