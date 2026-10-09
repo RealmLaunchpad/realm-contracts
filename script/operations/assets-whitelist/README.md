@@ -34,7 +34,7 @@ tier, then the Arcus pTokens the same way.
 
 ## What mainnet lists
 
-Only four kinds of asset, by policy:
+Only five kinds of asset, by policy:
 
 - **USDG**, the reference asset.
 - **Robinhood's own stock tokens** (~195), from its asset API (`api.robinhood.com/rhj/assets`, the list
@@ -52,6 +52,8 @@ Only four kinds of asset, by policy:
   that table: a copycat token can share any ticker. Before adding one, check it is the ticker's
   highest-volume token (DexScreener) and measure a 1 ETH buy through its listed pool:
   `ASSETS=0x… forge script MeasureQuoteImpact --rpc-url rh-mainnet` (impact in bps; broadcasts nothing).
+- **Hand-picked crypto majors** (`CRYPTO_MAJORS` in the script: CBBTC), discovered and ranked like the
+  rStocks, vetted the same way as the memecoins.
 
 Nothing else is ENABLED by a run, however large its market cap; anything a run does not find a pool for
 is switched off on the next full run, and stays in the file. rStock and pToken addresses come from

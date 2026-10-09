@@ -16,7 +16,8 @@ How it works:
      API -- the list behind docs.robinhood.com/chain/contracts. Every one with a pool is listed, however
      thin: liquidity is shown to creators as a low/ok/deep tier rather than gated here. Plus Arcus's
      leveraged pTokens (`ARCUS`), whose pool is fixed, so they skip steps 2-3 (see `ARCUS`). Plus a
-     hand-picked list of memecoins (`MEMECOINS`), discovered and ranked like the rStocks.
+     hand-picked list of memecoins (`MEMECOINS`) and of crypto majors (`CRYPTO_MAJORS`), discovered and
+     ranked like the rStocks.
      `--assets` replaces the universe with a list given by the caller, which is how the testnet is done.
   2. The chain for the pools: `PairCreated`, `PoolCreated` and `Initialize` logs, filtered to those
      assets, then Uniswap's own state (reserves / slot0 + liquidity) read through Multicall3. Where the
@@ -193,6 +194,12 @@ BRIDGE_STOCKS = {
     "0x56ae4a01bc41c4054662cd467e1b8c144d19b1bf": "HOOD1X",
     "0xc73b24a207c4eae3686edf6a3fcf21843bdbe7c0": "OPENAI",
     "0xf33507de3aa3c1386cee1ecfa2882b0b2930b305": "ANTHROPIC",
+}
+
+# Hand-picked crypto majors (mainnet only): address -> ticker. Discovered and ranked like an rStock.
+# Identity is vouched for HERE. CBBTC checked 2026-10-09: a 1 ETH buy moves its pool 4 bps.
+CRYPTO_MAJORS = {
+    "0xcec185eb182c47d1ba1efc84e6959e18cd620be4": "CBBTC",
 }
 
 
@@ -495,7 +502,7 @@ def main() -> int:
     parser.add_argument("--assets", default="", help="comma-separated addresses to list INSTEAD of "
                         "USDG + the rStocks. The only mode the testnet has; the caller vouches for them.")
     parser.add_argument("--only", default="", help="comma-separated tickers or addresses out of the policy "
-                        "(USDG, the rStocks, the Arcus pTokens, the memecoins; `arcus` / `memecoins` name all "
+                        "(USDG, the rStocks, the Arcus pTokens, the memecoins, the crypto majors; `arcus` / `memecoins` name all "
                         "of those) to re-pick. Every "
                         "other entry of the existing file is carried over unchanged, its flag included.")
     parser.add_argument("--enable", default="", help="comma-separated tickers or addresses already in the file "
@@ -522,6 +529,7 @@ def main() -> int:
         memes = MEMECOINS if CHAIN_ID == 4663 else {}
         coins += [{"asset": a, "symbol": s, "memecoin": True} for a, s in memes.items()]
         coins += [{"asset": a, "symbol": s} for a, s in (BRIDGE_STOCKS if CHAIN_ID == 4663 else {}).items()]
+        coins += [{"asset": a, "symbol": s} for a, s in (CRYPTO_MAJORS if CHAIN_ID == 4663 else {}).items()]
         if args.only:
             coins = _only(coins, args.only)
             if coins is None:

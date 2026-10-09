@@ -482,6 +482,10 @@ one that buys, so attribute its buys of `winner` after this event.
   `setRoundDuration`, which applies from the round AFTER the live one: the live round keeps the end it
   was announced with, and the schedule re-anchors at that end. Emits `RoundStarted` ×N first if storage
   was behind.
+- **`RoundEndSet`** (`roundId, endTime`) — on `setCurrentRoundEnd`: the live round's end moves to any
+  future `endTime` (earlier or later) and the schedule re-anchors there, so the next round starts at
+  `endTime` with the current `roundDuration`. Overrides the `endTime` its `RoundStarted` announced. Emits
+  `RoundStarted` ×N first if storage was behind.
 - **`AdminSet`** (`account, allowed`).
 
 ---
