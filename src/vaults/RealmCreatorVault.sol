@@ -28,6 +28,9 @@ import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 ///         The OZ `VestingWallet` was not reused: it is not clone-initializable and has no
 ///         graduation gate. This contract mirrors its linear-vesting math in a small, auditable form.
 contract RealmCreatorVault is Initializable {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     /// @notice The token this vault vests. Its `graduated()` flag gates `claim()`.

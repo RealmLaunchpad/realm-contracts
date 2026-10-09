@@ -217,7 +217,7 @@ contract LaunchpadBaseTests is Test {
     uint256 internal _saltCounter;
 
     /// @dev The factory namespaces the CREATE2 salt by the deployer (`keccak256(msg.sender, salt)`),
-    ///      so address prediction / vanity mining must use the same derivation. `creator` is the
+    ///      so address prediction must use the same derivation. `creator` is the
     ///      default deployer used by the createToken helpers below.
     function _namespacedSalt(address deployer, bytes32 salt) internal pure returns (bytes32 result) {
         // Equivalent to keccak256(abi.encodePacked(deployer, salt)), but computed in scratch space so
@@ -241,20 +241,14 @@ contract LaunchpadBaseTests is Test {
         return Clones.predictDeterministicAddress(impl, _namespacedSalt(deployer, salt), factory);
     }
 
-    /// @dev Mines the next salt whose namespaced address has the `0xeeaa` vanity suffix, for the
-    ///      default `creator` deployer. Use the 3-arg overload when deploying as a different account.
-    function _nextValidSalt(address factory, address impl) internal returns (bytes32 salt) {
-        return _nextValidSalt(factory, impl, creator);
+    /// @dev Returns a fresh, never-used salt (any salt is valid; the factory no longer enforces an
+    ///      address suffix). Params kept so call sites stay unchanged.
+    function _nextValidSalt(address, address) internal returns (bytes32 salt) {
+        return bytes32(_saltCounter++);
     }
 
-    function _nextValidSalt(address factory, address impl, address deployer) internal returns (bytes32 salt) {
-        for (uint256 i = _saltCounter;; i++) {
-            salt = bytes32(i);
-            if (uint16(uint160(_predictToken(factory, impl, deployer, salt))) == 0xeeaa) {
-                _saltCounter = i + 1;
-                return salt;
-            }
-        }
+    function _nextValidSalt(address, address, address) internal returns (bytes32 salt) {
+        return bytes32(_saltCounter++);
     }
 
     /// @dev Build a single-entry FeeShare[] with `account` getting 100% of fees (claimable, no direct).
@@ -686,8 +680,7 @@ contract LaunchpadBaseTests is Test {
 
         // Single shared liquidity adder, mirroring the production topology (deployed once, all graduators
         // and taxable tokens point at the same one).
-        univ4LiquidityAdder =
-            address(new RealmUniV4LiquidityAdder(positionManagerAddress, poolManagerAddress, permit2Address));
+        univ4LiquidityAdder = address(new RealmUniV4LiquidityAdder(positionManagerAddress, permit2Address));
 
         realmTaxTokenV2 = new RealmTaxableTokenUniV2();
         // Sniper aliases point at the merged impls: anti-sniper is a gated feature, not a distinct impl.
@@ -723,6 +716,7 @@ contract LaunchpadBaseTests is Test {
         factoryV2Sniper = factoryV2Unified;
 
         launchpad.whitelistFactory(address(factoryV2Unified));
+        factoryV2Unified.setPaused(false);
 
         _deployDirectVenue(infra);
 
@@ -763,6 +757,7 @@ contract LaunchpadBaseTests is Test {
         directFactory = RealmFactoryUniV4Direct(
             address(new ERC1967Proxy(impl, abi.encodeCall(RealmFactoryAbstract.initialize, ())))
         );
+        directFactory.setPaused(false);
     }
 
     /// @dev The V4 pool fee tier (pips) `token`'s pools are keyed by.

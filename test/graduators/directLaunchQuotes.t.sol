@@ -60,8 +60,8 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
 
     QuoteCoin internal quoteCoin;
 
-    /// @dev The QC pair's launch tick (quote per coin) the factory derives: 2.25 ETH at `QC_PER_ETH` is a
-    ///      7,875 QC market cap. QC has 6 decimals and the token 18, so on RAW units that is
+    /// @dev The QC pair's launch tick (quote per coin) the factory derives: 1.125 ETH at `QC_PER_ETH` is a
+    ///      3,937.5 QC market cap. QC has 6 decimals and the token 18, so on RAW units that is
     ///      7.875e-6 * 1e6 / 1e18 ≈ 7.9e-18, i.e. tick ≈ -394,000.
     int24 internal QC_LAUNCH_TICK;
 
@@ -445,7 +445,7 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
         (uint256 launchCap, uint256 targetCap, uint8 decimals, string memory symbol) = _poolSeededTail();
         assertEq(decimals, 6);
         assertEq(symbol, "QC");
-        assertApproxEqRel(launchCap, 7_875e6, 0.0101e18, "launch market cap in raw QC units: 2.25 ETH at 3,500 QC");
+        assertApproxEqRel(launchCap, 3_937.5e6, 0.0101e18, "launch market cap in raw QC units: 1.125 ETH at 3,500 QC");
         assertEq(targetCap, launchCap * 5);
     }
 

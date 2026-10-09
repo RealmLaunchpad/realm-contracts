@@ -60,6 +60,9 @@ interface IUniswapV3FactoryPools {
 ///      The Uniswap addresses are implementation immutables, set per chain by the deploy script; a zero
 ///      factory means that venue does not exist on the chain and its listings are refused.
 contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable, KeeperGated {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 

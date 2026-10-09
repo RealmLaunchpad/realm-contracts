@@ -66,6 +66,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 12. [`RealmVoting` entry points](#12-realmvoting-entry-points)
 13. [`RealmToken.burn` / `burnFrom`](#13-realmtokenburn--burnfrom)
 14. [LP fee collection — `RealmLpLocker` / `SwapLpFeeRouter` / `RealmSwapper.sellToken`](#14-lp-fee-collection--realmlplocker--swaplpfeerouter--realmswappersellToken)
+15. [Factory pause — `setPaused`](#15-factory-pause--setpaused)
 
 ---
 
@@ -123,7 +124,7 @@ ERC20 `Transfer` events occur from launchpad to factory and then from factory to
 
 ## 1.3 Direct launch (`RealmFactoryUniV4Direct`)
 
-A second, independent venue. `RealmFactoryUniV4Direct.createToken(DirectTokenSetup, DirectPair[], TaxConfigsWithDirectAllocation, AntiSniperConfigs, CreatorVault[], DevBuy, address referral)` — creates the token, creates ONE TO THREE Uniswap V4 pools, each opening at a fixed `LAUNCH_MARKET_CAP_X18` (2.25 ETH) market cap, splits the circulating supply across them as single-sided token bands and settles the creator's first buy — all in one transaction. There is no bonding curve, no launchpad and no pre-graduation phase, so §2–§5 never apply to these tokens; §6 (post-graduation V4 swaps) applies from the creation block onwards.
+A second, independent venue. `RealmFactoryUniV4Direct.createToken(DirectTokenSetup, DirectPair[], TaxConfigsWithDirectAllocation, AntiSniperConfigs, CreatorVault[], DevBuy, address referral)` — creates the token, creates ONE TO THREE Uniswap V4 pools, each opening at a fixed `LAUNCH_MARKET_CAP_X18` (1.125 ETH) market cap, splits the circulating supply across them as single-sided token bands and settles the creator's first buy — all in one transaction. There is no bonding curve, no launchpad and no pre-graduation phase, so §2–§5 never apply to these tokens; §6 (post-graduation V4 swaps) applies from the creation block onwards.
 
 Each `DirectPair` names a `quote` (`address(0)` for the chain's native currency, or any ERC20 with `decimals()` that is not the wrapped native), and a `weightBps` share of the supply. There is no price field: the factory derives each pair's launch tick (QUOTE PER COIN) on-chain from `LAUNCH_MARKET_CAP_X18`, converted to the quote at its LIVE `ASSETS_WHITELIST` rate (`liveUnitsPerNativeX18`, a spot read of the quote's listed price pool; native is 1:1). A native pair is bound to `SWAP_HOOK` (`RealmHook`); an ERC20 pair is bound to `SWAP_HOOK_ANY_PAIR` (`RealmHookAnyPair`, §6.1). `DevBuy` spends `msg.value` on a native pair and a pulled `quoteAmount` on an ERC20 one.
 
@@ -151,8 +152,8 @@ Notes:
 
 - The rounding remainder the bands cannot absorb is burned (step 9), never held: the graduator must not become a continuous holder, or it would accrue dividends nobody can claim.
 - A launch takes 1 to `MAX_PAIRS` (3) pairs with distinct quotes and weights summing to 10000 (`InvalidPairs`); an ERC20 quote must be whitelisted in `RealmAssetsWhitelist` (`ASSETS_WHITELIST()`), have `decimals()` ≤ 36 and not be the wrapped native (`QuoteNotSupported`). Fee-on-transfer quotes are not supported. `DevBuy.route` and `DevBuy.minQuoteOut` exist in the ABI but must be empty/zero, and the dev buy's currency must match its pair (`InvalidDevBuy`).
-- Every pair's derived tick must still imply an opening market cap worth between `MIN_LAUNCH_MARKET_CAP_X18` (1 ETH) and `MAX_LAUNCH_MARKET_CAP_X18` (250 ETH) (`LaunchPriceOutOfBounds`) at the quote's LIVE rate, the same one that priced the tick. The listed snapshot rate `unitsPerNativeX18` only gates whether the quote is listed; how far the live rate has drifted from it is not checked. The tick is also spacing-aligned (rounded to the nearest multiple) and must sit strictly inside the usable band (`InvalidLaunchTick`).
-- An earnings allocation on this venue needs NO tax: the creator's LP-fee share is a permanent stream here, so a zero-tax token with an allocation is a revenue-share token. It is cloned from the TAXABLE implementation, which `previewTokenImplementation` (same arguments as `createToken`) reports, so a salt mined against it names the right initcode. Only the V2 curve factory requires a static tax, because V2 LP fees never reach the token.
+- Every pair's derived tick must still imply an opening market cap worth between `MIN_LAUNCH_MARKET_CAP_X18` (0.5 ETH) and `MAX_LAUNCH_MARKET_CAP_X18` (125 ETH) (`LaunchPriceOutOfBounds`) at the quote's LIVE rate, the same one that priced the tick. The listed snapshot rate `unitsPerNativeX18` only gates whether the quote is listed; how far the live rate has drifted from it is not checked. The tick is also spacing-aligned (rounded to the nearest multiple) and must sit strictly inside the usable band (`InvalidLaunchTick`).
+- An earnings allocation on this venue needs NO tax: the creator's LP-fee share is a permanent stream here, so a zero-tax token with an allocation is a revenue-share token. It is cloned from the TAXABLE implementation, which `previewTokenImplementation` (same arguments as `createToken`) reports, so an address predicted against it names the right initcode. Only the V2 curve factory requires a static tax, because V2 LP fees never reach the token.
 - On an ERC20-quoted pool the dividends slice buffers IN THE QUOTE (`quoteDividendPending(quote)`), per payout asset, and is serviced by `processDividends(assetIndex, quote, minOut, holders)` — see Holder dividends.
 - `previewLaunchTick(quote)` returns the tick a pair against `quote` would launch at right now, plus the opening price of one whole coin and the implied market cap in whole quote units, both scaled by 1e18. It reverts where `createToken` would (`QuoteNotSupported`, `LaunchPriceOutOfBounds`). Live: an ERC20 quote's result can move with its price pool before the creation transaction lands.
 
@@ -330,7 +331,7 @@ Indexer-relevant points:
 For a V4 token with a burn or liquidity allocation, every post-graduation `token.accrueFees` — the tax (`CreatorTaxesAccrued`) and the creator's LP-fee share alike — is split in the currency it arrived in: the burn and liquidity slices are buffered per quote (`quoteBufferOf(quote)`; the native buffers are also readable as `burnPendingEth` / `liquidityPendingEth`), with no event beyond the fund-wallet `CreatorFeesDeposited` / `CreatorAssetFeesDeposited`, and the rest routes to the fund wallets. Keeper-gated entry points then process each buffer:
 
 - **`processBurn(uint256 minTokensOut)`** — buys back tokens with `burnPendingEth` via the universal router and burns them. Emits, in order: **`RealmTaxableTokenUniV4.BuyBackInitiated`** (`quote, amountIn`) — a precursor marker emitted BEFORE the swap so indexers can classify the following hook `RealmSwapBuy` (which carries the keeper's `tx.origin`) as a protocol buy-back rather than a trade — then the external V4 buy-back swap events (`Swap`, plus the hook's own tax events since the buy-back is an ordinary swap; it also pays the pool's native fee), an ERC20 `Transfer(address(token), address(0), tokensBought)`, then **`RealmTaxableToken.CreatorTaxBurn`** (`quote, amountSpent, tokensBurned`) — the same shared event V2 emits, with a non-zero `amountSpent` here since V4 does buy the tokens back before burning. On `processBurn(address quote, uint256 minTokensOut)` both events carry that quote and `amountIn` / `amountSpent` are in its units, and the buy event is the ERC20 pool's `RealmHookAnyPair.RealmQuoteSwapBuy`; the no-quote overload is `quote = address(0)`. Reverts `NotAKeeper` unless `msg.sender` is on the `RealmKeepersRegistry` allowlist, `NothingToBurn` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call from the native buffer, or `MAX_QUOTE_SPEND_BPS` (25%) of an ERC20 quote's buffer (remainder stays buffered).
-- **`processLiquidity()`** — deposits `liquidityPendingEth` as a single-sided ETH position just below the current price (a bid wall), through `RealmLpLocker.addWall(quote, amount)` (the locker named by `graduator.LP_LOCKER()`), which owns every wall. The token keeps the memory of the two walls it most recently used (`getLiquidityWalls()` exposes their NFT ids and lower ticks); the locker reads it, drops any id that is not one of this token's walls on that quote, and lets the shared `RealmUniV4LiquidityAdder.addOrTopUpSingleSided` pick between two paths. Event order: (0) when a remembered wall has fees owed, the locker collects them FIRST — **`RealmLpLocker.LpFeesCollected`** (`token, quote, quoteAmount, tokenAmount`) then their routing (§14: `LpFeesRouted` / `LpAssetFeesRouted` and the creator share's `accrueFees` events for the quote side; the token side parked in the router) — so an increase never mixes accrued fees into the principal refund. Then (a) TOP-UP — the wall still sits entirely below the current price and within ~2000 ticks of it: `ModifyLiquidity` and settlement `Transfer`s, NO ERC721 `Transfer`; or (b) MINT — a fresh position at the live tick: `ModifyLiquidity`, an ERC721 `Transfer(0x0, locker, tokenId)`, settlement `Transfer`s, then **`RealmLpLocker.PositionRegistered`** (`token, quote, tokenId, isWall = true`). Any unspent principal is returned to the token (native `call` / ERC20 `Transfer`). Last, **`RealmTaxableToken.LiquidityAdded`** (`quote, amountIn, tokensAdded, liquidity`) — the shared event; `quote` is `address(0)` here and the ERC20 on `processLiquidity(address quote)`, which walls that quote's own pool with `amountIn` in its units; `amountIn` is what the pool actually took (the locker's report), `tokensAdded` is always 0 (quote-only wall) and `liquidity` is the V4 liquidity units the position GAINED on this call. Indexers that counted one new position per `LiquidityAdded` must key off `PositionRegistered` (or the ERC721 `Transfer`) instead. Reverts `NotAKeeper` unless `msg.sender` is on the `RealmKeepersRegistry` allowlist, `NothingToAdd` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call from the native buffer, or `MAX_QUOTE_SPEND_BPS` (25%) of an ERC20 quote's buffer (remainder stays buffered). Every wall is held by the locker forever (permanent depth), whether or not it is still one of the two remembered.
+- **`processLiquidity()`** — deposits `liquidityPendingEth` as a single-sided ETH position below the current price (a bid wall), through `RealmLpLocker.addWall(quote, amount)` (the locker named by `graduator.LP_LOCKER()`), which owns every wall. Walls sit on a fixed grid of `WALL_RANGE_TICKS` (7000-tick, ~50% price) ranges: each add targets the grid range just below the one holding the current price, and the locker keeps one wall per (token, quote, range) (`wallAt`; `nextWall(token, quote)` shows the target range and its wall). Event order: (0) when the target range already holds a wall with fees owed, the locker collects them FIRST — **`RealmLpLocker.LpFeesCollected`** (`token, quote, quoteAmount, tokenAmount`) then their routing (§14: `LpFeesRouted` / `LpAssetFeesRouted` and the creator share's `accrueFees` events for the quote side; the token side parked in the router) — so an increase never mixes accrued fees into the principal refund. Then (a) TOP-UP — the range already holds a wall: `ModifyLiquidity` and settlement `Transfer`s, NO ERC721 `Transfer`; or (b) MINT — the range is empty: `ModifyLiquidity`, an ERC721 `Transfer(0x0, locker, tokenId)`, settlement `Transfer`s, then **`RealmLpLocker.PositionRegistered`** (`token, quote, tokenId, isWall = true`). Any unspent principal is returned to the token (native `call` / ERC20 `Transfer`). Last, **`RealmTaxableToken.LiquidityAdded`** (`quote, amountIn, tokensAdded, liquidity`) — the shared event; `quote` is `address(0)` here and the ERC20 on `processLiquidity(address quote)`, which walls that quote's own pool with `amountIn` in its units; `amountIn` is what the pool actually took (the locker's report), `tokensAdded` is always 0 (quote-only wall) and `liquidity` is the V4 liquidity units the position GAINED on this call. Indexers that counted one new position per `LiquidityAdded` must key off `PositionRegistered` (or the ERC721 `Transfer`) instead. Reverts `NotAKeeper` unless `msg.sender` is on the `RealmKeepersRegistry` allowlist, `NothingToAdd` when the buffer is empty and `ProcessCooldown` when already run this block; spends at most `MAX_EARNINGS_PER_PROCESS` per call from the native buffer, or `MAX_QUOTE_SPEND_BPS` (25%) of an ERC20 quote's buffer (remainder stays buffered). Every wall is held by the locker forever (permanent depth).
 - **`sweepStrayEth()`** — routes the token's native balance beyond everything it owes (`burnPendingEth`, `liquidityPendingEth`, the dividend buffers and undelivered pots) back through the earnings-allocation split (same events as an `accrueFees` split), so stray native becomes token earnings instead of being stuck. Permissionless. Present on BOTH venues — it lives on `RealmTaxableToken` — and it is the only exit for stray native on V2, where `rescueTokens` no longer accepts `address(0)` and the swap-back only routes its own swap proceeds. Pre-graduation it deposits the whole balance to the fund wallets, which is what `rescueTokens(address(0))` used to do.
 
 ---
@@ -363,7 +364,7 @@ A buy on an ERC20-quoted pool can also emit the graduation milestone **`RealmTok
 
 **A batched overload settles many tokens in one call.** `settleFees(address[] tokens, address quote)` empties every listed token's ledger in that one quote under a SINGLE pool-manager unlock and a single `take`, then runs steps 5-8 once per token, in list order. The events are exactly the per-token ones — nothing is aggregated — just interleaved within one transaction; every one of them carries its own `token` and `quote`, so an indexer reads them as it always did. An entry whose ledger is empty emits nothing, which includes a token listed twice (it settles on its first appearance) and an all-empty batch, which is a silent no-op with no `PoolManager` `Transfer` at all. `InsufficientGas` is still checked per delivery but reverts the WHOLE batch, so a batch either settles all of its non-empty entries or none of them.
 
-The treasury slice of an ERC20 LP fee ACCUMULATES on `RealmTreasuryRouter` — an ERC20 has no `receive()` to route it on arrival — until an owner calls `sweep(asset)`, which forwards the whole balance to the multisig and emits **`RealmTreasuryRouter.TreasuryAssetSwept`** (`asset, amount`), or a keeper converts it to native with `convert` (§11). Voting stays native-only, so an ERC20 is never split into it; only the native a conversion produces is.
+The treasury slice of an ERC20 LP fee ACCUMULATES on `RealmTreasuryRouter` — an ERC20 has no `receive()` to route it on arrival — until anyone (in practice the keeper) calls `sweep(asset)`, which forwards the whole balance to the multisig and emits **`RealmTreasuryRouter.TreasuryAssetSwept`** (`asset, amount`) (§11).
 
 ---
 
@@ -430,23 +431,15 @@ Every "treasury share pushed" step above is a plain native call to the treasury 
 immutable of `SwapLpFeeRouter`. Once those point at the `RealmTreasuryRouter` proxy, each such push
 nests the following inside the paying entry point, at the point of the push:
 
-1. `RealmVoting`, inside the router's forward of 1/3:
-   - **`RealmVoting.RoundStarted`** (`roundId, startTime, endTime`) — zero or more, only when the live round is
-     ahead of storage: one per round skipped since the last touch (empty rounds, announced late with their
-     true times), then one for the live round. See §12 for the round model.
-   - **`RealmVoting.EthAllocated`** (`roundId, from=router, amount`) — the 1/3 slice, earmarked for the live round.
-2. **`RealmTreasuryRouter.TreasuryEthRouted`** (`from, votingShare, treasuryShare`) — `from` is the payer
-   (launchpad / graduator / LP fee router). `votingShare == 0` and no step-1 events when the voting call
-   reverted: the whole amount then went to the multisig (fail-safe so a voting bug cannot brick trading),
-   or when `msg.value < 3`.
+1. **`RealmTreasuryRouter.TreasuryEthRouted`** (`from, votingShare, treasuryShare`) — `from` is the payer
+   (launchpad / graduator / LP fee router). Since router v2 the whole amount goes to the multisig:
+   `votingShare` is always 0 and `RealmVoting` receives nothing (no `RoundStarted` / `EthAllocated` from a push).
 
-**`convert(address asset, uint256 amountIn, uint256 minOut)`** — keeper-gated (`RealmKeepersRegistry`). Sells an ERC20 the router holds for native along the owner-set route, then routes the proceeds:
+**`sweep(address asset)`** — permissionless. Forwards the router's whole ERC20 balance of `asset` to the
+multisig: **`RealmTreasuryRouter.TreasuryAssetSwept`** (`asset, amount`). Nothing when the balance is 0.
 
-1. Universal-router swap events.
-2. **`RealmTreasuryRouter.TreasuryAssetConverted`** (`asset, amountIn, nativeOut`) — both measured as balance deltas.
-3. The §11 sequence above for `nativeOut`, with `TreasuryEthRouted.from` = the router itself.
-
-**`setConversionRoute(address asset, PathKey[] path)`** — owner. **`RealmTreasuryRouter.ConversionRouteSet`** (`asset, route`), `route` = `abi.encode(path)`.
+Router v1's `convert` / `setConversionRoute` (and their `TreasuryAssetConverted` / `ConversionRouteSet`
+events) were removed in v2; those events only appear in v1 history.
 
 The multisig transfer emits nothing.
 
@@ -651,6 +644,8 @@ creation events are in §1 step 4b.
   `Initialized`), and from `announceGraduator()` passed as `upgradeToAndCall` data (after `Upgraded`),
   which is a no-op when the new implementation keeps the same graduator. Permissionless and idempotent.
   The indexer registers the graduator from this event, not from `TokenCreated`.
+- **`PausedSet`** (`paused = true`) — from `initialize()`, right before `GraduatorSet`: every new proxy
+  starts paused. See §15.
 
 ### `RealmKeepersRegistry` (one per chain)
 
@@ -784,3 +779,10 @@ Reverts `NotAKeeper` or `NothingToConvert` (empty bucket).
 
 Single hop in the token's own Realm pool (`poolFee()`, `graduator.hookFor(quote)`). In order: the token's `Transfer` caller → swapper; **`RealmSwapper.RealmTokenSellInitiated`** (`token` indexed, `quote` indexed, `amountIn`) — emitted BEFORE the swap, the precursor that lets an indexer flag the following hook sell (`RealmSwapSell` / `RealmQuoteSwapSell`, plus the hook's tax events) as protocol-internal; the swap; on a native quote with a keeper wallet set, **`KeeperFunded`** after the proceeds are delivered (the keeper cut applies only where native flows; an ERC20-quote sale pays none).
 
+---
+
+## 15. Factory pause — `setPaused`
+
+### `RealmFactoryUniV2Unified.setPaused(bool paused)` / `RealmFactoryUniV4Direct.setPaused(bool paused)` — owner only
+
+Emits **`RealmFactory.PausedSet`** (`paused`), on every call, even when the value is unchanged. While `paused()` is true, `createToken` reverts `FactoryPaused` and emits nothing; previews are unaffected. Proxies are born paused (`initialize()` emits `PausedSet(true)`).

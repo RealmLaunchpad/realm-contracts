@@ -45,7 +45,7 @@ interface IRealmDirectGraduator {
 ///      holds (21 curve immutables, `_resolveBondingCurve`, `LAUNCHPAD.launchToken()`, the curve deploy
 ///      buy and its quotes) is meaningless here, and inheriting it would leave this factory carrying a
 ///      launchpad it must never call. What it does inherit is everything that makes a token a Realm
-///      token: the validation rules, the salt-namespaced `0xeeaa` clone, the tax/anti-sniper dispatch,
+///      token: the validation rules, the salt-namespaced clone, the tax/anti-sniper dispatch,
 ///      the creator vaults, the fee registration and the shared events.
 ///
 /// @dev The token this deploys is an ORDINARY graduated Realm token. `LAUNCHPAD` is `address(0)` — so
@@ -56,7 +56,11 @@ interface IRealmDirectGraduator {
 ///      reserved and must be empty: the dev-buy zap's route is derived from `ASSETS_WHITELIST`, never
 ///      taken from the caller. Anything not supported is REJECTED rather than ignored, so a caller can
 ///      never believe a field took effect when it did not.
+/// @dev Release: October 2026 redeploy.
 contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     /// @notice Token-identity bundle for `createToken`. Mirrors `TokenSetupTiered` minus the liquidity
@@ -116,11 +120,11 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         with no native pair at all.
     uint256 public constant MAX_PAIRS = 3;
 
-    /// @notice Opening market cap of EVERY pair: 2.25 whole native coins (ETH), scaled by 1e18. An ERC20
+    /// @notice Opening market cap of EVERY pair: 1.125 whole native coins (ETH), scaled by 1e18. An ERC20
     ///         pair opens at this value converted at the quote's LIVE `ASSETS_WHITELIST` rate.
-    uint256 public constant LAUNCH_MARKET_CAP_X18 = 2.25 ether;
+    uint256 public constant LAUNCH_MARKET_CAP_X18 = 1.125 ether;
 
-    /// @notice Lowest opening market cap any pair may launch at: 1 whole native coin (ETH), scaled by
+    /// @notice Lowest opening market cap any pair may launch at: 0.5 native coins (ETH), scaled by
     ///         1e18, checked on the derived opening at the quote's SNAPSHOT `ASSETS_WHITELIST` rate, not
     ///         the live one that prices the tick: a price pool pushed within the transaction cannot drag
     ///         the opening below it in snapshot terms. An approver re-lists a quote whose real price has
@@ -129,13 +133,13 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///      price 4x's after buys of about that much. A tiny one hands the dev buy most of the supply for
     ///      almost nothing. Native is ETH on every chain this venue deploys to; one with another native
     ///      needs its own.
-    uint256 public constant MIN_LAUNCH_MARKET_CAP_X18 = 1 ether;
+    uint256 public constant MIN_LAUNCH_MARKET_CAP_X18 = 0.5 ether;
 
-    /// @notice Highest opening market cap any pair may launch at: 250 ETH, scaled by 1e18, checked like
+    /// @notice Highest opening market cap any pair may launch at: 125 ETH, scaled by 1e18, checked like
     ///         `MIN_LAUNCH_MARKET_CAP_X18`.
     /// @dev Harmless on-chain (nobody has to buy), but aggregators display it as a market cap from block
     ///      zero, with no volume behind it.
-    uint256 public constant MAX_LAUNCH_MARKET_CAP_X18 = 250 ether;
+    uint256 public constant MAX_LAUNCH_MARKET_CAP_X18 = 125 ether;
 
     /// @notice The chain's wrapped native token, which a pair may NOT be quoted against. See
     ///         `_validateQuote`.
@@ -220,7 +224,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         CreatorVault[] calldata creatorVaults,
         DevBuy calldata devBuy,
         address referral
-    ) external payable returns (address token) {
+    ) external payable whileNotPaused returns (address token) {
         int24[] memory ticks = _validateDirectInputs(setup, pairs, devBuy);
         _validateInputs(
             setup.name, setup.symbol, setup.feeShares, devBuy.recipients, msg.value > 0 ? msg.value : devBuy.quoteAmount
@@ -238,7 +242,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     }
 
     /// @notice Returns which token implementation `createToken` would clone for the same arguments, so a
-    ///         frontend can compute the initcode hash before mining a `0xeeaa` salt. Takes EXACTLY
+    ///         frontend can compute the initcode hash to predict the token address. Takes EXACTLY
     ///         `createToken`'s arguments, so the ABI stays stable whichever inputs dispatch reads later;
     ///         today only the tax config and whether any allocation bucket is set matter.
     /// @dev The salt is namespaced by the CALLER (`keccak256(msg.sender, salt)`), so a frontend mining

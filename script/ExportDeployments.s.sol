@@ -34,8 +34,6 @@ contract ExportDeployments is Script {
         address factoryUniV4DirectImpl;
         address assetsWhitelist;
         address assetsWhitelistImpl;
-        address dividendLogicV4;
-        address earningsLogicV4;
         address lpFeeRouter;
         address lpLocker;
         address lpFeeRouterImpl;
@@ -63,7 +61,6 @@ contract ExportDeployments is Script {
         address thickCurveBase;
         address[6] thickVaultCurves;
         // --- Accounts ---
-        address realmDev;
         address realmTreasury;
         address teamTreasury;
         address voteBuybackWallet;
@@ -106,8 +103,6 @@ contract ExportDeployments is Script {
         d.factoryUniV4DirectImpl = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_DIRECT_IMPL;
         d.assetsWhitelist = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST;
         d.assetsWhitelistImpl = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST_IMPL;
-        d.dividendLogicV4 = DeploymentsRobinhoodMainnet.DIVIDEND_LOGIC_V4;
-        d.earningsLogicV4 = DeploymentsRobinhoodMainnet.EARNINGS_LOGIC_V4;
         d.lpFeeRouter = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
         d.lpLocker = DeploymentsRobinhoodMainnet.LP_LOCKER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER_IMPL;
@@ -134,7 +129,6 @@ contract ExportDeployments is Script {
         d.thinVaultCurves = DeploymentsRobinhoodMainnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsRobinhoodMainnet.THICK_CURVE_BASE;
         d.thickVaultCurves = DeploymentsRobinhoodMainnet.thickVaultCurves();
-        d.realmDev = DeploymentsRobinhoodMainnet.REALM_DEV;
         d.realmTreasury = DeploymentAddressesRobinhoodMainnet.REALM_TREASURY;
         d.teamTreasury = DeploymentAddressesRobinhoodMainnet.TEAM_TREASURY;
         d.voteBuybackWallet = DeploymentAddressesRobinhoodMainnet.VOTE_BUYBACK_WALLET;
@@ -164,8 +158,6 @@ contract ExportDeployments is Script {
         d.factoryUniV4DirectImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_DIRECT_IMPL;
         d.assetsWhitelist = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST;
         d.assetsWhitelistImpl = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST_IMPL;
-        d.dividendLogicV4 = DeploymentsRobinhoodTestnet.DIVIDEND_LOGIC_V4;
-        d.earningsLogicV4 = DeploymentsRobinhoodTestnet.EARNINGS_LOGIC_V4;
         d.lpFeeRouter = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
         d.lpLocker = DeploymentsRobinhoodTestnet.LP_LOCKER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER_IMPL;
@@ -192,7 +184,6 @@ contract ExportDeployments is Script {
         d.thinVaultCurves = DeploymentsRobinhoodTestnet.thinVaultCurves();
         d.thickCurveBase = DeploymentsRobinhoodTestnet.THICK_CURVE_BASE;
         d.thickVaultCurves = DeploymentsRobinhoodTestnet.thickVaultCurves();
-        d.realmDev = DeploymentsRobinhoodTestnet.REALM_DEV;
         d.realmTreasury = DeploymentAddressesRobinhoodTestnet.REALM_TREASURY;
         d.realmKeeper = DeploymentsRobinhoodTestnet.REALM_KEEPER;
         d.weth = DeploymentAddressesRobinhoodTestnet.WETH;
@@ -228,8 +219,6 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmFactoryUniV4Direct (impl)", d.factoryUniV4DirectImpl));
         s = string.concat(s, _row("RealmAssetsWhitelist (proxy)", d.assetsWhitelist));
         s = string.concat(s, _row("RealmAssetsWhitelist (impl)", d.assetsWhitelistImpl));
-        s = string.concat(s, _row("RealmDividendLogicUniV4", d.dividendLogicV4));
-        s = string.concat(s, _row("RealmEarningsLogicUniV4", d.earningsLogicV4));
         s = string.concat(s, _row("SwapLpFeeRouter (proxy)", d.lpFeeRouter));
         s = string.concat(s, _row("RealmLpLocker", d.lpLocker));
         s = string.concat(s, _row("SwapLpFeeRouter (impl)", d.lpFeeRouterImpl));
@@ -273,9 +262,8 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("THICK-tier curve 30%", d.thickVaultCurves[5]));
 
         s = string.concat(s, "\n## Accounts\n\n", _tableHeader("Name"));
-        s = string.concat(s, _row("Realm Deployer", d.realmDev));
         s = string.concat(s, _row("Realm Treasury", d.realmTreasury));
-        s = string.concat(s, _row("Team Treasury (2/3 leg)", d.teamTreasury));
+        s = string.concat(s, _row("Team Treasury", d.teamTreasury));
         s = string.concat(s, _row("Vote Buyback Wallet (1/3 leg)", d.voteBuybackWallet));
         s = string.concat(s, _row("Legacy Treasury (pre-router)", d.legacyTreasury));
         s = string.concat(s, _row("Realm Keeper", d.realmKeeper));

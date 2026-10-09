@@ -9,10 +9,8 @@ import {RealmUniv4BuyBacks} from "src/tokens/RealmUniv4BuyBacks.sol";
 import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @notice Minimal view onto the V4 graduator: the hook it paired the token's pool with (to rebuild the
-///         pool key), the shared liquidity adder, and the locker that owns the token's bid walls.
+///         pool key) and the locker that owns the token's bid walls.
 interface IRealmV4Graduator {
-    function HOOK_ADDRESS() external view returns (address);
-    function LIQUIDITY_ADDER() external view returns (address);
     function LP_LOCKER() external view returns (address);
 
     /// @notice The hook mediating the pool this token shares with `quote`. Native pools keep
@@ -48,16 +46,15 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
 
     /////////////////////////// pure storage ///////////////////////
 
-    /// @notice Everything one QUOTE's out-of-band earnings machinery needs: what it has accrued, when
-    ///         it last spent it, and which liquidity walls it has placed. One entry per entry of the
+    /// @notice Everything one QUOTE's out-of-band earnings machinery needs: what it has accrued and when
+    ///         it last spent it. One entry per entry of the
     ///         token's `quotes`, at the SAME index — so index 0 is always the chain's native currency
     ///         and a native-only token uses exactly this one, as it always has.
     /// @dev Per quote, not per token, because each quote has its OWN pool. A buy-back funded by fees
     ///      collected on the USDC pool has to be spent on the USDC pool; routing it through native
     ///      would pay two sets of pool fees to end up where it started.
-    /// @dev FIVE SLOTS, packed so the two processors each touch two of them: the buffers in slot 0, and
-    ///      the cooldown marker each one dirties anyway sharing slot 1 with the first wall — which is
-    ///      why that wall costs no extra slot at all, and only the second takes one of its own.
+    /// @dev FOUR SLOTS, packed so the two processors each touch two of them: the buffers in slot 0 and
+    ///      both cooldown markers in slot 1.
     struct QuoteBuffers {
         // --- slot 0 ---
         /// @dev Accrued from the burn allocation, awaiting a `processBurn` buy-back-and-burn on this
@@ -73,23 +70,7 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
         uint48 lastBurnBlock;
         /// @dev `block.number` of the last `processLiquidity` for this quote.
         uint48 lastLiquidityBlock;
-        /// @dev Position-manager NFT id of the most recently USED single-sided wall on this quote's
-        ///      pool. `processLiquidity` tops it up instead of minting a fresh one whenever its range
-        ///      still sits entirely below the current price and close to it. Zero means "no wall yet".
-        ///      `uint112` because the position manager's id is a sequential counter from 1.
-        uint112 wall0Id;
-        /// @dev Lower tick of `wall0Id`'s range — the wall's top price. The upper tick is not kept: it
-        ///      decides nothing here, and the position manager sizes a top-up from the position's own
-        ///      recorded range.
-        int24 wall0TickLower;
-        // --- slot 2 ---
-        /// @dev Second-most recently used wall, same shape. Two entries, kept most-recently-used first,
-        ///      because a price that dips and then recovers leaves the PREVIOUS wall as the only one
-        ///      still below the price — a one-entry memory would mint on every such zigzag.
-        uint112 wall1Id;
-        /// @dev Lower tick of `wall1Id`'s range.
-        int24 wall1TickLower;
-        // --- slots 3-4 ---
+        // --- slots 2-3 ---
         /// @dev Accrued from the dividends allocation on THIS quote, per payout asset (same index as
         ///      `dividendAssets`), awaiting a `processDividends(i, quote, …)` that turns it into that
         ///      asset — on this quote's own pool for a self-token payout, through the registry for
@@ -98,7 +79,7 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
         uint128[MAX_DIVIDEND_ASSETS] dividendPending;
     }
 
-    /// @notice Per-quote earnings buffers and wall memory, indexed exactly as `quotes` is. Entries at or
+    /// @notice Per-quote earnings buffers, indexed exactly as `quotes` is. Entries at or
     ///         beyond `quoteCount` are unused and must never be read.
     QuoteBuffers[MAX_QUOTES] internal quoteBuffers;
 
@@ -213,47 +194,5 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
     ///         buffers are `dividendAssets(i).pendingNative`.
     function quoteDividendPending(address quote) external view returns (uint128[MAX_DIVIDEND_ASSETS] memory) {
         return quoteBuffers[_quoteIndex(quote)].dividendPending;
-    }
-
-    //////////////////////// LIQUIDITY-WALL MEMORY //////////////////////
-
-    /// @notice The single-sided walls this token remembers on its NATIVE pool, most-recently-used first.
-    ///         See `getLiquidityWalls(address)`.
-    function getLiquidityWalls() public view returns (uint256[2] memory ids, int24[2] memory tickLowers) {
-        return _walls(0);
-    }
-
-    /// @notice The single-sided walls this token remembers on ONE quote's pool, most-recently-used
-    ///         first: their position-manager NFT ids and lower ticks. A zero id is an empty entry.
-    ///         Positions this token minted but has since forgotten are still owned by it and still pool
-    ///         depth — only the two entries here are candidates for a top-up.
-    /// @dev One packed view rather than four generated getters: on this contract, which sits close to
-    ///      the EIP-170 limit, the getters cost more bytecode than the reuse path they describe.
-    function getLiquidityWalls(address quote) public view returns (uint256[2] memory ids, int24[2] memory tickLowers) {
-        return _walls(_quoteIndex(quote));
-    }
-
-    /// @dev Shared body of the two `getLiquidityWalls` overloads.
-    function _walls(uint256 quoteIndex) internal view returns (uint256[2] memory ids, int24[2] memory tickLowers) {
-        QuoteBuffers storage b = quoteBuffers[quoteIndex];
-        ids = [uint256(b.wall0Id), uint256(b.wall1Id)];
-        tickLowers = [b.wall0TickLower, b.wall1TickLower];
-    }
-
-    /// @dev Moves the wall that just took the deposit to the front of that quote's two-entry memory: a
-    ///      repeat of the most recent one changes nothing, the second entry is promoted past the first,
-    ///      and anything else is a fresh mint that evicts the older of the two. Most-recently-USED order
-    ///      is what keeps a wall the price keeps returning to from being evicted by a mint it sat out.
-    function _recordUsedWall(uint256 quoteIndex, uint256 id, int24 tickLower) internal {
-        QuoteBuffers storage b = quoteBuffers[quoteIndex];
-        (uint112 id0, int24 lower0) = (b.wall0Id, b.wall0TickLower);
-        if (id == id0) return;
-
-        // One shift covers both remaining cases: if `id` was the second entry this swaps the two, and if
-        // it is a fresh mint this evicts the older one.
-        (b.wall1Id, b.wall1TickLower) = (id0, lower0);
-        // Safe: the position manager's id is a counter incremented once per mint, from 1.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        (b.wall0Id, b.wall0TickLower) = (uint112(id), tickLower);
     }
 }

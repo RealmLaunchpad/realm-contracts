@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {LaunchpadBaseTestsWithUniv2Graduator} from "test/launchpad/base.t.sol";
 import {RealmQuoter} from "src/RealmQuoter.sol";
-import {IRealmQuoter2} from "src/interfaces/IRealmQuoter2.sol";
+import {IRealmQuoter} from "src/interfaces/IRealmQuoter.sol";
 import {LimitReason} from "src/interfaces/IRealmQuoter.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
@@ -69,7 +69,7 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function test_reason_INVALID_TOKEN() public {
         address fake = makeAddr("fake");
-        IRealmQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(fake, buyer, 1 ether);
+        IRealmQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(fake, buyer, 1 ether);
         assertEq(uint256(q.reason), uint256(LimitReason.INVALID_TOKEN));
         assertEq(q.ethSpent, 0);
 
@@ -80,7 +80,7 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv2Graduator {
 
     function test_reason_GRADUATED() public {
         _graduateBaseToken();
-        IRealmQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(baseToken, buyer, 1 ether);
+        IRealmQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(baseToken, buyer, 1 ether);
         assertEq(uint256(q.reason), uint256(LimitReason.GRADUATED));
         assertEq(q.ethSpent, 0);
 
@@ -90,14 +90,14 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv2Graduator {
     }
 
     function test_reason_SNIPER_CAP_oversizedBuy_reasonOnly() public view {
-        IRealmQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(sniperToken, buyer, 0.2 ether);
+        IRealmQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(sniperToken, buyer, 0.2 ether);
         assertEq(uint256(q.reason), uint256(LimitReason.SNIPER_CAP));
         assertLt(q.ethSpent, 0.2 ether);
     }
 
     function test_reason_GRADUATION_EXCESS_baseToken_reasonOnly() public {
         _launchpadBuy(baseToken, _increaseWithFees(GRADUATION_THRESHOLD - 0.01 ether));
-        IRealmQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(baseToken, buyer, 0.5 ether);
+        IRealmQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(baseToken, buyer, 0.5 ether);
         assertEq(uint256(q.reason), uint256(LimitReason.GRADUATION_EXCESS));
         assertEq(q.ethSpent, launchpad.getMaxEthToSpend(baseToken));
     }
@@ -277,7 +277,7 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv2Graduator {
         LimitReason expectedReason,
         bool checkReason
     ) internal {
-        IRealmQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer_, ethInput);
+        IRealmQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer_, ethInput);
 
         if (checkReason) assertEq(uint256(q.reason), uint256(expectedReason), "wrong reason");
         if (q.reason == LimitReason.INVALID_TOKEN || q.reason == LimitReason.GRADUATED || q.ethSpent == 0) return;
@@ -327,7 +327,7 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv2Graduator {
         LimitReason expectedReason,
         bool checkReason
     ) internal {
-        IRealmQuoter2.BuyExactTokensQuote memory q = quoter.quoteBuyExactTokens(token, buyer_, tokenInput);
+        IRealmQuoter.BuyExactTokensQuote memory q = quoter.quoteBuyExactTokens(token, buyer_, tokenInput);
 
         if (checkReason) assertEq(uint256(q.reason), uint256(expectedReason), "wrong reason");
         if (q.reason == LimitReason.INVALID_TOKEN || q.reason == LimitReason.GRADUATED || q.totalEthNeeded == 0) {
@@ -376,7 +376,7 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv2Graduator {
         LimitReason expectedReason,
         bool checkReason
     ) internal {
-        IRealmQuoter2.SellExactTokensQuote memory q = quoter.quoteSellExactTokens(token, tokenAmount);
+        IRealmQuoter.SellExactTokensQuote memory q = quoter.quoteSellExactTokens(token, tokenAmount);
 
         if (checkReason) assertEq(uint256(q.reason), uint256(expectedReason), "wrong reason");
         if (q.reason == LimitReason.INVALID_TOKEN || q.reason == LimitReason.GRADUATED || q.tokensSold == 0) return;
@@ -399,7 +399,7 @@ contract RealmQuoterTest is LaunchpadBaseTestsWithUniv2Graduator {
     function _quoteAndSellForExactEth(address token, address buyer_, uint256 ethTarget, LimitReason expectedReason)
         internal
     {
-        IRealmQuoter2.SellForExactEthQuote memory q = quoter.quoteSellTokensForExactEth(token, ethTarget);
+        IRealmQuoter.SellForExactEthQuote memory q = quoter.quoteSellTokensForExactEth(token, ethTarget);
 
         assertEq(uint256(q.reason), uint256(expectedReason), "wrong reason");
         if (q.reason == LimitReason.INVALID_TOKEN || q.reason == LimitReason.GRADUATED || q.tokensRequired == 0) {

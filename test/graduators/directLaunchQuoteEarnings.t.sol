@@ -5,7 +5,7 @@ import {DirectLaunchQuotesTests, QuoteCoin} from "test/graduators/directLaunchQu
 import {RealmTaxableTokenUniV4} from "src/tokens/RealmTaxableTokenUniV4.sol";
 import {RealmFactoryUniV4Direct} from "src/factories/RealmFactoryUniV4Direct.sol";
 import {RealmDirectGraduatorUniV4} from "src/graduators/RealmDirectGraduatorUniV4.sol";
-import {RealmUniV4LiquidityAdder, WallParams} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
+import {RealmUniV4LiquidityAdder} from "src/liquidity/RealmUniV4LiquidityAdder.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {TaxConfigsWithDirectAllocation} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
@@ -172,21 +172,20 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         vm.expectEmit(true, false, false, false, address(token));
         emit RealmTaxableToken.LiquidityAdded(quote, 0, 0, 0);
         token.processLiquidity(quote);
-        (uint256[2] memory ids,) = token.getLiquidityWalls(quote);
-        assertGt(ids[0], 0, "a wall was minted");
-        (PoolKey memory key,) = posm.getPoolAndPositionInfo(ids[0]);
+        (,, uint256 wall) = lpLocker.nextWall(address(token), quote);
+        assertGt(wall, 0, "a wall was minted");
+        (PoolKey memory key,) = posm.getPoolAndPositionInfo(wall);
         assertEq(address(key.hooks), TEST_ANYPAIR_HOOK_ADDRESS, "on the token's own ERC20 pool");
-        assertEq(IERC721(positionManagerAddress).ownerOf(ids[0]), address(lpLocker), "held by the locker");
-        (address wallToken, address wallQuote, bool isWall) = lpLocker.positionMeta(ids[0]);
+        assertEq(IERC721(positionManagerAddress).ownerOf(wall), address(lpLocker), "held by the locker");
+        (address wallToken, address wallQuote, bool isWall) = lpLocker.positionMeta(wall);
         assertTrue(wallToken == address(token) && wallQuote == quote && isWall, "registered as the token's wall");
         assertEq(IERC20(quote).balanceOf(address(_adder())), 0, "the mint left no quote in the adder");
-        uint128 minted = posm.getPositionLiquidity(ids[0]);
+        uint128 minted = posm.getPositionLiquidity(wall);
 
         vm.roll(block.number + 1);
         token.processLiquidity(quote);
-        (uint256[2] memory idsAfter,) = token.getLiquidityWalls(quote);
-        assertEq(idsAfter[0], ids[0], "the second deposit reused the wall");
-        assertGt(posm.getPositionLiquidity(ids[0]), minted, "and deepened it");
+        assertEq(lpLocker.positionIds(address(token)).length, 2, "the second deposit reused the wall");
+        assertGt(posm.getPositionLiquidity(wall), minted, "and deepened it");
         assertEq(IERC20(quote).balanceOf(address(_adder())), 0, "the top-up left no quote in the adder");
     }
 
@@ -231,8 +230,8 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     ///      (~22.5 raw quote per raw coin) one raw unit of quote is worth less than one unit of liquidity.
     function test_adder_zeroLiquidityErc20Currency0IsRefundedInKind() public {
         address quote = _placeQuote(LOW_QUOTE, true);
-        // Worth 1e-10 ETH a unit, so the 2.25 ETH opening cap is ~2.25e10 units.
-        _whitelist(quote, 1e28);
+        // Worth 5e-11 ETH a unit, so the 1.125 ETH opening cap is ~2.25e10 units.
+        _whitelist(quote, 2e28);
         vm.prank(creator);
         address token = directFactory.createToken(
             _setup(false),
@@ -246,24 +245,19 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         QuoteCoin(quote).mintTo(address(this), 1);
         IERC20(quote).approve(address(_adder()), 1);
 
-        uint256[2] memory noIds;
-        int24[2] memory noTicks;
-        (uint128 liquidity, uint256 id,) = _adder()
-            .addOrTopUpSingleSided(
+        (int24 lower, int24 upper,) = lpLocker.nextWall(token, quote);
+        uint128 liquidity = _adder()
+            .addSingleSided(
                 UniswapV4PoolConstants.realmPoolKey(token, quote, TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(token)),
-                WallParams({
-                    currency: Currency.wrap(quote),
-                    amount: 1,
-                    tickWidth: 14_000,
-                    reuseMaxGap: 2_000,
-                    receiver: address(this)
-                }),
-                noIds,
-                noTicks
+                Currency.wrap(quote),
+                1,
+                lower,
+                upper,
+                address(this),
+                address(this)
             );
 
         assertEq(liquidity, 0, "nothing was placed");
-        assertEq(id, 0, "so no wall to remember");
         assertEq(IERC20(quote).balanceOf(address(this)), 1, "the deposit came back as the quote");
     }
 
@@ -502,7 +496,7 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     ///      key straight on the pool manager: a pending `createToken` is public in the mempool, the salt
     ///      is namespaced by the creator so the token address is precomputable from it, and the real
     ///      launch then reverts inside `poolManager.initialize`. Cost to the griefer is one pool
-    ///      initialization; cost to the creator is a wasted mined `0xeeaa` salt.
+    ///      initialization; cost to the creator is a wasted salt.
     function test_frontRun_preInitializedPoolBlocksTheRealLaunch() public {
         RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(false);
         address predicted = _predictToken(address(directFactory), address(realmToken), creator, setup.salt);
@@ -549,8 +543,8 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     }
 
     /////////////////////////// launch price ///////////////////////////
-    // Every pair opens at `LAUNCH_MARKET_CAP_X18` (2.25 ETH) of native value, an ERC20 quote converted at
-    // its LIVE whitelist rate. The [1, 250] ETH bounds are checked at that same live rate, so drift from
+    // Every pair opens at `LAUNCH_MARKET_CAP_X18` (1.125 ETH) of native value, an ERC20 quote converted at
+    // its LIVE whitelist rate. The [0.5, 125] ETH bounds are checked at that same live rate, so drift from
     // the listed snapshot rate is not refused.
 
     /// @dev The opening market cap in whole `quote` units (X18) of a launch against it, read off the pool.
@@ -569,37 +563,37 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     }
 
     function test_launchPrice_nativeOpensAtTheFixedMarketCap() public {
-        assertApproxEqRel(_openingCapInQuote(address(0), 18), 2.25 ether, 0.0101e18, "2.25 ETH");
+        assertApproxEqRel(_openingCapInQuote(address(0), 18), 1.125 ether, 0.0101e18, "1.125 ETH");
     }
 
-    /// @dev Six decimals at 3,500 QC per ETH: 2.25 ETH is 7,875 QC, and it follows the LIVE rate.
+    /// @dev Six decimals at 3,500 QC per ETH: 1.125 ETH is 3,937.5 QC, and it follows the LIVE rate.
     function test_launchPrice_erc20OpensAtTheFixedMarketCapAtTheLiveRate() public {
         address quote = address(quoteCoin);
-        assertApproxEqRel(_openingCapInQuote(quote, 6), 7_875e18, 0.0101e18, "7,875 QC at the snapshot rate");
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 3_937.5e18, 0.0101e18, "3,937.5 QC at the snapshot rate");
 
         _mockLiveRate(quote, 2 * QC_PER_ETH);
-        assertApproxEqRel(_openingCapInQuote(quote, 6), 15_750e18, 0.0101e18, "15,750 QC at twice the rate");
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 7_875e18, 0.0101e18, "7,875 QC at twice the rate");
     }
 
-    /// @dev A live rate 100x ABOVE the listed one (the quote pushed cheap) opens at 225 ETH in snapshot
-    ///      terms, inside the 250 ETH cap: it launches, at 2.25 ETH of the live rate, and the preview agrees.
+    /// @dev A live rate 100x ABOVE the listed one (the quote pushed cheap) opens at 112.5 ETH in snapshot
+    ///      terms, inside the 125 ETH cap: it launches, at 1.125 ETH of the live rate, and the preview agrees.
     function test_launchPrice_liveRateAboveTheSnapshotWithinTheCapLaunches() public {
         address quote = address(quoteCoin);
         _mockLiveRate(quote, QC_PER_ETH * 100);
         (,, uint256 preview) = directFactory.previewLaunchTick(quote);
-        assertApproxEqRel(preview, 787_500e18, 0.0101e18, "preview: 2.25 ETH at 100x the rate");
-        assertApproxEqRel(_openingCapInQuote(quote, 6), 787_500e18, 0.0101e18, "2.25 ETH at 100x the rate");
+        assertApproxEqRel(preview, 393_750e18, 0.0101e18, "preview: 1.125 ETH at 100x the rate");
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 393_750e18, 0.0101e18, "1.125 ETH at 100x the rate");
     }
 
     /// @dev Half the listed rate (the quote pushed 2x dear) opens at 1.125 ETH in snapshot terms, still
-    ///      above the 1 ETH floor.
+    ///      above the 0.5 ETH floor.
     function test_launchPrice_liveRateBelowTheSnapshotAboveTheFloorLaunches() public {
         address quote = address(quoteCoin);
         _mockLiveRate(quote, QC_PER_ETH / 2);
-        assertApproxEqRel(_openingCapInQuote(quote, 6), 3_937.5e18, 0.0101e18, "2.25 ETH at half the rate");
+        assertApproxEqRel(_openingCapInQuote(quote, 6), 1_968.75e18, 0.0101e18, "1.125 ETH at half the rate");
     }
 
-    /// @dev A price pool pushed so the quote looks 100x dearer would open the pair at 0.0225 ETH of real
+    /// @dev A price pool pushed so the quote looks 100x dearer would open the pair at 0.01125 ETH of real
     ///      value: the snapshot bound refuses it, in the preview and in `createToken`.
     function test_launchPrice_pushedLiveRateUnderTheFloorReverts() public {
         address quote = address(quoteCoin);
@@ -609,19 +603,19 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         _launchAt(quote, abi.encodeWithSelector(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector));
     }
 
-    /// @dev A live rate 200x above the listed one would open at 450 ETH in snapshot terms, over the cap.
+    /// @dev A live rate 200x above the listed one would open at 225 ETH in snapshot terms, over the cap.
     function test_launchPrice_liveRateOverTheCapReverts() public {
         address quote = address(quoteCoin);
         _mockLiveRate(quote, QC_PER_ETH * 200);
         _launchAt(quote, abi.encodeWithSelector(RealmFactoryUniV4Direct.LaunchPriceOutOfBounds.selector));
     }
 
-    /// @dev Twenty-seven decimals at 1:1 with ETH: 2.25 units, as for native.
+    /// @dev Twenty-seven decimals at 1:1 with ETH: 1.125 units, as for native.
     function test_launchPrice_27DecimalQuote() public {
         address quote = HIGH_QUOTE;
         vm.etch(quote, address(new QuoteCoin27()).code);
         _whitelist(quote, 1e18);
-        assertApproxEqRel(_openingCapInQuote(quote, 27), 2.25e18, 0.0101e18, "2.25 units");
+        assertApproxEqRel(_openingCapInQuote(quote, 27), 1.125e18, 0.0101e18, "1.125 units");
     }
 
     /// @dev At an absurd rate (4.4e19 units per ETH, a ~9.9e19-unit cap) Uniswap's per-tick liquidity
@@ -996,8 +990,8 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
         _accrue(token, third, 4_000e6);
         token.processLiquidity(third);
-        (uint256[2] memory ids,) = token.getLiquidityWalls(third);
-        assertGt(ids[0], 0, "the last quote's liquidity buffer placed a wall");
+        (,, uint256 wall) = lpLocker.nextWall(address(token), third);
+        assertGt(wall, 0, "the last quote's liquidity buffer placed a wall");
     }
 
     /// @dev The `MAX_PAIRS` launch: native plus two ERC20s, one `PoolSeeded` per pool in pair order with
@@ -1085,8 +1079,8 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
     }
 
     /// @dev A dev buy that buys out the whole band and still has quote left reverts rather than stranding
-    ///      the remainder. At ~7.9e-18 raw QC per raw coin (the 7,875 QC opening cap) the full band costs
-    ///      ~7.9e37 raw QC, so 1e39 cannot be filled.
+    ///      the remainder. At ~3.9e-18 raw QC per raw coin (the 3,937.5 QC opening cap) the full band costs
+    ///      ~3.9e37 raw QC, so 1e39 cannot be filled.
     function test_devBuy_largerThanTheBandCanFillReverts() public {
         uint256 spend = 1e39;
         quoteCoin.mintTo(creator, spend);
@@ -1276,49 +1270,40 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
 
     /////////////////////////// earnings legs on ERC20 quotes, edges ///////////////////////////
 
-    /// @dev Once the price has moved past `LIQUIDITY_WALL_REUSE_MAX_GAP` (2,000 ticks) away from the first
-    ///      wall, the next deposit mints a SECOND wall, and the two-entry memory rotates: the new one
-    ///      first, the old one second, untouched.
-    function _newWallRotatesTheMemory(address quote) internal {
+    /// @dev Once the price has moved into another grid range, the next deposit mints a SECOND wall
+    ///      there, leaving the first untouched — in either orientation of the quote.
+    function _newRangeMintsASecondWall(address quote) internal {
         RealmTaxableTokenUniV4 token = _launchEarning(quote, _emptyAntiSniperCfg());
         _accrue(token, quote, 4_000e6);
         IPositionManager posm = IPositionManager(positionManagerAddress);
 
         token.processLiquidity(quote);
-        (uint256[2] memory first, int24[2] memory firstLowers) = token.getLiquidityWalls(quote);
-        uint128 firstLiquidity = posm.getPositionLiquidity(first[0]);
+        (int24 firstLower,, uint256 first) = lpLocker.nextWall(address(token), quote);
+        uint128 firstLiquidity = posm.getPositionLiquidity(first);
 
-        // 20k QC into a ~1e5 QC market cap lifts the price ~44%, ~3,600 ticks.
-        QuoteCoin(quote).mintTo(alice, 20_000e6);
-        _swapQuotePool(alice, address(token), quote, true, 20_000e6);
-        CorePoolKey memory key = UniswapV4PoolConstants.realmPoolKey(
-            address(token), quote, TEST_ANYPAIR_HOOK_ADDRESS, _poolFee(address(token))
-        );
-        (, int24 tick,,) = IPoolManager(poolManagerAddress).getSlot0(key.toId());
-        // A quote-only wall sits above the tick when the quote is currency0, below it (14,000 wide) otherwise.
-        int24 gap = quote < address(token) ? firstLowers[0] - tick : tick - (firstLowers[0] + 14_000);
-        assertGt(gap, 2_000, "precondition: the first wall is past the reuse gap");
+        QuoteCoin(quote).mintTo(alice, 100_000e6);
+        _swapQuotePool(alice, address(token), quote, true, 100_000e6);
+        (int24 lower,, uint256 next) = lpLocker.nextWall(address(token), quote);
+        assertTrue(lower != firstLower && next == 0, "precondition: the price moved into an unwalled range");
 
         vm.roll(block.number + 1);
         token.processLiquidity(quote);
 
-        (uint256[2] memory ids, int24[2] memory lowers) = token.getLiquidityWalls(quote);
-        assertGt(ids[0], first[0], "a fresh wall was minted");
-        assertEq(IERC721(positionManagerAddress).ownerOf(ids[0]), address(lpLocker), "held by the locker");
-        (address wallToken, address wallQuote, bool isWall) = lpLocker.positionMeta(ids[0]);
+        (,, uint256 wall) = lpLocker.nextWall(address(token), quote);
+        assertGt(wall, first, "a fresh wall was minted");
+        assertEq(IERC721(positionManagerAddress).ownerOf(wall), address(lpLocker), "held by the locker");
+        (address wallToken, address wallQuote, bool isWall) = lpLocker.positionMeta(wall);
         assertTrue(wallToken == address(token) && wallQuote == quote && isWall, "registered as the token's wall");
-        assertTrue(lowers[0] != firstLowers[0], "at the moved price");
-        assertEq(ids[1], first[0], "the first wall moved to the second entry");
-        assertEq(lowers[1], firstLowers[0], "with its own lower tick");
-        assertEq(posm.getPositionLiquidity(first[0]), firstLiquidity, "and was not topped up");
+        assertEq(lpLocker.wallAt(address(token), quote, firstLower), first, "the first wall keeps its range");
+        assertEq(posm.getPositionLiquidity(first), firstLiquidity, "and was not topped up");
     }
 
-    function test_processLiquidity_quoteAsCurrency0_newWallRotatesTheMemory() public {
-        _newWallRotatesTheMemory(_placeQuote(LOW_QUOTE, false));
+    function test_processLiquidity_quoteAsCurrency0_newRangeMintsASecondWall() public {
+        _newRangeMintsASecondWall(_placeQuote(LOW_QUOTE, false));
     }
 
-    function test_processLiquidity_quoteAsCurrency1_newWallRotatesTheMemory() public {
-        _newWallRotatesTheMemory(_placeQuote(HIGH_QUOTE, false));
+    function test_processLiquidity_quoteAsCurrency1_newRangeMintsASecondWall() public {
+        _newRangeMintsASecondWall(_placeQuote(HIGH_QUOTE, false));
     }
 
     /// @dev Once per block per quote, for each leg separately; the next block reopens both.

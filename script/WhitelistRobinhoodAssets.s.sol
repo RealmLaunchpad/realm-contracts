@@ -22,7 +22,10 @@ import {ChainConfig} from "script/ChainConfig.sol";
 /// @notice The file is a REGISTRY with an `enabled` flag per entry, and it also DELISTS. An enabled entry
 ///         is listed; a disabled one keeps its pool in the file and is retired here if the chain still
 ///         prices it, skipped if it does not. So one file serves a fresh whitelist (list everything
-///         enabled, send nothing for the rest) and a live one (refresh, and retire what was switched off).
+///         enabled, send nothing for the rest) and a live one (list what is new, retire what was switched off).
+///
+/// @notice An entry already listed with the file's exact price source is skipped: the keeper refreshes
+///         live rates (`refreshRates`), so re-listing would only burn gas. A changed source is re-listed.
 ///
 /// @dev RE-GENERATE THE FILE FIRST (`just discover-whitelist-assets-rh`). A listing's rate is a snapshot
 ///      taken now, from the pool named in the file, and both the pool choice and the price in it age.
@@ -121,6 +124,11 @@ contract WhitelistRobinhoodAssets is Script {
         for (uint256 i; i < assets.length; ++i) {
             // Nothing to retire: a disabled entry the chain does not price costs no transaction.
             if (_isDelisting(sources[i]) && whitelist.unitsPerNativeX18(assets[i]) == 0) continue;
+            // Nothing to list: already priced from this exact source; the keeper keeps its rate fresh.
+            if (
+                !_isDelisting(sources[i]) && whitelist.unitsPerNativeX18(assets[i]) != 0
+                    && keccak256(abi.encode(whitelist.priceSource(assets[i]))) == keccak256(abi.encode(sources[i]))
+            ) continue;
             try whitelist.setWhitelisted(assets[i], sources[i]) {
                 // A delisting succeeds by leaving the asset unpriced, a listing by pricing it.
                 live[i] = (whitelist.unitsPerNativeX18(assets[i]) != 0) != _isDelisting(sources[i]);

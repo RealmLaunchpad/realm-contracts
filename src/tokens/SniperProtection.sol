@@ -140,6 +140,8 @@ abstract contract SniperProtection {
     ///        - `to == _lpLockerOf(graduatorAddr)`: the pool paying the locker its collected fees, which
     ///          the per-tx cap would read as a buy. Capped, a large `collect` (and so `addWall`, which
     ///          collects first, and `processLiquidity`) would revert.
+    ///        - `to == REALM_SWAPPER`: the router handing the whole token-fee bucket to the swapper in
+    ///          `convertTokenFees`. Capped, a bucket above the wallet cap could not be converted.
     ///        - `sniperBypass[to]`: dev-supplied whitelist.
     /// @dev Launchpad fees are ignored in the cap math.
     /// @dev Call only while the window is open: this does not check it.
@@ -174,6 +176,7 @@ abstract contract SniperProtection {
         // LP fee plumbing
         if (to == LP_FEE_ROUTER) return;
         if (to == _lpLockerOf(graduatorAddr)) return;
+        if (to == DeploymentAddresses.REALM_SWAPPER) return;
 
         if (sniperBypass[to]) return;
 

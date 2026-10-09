@@ -9,7 +9,7 @@ import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {RealmCreatorVault} from "src/vaults/RealmCreatorVault.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmQuoter} from "src/RealmQuoter.sol";
-import {IRealmQuoter2} from "src/interfaces/IRealmQuoter2.sol";
+import {IRealmQuoter} from "src/interfaces/IRealmQuoter.sol";
 import {LimitReason} from "src/interfaces/IRealmQuoter.sol";
 
 /// @notice End-to-end tests for the creator-vault feature: createToken-with-vaults across the
@@ -360,7 +360,7 @@ contract CreatorVaultsE2ETest is LaunchpadBaseTestsWithUniv2Graduator {
         address token = _createCurve(_one(_vault(vaultOwner, 3000, 0, 1 days)));
 
         uint256 ethValue = 0.1 ether;
-        IRealmQuoter2.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer, ethValue);
+        IRealmQuoter.BuyExactEthQuote memory q = quoter.quoteBuyTokensWithExactEth(token, buyer, ethValue);
         assertEq(uint256(q.reason), uint256(LimitReason.NONE), "quote should be valid");
         assertGt(q.tokensToReceive, 0, "non-zero tokens");
 

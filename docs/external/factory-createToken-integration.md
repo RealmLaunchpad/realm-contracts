@@ -1,6 +1,6 @@
 # Unified Factory `createToken` — Integrator Guide
 
-How to deploy a Realm token by calling `RealmFactoryUniV2Unified`. This doc is the contract surface only — for the off-chain CREATE2 mining step see [`salt-mining-guide.md`](../salt-mining-guide.md), and for the full per-tx event trace see [`events-per-entry-point.md`](../events-per-entry-point.md).
+How to deploy a Realm token by calling `RealmFactoryUniV2Unified`. This doc is the contract surface only — for the off-chain CREATE2 address prediction see [`salt-mining-guide.md`](../salt-mining-guide.md), and for the full per-tx event trace see [`events-per-entry-point.md`](../events-per-entry-point.md).
 
 ---
 
@@ -12,13 +12,13 @@ One factory is whitelisted on the launchpad:
 |---|---|---|---|
 | `RealmFactoryUniV2Unified` | Uniswap V2 | 5% (500 bps) | Always renounced by default (`tokenOwner = address(0)`) |
 
-Uniswap V4 tokens launch through `RealmFactoryUniV4Direct` instead (no bonding curve, no launchpad), which this guide does not cover — see [`events-per-entry-point.md`](../events-per-entry-point.md) §1.3. Its `DirectPair` is `{quote, weightBps}` with no price field: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (2.25 ETH) market cap, priced live per quote from the assets whitelist; read `previewLaunchTick(quote)` for the tick, price and market cap a launch would get.
+Uniswap V4 tokens launch through `RealmFactoryUniV4Direct` instead (no bonding curve, no launchpad), which this guide does not cover — see [`events-per-entry-point.md`](../events-per-entry-point.md) §1.3. Its `DirectPair` is `{quote, weightBps}` with no price field: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (1.125 ETH) market cap, priced live per quote from the assets whitelist; read `previewLaunchTick(quote)` for the tick, price and market cap a launch would get.
 
 The factory dispatches between four token implementations at create time, based on whether you populate `taxCfg` and/or `antiSniperCfg`:
 
 - base, anti-sniper, tax, tax + anti-sniper.
 
-The dispatched implementation determines the CREATE2 initcode, so you **must** mine the salt against the implementation `previewTokenImplementation(...)` returns for your exact inputs (see §3).
+The dispatched implementation determines the CREATE2 initcode, so you **must** predict the address against the implementation `previewTokenImplementation(...)` returns for your exact inputs (see §3).
 
 ---
 
@@ -73,10 +73,10 @@ struct AntiSniperConfigs {
 1. Build the exact `(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` you intend to submit.
 2. Call `factory.previewTokenImplementation(feeReceivers, supplyShares, taxCfg, antiSniperCfg)` (view). This runs the same validation as `createToken` for the tax and anti-sniper sentinels, and returns the implementation that will be cloned.
 3. (Optional) If `msg.value > 0`, call `factory.quoteBuyOnDeploy(tokenAmount)` to get the ETH amount that yields exactly `tokenAmount` tokens after the launchpad buy fee. The deploy buy is uncapped except by graduation — call `factory.maxBuyOnDeploy(liquidityTier, totalLockedInVaultsBps)` for the max token amount that reaches graduation without reverting `MaxEthReservesExceeded`.
-4. Mine `salt` so that `Clones.predictDeterministicAddress(implementation, salt, factory)` ends in `0xeeaa` (see [`salt-mining-guide.md`](../salt-mining-guide.md)). Statistically ~65k iterations.
+4. Pick any unused `salt` (e.g. random). The token address is predictable from it (see [`salt-mining-guide.md`](../salt-mining-guide.md)).
 5. Submit `factory.createToken(name, symbol, salt, … same args …)` with `value: ethToSpend`.
 
-If the dispatch-relevant inputs differ between preview and submit, the cloned address will not match what you mined and the call reverts with `InvalidTokenAddress`.
+If the dispatch-relevant inputs differ between preview and submit, the cloned address will not match the prediction.
 
 ---
 
@@ -85,7 +85,7 @@ If the dispatch-relevant inputs differ between preview and submit, the cloned ad
 In order, every successful call performs:
 
 1. **Validation** of `name`/`symbol`, `feeReceivers`, `supplyShares` vs `msg.value`, `antiSniperCfg` sentinel consistency, `taxCfg` (caps + charity-mode rules).
-2. **Clone** the dispatched implementation via `Clones.cloneDeterministic` and assert the `0xeeaa` suffix.
+2. **Clone** the dispatched implementation via `Clones.cloneDeterministic`.
 3. **Emit `TokenCreated`** *before* `initialize()` — the indexer creates the entity off this event, so events emitted during initialization depend on it.
 4. **Initialize** the cloned token (mints `TOTAL_SUPPLY` to the launchpad, sets graduator/launchpad/feeHandler immutables, applies tax/anti-sniper configs).
 5. **`LAUNCHPAD.launchToken(token, BONDING_CURVE)`** — registers the token in the launchpad and emits `TokenLaunched`. The factory **must be whitelisted** on the launchpad or this reverts with `UnauthorizedFactory`.
@@ -106,7 +106,6 @@ All errors are `error Foo()` (4-byte selectors).
 |---|---|
 | `bytes(name).length == 0` or `bytes(symbol).length == 0` | `InvalidNameOrSymbol` |
 | `bytes(symbol).length > 96` | `InvalidNameOrSymbol` |
-| Cloned address does not end in `0xeeaa` (wrong salt for dispatched impl) | `InvalidTokenAddress` |
 
 ### Fee receivers (`feeReceivers`)
 
@@ -235,8 +234,8 @@ const impl = await factoryV2.read.previewTokenImplementation(
   [feeReceivers, supplyShares, taxCfg, antiSniperCfg],
 );
 
-// 2. Mine a 0xeeaa-suffixed salt against (factory, impl). See salt-mining-guide.md.
-const salt = findValidSalt(factoryAddress, impl);
+// 2. Pick any unused salt. To predict the address, see salt-mining-guide.md.
+const salt = toHex(crypto.getRandomValues(new Uint8Array(32)));
 
 // 3. Quote ETH for the deployer buy (optional).
 const ethValue = await factoryV2.read.quoteBuyOnDeploy([50_000_000n * 10n ** 18n]);

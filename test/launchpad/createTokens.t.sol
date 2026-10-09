@@ -108,30 +108,22 @@ contract RealmTokenDeploymentTest is LaunchpadBaseTestsWithUniv2Graduator {
         );
     }
 
-    function testCannotCreateTokenWithWrongEnding() public {
-        bytes32 correctSalt = _nextValidSalt(address(factoryV2), address(realmToken));
+    function testCanCreateTokenWithAnyAddressSuffix() public {
+        // the factory accepts any salt, whatever suffix its address ends up with
+        bytes32 salt = keccak256("any salt");
+        address predicted = _predictToken(address(factoryV2), address(realmToken), creator, salt);
+        assertTrue(uint16(uint160(predicted)) != 0xeeaa);
 
-        vm.startPrank(creator);
-        vm.expectRevert(abi.encodeWithSelector(IRealmFactory.InvalidTokenAddress.selector));
-        factoryV2.createToken(
-            _setupTiered("TestToken1", "TEST", bytes32(uint256(correctSalt) + 1), _fs(creator)),
+        vm.prank(creator);
+        address token = factoryV2.createToken(
+            _setupTiered("TestToken1", "TEST", salt, _fs(creator)),
             _noAlloc(_emptyTaxCfg()),
             _noSs(),
             _emptyAntiSniperCfg(),
             _noVaults(),
             address(0)
         );
-
-        // with correct salt it should succeed
-        factoryV2.createToken(
-            _setupTiered("TestToken1", "TEST", correctSalt, _fs(creator)),
-            _noAlloc(_emptyTaxCfg()),
-            _noSs(),
-            _emptyAntiSniperCfg(),
-            _noVaults(),
-            address(0)
-        );
-        vm.stopPrank();
+        assertEq(token, predicted);
     }
 
     function testCanCreateTokenWithDuplicateSymbol() public {

@@ -14,7 +14,7 @@ import {DeployRealmVoting} from "script/DeployRealmVoting.s.sol";
 
 /// @title Deploy the treasury stack: `RealmVoting`, `RealmTreasuryRouter`, and the `SwapLpFeeRouter` upgrade
 /// @notice One broadcast: (0) `RealmVoting`, impl + proxy, when the manifest has none yet; (1) the
-///         `RealmTreasuryRouter` impl + UUPS proxy (2/3 to the team treasury, 1/3 to voting); (2) a
+///         `RealmTreasuryRouter` impl + UUPS proxy (everything to the team treasury); (2) a
 ///         `SwapLpFeeRouter` impl whose `TREASURY` is that proxy, with the live `LP_FEE_ROUTER` upgraded
 ///         onto it; (3) `setTreasuryAddress` on the launchpad, which the graduators read. After this every
 ///         treasury push in the protocol flows through the router — except the hook's own fallback, which
@@ -60,11 +60,7 @@ contract DeployRealmTreasuryStack is DeployRealmVoting {
         address votingImpl;
         if (voting == address(0)) (voting, votingImpl) = _deployVoting();
         ChainConfig.Infra memory infra = ChainConfig.infra();
-        address routerImpl = address(
-            new RealmTreasuryRouter(
-                teamTreasury, voting, infra.univ4UniversalRouter, infra.permit2, infra.keepersRegistry
-            )
-        );
+        address routerImpl = address(new RealmTreasuryRouter(teamTreasury));
         address routerProxy = address(new ERC1967Proxy(routerImpl, abi.encodeCall(RealmTreasuryRouter.initialize, ())));
         address lpImpl = address(new SwapLpFeeRouter(routerProxy, infra.realmSwapper, infra.keepersRegistry));
         UUPSUpgradeable(lpFeeRouter).upgradeToAndCall(lpImpl, "");
@@ -73,7 +69,6 @@ contract DeployRealmTreasuryStack is DeployRealmVoting {
 
         RealmTreasuryRouter router = RealmTreasuryRouter(payable(routerProxy));
         require(router.TREASURY() == teamTreasury, "post: router treasury mismatch");
-        require(router.VOTING() == voting, "post: router voting mismatch");
         require(router.owner() == broadcaster, "post: router owner mismatch");
         require(SwapLpFeeRouter(payable(lpFeeRouter)).TREASURY() == routerProxy, "post: LP router not repointed");
         require(RealmLaunchpad(launchpad).treasury() == routerProxy, "post: launchpad not repointed");

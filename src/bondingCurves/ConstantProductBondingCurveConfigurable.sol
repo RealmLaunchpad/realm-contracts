@@ -21,6 +21,9 @@ import {IRealmBondingCurve} from "../interfaces/IRealmBondingCurve.sol";
 ///         because the launchpad enforces the same graduation window for every token regardless of
 ///         which curve it uses. Only `K`, `T0`, `E0` change between instances.
 contract ConstantProductBondingCurveConfigurable is IRealmBondingCurve {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     // the bonding curve follows the constant product formula:
     // K = (t + T0) * (e + E0)
     // `t` is the reserves of the token in the bonding curve (not sold yet)

@@ -34,6 +34,9 @@ contract SwapLpFeeRouter is
     OwnableUpgradeable,
     UUPSUpgradeable
 {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     /// @notice Basis points denominator (10000 = 100%).
@@ -217,7 +220,11 @@ contract SwapLpFeeRouter is
         pendingTokenFees[token][quote] = 0;
 
         IERC20(token).forceApprove(REALM_SWAPPER, tokenIn);
+        // ERC20: split what arrived, not what the swapper reports, so a fee-on-transfer quote cannot
+        // overdraw the split.
+        uint256 balanceBefore = quote == address(0) ? 0 : IERC20(quote).balanceOf(address(this));
         quoteOut = IRealmSwapper(REALM_SWAPPER).sellToken(token, quote, tokenIn, minOut, address(this));
+        if (quote != address(0)) quoteOut = IERC20(quote).balanceOf(address(this)) - balanceBefore;
         emit LpTokenFeesConverted(token, quote, tokenIn, quoteOut);
 
         if (quote == address(0)) _splitNative(token, quoteOut);

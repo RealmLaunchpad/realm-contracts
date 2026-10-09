@@ -26,6 +26,9 @@ import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/ex
 /// @dev SWAPS ARE MANUAL. `processWinner` hands native to the calling admin, in as many slices as it likes,
 ///      who buys the winner off-chain-decided venues. Purchases are attributed by watching that wallet.
 contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     struct Round {
         uint40 startTime;
         uint40 endTime;

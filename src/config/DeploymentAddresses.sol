@@ -87,7 +87,7 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      so no third-asset token can be created, and `_swapNativeToDividendAsset`'s `code.length`
     ///      guard stops a conversion handing its native to an address that cannot give it back. Native
     ///      and self-token payouts are unaffected either way.
-    address public constant REALM_SWAPPER = 0x00b87AAEd1D51675Fd1AF7731Da5fCe0eA008deF;
+    address public constant REALM_SWAPPER = 0x5C8eaB542DF0F47983a0a588002044B2aAe6679B;
 
     /// @notice The `RealmKeepersRegistry`: the set of addresses allowed to trigger a token's out-of-band
     ///         earnings conversions (`processDividends`, `processBurn`, `processLiquidity`).
@@ -96,7 +96,7 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      here; the impl deploy scripts assert it has code before broadcasting. Left unset everything
     ///      fails closed — `_requireKeeper` reverts on the codeless address, so no conversion runs at
     ///      all, which is the safe direction for a gate.
-    address public constant REALM_KEEPERS_REGISTRY = 0xbc354a731940bDceBC0FAD24E609b3fa3c6A437e;
+    address public constant REALM_KEEPERS_REGISTRY = 0x1BC0ABC8131A8e3C721795874b09D2186B78Cb88;
 
     /// @notice The `SwapLpFeeRouter` PROXY (UUPS): where `RealmLpLocker` forwards collected LP fees and
     ///         where token-side fees wait (`pendingTokenFees`) for a keeper's `convertTokenFees`.
@@ -109,7 +109,7 @@ library DeploymentAddressesRobinhoodMainnet {
     ///         and into the pre-upgrade `SwapLpFeeRouter` impl, so funds can keep landing here; kept so
     ///         nobody forgets to sweep it.
     address public constant LEGACY_TREASURY = 0x7826AaE926AfD2886257976770e93e0240D2426e;
-    /// @notice Team treasury multisig: the 2/3 leg of `RealmTreasuryRouter`.
+    /// @notice Team treasury multisig: where `RealmTreasuryRouter` forwards everything.
     address public constant TEAM_TREASURY = 0x24CF0733F2b6F9407ab34E2BE9059C16A33cFE8D;
     /// @notice Ops wallet that pulls each round's 1/3 from `RealmVoting` (`processWinner`) and buys the
     ///         winner. Set as a voting admin at deploy.
@@ -117,7 +117,7 @@ library DeploymentAddressesRobinhoodMainnet {
     /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
     ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
     ///         2026-09-26; `TEAM_TREASURY` before that.
-    address public constant REALM_TREASURY = 0x9756b155415A69eEAF5829C1DC52cE6e8874B98E;
+    address public constant REALM_TREASURY = 0x8F597ad86F07F3d1CF3Eb90eB1089ed6BDCbb6E2;
 }
 
 /// @title Deployment Address Constants for Robinhood Chain Testnet (chain id 46630)
@@ -222,12 +222,13 @@ library DeploymentAddressesRobinhoodTestnet {
     ///      deploy scripts assert it has code. A new proxy means new token impls; an upgrade does not.
     address public constant LP_FEE_ROUTER = 0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0;
     /// @notice Realm Treasury. Consumed by core contracts at deploy time: the address every treasury push
-    ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest) since
-    ///         2026-09-14; the `realm.dev` EOA before that.
-    address public constant REALM_TREASURY = 0x2BE1D41df10E674f9E07195cAA0B16Cb1acB88C8;
+    ///         lands on. The `RealmTreasuryRouter` proxy (`TREASURY_ROUTER` in the manifest), redeployed
+    ///         with REALM on 2026-10-03; the previous router `0x2BE1D41df10E674f9E07195cAA0B16Cb1acB88C8`
+    ///         from 2026-09-14; the `realm.dev` EOA before that.
+    address public constant REALM_TREASURY = TEAM_TREASURY;
 
-    /// @notice The wallet on the 2/3 leg of `RealmTreasuryRouter`. Separate from `REALM_TREASURY`, which
-    ///         became the router proxy itself once the router went live: resolving the leg from that would
+    /// @notice The wallet `RealmTreasuryRouter` forwards everything to. Separate from `REALM_TREASURY`, which
+    ///         became the router proxy itself once the router went live: resolving it from that would
     ///         have the router forwarding to its own address.
     /// @dev The dev deployer on this chain, not a multisig — Robinhood mainnet is the only chain with a
     ///      dedicated one. Rotated from `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb`, which the router

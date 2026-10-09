@@ -8,16 +8,16 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmBondingCurve} from "src/interfaces/IRealmBondingCurve.sol";
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
-import {IRealmLaunchpad2} from "src/interfaces/IRealmLaunchpad2.sol";
+import {IRealmLaunchpad} from "src/interfaces/IRealmLaunchpad.sol";
 import {TokenConfig, TokenState, TokenDataLib} from "src/types/tokenData.sol";
 
-contract RealmLaunchpad is IRealmLaunchpad2, Ownable2Step, ReentrancyGuardTransient {
+contract RealmLaunchpad is IRealmLaunchpad, Ownable2Step, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
     using TokenDataLib for TokenConfig;
     using TokenDataLib for TokenState;
 
-    /// @notice Version of the Realm stack this contract belongs to
-    string public constant VERSION = "2.0";
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
 
     /// @notice Authorized factories
     mapping(address factory => bool authorized) public whitelistedFactories;

@@ -1,7 +1,7 @@
 {
  "chainId": 46630,
  "reference": "USDG",
- "referencePerNative": 2667.109846,
+ "referencePerNative": 1099.115202,
  "assets": [
   "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
   "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
@@ -119,9 +119,9 @@
    "rstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 20.1229,
+   "depthNative": 31.3466,
    "priceUsd": 1.0,
-   "perNative": 2667.10984581
+   "perNative": 1099.11520226
   },
   {
    "symbol": "GOOGL",
@@ -129,9 +129,9 @@
    "rstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 23.7982,
-   "priceUsd": 425.58465726,
-   "perNative": 6.26693139
+   "depthNative": 25.5295,
+   "priceUsd": 201.82840614,
+   "perNative": 5.44579043
   },
   {
    "symbol": "TSLA",
@@ -139,9 +139,9 @@
    "rstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 23.6226,
-   "priceUsd": 454.47153682,
-   "perNative": 5.86859601
+   "depthNative": 25.5376,
+   "priceUsd": 218.88317822,
+   "perNative": 5.02146949
   },
   {
    "symbol": "AAPL",
@@ -150,7 +150,7 @@
    "venue": "v4",
    "quote": "native",
    "depthNative": 26.7483,
-   "priceUsd": 517.34014931,
+   "priceUsd": 213.19572711,
    "perNative": 5.15542791
   },
   {
@@ -159,9 +159,9 @@
    "rstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 1.2,
-   "priceUsd": 389.35910158,
-   "perNative": 6.85
+   "depthNative": 1.2257,
+   "priceUsd": 167.41046072,
+   "perNative": 6.56539142
   },
   {
    "symbol": "NVDA",
@@ -170,7 +170,7 @@
    "venue": "v4",
    "quote": "native",
    "depthNative": 22.1301,
-   "priceUsd": 247.22781953,
+   "priceUsd": 101.8825135,
    "perNative": 10.78806524
   },
   {
@@ -179,9 +179,9 @@
    "rstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 19.4686,
-   "priceUsd": 790.11017109,
-   "perNative": 3.37561766
+   "depthNative": 19.7861,
+   "priceUsd": 336.3083024,
+   "perNative": 3.26817743
   },
   {
    "symbol": "AMZN",
@@ -189,9 +189,9 @@
    "rstock": false,
    "venue": "v4",
    "quote": "native",
-   "depthNative": 24.2278,
-   "priceUsd": 337.11788912,
-   "perNative": 7.91150494
+   "depthNative": 26.5466,
+   "priceUsd": 166.79217107,
+   "perNative": 6.58972897
   },
   {
    "symbol": "pHOOD3x",
@@ -199,9 +199,9 @@
    "rstock": false,
    "venue": "v4",
    "quote": "USDG",
-   "depthNative": 1.8747,
-   "priceUsd": 1.0,
-   "perNative": 2667.10984581
+   "depthNative": 6.1575,
+   "priceUsd": 1.83210432,
+   "perNative": 599.91955047
   }
  ],
  "rejected": []

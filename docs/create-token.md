@@ -2,7 +2,7 @@
 
 The curve factory, `RealmFactoryUniV2Unified` (bonding curve, graduates to Uniswap V2), has exactly ONE `createToken`.
 
-The direct-launch venue (`RealmFactoryUniV4Direct`) is documented in `docs/events-per-entry-point.md` §1.3. Its pairs carry no price: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (2.25 ETH) market cap, converted to an ERC20 quote at its live whitelist rate; `previewLaunchTick(quote)` shows the resulting tick, price and market cap.
+The direct-launch venue (`RealmFactoryUniV4Direct`) is documented in `docs/events-per-entry-point.md` §1.3. Its pairs carry no price: every pair opens at a fixed `LAUNCH_MARKET_CAP_X18` (1.125 ETH) market cap, converted to an ERC20 quote at its live whitelist rate; `previewLaunchTick(quote)` shows the resulting tick, price and market cap.
 
 ## Signatures
 
@@ -31,7 +31,7 @@ function createToken(
 |---|---|---|
 | `name` | `string` | Token name. Non-empty. |
 | `symbol` | `string` | Token symbol. Non-empty, **≤ 96 bytes**. |
-| `salt` | `bytes32` | Mined so the token address ends in `0xeeaa` — see [Salt mining](#salt-mining). |
+| `salt` | `bytes32` | Any unused value (e.g. random); determines the token address — see [Salt](#salt). |
 | `feeShares` | `FeeShare[]` | Fee recipients (see below). |
 | `liquidityTier` | `uint8` enum | `LiquidityTier`: `0 = THIN`, `1 = DEFAULT`, `2 = THICK`. **Set it explicitly** — a zero-initialised field resolves to `THIN`, not `DEFAULT`. Controls post-graduation pool depth / graduation mcap (THIN 1.75 ETH / DEFAULT 3.5 ETH / THICK 7.0 ETH). |
 
@@ -145,7 +145,6 @@ All errors are 4-byte custom errors.
 | revert | when |
 |---|---|
 | `InvalidNameOrSymbol` | empty `name`; empty `symbol`; or `symbol` > 96 bytes. |
-| `InvalidTokenAddress` | cloned address doesn't end in `0xeeaa` (salt not mined against the dispatched impl / wrong deployer). |
 | `InvalidFeeReceiver` | `feeShares` empty, contains `address(0)`, or has duplicate accounts. |
 | `InvalidShares` | any `shares == 0`, or `feeShares` / `buyOnDeployShares` sum ≠ `10_000`. |
 | `MultipleDirectFeeReceivers` | more than one `feeShares` entry with `directFeesEnabled == true`. |
@@ -169,10 +168,10 @@ All errors are 4-byte custom errors.
 
 ---
 
-## Salt mining
+## Salt
 
 The token is a `Clones.cloneDeterministic` proxy; its address is a function of
-`(factory, impl, msg.sender, salt)`. The address **must end in `0xeeaa`** (else `InvalidTokenAddress`).
+`(factory, impl, msg.sender, salt)`. Any unused salt is accepted; predicting the address is optional.
 
 Two things to get right:
 
@@ -180,9 +179,9 @@ Two things to get right:
    (`taxDurationSeconds != 0` **or** `taxDecayDuration != 0`) or configures an earnings allocation,
    else `TOKEN_IMPL_BASE`. Anti-sniper does **not** change the impl. Get the exact impl from
    `previewTokenImplementation(...)` called with the same arguments as `createToken` (view; it runs
-   the same tax/anti-sniper validation and returns the impl to mine against).
+   the same tax/anti-sniper validation and returns the impl to predict against).
 2. **Deployer namespacing** — the effective CREATE2 salt is `keccak256(abi.encodePacked(msg.sender, salt))`.
-   Mine with the exact account that will send `createToken`. A salt mined for one sender yields a
+   Predict with the exact account that will send `createToken`. A salt used by one sender yields a
    different address for another (this is the front-run defense — a salt lifted from a pending tx is
    useless to anyone else).
 
@@ -195,20 +194,15 @@ const PROXY_PREFIX = "0x3d602d80600a3d3981f3363d3d373d3d3d363d73";
 const PROXY_SUFFIX = "0x5af43d82803e903d91602b57fd5bf3";
 
 // impl = previewTokenImplementation(...); deployer = the createToken sender
-function findValidSalt(factory, impl, deployer) {
+function predictToken(factory, impl, deployer, salt) {
   const initcodeHash = keccak256(concat([PROXY_PREFIX, impl, PROXY_SUFFIX]));
-  for (let i = 0n; ; i++) {
-    const salt = pad(toHex(i), { size: 32 });
-    const effectiveSalt = keccak256(encodePacked(["address", "bytes32"], [deployer, salt]));
-    const addr = getCreate2Address({ from: factory, salt: effectiveSalt, bytecodeHash: initcodeHash });
-    if (addr.toLowerCase().endsWith("eeaa")) return { salt, tokenAddress: addr };
-  }
+  const effectiveSalt = keccak256(encodePacked(["address", "bytes32"], [deployer, salt]));
+  return getCreate2Address({ from: factory, salt: effectiveSalt, bytecodeHash: initcodeHash });
 }
 ```
 
-~65k iterations on average (sub-100ms). Recompute the initcode hash whenever the dispatch path
-(tax vs base) changes. If dispatch-relevant inputs differ between preview and submit, the mined
-address won't match and the call reverts with `InvalidTokenAddress`.
+Recompute the initcode hash whenever the dispatch path (tax vs base) changes. If dispatch-relevant
+inputs differ between preview and submit, the token deploys at a different address than predicted.
 
 ---
 
@@ -216,6 +210,6 @@ address won't match and the call reverts with `InvalidTokenAddress`.
 
 1. Build `(tokenSetup, taxAllocationConfigs, buyOnDeployShares, antiSniperConfigs, creatorVaults, referral)`.
 2. `impl = previewTokenImplementation(<the same arguments>)`.
-3. Mine `salt` against `(factory, impl, deployer)` → address ending in `0xeeaa`.
+3. Pick an unused `salt` (e.g. random); optionally predict the address from `(factory, impl, deployer, salt)`.
 4. *(optional)* `value = quoteBuyOnDeploy(liquidityTier, tokenAmount, totalLockedInVaultsBps, taxCfg)`.
 5. `createToken(...)` with `value` (`0` if not buying on deploy).

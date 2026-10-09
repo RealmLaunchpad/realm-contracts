@@ -111,6 +111,9 @@ POOLS_SLOT, LIQUIDITY_OFFSET = 6, 3
 # v4 encodes a hook's permissions in its address. This one lets the hook replace the swap curve, which
 # would leave `slot0` describing a price nothing actually trades at.
 BEFORE_SWAP_RETURNS_DELTA = 1 << 3
+# Realm's own `RealmHookAnyPair` (mainnet, testnet): it sets that bit only to take its fee in the swap
+# delta, never to replace the curve, so `slot0` is still the traded price.
+FEE_ONLY_HOOKS = {"0x24d9308561c322a603370a0c3bead39e05da00cc", "0x87f077ebbe1d9d35d5e4522bf0a4e30adaaf40cc"}
 Q96 = 1 << 96
 
 # Robinhood's public list of its own stock tokens, and where their addresses come from.
@@ -182,6 +185,14 @@ MEMECOINS = {
     "0x20024e485c0b22b42855589700721b28320a7777": "PRISM",
     "0xd7321801caae694090694ff55a9323139f043b88": "JUGGERNAUT",
     "0x57c0e45cb534413d1c20a4240955d6bb250bb4f1": "UP",
+}
+
+# Bridge-stocks shares (mainnet only): address -> ticker. Their USDG pools sit behind `RealmHookAnyPair`,
+# seeded by the `bridge-stocks` presales. Discovered and ranked like an rStock.
+BRIDGE_STOCKS = {
+    "0x56ae4a01bc41c4054662cd467e1b8c144d19b1bf": "HOOD1X",
+    "0xc73b24a207c4eae3686edf6a3fcf21843bdbe7c0": "OPENAI",
+    "0xf33507de3aa3c1386cee1ecfa2882b0b2930b305": "ANTHROPIC",
 }
 
 
@@ -438,7 +449,7 @@ def candidates(asset: str, pools: list[dict], decimals: dict, reference_rate: fl
         d0, d1 = decimals.get(p["t0"]), decimals.get(p["t1"])
         if d0 is None or d1 is None:
             continue
-        if p["v"] == 4 and int(p["hooks"], 16) & BEFORE_SWAP_RETURNS_DELTA:
+        if p["v"] == 4 and int(p["hooks"], 16) & BEFORE_SWAP_RETURNS_DELTA and p["hooks"] not in FEE_ONLY_HOOKS:
             continue  # a custom-curve hook trades at a price of its own, so slot0 is not one
         if p["v"] == 2:
             if not (p.get("r0") and p.get("r1")):
@@ -510,6 +521,7 @@ def main() -> int:
         coins += [{"asset": a, "symbol": f["symbol"]} for a, f in fixed.items()]
         memes = MEMECOINS if CHAIN_ID == 4663 else {}
         coins += [{"asset": a, "symbol": s, "memecoin": True} for a, s in memes.items()]
+        coins += [{"asset": a, "symbol": s} for a, s in (BRIDGE_STOCKS if CHAIN_ID == 4663 else {}).items()]
         if args.only:
             coins = _only(coins, args.only)
             if coins is None:

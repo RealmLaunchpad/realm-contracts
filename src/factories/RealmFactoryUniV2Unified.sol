@@ -24,7 +24,11 @@ import {LiquidityTier} from "src/types/LiquidityTier.sol";
 ///         `MAX_TOTAL_FEE_BPS` (5%). Pre-graduation the launchpad additionally charges
 ///         `V2_LAUNCHPAD_LP_FEE_BPS`, so a trader transiently pays up to 6% on the bonding curve —
 ///         bounded by the launchpad's own (looser) per-trade cap, not by `_validateTotalFee`.
+/// @dev Release: October 2026 redeploy.
 contract RealmFactoryUniV2Unified is RealmFactoryCurveAbstract {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     /// @notice Pre-graduation launchpad LP fee for V2 tokens (bps), charged on every bonding-curve
     ///         trade and split treasury/creator by `V2_LAUNCHPAD_TREASURY_SHARE_BPS`. It exists only
     ///         pre-graduation (V2 has no post-graduation LP fee) and does NOT count against the tax cap
@@ -85,7 +89,7 @@ contract RealmFactoryUniV2Unified is RealmFactoryCurveAbstract {
         AntiSniperConfigs calldata antiSniperConfigs,
         CreatorVault[] calldata creatorVaults,
         address referral
-    ) external payable returns (address token) {
+    ) external payable whileNotPaused returns (address token) {
         EarningsAllocationMultiConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
         bool hasAllocation = alloc.burnBps != 0 || alloc.dividendsBps != 0 || alloc.liquidityBps != 0;
         // Naming payout assets with a zero share would leave dividends silently OFF, forever: clones
@@ -122,7 +126,7 @@ contract RealmFactoryUniV2Unified is RealmFactoryCurveAbstract {
     }
 
     /// @notice Returns which token implementation `createToken` would clone for the same arguments, so a
-    ///         frontend can compute the initcode hash before mining a `0xeeaa` salt. Takes EXACTLY
+    ///         frontend can compute the initcode hash to predict the token address. Takes EXACTLY
     ///         `createToken`'s arguments, so the ABI stays stable whichever inputs dispatch reads later;
     ///         today only the tax config and whether any allocation bucket is set matter.
     function previewTokenImplementation(

@@ -2,9 +2,6 @@
 pragma solidity 0.8.28;
 
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
-import {PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
-import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
-import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "lib/v4-core/src/libraries/TickMath.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
 import {LiquidityAmounts} from "lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
@@ -14,26 +11,6 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
 import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
-
-/// @notice Everything `addOrTopUpSingleSided` needs beyond the pool and the caller's wall memory.
-///         Grouped into a struct so the call fits the stack without `via_ir`.
-struct WallParams {
-    /// @dev Side of the pair to deposit. `address(0)` is native, settled from `msg.value`; an ERC20 is
-    ///      pulled from the caller, who must have approved this contract for `amount`.
-    Currency currency;
-    /// @dev How much of `currency` to place.
-    uint256 amount;
-    /// @dev Width of a FRESH wall, in ticks. Also how the reuse check recovers a remembered wall's far
-    ///      bound from the lower tick the caller kept.
-    int24 tickWidth;
-    /// @dev How far the price may have moved away from a remembered wall and still have it topped up
-    ///      rather than replaced.
-    int24 reuseMaxGap;
-    /// @dev Where the position NFT and the remainder both go. One address, not two: the caller of this
-    ///      form owns the position AND is where the remainder belongs, and splitting them would let a
-    ///      passer-by route a top-up's collected fees somewhere the owner did not choose.
-    address receiver;
-}
 
 /// @notice Minimal surface the graduators and taxable tokens call to add single-sided liquidity.
 interface IRealmUniV4LiquidityAdder {
@@ -47,37 +24,13 @@ interface IRealmUniV4LiquidityAdder {
         address excessReceiver
     ) external payable returns (uint128 liquidity);
 
-    function addSingleSidedEth(
+    function topUpSingleSided(
         PoolKey calldata key,
-        int24 tickLower,
-        int24 tickUpper,
-        address nftReceiver,
-        address excessEthReceiver
+        Currency currency,
+        uint256 amount,
+        uint256 tokenId,
+        address receiver
     ) external payable returns (uint128 liquidity);
-
-    function addSingleSidedEthBelowPrice(
-        PoolKey calldata key,
-        int24 tickWidth,
-        address nftReceiver,
-        address excessEthReceiver
-    ) external payable returns (uint128 liquidity);
-
-    function addOrTopUpSingleSidedEth(
-        PoolKey calldata key,
-        int24 tickWidth,
-        int24 reuseMaxGap,
-        uint256[2] calldata candidateIds,
-        int24[2] calldata candidateTickLowers,
-        address nftReceiver,
-        address excessEthReceiver
-    ) external payable returns (uint128 liquidity, uint256 usedTokenId, int24 usedTickLower);
-
-    function addOrTopUpSingleSided(
-        PoolKey calldata key,
-        WallParams calldata p,
-        uint256[2] calldata candidateIds,
-        int24[2] calldata candidateTickLowers
-    ) external payable returns (uint128 liquidity, uint256 usedTokenId, int24 usedTickLower);
 }
 
 /// @title RealmUniV4LiquidityAdder
@@ -101,26 +54,20 @@ interface IRealmUniV4LiquidityAdder {
 ///      owner is the caller. Granting that approval is safe precisely because this contract is
 ///      non-upgradeable and its whole surface adds liquidity: there is no decrease, no burn and no
 ///      transfer to reach, so an approved-for-all operator can only ever make a position bigger.
-/// @dev The `SWEEP` action sends the POSITION MANAGER's whole native balance to `excessEthReceiver`, not
+/// @dev The `SWEEP` action sends the POSITION MANAGER's whole native balance to the excess receiver, not
 ///      just this call's rounding dust. That is not a drain primitive this contract creates: v4's
 ///      `PositionManager.modifyLiquidities` is itself permissionless and `SWEEP` is reachable through it
 ///      directly, so anyone can already claim anything the POSM holds — which is nothing, by design: it
 ///      settles every delta inside the unlock and holds no native across transactions. Sweeping "all"
 ///      rather than "mine" is the only shape v4 offers, and the two are the same amount here.
-/// @dev ⚠️ The `...Eth` entry points do NOT check that `key.currency0` is native: they deposit
-///      `msg.value` as `currency0` whatever it is. On an ERC20/ERC20 pool they would spend ERC20 already
-///      sitting in this contract (or revert) and strand the ETH sent. Only call them on native pools;
-///      use `addSingleSided` / `addOrTopUpSingleSided` for ERC20 quotes.
 contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
-    using PoolIdLibrary for PoolKey;
-    using StateLibrary for IPoolManager;
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     /// @notice Uniswap V4 position manager that mints the liquidity positions.
     IPositionManager public immutable UNIV4_POSITION_MANAGER;
-
-    /// @notice Uniswap V4 pool manager, read for the pool's current tick.
-    IPoolManager public immutable UNIV4_POOL_MANAGER;
 
     /// @notice Permit2, the only way the position manager pulls an ERC20 settle. Only the ERC20 half of
     ///         `addSingleSided` touches it; the native paths settle straight from `msg.value`.
@@ -128,13 +75,7 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
 
     /// @notice Thrown when called with no ETH — there is nothing to deposit.
     error NoEthProvided();
-    /// @notice Thrown when the requested tick width is not strictly positive.
-    error InvalidTickWidth();
-    /// @notice Thrown by `addSingleSidedEthBelowPrice` when the current tick is so close to `MAX_TICK`
-    ///         (token price collapsed to the absolute tick boundary, ~1e-39 native per token) that no
-    ///         spacing-aligned range fits above it. Reverting leaves the caller's ETH with the caller.
-    error WallOutOfRange();
-    /// @notice Thrown when `msg.value` sized to no liquidity and returning it to `excessEthReceiver`
+    /// @notice Thrown when `msg.value` sized to no liquidity and returning it to `excessReceiver`
     ///         failed. Only reachable from a receiver that rejects native.
     error EthReturnFailed();
     /// @notice Thrown when a top-up names a position the caller does not own. Minting stays open to
@@ -145,9 +86,8 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
     ///         the side being deposited (native needs `msg.value == amount`, ERC20 needs none).
     error CurrencyMismatch();
 
-    constructor(address positionManager, address poolManager, address permit2) {
+    constructor(address positionManager, address permit2) {
         UNIV4_POSITION_MANAGER = IPositionManager(positionManager);
-        UNIV4_POOL_MANAGER = IPoolManager(poolManager);
         PERMIT2 = permit2;
     }
 
@@ -195,193 +135,49 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
     }
 
     /// @inheritdoc IRealmUniV4LiquidityAdder
-    /// @dev `[tickLower, tickUpper]` MUST sit entirely above the pool's current tick, otherwise the
-    ///      position would require token1 (the token) that this call does not settle and the mint
-    ///      reverts. Sizes the position from all of `msg.value`. A thin wrapper over `addSingleSided`
-    ///      for the native side, kept because the graduator and every token's liquidity leg call it.
-    function addSingleSidedEth(
-        PoolKey calldata key,
-        int24 tickLower,
-        int24 tickUpper,
-        address nftReceiver,
-        address excessEthReceiver
-    ) external payable returns (uint128 liquidity) {
-        require(msg.value > 0, NoEthProvided());
-        liquidity = _mintSingleSided(key, false, msg.value, tickLower, tickUpper, nftReceiver, excessEthReceiver);
-    }
-
-    /// @inheritdoc IRealmUniV4LiquidityAdder
-    /// @dev Reads the pool's current tick and places the wall in
-    ///      `[snapUp(tick + 1), snapUp(tick + 1) + tickWidth]` — starting just below the current price and
-    ///      spanning `tickWidth` ticks further down in price. A percentage drop maps to a CONSTANT
-    ///      `tickWidth` (ticks are log-price), so callers pass a fixed, spacing-aligned width. The lower
-    ///      bound is snapped strictly above the current tick so the whole range stays ETH-only.
-    function addSingleSidedEthBelowPrice(
-        PoolKey calldata key,
-        int24 tickWidth,
-        address nftReceiver,
-        address excessEthReceiver
-    ) external payable returns (uint128 liquidity) {
-        require(msg.value > 0, NoEthProvided());
-        require(tickWidth > 0, InvalidTickWidth());
-        (, int24 currentTick,,) = UNIV4_POOL_MANAGER.getSlot0(key.toId());
-        (int24 tickLower, int24 tickUpper) = _wallRangeBelowPrice(currentTick, tickWidth, key.tickSpacing);
-        liquidity = _mintSingleSided(key, false, msg.value, tickLower, tickUpper, nftReceiver, excessEthReceiver);
-    }
-
-    /// @inheritdoc IRealmUniV4LiquidityAdder
-    /// @dev Mechanism for a caller that keeps a small memory of the walls it already owns: rather than
-    ///      minting a position per call, this tops one of them up when it is still usable, and mints only
-    ///      when none is. A candidate qualifies while its range sits STRICTLY above the current tick —
-    ///      what keeps it ETH-only, so an ETH-only add still settles — and no further above it than
-    ///      `reuseMaxGap`, which is what stops the ETH being parked in a wall the price has long left
-    ///      behind. The NEAREST qualifying candidate wins; a zero id is an empty slot.
-    /// @dev The reuse POLICY (how many candidates, how wide a gap, what to do with the answer) stays with
-    ///      the caller: this contract holds no state and just executes the choice. Returns the position it
-    ///      used and that position's lower tick so the caller can update its own memory, or `(0, 0)` when
-    ///      nothing was placed — the zero-liquidity refund branch, where no id was consumed.
+    /// @dev Adds `amount` of `currency` to the caller's existing position `tokenId`, whose range must
+    ///      still sit entirely on the side of the current tick that holds only `currency`. The leftover
+    ///      the sizing rounds off, and any fees the increase folds into the deltas, go to `receiver`. An
+    ///      ERC20 is PULLED from `msg.sender`, who must have approved this contract for `amount`.
     /// @dev Topping up needs the position manager's `onlyIfApproved`, so the NFT owner must have approved
-    ///      this contract, and only that owner may drive it (`NotPositionOwner`). Minting stays open to
-    ///      anyone. The owner gate is what makes the approval safe to grant: nothing here can decrease,
-    ///      burn or transfer a position, and the one thing a top-up DOES pay out — the fees an increase
-    ///      collects into the deltas — can now only be routed by the owner, not by a passer-by who adds a
-    ///      wei to someone else's wall.
-    function addOrTopUpSingleSidedEth(
+    ///      this contract, and only that owner may drive it (`NotPositionOwner`). The owner gate is what
+    ///      makes the approval safe to grant: nothing here can decrease, burn or transfer a position, and
+    ///      the one thing a top-up DOES pay out — the fees an increase collects into the deltas — can only
+    ///      be routed by the owner, not by a passer-by who adds a wei to someone else's position.
+    function topUpSingleSided(
         PoolKey calldata key,
-        int24 tickWidth,
-        int24 reuseMaxGap,
-        uint256[2] calldata candidateIds,
-        int24[2] calldata candidateTickLowers,
-        address nftReceiver,
-        address excessEthReceiver
-    ) external payable returns (uint128 liquidity, uint256 usedTokenId, int24 usedTickLower) {
-        require(msg.value > 0, NoEthProvided());
-        excessEthReceiver; // the general form below sends the NFT and the remainder to one receiver
-        return _addOrTopUp(
-            key,
-            WallParams({
-                currency: key.currency0,
-                amount: msg.value,
-                tickWidth: tickWidth,
-                reuseMaxGap: reuseMaxGap,
-                receiver: nftReceiver
-            }),
-            candidateIds,
-            candidateTickLowers
-        );
-    }
+        Currency currency,
+        uint256 amount,
+        uint256 tokenId,
+        address receiver
+    ) external payable returns (uint128 liquidity) {
+        require(amount > 0, NoEthProvided());
+        require(msg.value == (currency.isAddressZero() ? amount : 0), CurrencyMismatch());
+        bool isCurrency1 = Currency.unwrap(currency) == Currency.unwrap(key.currency1);
+        require(isCurrency1 || Currency.unwrap(currency) == Currency.unwrap(key.currency0), CurrencyMismatch());
+        require(IERC721(address(UNIV4_POSITION_MANAGER)).ownerOf(tokenId) == msg.sender, NotPositionOwner());
+        if (currency.isAddressZero()) return _topUpSingleSided(key, currency, tokenId, amount, isCurrency1, receiver);
 
-    /// @inheritdoc IRealmUniV4LiquidityAdder
-    /// @dev The general form: the wall is placed in `currency`, on whichever side of the current tick
-    ///      holds only that currency — above it for `currency0`, below it for `currency1`. An ERC20 is
-    ///      PULLED from `msg.sender`, who must have approved this contract for `amount`.
-    /// @dev One `receiver` rather than two: the caller of this form owns the position AND is where the
-    ///      remainder belongs, and splitting them would let a passer-by route a top-up's collected fees
-    ///      somewhere the owner did not choose.
-    function addOrTopUpSingleSided(
-        PoolKey calldata key,
-        WallParams calldata p,
-        uint256[2] calldata candidateIds,
-        int24[2] calldata candidateTickLowers
-    ) external payable returns (uint128 liquidity, uint256 usedTokenId, int24 usedTickLower) {
-        require(p.amount > 0, NoEthProvided());
-        require(msg.value == (p.currency.isAddressZero() ? p.amount : 0), CurrencyMismatch());
-        if (p.currency.isAddressZero()) return _addOrTopUp(key, p, candidateIds, candidateTickLowers);
-
-        IERC20 asset = IERC20(Currency.unwrap(p.currency));
-        asset.safeTransferFrom(msg.sender, address(this), p.amount);
+        IERC20 asset = IERC20(Currency.unwrap(currency));
+        asset.safeTransferFrom(msg.sender, address(this), amount);
         _approveForSettle(asset);
-        // A fresh mint's `SETTLE_PAIR` pulls only what the position owes, so the rounding remainder is
-        // returned from the measured balance, as in `addSingleSided`.
+        // Pulled through Permit2 only as far as the increase owes; the remainder is returned from the
+        // measured balance, as in `addSingleSided`.
         uint256 balanceBefore = asset.balanceOf(address(this));
-        (liquidity, usedTokenId, usedTickLower) = _addOrTopUp(key, p, candidateIds, candidateTickLowers);
-        uint256 unspent = asset.balanceOf(address(this)) + p.amount - balanceBefore;
-        if (unspent > 0) asset.safeTransfer(p.receiver, unspent);
+        liquidity = _topUpSingleSided(key, currency, tokenId, amount, isCurrency1, receiver);
+        uint256 unspent = asset.balanceOf(address(this)) + amount - balanceBefore;
+        if (unspent > 0) asset.safeTransfer(receiver, unspent);
     }
 
-    /// @dev Shared body: top one of the caller's remembered walls up when it is still usable, mint a
-    ///      fresh one when none is. A candidate qualifies while its range sits STRICTLY on the
-    ///      single-sided side of the current tick — what keeps it one-currency, so a one-currency add
-    ///      still settles — and no further from it than `reuseMaxGap`, which is what stops the deposit
-    ///      being parked in a wall the price has long left behind. The NEAREST qualifying candidate
-    ///      wins; a zero id is an empty slot.
-    /// @dev The reuse POLICY (how many candidates, how wide a gap, what to do with the answer) stays
-    ///      with the caller: this contract holds no state and just executes the choice. Returns the
-    ///      position it used and that position's lower tick so the caller can update its own memory, or
-    ///      `(0, 0)` when nothing was placed — the zero-liquidity refund branch, where no id was used.
-    /// @dev Topping up needs the position manager's `onlyIfApproved`, so the NFT owner must have
-    ///      approved this contract, and only that owner may drive it (`NotPositionOwner`). Minting stays
-    ///      open to anyone. The owner gate is what makes the approval safe to grant: nothing here can
-    ///      decrease, burn or transfer a position, and the one thing a top-up DOES pay out — the fees an
-    ///      increase collects into the deltas — can only be routed by the owner.
-    function _addOrTopUp(
-        PoolKey calldata key,
-        WallParams memory p,
-        uint256[2] calldata candidateIds,
-        int24[2] calldata candidateTickLowers
-    ) internal returns (uint128 liquidity, uint256 usedTokenId, int24 usedTickLower) {
-        require(p.tickWidth > 0, InvalidTickWidth());
-        bool isCurrency1 = Currency.unwrap(p.currency) == Currency.unwrap(key.currency1);
-        require(isCurrency1 || Currency.unwrap(p.currency) == Currency.unwrap(key.currency0), CurrencyMismatch());
-        (, int24 currentTick,,) = UNIV4_POOL_MANAGER.getSlot0(key.toId());
-
-        (usedTokenId, usedTickLower) =
-            _nearestReusable(currentTick, p.reuseMaxGap, isCurrency1, p.tickWidth, candidateIds, candidateTickLowers);
-        if (usedTokenId != 0) {
-            require(IERC721(address(UNIV4_POSITION_MANAGER)).ownerOf(usedTokenId) == msg.sender, NotPositionOwner());
-            liquidity = _topUpSingleSided(key, p.currency, usedTokenId, p.amount, isCurrency1, p.receiver);
-            return (liquidity, usedTokenId, usedTickLower);
-        }
-
-        // The id the mint is about to consume: `nextTokenId` is assigned before it is incremented.
-        usedTokenId = UNIV4_POSITION_MANAGER.nextTokenId();
-        int24 tickUpper;
-        (usedTickLower, tickUpper) = _wallRange(currentTick, p.tickWidth, key.tickSpacing, isCurrency1);
-        liquidity = _mintSingleSided(key, isCurrency1, p.amount, usedTickLower, tickUpper, p.receiver, p.receiver);
-        // Nothing was minted, so no id was consumed and there is no wall for the caller to remember.
-        if (liquidity == 0) return (0, 0, 0);
-    }
-
-    /// @dev The nearest candidate still entirely above `currentTick` and within `reuseMaxGap` of it, or a
-    ///      zero id when neither qualifies. Nearest, not first: a price that zigzags can leave the OLDER
-    ///      candidate closer to the tick, and topping up the deeper of two is exactly what the gap bound
-    ///      exists to prevent.
-    function _nearestReusable(
-        int24 currentTick,
-        int24 reuseMaxGap,
-        bool isCurrency1,
-        int24 tickWidth,
-        uint256[2] calldata ids,
-        int24[2] calldata tickLowers
-    ) internal pure returns (uint256 id, int24 tickLower) {
-        for (uint256 i = 0; i < 2; ++i) {
-            int24 lower = tickLowers[i];
-            if (ids[i] == 0) continue;
-            if (isCurrency1) {
-                // A `currency1`-only position lives entirely BELOW the current tick, so its UPPER bound
-                // is what has to clear it. The caller remembers only the lower tick, and every wall this
-                // contract mints is `tickWidth` wide, so the upper is recoverable from the two.
-                int24 upper = lower + tickWidth;
-                if (currentTick <= upper || currentTick - upper > reuseMaxGap) continue;
-                if (id == 0 || lower > tickLower) (id, tickLower) = (ids[i], lower);
-            } else {
-                if (currentTick >= lower || lower - currentTick > reuseMaxGap) continue;
-                if (id == 0 || lower < tickLower) (id, tickLower) = (ids[i], lower);
-            }
-        }
-    }
-
-    /// @dev Adds all of `msg.value` to an existing ETH-only position, returning the liquidity it gained.
+    /// @dev Adds `amount` of `currency` to an existing single-sided position, returning the liquidity it gained.
     /// @dev SETTLE first, then `INCREASE_LIQUIDITY_FROM_DELTAS`: the position manager sizes the add from
-    ///      the resulting credit and the position's OWN recorded range, so this never has to re-derive a
-    ///      range the caller only half-remembers.
+    ///      the resulting credit and the position's OWN recorded range, so the caller never passes one.
     /// @dev `TAKE_PAIR`, not `SETTLE_PAIR`: after the settle both deltas are credits, never debts — the
-    ///      leftover ETH the sizing rounded off, plus any fees the position accrued (an increase folds
-    ///      those into the deltas). Both go to `excessEthReceiver`, which is why the token side can never
+    ///      leftover the sizing rounded off, plus any fees the position accrued (an increase folds
+    ///      those into the deltas). Both go to `receiver`, which is why the token side can never
     ///      strand here.
-    /// @dev No zero-liquidity guard, unlike the mint: a candidate's range sits entirely above the current
-    ///      tick and liquidity per ETH grows with that distance, so any non-zero `msg.value` sizes to at
-    ///      least one unit.
+    /// @dev No zero-liquidity guard, unlike the mint: an existing position's range sits entirely on the
+    ///      deposited side of the current tick, so any non-zero amount sizes to at least one unit.
     function _topUpSingleSided(
         PoolKey calldata key,
         Currency currency,
@@ -427,44 +223,6 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
             abi.encode(actions, params), block.timestamp
         );
         liquidity = UNIV4_POSITION_MANAGER.getPositionLiquidity(tokenId) - liquidityBefore;
-    }
-
-    /// @dev The spacing-aligned wall range starting just below the current price. Shared by
-    ///      `addSingleSidedEthBelowPrice` and the mint half of `addOrTopUpSingleSidedEth`.
-    function _wallRangeBelowPrice(int24 currentTick, int24 tickWidth, int24 spacing)
-        internal
-        pure
-        returns (int24 tickLower, int24 tickUpper)
-    {
-        return _wallRange(currentTick, tickWidth, spacing, false);
-    }
-
-    /// @dev The spacing-aligned wall range just below the current PRICE OF THE TOKEN, on whichever side
-    ///      of the current tick holds only the wall's currency.
-    ///      - `currency0` (native on every Realm pool): ticks ABOVE the current one. Price in this pair
-    ///        is token-per-quote, so a higher tick is a cheaper token — the wall sits under the price.
-    ///      - `currency1` (an ERC20 quote that sorted second): ticks BELOW the current one, for exactly
-    ///        the same reason mirrored.
-    ///      Either way the range is clamped to the usable band, so a pool at an extreme gets a narrower
-    ///      wall instead of a `TickMath` revert.
-    function _wallRange(int24 currentTick, int24 tickWidth, int24 spacing, bool isCurrency1)
-        internal
-        pure
-        returns (int24 tickLower, int24 tickUpper)
-    {
-        int24 maxUsableTick = TickMath.maxUsableTick(spacing);
-        int24 minUsableTick = TickMath.minUsableTick(spacing);
-
-        if (isCurrency1) {
-            tickUpper = _floorToSpacing(currentTick - 1, spacing);
-            tickLower = tickUpper - tickWidth;
-            if (tickLower < minUsableTick) tickLower = minUsableTick;
-        } else {
-            tickLower = _ceilToSpacing(currentTick + 1, spacing);
-            tickUpper = tickLower + tickWidth;
-            if (tickUpper > maxUsableTick) tickUpper = maxUsableTick;
-        }
-        require(tickLower < tickUpper && tickLower >= minUsableTick && tickUpper <= maxUsableTick, WallOutOfRange());
     }
 
     /// @dev Grants the position manager, through Permit2, the standing allowance its ERC20 settle needs.
@@ -554,25 +312,5 @@ contract RealmUniV4LiquidityAdder is IRealmUniV4LiquidityAdder {
         }
         (bool returned,) = excessReceiver.call{value: amount}("");
         require(returned, EthReturnFailed());
-    }
-
-    /// @dev Largest multiple of `spacing` that is `<= tick`. The mirror of `_ceilToSpacing`: Solidity
-    ///      `%` keeps the dividend's sign, so a negative remainder means truncation rounded UP (negative
-    ///      ticks) and we push back down.
-    function _floorToSpacing(int24 tick, int24 spacing) internal pure returns (int24 rounded) {
-        // forge-lint: disable-next-line(divide-before-multiply)
-        rounded = (tick / spacing) * spacing;
-        if (tick % spacing < 0) rounded -= spacing;
-    }
-
-    /// @dev Smallest multiple of `spacing` that is `>= tick`. Solidity `%` keeps the dividend's sign, so a
-    ///      positive remainder means truncation rounded down (positive ticks) and we bump up; a
-    ///      non-positive remainder already left us at or above `tick` (exact, or negative ticks where
-    ///      truncation rounds toward zero).
-    function _ceilToSpacing(int24 tick, int24 spacing) internal pure returns (int24 rounded) {
-        // Floor-to-grid then correct up: the divide-before-multiply is the intent (snap to a spacing grid).
-        // forge-lint: disable-next-line(divide-before-multiply)
-        rounded = (tick / spacing) * spacing;
-        if (tick % spacing > 0) rounded += spacing;
     }
 }

@@ -12,22 +12,17 @@ import {PoolKey as CorePoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "lib/v4-periphery/src/interfaces/IPositionManager.sol";
-import {PositionInfo, PositionInfoLibrary} from "lib/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {IERC721} from "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
 
-/// @notice Unit tests for the shared single-sided-ETH liquidity helper. It is called by the V4
-///         graduator AND by every taxable token's liquidity earnings leg, so a mistake in the tick
-///         placement would silently affect both. The properties that matter are all about WHERE the
-///         range lands: an ETH-only position must sit entirely above the current tick, or the mint
-///         needs token1 that the call never settles and reverts.
+/// @notice Unit tests for the shared single-sided liquidity helper, called by the V4 graduator (launch
+///         bands) and the LP locker (bid walls). Where a wall lands is the locker's call; these pin the
+///         adder's own guards, custody and dust handling.
 contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
-    using PositionInfoLibrary for PositionInfo;
 
     RealmUniV4LiquidityAdder internal adder;
     IPositionManager internal posm;
@@ -39,7 +34,7 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
 
     function setUp() public virtual override {
         super.setUp();
-        adder = new RealmUniV4LiquidityAdder(address(positionManagerAddress), address(poolManager), permit2Address);
+        adder = new RealmUniV4LiquidityAdder(address(positionManagerAddress), permit2Address);
         posm = IPositionManager(positionManagerAddress);
 
         testToken = _createTaxToken(0, DEFAULT_SELL_TAX_BPS, DEFAULT_TAX_DURATION);
@@ -60,30 +55,21 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
         (, tick,,) = poolManager.getSlot0(_getPoolKeyWithTaxHook(testToken).toId());
     }
 
-    /// @dev The ticks of the position minted by the most recent call.
-    function _lastPositionTicks() internal view returns (int24 lower, int24 upper) {
-        (, PositionInfo info) = posm.getPoolAndPositionInfo(posm.nextTokenId() - 1);
-        return (info.tickLower(), info.tickUpper());
+    /// @dev A spacing-aligned ETH-only range: entirely above the current tick, 70 spacings wide.
+    function _ethRange() internal view returns (int24 lower, int24 upper) {
+        lower = ((_currentTick() / SPACING) * SPACING) + SPACING;
+        upper = lower + 70 * SPACING;
+    }
+
+    function _addEth(uint256 amount) internal returns (uint128) {
+        (int24 lower, int24 upper) = _ethRange();
+        return
+            adder.addSingleSided{value: amount}(_key(), _key().currency0, amount, lower, upper, nftHolder, dustHolder);
     }
 
     receive() external payable {}
 
     ///////////////////////// input guards /////////////////////////
-
-    function test_revertsWithoutEth() public {
-        vm.expectRevert(RealmUniV4LiquidityAdder.NoEthProvided.selector);
-        adder.addSingleSidedEthBelowPrice(_key(), 14_000, nftHolder, dustHolder);
-    }
-
-    function test_revertsOnNonPositiveTickWidth() public {
-        vm.deal(address(this), 1 ether);
-        vm.expectRevert(RealmUniV4LiquidityAdder.InvalidTickWidth.selector);
-        adder.addSingleSidedEthBelowPrice{value: 1 ether}(_key(), 0, nftHolder, dustHolder);
-
-        vm.deal(address(this), 1 ether);
-        vm.expectRevert(RealmUniV4LiquidityAdder.InvalidTickWidth.selector);
-        adder.addSingleSidedEthBelowPrice{value: 1 ether}(_key(), -SPACING, nftHolder, dustHolder);
-    }
 
     /// @dev The general entry point's own guards. Every caller in the repo passes well-formed inputs, so
     ///      these branches are only reachable from a future one — and each protects against funds settling
@@ -121,42 +107,6 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
 
     ///////////////////////// tick placement /////////////////////////
 
-    /// @dev THE property. An ETH-only position must live strictly above the current tick; one wei of
-    ///      overlap would require token1 the call does not settle, and the mint reverts. The lower bound
-    ///      must also be spacing-aligned or the position manager rejects it.
-    function test_wallLandsStrictlyAboveTheCurrentTickAndOnTheSpacingGrid() public {
-        int24 tickBefore = _currentTick();
-        vm.deal(address(this), 1 ether);
-        adder.addSingleSidedEthBelowPrice{value: 1 ether}(_key(), 70 * SPACING, nftHolder, dustHolder);
-
-        (int24 lower, int24 upper) = _lastPositionTicks();
-        assertGt(lower, tickBefore, "the range starts strictly above the current tick");
-        assertEq(lower % SPACING, 0, "lower bound is spacing-aligned");
-        assertEq(upper % SPACING, 0, "upper bound is spacing-aligned");
-        assertEq(upper - lower, 70 * SPACING, "the range spans exactly the requested width");
-    }
-
-    /// @dev The snap is "smallest multiple of spacing strictly above the current tick", and it must hold
-    ///      wherever the price sits. Solidity truncates toward zero, so positive and negative ticks take
-    ///      different branches of `_ceilToSpacing` — the negative side is the one that silently rounds
-    ///      the wrong way if the correction is dropped.
-    function testFuzz_wallIsAlwaysAboveTheCurrentTick(uint256 buySeed) public {
-        // Move the price around before placing the wall so the current tick lands at varied offsets
-        // relative to the spacing grid.
-        uint256 amount = bound(buySeed, 0.01 ether, 3 ether);
-        vm.deal(buyer, amount);
-        _swapBuy(buyer, amount, 0, true);
-
-        int24 tickBefore = _currentTick();
-        vm.deal(address(this), 0.5 ether);
-        adder.addSingleSidedEthBelowPrice{value: 0.5 ether}(_key(), 10 * SPACING, nftHolder, dustHolder);
-
-        (int24 lower,) = _lastPositionTicks();
-        assertGt(lower, tickBefore, "strictly above, at any price");
-        assertLe(lower - tickBefore, SPACING, "and no further above than one spacing step");
-        assertEq(lower % SPACING, 0, "still on the grid");
-    }
-
     /// @dev The explicit-range entry point does NOT snap for the caller: a range that straddles the
     ///      current tick needs token1, which the call never settles, so the mint must revert rather than
     ///      silently produce a two-sided position the adder cannot fund.
@@ -165,7 +115,9 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
         int24 lower = ((tick / SPACING) * SPACING) - 10 * SPACING;
         vm.deal(address(this), 1 ether);
         vm.expectRevert();
-        adder.addSingleSidedEth{value: 1 ether}(_key(), lower, lower + 4 * SPACING, nftHolder, dustHolder);
+        adder.addSingleSided{value: 1 ether}(
+            _key(), _key().currency0, 1 ether, lower, lower + 4 * SPACING, nftHolder, dustHolder
+        );
     }
 
     ///////////////////////// custody /////////////////////////
@@ -179,8 +131,7 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
     function test_takesNoCustodyBeyondWeiDust() public {
         vm.deal(address(this), 1 ether);
         uint256 tokenId = posm.nextTokenId();
-        uint128 liquidity =
-            adder.addSingleSidedEthBelowPrice{value: 1 ether}(_key(), 70 * SPACING, nftHolder, dustHolder);
+        uint128 liquidity = _addEth(1 ether);
 
         assertGt(liquidity, 0, "liquidity was actually minted");
         assertLe(address(adder).balance, 10, "at most wei-scale dust is stranded in the adder");
@@ -198,9 +149,11 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
     function test_isPermissionless() public {
         address stranger = makeAddr("stranger");
         vm.deal(stranger, 1 ether);
+        (int24 lower, int24 upper) = _ethRange();
+        CorePoolKey memory key = _key();
         vm.prank(stranger);
         uint128 liquidity =
-            adder.addSingleSidedEthBelowPrice{value: 1 ether}(_key(), 70 * SPACING, nftHolder, dustHolder);
+            adder.addSingleSided{value: 1 ether}(key, key.currency0, 1 ether, lower, upper, nftHolder, dustHolder);
         assertGt(liquidity, 0, "a stranger can deepen a pool at their own expense");
     }
 
@@ -216,21 +169,11 @@ contract RealmUniV4LiquidityAdderTests is TaxTokenUniV4BaseTests {
         uint256 adderBefore = address(adder).balance; // graduation in `setUp` left the usual 1 wei
         vm.deal(address(this), 1 ether);
 
-        uint128 liquidity = adder.addSingleSidedEth{value: 1 wei}(key, -700_000, 800_000, nftHolder, dustHolder);
+        uint128 liquidity =
+            adder.addSingleSided{value: 1 wei}(key, key.currency0, 1 wei, -700_000, 800_000, nftHolder, dustHolder);
 
         assertEq(liquidity, 0, "one wei sizes to nothing across a range this wide");
         assertEq(dustHolder.balance - dustBefore, 1 wei, "and the wei went back to the excess receiver");
         assertEq(address(adder).balance, adderBefore, "the adder kept nothing of it");
-    }
-
-    /// @dev A width that would push the top past the highest spacing-aligned tick is clamped rather than
-    ///      reverting inside TickMath, so a deeply depreciated pool still gets a (narrower) wall.
-    function test_excessiveWidthIsClampedToTheMaxUsableTick() public {
-        int24 maxUsable = (TickMath.MAX_TICK / SPACING) * SPACING;
-        vm.deal(address(this), 1 ether);
-        adder.addSingleSidedEthBelowPrice{value: 1 ether}(_key(), maxUsable, nftHolder, dustHolder);
-
-        (, int24 upper) = _lastPositionTicks();
-        assertEq(upper, maxUsable, "clamped to the top of the grid instead of reverting");
     }
 }

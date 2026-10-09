@@ -16,8 +16,7 @@ abis:
     @mkdir -p abis
     @jq '.abi' out/RealmLaunchpad.sol/RealmLaunchpad.json > abis/RealmLaunchpad.json
     @jq '.abi' out/IRealmQuoter.sol/IRealmQuoter.json > abis/IRealmQuoter.json
-    @jq '.abi' out/IRealmQuoter2.sol/IRealmQuoter2.json > abis/IRealmQuoter2.json
-    @jq '.abi' out/IRealmLaunchpad2.sol/IRealmLaunchpad2.json > abis/IRealmLaunchpad2.json
+    @jq '.abi' out/IRealmLaunchpad.sol/IRealmLaunchpad.json > abis/IRealmLaunchpad.json
     @jq '.abi' out/IRealmToken.sol/IRealmToken.json > abis/IRealmToken.json
     @jq '.abi' out/IRealmClaims.sol/IRealmClaims.json > abis/IRealmClaims.json
     @jq '.abi' out/RealmFactoryUniV2Unified.sol/RealmFactoryUniV2Unified.json > abis/RealmFactoryUniV2Unified.json
@@ -56,10 +55,37 @@ integration-tests:
 error-inspection errorhex:
     forge inspect RealmLaunchpad errors | grep {{errorhex}}
 
-# Robinhood deploys verify on Sourcify (supports 4663 + 46630). The mainnet Blockscout API sits behind a
-# Cloudflare bot challenge that rejects forge's verification requests.
+# Deploy recipes verify as they deploy, on Sourcify (supports 4663 + 46630); the mainnet Blockscout API sits
+# behind a Cloudflare bot challenge that rejects forge's verification requests.
 robinhood_verify := "--verify --verifier sourcify"
 robinhood_testnet_verify := "--verify --verifier sourcify"
+
+# Fallback for a deploy whose verification failed. Verifies every contract created by the latest broadcast of the given scripts (default: all), read from
+# broadcast/<Script>.s.sol/<chainId>/run-latest.json. Read-only on chain; re-runnable (already-verified
+# contracts are skipped by Sourcify). Must run on the deploy commit + build target, or bytecode won't match.
+# e.g. `just verify-rh DeployRealmPrereqs DeployRealmStack`
+verify-rh *scripts: chain-rh
+    @just _verify 4663 {{scripts}}
+
+verify-rh-testnet *scripts: chain-rh-testnet
+    @just _verify 46630 {{scripts}}
+
+_verify chainid *scripts:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    files=()
+    if [ -z "{{scripts}}" ]; then files=(broadcast/*/{{chainid}}/run-latest.json)
+    else for s in {{scripts}}; do files+=("broadcast/$s.s.sol/{{chainid}}/run-latest.json"); done; fi
+    failed=()
+    for f in "${files[@]}"; do
+        echo "== $f"
+        # top-level CREATE/CREATE2 txs + contracts created inside any tx (e.g. by a factory)
+        while read -r name addr; do
+            forge verify-contract "$addr" "$name" --chain {{chainid}} --verifier sourcify --watch || failed+=("$name $addr")
+        done < <(jq -r '.transactions[] | (select(.transactionType != "CALL") | "\(.contractName) \(.contractAddress)"),
+            (.additionalContracts[]? | "\(.contractName) \(.address)")' "$f" | grep -v '^null ')
+    done
+    if [ ${#failed[@]} -gt 0 ]; then printf 'FAILED: %s\n' "${failed[@]}"; exit 1; fi
 
 # --- Per-chain build retarget ------------------------------------------------
 # ONE rule per target chain repoints EVERY per-chain compile-time import across ALL contracts at once
@@ -92,10 +118,11 @@ _taxtoken lib:
 # Phase 0. Keepers registry + `RealmSwapper` + LP fee router. Their addresses are COMPILE-TIME
 # constants elsewhere, so they must exist before anything else is built. Paste the three printed
 # constants (keepers registry, swapper proxy, LP fee router proxy) into src/config/DeploymentAddresses.sol,
-# then rebuild.
+# then rebuild. Check verification succeeded BEFORE the paste: it changes the source those contracts
+# compiled from, so they no longer verify afterwards. Commit after the paste.
 
 deploy-prereqs-rh: chain-rh
-    forge script DeployRealmPrereqs --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmPrereqs --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-prereqs-rh-testnet: chain-rh-testnet
@@ -107,7 +134,7 @@ deploy-prereqs-rh-testnet: chain-rh-testnet
 # printed constants into src/config/DeploymentAddresses.sol, then rebuild.
 
 deploy-registries-rh: chain-rh
-    forge script DeployRealmRegistries --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmRegistries --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-registries-rh-testnet: chain-rh-testnet
@@ -124,7 +151,7 @@ deploy-registries-rh-testnet: chain-rh-testnet
 # (Robinhood allows 96 KB), and forge's pre-broadcast size check is hardcoded to 24 KB, ignoring
 # `code_size_limit` in foundry.toml — without the flag it stops at an interactive y/n prompt.
 deploy-stack-rh: chain-rh
-    forge script DeployRealmStack --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmStack --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_verify}}
 
 deploy-stack-rh-testnet: chain-rh-testnet
@@ -136,7 +163,7 @@ deploy-stack-rh-testnet: chain-rh-testnet
 # graduators, curves, vault factory. Update the manifest FIRST.
 
 upgrade-factories-rh: chain-rh
-    forge script UpgradeRealmFactories --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script UpgradeRealmFactories --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-factories-rh-testnet: chain-rh-testnet
@@ -149,7 +176,7 @@ upgrade-factories-rh-testnet: chain-rh-testnet
 # first: the same command without --broadcast, plus --sender <realm.dev address>.
 
 upgrade-lp-fee-router-rh: chain-rh
-    forge script UpgradeSwapLpFeeRouter --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script UpgradeSwapLpFeeRouter --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-lp-fee-router-rh-testnet: chain-rh-testnet
@@ -162,7 +189,7 @@ upgrade-lp-fee-router-rh-testnet: chain-rh-testnet
 # command without --broadcast, plus --sender <realm.dev address>.
 
 upgrade-vault-factory-rh: chain-rh
-    forge script UpgradeCreatorVaultFactory --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script UpgradeCreatorVaultFactory --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-vault-factory-rh-testnet: chain-rh-testnet
@@ -178,7 +205,7 @@ upgrade-vault-factory-rh-testnet: chain-rh-testnet
 # manifest. Dry-run first: same command without --broadcast, plus --sender <realm.dev address>.
 
 deploy-voting-rh: chain-rh
-    forge script DeployRealmVoting --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmVoting --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-voting-rh-testnet: chain-rh-testnet
@@ -195,22 +222,21 @@ deploy-voting-rh-testnet: chain-rh-testnet
 # plus --sender <realm.dev address>.
 
 deploy-treasury-stack-rh: chain-rh
-    forge script DeployRealmTreasuryStack --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmTreasuryStack --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-treasury-stack-rh-testnet: chain-rh-testnet
     forge script DeployRealmTreasuryStack --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Deploys a new RealmTreasuryRouter implementation (team treasury, VOTING, keepers registry — all
-# implementation immutables) and repoints the live TREASURY_ROUTER proxy at it. The proxy never moves, so
-# the launchpad, the LP fee router and the token impls that bake it keep working. Use this after
-# redeploying RealmVoting or the keepers registry; DeployRealmTreasuryStack is first-time wiring only.
+# Deploys a new RealmTreasuryRouter implementation (team treasury is an implementation immutable) and
+# repoints the live TREASURY_ROUTER proxy at it. The proxy never moves, so the launchpad, the LP fee router
+# and the token impls that bake it keep working. DeployRealmTreasuryStack is first-time wiring only.
 # Paste the printed TREASURY_ROUTER_IMPL into the manifest and `just export-deployments`. Dry-run first:
 # the same command without --broadcast, plus --sender <realm.dev address>.
 
 upgrade-treasury-router-rh: chain-rh
-    forge script UpgradeRealmTreasuryRouter --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script UpgradeRealmTreasuryRouter --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-treasury-router-rh-testnet: chain-rh-testnet
@@ -222,7 +248,7 @@ upgrade-treasury-router-rh-testnet: chain-rh-testnet
 # `just export-deployments`. Dry-run first: the same command without --broadcast, plus --sender <realm.dev address>.
 
 upgrade-assets-whitelist-rh: chain-rh
-    forge script UpgradeAssetsWhitelist --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script UpgradeAssetsWhitelist --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-assets-whitelist-rh-testnet: chain-rh-testnet
@@ -234,7 +260,7 @@ upgrade-assets-whitelist-rh-testnet: chain-rh-testnet
 # paste. Dry-run first: the same command without --broadcast, plus --sender <realm.dev address>.
 
 upgrade-realm-swapper-rh: chain-rh
-    forge script UpgradeRealmSwapper --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script UpgradeRealmSwapper --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-realm-swapper-rh-testnet: chain-rh-testnet
@@ -248,7 +274,7 @@ upgrade-realm-swapper-rh-testnet: chain-rh-testnet
 # Paste the printed VOTING_IMPL into the manifest and `just export-deployments`. Dry-run first.
 
 upgrade-voting-rh: chain-rh
-    forge script UpgradeRealmVoting --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script UpgradeRealmVoting --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-voting-rh-testnet: chain-rh-testnet
@@ -266,7 +292,7 @@ redeploy-token-impls-rh-testnet: chain-rh-testnet
         --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_testnet_verify}}
 
 redeploy-token-impls-rh: chain-rh
-    forge script RedeployTokenImpls --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script RedeployTokenImpls --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_verify}}
 
 # Appoints the admin and the keeper on BOTH registries (keepers + dividend swap), which ship empty from
@@ -276,7 +302,7 @@ redeploy-token-impls-rh: chain-rh
 # --broadcast, plus --sender <realm.dev address> so the owner checks pass in simulation.
 
 configure-registries-rh: chain-rh
-    forge script ConfigureRegistries --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script ConfigureRegistries --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300
 
 configure-registries-rh-testnet: chain-rh-testnet
@@ -292,7 +318,7 @@ configure-registries-rh-testnet: chain-rh-testnet
 # never deployed on its own (see the deprecation note on that contract).
 
 deploy-realm-hook-rh:
-    forge script DeployRealmHook --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmHook --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-realm-hook-rh-testnet:
@@ -307,7 +333,7 @@ deploy-realm-hook-rh-testnet:
 # so its bytecode is identical on every chain and the recipe leaves the tree's build target alone.
 
 deploy-keeper-lens-rh:
-    forge script DeployRealmKeeperLens --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmKeeperLens --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 deploy-keeper-lens-rh-testnet:
@@ -337,6 +363,13 @@ deploy-dummy-usdg-pair-rh-testnet: chain-rh-testnet
     forge script DeployDummyUsdgPair --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Arbitrage-bot fixture: DYN + a hook-priced dynamic-fee (ETH, DYN) V4 pool (per-direction fee, owner
+# `setFees`), DYN listed as a V4 quote, and a Realm token launched into an ETH pool and a DYN pool.
+# Env: ETH_DEPTH (default 3 ether), DYN_PER_ETH (default 10_000e18). The account must be a whitelist approver.
+deploy-dynamic-fee-pool-rh-testnet: chain-rh-testnet
+    forge script DeployDynamicFeePool --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_testnet_verify}}
+
 # Re-pegs the six rh-testnet dummy rStock pools to their whitelisted price and adds ETH_PER_POOL (default
 # 20 ETH, 120 total) of full-range liquidity to each. The account must hold the dummy tokens. Dry run:
 #   forge script RepegDummyRStocks --rpc-url rh-testnet --account livo.dev
@@ -360,7 +393,7 @@ deploy-anypair-hook-rh-testnet: chain-rh-testnet
 
 
 deploy-anypair-hook-rh: chain-rh
-    forge script DeployRealmHookAnyPair --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployRealmHookAnyPair --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 # Step 2. `RealmDirectGraduatorUniV4` + `RealmFactoryUniV4Direct` (impl + UUPS proxy), wired to the
@@ -373,7 +406,7 @@ deploy-direct-venue-rh-testnet: chain-rh-testnet
 
 
 deploy-direct-venue-rh: chain-rh
-    forge script DeployDirectVenue --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script DeployDirectVenue --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 # Step 2b. Repoints the LIVE direct venue after redeploying RealmHookAnyPair: a fresh graduator (it bakes
@@ -383,11 +416,23 @@ deploy-direct-venue-rh: chain-rh
 # the two printed slots into the manifest and `just export-deployments`. Dry-run first.
 
 upgrade-direct-venue-rh: chain-rh
-    forge script UpgradeDirectVenue --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script UpgradeDirectVenue --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_verify}}
 
 upgrade-direct-venue-rh-testnet: chain-rh-testnet
     forge script UpgradeDirectVenue --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
+# Deploys ONLY a new RealmFactoryUniV4Direct implementation (same graduator, whitelist, token impls from
+# the manifest) and upgrades FACTORY_UNIV4_DIRECT in place. For factory code/constant changes. Paste the
+# printed FACTORY_UNIV4_DIRECT_IMPL into the manifest and `just export-deployments`. Dry-run first.
+
+upgrade-direct-factory-rh: chain-rh
+    forge script UpgradeDirectFactory --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+upgrade-direct-factory-rh-testnet: chain-rh-testnet
+    forge script UpgradeDirectFactory --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Regenerates deployments.robinhood.{mainnet,testnet}.md from the matching .sol manifests.
@@ -436,7 +481,7 @@ discover-whitelist-assets-rh:
 # here instead of looking like a success.
 whitelist-assets-rh:
     just chain-rh
-    forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300
     forge script WhitelistRobinhoodAssets --rpc-url rh-mainnet --sig 'verify()'
 
@@ -474,7 +519,7 @@ whitelist-assets-rh-testnet:
 # keep its rate fresh afterwards (`RealmAssetsWhitelist.refreshRates`). Signer must be an approver.
 whitelist-realm-rh:
     just chain-rh
-    forge script WhitelistRealmToken --rpc-url rh-mainnet --account realm.dev --slow --broadcast \
+    forge script WhitelistRealmToken --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300
     forge script WhitelistRealmToken --rpc-url rh-mainnet --sig 'verify()'
 
@@ -541,7 +586,7 @@ buy token amount account net:
 ##################### ROLLBACK (unified factory proxies) #######################
 # Break-glass: roll BOTH unified factory proxies (V2 + V4) back to their PREVIOUS
 # implementation — the 2nd-to-last on-chain `Upgraded` event, read from the node via `cast logs`
-# (fresh L2 → full-range getLogs is cheap). Broadcaster must be the proxy owner (realm.dev).
+# (fresh L2 → full-range getLogs is cheap). Broadcaster must be the proxy owner (realm.deployer).
 # Guards refuse a bogus/incompatible target before any tx is sent; mainnet (chain 4663) asks to confirm.
 # NOTE: rolling the V4 factory back also reverts which graduators new tokens use (the old
 # graduators are baked into the previous V4 impl as immutables; they still live on-chain).
@@ -577,7 +622,7 @@ _rollback-unified-rpclogs rpc v2proxy v4proxy:
     fi
     for t in "${TARGETS[@]}"; do
         PROXY="${t%%=*}"; PREV="${t##*=}"
-        cast send --rpc-url "$RPC" --account realm.dev "$PROXY" 'upgradeToAndCall(address,bytes)' "$PREV" 0x
+        cast send --rpc-url "$RPC" --account realm.deployer "$PROXY" 'upgradeToAndCall(address,bytes)' "$PREV" 0x
         echo "✔ $PROXY rolled back to $PREV"
     done
     echo "Done. Reminder: if keeping this, update FACTORY_UNIV{2,4}_UNIFIED_IMPL in src/config/manifest.robinhood.<net>.sol and run 'just export-deployments'."

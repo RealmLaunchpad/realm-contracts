@@ -116,12 +116,12 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     /// @notice Deposits `quote`'s accrued liquidity buffer as a single-sided position just below the
     ///         current price on that quote's pool — a protective bid wall. Placed through the venue's
     ///         `RealmLpLocker` (`graduator.LP_LOCKER()`), which owns the position — permanent pool depth
-    ///         whose native fees it collects for the 30/70 split — and decides, from the two walls this
-    ///         token remembers per pool, between topping one up and minting a fresh one.
+    ///         whose native fees it collects for the 30/70 split — and places it in the fixed grid range
+    ///         just below the price, topping up the wall already there or minting it.
     ///         Keeper-gated and off the swap hot path, mirroring `processBurn`. Spends at most
-    ///         `_maxSpend` of the buffer, once per block per quote: a fresh wall is placed at the LIVE
-    ///         tick, so a manipulator could pump the price and dump into a wall placed at the inflated
-    ///         level — the cap and cooldown bound that per block (each needs a fresh, fee-paying pump).
+    ///         `_maxSpend` of the buffer, once per block per quote: the target range follows the LIVE
+    ///         tick, so a manipulator could pump the price across a range boundary and dump into a wall
+    ///         placed at the inflated level — the cap and cooldown bound that per block (each needs a fresh, fee-paying pump).
     /// @dev Runs out-of-band because `modifyLiquidity` cannot execute inside the swap hook's pool lock.
     ///      Batches many small accruals into one add. Guarded by the shared `nonReentrant` lock (both
     ///      paths route through the position manager and the pool).
@@ -141,7 +141,7 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         // forge-lint: disable-next-line(unsafe-typecast)
         buf.liquidityPending = uint128(pending - amountIn);
 
-        uint256 added = _addWall(qi, quote, amountIn);
+        uint256 added = _addWall(quote, amountIn);
         // `+=` on the live slot: the locker collects the wall's fees before a top-up, and their creator
         // share reaches this token's `accrueFees` mid-call, which may grow this buffer.
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -153,18 +153,14 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         processLiquidity(address(0));
     }
 
-    /// @dev Places or tops up `quote`'s wall with `amountIn` through the locker and records which wall
-    ///      took it. `added` is what the LOCKER reports the pool took (it returns the rest), not a balance
+    /// @dev Places or tops up `quote`'s wall with `amountIn` through the locker. `added` is what the LOCKER reports the pool took (it returns the rest), not a balance
     ///      delta here: fees the locker collects first reach this token through `accrueFees` mid-call.
-    function _addWall(uint256 qi, address quote, uint256 amountIn) private returns (uint256 added) {
+    function _addWall(address quote, uint256 amountIn) private returns (uint256 added) {
         address locker = IRealmV4Graduator(graduator).LP_LOCKER();
         // The ERC20 leg is PULLED by the locker, so it needs an allowance sized to this call.
         if (quote != address(0)) IERC20(quote).forceApprove(locker, amountIn);
-        (uint128 liquidity, uint256 usedId, int24 usedTickLower, uint256 spent) =
-            IRealmLpLocker(locker).addWall{value: quote == address(0) ? amountIn : 0}(quote, amountIn);
-        // A zero id means nothing was placed and the deposit came back — no wall to record.
-        if (usedId != 0) _recordUsedWall(qi, usedId, usedTickLower);
-        added = spent;
+        uint128 liquidity;
+        (liquidity,, added) = IRealmLpLocker(locker).addWall{value: quote == address(0) ? amountIn : 0}(quote, amountIn);
 
         // Shared event signature; reports what the pool ACTUALLY took, as the V2 processor does. The
         // token side is always 0 for a single-sided quote wall.

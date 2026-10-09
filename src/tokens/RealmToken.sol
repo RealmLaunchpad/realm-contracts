@@ -25,8 +25,8 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     using SafeERC20 for IERC20;
     using StateLibrary for IPoolManager;
 
-    /// @notice Version of the Realm stack this token belongs to
-    string public constant override VERSION = "2.0";
+    /// @notice Contract version.
+    uint256 public constant override VERSION = 1;
 
     /// @notice all Realm tokens have same supply
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;

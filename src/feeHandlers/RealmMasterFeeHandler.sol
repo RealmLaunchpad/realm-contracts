@@ -27,6 +27,9 @@ import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/uti
 ///
 ///         The direct-receiver set is mutable via `setShares` (admin or token-owner gated).
 contract RealmMasterFeeHandler is IRealmMasterFeeHandler, Ownable2Step, ReentrancyGuardTransient {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using TokenFeeConfigLib for TokenFeeConfigLib.Config;
     using SafeERC20 for IERC20;
 

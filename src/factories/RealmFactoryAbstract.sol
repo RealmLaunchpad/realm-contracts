@@ -24,7 +24,7 @@ import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmToken} from "src/tokens/RealmToken.sol";
 
 /// @notice Abstract base for EVERY Realm token factory: the parts that do not depend on how the token
-///         is brought to market. Input validation, the deterministic clone + vanity-suffix rule, impl
+///         is brought to market. Input validation, the deterministic clone, impl
 ///         dispatch, creator vaults, fee registration and the shared events all live here.
 /// @dev    What is deliberately NOT here is the bonding curve. A curve is one venue's answer to "how
 ///         does supply reach the market", and `RealmFactoryCurveAbstract` is the layer that holds it —
@@ -38,6 +38,15 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     using SafeERC20 for IERC20;
 
     uint256 internal constant BASIS_POINTS = 10_000;
+
+    error FactoryPaused();
+
+    event PausedSet(bool paused);
+
+    modifier whileNotPaused() {
+        require(!paused, FactoryPaused());
+        _;
+    }
 
     /// @notice Max configurable tax duration. Capped at 120 years purely to prevent overflow —
     ///         the upper bound is driven by `TaxConfigs.taxDurationSeconds`'s `uint32` packing.
@@ -129,6 +138,8 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     function initialize() external initializer {
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
+        // Born paused: no one can create tokens until the owner unpauses.
+        _setPaused(true);
         announceGraduator();
     }
 
@@ -142,10 +153,20 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         emit GraduatorSet(address(GRADUATOR));
     }
 
+    /// @notice Pauses or unpauses token creation.
+    function setPaused(bool paused_) external onlyOwner {
+        _setPaused(paused_);
+    }
+
     /// @dev UUPS upgrade gate: only the owner can swap the implementation.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
     ///////////////////////// INTERNAL FUNCTIONS /////////////////////////
+
+    function _setPaused(bool paused_) internal {
+        paused = paused_;
+        emit PausedSet(paused_);
+    }
 
     /// @dev Validates a FeeShare array: non-empty, no zero accounts, no duplicates, every share > 0,
     ///      sum == 10 000, and at most one entry has `directFeesEnabled = true`. The factory caps
@@ -355,8 +376,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ///         the creator. Venue-specific protocol policy fixed at the factory level, not deployer-set.
     function _launchpadTreasuryShareBps() internal pure virtual returns (uint16);
 
-    /// @dev Clones the resolved token implementation deterministically, enforces the `0xeeaa` vanity
-    ///      suffix, emits `TokenCreated`, and returns the freshly-deployed token plus a fully-populated
+    /// @dev Clones the resolved token implementation deterministically, emits `TokenCreated`, and returns the freshly-deployed token plus a fully-populated
     ///      `InitializeParams` for the caller to pass to the impl-specific `initialize()` overload.
     ///      `TokenCreated` is emitted BEFORE `initialize()` because the indexer creates the TokenData
     ///      entity from that event; events emitted inside `initialize()` depend on it.
@@ -368,7 +388,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ///      pre-announced address with their own fee receivers. Namespacing lets the rest of the config
     ///      (fee receivers, anti-sniper, tax, …) stay deferred to reveal time with no front-running
     ///      window. Frontends MUST apply the same `keccak256(deployer, salt)` derivation when predicting
-    ///      the address and mining the `0xeeaa` vanity suffix.
+    ///      the address.
     function _cloneAndCreateToken(
         address impl,
         string memory name,
@@ -380,8 +400,6 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
         uint256 vaultAllocation
     ) internal returns (address token, IRealmToken.InitializeParams memory params) {
         token = Clones.cloneDeterministic(impl, keccak256(abi.encodePacked(msg.sender, salt)));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        require(uint16(uint160(token)) == 0xeeaa, InvalidTokenAddress());
 
         emit TokenCreated(token, name, symbol, tokenOwner, address(LAUNCHPAD), graduator, address(MASTER_FEE_HANDLER));
 
@@ -549,10 +567,9 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     }
 
     /// @dev Single source of truth for which implementation `createToken` will clone. Both the public
-    ///      `previewTokenImplementation` (used by frontends to mine a `0xeeaa`-suffixed salt) and
+    ///      `previewTokenImplementation` (used by frontends to predict the token address) and
     ///      `_dispatchAndInitialize` (the path that actually clones the impl) read from this function — so
-    ///      a salt that previews to a vanity-suffixed address is guaranteed to also produce one at create
-    ///      time. An earnings allocation lives on the taxable implementation — the base token has no
+    ///      a previewed address is guaranteed to be the one deployed at create time. An earnings allocation lives on the taxable implementation — the base token has no
     ///      split, no buffers and no dividend machine — so a token that configures one is cloned from it
     ///      even with no tax at all: on the V4 venues the creator's LP-fee share is a permanent earnings
     ///      stream in its own right. Anti-sniper is deliberately NOT a dispatch input: it is a gated
@@ -566,7 +583,7 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ///      both impls take the `AntiSniperConfigs` and enable protection internally iff it opts in
     ///      (`protectionWindowSeconds != 0`), so the factory always forwards it and never branches on
     ///      anti-sniper. Impl resolution shares `_previewTokenImplementation` with the public preview,
-    ///      so a salt that previews to a `0xeeaa` address also clones to one. Callers (`createToken` on
+    ///      so a previewed address is the one cloned. Callers (`createToken` on
     ///      the derived factory) invoke `LAUNCHPAD.launchToken` and `_finalizeCreation` (which registers
     ///      the token's fee config with the master handler) after this returns.
     function _dispatchAndInitialize(
@@ -601,7 +618,13 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     /// @notice Last graduator announced via `GraduatorSet`; dedupes `announceGraduator()`.
     address private _announcedGraduator;
 
+    /// @notice When true, `createToken` reverts. Packs into `_announcedGraduator`'s slot, so `__gap` is unchanged.
+    bool public paused;
+
+    /// @dev Retired `canCreateWhilePaused` whitelist; slot kept for the live proxies' layout (may hold stale entries).
+    mapping(address => bool) private __deprecatedCanCreateWhilePaused;
+
     /// @dev Reserved for future storage variables. Decrement when adding new storage to keep the
     ///      proxy's slot layout stable across upgrades. Never reorder existing storage.
-    uint256[49] private __gap;
+    uint256[48] private __gap;
 }

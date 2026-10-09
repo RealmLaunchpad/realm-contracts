@@ -65,6 +65,8 @@ enum LimitReason {
 ///         from `RealmLaunchpad` (graduation excess, available supply, ETH reserves) and from the
 ///         token (per-buyer anti-sniper cap), clamps the caller's input to whatever cap is
 ///         currently binding, and tells the caller which cap clamped via a `LimitReason` code.
+///         The buy quotes also report `canGraduate`: `true` when broadcasting the quoted buy would
+///         top the bonding curve past its graduation threshold and graduate within the same tx.
 /// @dev    **Non-revert guarantee.** Every quote returns rather than reverts. When `reason` is
 ///         `INVALID_TOKEN` or `GRADUATED`, the numeric fields are all zero and the caller should
 ///         not broadcast the trade. For all other `reason` values, the numeric fields are
@@ -88,11 +90,13 @@ interface IRealmQuoter {
     ///        the input `ethValue` when `reason == NONE`.
     /// @param ethFee Trading fee deducted from `ethSpent` (in ETH).
     /// @param tokensToReceive Tokens the buyer will receive in exchange for `ethSpent`.
+    /// @param canGraduate True if broadcasting this buy would trigger graduation.
     /// @param reason Which cap clamped the input, or `NONE` if the request was honored.
     struct BuyExactEthQuote {
         uint256 ethSpent;
         uint256 ethFee;
         uint256 tokensToReceive;
+        bool canGraduate;
         LimitReason reason;
     }
 
@@ -103,12 +107,14 @@ interface IRealmQuoter {
     /// @param ethFee Trading fee in ETH.
     /// @param ethForReserves ETH that goes into the curve reserves.
     /// @param totalEthNeeded `msg.value` the caller must send on `buyTokensWithExactEth`.
+    /// @param canGraduate True if broadcasting this buy would trigger graduation.
     /// @param reason Which cap clamped the input, or `NONE`.
     struct BuyExactTokensQuote {
         uint256 tokensReceived;
         uint256 ethFee;
         uint256 ethForReserves;
         uint256 totalEthNeeded;
+        bool canGraduate;
         LimitReason reason;
     }
 

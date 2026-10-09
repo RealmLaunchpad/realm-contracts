@@ -22,6 +22,9 @@ import {RealmCreatorVault} from "src/vaults/RealmCreatorVault.sol";
 ///         allowlist. The Realm token factory uses it at launch for creator-locked supply; any
 ///         holder can use it later to lock their own tokens.
 contract RealmCreatorVaultFactory is IRealmCreatorVaultFactory, Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     /// @notice The `RealmCreatorVault` implementation cloned for every new vault.
