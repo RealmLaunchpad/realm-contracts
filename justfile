@@ -229,10 +229,9 @@ deploy-treasury-stack-rh-testnet: chain-rh-testnet
     forge script DeployRealmTreasuryStack --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
-# Deploys a new RealmTreasuryRouter implementation (team treasury, VOTING, keepers registry — all
-# implementation immutables) and repoints the live TREASURY_ROUTER proxy at it. The proxy never moves, so
-# the launchpad, the LP fee router and the token impls that bake it keep working. Use this after
-# redeploying RealmVoting or the keepers registry; DeployRealmTreasuryStack is first-time wiring only.
+# Deploys a new RealmTreasuryRouter implementation (team treasury is an implementation immutable) and
+# repoints the live TREASURY_ROUTER proxy at it. The proxy never moves, so the launchpad, the LP fee router
+# and the token impls that bake it keep working. DeployRealmTreasuryStack is first-time wiring only.
 # Paste the printed TREASURY_ROUTER_IMPL into the manifest and `just export-deployments`. Dry-run first:
 # the same command without --broadcast, plus --sender <realm.dev address>.
 

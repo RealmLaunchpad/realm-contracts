@@ -157,7 +157,7 @@ library ChainConfig {
         require(router != address(0), "manifest: LP_FEE_ROUTER missing");
     }
 
-    /// @notice The multisig that receives the 2/3 leg of `RealmTreasuryRouter`. Only Robinhood mainnet
+    /// @notice The multisig that receives everything `RealmTreasuryRouter` forwards. Only Robinhood mainnet
     ///         has a dedicated one; the dev chains use their dev treasury.
     function teamTreasury() internal view returns (address t) {
         if (isRobinhood()) t = DeploymentAddressesRobinhoodMainnet.TEAM_TREASURY;

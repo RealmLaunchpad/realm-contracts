@@ -364,7 +364,7 @@ A buy on an ERC20-quoted pool can also emit the graduation milestone **`RealmTok
 
 **A batched overload settles many tokens in one call.** `settleFees(address[] tokens, address quote)` empties every listed token's ledger in that one quote under a SINGLE pool-manager unlock and a single `take`, then runs steps 5-8 once per token, in list order. The events are exactly the per-token ones — nothing is aggregated — just interleaved within one transaction; every one of them carries its own `token` and `quote`, so an indexer reads them as it always did. An entry whose ledger is empty emits nothing, which includes a token listed twice (it settles on its first appearance) and an all-empty batch, which is a silent no-op with no `PoolManager` `Transfer` at all. `InsufficientGas` is still checked per delivery but reverts the WHOLE batch, so a batch either settles all of its non-empty entries or none of them.
 
-The treasury slice of an ERC20 LP fee ACCUMULATES on `RealmTreasuryRouter` — an ERC20 has no `receive()` to route it on arrival — until an owner calls `sweep(asset)`, which forwards the whole balance to the multisig and emits **`RealmTreasuryRouter.TreasuryAssetSwept`** (`asset, amount`), or a keeper converts it to native with `convert` (§11). Voting stays native-only, so an ERC20 is never split into it; only the native a conversion produces is.
+The treasury slice of an ERC20 LP fee ACCUMULATES on `RealmTreasuryRouter` — an ERC20 has no `receive()` to route it on arrival — until anyone (in practice the keeper) calls `sweep(asset)`, which forwards the whole balance to the multisig and emits **`RealmTreasuryRouter.TreasuryAssetSwept`** (`asset, amount`) (§11).
 
 ---
 
@@ -431,23 +431,15 @@ Every "treasury share pushed" step above is a plain native call to the treasury 
 immutable of `SwapLpFeeRouter`. Once those point at the `RealmTreasuryRouter` proxy, each such push
 nests the following inside the paying entry point, at the point of the push:
 
-1. `RealmVoting`, inside the router's forward of 1/3:
-   - **`RealmVoting.RoundStarted`** (`roundId, startTime, endTime`) — zero or more, only when the live round is
-     ahead of storage: one per round skipped since the last touch (empty rounds, announced late with their
-     true times), then one for the live round. See §12 for the round model.
-   - **`RealmVoting.EthAllocated`** (`roundId, from=router, amount`) — the 1/3 slice, earmarked for the live round.
-2. **`RealmTreasuryRouter.TreasuryEthRouted`** (`from, votingShare, treasuryShare`) — `from` is the payer
-   (launchpad / graduator / LP fee router). `votingShare == 0` and no step-1 events when the voting call
-   reverted: the whole amount then went to the multisig (fail-safe so a voting bug cannot brick trading),
-   or when `msg.value < 3`.
+1. **`RealmTreasuryRouter.TreasuryEthRouted`** (`from, votingShare, treasuryShare`) — `from` is the payer
+   (launchpad / graduator / LP fee router). Since router v2 the whole amount goes to the multisig:
+   `votingShare` is always 0 and `RealmVoting` receives nothing (no `RoundStarted` / `EthAllocated` from a push).
 
-**`convert(address asset, uint256 amountIn, uint256 minOut)`** — keeper-gated (`RealmKeepersRegistry`). Sells an ERC20 the router holds for native along the owner-set route, then routes the proceeds:
+**`sweep(address asset)`** — permissionless. Forwards the router's whole ERC20 balance of `asset` to the
+multisig: **`RealmTreasuryRouter.TreasuryAssetSwept`** (`asset, amount`). Nothing when the balance is 0.
 
-1. Universal-router swap events.
-2. **`RealmTreasuryRouter.TreasuryAssetConverted`** (`asset, amountIn, nativeOut`) — both measured as balance deltas.
-3. The §11 sequence above for `nativeOut`, with `TreasuryEthRouted.from` = the router itself.
-
-**`setConversionRoute(address asset, PathKey[] path)`** — owner. **`RealmTreasuryRouter.ConversionRouteSet`** (`asset, route`), `route` = `abi.encode(path)`.
+Router v1's `convert` / `setConversionRoute` (and their `TreasuryAssetConverted` / `ConversionRouteSet`
+events) were removed in v2; those events only appear in v1 history.
 
 The multisig transfer emits nothing.
 

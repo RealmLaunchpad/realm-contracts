@@ -263,7 +263,7 @@ contract ExportDeployments is Script {
 
         s = string.concat(s, "\n## Accounts\n\n", _tableHeader("Name"));
         s = string.concat(s, _row("Realm Treasury", d.realmTreasury));
-        s = string.concat(s, _row("Team Treasury (2/3 leg)", d.teamTreasury));
+        s = string.concat(s, _row("Team Treasury", d.teamTreasury));
         s = string.concat(s, _row("Vote Buyback Wallet (1/3 leg)", d.voteBuybackWallet));
         s = string.concat(s, _row("Legacy Treasury (pre-router)", d.legacyTreasury));
         s = string.concat(s, _row("Realm Keeper", d.realmKeeper));

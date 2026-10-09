@@ -109,7 +109,7 @@ library DeploymentAddressesRobinhoodMainnet {
     ///         and into the pre-upgrade `SwapLpFeeRouter` impl, so funds can keep landing here; kept so
     ///         nobody forgets to sweep it.
     address public constant LEGACY_TREASURY = 0x7826AaE926AfD2886257976770e93e0240D2426e;
-    /// @notice Team treasury multisig: the 2/3 leg of `RealmTreasuryRouter`.
+    /// @notice Team treasury multisig: where `RealmTreasuryRouter` forwards everything.
     address public constant TEAM_TREASURY = 0x24CF0733F2b6F9407ab34E2BE9059C16A33cFE8D;
     /// @notice Ops wallet that pulls each round's 1/3 from `RealmVoting` (`processWinner`) and buys the
     ///         winner. Set as a voting admin at deploy.
@@ -227,8 +227,8 @@ library DeploymentAddressesRobinhoodTestnet {
     ///         from 2026-09-14; the `realm.dev` EOA before that.
     address public constant REALM_TREASURY = TEAM_TREASURY;
 
-    /// @notice The wallet on the 2/3 leg of `RealmTreasuryRouter`. Separate from `REALM_TREASURY`, which
-    ///         became the router proxy itself once the router went live: resolving the leg from that would
+    /// @notice The wallet `RealmTreasuryRouter` forwards everything to. Separate from `REALM_TREASURY`, which
+    ///         became the router proxy itself once the router went live: resolving it from that would
     ///         have the router forwarding to its own address.
     /// @dev The dev deployer on this chain, not a multisig — Robinhood mainnet is the only chain with a
     ///      dedicated one. Rotated from `0x1a209bB4d0bC40f169c06dC2808d7d512Aea62bb`, which the router
