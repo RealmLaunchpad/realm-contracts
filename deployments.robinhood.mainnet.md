@@ -22,7 +22,7 @@
 | RealmLpLocker                                | `0x77493d5Efc88817A252a1a17Acd48951Af0EC016` |
 | SwapLpFeeRouter (impl)                       | `0x91fd2fFa173bC417Fc2Fd2FD5443f9f18c705C09` |
 | RealmTreasuryRouter (proxy)                  | `0x8F597ad86F07F3d1CF3Eb90eB1089ed6BDCbb6E2` |
-| RealmTreasuryRouter (impl)                   | `0xb52E9Ed0fE8d95B9561316b5Dca8a804D554e748` |
+| RealmTreasuryRouter (impl)                   | `0xDDf69cf1A657f7265199dE45239049Bb9F92C363` |
 | REALM token                                  | `0x4898891604a8d11798af0551766D7e100E5e1EDe` |
 | RealmVoting (proxy)                          | `0x73E9F2B4Ea042FF7019773fc5B6A83649CA0456E` |
 | RealmVoting (impl)                           | `0xF5f3c635882DaA374d5927a442b25c323809Cc65` |
@@ -65,7 +65,7 @@
 | Name                                         | Address                                      |
 | -------------------------------------------- | -------------------------------------------- |
 | Realm Treasury                               | `0x8F597ad86F07F3d1CF3Eb90eB1089ed6BDCbb6E2` |
-| Team Treasury (2/3 leg)                      | `0x24CF0733F2b6F9407ab34E2BE9059C16A33cFE8D` |
+| Team Treasury                                | `0x24CF0733F2b6F9407ab34E2BE9059C16A33cFE8D` |
 | Vote Buyback Wallet (1/3 leg)                | `0x636A44e110a79d2a799BFe2F79ABdF9D6C2CE0A6` |
 | Legacy Treasury (pre-router)                 | `0x7826AaE926AfD2886257976770e93e0240D2426e` |
 | Realm Keeper                                 | `0x9FC60bd60298eCe67ab98ff10CaC8Bd7E37eEc02` |
