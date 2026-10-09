@@ -77,7 +77,7 @@ library DeploymentsRobinhoodMainnet {
     address internal constant TREASURY_ROUTER_IMPL = address(0);
     /// @notice The REALM token (a launchpad token like any other; the one `VOTING` burns). `address(0)`
     ///         until it is launched on this chain.
-    address internal constant REALM_TOKEN = address(0);
+    address internal constant REALM_TOKEN = 0x4898891604a8d11798af0551766D7e100E5e1EDe;
     /// @notice `RealmVoting` proxy (UUPS): REALM burn-to-vote rounds. Needs the REALM token, so it is
     ///         deployed after the first token; `TREASURY_ROUTER` bakes it in, so it comes BEFORE that.
     address internal constant VOTING = address(0);

@@ -23,7 +23,7 @@
 | SwapLpFeeRouter (impl)                       | `0x7B958F7dc675Eb109E185Be0c2Acc7b99314A608` |
 | RealmTreasuryRouter (proxy)                  | _(not deployed)_                             |
 | RealmTreasuryRouter (impl)                   | _(not deployed)_                             |
-| REALM token                                  | _(not deployed)_                             |
+| REALM token                                  | `0x4898891604a8d11798af0551766D7e100E5e1EDe` |
 | RealmVoting (proxy)                          | _(not deployed)_                             |
 | RealmVoting (impl)                           | _(not deployed)_                             |
 | RealmQuoter                                  | `0xa9082bDfE16B19B2d28Fb55317d5ec6a274Fa8a0` |
