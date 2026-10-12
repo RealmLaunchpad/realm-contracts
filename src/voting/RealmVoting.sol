@@ -18,8 +18,8 @@ import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/ex
 ///      storage and nothing to process.
 ///
 /// @dev WINNER. The address with the most votes; a strictly greater total replaces the leader, so a tie keeps
-///      the earlier one. ANY address can be voted for — no launchpad check, so a future launchpad or an
-///      off-platform coin qualifies. A vote for something unbuyable only costs the voter their REALM: the
+///      the earlier one. ANY address but REALM itself can be voted for — no launchpad check, so a future
+///      launchpad or an off-platform coin qualifies. A vote for something unbuyable only costs the voter their REALM: the
 ///      admin doing the manual swap simply decides what to do with that round's native. A round with no votes has `winner == address(0)`; its native is still pullable, and
 ///      what to do with it is the admin's call.
 ///
@@ -27,7 +27,7 @@ import {ERC20Burnable} from "lib/openzeppelin-contracts/contracts/token/ERC20/ex
 ///      who buys the winner off-chain-decided venues. Purchases are attributed by watching that wallet.
 contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Contract version.
-    uint256 public constant VERSION = 2;
+    uint256 public constant VERSION = 3;
 
     struct Round {
         uint40 startTime;
@@ -69,6 +69,7 @@ contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error RoundNotEnded();
     error InsufficientRoundEth();
     error EthTransferFailed();
+    error CannotVoteForRealm();
 
     modifier onlyAdmin() {
         require(isAdmin[msg.sender] || msg.sender == owner(), NotAdmin());
@@ -99,6 +100,7 @@ contract RealmVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     ///         live round.
     function vote(address token, uint256 amount) external {
         require(amount > 0, InvalidAmount());
+        require(token != address(REALM), CannotVoteForRealm());
         uint256 id = _sync();
         REALM.burnFrom(msg.sender, amount);
         uint256 total = votes[id][token] += amount;

@@ -82,7 +82,7 @@ library DeploymentsRobinhoodTestnet {
     ///         deployed after the first token; `TREASURY_ROUTER` bakes it in, so it comes BEFORE that.
     address internal constant VOTING = 0x5026DC7fF53e95147362421Aac2Cf4c15f37Edc7;
     /// @notice Implementation behind `VOTING`. Tracked for verification and audit trails only.
-    address internal constant VOTING_IMPL = 0x97aE707A21eb832c563c10013d2dCA4B82F63801;
+    address internal constant VOTING_IMPL = 0x71a12DfDCE7c93eA859aeaE5553D3Cf90AA42808;
     address internal constant QUOTER = 0x84083D67C0CC576726AB5270e01315d728476dC5;
     /// @notice `RealmKeeperLens`: the stateless, view-only batch reader the dividend keeper drives its
     ///         per-token reads through. Consumed OFF chain only — no Realm contract references it — so it

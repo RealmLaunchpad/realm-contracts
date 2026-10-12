@@ -25,7 +25,7 @@
 | RealmTreasuryRouter (impl)                   | `0x82CEC809404EaE07Ee2A5CFa32bdAC222c5b77Df` |
 | REALM token                                  | `0x0F4536A356C649129806f91010e3d91266eEEEAA` |
 | RealmVoting (proxy)                          | `0x5026DC7fF53e95147362421Aac2Cf4c15f37Edc7` |
-| RealmVoting (impl)                           | `0x97aE707A21eb832c563c10013d2dCA4B82F63801` |
+| RealmVoting (impl)                           | `0x71a12DfDCE7c93eA859aeaE5553D3Cf90AA42808` |
 | RealmQuoter                                  | `0x84083D67C0CC576726AB5270e01315d728476dC5` |
 | RealmKeeperLens                              | `0xCC128819B2E46bb042847aECA56AF1BE4BA0E38a` |
 | RealmKeepersRegistry                         | `0xC9f74AE2f185C21853744a2BfcaE84CfFD556815` |

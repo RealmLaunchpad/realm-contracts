@@ -106,6 +106,11 @@ contract RealmVotingTests is Test {
         _vote(alice, tokenA, 0);
     }
 
+    function test_vote_realmRejected() public {
+        vm.expectRevert(RealmVoting.CannotVoteForRealm.selector);
+        _vote(alice, address(realm), 1);
+    }
+
     function test_vote_leaderOnlyOnStrictlyMore() public {
         _vote(alice, tokenA, 100e18);
         _vote(bob, tokenB, 100e18);
