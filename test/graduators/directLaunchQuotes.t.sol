@@ -509,9 +509,13 @@ contract DirectLaunchQuotesTests is DirectLaunchUniV4Tests {
     }
 
     function test_multiPair_rejectsMoreThanMaxPairs() public {
-        RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](4);
-        for (uint256 i; i < 4; ++i) {
-            pairs[i] = RealmFactoryUniV4Direct.DirectPair({quote: address(uint160(0x1000 + i)), weightBps: 2_500});
+        uint256 n = directFactory.MAX_PAIRS() + 1;
+        RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](n);
+        for (uint256 i; i < n; ++i) {
+            pairs[i] = RealmFactoryUniV4Direct.DirectPair({
+                quote: address(new QuoteCoin()), weightBps: uint16(i == 0 ? 10_000 - (n - 1) * 1_000 : 1_000)
+            });
+            _whitelist(pairs[i].quote, QC_PER_ETH);
         }
         vm.prank(creator);
         vm.expectRevert(RealmFactoryUniV4Direct.InvalidPairs.selector);
