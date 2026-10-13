@@ -15,7 +15,7 @@
 | RealmHookAnyPair                             | `0x87f077ebBE1D9d35D5E4522bf0a4e30adaaF40cc` |
 | RealmDirectGraduatorUniV4                    | `0xa3e87b0236B9Fa1cbd10c6d9fDE8b72b627CfE4a` |
 | RealmFactoryUniV4Direct (proxy)              | `0xF0399F67e359c08A18816E466364797b7fBc4df4` |
-| RealmFactoryUniV4Direct (impl)               | `0x29E617DDF29645Ae3f25a73A0CD582B71DEd682A` |
+| RealmFactoryUniV4Direct (impl)               | `0x9a83448D1d4B8135f1403926cd24b021903c07eE` |
 | RealmAssetsWhitelist (proxy)                 | `0xf15562e731c05Fb9DD9c7BE0a2FD8C03b778c261` |
 | RealmAssetsWhitelist (impl)                  | `0xC5006Ba2E152DA37E8Ad44927775B4e5B0447f5f` |
 | SwapLpFeeRouter (proxy)                      | `0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0` |
@@ -31,11 +31,11 @@
 | RealmKeepersRegistry                         | `0xC9f74AE2f185C21853744a2BfcaE84CfFD556815` |
 | RealmSwapper (proxy)                         | `0xabB85435eF1AAc5b0294742E2B0Eb34CE6936557` |
 | RealmSwapper (impl)                          | `0xa47C008C2abcee6cD6F796a7Dd18d162F28Bb927` |
-| RealmToken (impl)                            | `0x97bc923b0e7Cb85CF844d148bB3887E03850C2e7` |
-| RealmTaxableTokenUniV4 (impl)                | `0xdf703921E857Eb724313Bf98E5e0b60160F0f22b` |
-| RealmTaxableTokenUniV2 (impl)                | `0x0be5C4834cfa8022e0dAFE53e172EEfCFBe24e12` |
+| RealmToken (impl)                            | `0x268585D9A93aF27361F0bac0FA0831dEB2615Be6` |
+| RealmTaxableTokenUniV4 (impl)                | `0xA725bC6fa0D1588E7DE9CF98aAA04Fb8c66c3D12` |
+| RealmTaxableTokenUniV2 (impl)                | `0x07A25CbA710EAe4D6203C701cA09a5343B4D6A7b` |
 | RealmFactoryUniV2Unified (proxy)             | `0x90Ec28b1F31E576Bb368F873fEf209cFa6880c05` |
-| RealmFactoryUniV2Unified (impl)              | `0x6109De1F1A7C213be2B89a5aFd5C2763d14F8ec6` |
+| RealmFactoryUniV2Unified (impl)              | `0x0A0F4339edB6E7d29E3C9E0493F5cc4ed9e580ca` |
 | RealmCreatorVaultFactory (proxy)             | `0x0EEd34B7Da6cA5cF293DFcef1e2280697274026b` |
 | RealmCreatorVaultFactory (impl)              | `0x84A4B551bD76219Ef064d9f43A178fEe5781574a` |
 | RealmCreatorVault (impl)                     | `0x00b87AAEd1D51675Fd1AF7731Da5fCe0eA008deF` |

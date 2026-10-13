@@ -116,9 +116,9 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     }
 
     /// @notice Max pools one token may launch into, any mix of native and ERC20 quotes. One less than
-    ///         `RealmToken.MAX_QUOTES`, whose index 0 is native on every token, so three ERC20 pairs fit
+    ///         `RealmToken.MAX_QUOTES`, whose index 0 is native on every token, so six ERC20 pairs fit
     ///         with no native pair at all.
-    uint256 public constant MAX_PAIRS = 3;
+    uint256 public constant MAX_PAIRS = 6;
 
     /// @notice Opening market cap of EVERY pair: 1.125 whole native coins (ETH), scaled by 1e18. An ERC20
     ///         pair opens at this value converted at the quote's LIVE `ASSETS_WHITELIST` rate.

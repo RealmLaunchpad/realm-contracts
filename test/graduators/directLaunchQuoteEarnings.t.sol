@@ -994,6 +994,51 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         assertGt(wall, 0, "the last quote's liquidity buffer placed a wall");
     }
 
+    /// @dev `MAX_PAIRS` ERC20 pairs and no native one: the token fills every `MAX_QUOTES` slot, and the
+    ///      LAST quote (index 6) trades and runs both its burn and liquidity buffers.
+    function test_multiPair_sixErc20QuotesWithoutANativePair() public {
+        uint256 n = directFactory.MAX_PAIRS();
+        assertEq(n, 6, "six pairs");
+        RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](n);
+        pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(quoteCoin), weightBps: 5_000});
+        for (uint256 i = 1; i < n; ++i) {
+            address q = address(new QuoteCoin());
+            _whitelist(q, QC_PER_ETH);
+            pairs[i] = RealmFactoryUniV4Direct.DirectPair({quote: q, weightBps: 1_000});
+        }
+        address last = pairs[n - 1].quote;
+        RealmFactoryUniV4Direct.DirectTokenSetup memory setup = _setup(true);
+
+        vm.prank(creator);
+        uint256 gasBefore = gasleft();
+        RealmTaxableTokenUniV4 token = RealmTaxableTokenUniV4(
+            payable(directFactory.createToken(
+                    setup,
+                    pairs,
+                    _burnAndLiquidityAlloc(),
+                    _emptyAntiSniperCfg(),
+                    new IRealmFactory.CreatorVault[](0),
+                    _noDevBuy(),
+                    address(0)
+                ))
+        );
+        emit log_named_uint("six-pair createToken gas", gasBefore - gasleft());
+
+        assertEq(token.quoteCount(), token.MAX_QUOTES(), "native plus six ERC20 quotes");
+        assertEq(token.quotes(6), last, "the sixth ERC20 is the last quote");
+        QuoteCoin(last).mintTo(alice, 1_000e6);
+        _swapQuotePool(alice, address(token), last, true, 100e6);
+        assertGt(token.balanceOf(alice), 0, "the sixth pool trades");
+
+        _accrue(token, last, 4_000e6);
+        uint256 supply = token.totalSupply();
+        token.processBurn(last, 1);
+        assertLt(token.totalSupply(), supply, "the last quote's burn buffer bought back and burned");
+        token.processLiquidity(last);
+        (,, uint256 wall) = lpLocker.nextWall(address(token), last);
+        assertGt(wall, 0, "the last quote's liquidity buffer placed a wall");
+    }
+
     /// @dev The `MAX_PAIRS` launch: native plus two ERC20s, one `PoolSeeded` per pool in pair order with
     ///      its own weight, and the supply fully seeded or burned.
     function test_multiPair_threePoolsAreAllSeeded() public {

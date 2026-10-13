@@ -182,7 +182,7 @@ abstract contract DividendDistribution {
 
     /// @dev One fallback pot per currency a buffer can be held in: one per entry of the token's `quotes`,
     ///      so this mirrors `RealmToken.MAX_QUOTES`.
-    uint256 internal constant DIVIDEND_FALLBACK_POTS = 4;
+    uint256 internal constant DIVIDEND_FALLBACK_POTS = 7;
 
     /// @notice Pass this as a payout asset to mean "the token itself". A creator configuring a token
     ///         cannot name its own address — it does not exist yet at the point the configuration is
