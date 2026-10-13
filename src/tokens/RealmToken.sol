@@ -16,6 +16,7 @@ import {IRealmMasterFeeHandler} from "src/interfaces/IRealmMasterFeeHandler.sol"
 import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {SniperProtection, AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {UniswapV4PoolConstants} from "src/libraries/UniswapV4PoolConstants.sol";
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @dev Anti-sniper protection is folded into every token as a gated feature: `SniperProtection`
 ///      supplies the caps, and the warm-slot `protectionWindowEnd` (packed into the `pair`/`graduated`
@@ -482,9 +483,11 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         return _tokenSymbol;
     }
 
-    /// @dev Launchpad is pre-approved
+    /// @dev Launchpad and Permit2 are pre-approved. Permit2 still needs the owner's signature or on-chain
+    ///      Permit2 approval to move funds, so a sale is one signature + one tx (no ERC20 approve).
+    ///      Not revocable here: holders revoke at Permit2 (`lockdown`, nonce invalidation).
     function allowance(address owner_, address spender) public view override(ERC20, IERC20) returns (uint256) {
-        if (spender == address(launchpad)) return type(uint256).max;
+        if (spender == address(launchpad) || spender == DeploymentAddresses.PERMIT2) return type(uint256).max;
         return super.allowance(owner_, spender);
     }
 
@@ -554,8 +557,8 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
     }
 
     function _spendAllowance(address owner_, address spender, uint256 value) internal override {
-        // skips allowance logic if the spender is the launchpad to pre-approve launchpad forever
-        if (spender == address(launchpad)) return;
+        // skips allowance logic for the pre-approved launchpad and Permit2
+        if (spender == address(launchpad) || spender == DeploymentAddresses.PERMIT2) return;
 
         super._spendAllowance(owner_, spender, value);
     }
