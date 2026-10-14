@@ -67,6 +67,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 13. [`RealmToken.burn` / `burnFrom`](#13-realmtokenburn--burnfrom)
 14. [LP fee collection — `RealmLpLocker` / `SwapLpFeeRouter` / `RealmSwapper.sellToken`](#14-lp-fee-collection--realmlplocker--swaplpfeerouter--realmswappersellToken)
 15. [Factory pause — `setPaused`](#15-factory-pause--setpaused)
+16. [Special deployments — `setSpecialDeploymentsBudget`](#16-special-deployments--setspecialdeploymentsbudget)
 
 ---
 
@@ -790,3 +791,9 @@ Single hop in the token's own Realm pool (`poolFee()`, `graduator.hookFor(quote)
 ### `RealmFactoryUniV2Unified.setPaused(bool paused)` / `RealmFactoryUniV4Direct.setPaused(bool paused)` — owner only
 
 Emits **`RealmFactory.PausedSet`** (`paused`), on every call, even when the value is unchanged. While `paused()` is true, `createToken` reverts `FactoryPaused` and emits nothing; previews are unaffected. Proxies are born paused (`initialize()` emits `PausedSet(true)`).
+
+## 16. Special deployments — `setSpecialDeploymentsBudget`
+
+### `RealmFactoryUniV4Direct.setSpecialDeploymentsBudget(address deployer, uint256 budget)` — owner only
+
+Emits **`SpecialDeploymentsBudgetSet`** (`deployer` indexed, `budget`), on every call. `budget` is the deployer's absolute total, not an increment. A `createToken` that spends one (its decay exceeds the normal caps) emits nothing extra: usage is derivable from the token's `RealmTaxableTokenInitialized` decay config.

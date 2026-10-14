@@ -483,6 +483,14 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
     ///        rate, so a shorter static window would leave the long-term static tax effectively unused.
     ///      No fee-receiver or ownership constraints are imposed at any duration.
     function _validateTaxConfig(TaxConfigs memory t) internal pure {
+        _validateTaxConfig(t, MAX_TAX_DECAY_START_COMBINED_BPS, MAX_TAX_DECAY_DURATION_SECONDS);
+    }
+
+    /// @dev `_validateTaxConfig` with the two decay caps passed in, so a venue can loosen them per deployer.
+    function _validateTaxConfig(TaxConfigs memory t, uint256 maxDecayStartCombinedBps, uint256 maxDecayDurationSeconds)
+        internal
+        pure
+    {
         if (t.taxDurationSeconds != 0) {
             require(t.buyTaxBps > 0 || t.sellTaxBps > 0, InvalidTaxConfig());
             require(t.taxDurationSeconds <= MAX_TAX_DURATION_SECONDS, InvalidTaxDuration());
@@ -492,10 +500,9 @@ abstract contract RealmFactoryAbstract is IRealmFactory, Initializable, OwnableU
 
         if (t.taxDecayDuration != 0) {
             require(t.buyTaxDecayStartBps > 0 || t.sellTaxDecayStartBps > 0, InvalidTaxConfig());
-            require(t.taxDecayDuration <= MAX_TAX_DECAY_DURATION_SECONDS, InvalidTaxDuration());
+            require(t.taxDecayDuration <= maxDecayDurationSeconds, InvalidTaxDuration());
             require(
-                uint256(t.buyTaxDecayStartBps) + t.sellTaxDecayStartBps <= MAX_TAX_DECAY_START_COMBINED_BPS,
-                InvalidTaxBps()
+                uint256(t.buyTaxDecayStartBps) + t.sellTaxDecayStartBps <= maxDecayStartCombinedBps, InvalidTaxBps()
             );
             // A configured decay must START strictly ABOVE its long-term static rate (per direction): the
             // decay interpolates DOWN to the static rate, so a start at or below it would never decay (the

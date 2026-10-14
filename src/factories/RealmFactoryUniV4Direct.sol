@@ -115,6 +115,17 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         SupplyShare[] recipients;
     }
 
+    /// @notice The caps a deployer's next `createToken` is validated against (see `getDeploymentLimits`).
+    ///         Fields may be appended, never reordered.
+    /// @param maxTaxDecayStartCombinedBps Cap on `buyTaxDecayStartBps + sellTaxDecayStartBps`.
+    /// @param maxTaxDecayDurationSeconds Cap on `taxDecayDuration`.
+    /// @param maxOverallFeeBps Per-direction cap on LP fee + decay start (the hook's), never overridden.
+    struct DeploymentLimits {
+        uint256 maxTaxDecayStartCombinedBps;
+        uint256 maxTaxDecayDurationSeconds;
+        uint256 maxOverallFeeBps;
+    }
+
     /// @notice Max pools one token may launch into, any mix of native and ERC20 quotes. One less than
     ///         `RealmToken.MAX_QUOTES`, whose index 0 is native on every token, so six ERC20 pairs fit
     ///         with no native pair at all.
@@ -140,6 +151,13 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     /// @dev Harmless on-chain (nobody has to buy), but aggregators display it as a market cap from block
     ///      zero, with no volume behind it.
     uint256 public constant MAX_LAUNCH_MARKET_CAP_X18 = 125 ether;
+
+    /// @notice `MAX_TAX_DECAY_START_COMBINED_BPS` for a special deployment: twice the hook's per-direction
+    ///         cap, so only that cap (`_validateTotalFee`) binds.
+    uint256 public constant SPECIAL_MAX_TAX_DECAY_START_COMBINED_BPS = 4_000;
+
+    /// @notice `MAX_TAX_DECAY_DURATION_SECONDS` for a special deployment.
+    uint256 public constant SPECIAL_MAX_TAX_DECAY_DURATION_SECONDS = 3 hours;
 
     /// @notice The chain's wrapped native token, which a pair may NOT be quoted against. See
     ///         `_validateQuote`.
@@ -171,6 +189,10 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         [`MIN_LAUNCH_MARKET_CAP_X18`, `MAX_LAUNCH_MARKET_CAP_X18`] of native value at the quote's
     ///         snapshot rate.
     error LaunchPriceOutOfBounds();
+    /// @notice A special-deployments budget set below what the deployer has already used.
+    error BudgetBelowUsed();
+
+    event SpecialDeploymentsBudgetSet(address indexed deployer, uint256 budget);
 
     constructor(
         TokenImpls memory impls,
@@ -241,6 +263,28 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         if (referral != address(0)) emit TokenReferral(token, referral);
     }
 
+    /// @notice Sets how many special deployments `deployer` may make IN TOTAL (not on top of those used).
+    ///         Never below `specialDeploymentsUsed[deployer]`; setting it equal revokes what is left.
+    function setSpecialDeploymentsBudget(address deployer, uint256 budget) external onlyOwner {
+        require(budget >= specialDeploymentsUsed[deployer], BudgetBelowUsed());
+        specialDeploymentsBudget[deployer] = budget;
+        emit SpecialDeploymentsBudgetSet(deployer, budget);
+    }
+
+    /// @notice The caps `deployer`'s next `createToken` is validated against: the special ones while it
+    ///         has budget left, else the normal ones.
+    function getDeploymentLimits(address deployer) external view returns (DeploymentLimits memory) {
+        if (_hasSpecialDeployment(deployer)) {
+            return DeploymentLimits(
+                SPECIAL_MAX_TAX_DECAY_START_COMBINED_BPS,
+                SPECIAL_MAX_TAX_DECAY_DURATION_SECONDS,
+                HOOK_MAX_OVERALL_FEE_BPS
+            );
+        }
+        return
+            DeploymentLimits(MAX_TAX_DECAY_START_COMBINED_BPS, MAX_TAX_DECAY_DURATION_SECONDS, HOOK_MAX_OVERALL_FEE_BPS);
+    }
+
     /// @notice Returns which token implementation `createToken` would clone for the same arguments, so a
     ///         frontend can compute the initcode hash to predict the token address. Takes EXACTLY
     ///         `createToken`'s arguments, so the ABI stays stable whichever inputs dispatch reads later;
@@ -258,7 +302,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ) external view returns (address) {
         _validateAntiSniperConfig(antiSniperConfigs);
         TaxConfigs memory cfg = _toTaxConfigs(taxAllocationConfigs);
-        _validateTaxConfig(cfg);
+        _validateCallerTaxConfig(cfg);
         EarningsAllocationMultiConfig calldata alloc = taxAllocationConfigs.earningsAllocation;
         return _previewTokenImplementation(cfg, _hasAllocation(alloc.burnBps, alloc.dividendsBps, alloc.liquidityBps));
     }
@@ -295,11 +339,28 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         bool hasAllocation
     ) private returns (address token) {
         TaxConfigs memory taxConfigs = _toTaxConfigs(c);
-        _validateTaxConfig(taxConfigs);
+        if (_validateCallerTaxConfig(taxConfigs)) specialDeploymentsUsed[msg.sender]++;
         _validateTotalFee(setup.lpFeeBps, taxConfigs);
         _allocationPending = hasAllocation;
         token = _launch(setup, pairs, firstLaunchTick, taxConfigs, antiSniperConfigs, creatorVaults);
         if (hasAllocation) _initializeAllocation(token, c, pairs);
+    }
+
+    /// @dev Validates `t` against the caller's limits. Returns true when it fails the normal decay caps
+    ///      and passed on the caller's special budget, i.e. when the launch spends one special deployment.
+    function _validateCallerTaxConfig(TaxConfigs memory t) private view returns (bool special) {
+        special = t.taxDecayDuration > MAX_TAX_DECAY_DURATION_SECONDS
+            || uint256(t.buyTaxDecayStartBps) + t.sellTaxDecayStartBps > MAX_TAX_DECAY_START_COMBINED_BPS;
+        if (special && _hasSpecialDeployment(msg.sender)) {
+            _validateTaxConfig(t, SPECIAL_MAX_TAX_DECAY_START_COMBINED_BPS, SPECIAL_MAX_TAX_DECAY_DURATION_SECONDS);
+        } else {
+            // Over the normal caps without budget: reverts with the normal error.
+            _validateTaxConfig(t);
+        }
+    }
+
+    function _hasSpecialDeployment(address deployer) private view returns (bool) {
+        return specialDeploymentsUsed[deployer] < specialDeploymentsBudget[deployer];
     }
 
     /// @dev Its own frame purely for the stack: seven calldata arguments do not fit beside the launch's.
@@ -627,4 +688,10 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     function _launchpadTreasuryShareBps() internal pure override returns (uint16) {
         return 0;
     }
+
+    /// @notice Special deployments (looser `DeploymentLimits`) each deployer may make in total. Set by the owner.
+    mapping(address => uint256) public specialDeploymentsBudget;
+
+    /// @notice Special deployments each deployer has made. Only launches that needed the looser limits count.
+    mapping(address => uint256) public specialDeploymentsUsed;
 }
