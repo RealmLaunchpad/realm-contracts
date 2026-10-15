@@ -381,7 +381,7 @@ abstract contract DividendDistribution {
     error DividendAssetOutOfRange();
     /// @notice Creation named payout `asset` with no route, and the registry holds none for it either.
     error MissingDividendRoute(address asset);
-    /// @notice Creation left ERC20 `quote` with no V4 route back to native, so its dividend buffer could
+    /// @notice Creation left ERC20 `quote` with no route back to native, so its dividend buffer could
     ///         never convert.
     error MissingQuoteRoute(address quote);
 

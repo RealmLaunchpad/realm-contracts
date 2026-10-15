@@ -51,14 +51,14 @@ interface IRealmSwapperGraduator {
 ///      are the truth about whether a pool can deliver.
 ///
 /// @dev TWO ROUTE KINDS. A BUY route (native -> asset, any venue) buys a payout asset. A QUOTE route
-///      (V4 only) is walked backwards to SELL an ERC20 quote into native when a dividends leg is bought
-///      out of it; only V4 names its pools outright, so only V4 can be reversed. Kept apart so a quote
-///      that is also a payout asset can be bought on V2/V3 and still be sold on V4. With no quote route,
-///      the sell falls back to the quote's buy route, which then has to be V4.
+///      (same wire format, any venue) is walked backwards to SELL an ERC20 quote into native when a
+///      dividends leg is bought out of it. Kept apart so a quote that is also a payout asset can be
+///      bought through one pool and sold through another. With no quote route, the sell falls back to
+///      the quote's buy route.
 ///
 /// @dev CUSTODIES NOTHING. `swapNativeToAsset` receives, swaps and forwards inside one call, and holds
-///      no balance between calls. Its `receive()` exists only for the native a reverse V4 leg takes out
-///      of the pool manager mid-`swapAssetToAsset`, which moves on in the same call; anything else sent
+///      no balance between calls. Its `receive()` exists only for the native a reverse leg's venue (the
+///      pool manager, the universal router's unwrap, the V2 router) pays out mid-`swapAssetToAsset`, which moves on in the same call; anything else sent
 ///      there is a donation nobody can recover.
 contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Contract version.
@@ -126,8 +126,8 @@ contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSU
     ///         one is set.
     mapping(address => mapping(address => bytes)) internal _routes;
 
-    /// @notice Quote (sell) routes, `token => quote => route`, V4 only, same wire format and same
-    ///         `ALL_TOKENS` override. Empty: fall back to the quote's buy route.
+    /// @notice Quote (sell) routes, `token => quote => route`, same wire format and same `ALL_TOKENS`
+    ///         override. Empty: fall back to the quote's buy route.
     mapping(address => mapping(address => bytes)) internal _quoteRoutes;
 
     /// @notice Hot wallet that pays the gas for the out-of-band conversions, funded by `KEEPER_FEE` out
@@ -192,10 +192,9 @@ contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSU
     //////////////////////// errors //////////////////////
 
     error NotAdmin();
-    /// @notice The asset has no route (or, for `swapAssetToAsset`'s first leg, none that can be walked
-    ///         backwards — only V4 can).
+    /// @notice The asset has no route.
     error NoRoute();
-    /// @notice The route is not well-formed for the asset it was set for (a quote route: or not V4).
+    /// @notice The route is not well-formed for the asset it was set for.
     error MalformedRoute();
     /// @notice The token already registered a route for this asset; only an admin can change it now.
     error RouteAlreadyRegistered();
@@ -268,19 +267,24 @@ contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSU
         bool quote
     ) private {
         require(routes[msg.sender][asset].length == 0, RouteAlreadyRegistered());
-        require(_wellFormed(asset, route, quote), MalformedRoute());
+        require(_wellFormed(asset, route), MalformedRoute());
         routes[msg.sender][asset] = route;
         emit RouteRegistered(msg.sender, asset, quote, route);
     }
 
     /// @dev Shape only — no liquidity read. Catches a route set for the wrong asset or a garbled path;
     ///      whether its pools can absorb a conversion is proven off-chain before listing (fork probe) and
-    ///      re-proven by every swap.
-    ///      A quote route (`quote`) must be V4: it is walked backwards, which only V4 can be.
-    function _wellFormed(address asset, bytes memory route, bool quote) internal pure returns (bool) {
+    ///      re-proven by every swap. Buy and quote routes share one shape: a quote route is the buy
+    ///      route walked backwards.
+    function _wellFormed(address asset, bytes memory route) internal pure returns (bool) {
         uint8 venue = DividendRouteLib.venue(route);
-        if (quote && venue != DividendRouteLib.VENUE_V4) return false;
-        if (venue == DividendRouteLib.VENUE_V2) return route.length == 1;
+        if (venue == DividendRouteLib.VENUE_V2) {
+            if (route.length == 1) return true;
+            if (route.length != 1 + V3_ADDR_BYTES) return false;
+            // One intermediate, neither end of the path.
+            address via = _v3PathToken(route, 1);
+            return via != address(0) && via != asset && via != nativeQuoteToken();
+        }
         if (venue == DividendRouteLib.VENUE_V4) {
             Hop[] memory hops = DividendRouteLib.toV4Hops(route);
             uint256 n = hops.length;
@@ -307,10 +311,17 @@ contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSU
         return false;
     }
 
-    /// @dev The 20-byte address starting at `offset` in a V3 encoded path.
+    /// @dev The 20-byte address starting at `offset` in a V3 encoded path (or any packed bytes).
     function _v3PathToken(bytes memory path, uint256 offset) private pure returns (address token) {
         assembly {
             token := shr(96, mload(add(add(path, 0x20), offset)))
+        }
+    }
+
+    /// @dev The 3-byte fee starting at `offset` in a V3 encoded path.
+    function _v3PathFee(bytes memory path, uint256 offset) private pure returns (uint24 fee) {
+        assembly {
+            fee := shr(232, mload(add(add(path, 0x20), offset)))
         }
     }
 
@@ -322,7 +333,7 @@ contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSU
 
     //////////////////////// the swap //////////////////////
 
-    /// @notice Accepts the native a reverse leg takes out of the pool manager: `swapAssetToAsset`'s
+    /// @notice Accepts the native a reverse leg's venue pays out: `swapAssetToAsset`'s
     ///         first leg lands here before the keeper's cut and the second leg move it on. Nothing
     ///         rests here between calls — `swapNativeToAsset` never needed this because its native
     ///         arrives as `msg.value`.
@@ -450,16 +461,40 @@ contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSU
     }
 
     /// @dev Leg 1 of `swapAssetToAsset`: the caller's quote route for `source` (`quoteRouteOf`) walked
-    ///      BACKWARDS to native. Only a V4 route can be: it names its pools outright, whereas a V3 path is
-    ///      one-directional calldata and a V2 pair swap needs the router's ETH-out entry point this
-    ///      registry does not wire. A quote route is V4 by construction; the buy-route fallback may not be.
+    ///      BACKWARDS to native, on whichever venue it names.
     function _swapToNative(address source, uint256 amountIn, uint256 minOut) private returns (uint256 native) {
         DividendRouteLib.Decoded memory route = DividendRouteLib.decode(quoteRouteOf(msg.sender, source));
-        require(route.venue == DividendRouteLib.VENUE_V4, NoRoute());
-        Hop[] memory hops = route.hops;
+        uint8 venue = route.venue;
+        require(venue != 0, NoRoute());
+        uint256 before = address(this).balance;
+        uint256 sourceBefore = IERC20(source).balanceOf(address(this));
+        bool ok;
+        if (venue == DividendRouteLib.VENUE_V2) {
+            ok = UniswapV2Venue.trySwapExactTokens(
+                IUniswapV2Router(SWAP_ROUTER), _v2Path(source, route.path, true), amountIn, minOut, true
+            );
+        } else {
+            UniversalRouterVenue.ensureRouterPull(PERMIT2, UNIV4_UNIVERSAL_ROUTER, source);
+            ok = venue == DividendRouteLib.VENUE_V3
+                ? UniversalRouterVenue.swapExactInV3Path(
+                    UNIV4_UNIVERSAL_ROUTER, _reverseV3Path(route.path), amountIn, minOut, true
+                )
+                : UniversalRouterVenue.swapAssetToNativeV4Path(
+                    UNIV4_UNIVERSAL_ROUTER, source, _reverseV4Path(route.hops), amountIn, minOut
+                );
+        }
+        // All of `amountIn` or nothing: a partial fill would leave the rest here, where nothing can sweep
+        // it, while the caller books the whole spend.
+        require(ok && sourceBefore - IERC20(source).balanceOf(address(this)) == amountIn, SwapFailed());
+        native = address(this).balance - before;
+        require(native != 0, InsufficientOutput());
+    }
+
+    /// @dev A native-anchored V4 route (native -> ... -> source) walked back: hop `j` OUTPUTS the
+    ///      currency before it, the last one native.
+    function _reverseV4Path(Hop[] memory hops) private pure returns (PathKey[] memory path) {
         uint256 n = hops.length;
-        PathKey[] memory path = new PathKey[](n);
-        // The route runs native -> ... -> source; walked back, hop `j` OUTPUTS the currency before it.
+        path = new PathKey[](n);
         for (uint256 k; k < n; ++k) {
             uint256 j = n - 1 - k;
             path[k] = PathKey({
@@ -470,18 +505,24 @@ contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSU
                 hookData: ""
             });
         }
-        UniversalRouterVenue.ensureRouterPull(PERMIT2, UNIV4_UNIVERSAL_ROUTER, source);
-        uint256 before = address(this).balance;
-        uint256 sourceBefore = IERC20(source).balanceOf(address(this));
-        // All of `amountIn` or nothing: a partial fill would leave the rest here, where nothing can sweep
-        // it, while the caller books the whole spend.
-        require(
-            UniversalRouterVenue.swapAssetToNativeV4Path(UNIV4_UNIVERSAL_ROUTER, source, path, amountIn, minOut)
-                && sourceBefore - IERC20(source).balanceOf(address(this)) == amountIn,
-            SwapFailed()
-        );
-        native = address(this).balance - before;
-        require(native != 0, InsufficientOutput());
+    }
+
+    /// @dev A WETH-first V3 path (`WETH | fee | … | source`) reversed: tokens and fees in the opposite order.
+    function _reverseV3Path(bytes memory path) private pure returns (bytes memory reversed) {
+        uint256 hops = (path.length - V3_ADDR_BYTES) / (V3_ADDR_BYTES + V3_FEE_BYTES);
+        reversed = abi.encodePacked(_v3PathToken(path, hops * (V3_ADDR_BYTES + V3_FEE_BYTES)));
+        for (uint256 i = hops; i > 0; --i) {
+            uint256 at = (i - 1) * (V3_ADDR_BYTES + V3_FEE_BYTES);
+            reversed = abi.encodePacked(reversed, _v3PathFee(path, at + V3_ADDR_BYTES), _v3PathToken(path, at));
+        }
+    }
+
+    /// @dev The V2 path for `asset`'s route body (empty, or one intermediate): WETH -> [via] -> asset, or
+    ///      that reversed when `sell`.
+    function _v2Path(address asset, bytes memory via, bool sell) private pure returns (address[] memory path) {
+        path = new address[](via.length == 0 ? 2 : 3);
+        (path[0], path[path.length - 1]) = sell ? (asset, nativeQuoteToken()) : (nativeQuoteToken(), asset);
+        if (via.length != 0) path[1] = _v3PathToken(via, 0);
     }
 
     /// @dev Leg 2 of `swapAssetToAsset`: the payout asset's own route, forward — `swapNativeToAsset`'s
@@ -549,10 +590,9 @@ contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSU
                 );
         }
 
-        address[] memory v2Path = new address[](2);
-        v2Path[0] = quote;
-        v2Path[1] = asset;
-        return UniswapV2Venue.trySwapNativeToAsset(IUniswapV2Router(SWAP_ROUTER), quote, v2Path, nativeIn, minOut);
+        return UniswapV2Venue.trySwapNativeToAsset(
+            IUniswapV2Router(SWAP_ROUTER), quote, _v2Path(asset, route.path, false), nativeIn, minOut
+        );
     }
 
     //////////////////////// admin //////////////////////
@@ -570,7 +610,7 @@ contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSU
         _set(_routes, token, asset, route, false);
     }
 
-    /// @notice Same for `token`'s quote (sell) route for `quote`. V4 only.
+    /// @notice Same for `token`'s quote (sell) route for `quote`.
     function setQuoteRoute(address token, address quote, bytes calldata route) external onlyAdmin {
         _set(_quoteRoutes, token, quote, route, true);
     }
@@ -582,7 +622,7 @@ contract RealmSwapper is IRealmSwapper, Initializable, OwnableUpgradeable, UUPSU
         bytes calldata route,
         bool quote
     ) private {
-        require(route.length == 0 || _wellFormed(asset, route, quote), MalformedRoute());
+        require(route.length == 0 || _wellFormed(asset, route), MalformedRoute());
         routes[token][asset] = route;
         emit RouteSet(token, asset, quote, route);
     }

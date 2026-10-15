@@ -27,6 +27,7 @@ library UniversalRouterVenue {
     ///         which — unlike V4 — cannot take native ETH.
     uint8 internal constant V3_SWAP_EXACT_IN = 0x00;
     uint8 internal constant WRAP_ETH = 0x0b;
+    uint8 internal constant UNWRAP_WETH = 0x0c;
     uint8 internal constant V4_SWAP = 0x10;
 
     /// @notice Currency the router treats as the chain's native coin. Every route here starts there.
@@ -75,6 +76,36 @@ library UniversalRouterVenue {
         // fill instead: `false` here reverts the registry, so the buffer and the native survive intact
         // and the next call retries. Same rule as `_executeAndRequireFullFill` applies to the V4 legs.
         if (ok && IERC20(weth).balanceOf(router) > routerHeld) ok = false;
+    }
+
+    /// @notice Sells `amountIn` of the ERC20 `path` starts at for the token it ends at, along an encoded V3
+    ///         `path`. `toNative`: the path must end at WETH, which is unwrapped and delivered as native;
+    ///         otherwise the final token is delivered. Either way, to `address(this)`.
+    /// @dev The router pulls the input through Permit2 (`payerIsUser`), so the caller must have granted
+    ///      `ensureRouterPull` first. Like the other reverse legs, a partial fill leaves the remainder with
+    ///      the CALLER and `ok` stays true: a caller that needs a full fill measures its own input delta.
+    /// @param minOut minimum output: native when `toNative`, else the final token's own decimals.
+    function swapExactInV3Path(address router, bytes memory path, uint256 amountIn, uint256 minOut, bool toNative)
+        internal
+        returns (bool ok)
+    {
+        bytes[] memory inputs = new bytes[](toNative ? 2 : 1);
+        // Same six-field layout as `swapNativeToAssetV3Path`. To native, the WETH stays in the router for
+        // the unwrap, which carries the floor.
+        inputs[0] = abi.encode(
+            toNative ? ROUTER_ITSELF : address(this),
+            amountIn,
+            toNative ? 0 : minOut,
+            path,
+            true,
+            new uint256[]((path.length - 20) / 23)
+        );
+        bytes memory commands = abi.encodePacked(V3_SWAP_EXACT_IN);
+        if (toNative) {
+            inputs[1] = abi.encode(address(this), minOut);
+            commands = abi.encodePacked(V3_SWAP_EXACT_IN, UNWRAP_WETH);
+        }
+        (ok,) = router.call(abi.encodeCall(IUniversalRouter.execute, (commands, inputs, block.timestamp)));
     }
 
     /// @notice Buys `asset` on the V4 pool keyed by `(native, asset, fee, tickSpacing, hooks)`, delivering

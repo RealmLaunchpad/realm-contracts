@@ -839,37 +839,79 @@ contract DirectLaunchQuoteEarningsTests is DirectLaunchQuotesTests {
         _expectCreateRevert(_pairs(AAPL), devBuy, 0.1 ether, RealmDirectGraduatorUniV4.InsufficientQuoteOut.selector);
     }
 
-    /// @dev `source` stands in for QC's whitelist listing; QC itself is whitelisted by rate in `setUp`.
-    function _expectZapRouteUnavailable(RealmAssetsWhitelist.PriceSource memory source) internal {
+    /// @dev AAPL's real WETH pools at the pinned block: Uniswap V3 0.05% and the V2 pair.
+    address internal constant AAPL_WETH_V3 = 0x8bb3514e2204E1cDF3Ac149EFEe7Ff04D91B719f;
+    address internal constant AAPL_WETH_V2 = 0x9C45B26C45cAbfEEf9718B986fEbd228EC9a8354;
+
+    /// @dev Lists `asset` from a V2 pair or V3 pool, like `_listV4`.
+    function _listPool(address asset, RealmAssetsWhitelist.Venue venue, address pool) internal {
+        RealmAssetsWhitelist.PriceSource memory src;
+        src.venue = venue;
+        src.pool = pool;
+        vm.prank(admin);
+        assetsWhitelist.setApprover(address(this), true);
+        assetsWhitelist.setWhitelisted(asset, src);
+        _whitelist(asset, QC_PER_ETH);
+    }
+
+    /// @dev A zap off the all-V4 path: the factory converted, the graduator bought with the quote, and
+    ///      neither kept anything — WETH included, which the factory wraps for these hops.
+    function _assertZapDelivered(address token, address quote) internal {
+        (uint256 quoteSpent,) = _zapLogs(_aaplEthKey());
+        assertGt(IERC20(token).balanceOf(alice), 0, "dev buy delivered nothing");
+        assertGt(quoteSpent, 0, "no quote spent");
+        _assertNoLeftovers(quote);
+        assertEq(IERC20(address(WETH)).balanceOf(address(directFactory)), 0, "factory keeps no WETH");
+    }
+
+    function test_zap_nativeBuysOnAQuoteListedOnV3() public {
+        _listPool(AAPL, RealmAssetsWhitelist.Venue.V3, AAPL_WETH_V3);
+        _assertZapDelivered(_zapLaunch(AAPL, 0.1 ether, 1), AAPL);
+    }
+
+    function test_zap_nativeBuysOnAQuoteListedOnV2() public {
+        _listPool(AAPL, RealmAssetsWhitelist.Venue.V2, AAPL_WETH_V2);
+        _assertZapDelivered(_zapLaunch(AAPL, 0.1 ether, 1), AAPL);
+    }
+
+    /// @dev `referenceOf` reads WETH as native; the factory wraps and sells WETH into the V4 pool.
+    function test_zap_nativeBuysOnAQuoteListedAgainstWethOnV4() public {
+        _listV4(address(quoteCoin), _erc20Pool(address(quoteCoin), address(WETH)));
+        assertEq(assetsWhitelist.referenceOf(address(quoteCoin)), address(0), "WETH reads as native");
+        _assertZapDelivered(_zapLaunch(address(quoteCoin), 0.1 ether, 1), address(quoteCoin));
+    }
+
+    /// @dev Mixed venues: native -> AAPL on V3 (the reference), then AAPL -> QC on V4.
+    function test_zap_nativeBuysThroughAV3ReferenceIntoAV4Quote() public {
+        _listPool(AAPL, RealmAssetsWhitelist.Venue.V3, AAPL_WETH_V3);
+        _listV4(address(quoteCoin), _erc20Pool(address(quoteCoin), AAPL));
+        assertEq(assetsWhitelist.referenceOf(address(quoteCoin)), AAPL, "listed against the reference");
+        _assertZapDelivered(_zapLaunch(address(quoteCoin), 0.1 ether, 1), address(quoteCoin));
+        _assertNoLeftovers(AAPL);
+    }
+
+    /// @dev The floor binds the factory's conversion exactly as it binds the graduator's.
+    function test_zap_floorAboveAV3ConversionReverts() public {
+        _listPool(AAPL, RealmAssetsWhitelist.Venue.V3, AAPL_WETH_V3);
+        RealmFactoryUniV4Direct.DevBuy memory devBuy = _devBuyTo(alice);
+        devBuy.minQuoteOut = 1e30;
+        vm.deal(creator, 0.1 ether);
+        _expectCreateRevert(_pairs(AAPL), devBuy, 0.1 ether, RealmFactoryUniV4Direct.InsufficientQuoteOut.selector);
+    }
+
+    /// @dev A reference that was itself re-listed against another reference is two hops from native.
+    function test_zap_nestedReferenceReverts() public {
+        _listPool(AAPL, RealmAssetsWhitelist.Venue.V3, AAPL_WETH_V3);
+        _listV4(address(quoteCoin), _erc20Pool(address(quoteCoin), AAPL));
         vm.mockCall(
             address(assetsWhitelist),
-            abi.encodeCall(RealmAssetsWhitelist.priceSource, (address(quoteCoin))),
-            abi.encode(source)
+            abi.encodeWithSelector(assetsWhitelist.referenceOf.selector, AAPL),
+            abi.encode(makeAddr("referenceOfTheReference"))
         );
         vm.deal(creator, 0.1 ether);
         _expectCreateRevert(
             _quotePairs(), _devBuyTo(alice), 0.1 ether, RealmFactoryUniV4Direct.DevBuyRouteUnavailable.selector
         );
-    }
-
-    function test_zap_quoteListedOnV2OrV3Reverts() public {
-        RealmAssetsWhitelist.PriceSource memory src;
-        src.venue = RealmAssetsWhitelist.Venue.V2;
-        src.pool = makeAddr("v2Pair");
-        _expectZapRouteUnavailable(src);
-        src.venue = RealmAssetsWhitelist.Venue.V3;
-        _expectZapRouteUnavailable(src);
-    }
-
-    /// @dev `referenceOf` reads WETH as native, but a WETH-side pool would need wrapping.
-    function test_zap_quoteListedAgainstWethReverts() public {
-        RealmAssetsWhitelist.PriceSource memory src;
-        src.venue = RealmAssetsWhitelist.Venue.V4;
-        (address c0, address c1) = address(quoteCoin) < address(WETH)
-            ? (address(quoteCoin), address(WETH))
-            : (address(WETH), address(quoteCoin));
-        src.key = CorePoolKey(Currency.wrap(c0), Currency.wrap(c1), 3000, 60, IHooks(address(0)));
-        _expectZapRouteUnavailable(src);
     }
 
     /// @dev Weights that DO sum to the whole, one of them zero: a pool with nothing to seed.

@@ -554,12 +554,16 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         assertLt(token.quoteDividendPending(MSFT)[0], daiBuffered, "out of the MSFT buffer");
     }
 
-    /// @dev Only a V4 route can be walked backwards: a quote whose only route is its V2 pair reverts the
-    ///      creation rather than buffering what it could never convert.
-    function test_quoteDividends_aQuoteWithANonV4RouteRevertsCreation() public {
+    /// @dev Any venue can be walked backwards: a quote whose only route is its V2 pair launches, and its
+    ///      buffer sells back through that pair.
+    function test_quoteDividends_aQuoteWithAV2RouteConverts() public {
         setDividendRoute(realmSwapper, AAPL, DividendRouteLib.encodeV2());
-        vm.expectRevert(abi.encodeWithSelector(DividendDistribution.MissingQuoteRoute.selector, AAPL));
-        _launch(_aaplPair(), _cfg(MSFT));
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), _cfg(MSFT));
+        _buyAndSettle(address(token), 10_000e18);
+        assertGt(_pending(token), 0, "a buffer to convert");
+
+        token.processDividends(0, AAPL, 0, 1, _one(alice));
+        assertGt(IERC20(MSFT).balanceOf(alice), 0, "paid in MSFT through the V2 quote route");
     }
 
     /////////////////////////// QUOTE-LEG GUARDS ///////////////////////////
@@ -714,13 +718,17 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         assertGt(IERC20(MSFT).balanceOf(alice), 0, "paid in MSFT through the V4 quote route");
     }
 
-    /// @dev A quote route has to be walkable backwards: anything but V4 reverts the creation.
-    function test_quoteRoutes_refusesANonV4RouteAtCreation() public {
+    /// @dev A creator's V2 quote route is registered and sells the quote's buffer.
+    function test_quoteRoutes_aV2RouteIsAcceptedAtCreation() public {
         TaxConfigsWithDirectAllocation memory cfg = _cfg(MSFT);
         cfg.quoteRoutes = new bytes[](1);
         cfg.quoteRoutes[0] = DividendRouteLib.encodeV2();
-        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
-        _launch(_aaplPair(), cfg);
+        RealmTaxableTokenUniV4 token = _launch(_aaplPair(), cfg);
+        assertEq(realmSwapper.quoteRouteOf(address(token), AAPL), DividendRouteLib.encodeV2(), "registered");
+        _buyAndSettle(address(token), 10_000e18);
+
+        token.processDividends(0, AAPL, 0, 1, _one(alice));
+        assertGt(IERC20(MSFT).balanceOf(alice), 0, "paid in MSFT through the V2 quote route");
     }
 
     function test_quoteRoutes_rejectsARouteOnANativePair() public {

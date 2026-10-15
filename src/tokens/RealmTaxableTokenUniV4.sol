@@ -8,7 +8,6 @@ import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {TaxConfigs} from "src/interfaces/IRealmTaxableToken.sol";
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {IRealmSwapper} from "src/interfaces/IRealmSwapper.sol";
-import {DividendRouteLib} from "src/libraries/DividendRouteLib.sol";
 import {IRealmLpLocker} from "src/interfaces/IRealmLpLocker.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -370,10 +369,10 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
     }
 
     /// @dev Registers each supplied quote (sell) route on the registry, which refuses anything but a
-    ///      well-formed V4 route for that quote. Positional to `quotes` from index 1; an empty or
+    ///      well-formed route for that quote. Positional to `quotes` from index 1; an empty or
     ///      missing entry registers nothing (the registry then falls back to the quote's buy route).
     /// @dev Reverts `MissingQuoteRoute` when a quote's dividend buffer would need the registry and the
-    ///      registry cannot walk it back to native (no V4 route resolves), as that buffer would strand.
+    ///      registry cannot walk it back to native (no route resolves), as that buffer would strand.
     ///      Not needed when the sole payout is the quote itself or this token (a buy-back on its pool).
     function _registerQuoteRoutes(bytes[] calldata routes) private {
         uint256 n = routes.length;
@@ -386,10 +385,7 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
         for (uint256 q = 1; q < quoteCount; ++q) {
             address quote = quotes[q];
             if (sole == quote || sole == address(this)) continue;
-            require(
-                DividendRouteLib.venue(registry.quoteRouteOf(address(this), quote)) == DividendRouteLib.VENUE_V4,
-                MissingQuoteRoute(quote)
-            );
+            require(registry.quoteRouteOf(address(this), quote).length != 0, MissingQuoteRoute(quote));
         }
     }
 

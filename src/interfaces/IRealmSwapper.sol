@@ -32,7 +32,7 @@ interface IRealmSwapper {
     ///         wire format: the admin override if set, else the token's own. Empty: none.
     function routeOf(address token, address asset) external view returns (bytes memory route);
 
-    /// @notice The V4 route `token` sells its ERC20 `quote` into native through, walked backwards: the
+    /// @notice The route `token` sells its ERC20 `quote` into native through, walked backwards: the
     ///         admin override, else the token's own quote route, else `routeOf(token, quote)`.
     function quoteRouteOf(address token, address quote) external view returns (bytes memory route);
 
@@ -40,8 +40,7 @@ interface IRealmSwapper {
     ///         per (caller, asset). Shape-checked only.
     function registerRoute(address asset, bytes calldata route) external;
 
-    /// @notice Registers the caller's quote (sell) route for `quote`. V4 only; otherwise as
-    ///         `registerRoute`.
+    /// @notice Registers the caller's quote (sell) route for `quote`. As `registerRoute`.
     function registerQuoteRoute(address quote, bytes calldata route) external;
 
     /// @notice Buys `asset` with `msg.value` through its route and sends it to `recipient`.
