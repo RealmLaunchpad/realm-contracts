@@ -16,21 +16,20 @@ import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/Pool
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 
-import {RealmBasket} from "src/basket/RealmBasket.sol";
-import {RealmBasketAssets, IBasketRates} from "src/basket/RealmBasketAssets.sol";
-import {RealmBasketFactory} from "src/basket/RealmBasketFactory.sol";
-import {RealmBasketHook} from "src/basket/RealmBasketHook.sol";
+import {RealmEtf} from "src/etf/RealmEtf.sol";
+import {RealmEtfAssets} from "src/etf/RealmEtfAssets.sol";
+import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
+import {RealmEtfHook} from "src/etf/RealmEtfHook.sol";
 import {DeploymentAddressesRobinhoodMainnet as Mainnet} from "src/config/DeploymentAddresses.sol";
 
-/// @notice ETF baskets on a Robinhood mainnet fork: real rStocks on their real USDG pools (SPY and META on
-///         V4, NVDA and QQQ on V3), priced by the live `RealmAssetsWhitelist`.
-contract RealmBasketTest is Test {
+/// @notice ETF ETFs on a Robinhood mainnet fork: real rStocks on their real USDG pools (SPY and META on
+///         V4, NVDA and QQQ on V3).
+contract RealmEtfTest is Test {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
     uint256 constant BLOCKNUMBER = 92_800_000;
     address constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
-    address constant WHITELIST = 0x1Fe8baA5254fD125386Da072cddd1c804BEe0e94;
     address constant SPY = 0x117cc2133c37B721F49dE2A7a74833232B3B4C0C;
     address constant META = 0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35;
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
@@ -42,11 +41,11 @@ contract RealmBasketTest is Test {
     uint256 constant SEED = 1_000e6;
 
     IPoolManager manager = IPoolManager(Mainnet.UNIV4_POOL_MANAGER);
-    RealmBasketAssets registry;
-    RealmBasketFactory factory;
-    RealmBasketHook hook;
-    RealmBasket basket;
-    PoolKey basketKey;
+    RealmEtfAssets registry;
+    RealmEtfFactory factory;
+    RealmEtfHook hook;
+    RealmEtf etf;
+    PoolKey etfKey;
     PoolSwapTest router;
 
     address owner = makeAddr("owner");
@@ -56,7 +55,7 @@ contract RealmBasketTest is Test {
 
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
-        registry = new RealmBasketAssets(owner, address(manager), Mainnet.UNIV3_FACTORY, USDG, WHITELIST);
+        registry = new RealmEtfAssets(owner, address(manager), Mainnet.UNIV3_FACTORY, USDG);
         vm.prank(owner);
         registry.setApprover(approver, true);
         vm.startPrank(approver);
@@ -72,9 +71,11 @@ contract RealmBasketTest is Test {
                     | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
             ) | (uint160(0x4444) << 144)
         );
-        deployCodeTo("RealmBasketHook.sol:RealmBasketHook", abi.encode(manager, registry), hookAddress);
-        hook = RealmBasketHook(hookAddress);
-        factory = hook.FACTORY();
+        factory = new RealmEtfFactory(owner, registry);
+        deployCodeTo("RealmEtfHook.sol:RealmEtfHook", abi.encode(manager, factory), hookAddress);
+        hook = RealmEtfHook(hookAddress);
+        vm.prank(owner);
+        factory.setHook(address(hook));
 
         address[] memory assets = new address[](3);
         (assets[0], assets[1], assets[2]) = (SPY, META, NVDA);
@@ -83,44 +84,44 @@ contract RealmBasketTest is Test {
         deal(USDG, creator, SEED);
         vm.startPrank(creator);
         IERC20(USDG).approve(address(factory), SEED);
-        basket = RealmBasket(factory.createBasket("Tech Basket", "TECH", assets, weights, SEED, 0));
+        etf = RealmEtf(factory.createEtf("Tech ETF", "TECH", assets, weights, SEED, 0));
         vm.stopPrank();
 
-        basketKey = _key(address(basket), USDG, 0, 1, address(hook));
-        manager.initialize(basketKey, uint160(1 << 96));
+        etfKey = _key(address(etf), USDG, 0, 1, address(hook));
+        manager.initialize(etfKey, uint160(1 << 96));
         router = new PoolSwapTest(manager);
     }
 
     //////////////////////// creation //////////////////////
 
-    function test_createBasket_seedsByWeightsAndMintsDeadShares() public view {
-        assertEq(basket.owner(), creator);
-        assertEq(basket.balanceOf(basket.DEAD()), basket.DEAD_SHARES());
-        assertEq(basket.balanceOf(creator), 1_000e18 - basket.DEAD_SHARES());
-        assertTrue(factory.isBasket(address(basket)));
+    function test_createEtf_seedsByWeightsAndMintsDeadShares() public view {
+        assertEq(etf.owner(), creator);
+        assertEq(etf.balanceOf(etf.DEAD()), etf.DEAD_SHARES());
+        assertEq(etf.balanceOf(creator), 1_000e18 - etf.DEAD_SHARES());
+        assertTrue(factory.isEtf(address(etf)));
         // Bought at market: worth the seed, less fees and impact.
-        assertApproxEqRel(basket.totalAssets(), SEED, 0.03e18);
+        assertApproxEqRel(etf.totalAssets(), SEED, 0.03e18);
     }
 
-    function test_createBasket_rejectsUnlistedAsset() public {
+    function test_createEtf_rejectsUnlistedAsset() public {
         address[] memory assets = new address[](1);
         assets[0] = USDG;
         uint16[] memory weights = new uint16[](1);
         weights[0] = 10_000;
-        vm.expectRevert(RealmBasket.AssetNotListed.selector);
-        factory.createBasket("X", "X", assets, weights, SEED, 0);
+        vm.expectRevert(RealmEtf.AssetNotListed.selector);
+        factory.createEtf("X", "X", assets, weights, SEED, 0);
     }
 
     //////////////////////// deposit / redeem //////////////////////
 
     function test_deposit_mintsTheSmallestFractionAdded() public {
-        address[] memory assets = basket.getAssets();
+        address[] memory assets = etf.getAssets();
         uint256[] memory before = _balances(assets);
-        uint256 supply = basket.totalSupply();
+        uint256 supply = etf.totalSupply();
 
         uint256 shares = _deposit(alice, 1_000e6);
 
-        assertEq(basket.balanceOf(alice), shares);
+        assertEq(etf.balanceOf(alice), shares);
         assertApproxEqRel(shares, 1_000e18, 0.03e18);
         // Every holding grew by at least the fraction of supply minted.
         uint256[] memory afterBalances = _balances(assets);
@@ -132,36 +133,36 @@ contract RealmBasketTest is Test {
     function test_deposit_revertsBelowMinShares() public {
         deal(USDG, alice, 1_000e6);
         vm.startPrank(alice);
-        IERC20(USDG).approve(address(basket), 1_000e6);
-        vm.expectRevert(RealmBasket.Slippage.selector);
-        basket.deposit(1_000e6, alice, 1_100e18);
+        IERC20(USDG).approve(address(etf), 1_000e6);
+        vm.expectRevert(RealmEtf.Slippage.selector);
+        etf.deposit(1_000e6, alice, 1_100e18);
         vm.stopPrank();
     }
 
     function test_redeem_paysUsdgForAProRataSlice() public {
         uint256 shares = _deposit(alice, 1_000e6);
         vm.prank(alice);
-        uint256 out = basket.redeem(shares, alice, alice, 0);
+        uint256 out = etf.redeem(shares, alice, alice, 0);
         assertEq(IERC20(USDG).balanceOf(alice), out);
         assertApproxEqRel(out, 1_000e6, 0.03e18);
-        assertEq(basket.balanceOf(alice), 0);
+        assertEq(etf.balanceOf(alice), 0);
     }
 
     function test_redeem_revertsBelowMinAssets() public {
         uint256 shares = _deposit(alice, 1_000e6);
         vm.prank(alice);
-        vm.expectRevert(RealmBasket.Slippage.selector);
-        basket.redeem(shares, alice, alice, 1_000e6);
+        vm.expectRevert(RealmEtf.Slippage.selector);
+        etf.redeem(shares, alice, alice, 1_000e6);
     }
 
     function test_redeemInKind_sendsEveryAssetProRata() public {
-        address[] memory assets = basket.getAssets();
+        address[] memory assets = etf.getAssets();
         uint256[] memory held = _balances(assets);
-        uint256 supply = basket.totalSupply();
-        uint256 shares = basket.balanceOf(creator) / 2;
+        uint256 supply = etf.totalSupply();
+        uint256 shares = etf.balanceOf(creator) / 2;
 
         vm.prank(creator);
-        uint256[] memory amounts = basket.redeemInKind(shares, alice, creator);
+        uint256[] memory amounts = etf.redeemInKind(shares, alice, creator);
 
         for (uint256 i; i < assets.length; ++i) {
             assertEq(amounts[i], held[i] * shares / supply);
@@ -170,12 +171,12 @@ contract RealmBasketTest is Test {
     }
 
     function test_mintAndWithdraw_areUnsupported() public {
-        assertEq(basket.maxMint(alice), 0);
-        assertEq(basket.maxWithdraw(alice), 0);
-        vm.expectRevert(RealmBasket.NotSupported.selector);
-        basket.mint(1, alice);
-        vm.expectRevert(RealmBasket.NotSupported.selector);
-        basket.withdraw(1, alice, alice);
+        assertEq(etf.maxMint(alice), 0);
+        assertEq(etf.maxWithdraw(alice), 0);
+        vm.expectRevert(RealmEtf.NotSupported.selector);
+        etf.mint(1, alice);
+        vm.expectRevert(RealmEtf.NotSupported.selector);
+        etf.withdraw(1, alice, alice);
     }
 
     //////////////////////// rebalance //////////////////////
@@ -183,49 +184,46 @@ contract RealmBasketTest is Test {
     function test_rebalance_onlyCreator() public {
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
-        basket.rebalance(NVDA, type(uint256).max, QQQ);
+        etf.rebalance(NVDA, type(uint256).max, QQQ, 0);
     }
 
     function test_rebalance_sellingAllRemovesAndBuyingNewAdds() public {
-        uint256 valueBefore = basket.totalAssets();
+        uint256 valueBefore = etf.totalAssets();
         vm.prank(creator);
-        uint256 bought = basket.rebalance(NVDA, type(uint256).max, QQQ);
+        uint256 bought = etf.rebalance(NVDA, type(uint256).max, QQQ, 0);
 
-        address[] memory assets = basket.getAssets();
+        address[] memory assets = etf.getAssets();
         assertEq(assets.length, 3);
-        assertEq(IERC20(NVDA).balanceOf(address(basket)), 0);
-        assertEq(IERC20(QQQ).balanceOf(address(basket)), bought);
+        assertEq(IERC20(NVDA).balanceOf(address(etf)), 0);
+        assertEq(IERC20(QQQ).balanceOf(address(etf)), bought);
         for (uint256 i; i < assets.length; ++i) {
             assertTrue(assets[i] != NVDA);
         }
-        assertApproxEqRel(basket.totalAssets(), valueBefore, 0.03e18);
+        assertApproxEqRel(etf.totalAssets(), valueBefore, 0.03e18);
     }
 
-    function test_rebalance_revertsWhenValueLostExceedsBound() public {
-        // The snapshot now says QQQ is worth half: whatever is bought looks like a 50% loss.
-        uint256 rate = IBasketRates(WHITELIST).unitsPerNativeX18(QQQ);
-        vm.mockCall(WHITELIST, abi.encodeCall(IBasketRates.unitsPerNativeX18, (QQQ)), abi.encode(rate * 2));
+    function test_rebalance_revertsBelowMinOut() public {
         vm.prank(creator);
-        vm.expectRevert(RealmBasket.RebalanceTooLossy.selector);
-        basket.rebalance(NVDA, type(uint256).max, QQQ);
+        vm.expectRevert(RealmEtf.Slippage.selector);
+        etf.rebalance(NVDA, type(uint256).max, QQQ, type(uint256).max);
     }
 
     //////////////////////// hook //////////////////////
 
     function test_hook_buyThroughThePoolMintsShares() public {
         uint256 shares = _swap(alice, USDG, 1_000e6);
-        assertEq(basket.balanceOf(alice), shares);
+        assertEq(etf.balanceOf(alice), shares);
         assertApproxEqRel(shares, 1_000e18, 0.03e18);
         _assertPoolUntouched();
     }
 
     function test_hook_sellThroughThePoolRedeemsForUsdg() public {
-        uint256 shares = basket.balanceOf(creator) / 2;
-        uint256 supply = basket.totalSupply();
-        uint256 out = _swap(creator, address(basket), shares);
+        uint256 shares = etf.balanceOf(creator) / 2;
+        uint256 supply = etf.totalSupply();
+        uint256 out = _swap(creator, address(etf), shares);
         // The sold shares sit in the pool manager behind the hook's claims, out of circulation.
-        assertEq(basket.totalSupply(), supply - shares);
-        assertEq(basket.balanceOf(address(manager)), shares);
+        assertEq(etf.totalSupply(), supply - shares);
+        assertEq(etf.balanceOf(address(manager)), shares);
         assertEq(IERC20(USDG).balanceOf(creator), out);
         assertApproxEqRel(out, 500e6, 0.03e18);
         _assertPoolUntouched();
@@ -233,8 +231,8 @@ contract RealmBasketTest is Test {
 
     function test_redeemOnCredit_onlyTheHook() public {
         vm.prank(creator);
-        vm.expectRevert(RealmBasket.Unauthorized.selector);
-        basket.redeemOnCredit(1e18, creator);
+        vm.expectRevert(RealmEtf.Unauthorized.selector);
+        etf.redeemOnCredit(1e18, creator);
     }
 
     function test_hook_rejectsExactOutput() public {
@@ -242,17 +240,17 @@ contract RealmBasketTest is Test {
         vm.startPrank(alice);
         IERC20(USDG).approve(address(router), 1_000e6);
         vm.expectRevert();
-        router.swap(basketKey, _params(USDG, 1e18, false), PoolSwapTest.TestSettings(false, false), "");
+        router.swap(etfKey, _params(USDG, 1e18, false), PoolSwapTest.TestSettings(false, false), "");
         vm.stopPrank();
     }
 
     function test_hook_rejectsLiquidity() public {
         PoolModifyLiquidityTest lp = new PoolModifyLiquidityTest(manager);
         vm.expectRevert();
-        lp.modifyLiquidity(basketKey, ModifyLiquidityParams(-60, 60, 1e18, 0), "");
+        lp.modifyLiquidity(etfKey, ModifyLiquidityParams(-60, 60, 1e18, 0), "");
     }
 
-    function test_hook_rejectsPoolsOfNonBaskets() public {
+    function test_hook_rejectsPoolsOfNonEtfs() public {
         vm.expectRevert();
         manager.initialize(_key(SPY, USDG, 0, 1, address(hook)), uint160(1 << 96));
     }
@@ -260,39 +258,62 @@ contract RealmBasketTest is Test {
     //////////////////////// registry //////////////////////
 
     function test_registry_onlyApproverSetsRoutes() public {
-        RealmBasketAssets.Route memory route = _v4Route(SPY);
+        RealmEtfAssets.Route memory route = _v4Route(SPY);
         vm.prank(alice);
-        vm.expectRevert(RealmBasketAssets.NotApprover.selector);
+        vm.expectRevert(RealmEtfAssets.NotApprover.selector);
         registry.setRoute(SPY, route);
     }
 
     function test_registry_rejectsPoolNotAgainstUsdg() public {
-        RealmBasketAssets.Route memory route = _v3Route(USDG_WETH_V3);
+        RealmEtfAssets.Route memory route = _v3Route(USDG_WETH_V3);
         vm.prank(approver);
-        vm.expectRevert(RealmBasketAssets.InvalidRoute.selector);
+        vm.expectRevert(RealmEtfAssets.InvalidRoute.selector);
         registry.setRoute(SPY, route);
     }
 
-    function test_registry_requiresAWhitelistRate() public {
-        RealmBasketAssets.Route memory route = _v4Route(SPY);
-        vm.mockCall(WHITELIST, abi.encodeCall(IBasketRates.unitsPerNativeX18, (SPY)), abi.encode(0));
-        vm.prank(approver);
-        vm.expectRevert(RealmBasketAssets.NotPriced.selector);
-        registry.setRoute(SPY, route);
+    function test_registry_valuesAtRouteSpotPrice() public view {
+        // A whole SPY, in raw USDG (6 decimals): an index fund share trades in the hundreds of dollars.
+        uint256 value = registry.usdgValueOf(SPY, 1e18);
+        assertGt(value, 100e6);
+        assertLt(value, 2_000e6);
+    }
+
+    //////////////////////// factory //////////////////////
+
+    function test_factory_onlyOwnerSetsHook() public {
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        factory.setHook(alice);
+    }
+
+    function test_hook_rejectsEtfsCreatedWithAnotherHook() public {
+        vm.prank(owner);
+        factory.setHook(address(0));
+        address[] memory assets = new address[](1);
+        assets[0] = SPY;
+        uint16[] memory weights = new uint16[](1);
+        weights[0] = 10_000;
+        deal(USDG, creator, SEED);
+        vm.startPrank(creator);
+        IERC20(USDG).approve(address(factory), SEED);
+        address other = factory.createEtf("No Hook", "NOHK", assets, weights, SEED, 0);
+        vm.stopPrank();
+        vm.expectRevert();
+        manager.initialize(_key(other, USDG, 0, 1, address(hook)), uint160(1 << 96));
     }
 
     function test_registry_delistingBlocksBuyingInButNotExiting() public {
         vm.prank(approver);
         registry.setListed(QQQ, false);
         vm.prank(creator);
-        vm.expectRevert(RealmBasket.AssetNotListed.selector);
-        basket.rebalance(NVDA, type(uint256).max, QQQ);
+        vm.expectRevert(RealmEtf.AssetNotListed.selector);
+        etf.rebalance(NVDA, type(uint256).max, QQQ, 0);
 
         vm.prank(approver);
         registry.setListed(NVDA, false);
-        uint256 shares = basket.balanceOf(creator);
+        uint256 shares = etf.balanceOf(creator);
         vm.prank(creator);
-        assertGt(basket.redeem(shares, creator, creator), 0);
+        assertGt(etf.redeem(shares, creator, creator), 0);
     }
 
     //////////////////////// helpers //////////////////////
@@ -306,33 +327,33 @@ contract RealmBasketTest is Test {
         return PoolKey(Currency.wrap(c0), Currency.wrap(c1), fee, spacing, IHooks(hooks));
     }
 
-    function _v4Route(address asset) internal pure returns (RealmBasketAssets.Route memory r) {
-        r.venue = RealmBasketAssets.Venue.V4;
+    function _v4Route(address asset) internal pure returns (RealmEtfAssets.Route memory r) {
+        r.venue = RealmEtfAssets.Venue.V4;
         r.key = _key(asset, USDG, 3000, 60, address(0));
     }
 
-    function _v3Route(address pool) internal pure returns (RealmBasketAssets.Route memory r) {
-        r.venue = RealmBasketAssets.Venue.V3;
+    function _v3Route(address pool) internal pure returns (RealmEtfAssets.Route memory r) {
+        r.venue = RealmEtfAssets.Venue.V3;
         r.pool = pool;
     }
 
     function _balances(address[] memory assets) internal view returns (uint256[] memory b) {
         b = new uint256[](assets.length);
         for (uint256 i; i < assets.length; ++i) {
-            b[i] = IERC20(assets[i]).balanceOf(address(basket));
+            b[i] = IERC20(assets[i]).balanceOf(address(etf));
         }
     }
 
     function _deposit(address who, uint256 amount) internal returns (uint256 shares) {
         deal(USDG, who, amount);
         vm.startPrank(who);
-        IERC20(USDG).approve(address(basket), amount);
-        shares = basket.deposit(amount, who);
+        IERC20(USDG).approve(address(etf), amount);
+        shares = etf.deposit(amount, who);
         vm.stopPrank();
     }
 
     function _params(address tokenIn, uint256 amount, bool exactIn) internal view returns (SwapParams memory) {
-        bool zeroForOne = Currency.unwrap(basketKey.currency0) == tokenIn;
+        bool zeroForOne = Currency.unwrap(etfKey.currency0) == tokenIn;
         return SwapParams({
             zeroForOne: zeroForOne,
             amountSpecified: exactIn ? -int256(amount) : int256(amount),
@@ -340,21 +361,21 @@ contract RealmBasketTest is Test {
         });
     }
 
-    /// @dev Exact-input swap of `amount` `tokenIn` on the basket pool through a standard router.
+    /// @dev Exact-input swap of `amount` `tokenIn` on the ETF pool through a standard router.
     function _swap(address who, address tokenIn, uint256 amount) internal returns (uint256 out) {
         if (tokenIn == USDG) deal(USDG, who, amount);
-        address tokenOut = tokenIn == USDG ? address(basket) : USDG;
+        address tokenOut = tokenIn == USDG ? address(etf) : USDG;
         uint256 before = IERC20(tokenOut).balanceOf(who);
         vm.startPrank(who);
         IERC20(tokenIn).approve(address(router), amount);
-        router.swap(basketKey, _params(tokenIn, amount, true), PoolSwapTest.TestSettings(false, false), "");
+        router.swap(etfKey, _params(tokenIn, amount, true), PoolSwapTest.TestSettings(false, false), "");
         vm.stopPrank();
         out = IERC20(tokenOut).balanceOf(who) - before;
     }
 
     function _assertPoolUntouched() internal view {
-        (uint160 sqrtPriceX96,,,) = manager.getSlot0(basketKey.toId());
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(etfKey.toId());
         assertEq(sqrtPriceX96, uint160(1 << 96));
-        assertEq(manager.getLiquidity(basketKey.toId()), 0);
+        assertEq(manager.getLiquidity(etfKey.toId()), 0);
     }
 }

@@ -12,47 +12,46 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol";
 
-import {RealmBasket} from "src/basket/RealmBasket.sol";
-import {RealmBasketAssets} from "src/basket/RealmBasketAssets.sol";
-import {RealmBasketFactory} from "src/basket/RealmBasketFactory.sol";
+import {RealmEtf} from "src/etf/RealmEtf.sol";
+import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
 
-/// @title RealmBasketHook
-/// @notice Makes basket shares tradable as a normal V4 token: a shares/USDG pool that holds NO liquidity,
-///         where every swap is filled by the basket itself. A buy deposits the USDG into the basket and
+/// @title RealmEtfHook
+/// @notice Makes ETF shares tradable as a normal V4 token: a shares/USDG pool that holds NO liquidity,
+///         where every swap is filled by the ETF itself. A buy deposits the USDG into the ETF and
 ///         pays out the minted shares; a sell redeems the shares and pays out the USDG. Same code, same
-///         price as calling the basket directly; this is only a second entrance, the one routers reach.
+///         price as calling the ETF directly; this is only a second entrance, the one routers reach.
 ///
 /// @dev THE CORE CURVE NEVER RUNS. `beforeSwap` returns a delta covering the whole input, so the pool
 ///      swaps 0 and its `slot0` stays at whatever it was initialized to. That price means nothing; NAV
-///      lives in the basket.
+///      lives in the ETF.
 ///
-/// @dev EXACT INPUT ONLY, mirroring the basket's `deposit`/`redeem` (it has no `mint`/`withdraw`).
+/// @dev EXACT INPUT ONLY, mirroring the ETF's `deposit`/`redeem` (it has no `mint`/`withdraw`).
 ///
 /// @dev THE INPUT ARRIVES AFTER THE SWAP. Standard routers pay what they owe once the swap returns.
-///      - A buy `take`s the USDG from the pool manager before it is paid. A basket that buys through V3
+///      - A buy `take`s the USDG from the pool manager before it is paid. An ETF that buys through V3
 ///        pools therefore needs the pool manager to hold that much USDG from other pools (V4 legs hand it
 ///        straight back). On Robinhood, where USDG is the main V4 quote, that ceiling is high, but it is one.
-///      - A sell cannot do the same: the pool manager holds no shares. The basket pays out on credit
+///      - A sell cannot do the same: the pool manager holds no shares. The ETF pays out on credit
 ///        (`redeemOnCredit`) and the hook mints itself claims on the incoming shares, which locks them in
-///        the pool manager for good and takes them out of the basket's `totalSupply`.
-contract RealmBasketHook is BaseHook {
+///        the pool manager for good and takes them out of the ETF's `totalSupply`.
+contract RealmEtfHook is BaseHook {
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
     using SafeCast for int256;
 
-    /// @notice Pools are accepted only for baskets this factory deployed. Deployed by this hook.
-    RealmBasketFactory public immutable FACTORY;
+    /// @notice Pools are accepted only for ETFs this factory deployed with this hook.
+    RealmEtfFactory public immutable FACTORY;
 
-    /// @notice The other side of every basket pool.
+    /// @notice The other side of every ETF pool.
     address public immutable USDG;
 
-    error NotBasketPool();
+    error NotEtfPool();
     error LiquidityNotAccepted();
     error ExactOutputNotSupported();
 
-    constructor(IPoolManager manager, RealmBasketAssets registry) BaseHook(manager) {
-        FACTORY = new RealmBasketFactory(registry);
-        USDG = registry.USDG();
+    constructor(IPoolManager manager, RealmEtfFactory factory) BaseHook(manager) {
+        FACTORY = factory;
+        USDG = factory.REGISTRY().USDG();
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -74,9 +73,9 @@ contract RealmBasketHook is BaseHook {
         });
     }
 
-    /// @dev Only a basket/USDG pool may use this hook. Anyone may initialize it.
+    /// @dev Only an ETF/USDG pool may use this hook. Anyone may initialize it.
     function _beforeInitialize(address, PoolKey calldata key, uint160) internal view override returns (bytes4) {
-        _basketOf(key);
+        _etfOf(key);
         return this.beforeInitialize.selector;
     }
 
@@ -95,7 +94,7 @@ contract RealmBasketHook is BaseHook {
         returns (bytes4, BeforeSwapDelta, uint24)
     {
         require(params.amountSpecified < 0, ExactOutputNotSupported());
-        RealmBasket basket = _basketOf(key);
+        RealmEtf etf = _etfOf(key);
         uint256 amountIn = uint256(-params.amountSpecified);
         (Currency cIn, Currency cOut) =
             params.zeroForOne ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
@@ -103,10 +102,10 @@ contract RealmBasketHook is BaseHook {
         uint256 amountOut;
         if (Currency.unwrap(cIn) == USDG) {
             poolManager.take(cIn, address(this), amountIn);
-            IERC20(USDG).forceApprove(address(basket), amountIn);
-            amountOut = basket.deposit(amountIn, address(this));
+            IERC20(USDG).forceApprove(address(etf), amountIn);
+            amountOut = etf.deposit(amountIn, address(this));
         } else {
-            amountOut = basket.redeemOnCredit(amountIn, address(this));
+            amountOut = etf.redeemOnCredit(amountIn, address(this));
             poolManager.mint(address(this), cIn.toId(), amountIn);
         }
         poolManager.sync(cOut);
@@ -120,10 +119,10 @@ contract RealmBasketHook is BaseHook {
         );
     }
 
-    function _basketOf(PoolKey calldata key) private view returns (RealmBasket basket) {
+    function _etfOf(PoolKey calldata key) private view returns (RealmEtf etf) {
         (address c0, address c1) = (Currency.unwrap(key.currency0), Currency.unwrap(key.currency1));
         address other = c0 == USDG ? c1 : c1 == USDG ? c0 : address(0);
-        require(other != address(0) && FACTORY.isBasket(other), NotBasketPool());
-        return RealmBasket(other);
+        require(other != address(0) && FACTORY.isEtf(other) && RealmEtf(other).HOOK() == address(this), NotEtfPool());
+        return RealmEtf(other);
     }
 }

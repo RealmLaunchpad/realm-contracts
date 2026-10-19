@@ -7,18 +7,14 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {Math} from "lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
 
-/// @notice The slice of `RealmAssetsWhitelist` baskets read: snapshot and live rates, whole units per native, x1e18.
-interface IBasketRates {
-    function unitsPerNativeX18(address asset) external view returns (uint256);
-    function liveUnitsPerNativeX18(address asset) external view returns (uint256);
-}
-
-/// @dev The slice of Uniswap V3 this registry and the baskets read.
-interface IBasketV3Pool {
+/// @dev The slice of Uniswap V3 this registry and the ETFs read.
+interface IEtfV3Pool {
     function token0() external view returns (address);
     function token1() external view returns (address);
     function fee() external view returns (uint24);
+    function slot0() external view returns (uint160 sqrtPriceX96, int24, uint16, uint16, uint16, uint8, bool);
     function swap(
         address recipient,
         bool zeroForOne,
@@ -28,23 +24,22 @@ interface IBasketV3Pool {
     ) external returns (int256 amount0, int256 amount1);
 }
 
-interface IBasketV3Factory {
+interface IEtfV3Factory {
     function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address);
 }
 
-/// @title RealmBasketAssets
-/// @notice The assets an ETF basket may hold, each with the ONE Uniswap pool it trades against USDG through:
+/// @title RealmEtfAssets
+/// @notice The assets an ETF may hold, each with the ONE Uniswap pool it trades against USDG through:
 ///         a V3 pool or a V4 pool. Stricter than `RealmAssetsWhitelist` (the pairs list): an asset is here
-///         only once its USDG route is proven, and it must also be priced there, because baskets value
-///         their holdings and bound rebalances with those rates.
+///         only once its USDG route is proven. The route also prices the asset (`usdgValueOf`), at spot.
 ///
 /// @dev TWO TIERS: the owner manages approvers, approvers list assets.
 ///
-/// @dev ROUTES ARE NEVER CLEARED, only replaced. A basket swaps through the route on every deposit and
-///      redemption, so clearing one would brick every basket holding the asset. Delisting (`setListed(false)`)
-///      only stops baskets from buying INTO it by rebalance or creation; holders keep trading through it.
-///      Replacing a route is how a drained or migrated pool is fixed, for every basket at once.
-contract RealmBasketAssets is Ownable2Step {
+/// @dev ROUTES ARE NEVER CLEARED, only replaced. An ETF swaps through the route on every deposit and
+///      redemption, so clearing one would brick every ETF holding the asset. Delisting (`setListed(false)`)
+///      only stops ETFs from buying INTO it by rebalance or creation; holders keep trading through it.
+///      Replacing a route is how a drained or migrated pool is fixed, for every ETF at once.
+contract RealmEtfAssets is Ownable2Step {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -68,16 +63,13 @@ contract RealmBasketAssets is Ownable2Step {
     /// @notice Uniswap's V3 factory; V3 routes must be pools it created.
     address public immutable UNIV3_FACTORY;
 
-    /// @notice The basket deposit asset, the other side of every route.
+    /// @notice The ETF deposit asset, the other side of every route.
     address public immutable USDG;
-
-    /// @notice The pairs whitelist, whose rates price basket holdings.
-    IBasketRates public immutable ASSETS_WHITELIST;
 
     /// @notice Addresses allowed to set routes and listings. Managed by the owner.
     mapping(address account => bool) public isApprover;
 
-    /// @notice Whether baskets may buy INTO `asset` (creation, rebalance).
+    /// @notice Whether ETFs may buy INTO `asset` (creation, rebalance).
     mapping(address asset => bool) public isListed;
 
     mapping(address asset => Route) internal _routes;
@@ -89,17 +81,12 @@ contract RealmBasketAssets is Ownable2Step {
     error NotApprover();
     /// @notice The route is not a Uniswap pool between `asset` and USDG, or `asset` is USDG.
     error InvalidRoute();
-    /// @notice `asset` has no rate in `ASSETS_WHITELIST`.
-    error NotPriced();
     error NoRoute();
 
-    constructor(address initialOwner, address poolManager, address univ3Factory, address usdg, address assetsWhitelist)
-        Ownable(initialOwner)
-    {
+    constructor(address initialOwner, address poolManager, address univ3Factory, address usdg) Ownable(initialOwner) {
         POOL_MANAGER = IPoolManager(poolManager);
         UNIV3_FACTORY = univ3Factory;
         USDG = usdg;
-        ASSETS_WHITELIST = IBasketRates(assetsWhitelist);
     }
 
     function setApprover(address account, bool allowed) external onlyOwner {
@@ -110,7 +97,6 @@ contract RealmBasketAssets is Ownable2Step {
     /// @notice Sets (or replaces) `asset`'s USDG route and lists it. Approvers only.
     function setRoute(address asset, Route calldata route) external {
         require(isApprover[msg.sender], NotApprover());
-        require(ASSETS_WHITELIST.unitsPerNativeX18(asset) != 0, NotPriced());
         _validate(asset, route);
         _routes[asset] = route;
         emit RouteSet(asset, route);
@@ -130,6 +116,26 @@ contract RealmBasketAssets is Ownable2Step {
         require(route.venue != Venue.NONE, NoRoute());
     }
 
+    /// @notice `amount` of `asset` in raw USDG at its route pool's SPOT price, before fees and impact.
+    /// @dev Anyone can move it within a transaction: fit for estimates and for splitting a deposit (where a
+    ///      wrong price costs only the depositor), never for anything a manipulator could profit from.
+    function usdgValueOf(address asset, uint256 amount) external view returns (uint256) {
+        Route memory route = _routes[asset];
+        require(route.venue != Venue.NONE, NoRoute());
+        uint160 sqrtPriceX96;
+        bool assetIsToken0;
+        if (route.venue == Venue.V3) {
+            (sqrtPriceX96,,,,,,) = IEtfV3Pool(route.pool).slot0();
+            assetIsToken0 = IEtfV3Pool(route.pool).token0() == asset;
+        } else {
+            (sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(route.key.toId());
+            assetIsToken0 = Currency.unwrap(route.key.currency0) == asset;
+        }
+        // Raw token1 per raw token0, Q128.
+        uint256 priceX128 = Math.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 64);
+        return assetIsToken0 ? Math.mulDiv(amount, priceX128, 1 << 128) : Math.mulDiv(amount, 1 << 128, priceX128);
+    }
+
     function _setListed(address asset, bool listed) private {
         isListed[asset] = listed;
         emit ListedSet(asset, listed);
@@ -140,9 +146,9 @@ contract RealmBasketAssets is Ownable2Step {
         address t0;
         address t1;
         if (route.venue == Venue.V3) {
-            IBasketV3Pool pool = IBasketV3Pool(route.pool);
+            IEtfV3Pool pool = IEtfV3Pool(route.pool);
             (t0, t1) = (pool.token0(), pool.token1());
-            require(IBasketV3Factory(UNIV3_FACTORY).getPool(t0, t1, pool.fee()) == route.pool, InvalidRoute());
+            require(IEtfV3Factory(UNIV3_FACTORY).getPool(t0, t1, pool.fee()) == route.pool, InvalidRoute());
         } else if (route.venue == Venue.V4) {
             (t0, t1) = (Currency.unwrap(route.key.currency0), Currency.unwrap(route.key.currency1));
             (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(route.key.toId());

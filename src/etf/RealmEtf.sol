@@ -18,34 +18,37 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 
-import {RealmBasketAssets, IBasketRates, IBasketV3Pool} from "src/basket/RealmBasketAssets.sol";
+import {RealmEtfAssets, IEtfV3Pool} from "src/etf/RealmEtfAssets.sol";
 
-/// @title RealmBasket
-/// @notice An ETF basket: an ERC20 share over a set of `RealmBasketAssets`-listed assets. Deposit USDG and it
+/// @title RealmEtf
+/// @notice An ETF: an ERC20 share over a set of `RealmEtfAssets`-listed assets. Deposit USDG and it
 ///         is swapped into every asset; redeem shares and a pro-rata slice of every asset is sold back to
 ///         USDG. The creator (owner) is the only one who rebalances, adds or removes assets.
 ///
 /// @dev PRO-RATA, ORACLE-FREE MINTING. A deposit buys each asset, and mints `supply x` the SMALLEST
-///      fraction it added to any holding. Prices only decide how the USDG is split across assets (live
-///      rates from `RealmAssetsWhitelist`), so a wrong or manipulated price costs the depositor efficiency,
+///      fraction it added to any holding. Prices only decide how the USDG is split across assets (spot,
+///      from each asset's route pool), so a wrong or manipulated price costs the depositor efficiency,
 ///      never the other holders: any surplus of the other assets stays in the vault. A redemption takes the
 ///      same fraction of every holding, so it needs no price at all.
 ///
 /// @dev SEMI-ERC4626 + ERC-5143. `deposit`/`redeem` follow ERC-4626, with ERC-5143 overloads that add a
 ///      slippage floor. `mint`/`withdraw` are unsupported (`maxMint`/`maxWithdraw` are 0): an exact USDG
 ///      out cannot be hit pro-rata across pools with different slippage. `totalAssets` and the previews
-///      value holdings at the whitelist's SNAPSHOT rates, before swap fees and price impact: estimates,
+///      value holdings at their route pools' SPOT prices, before swap fees and price impact: estimates,
 ///      not the exact amounts ERC-4626 asks of previews.
 ///
+/// @dev REBALANCES TRUST THE CREATOR. The creator picks `minOut`; nothing on chain bounds the price. A
+///      creator can push a pool around their own rebalance and keep the difference.
+///
 /// @dev TWO CALL CONTEXTS. Called directly, each V4 swap unlocks the pool manager itself. Called while the
-///      pool manager is already unlocked (by `RealmBasketHook` inside a swap on the shares/USDG pool, or by
+///      pool manager is already unlocked (by `RealmEtfHook` inside a swap on the shares/USDG pool, or by
 ///      any router mid-unlock), V4 swaps run inline and settle their own deltas before returning. V3
 ///      swaps are direct pool calls either way.
-contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IUnlockCallback {
+contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IUnlockCallback {
     using SafeERC20 for IERC20;
     using TransientStateLibrary for IPoolManager;
 
-    /// @notice Most assets a basket may hold. Every deposit and redemption swaps through each one.
+    /// @notice Most assets an ETF may hold. Every deposit and redemption swaps through each one.
     uint256 public constant MAX_ASSETS = 10;
 
     /// @notice Shares minted to `DEAD` at seeding, so supply never returns to a size rounding can exploit.
@@ -53,28 +56,22 @@ contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626,
 
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
-    /// @notice Most value a rebalance may lose, in bps, measured at the whitelist's snapshot rates.
-    uint256 public constant MAX_REBALANCE_LOSS_BPS = 300;
-
     uint256 private constant BPS = 10_000;
 
-    /// @notice The factory that deployed and seeded this basket.
+    /// @notice The factory that deployed and seeded this ETF.
     address public immutable FACTORY;
 
-    /// @notice The hook of the basket's shares/USDG pool, the only caller of `redeemOnCredit`.
+    /// @notice The hook of the ETF's shares/USDG pool, the only caller of `redeemOnCredit`.
     address public immutable HOOK;
 
-    /// @notice Where the basket's assets and their USDG routes are listed.
-    RealmBasketAssets public immutable REGISTRY;
+    /// @notice Where the ETF's assets and their USDG routes are listed.
+    RealmEtfAssets public immutable REGISTRY;
 
     /// @notice The pool manager V4 routes swap on.
     IPoolManager public immutable POOL_MANAGER;
 
     /// @notice The deposit asset (ERC-4626 `asset()`).
     address public immutable USDG;
-
-    /// @notice Prices holdings (`totalAssets`, deposit split, rebalance bound).
-    IBasketRates public immutable ASSETS_WHITELIST;
 
     uint8 private immutable _usdgDecimals;
 
@@ -100,16 +97,14 @@ contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626,
     error TooManyAssets();
     error ZeroAmount();
     error Slippage();
-    error RebalanceTooLossy();
     error NotSupported();
-    error NotPriced();
     error Unauthorized();
 
     constructor(
         string memory name_,
         string memory symbol_,
         address creator,
-        RealmBasketAssets registry,
+        RealmEtfAssets registry,
         address hook,
         address[] memory assets_
     ) ERC20(name_, symbol_) Ownable(creator) {
@@ -118,7 +113,6 @@ contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626,
         REGISTRY = registry;
         POOL_MANAGER = registry.POOL_MANAGER();
         USDG = registry.USDG();
-        ASSETS_WHITELIST = registry.ASSETS_WHITELIST();
         _usdgDecimals = IERC20Metadata(USDG).decimals();
 
         require(assets_.length != 0 && assets_.length <= MAX_ASSETS, InvalidAssets());
@@ -179,12 +173,12 @@ contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626,
         return USDG;
     }
 
-    /// @notice Holdings valued in USDG at the whitelist's snapshot rates. An estimate: selling them would
+    /// @notice Holdings valued in USDG at their route pools' spot prices. An estimate: selling them would
     ///         pay swap fees and price impact.
     function totalAssets() public view returns (uint256 total) {
         for (uint256 i; i < _assets.length; ++i) {
             address a = _assets[i];
-            total += _usdgValue(a, IERC20(a).balanceOf(address(this)), false);
+            total += REGISTRY.usdgValueOf(a, IERC20(a).balanceOf(address(this)));
         }
     }
 
@@ -293,9 +287,8 @@ contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626,
 
     /// @notice Sells `sellAmount` of a held asset (`type(uint256).max`: all of it) and buys `buyAsset`
     ///         with the proceeds, through USDG. Buying an asset not yet held adds it; selling all of one
-    ///         removes it. The value bought must be within `MAX_REBALANCE_LOSS_BPS` of the value sold, at
-    ///         the whitelist's snapshot rates, so pushing a pool around the rebalance cannot drain the vault.
-    function rebalance(address sellAsset, uint256 sellAmount, address buyAsset)
+    ///         removes it. Reverts if fewer than `minOut` of `buyAsset` are bought.
+    function rebalance(address sellAsset, uint256 sellAmount, address buyAsset, uint256 minOut)
         external
         onlyOwner
         nonReentrant
@@ -323,11 +316,7 @@ contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626,
         uint256 before = IERC20(buyAsset).balanceOf(address(this));
         _swap(buyAsset, true, usdg);
         bought = IERC20(buyAsset).balanceOf(address(this)) - before;
-        require(
-            _usdgValue(buyAsset, bought, false) * BPS
-                >= _usdgValue(sellAsset, sellAmount, false) * (BPS - MAX_REBALANCE_LOSS_BPS),
-            RebalanceTooLossy()
-        );
+        require(bought >= minOut, Slippage());
         emit Rebalanced(sellAsset, sellAmount, buyAsset, bought);
     }
 
@@ -368,7 +357,7 @@ contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626,
         uint256 totalValue;
         for (uint256 i; i < n; ++i) {
             balances[i] = IERC20(_assets[i]).balanceOf(address(this));
-            values[i] = _usdgValue(_assets[i], balances[i], true);
+            values[i] = REGISTRY.usdgValueOf(_assets[i], balances[i]);
             totalValue += values[i];
         }
 
@@ -418,9 +407,9 @@ contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626,
     /// @dev Swaps `amountIn` USDG into `asset_` (`buy`) or `asset_` into USDG, through its registry route.
     function _swap(address asset_, bool buy, uint256 amountIn) internal returns (uint256 amountOut) {
         if (amountIn == 0) return 0;
-        RealmBasketAssets.Route memory route = REGISTRY.routeOf(asset_);
+        RealmEtfAssets.Route memory route = REGISTRY.routeOf(asset_);
         address tokenIn = buy ? USDG : asset_;
-        if (route.venue == RealmBasketAssets.Venue.V3) return _swapV3(route.pool, tokenIn, amountIn);
+        if (route.venue == RealmEtfAssets.Venue.V3) return _swapV3(route.pool, tokenIn, amountIn);
         if (POOL_MANAGER.isUnlocked()) return _swapV4(route.key, tokenIn, amountIn);
         return abi.decode(POOL_MANAGER.unlock(abi.encode(route.key, tokenIn, amountIn)), (uint256));
     }
@@ -448,9 +437,9 @@ contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626,
     }
 
     function _swapV3(address pool, address tokenIn, uint256 amountIn) internal returns (uint256) {
-        bool zeroForOne = tokenIn == IBasketV3Pool(pool).token0();
+        bool zeroForOne = tokenIn == IEtfV3Pool(pool).token0();
         _v3Pool = pool;
-        (int256 amount0, int256 amount1) = IBasketV3Pool(pool)
+        (int256 amount0, int256 amount1) = IEtfV3Pool(pool)
             .swap(
                 address(this),
                 zeroForOne,
@@ -460,15 +449,6 @@ contract RealmBasket is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626,
             );
         _v3Pool = address(0);
         return uint256(-(zeroForOne ? amount1 : amount0));
-    }
-
-    /// @dev `amount` of `asset_` in raw USDG, at the whitelist's live or snapshot rates.
-    function _usdgValue(address asset_, uint256 amount, bool live) internal view returns (uint256) {
-        (uint256 rate, uint256 usdgRate) = live
-            ? (ASSETS_WHITELIST.liveUnitsPerNativeX18(asset_), ASSETS_WHITELIST.liveUnitsPerNativeX18(USDG))
-            : (ASSETS_WHITELIST.unitsPerNativeX18(asset_), ASSETS_WHITELIST.unitsPerNativeX18(USDG));
-        require(rate != 0 && usdgRate != 0, NotPriced());
-        return Math.mulDiv(amount, usdgRate * 10 ** _usdgDecimals, rate * 10 ** IERC20Metadata(asset_).decimals());
     }
 
     function _indexOf(address asset_) internal view returns (uint256) {

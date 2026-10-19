@@ -46,7 +46,7 @@ Unified factories register fee config automatically during token creation:
 - `SwapLpFeeRouter` — one upgradeable proxy per chain: the 30/70 LP-fee split and the token-side fee bucket (§14)
 - `RealmAssetsWhitelist` — one upgradeable proxy per chain, the ERC20 quotes the direct venue accepts
 - `RealmTreasuryRouter` / `RealmVoting` — one upgradeable proxy each per chain; the router IS the treasury address every push below lands on (§11)
-- `RealmBasketAssets` / `RealmBasketFactory` / `RealmBasket` / `RealmBasketHook` — ETF baskets (§17)
+- `RealmEtfAssets` / `RealmEtfFactory` / `RealmEtf` / `RealmEtfHook` — ETFs (§17)
 
 External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this file focuses on Realm-owned events and notes the main external-operation points.
 
@@ -69,7 +69,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 14. [LP fee collection — `RealmLpLocker` / `SwapLpFeeRouter` / `RealmSwapper.sellToken`](#14-lp-fee-collection--realmlplocker--swaplpfeerouter--realmswappersellToken)
 15. [Factory pause — `setPaused`](#15-factory-pause--setpaused)
 16. [Special deployments — `setSpecialDeploymentsBudget`](#16-special-deployments--setspecialdeploymentsbudget)
-17. [ETF baskets — `RealmBasket*`](#17-etf-baskets--realmbasket)
+17. [ETFs — `RealmEtf*`](#17-etfs--realmetf)
 
 ---
 
@@ -800,37 +800,41 @@ Emits **`RealmFactory.PausedSet`** (`paused`), on every call, even when the valu
 
 Emits **`SpecialDeploymentsBudgetSet`** (`deployer` indexed, `budget`), on every call. `budget` is the deployer's absolute total, not an increment. A `createToken` that spends one (its decay exceeds the normal caps) emits nothing extra: usage is derivable from the token's `RealmTaxableTokenInitialized` decay config.
 
-## 17. ETF baskets — `RealmBasket*`
+## 17. ETFs — `RealmEtf*`
 
-One `RealmBasketAssets` registry, one `RealmBasketHook` per chain (which deploys the one `RealmBasketFactory` in its constructor), one `RealmBasket` per basket. A basket IS its share token: index its events by emitter. Swaps a basket makes appear as the underlying pools' own events (V4 `PoolManager.Swap`, V3 `Swap`) and ERC20 `Transfer`s, interleaved where noted; they are not Realm events.
+One `RealmEtfAssets` registry, one `RealmEtfFactory` and one `RealmEtfHook` per chain, one `RealmEtf` per ETF. An ETF IS its share token: index its events by emitter. Swaps an ETF makes appear as the underlying pools' own events (V4 `PoolManager.Swap`, V3 `Swap`) and ERC20 `Transfer`s, interleaved where noted; they are not Realm events.
 
-### `RealmBasketAssets` (one per chain)
+### `RealmEtfAssets` (one per chain)
 
 - **`ApproverSet`** (`account` indexed, `allowed`) — owner only.
 - `setRoute(asset, route)` — approver only: **`RouteSet`** (`asset` indexed, `route`) then **`ListedSet`** (`asset` indexed, `true`). `route` is `(venue, pool, key)`: `V3` with the pool in `pool`, or `V4` with the `PoolKey` in `key`. Routes are replaced, never cleared.
-- `setListed(asset, listed)` — approver only: **`ListedSet`**. Delisting only stops baskets from buying into `asset`.
+- `setListed(asset, listed)` — approver only: **`ListedSet`**. Delisting only stops ETFs from buying into `asset`.
 
-### `RealmBasketFactory.createBasket(name, symbol, assets, weightsBps, seedAssets, minShares)` — permissionless
+### `RealmEtfFactory.setHook(hook)` — owner only
 
-1. New `RealmBasket`: `OwnershipTransferred(0, creator)`.
-2. USDG `Transfer` creator -> basket, then one swap per asset (USDG -> asset).
-3. `RealmBasket`: `Transfer(0, DEAD, DEAD_SHARES)`, `Transfer(0, creator, shares)`, **`Seeded`** (`receiver` indexed, `assets`, `shares`).
-4. **`BasketCreated`** (`basket` indexed, `creator` indexed, `name`, `symbol`, `assets`, `weightsBps`, `seedAssets`, `shares`).
+Emits **`HookSet`** (`hook` indexed). Only ETFs created afterwards use it: each ETF records the hook at creation, and a hook only accepts pools of ETFs that recorded it.
 
-### `RealmBasket` (one per basket)
+### `RealmEtfFactory.createEtf(name, symbol, assets, weightsBps, seedAssets, minShares)` — permissionless
+
+1. New `RealmEtf`: `OwnershipTransferred(0, creator)`.
+2. USDG `Transfer` creator -> ETF, then one swap per asset (USDG -> asset).
+3. `RealmEtf`: `Transfer(0, DEAD, DEAD_SHARES)`, `Transfer(0, creator, shares)`, **`Seeded`** (`receiver` indexed, `assets`, `shares`).
+4. **`EtfCreated`** (`etf` indexed, `creator` indexed, `name`, `symbol`, `assets`, `weightsBps`, `seedAssets`, `shares`).
+
+### `RealmEtf` (one per ETF)
 
 - `deposit(assets, receiver[, minShares])`: USDG `Transfer` in, one swap per asset (USDG -> asset), `Transfer(0, receiver, shares)`, ERC-4626 **`Deposit`** (`sender`, `owner` = receiver, `assets`, `shares`).
 - `redeem(shares, receiver, owner[, minAssets])`: `Transfer(owner, 0, shares)`, one swap per asset (asset -> USDG), USDG `Transfer` to receiver, ERC-4626 **`Withdraw`** (`sender`, `receiver`, `owner`, `assets`, `shares`).
-- `redeemInKind(shares, receiver, owner)`: `Transfer(owner, 0, shares)`, then per asset either its `Transfer` to receiver or **`InKindTransferFailed`** (`asset` indexed, `amount`; the slice stays in the basket), then **`RedeemedInKind`** (`owner` indexed, `receiver` indexed, `shares`).
-- `rebalance(sellAsset, sellAmount, buyAsset)` — owner (creator) only: **`AssetRemoved`** (`asset` indexed) if all of `sellAsset` is sold, **`AssetAdded`** (`asset` indexed) if `buyAsset` was not held, the two swaps (sell -> USDG -> buy), **`Rebalanced`** (`sellAsset` indexed, `sold`, `buyAsset` indexed, `bought`).
-- `redeemOnCredit(shares, receiver)` — `RealmBasketHook` only, see the sell below.
+- `redeemInKind(shares, receiver, owner)`: `Transfer(owner, 0, shares)`, then per asset either its `Transfer` to receiver or **`InKindTransferFailed`** (`asset` indexed, `amount`; the slice stays in the ETF), then **`RedeemedInKind`** (`owner` indexed, `receiver` indexed, `shares`).
+- `rebalance(sellAsset, sellAmount, buyAsset, minOut)` — owner (creator) only: **`AssetRemoved`** (`asset` indexed) if all of `sellAsset` is sold, **`AssetAdded`** (`asset` indexed) if `buyAsset` was not held, the two swaps (sell -> USDG -> buy), **`Rebalanced`** (`sellAsset` indexed, `sold`, `buyAsset` indexed, `bought`).
+- `redeemOnCredit(shares, receiver)` — `RealmEtfHook` only, see the sell below.
 - Ownership: OpenZeppelin `Ownable2Step` events (`OwnershipTransferStarted`, `OwnershipTransferred`).
 
-### Swaps on a basket's shares/USDG pool (`RealmBasketHook`)
+### Swaps on an ETF's shares/USDG pool (`RealmEtfHook`)
 
-The pool holds no liquidity: `beforeSwap` fills every exact-input swap through the basket, and the `PoolManager.Swap` event that closes the swap carries the core curve's zero amounts. The hook emits nothing of its own.
+The pool holds no liquidity: `beforeSwap` fills every exact-input swap through the ETF, and the `PoolManager.Swap` event that closes the swap carries the core curve's zero amounts. The hook emits nothing of its own.
 
-- Buy (USDG -> shares): USDG `Transfer` PoolManager -> hook, then the basket's `deposit` events with `sender` = `owner` = hook, then shares `Transfer` hook -> PoolManager, then `PoolManager.Swap`.
-- Sell (shares -> USDG): the basket's swaps, USDG `Transfer` basket -> hook, ERC-4626 **`Withdraw`** with `sender` = `receiver` = `owner` = hook (no share `Transfer`: nothing is burned), PoolManager ERC-6909 `Transfer(0, hook, basket id)` (the hook's claim on the incoming shares), USDG `Transfer` hook -> PoolManager, `PoolManager.Swap`. The router's share `Transfer` to the PoolManager comes after. Those shares stay locked behind the hook's claim and drop out of the basket's `totalSupply`.
-- Initializing a pool emits only `PoolManager.Initialize`; it reverts unless the pair is a factory basket against USDG.
+- Buy (USDG -> shares): USDG `Transfer` PoolManager -> hook, then the ETF's `deposit` events with `sender` = `owner` = hook, then shares `Transfer` hook -> PoolManager, then `PoolManager.Swap`.
+- Sell (shares -> USDG): the ETF's swaps, USDG `Transfer` ETF -> hook, ERC-4626 **`Withdraw`** with `sender` = `receiver` = `owner` = hook (no share `Transfer`: nothing is burned), PoolManager ERC-6909 `Transfer(0, hook, ETF id)` (the hook's claim on the incoming shares), USDG `Transfer` hook -> PoolManager, `PoolManager.Swap`. The router's share `Transfer` to the PoolManager comes after. Those shares stay locked behind the hook's claim and drop out of the ETF's `totalSupply`.
+- Initializing a pool emits only `PoolManager.Initialize`; it reverts unless the pair is a factory ETF created with this hook, against USDG.
 
