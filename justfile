@@ -508,6 +508,21 @@ discover-whitelist-assets-rh-testnet:
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py --chain testnet --min-depth 0.05 \
         --assets "$ASSETS"
 
+# Drops the frontend's hour-cached liquidity badges (/api/quote-depth/<chainId>) so they pick up a
+# re-listing now. Run after `whitelist-assets-rh*`, once the indexer has seen the tx. Needs
+# QUOTE_DEPTH_REVALIDATE_SECRET (the frontend's env value). Ends on `x-vercel-cache: REVALIDATED` + `age: 0`
+# when the recompute ran. e.g. `just refresh-quote-depth 46630 https://realm-rh-dev.vercel.app`
+refresh-quote-depth chainid="4663" host="https://www.realm.trade":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${QUOTE_DEPTH_REVALIDATE_SECRET:?set QUOTE_DEPTH_REVALIDATE_SECRET}"
+    curl -sf -X POST "{{host}}/api/revalidate/quote-depth?chainId={{chainid}}" \
+        -H "Authorization: Bearer $QUOTE_DEPTH_REVALIDATE_SECRET"; echo
+    # the first GET after the purge recomputes; print its cache status and how many assets it priced
+    BODY=$(mktemp)
+    curl -sf -D - -o "$BODY" "{{host}}/api/quote-depth/{{chainid}}" | grep -iE '^(x-vercel-cache|age):'
+    echo "assets: $(jq length "$BODY")"; rm "$BODY"
+
 whitelist-assets-rh-testnet:
     just chain-rh-testnet
     forge script WhitelistRobinhoodAssets --rpc-url rh-testnet --account realm.dev --slow --broadcast \
