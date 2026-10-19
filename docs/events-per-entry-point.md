@@ -810,7 +810,11 @@ One `RealmEtfAssets` registry, one `RealmEtfFactory` and one `RealmEtfHook` per 
 - `setRoute(asset, route)` — approver only: **`RouteSet`** (`asset` indexed, `route`) then **`ListedSet`** (`asset` indexed, `true`). `route` is `(venue, pool, key)`: `V3` with the pool in `pool`, or `V4` with the `PoolKey` in `key`. Routes are replaced, never cleared.
 - `setListed(asset, listed)` — approver only: **`ListedSet`**. Delisting only stops ETFs from buying into `asset`.
 
-### `RealmEtfFactory.setHook(hook)` — owner only
+### `RealmEtfFactory` (one UUPS proxy per chain)
+
+Deployment emits the proxy's `Upgraded`, `OwnershipTransferred` and `Initialized`; every owner-only upgrade another `Upgraded`.
+
+#### `RealmEtfFactory.setHook(hook)` — owner only
 
 Emits **`HookSet`** (`hook` indexed). Only ETFs created afterwards use it: each ETF records the hook at creation, and a hook only accepts pools of ETFs that recorded it.
 

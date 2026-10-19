@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -71,7 +72,13 @@ contract RealmEtfTest is Test {
                     | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
             ) | (uint160(0x4444) << 144)
         );
-        factory = new RealmEtfFactory(owner, registry);
+        factory = RealmEtfFactory(
+            address(
+                new ERC1967Proxy(
+                    address(new RealmEtfFactory(registry)), abi.encodeCall(RealmEtfFactory.initialize, (owner))
+                )
+            )
+        );
         deployCodeTo("RealmEtfHook.sol:RealmEtfHook", abi.encode(manager, factory), hookAddress);
         hook = RealmEtfHook(hookAddress);
         vm.prank(owner);
@@ -284,6 +291,18 @@ contract RealmEtfTest is Test {
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         factory.setHook(alice);
+    }
+
+    function test_factory_onlyOwnerUpgradesAndStateSurvives() public {
+        address impl = address(new RealmEtfFactory(registry));
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        factory.upgradeToAndCall(impl, "");
+
+        vm.prank(owner);
+        factory.upgradeToAndCall(impl, "");
+        assertTrue(factory.isEtf(address(etf)));
+        assertEq(factory.hook(), address(hook));
     }
 
     function test_hook_rejectsEtfsCreatedWithAnotherHook() public {

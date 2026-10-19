@@ -3,7 +3,11 @@ pragma solidity 0.8.28;
 
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
+import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
+import {
+    Ownable2StepUpgradeable
+} from "lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {RealmEtf} from "src/etf/RealmEtf.sol";
 import {RealmEtfAssets} from "src/etf/RealmEtfAssets.sol";
@@ -13,10 +17,17 @@ import {RealmEtfAssets} from "src/etf/RealmEtfAssets.sol";
 ///         creator owns the ETF (and alone rebalances it). `isEtf` is what `RealmEtfHook` trusts.
 /// @dev Each ETF records `hook` at creation and trusts only that one for `redeemOnCredit`, so repointing the
 ///      hook (owner) affects ETFs created afterwards; earlier ones stay on the hook they were created with.
-contract RealmEtfFactory is Ownable2Step {
+/// @dev UPGRADEABLE (UUPS, owner-authorised) because the hook bakes this address in: an upgrade ships new
+///      creation logic (a new `RealmEtf` version) while every hook, pool and `isEtf` entry stays valid. ETFs
+///      themselves are plain contracts, so an upgrade never touches an existing one.
+contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     /// @notice Where every ETF's assets and routes are listed.
+    /// @dev Implementation immutable: the proxy reads it from the implementation's bytecode.
     RealmEtfAssets public immutable REGISTRY;
 
     /// @notice The `RealmEtfHook` new ETFs are created with. Zero: they get no pool.
@@ -37,8 +48,14 @@ contract RealmEtfFactory is Ownable2Step {
     );
     event HookSet(address indexed hook);
 
-    constructor(address initialOwner, RealmEtfAssets registry) Ownable(initialOwner) {
+    constructor(RealmEtfAssets registry) {
         REGISTRY = registry;
+        _disableInitializers();
+    }
+
+    /// @param initialOwner cold multisig: sets the hook and upgrades
+    function initialize(address initialOwner) external initializer {
+        __Ownable_init(initialOwner);
     }
 
     /// @notice Sets the hook new ETFs are created with. Owner only.
@@ -64,4 +81,6 @@ contract RealmEtfFactory is Ownable2Step {
         uint256 shares = b.seed(seedAssets, weightsBps, msg.sender, minShares);
         emit EtfCreated(etf, msg.sender, name, symbol, assets, weightsBps, seedAssets, shares);
     }
+
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 }
