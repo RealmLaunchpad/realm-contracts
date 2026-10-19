@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
 
 /// @title UniswapV2Venue
@@ -64,5 +66,32 @@ library UniswapV2Venue {
                 (minOut, path, address(this), block.timestamp)
             )
         );
+    }
+
+    /// @notice Sells `amountIn` of `path[0]` (held by `address(this)`) along `path`, delivering the last
+    ///         token, or native when `toNative` (then `path` must end at WETH), to `address(this)`.
+    /// @dev Low-level, reporting like `trySwapNativeToAsset`. Approves exactly `amountIn`, which an
+    ///      exact-input V2 swap consumes whole.
+    /// @param minOut minimum output: native when `toNative`, else the last token's own decimals.
+    function trySwapExactTokens(
+        IUniswapV2Router router,
+        address[] memory path,
+        uint256 amountIn,
+        uint256 minOut,
+        bool toNative
+    ) internal returns (bool ok) {
+        SafeERC20.forceApprove(IERC20(path[0]), address(router), amountIn);
+        (ok,) = address(router)
+            .call(
+                toNative
+                    ? abi.encodeCall(
+                        IUniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens,
+                        (amountIn, minOut, path, address(this), block.timestamp)
+                    )
+                    : abi.encodeCall(
+                        IUniswapV2Router.swapExactTokensForTokensSupportingFeeOnTransferTokens,
+                        (amountIn, minOut, path, address(this), block.timestamp)
+                    )
+            );
     }
 }

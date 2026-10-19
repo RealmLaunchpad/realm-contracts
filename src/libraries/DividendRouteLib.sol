@@ -11,7 +11,7 @@ import {Hop} from "src/interfaces/IRealmSwapper.sol";
 /// @dev WHY ONE `bytes` FIELD AND NOT A STRUCT PER VENUE. A V4 route is a list of
 ///      `(currency, fee, tickSpacing, hooks)` hops; a V3 route is Uniswap's own packed
 ///      `token | fee | token` path; a V2 route is the tag alone, because the pair is fully implied by
-///      its two currencies. Three shapes with nothing in common, carried as one tagged blob.
+///      its two currencies, or the tag and ONE intermediate token (WETH -> via -> asset). Three shapes with nothing in common, carried as one tagged blob.
 ///
 /// @dev THE EMPTY ROUTE MEANS "NO ROUTE": the asset does not convert until an admin sets one.
 library DividendRouteLib {
@@ -29,7 +29,8 @@ library DividendRouteLib {
         return uint8(route[0]);
     }
 
-    /// @notice Everything a route says, decoded ONCE. Only the field its `venue` names is populated.
+    /// @notice Everything a route says, decoded ONCE. Only the field its `venue` names is populated:
+    ///         `hops` for V4, `path` for V3 (the packed path) and V2 (empty, or the intermediate token).
     /// @dev Exists so the conversion path does not decode the same immutable bytes twice: validation and
     ///      the swap itself both need the body, and they run back to back on the keeper's hot path.
     struct Decoded {
@@ -42,7 +43,7 @@ library DividendRouteLib {
     function decode(bytes memory route) internal pure returns (Decoded memory d) {
         d.venue = venue(route);
         if (d.venue == VENUE_V4) d.hops = toV4Hops(route);
-        else if (d.venue == VENUE_V3) d.path = toV3Path(route);
+        else if (d.venue == VENUE_V3 || d.venue == VENUE_V2) d.path = _body(route);
     }
 
     /// @notice The V4 hops a route carries. Reverts if the route is not a V4 route.
@@ -82,6 +83,11 @@ library DividendRouteLib {
     /// @notice Builds the wire format for a route through the native quote's V2 pair with the asset.
     function encodeV2() internal pure returns (bytes memory) {
         return abi.encodePacked(VENUE_V2);
+    }
+
+    /// @notice Builds the wire format for a V2 route through `via`: native quote -> `via` -> asset.
+    function encodeV2(address via) internal pure returns (bytes memory) {
+        return abi.encodePacked(VENUE_V2, via);
     }
 
     /// @notice Builds the wire format for a V3 route from Uniswap's packed path.

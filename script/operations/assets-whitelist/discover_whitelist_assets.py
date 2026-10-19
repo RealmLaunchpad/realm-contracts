@@ -23,9 +23,11 @@ How it works:
      assets, then Uniswap's own state (reserves / slot0 + liquidity) read through Multicall3. Where the
      RPC will not serve a log scan (the testnet caps `eth_getLogs` at 10k blocks), pools are instead
      probed by key at a handful of standard shapes.
-  3. Depth as the tiebreak, measured as the quote-side amount at the current price, converted to
-     native so a reference-quoted pool and an ETH-quoted one compare. For V3 and V4 that is the
-     in-range virtual amount, which overstates a narrow position.
+  3. The pool a 1 ETH buy moves least wins: each candidate is quoted on its venue's own quoter along
+     the path the listing implies (native [-> reference] -> asset), fees included, so the pick matches
+     the frontend's liquidity badge. Depth -- the quote side at the current price in native, the in-range
+     virtual amount for V3/V4, which overstates a narrow position -- only breaks ties and orders the pools
+     no quoter can price.
   4. Curation, in both directions. The file is a REGISTRY: it keeps every asset any run ever found a
      pool for, each with an `enabled` flag, and never forgets one. `WhitelistRobinhoodAssets` lists the
      enabled entries and retires the disabled ones the chain still prices, so the same file brings a
@@ -79,6 +81,9 @@ CHAINS = {
         "univ2_factory": "0x8bceaa40b9acdfaedf85adf4ff01f5ad6517937f",
         "univ3_factory": "0x1f7d7550b1b028f7571e69a784071f0205fd2efa",
         "pool_manager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+        "v4_quoter": "0x8dc178efb8111bb0973dd9d722ebeff267c98f94",
+        "v3_quoter": "0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7",
+        "univ2_router": "0x89e5db8b5aa49aa85ac63f691524311aeb649eba",
         "scan_logs": True,
     },
     # The testnet has no Robinhood rStocks, so it is only ever run with `--assets`: the dummy dividend
@@ -95,12 +100,16 @@ CHAINS = {
         "univ2_factory": "0x7766e3a6a8c98a76308cfb4040e330c3308f7c73",
         "univ3_factory": None,
         "pool_manager": "0x552815ef68e6eb418a3d65d0aa1043d93204f612",
+        "v4_quoter": "0x50a77bf45778cf6b16b2bdc6248a24aa647ff289",
+        "v3_quoter": None,
+        "univ2_router": "0xfd550c5dc070ea575a06a40f2e18304d85211663",
         "scan_logs": False,
     },
 }
 
 # Set from `CHAINS` by `main`, before anything reads the chain.
 CHAIN_ID = RPC = WETH = REFERENCE = UNIV2_FACTORY = UNIV3_FACTORY = POOL_MANAGER = SCAN_LOGS = None
+V4_QUOTER = V3_QUOTER = UNIV2_ROUTER = None
 NATIVE_SIDE: set[str] = set()
 
 TOPIC_V2 = "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"  # PairCreated
@@ -478,6 +487,84 @@ def candidates(asset: str, pools: list[dict], decimals: dict, reference_rate: fl
     return sorted(out, key=lambda c: -c["depth"])
 
 
+# The buys `rank_by_impact` quotes, in wei of native: a dust one for the spot rate, then the sizes measured
+# against it. 1 ETH is what the frontend's liquidity badge is tiered on (< 2% deep, < 10% ok, else low);
+# the larger ones tell deep pools apart, which all read ~0% at 1 ETH.
+PROBE_WEI = (10**15, 10**18, 10**19, 10**20)
+# The impact above which a size no longer ranks pools: the frontend's "low" floor.
+USABLE_IMPACT = 0.1
+# ponytail: only the deepest few candidates per asset are quoted; raise if a deep pool reads shallow.
+QUOTED_PER_ASSET = 10
+
+
+def _quote_call(asset: str, pool: dict, amount: int) -> tuple[str, str] | None:
+    """An exact-input buy of `asset` with `amount` of the pool's other side, on the pool's own venue
+    (V4 / V3 quoter, V2 router). None where the chain has no quoter for that venue."""
+    frm = pool["t1"] if pool["t0"] == asset else pool["t0"]
+    if pool["v"] == 4:
+        if not V4_QUOTER:
+            return None
+        args = (frm, [(asset, pool["fee"], pool["ts"], pool["hooks"], b"")], amount)
+        return V4_QUOTER, selector("quoteExactInput((address,(address,uint24,int24,address,bytes)[],uint128))") + \
+            abi_encode(["(address,(address,uint24,int24,address,bytes)[],uint128)"], [args]).hex()
+    if pool["v"] == 3:
+        if not V3_QUOTER:
+            return None
+        path = bytes.fromhex(frm[2:]) + pool["fee"].to_bytes(3, "big") + bytes.fromhex(asset[2:])
+        return V3_QUOTER, selector("quoteExactInput(bytes,uint256)") + abi_encode(["bytes", "uint256"], [path, amount]).hex()
+    if not UNIV2_ROUTER:
+        return None
+    return UNIV2_ROUTER, selector("getAmountsOut(uint256,address[])") + \
+        abi_encode(["uint256", "address[]"], [amount, [frm, asset]]).hex()
+
+
+def _quoted(pool: dict, ok: bool, ret: bytes) -> int | None:
+    if not ok or len(ret) < 32:
+        return None
+    if pool["v"] == 2:
+        return abi_decode(["uint256[]"], ret)[0][-1] or None
+    return int.from_bytes(ret[:32], "big") or None
+
+
+def _quote_all(legs: list[tuple[str, dict, int]]) -> list[int | None]:
+    """Each `(asset, pool, amount)` buy's output, None where it reverted or has no quoter."""
+    calls = [(i, c) for i, leg in enumerate(legs) if (c := _quote_call(*leg))]
+    out = [None] * len(legs)
+    for (i, _), (ok, ret) in zip(calls, multicall([c for _, c in calls], chunk=50)):  # quotes are gas-heavy
+        out[i] = _quoted(legs[i][1], ok, ret)
+    return out
+
+
+def rank_by_impact(found: dict[str, list[dict]], reference: dict | None) -> None:
+    """Annotate each candidate with `impacts`, the price impact of each `PROBE_WEI` buy along its listing's
+    path (native [-> reference] -> asset, fees included, as the frontend measures it), and `impact`, the
+    1 ETH one. Re-sorts each list by impact at the largest size its best pool still fills under
+    `USABLE_IMPACT` (1 ETH when none does): deep pools all read ~0% at 1 ETH, and thin ones all ~100% at
+    100. A size that reverts or cannot be quoted counts as infinite; then 1 ETH impact, then depth."""
+    ref_out = [None] * len(PROBE_WEI)
+    if reference:
+        ref_out = _quote_all([(REFERENCE, reference["pool"], wei) for wei in PROBE_WEI])
+    legs, owners = [], []
+    for asset, cands in found.items():
+        for cand in cands[:QUOTED_PER_ASSET]:
+            ins = PROBE_WEI if cand["quote"] == NATIVE else ref_out
+            if all(ins):
+                owners.append(cand)
+                legs += [(asset, cand["pool"], amount) for amount in ins]
+    outs, n = _quote_all(legs), len(PROBE_WEI)
+    for j, cand in enumerate(owners):
+        spot, *sized = outs[n * j : n * (j + 1)]
+        cand["impacts"] = {wei // 10**18: max(0.0, 1 - (out / wei) / (spot / PROBE_WEI[0])) if spot and out else None
+                           for wei, out in zip(PROBE_WEI[1:], sized)}
+        cand["impact"] = cand["impacts"][1]
+    inf = float("inf")
+    at = lambda c, eth: inf if (i := c.get("impacts", {}).get(eth)) is None else i
+    sizes = [w // 10**18 for w in PROBE_WEI[1:]]
+    for cands in found.values():
+        size = max([eth for eth in sizes if any(at(c, eth) < USABLE_IMPACT for c in cands)], default=sizes[0])
+        cands.sort(key=lambda c: (at(c, size), at(c, sizes[0]), -c["depth"]))
+
+
 def arcus_listing(asset: str, pool: dict, decimals: dict, reference_rate: float) -> dict | None:
     """An Arcus pToken's listing out of its fixed pool, or None if that pool is not initialized.
 
@@ -564,6 +651,14 @@ def main() -> int:
         print(f"reference: {reference_rate:,.2f} per native, {priced[0]['depth']:,.0f} native deep, "
               f"v{priced[0]['pool']['v']}", file=sys.stderr)
 
+    found_by_asset = {
+        c["asset"]: [f for f in candidates(c["asset"], by_token.get(c["asset"], []), decimals, reference_rate)
+                     if f["depth"] >= args.min_depth]
+        for c in coins if c["asset"] != REFERENCE and not c.get("arcus")
+    }
+    print("quoting a 1 ETH buy through each candidate…", file=sys.stderr)
+    rank_by_impact(found_by_asset, listings[0] if REFERENCE else None)
+
     rejected = []
     for coin in coins:
         if coin["asset"] == REFERENCE:
@@ -576,11 +671,10 @@ def main() -> int:
                 rejected.append({"symbol": coin["symbol"], "asset": coin["asset"], "rstock": False, "arcus": True,
                                  "reason": "its Arcus pool is not initialized", "venue": "v4", "depthNative": 0.0})
             continue
-        found = candidates(coin["asset"], by_token.get(coin["asset"], []), decimals, reference_rate)
-        priced = [c for c in found if c["depth"] >= args.min_depth]
-        if priced:
+        if priced := found_by_asset[coin["asset"]]:
             listings.append({**coin, **priced[0]})
         else:
+            found = candidates(coin["asset"], by_token.get(coin["asset"], []), decimals, reference_rate)
             rejected.append(_rejection(coin, found, args))
 
     reference = listings[0]["symbol"] if REFERENCE else None
@@ -743,7 +837,9 @@ def _arcus_table(listings: list[dict], rejected: list[dict], enabled: set[str]) 
 def _use_chain(name: str) -> None:
     """Point the module at one chain's Uniswap deployment. Called once, before anything reads it."""
     global CHAIN_ID, RPC, WETH, REFERENCE, UNIV2_FACTORY, UNIV3_FACTORY, POOL_MANAGER, SCAN_LOGS, NATIVE_SIDE
+    global V4_QUOTER, V3_QUOTER, UNIV2_ROUTER
     c = CHAINS[name]
+    V4_QUOTER, V3_QUOTER, UNIV2_ROUTER = c["v4_quoter"], c["v3_quoter"], c["univ2_router"]
     CHAIN_ID, WETH, REFERENCE, SCAN_LOGS = c["chain_id"], c["weth"], c["reference"], c["scan_logs"]
     UNIV2_FACTORY, UNIV3_FACTORY, POOL_MANAGER = c["univ2_factory"], c["univ3_factory"], c["pool_manager"]
     RPC = os.environ.get(c["rpc_env"]) or c["rpc_default"]
@@ -811,6 +907,10 @@ def _readable(listing: dict, reference_rate: float, reference: str | None) -> di
         "quote": "native" if listing["quote"] == NATIVE else reference,
         # None for an Arcus pool reading no in-range liquidity; it is listed regardless.
         "depthNative": None if listing["depth"] is None else round(listing["depth"], 4),
+        # Price impact of a 1 ETH buy through the listing's path, fees included; None if unquotable.
+        "impact1Eth": None if listing.get("impact") is None else round(listing["impact"], 4),
+        # The same at each probe size, in whole ETH: what tells two deep pools apart.
+        "impacts": {str(eth): None if i is None else round(i, 4) for eth, i in listing.get("impacts", {}).items()},
         # Priced in the reference asset, which on a chain that has one is a dollar stablecoin.
         "priceUsd": round(reference_rate / listing["rate"], 8) if REFERENCE else None,
         "perNative": round(listing["rate"], 8),

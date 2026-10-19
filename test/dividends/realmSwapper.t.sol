@@ -64,6 +64,7 @@ contract RealmSwapperTests is V4PoolSeeding {
     address internal constant MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
     address internal constant AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
     address internal constant TSLA = 0x322F0929c4625eD5bAd873c95208D54E1c003b2d;
+    address internal constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
 
     /// @dev The Robinhood V4 pools the route tests cross, live at `BLOCKNUMBER`. AAPL's native pool is
     ///      the one hookless, static-fee pool on this chain that actually holds liquidity there.
@@ -159,7 +160,12 @@ contract RealmSwapperTests is V4PoolSeeding {
         vm.expectRevert(RealmSwapper.MalformedRoute.selector);
         registry.setRoute(address(0), MSFT, hex"07"); // unknown venue tag
         vm.expectRevert(RealmSwapper.MalformedRoute.selector);
-        registry.setRoute(address(0), MSFT, hex"0200"); // V2 carries no body
+        registry.setRoute(address(0), MSFT, hex"0200"); // a V2 body is one address or nothing
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
+        registry.setRoute(address(0), MSFT, DividendRouteLib.encodeV2(MSFT)); // via the asset itself
+        bytes memory viaWeth = DividendRouteLib.encodeV2(registry.nativeQuoteToken());
+        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
+        registry.setRoute(address(0), MSFT, viaWeth);
         vm.stopPrank();
     }
 
@@ -224,14 +230,12 @@ contract RealmSwapperTests is V4PoolSeeding {
     }
 
     /// @dev Only a V4 route can be walked backwards, so a quote route is V4 or nothing.
-    function test_aQuoteRouteMustBeV4() public {
-        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
+    function test_aQuoteRouteMayBeAnyVenue() public {
         registry.registerQuoteRoute(AAPL, V2_ROUTE);
-        vm.prank(admin);
-        vm.expectRevert(RealmSwapper.MalformedRoute.selector);
-        registry.setQuoteRoute(address(this), AAPL, V2_ROUTE);
+        assertEq(registry.quoteRouteOf(address(this), AAPL), V2_ROUTE);
 
-        registry.registerQuoteRoute(AAPL, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
+        vm.prank(admin);
+        registry.setQuoteRoute(address(this), AAPL, _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
         assertEq(registry.quoteRouteOf(address(this), AAPL), _v4(AAPL, V4_FEE_AAPL, V4_SPACING_AAPL));
     }
 
@@ -496,15 +500,30 @@ contract RealmSwapperTests is V4PoolSeeding {
         assertEq(IERC20(AAPL).balanceOf(keeper), 0, "and nothing in the source");
     }
 
-    /// @dev Only a V4 route names its pools outright; a V2 or V3 one cannot be walked backwards.
-    function test_swapAssetToAsset_refusesASourceWithoutAV4Route() public {
-        _set(MSFT, V2_ROUTE);
+    /// @dev A V2 source sells back along its pair: source -> WETH, delivered as native.
+    function test_swapAssetToAsset_sellsASourceThroughItsV2Route() public {
         _set(AAPL, V2_ROUTE);
-        deal(AAPL, address(this), 1e16);
-        IERC20(AAPL).approve(address(registry), 1e16);
+        _assertSoldToNative(AAPL);
+    }
 
-        vm.expectRevert(RealmSwapper.NoRoute.selector);
-        registry.swapAssetToAsset(AAPL, MSFT, 1e16, 1, recipient);
+    /// @dev A V2 route through an intermediate, both ways: WETH -> USDG -> AAPL, and back.
+    function test_aV2RouteThroughAnIntermediateBuysAndSells() public {
+        _set(AAPL, DividendRouteLib.encodeV2(USDG));
+        vm.deal(address(this), 0.01 ether);
+        assertGt(registry.swapNativeToAsset{value: 0.01 ether}(AAPL, 1, recipient), 0, "bought through USDG");
+        _assertSoldToNative(AAPL);
+    }
+
+    function _assertSoldToNative(address source) internal {
+        deal(source, address(this), 1e16);
+        IERC20(source).approve(address(registry), 1e16);
+        uint256 before = recipient.balance;
+        uint256 out = registry.swapAssetToAsset(source, address(0), 1e16, 1, recipient);
+        assertGt(out, 0, "sold to native");
+        assertEq(recipient.balance - before, out, "native delivered");
+        assertEq(IERC20(source).balanceOf(address(this)), 0, "the source was consumed whole");
+        assertEq(IERC20(source).balanceOf(address(registry)), 0, "the registry kept no source");
+        assertEq(address(registry).balance, 0, "nor any native");
     }
 
     /// @dev F1: a quote bought on V2 as a payout asset is still sold on its own V4 quote route.

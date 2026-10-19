@@ -172,6 +172,30 @@ contract RealmSwapperV3Tests is Test {
     }
 
     /// @dev A floor the pool cannot meet reverts, so a dividend freeze keeps its buffer.
+    /// @dev A V3 quote route is walked backwards: AAPLon -> WETH, unwrapped and delivered as native.
+    function test_aV3QuoteRouteSellsToNative() public {
+        _assertSoldToNative(AAPLon, _path(WETH, FEE_005, AAPLon));
+    }
+
+    /// @dev Two hops backwards: SPYon -> USDG -> WETH.
+    function test_aTwoHopV3QuoteRouteSellsToNative() public {
+        _assertSoldToNative(SPYon, _path(WETH, FEE_001, USDG, FEE_030, SPYon));
+    }
+
+    function _assertSoldToNative(address source, bytes memory path) internal {
+        vm.prank(admin);
+        registry.setQuoteRoute(address(0), source, DividendRouteLib.encodeV3(path));
+        deal(source, address(this), 1e16);
+        IERC20(source).approve(address(registry), 1e16);
+        uint256 out = registry.swapAssetToAsset(source, address(0), 1e16, 1, recipient);
+        assertGt(out, 0, "sold to native");
+        assertEq(recipient.balance, out, "native delivered");
+        assertEq(IERC20(source).balanceOf(address(this)), 0, "the source was consumed whole");
+        assertEq(IERC20(source).balanceOf(address(registry)), 0, "the registry kept no source");
+        assertEq(address(registry).balance, 0, "nor any native");
+        assertEq(IERC20(WETH).balanceOf(address(registry)), 0, "nor any WETH");
+    }
+
     function test_aMissedFloorRevertsAndSpendsNothing() public {
         _route(AAPLon, _path(WETH, FEE_030, AAPLon));
 

@@ -17,7 +17,15 @@ import {
 import {AntiSniperConfigs} from "src/tokens/SniperProtection.sol";
 import {RealmFactoryAbstract} from "src/factories/RealmFactoryAbstract.sol";
 import {RealmLaunchPricing} from "src/libraries/RealmLaunchPricing.sol";
-import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
+import {RealmAssetsWhitelist, IUniswapV3PoolState} from "src/access/RealmAssetsWhitelist.sol";
+import {UniversalRouterVenue} from "src/libraries/UniversalRouterVenue.sol";
+import {UniswapV2Venue} from "src/libraries/UniswapV2Venue.sol";
+import {IUniswapV2Router} from "src/interfaces/IUniswapV2Router.sol";
+import {IWETH} from "src/interfaces/IWETH.sol";
+import {PoolKey as RouterPoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+/// this line below is swapped per target chain at build time (`just chain-*`): the routers the dev-buy
+/// zap converts through.
+import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @notice The slice of `RealmDirectGraduatorUniV4` this factory drives. Kept as an interface rather
 ///         than the concrete type so the venue and the factory stay separately replaceable.
@@ -93,7 +101,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         - `msg.value` on a native pair;
     ///         - `quoteAmount` of the pair's ERC20 quote;
     ///         - `msg.value` on an ERC20 pair (ZAP): the native is converted to the quote through the
-    ///           quote's whitelist price pool(s) — see `_devBuyRoute` — and the result buys the token.
+    ///           quote's whitelist price pool(s) — see `_settleDevBuy` — and the result buys the token.
     /// @param pairIndex Which of `pairs` the buy executes on. The buy runs against ONE pool, the one the
     ///        creator picks — splitting it would just be several worse-priced buys.
     /// @param route Reserved; must be empty. The zap's route comes from `ASSETS_WHITELIST`, so no
@@ -179,9 +187,13 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     ///         both ways (or `quoteAmount` on a native pair), or sets a floor for a conversion that will
     ///         not happen.
     error InvalidDevBuy();
-    /// @notice Thrown when a zap's quote cannot be reached from native through `ASSETS_WHITELIST`'s V4
-    ///         price pools: a hop listed on V2/V3, against WETH, or more than one reference deep.
+    /// @notice Thrown when a zap's quote cannot be reached from native through `ASSETS_WHITELIST`'s price
+    ///         pools: its reference is itself listed against another reference.
     error DevBuyRouteUnavailable();
+    /// @notice A zap conversion hop off the V4 path reverted or did not consume its whole input.
+    error DevBuyZapFailed();
+    /// @notice A zap conversion off the V4 path delivered less quote than `minQuoteOut`.
+    error InsufficientQuoteOut();
     /// @notice `quoteRoutes` names more entries than there are pairs, a route for a native pair, or a
     ///         route while the allocation has no dividends share.
     error InvalidQuoteRoutes();
@@ -528,48 +540,124 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
         }
 
         PoolKey[] memory route;
+        uint256 value = msg.value;
+        uint256 minQuoteOut = devBuy.minQuoteOut;
         if (quote != address(0)) {
             if (msg.value > 0) {
                 route = _devBuyRoute(quote);
+                if (route.length == 0) {
+                    // No all-V4 route: convert here, then buy with the quote like a `quoteAmount` buy.
+                    uint256 quoteOut = _zapToQuote(quote, msg.value);
+                    require(quoteOut >= minQuoteOut, InsufficientQuoteOut());
+                    IERC20(quote).safeTransfer(address(GRADUATOR), quoteOut);
+                    (value, minQuoteOut) = (0, 0);
+                }
             } else {
                 // Pulled through this factory rather than approved straight to the graduator, so a
                 // creator grants an allowance to ONE address and the graduator never needs one of its own.
                 IERC20(quote).safeTransferFrom(msg.sender, address(GRADUATOR), devBuy.quoteAmount);
             }
         }
-        (, uint256 spend) = grad.devBuy{value: msg.value}(token, quote, route, devBuy.minQuoteOut);
+        (, uint256 spend) = grad.devBuy{value: value}(token, quote, route, minQuoteOut);
         grad.burnSeedDust(token);
 
         // The graduator hands the dev buy back here; the split and its event are the curve venue's.
         _distributeDeployBuy(token, devBuy.recipients, IERC20(token).balanceOf(address(this)), spend);
     }
 
-    /// @dev The zap's native -> `quote` route, read from `ASSETS_WHITELIST` alone: `quote`'s own V4
-    ///      price pool, preceded by its reference's when it was listed against one. Every hop must be a V4
-    ///      pool against exactly the asset it was listed against, ending at native — a WETH-side pool
-    ///      would need wrapping. Approver-vetted pools only, so no unknown hook runs mid-launch, where the
-    ///      graduator's steps are gated by transient markers rather than by caller.
+    /// @dev The zap's in-unlock native -> `quote` route, read from `ASSETS_WHITELIST` alone: `quote`'s own
+    ///      V4 price pool, preceded by its reference's when it was listed against one. Every hop must be a V4
+    ///      pool against exactly the asset it was listed against, ending at native. Empty when any hop is
+    ///      not (V2/V3, a WETH-side pool, a nested reference): `_zapToQuote` converts those instead.
+    ///      Approver-vetted pools only, so no unknown hook runs mid-launch, where the graduator's steps are
+    ///      gated by transient markers rather than by caller.
     function _devBuyRoute(address quote) private view returns (PoolKey[] memory route) {
-        (PoolKey memory last, address ref) = _devBuyHop(quote);
+        (PoolKey memory last, address ref, bool ok) = _devBuyHop(quote);
+        if (!ok) return route;
         if (ref == address(0)) {
             route = new PoolKey[](1);
             route[0] = last;
             return route;
         }
-        (PoolKey memory first, address refOfRef) = _devBuyHop(ref);
-        require(refOfRef == address(0), DevBuyRouteUnavailable());
+        (PoolKey memory first, address refOfRef, bool refOk) = _devBuyHop(ref);
+        if (!refOk || refOfRef != address(0)) return route;
         route = new PoolKey[](2);
         (route[0], route[1]) = (first, last);
     }
 
-    /// @dev `asset`'s whitelist V4 pool and the asset on its other side (zero for native).
-    function _devBuyHop(address asset) private view returns (PoolKey memory key, address from) {
+    /// @dev `asset`'s whitelist V4 pool and the asset on its other side (zero for native); `ok` false when
+    ///      that pool is not V4 against exactly that asset.
+    function _devBuyHop(address asset) private view returns (PoolKey memory key, address from, bool ok) {
         RealmAssetsWhitelist.PriceSource memory src = ASSETS_WHITELIST.priceSource(asset);
         from = ASSETS_WHITELIST.referenceOf(asset);
         key = src.key;
         (address c0, address c1) = (Currency.unwrap(key.currency0), Currency.unwrap(key.currency1));
         // `referenceOf` maps WETH to zero, so a WETH-side pool fails here: its other side is not zero.
-        require(src.venue == RealmAssetsWhitelist.Venue.V4 && (c0 == asset ? c1 : c0) == from, DevBuyRouteUnavailable());
+        ok = src.venue == RealmAssetsWhitelist.Venue.V4 && (c0 == asset ? c1 : c0) == from;
+    }
+
+    /// @dev The zap off the all-V4 path: converts `nativeIn` into `quote` HERE, before the graduator runs,
+    ///      through the same whitelist price pools `_devBuyRoute` reads (the reference's first), on whichever
+    ///      venue each is listed. Intermediates rest here only between hops.
+    function _zapToQuote(address quote, uint256 nativeIn) private returns (uint256 out) {
+        address ref = ASSETS_WHITELIST.referenceOf(quote);
+        out = nativeIn;
+        if (ref != address(0)) {
+            require(ASSETS_WHITELIST.referenceOf(ref) == address(0), DevBuyRouteUnavailable());
+            out = _zapHop(ref, address(0), out);
+        }
+        out = _zapHop(quote, ref, out);
+    }
+
+    /// @dev Swaps all of `amountIn` of `tokenIn` (zero: native) into `asset` through `asset`'s whitelist
+    ///      price pool, whose other side is `tokenIn` — or WETH for native, wrapped first. Returns what
+    ///      arrived. Pool identity is the whitelist's: V2/V3 pools are Uniswap's own factory's, so the
+    ///      routers resolve the same pool from the two tokens (and the V3 fee).
+    function _zapHop(address asset, address tokenIn, uint256 amountIn) private returns (uint256 out) {
+        RealmAssetsWhitelist.PriceSource memory src = ASSETS_WHITELIST.priceSource(asset);
+        uint256 assetBefore = IERC20(asset).balanceOf(address(this));
+        address router = DeploymentAddresses.UNIV4_UNIVERSAL_ROUTER;
+        bool ok;
+        if (
+            tokenIn == address(0) && src.venue == RealmAssetsWhitelist.Venue.V4
+                && Currency.unwrap(src.key.currency0) == address(0)
+        ) {
+            ok = UniversalRouterVenue.swapNativeToAssetV4(
+                router, asset, src.key.fee, src.key.tickSpacing, address(src.key.hooks), amountIn, 0
+            );
+            require(ok, DevBuyZapFailed());
+        } else {
+            if (tokenIn == address(0)) {
+                IWETH(WRAPPED_NATIVE).deposit{value: amountIn}();
+                tokenIn = WRAPPED_NATIVE;
+            }
+            uint256 inBefore = IERC20(tokenIn).balanceOf(address(this));
+            if (src.venue == RealmAssetsWhitelist.Venue.V2) {
+                address[] memory path = new address[](2);
+                (path[0], path[1]) = (tokenIn, asset);
+                ok = UniswapV2Venue.trySwapExactTokens(
+                    IUniswapV2Router(DeploymentAddresses.UNIV2_ROUTER), path, amountIn, 0, false
+                );
+            } else {
+                UniversalRouterVenue.ensureRouterPull(DeploymentAddresses.PERMIT2, router, tokenIn);
+                if (src.venue == RealmAssetsWhitelist.Venue.V3) {
+                    bytes memory path = abi.encodePacked(tokenIn, IUniswapV3PoolState(src.pool).fee(), asset);
+                    ok = UniversalRouterVenue.swapExactInV3Path(router, path, amountIn, 0, false);
+                } else {
+                    ok = UniversalRouterVenue.swapExactInSingleV4(
+                        router,
+                        abi.decode(abi.encode(src.key), (RouterPoolKey)),
+                        Currency.unwrap(src.key.currency0) == tokenIn,
+                        amountIn,
+                        0
+                    );
+                }
+            }
+            // A partial fill leaves the rest here, where nothing could ever move it again.
+            require(ok && inBefore - IERC20(tokenIn).balanceOf(address(this)) == amountIn, DevBuyZapFailed());
+        }
+        out = IERC20(asset).balanceOf(address(this)) - assetBefore;
+        require(out != 0, DevBuyZapFailed());
     }
 
     /// @dev Venue-specific validation: the V4 fee tier, the pair set, and the dev buy's consistency

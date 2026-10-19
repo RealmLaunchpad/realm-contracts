@@ -104,14 +104,14 @@ _retarget taxlib:
     @just _taxtoken {{taxlib}}
 
 # (internal) Repoints the taxable-token impls' (and their venue bases, the V4 buy-backs, the dividend
-# mixin, the keeper gate, the sniper mixin, the base token, the `RealmSwapper` and the two test helpers that etch the registries
+# mixin, the keeper gate, the sniper mixin, the base token, the `RealmSwapper`, the direct factory's zap and the two test helpers that etch the registries
 # at the address those bake in) `DeploymentAddresses` import to the target chain. Use a `chain-*` recipe.
 _taxtoken lib:
     sed -i -E 's#DeploymentAddresses[A-Za-z]+ as DeploymentAddresses#{{lib}} as DeploymentAddresses#' \
         src/tokens/RealmTaxableTokenUniV2.sol src/tokens/RealmTaxableTokenUniV4.sol src/tokens/RealmUniv4BuyBacks.sol \
         src/tokens/RealmTaxableTokenUniV2Base.sol src/tokens/RealmTaxableTokenUniV4Base.sol \
         src/tokens/DividendDistribution.sol src/swapper/RealmSwapper.sol src/tokens/KeeperGated.sol \
-        src/tokens/SniperProtection.sol src/tokens/RealmToken.sol \
+        src/tokens/SniperProtection.sol src/tokens/RealmToken.sol src/factories/RealmFactoryUniV4Direct.sol \
         test/helpers/RealmSwapperHelpers.sol test/helpers/KeepersRegistryHelpers.sol
 
 # ============================ FRESH DEPLOY (two phases) ============================
@@ -507,6 +507,21 @@ discover-whitelist-assets-rh-testnet:
     echo "assets: $ASSETS"
     uv run script/operations/assets-whitelist/discover_whitelist_assets.py --chain testnet --min-depth 0.05 \
         --assets "$ASSETS"
+
+# Drops the frontend's hour-cached liquidity badges (/api/quote-depth/<chainId>) so they pick up a
+# re-listing now. Run after `whitelist-assets-rh*`, once the indexer has seen the tx. Needs
+# QUOTE_DEPTH_REVALIDATE_SECRET (the frontend's env value). Ends on `x-vercel-cache: REVALIDATED` + `age: 0`
+# when the recompute ran. e.g. `just refresh-quote-depth 46630 https://realm-rh-dev.vercel.app`
+refresh-quote-depth chainid="4663" host="https://www.realm.trade":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${QUOTE_DEPTH_REVALIDATE_SECRET:?set QUOTE_DEPTH_REVALIDATE_SECRET}"
+    curl -sf -X POST "{{host}}/api/revalidate/quote-depth?chainId={{chainid}}" \
+        -H "Authorization: Bearer $QUOTE_DEPTH_REVALIDATE_SECRET"; echo
+    # the first GET after the purge recomputes; print its cache status and how many assets it priced
+    BODY=$(mktemp)
+    curl -sf -D - -o "$BODY" "{{host}}/api/quote-depth/{{chainid}}" | grep -iE '^(x-vercel-cache|age):'
+    echo "assets: $(jq length "$BODY")"; rm "$BODY"
 
 whitelist-assets-rh-testnet:
     just chain-rh-testnet
