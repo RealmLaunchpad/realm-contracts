@@ -187,7 +187,10 @@ contract Permit2PreApprovalTests is V4SwapHelpers {
     ///      routinely meets, nor any arbitrary address, gains an allowance.
     function testFuzz_preApprovalIsScopedToPermit2(address spender) public {
         (address token, uint256 amount) = _tokenHeldBy(false);
-        vm.assume(spender != permit2Address && spender != address(launchpad) && spender != holder);
+        // address(0): direct tokens have no launchpad, so it reads as pre-approved (unexploitable, no pkey)
+        vm.assume(
+            spender != address(0) && spender != permit2Address && spender != address(launchpad) && spender != holder
+        );
 
         assertEq(IERC20(token).allowance(holder, spender), 0);
         assertEq(IERC20(token).allowance(holder, universalRouter), 0);
