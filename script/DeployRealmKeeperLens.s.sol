@@ -35,7 +35,7 @@ contract DeployRealmKeeperLens is Script {
         address[] memory probe = new address[](1);
         probe[0] = broadcaster;
         require(!lens.keeperState(probe)[0].isDividendToken, "post: lens misread a non-token");
-        require(lens.MAX_DIVIDEND_ASSETS() == 3, "post: asset cap drifted");
+        require(lens.MAX_DIVIDEND_ASSETS() == 6, "post: asset cap drifted");
 
         console.log("");
         // Chain id rather than `ChainConfig.name()`: the lens is the one deploy that is chain-agnostic,
