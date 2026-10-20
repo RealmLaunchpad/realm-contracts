@@ -49,7 +49,7 @@ library DeploymentsRobinhoodMainnet {
     address public constant FACTORY_UNIV4_DIRECT = 0xC763b1795DaBe2D2336EbA214d16969EBc5db27F;
 
     /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
-    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x4A4640D4F304292EE0C739bCe02Ea08CCf5075BE;
+    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0xd8d292a6108d86545B0B12e5B9FAC8024d10Aa8d;
 
     /// @notice `RealmAssetsWhitelist` proxy (UUPS): the quote currencies the direct venue will launch
     ///         against, each with the native rate derived from its price pool. `FACTORY_UNIV4_DIRECT`
@@ -87,7 +87,7 @@ library DeploymentsRobinhoodMainnet {
     /// @notice `RealmKeeperLens`: the stateless, view-only batch reader the dividend keeper drives its
     ///         per-token reads through. Consumed OFF chain only — no Realm contract references it — so it
     ///         is redeployed and repointed freely rather than upgraded. `address(0)` until deployed.
-    address internal constant KEEPER_LENS = 0x99003757c6Cb83491234fA87C989ED35027122DB;
+    address internal constant KEEPER_LENS = 0x0223c53925b207159F8545a4039B99f100350825;
 
     /// @notice `RealmSwapper` proxy: every protocol swap (dividend conversions, LP token-fee sells).
     /// @dev Re-exported: the value lives in `DeploymentAddresses.sol`, which the token impls bake in.
@@ -97,11 +97,11 @@ library DeploymentsRobinhoodMainnet {
     address internal constant REALM_SWAPPER_IMPL = 0xE13ED0a3C99352b9d1E7B9d3b59a22384579B44E;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0xF7ABBAfac98a8CeCefe52dCFdacDEe82300c7E31;
-    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x87b8fcE2890464f6B2692c0460060a8dff48d830;
+    address internal constant TOKEN_IMPL = 0xb13A758A110569846C87423452904A57Ceb57Eb5;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x92f714819987c945A78d1D4030839C6e57c3F29d;
 
     /// @notice V2 taxable token implementation (cloned by `RealmFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x35546e1d25CA8B2bd12b45B81a213b98d78D0CBf;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xbB13BeF8f9c26d04A351e582108Fe198770065DF;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -110,7 +110,7 @@ library DeploymentsRobinhoodMainnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x2cdC439296Bb5D01cFB4F581C87536787312B536;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xeE23C3E58DdDE5357Dbc7A41860556bbD8d82796;
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.
