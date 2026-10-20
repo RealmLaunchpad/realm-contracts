@@ -6,7 +6,11 @@ import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 /// @dev Mirrors `DividendDistribution.MAX_DIVIDEND_ASSETS`. A file-level constant because an array
 ///      length must be one, and another contract's public constant is not. `RealmKeeperLens` re-exports
 ///      it so a test can assert the two have not drifted.
-uint256 constant MAX_ASSETS = 3;
+uint256 constant MAX_ASSETS = 6;
+
+/// @dev The cap before it was raised to `MAX_ASSETS`. Live clones built then return `uint128[3]` from
+///      `quoteDividendPending`; they are read too, zero-padded.
+uint256 constant LEGACY_MAX_ASSETS = 3;
 
 /// @dev The current, multi-asset generation: everything is addressed by asset index.
 interface IDividendTokenMulti {
@@ -198,16 +202,21 @@ contract RealmKeeperLens {
                 tokens[i].staticcall(abi.encodeCall(IDividendTokenCommon.quoteBufferOf, (quotes[i])));
             (bool okDiv, bytes memory div) =
                 tokens[i].staticcall(abi.encodeCall(IDividendTokenCommon.quoteDividendPending, (quotes[i])));
-            if (!okBuf || buf.length < 128 || !okDiv || div.length < 32 * MAX_ASSETS) continue;
+            if (!okBuf || buf.length < 128 || !okDiv || div.length < 32 * LEGACY_MAX_ASSETS) continue;
             (uint256 burnPending, uint256 liquidityPending,,) = abi.decode(buf, (uint256, uint256, uint48, uint48));
-            legs[i] = QuoteLeg({
-                ok: true,
-                burnPending: burnPending,
-                liquidityPending: liquidityPending,
-                // `abi.decode` wants a literal length, so this is the one place `MAX_ASSETS` cannot be
-                // used. The `div.length` guard above is what actually checks the two agree.
-                dividendPending: abi.decode(div, (uint128[3]))
-            });
+            legs[i].ok = true;
+            legs[i].burnPending = burnPending;
+            legs[i].liquidityPending = liquidityPending;
+            // `abi.decode` wants a literal length, so this is the one place the constants cannot be used.
+            // The `div.length` checks are what tell the two generations apart.
+            if (div.length >= 32 * MAX_ASSETS) {
+                legs[i].dividendPending = abi.decode(div, (uint128[6]));
+            } else {
+                uint128[3] memory legacy = abi.decode(div, (uint128[3]));
+                for (uint256 j; j < LEGACY_MAX_ASSETS; ++j) {
+                    legs[i].dividendPending[j] = legacy[j];
+                }
+            }
         }
     }
 

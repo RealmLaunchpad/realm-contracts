@@ -30,7 +30,7 @@ struct TaxConfigs {
 
 /// @notice The earnings-allocation split: the bps of post-graduation earnings (swap tax + LP-fee
 ///         creator share) routed to buy-back-and-burn, holder dividends, and liquidity additions, and the
-///         UP TO THREE assets (`DividendDistribution.MAX_DIVIDEND_ASSETS`) holders are paid in. The fund
+///         UP TO SIX assets (`DividendDistribution.MAX_DIVIDEND_ASSETS`) holders are paid in. The fund
 ///         wallets take the remainder. All-zero bps = no allocation (100% to the fund wallets).
 /// @dev `dividendTokens` is the payout set and `dividendWeightsBps` how the dividends slice is divided
 ///      between its members, index for index. Rules, all enforced at creation and all permanent:

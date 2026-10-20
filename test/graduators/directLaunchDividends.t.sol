@@ -373,7 +373,7 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
         RealmTaxableTokenUniV4 token = _launch(_aaplPair(), cfg);
         _buyAndSettle(address(token), 10_000e18);
 
-        uint128[3] memory pending = token.quoteDividendPending(AAPL);
+        uint128[6] memory pending = token.quoteDividendPending(AAPL);
         assertGt(pending[0], 0, "AAPL leg buffered");
         assertApproxEqAbs(uint256(pending[0]), uint256(pending[1]), 1, "split evenly");
 

@@ -220,6 +220,36 @@ contract DividendsMultiAssetTests is Test {
         );
     }
 
+    /// @dev The cap is reachable: a full set configures, and every leg gets its slice.
+    function test_multiAsset_maximumSetSplitIsExact() public {
+        uint256 n = h.MAX_DIVIDEND_ASSETS();
+        address[] memory assets = new address[](n);
+        uint16[] memory weights = new uint16[](n);
+        assets[0] = NATIVE;
+        assets[1] = MSFT;
+        assets[2] = AAPL;
+        for (uint256 i = 3; i < n; ++i) {
+            assets[i] = address(new NoPoolToken());
+            setDividendRoute(registry, assets[i], DividendRouteLib.encodeV2());
+        }
+        for (uint256 i; i < n; ++i) {
+            weights[i] = uint16(10_000 / n);
+        }
+        weights[0] += uint16(10_000 - (10_000 / n) * n);
+
+        h = _harness(assets, weights);
+        assertEq(h.assetCount(), n, "full set configured");
+        _activateWith(1_000e18);
+        _accrue(1 ether + 1 wei);
+
+        uint256 sum;
+        for (uint256 i; i < n; ++i) {
+            assertGt(h.bufferOf(i), 0, "every leg funded");
+            sum += h.bufferOf(i);
+        }
+        assertEq(sum, 1 ether + 1 wei, "no wei stranded across the full set");
+    }
+
     //////////////////////// independence //////////////////////
 
     /// @dev THE HEADLINE PROPERTY. Each leg funds out of its OWN buffer and answers for itself: with a
@@ -405,18 +435,21 @@ contract DividendsMultiAssetTests is Test {
     }
 
     function test_multiAsset_moreThanTheMaximumIsRejected() public {
-        address[] memory four = new address[](4);
-        four[0] = NATIVE;
-        four[1] = MSFT;
-        four[2] = AAPL;
-        four[3] = address(new NoPoolToken());
-        uint16[] memory weights = new uint16[](4);
-        weights[0] = 2_500;
-        weights[1] = 2_500;
-        weights[2] = 2_500;
-        weights[3] = 2_500;
+        uint256 n = new MultiAssetHarness().MAX_DIVIDEND_ASSETS() + 1;
+        address[] memory tooMany = new address[](n);
+        uint16[] memory weights = new uint16[](n);
+        tooMany[0] = NATIVE;
+        tooMany[1] = MSFT;
+        tooMany[2] = AAPL;
+        for (uint256 i = 3; i < n; ++i) {
+            tooMany[i] = address(new NoPoolToken());
+        }
+        for (uint256 i; i < n; ++i) {
+            weights[i] = uint16(10_000 / n);
+        }
+        weights[0] += uint16(10_000 - (10_000 / n) * n);
 
-        _expectConfigureRevert(DividendDistribution.InvalidDividendAssetSet.selector, four, weights);
+        _expectConfigureRevert(DividendDistribution.InvalidDividendAssetSet.selector, tooMany, weights);
     }
 
     /// @dev The self-token payout is carved in TOKEN space on Uniswap V2 and removes itself from the ETH

@@ -6,7 +6,7 @@ pragma solidity 0.8.28;
 import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/config/DeploymentAddresses.sol";
 
 /// @title DividendDistribution
-/// @notice Trustless holder dividends for a Realm token: UP TO THREE payout assets, paid out of
+/// @notice Trustless holder dividends for a Realm token: UP TO SIX payout assets, paid out of
 ///         post-graduation earnings, each distribution credited pro rata to the balances held at the
 ///         instant it lands.
 ///
@@ -49,7 +49,7 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 ///      being early, never waits for anything, and folds into the same accumulator as everything before
 ///      it. There is no state that has to be rolled over.
 ///
-/// @dev ONE TO THREE ASSETS PER TOKEN, chosen at creation and permanent — never rewritten, by anyone,
+/// @dev ONE TO SIX ASSETS PER TOKEN, chosen at creation and permanent — never rewritten, by anyone,
 ///      for any reason. Each is native (`address(0)`), the token itself (`DIVIDEND_SELF_TOKEN`, and only
 ///      when it is the ONLY asset), or any ERC20. HOW an ERC20 is bought is not the token's business:
 ///      `REALM_SWAPPER` holds one admin-set, repointable route per asset.
@@ -109,8 +109,8 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 abstract contract DividendDistribution {
     /// @notice Hard ceiling on payout assets per token. A FIXED bound, not a policy knob: the transfer
     ///         hook loops the set on every balance change, so it has to be small, known at compile time
-    ///         and impossible to grow after creation. Three is what the product asked for.
-    uint256 public constant MAX_DIVIDEND_ASSETS = 3;
+    ///         and impossible to grow after creation. Six, matching `RealmFactoryUniV4Direct.MAX_PAIRS`.
+    uint256 public constant MAX_DIVIDEND_ASSETS = 6;
 
     /// @notice Max native a token may convert in ONE distribution, per asset. Deliberately the SAME
     ///         constant `processBurn` and `processLiquidity` cap with, for the same reason and on the
@@ -123,8 +123,8 @@ abstract contract DividendDistribution {
     ///      their own zero floor keeps almost all of it. That is why `processDividends` is keeper-gated
     ///      (see `RealmKeepersRegistry`) and why this cap is a second line, not the first.
     /// @dev ⚠️ ACCEPTED: a token's AGGREGATE per-block conversion exposure is this times the number of
-    ///      configured assets, because the cooldown is per asset (three different pools, three different
-    ///      manipulations, no shared cost). Keeper-gating is what actually bounds it.
+    ///      configured assets, because the cooldown is per asset (a different pool and a different
+    ///      manipulation per asset, no shared cost). Keeper-gating is what actually bounds it.
     /// @dev The remainder above the cap stays buffered for a later distribution, so nothing is stranded.
     ///      A keeper may ask for LESS (`processDividends`'s `amount`), for a pool too thin to take the cap.
     uint256 public constant MAX_DIVIDEND_PER_CONVERSION = DeploymentAddresses.MAX_EARNINGS_PER_PROCESS;

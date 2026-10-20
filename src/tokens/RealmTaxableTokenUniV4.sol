@@ -431,8 +431,8 @@ contract RealmTaxableTokenUniV4 is RealmTaxableTokenUniV4Base {
 
     /// @dev The dividends slice of ERC20-quoted earnings, buffered per quote AND per payout asset —
     ///      split by `dividendWeightsBps` here exactly as the native slice is split across
-    ///      `pendingNative` — and converted out-of-band by `processDividends(i, quote, …)`. Two SSTOREs
-    ///      at most (the three buffers pack into two slots), inside the router's gas budget.
+    ///      `pendingNative` — and converted out-of-band by `processDividends(i, quote, …)`. Three SSTOREs
+    ///      at most (the six buffers pack into three slots), inside the router's gas budget.
     function _accrueQuoteDividends(address asset, uint256 amount) internal override returns (uint256) {
         uint256 n = dividendAssetCount;
         if (n == 0) return amount;

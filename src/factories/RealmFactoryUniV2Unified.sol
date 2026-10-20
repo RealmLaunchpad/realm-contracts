@@ -72,7 +72,7 @@ contract RealmFactoryUniV2Unified is RealmFactoryCurveAbstract {
     /// @notice Deploys a V2-family Realm token and registers it in the launchpad. The ONE entry point:
     ///         `taxAllocationConfigs` carries the static tax, the optional linear launch-tax decay and the
     ///         earnings-allocation split (burn / dividends / liquidity bps; the fund wallets take the
-    ///         remainder), paid out in up to three dividend assets. An all-zero allocation deploys a
+    ///         remainder), paid out in up to six dividend assets. An all-zero allocation deploys a
     ///         token with no split. `creatorVaults` may be empty and `referral` (or `address(0)`) is only
     ///         emitted as an off-chain signal. If `msg.value > 0`, buys supply and splits it across
     ///         `buyOnDeployShares`. V2-family tokens are always deployed ownerless.

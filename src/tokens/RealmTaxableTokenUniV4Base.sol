@@ -70,7 +70,7 @@ abstract contract RealmTaxableTokenUniV4Base is RealmTaxableToken, RealmUniv4Buy
         uint48 lastBurnBlock;
         /// @dev `block.number` of the last `processLiquidity` for this quote.
         uint48 lastLiquidityBlock;
-        // --- slots 2-3 ---
+        // --- slots 2-4 ---
         /// @dev Accrued from the dividends allocation on THIS quote, per payout asset (same index as
         ///      `dividendAssets`), awaiting a `processDividends(i, quote, …)` that turns it into that
         ///      asset — on this quote's own pool for a self-token payout, through the registry for

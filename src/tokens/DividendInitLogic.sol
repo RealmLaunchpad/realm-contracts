@@ -64,7 +64,7 @@ abstract contract DividendInitLogic is DividendDistribution {
 
             require(weights[i] != 0, InvalidDividendAssetSet());
             weightSum += weights[i];
-            // Pairwise against the slots already written. At most three comparisons, and the reason is
+            // Pairwise against the slots already written. At most fifteen comparisons in all, and the reason is
             // on the docstring: a duplicate is the one misconfiguration that leaks value.
             for (uint256 j; j < i; ++j) {
                 require(dividendAssets[j].token != token, InvalidDividendAssetSet());
