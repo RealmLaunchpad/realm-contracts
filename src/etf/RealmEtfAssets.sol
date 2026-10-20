@@ -79,7 +79,8 @@ contract RealmEtfAssets is Ownable2Step {
     event ListedSet(address indexed asset, bool listed);
 
     error NotApprover();
-    /// @notice The route is not a Uniswap pool between `asset` and USDG, or `asset` is USDG.
+    /// @notice The route is not a Uniswap pool between `asset` and USDG, or `asset` is USDG or the native
+    ///         currency (ETFs hold ERC20s only).
     error InvalidRoute();
     error NoRoute();
 
@@ -142,7 +143,7 @@ contract RealmEtfAssets is Ownable2Step {
     }
 
     function _validate(address asset, Route calldata route) private view {
-        require(asset != USDG, InvalidRoute());
+        require(asset != USDG && asset != address(0), InvalidRoute());
         address t0;
         address t1;
         if (route.venue == Venue.V3) {

@@ -28,8 +28,9 @@ import {RealmEtfAssets, IEtfV3Pool} from "src/etf/RealmEtfAssets.sol";
 /// @dev PRO-RATA, ORACLE-FREE MINTING. A deposit buys each asset, and mints `supply x` the SMALLEST
 ///      fraction it added to any holding. Prices only decide how the USDG is split across assets (spot,
 ///      from each asset's route pool), so a wrong or manipulated price costs the depositor efficiency,
-///      never the other holders: any surplus of the other assets stays in the vault. A redemption takes the
-///      same fraction of every holding, so it needs no price at all.
+///      never the other holders: any surplus of the other assets stays in the vault. Every holding is
+///      bought, with at least `MIN_SLICE`, so even one priced at ~0 bounds the shares. A redemption takes
+///      the same fraction of every holding, so it needs no price at all.
 ///
 /// @dev SEMI-ERC4626 + ERC-5143. `deposit`/`redeem` follow ERC-4626, with ERC-5143 overloads that add a
 ///      slippage floor. `mint`/`withdraw` are unsupported (`maxMint`/`maxWithdraw` are 0): an exact USDG
@@ -53,6 +54,11 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
 
     /// @notice Shares minted to `DEAD` at seeding, so supply never returns to a size rounding can exploit.
     uint256 public constant DEAD_SHARES = 1e15;
+
+    /// @notice Least raw USDG a deposit spends on each holding (0.001 USDG), so a holding whose fair slice
+    ///         rounds to 0 is still bought and still bounds the shares. A deposit must cover it for every
+    ///         holding.
+    uint256 public constant MIN_SLICE = 1_000;
 
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
@@ -97,6 +103,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     error TooManyAssets();
     error ZeroAmount();
     error Slippage();
+    /// @notice A route pool could not take the whole input of a swap.
+    error InsufficientLiquidity();
     error NotSupported();
     error Unauthorized();
 
@@ -287,7 +295,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
 
     /// @notice Sells `sellAmount` of a held asset (`type(uint256).max`: all of it) and buys `buyAsset`
     ///         with the proceeds, through USDG. Buying an asset not yet held adds it; selling all of one
-    ///         removes it. Reverts if fewer than `minOut` of `buyAsset` are bought.
+    ///         removes it. Reverts if nothing, or fewer than `minOut`, of `buyAsset` is bought: a held asset
+    ///         with a zero balance would make every deposit divide by zero.
     function rebalance(address sellAsset, uint256 sellAmount, address buyAsset, uint256 minOut)
         external
         onlyOwner
@@ -316,6 +325,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         uint256 before = IERC20(buyAsset).balanceOf(address(this));
         _swap(buyAsset, true, usdg);
         bought = IERC20(buyAsset).balanceOf(address(this)) - before;
+        require(bought != 0, ZeroAmount());
         require(bought >= minOut, Slippage());
         emit Rebalanced(sellAsset, sellAmount, buyAsset, bought);
     }
@@ -335,7 +345,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     }
 
     function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) external {
-        require(msg.sender == _v3Pool && msg.sender != address(0), Unauthorized());
+        require(msg.sender == _v3Pool, Unauthorized());
         IERC20(abi.decode(data, (address)))
             .safeTransfer(msg.sender, uint256(amount0Delta > 0 ? amount0Delta : amount1Delta));
     }
@@ -347,10 +357,10 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         nonReentrant
         returns (uint256 shares)
     {
-        require(assets != 0, ZeroAmount());
+        uint256 n = _assets.length;
+        require(assets >= n * MIN_SLICE, ZeroAmount());
         IERC20(USDG).safeTransferFrom(msg.sender, address(this), assets);
 
-        uint256 n = _assets.length;
         uint256 supply = totalSupply();
         uint256[] memory balances = new uint256[](n);
         uint256[] memory values = new uint256[](n);
@@ -361,13 +371,15 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
             totalValue += values[i];
         }
 
+        // Each holding gets MIN_SLICE plus its value share of the rest. A holding skipped for a 0 slice would
+        // come free to the depositor, and its price can be pushed to ~0 within the transaction; bought at
+        // that price instead, it is paid for in kind by whoever crashed it. Honest dust costs MIN_SLICE.
+        uint256 budget = assets - n * MIN_SLICE;
         shares = type(uint256).max;
         uint256 spent;
         for (uint256 i; i < n; ++i) {
-            uint256 amountIn = i == n - 1 ? assets - spent : Math.mulDiv(assets, values[i], totalValue);
+            uint256 amountIn = i == n - 1 ? assets - spent : MIN_SLICE + Math.mulDiv(budget, values[i], totalValue);
             spent += amountIn;
-            // ponytail: a slice that rounds to 0 USDG is skipped, not bought; its asset is dust next to the deposit.
-            if (amountIn == 0) continue;
             _swap(_assets[i], true, amountIn);
             uint256 added = IERC20(_assets[i]).balanceOf(address(this)) - balances[i];
             shares = Math.min(shares, Math.mulDiv(supply, added, balances[i]));
@@ -405,6 +417,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     }
 
     /// @dev Swaps `amountIn` USDG into `asset_` (`buy`) or `asset_` into USDG, through its registry route.
+    ///      Reverts unless the pool takes the whole input: a partial fill (exact input, no price limit) would
+    ///      leave the rest in the vault, where nothing counts it.
     function _swap(address asset_, bool buy, uint256 amountIn) internal returns (uint256 amountOut) {
         if (amountIn == 0) return 0;
         RealmEtfAssets.Route memory route = REGISTRY.routeOf(asset_);
@@ -429,8 +443,9 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         (int128 paid, int128 received) =
             zeroForOne ? (delta.amount0(), delta.amount1()) : (delta.amount1(), delta.amount0());
         (Currency cIn, Currency cOut) = zeroForOne ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
+        require(-paid == int256(amountIn), InsufficientLiquidity());
         POOL_MANAGER.sync(cIn);
-        IERC20(tokenIn).safeTransfer(address(POOL_MANAGER), uint256(uint128(-paid)));
+        IERC20(tokenIn).safeTransfer(address(POOL_MANAGER), amountIn);
         POOL_MANAGER.settle();
         amountOut = uint256(uint128(received));
         POOL_MANAGER.take(cOut, address(this), amountOut);
@@ -448,6 +463,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
                 abi.encode(tokenIn)
             );
         _v3Pool = address(0);
+        require((zeroForOne ? amount0 : amount1) == int256(amountIn), InsufficientLiquidity());
         return uint256(-(zeroForOne ? amount1 : amount0));
     }
 

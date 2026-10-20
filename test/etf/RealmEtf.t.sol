@@ -17,11 +17,24 @@ import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/Pool
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 
+import {ERC20Mock} from "lib/openzeppelin-contracts/contracts/mocks/token/ERC20Mock.sol";
+
 import {RealmEtf} from "src/etf/RealmEtf.sol";
-import {RealmEtfAssets} from "src/etf/RealmEtfAssets.sol";
+import {RealmEtfAssets, IEtfV3Pool} from "src/etf/RealmEtfAssets.sol";
 import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
 import {RealmEtfHook} from "src/etf/RealmEtfHook.sol";
 import {DeploymentAddressesRobinhoodMainnet as Mainnet} from "src/config/DeploymentAddresses.sol";
+
+interface IV3FactoryCreate {
+    function createPool(address tokenA, address tokenB, uint24 fee) external returns (address pool);
+}
+
+interface IV3PoolMint {
+    function initialize(uint160 sqrtPriceX96) external;
+    function mint(address recipient, int24 tickLower, int24 tickUpper, uint128 amount, bytes calldata data)
+        external
+        returns (uint256 amount0, uint256 amount1);
+}
 
 /// @notice ETF ETFs on a Robinhood mainnet fork: real rStocks on their real USDG pools (SPY and META on
 ///         V4, NVDA and QQQ on V3).
@@ -146,6 +159,50 @@ contract RealmEtfTest is Test {
         vm.stopPrank();
     }
 
+    /// @dev An asset priced at ~0 gets a 0-USDG fair slice. Skipping it would mint shares that claim its
+    ///      holding for free; bought with `MIN_SLICE` at the crashed price instead, it grows by at least the
+    ///      fraction minted, like every other holding, so the holders lose nothing to the crash.
+    function test_deposit_buysACrashedAssetSoHoldersAreNotDiluted() public {
+        _crashV4Price(META, 1e24);
+        address[] memory assets = etf.getAssets();
+        uint256[] memory before = _balances(assets);
+        uint256 supply = etf.totalSupply();
+
+        uint256 shares = _deposit(alice, 1_000e6);
+
+        uint256[] memory afterBalances = _balances(assets);
+        for (uint256 i; i < assets.length; ++i) {
+            assertGe(afterBalances[i] * supply, before[i] * (supply + shares));
+        }
+    }
+
+    /// @dev A creator's tiny test rebalance leaves QQQ at ~1e-7 of NAV: a 1 USDG deposit's fair slice of it
+    ///      rounds to 0. It is bought with `MIN_SLICE` instead, so the deposit neither reverts nor skips it.
+    function test_deposit_buysADustHoldingWithTheMinimumSlice() public {
+        vm.prank(creator);
+        etf.rebalance(NVDA, 1e12, QQQ, 0);
+        uint256 qqqBefore = IERC20(QQQ).balanceOf(address(etf));
+        assertEq(1e6 * registry.usdgValueOf(QQQ, qqqBefore) / etf.totalAssets(), 0);
+
+        uint256 shares = _deposit(alice, 1e6);
+
+        assertGt(shares, 0);
+        assertGt(IERC20(QQQ).balanceOf(address(etf)), qqqBefore);
+    }
+
+    function test_deposit_revertsBelowTheMinimumSlicePerHolding() public {
+        uint256 tooSmall = etf.getAssets().length * etf.MIN_SLICE() - 1;
+        _expectDepositRevert(etf, tooSmall, RealmEtf.ZeroAmount.selector);
+    }
+
+    /// @dev A slice bigger than its route pool can take would fill partially and strand the rest of the USDG
+    ///      in the vault, uncounted. Real pools hold full-range positions, which take more than `deal` can
+    ///      hand out, so this uses thin pools: one position of ±600 ticks, on V4 and on V3.
+    function test_deposit_revertsWhenARoutePoolCannotFillTheSlice() public {
+        _expectDepositRevert(_singleAssetEtf(_thinRouteAsset(false)), 1e18, RealmEtf.InsufficientLiquidity.selector);
+        _expectDepositRevert(_singleAssetEtf(_thinRouteAsset(true)), 1e18, RealmEtf.InsufficientLiquidity.selector);
+    }
+
     function test_redeem_paysUsdgForAProRataSlice() public {
         uint256 shares = _deposit(alice, 1_000e6);
         vm.prank(alice);
@@ -215,6 +272,13 @@ contract RealmEtfTest is Test {
         etf.rebalance(NVDA, type(uint256).max, QQQ, type(uint256).max);
     }
 
+    /// @dev 1 wei of NVDA sells for 0 USDG. Adding QQQ with a zero balance would make every deposit divide by 0.
+    function test_rebalance_revertsWhenNothingIsBought() public {
+        vm.prank(creator);
+        vm.expectRevert(RealmEtf.ZeroAmount.selector);
+        etf.rebalance(NVDA, 1, QQQ, 0);
+    }
+
     //////////////////////// hook //////////////////////
 
     function test_hook_buyThroughThePoolMintsShares() public {
@@ -276,6 +340,19 @@ contract RealmEtfTest is Test {
         vm.prank(approver);
         vm.expectRevert(RealmEtfAssets.InvalidRoute.selector);
         registry.setRoute(SPY, route);
+    }
+
+    /// @dev The ETF treats every asset as an ERC20; a native-currency pool would brick it.
+    function test_registry_rejectsNativeCurrencyAsAsset() public {
+        PoolKey memory key = _key(address(0), USDG, 3000, 60, address(0));
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(key.toId());
+        if (sqrtPriceX96 == 0) manager.initialize(key, uint160(1 << 96));
+        RealmEtfAssets.Route memory route;
+        route.venue = RealmEtfAssets.Venue.V4;
+        route.key = key;
+        vm.prank(approver);
+        vm.expectRevert(RealmEtfAssets.InvalidRoute.selector);
+        registry.setRoute(address(0), route);
     }
 
     function test_registry_valuesAtRouteSpotPrice() public view {
@@ -369,6 +446,82 @@ contract RealmEtfTest is Test {
         IERC20(USDG).approve(address(etf), amount);
         shares = etf.deposit(amount, who);
         vm.stopPrank();
+    }
+
+    function _expectDepositRevert(RealmEtf e, uint256 amount, bytes4 selector) internal {
+        deal(USDG, alice, amount);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(e), amount);
+        vm.expectRevert(selector);
+        e.deposit(amount, alice);
+        vm.stopPrank();
+    }
+
+    function _singleAssetEtf(address asset) internal returns (RealmEtf) {
+        address[] memory assets = new address[](1);
+        assets[0] = asset;
+        uint16[] memory weights = new uint16[](1);
+        weights[0] = 10_000;
+        deal(USDG, creator, SEED);
+        vm.startPrank(creator);
+        IERC20(USDG).approve(address(factory), SEED);
+        address e = factory.createEtf("One", "ONE", assets, weights, SEED, 0);
+        vm.stopPrank();
+        return RealmEtf(e);
+    }
+
+    /// @dev A fresh mock asset listed on a fresh USDG pool (V3 or V4) at 1:1 raw, whose only position is
+    ///      1e18 liquidity over ±600 ticks: it takes ~3e16 raw of either token before running dry.
+    function _thinRouteAsset(bool v3) internal returns (address asset) {
+        ERC20Mock tkn = new ERC20Mock();
+        asset = address(tkn);
+        tkn.mint(address(this), 1e18);
+        deal(USDG, address(this), 1e18);
+        RealmEtfAssets.Route memory route;
+        if (v3) {
+            address pool = IV3FactoryCreate(Mainnet.UNIV3_FACTORY).createPool(asset, USDG, 3000);
+            IV3PoolMint(pool).initialize(uint160(1 << 96));
+            IV3PoolMint(pool).mint(address(this), -600, 600, 1e18, "");
+            route.venue = RealmEtfAssets.Venue.V3;
+            route.pool = pool;
+        } else {
+            PoolKey memory key = _key(asset, USDG, 3000, 60, address(0));
+            manager.initialize(key, uint160(1 << 96));
+            PoolModifyLiquidityTest lp = new PoolModifyLiquidityTest(manager);
+            tkn.approve(address(lp), type(uint256).max);
+            IERC20(USDG).approve(address(lp), type(uint256).max);
+            lp.modifyLiquidity(key, ModifyLiquidityParams(-600, 600, 1e18, 0), "");
+            route.venue = RealmEtfAssets.Venue.V4;
+            route.key = key;
+        }
+        vm.prank(approver);
+        registry.setRoute(asset, route);
+    }
+
+    /// @dev Pays the V3 pool for `_thinRouteAsset`'s mint.
+    function uniswapV3MintCallback(uint256 amount0Owed, uint256 amount1Owed, bytes calldata) external {
+        if (amount0Owed != 0) IERC20(IEtfV3Pool(msg.sender).token0()).transfer(msg.sender, amount0Owed);
+        if (amount1Owed != 0) IERC20(IEtfV3Pool(msg.sender).token1()).transfer(msg.sender, amount1Owed);
+    }
+
+    /// @dev Dumps `amount` of `asset` through its V4 route until the pool runs out of liquidity, which parks
+    ///      the price at the limit: `asset` then values at ~0 USDG.
+    function _crashV4Price(address asset, uint256 amount) internal {
+        PoolKey memory key = _key(asset, USDG, 3000, 60, address(0));
+        bool zeroForOne = Currency.unwrap(key.currency0) == asset;
+        deal(asset, alice, amount);
+        vm.startPrank(alice);
+        IERC20(asset).approve(address(router), amount);
+        router.swap(
+            key,
+            SwapParams(
+                zeroForOne, -int256(amount), zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+            ),
+            PoolSwapTest.TestSettings(false, false),
+            ""
+        );
+        vm.stopPrank();
+        assertEq(registry.usdgValueOf(asset, IERC20(asset).balanceOf(address(etf))), 0);
     }
 
     function _params(address tokenIn, uint256 amount, bool exactIn) internal view returns (SwapParams memory) {
