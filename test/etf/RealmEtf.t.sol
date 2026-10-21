@@ -138,6 +138,25 @@ contract RealmEtfTest is Test {
         factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
     }
 
+    function test_createEtf_enforcesOwnerSetMinSeed() public {
+        assertEq(factory.minSeedAssets(), 1_000e6);
+        address[] memory assets = new address[](1);
+        assets[0] = SPY;
+        uint16[] memory weights = new uint16[](1);
+        weights[0] = 10_000;
+        vm.expectRevert(RealmEtfFactory.SeedTooSmall.selector);
+        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED - 1, 0);
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        factory.setMinSeedAssets(0);
+
+        vm.prank(owner);
+        factory.setMinSeedAssets(SEED + 1);
+        vm.expectRevert(RealmEtfFactory.SeedTooSmall.selector);
+        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
+    }
+
     //////////////////////// deposit / redeem //////////////////////
 
     function test_deposit_mintsTheSmallestFractionAdded() public {

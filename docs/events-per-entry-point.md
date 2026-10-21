@@ -819,7 +819,13 @@ Deployment emits the proxy's `Upgraded`, `OwnershipTransferred` and `Initialized
 
 Emits **`HookSet`** (`hook` indexed). Only ETFs created afterwards use it: each ETF records the hook at creation, and a hook only accepts pools of ETFs that recorded it.
 
+#### `RealmEtfFactory.setMinSeedAssets(minSeedAssets)` — owner only
+
+Emits **`MinSeedAssetsSet`** (`minSeedAssets`): the least USDG `createEtf` accepts as seed (1,000 USDG at deployment; not emitted by `initialize`).
+
 ### `RealmEtfFactory.createEtf(name, symbol, mode, assets, weightsBps, seedAssets, minShares)` — permissionless
+
+Reverts `SeedTooSmall` when `seedAssets < minSeedAssets`.
 
 1. New `RealmEtf`: `OwnershipTransferred(0, creator)`.
 2. USDG `Transfer` creator -> ETF, then one swap per asset (USDG -> asset).

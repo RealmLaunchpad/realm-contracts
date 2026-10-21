@@ -41,6 +41,9 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
     /// @notice Etfs this factory deployed.
     mapping(address etf => bool) public isEtf;
 
+    /// @notice Least USDG (6 decimals) `createEtf` accepts as seed.
+    uint256 public minSeedAssets;
+
     event EtfCreated(
         address indexed etf,
         address indexed creator,
@@ -53,6 +56,9 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         uint256 shares
     );
     event HookSet(address indexed hook);
+    event MinSeedAssetsSet(uint256 minSeedAssets);
+
+    error SeedTooSmall();
 
     constructor(RealmEtfAssets registry) {
         REGISTRY = registry;
@@ -62,6 +68,7 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
     /// @param initialOwner cold multisig: sets the hook and upgrades
     function initialize(address initialOwner) external initializer {
         __Ownable_init(initialOwner);
+        minSeedAssets = 1_000e6;
     }
 
     /// @notice Sets the hook new ETFs are created with. Owner only.
@@ -70,9 +77,15 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         emit HookSet(hook_);
     }
 
+    /// @notice Sets the least USDG `createEtf` accepts as seed. Owner only.
+    function setMinSeedAssets(uint256 minSeedAssets_) external onlyOwner {
+        minSeedAssets = minSeedAssets_;
+        emit MinSeedAssetsSet(minSeedAssets_);
+    }
+
     /// @notice Deploys an ETF holding `assets`, owned by the caller, and seeds it with `seedAssets` USDG
     ///         pulled from the caller, split by `weightsBps` (summing to 10,000). The caller receives the shares.
-    ///         `mode` (immutable) bounds the creator's rebalances.
+    ///         `mode` (immutable) bounds the creator's rebalances. Reverts below `minSeedAssets`.
     function createEtf(
         string memory name,
         string memory symbol,
@@ -82,6 +95,7 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         uint256 seedAssets,
         uint256 minShares
     ) external returns (address etf) {
+        if (seedAssets < minSeedAssets) revert SeedTooSmall();
         RealmEtf b = new RealmEtf(name, symbol, msg.sender, REGISTRY, hook, mode, assets);
         etf = address(b);
         isEtf[etf] = true;
