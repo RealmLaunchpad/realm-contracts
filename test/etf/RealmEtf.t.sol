@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test, Vm} from "forge-std/Test.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -777,7 +778,163 @@ contract RealmEtfTest is Test {
         assertGt(etf.redeem(shares, creator, creator), 0);
     }
 
+    //////////////////////// NavUpdated //////////////////////
+
+    function test_nav_seed() public {
+        vm.recordLogs();
+        RealmEtf e = _modeEtf(RealmEtf.Mode.FIXED);
+        assertEq(_assertNav(e, RealmEtf.Seeded.selector).totalSupply, e.totalSupply());
+    }
+
+    function test_nav_deposit() public {
+        vm.recordLogs();
+        _deposit(alice, 1_000e6);
+        assertEq(_assertNav(etf, IERC4626.Deposit.selector).totalSupply, etf.totalSupply());
+    }
+
+    function test_nav_mint() public {
+        deal(USDG, alice, 1_000e6);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(etf), 1_000e6);
+        vm.recordLogs();
+        etf.mint(100e18, alice);
+        vm.stopPrank();
+        assertEq(_assertNav(etf, IERC4626.Deposit.selector).totalSupply, etf.totalSupply());
+    }
+
+    function test_nav_redeem() public {
+        uint256 shares = _deposit(alice, 1_000e6);
+        vm.prank(alice);
+        vm.recordLogs();
+        etf.redeem(shares, alice, alice);
+        assertEq(_assertNav(etf, IERC4626.Withdraw.selector).totalSupply, etf.totalSupply());
+    }
+
+    function test_nav_hookBuy() public {
+        vm.recordLogs();
+        _swap(alice, USDG, 1_000e6);
+        assertEq(_assertNav(etf, IERC4626.Deposit.selector).totalSupply, etf.totalSupply());
+    }
+
+    /// @dev The sold shares leave `totalSupply` only when the hook locks them, after `redeemOnCredit` returns:
+    ///      the event already reports the supply without them. Settled, the supply is higher only by the raw
+    ///      shares the JIT removal rounded away, which stay in circulation (126 here).
+    function test_nav_hookSellReportsTheSettledSupply() public {
+        uint256 supply = etf.totalSupply();
+        uint256 shares = etf.balanceOf(creator) / 2;
+        vm.recordLogs();
+        _swap(creator, address(etf), shares);
+        uint256 reported = _assertNav(etf, IERC4626.Withdraw.selector).totalSupply;
+        assertEq(reported, supply - shares);
+        assertLe(reported, etf.totalSupply());
+        assertApproxEqAbs(reported, etf.totalSupply(), 1e6);
+    }
+
+    /// @dev Without JIT (a protocol fee on the pool) no rounding dust stays in circulation either.
+    function test_nav_hookSellWithoutJitReportsTheSettledSupply() public {
+        vm.prank(manager.protocolFeeController());
+        manager.setProtocolFee(etfKey, (uint24(500) << 12) | 500);
+        uint256 shares = etf.balanceOf(creator) / 2;
+        vm.recordLogs();
+        _swap(creator, address(etf), shares);
+        assertEq(_assertNav(etf, IERC4626.Withdraw.selector).totalSupply, etf.totalSupply());
+    }
+
+    /// @dev An exact-output buy mints the hook's share buffer too; what the JIT rounding does not use is locked
+    ///      after `mint` returns, so the event counts at most the buffer more than the settled supply.
+    function test_nav_hookExactOutputBuyOvercountsAtMostTheShareBuffer() public {
+        deal(USDG, alice, 1_000e6);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(router), 1_000e6);
+        vm.recordLogs();
+        router.swap(etfKey, _params(USDG, 100e18, false), PoolSwapTest.TestSettings(false, false), "");
+        vm.stopPrank();
+        uint256 reported = _assertNav(etf, IERC4626.Deposit.selector).totalSupply;
+        assertGe(reported, etf.totalSupply());
+        assertLe(reported - etf.totalSupply(), hook.SHARES_BUFFER() + (100e18 >> 40));
+    }
+
+    /// @dev Selling all of NVDA for QQQ drops NVDA from the event's assets and adds QQQ.
+    function test_nav_rebalanceRemovesAndAddsAssets() public {
+        vm.prank(creator);
+        etf.proposeRebalance(NVDA, 10_000, QQQ);
+        vm.prank(keeper);
+        vm.recordLogs();
+        etf.executeRebalance(NVDA, 10_000, QQQ);
+        Nav memory nav = _assertNav(etf, RealmEtf.Rebalanced.selector);
+        assertEq(nav.totalSupply, etf.totalSupply());
+        address[] memory assets = nav.assets;
+        bool hasQqq;
+        for (uint256 i; i < assets.length; ++i) {
+            assertTrue(assets[i] != NVDA);
+            hasQqq = hasQqq || assets[i] == QQQ;
+        }
+        assertTrue(hasQqq);
+    }
+
+    /// @dev A sunset asset keeps its balance in the event, valued at 0.
+    function test_nav_reinvestValuesSunsetAssetsAtZero() public {
+        vm.prank(owner);
+        registry.sunset(META);
+        deal(USDG, address(etf), 100e6);
+        vm.prank(keeper);
+        vm.recordLogs();
+        etf.reinvest();
+        Nav memory nav = _assertNav(etf, RealmEtf.Reinvested.selector);
+        assertEq(nav.totalSupply, etf.totalSupply());
+        uint256 metaIndex = nav.assets[0] == META ? 0 : nav.assets[1] == META ? 1 : 2;
+        assertGt(nav.balances[metaIndex], 0);
+        assertEq(nav.usdgValues[metaIndex], 0);
+    }
+
+    function test_nav_redeemInKind() public {
+        uint256 shares = etf.balanceOf(creator) / 2;
+        vm.prank(creator);
+        vm.recordLogs();
+        etf.redeemInKind(shares, alice, creator);
+        assertEq(_assertNav(etf, RealmEtf.RedeemedInKind.selector).totalSupply, etf.totalSupply());
+    }
+
     //////////////////////// helpers //////////////////////
+
+    struct Nav {
+        uint256 totalAssets;
+        uint256 totalSupply;
+        address[] assets;
+        uint256[] balances;
+        uint256[] usdgValues;
+    }
+
+    /// @dev Checks `e`'s one recorded `NavUpdated` against the state now, and that `e`'s log just before it is
+    ///      `prior`. The caller checks `totalSupply`: through the hook it can differ by dust.
+    function _assertNav(RealmEtf e, bytes32 prior) internal returns (Nav memory nav) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 last;
+        uint256 count;
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].emitter != address(e)) continue;
+            if (logs[i].topics[0] == RealmEtf.NavUpdated.selector) {
+                assertEq(last, prior, "NavUpdated follows the call's event");
+                (nav.totalAssets, nav.totalSupply, nav.assets, nav.balances, nav.usdgValues) =
+                    abi.decode(logs[i].data, (uint256, uint256, address[], uint256[], uint256[]));
+                ++count;
+            }
+            last = logs[i].topics[0];
+        }
+        assertEq(count, 1, "one NavUpdated");
+
+        assertEq(nav.totalAssets, e.totalAssets(), "totalAssets");
+        address[] memory held = e.getAssets();
+        assertEq(nav.assets, held, "assets");
+        uint256 sum;
+        for (uint256 i; i < held.length; ++i) {
+            assertEq(nav.balances[i], IERC20(held[i]).balanceOf(address(e)), "balance");
+            uint256 value = registry.isSunset(held[i]) ? 0 : registry.usdgValueOf(held[i], nav.balances[i]);
+            assertEq(nav.usdgValues[i], value, "usdgValue");
+            sum += value;
+        }
+        assertEq(sum, nav.totalAssets, "values sum to totalAssets");
+    }
 
     function _rebalance(address sellAsset, uint16 sellBps, address buyAsset) internal returns (uint256) {
         return _rebalanceOn(etf, sellAsset, sellBps, buyAsset);

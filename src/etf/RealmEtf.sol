@@ -129,6 +129,18 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     event RedeemedInKind(address indexed owner, address indexed receiver, uint256 shares);
     /// @notice The redeemer forfeited `asset` (`skipMask`); `amount` stays in the vault for the other holders.
     event InKindForfeited(address indexed asset, uint256 amount);
+    /// @notice The ETF's state after every action that changes holdings or supply, emitted last. `assets` is
+    ///         `getAssets()` (sunset ones included), `balances` their raw balances, `usdgValues` their spot USDG
+    ///         value (`REGISTRY.usdgValueOf`, 0 for sunset assets), so they sum to `totalAssets`.
+    /// @dev Through `RealmEtfHook`, `totalSupply` is the supply once the shares-pool swap settles, but for the
+    ///      JIT rounding dust (`docs/etf-jit-math.md`, ~1e-16 of a share): a sell already excludes the sold
+    ///      shares, which the hook locks only after the ETF returns, but not the dust the core keeps in
+    ///      circulation; an exact-output buy still counts the hook's unused share buffer (at most
+    ///      `SHARES_BUFFER` + 1 per 2^40 bought), locked right after. Every later `NavUpdated` reads the
+    ///      settled supply.
+    event NavUpdated(
+        uint256 totalAssets, uint256 totalSupply, address[] assets, uint256[] balances, uint256[] usdgValues
+    );
 
     error OnlyFactory();
     error AlreadySeeded();
@@ -210,6 +222,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         _mint(DEAD, DEAD_SHARES);
         _mint(receiver, shares);
         emit Seeded(receiver, assets, shares);
+        _emitNav(totalSupply());
     }
 
     //////////////////////// ERC-4626 / ERC-5143 //////////////////////
@@ -323,6 +336,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         require(shares != 0, ZeroAmount());
         assets = _sellSlice(shares, totalSupply(), receiver, 0);
         emit Withdraw(msg.sender, receiver, msg.sender, assets, shares);
+        // The sold shares still count until the hook locks them, after this returns.
+        _emitNav(totalSupply() - shares);
     }
 
     /// @notice The exit that needs no pool: burns `shares` and sends their pro-rata slice of every asset,
@@ -398,6 +413,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         bought = IERC20(buyAsset).balanceOf(address(this)) - before;
         require(bought != 0, ZeroAmount());
         emit Rebalanced(sellAsset, sellAmount, buyAsset, bought);
+        _emitNav(totalSupply());
     }
 
     /// @notice Keepers only: spends all USDG in the ETF (cash payouts, airdrops: whatever arrived outside a
@@ -410,6 +426,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         assets = IERC20(USDG).balanceOf(address(this));
         _buyProRata(_liveAssets(), assets, 0);
         emit Reinvested(assets);
+        _emitNav(totalSupply());
     }
 
     /// @notice The assets currently held.
@@ -457,6 +474,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         require(shares >= minShares, Slippage());
         _mint(receiver, shares);
         emit Deposit(msg.sender, receiver, assets, shares);
+        _emitNav(totalSupply());
     }
 
     /// @dev Buys `ceil(shares * balance / supply)` of every live holding with exact-output swaps paid by the
@@ -479,6 +497,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         require(assets <= maxAssets, Slippage());
         _mint(receiver, shares);
         emit Deposit(msg.sender, receiver, assets, shares);
+        _emitNav(totalSupply());
     }
 
     function _redeem(uint256 shares, address receiver, address owner_, uint256 minAssets)
@@ -492,6 +511,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         _burn(owner_, shares);
         assets = _sellSlice(shares, supply, receiver, minAssets);
         emit Withdraw(msg.sender, receiver, owner_, assets, shares);
+        _emitNav(totalSupply());
     }
 
     function _redeemInKind(uint256 shares, address receiver, address owner_, uint256 skipMask)
@@ -516,6 +536,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
             }
         }
         emit RedeemedInKind(owner_, receiver, shares);
+        _emitNav(totalSupply());
     }
 
     /// @dev Sells `shares / supply` of every live holding into USDG and pays it to `receiver`.
@@ -636,6 +657,23 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     function _pay(address token, address to, uint256 amount) internal {
         if (_payer == address(0)) IERC20(token).safeTransfer(to, amount);
         else IERC20(token).safeTransferFrom(_payer, to, amount);
+    }
+
+    /// @dev Emits `NavUpdated` with `supply` as the share supply. Values like `totalAssets`.
+    function _emitNav(uint256 supply) private {
+        address[] memory assets_ = _assets;
+        uint256 n = assets_.length;
+        uint256[] memory balances = new uint256[](n);
+        uint256[] memory values = new uint256[](n);
+        uint256 total;
+        for (uint256 i; i < n; ++i) {
+            balances[i] = IERC20(assets_[i]).balanceOf(address(this));
+            if (!REGISTRY.isSunset(assets_[i])) {
+                values[i] = REGISTRY.usdgValueOf(assets_[i], balances[i]);
+                total += values[i];
+            }
+        }
+        emit NavUpdated(total, supply, assets_, balances, values);
     }
 
     /// @dev The held assets that are not sunset.
