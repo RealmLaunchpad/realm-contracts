@@ -435,6 +435,39 @@ upgrade-direct-factory-rh-testnet: chain-rh-testnet
     forge script UpgradeDirectFactory --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# --- ETFs --------------------------------------------------------------------
+# `RealmEtfAssets` + `RealmEtfFactory` (impl + UUPS proxy) + `RealmEtfHook` (mined salt), factory pointed at
+# the hook. Once per chain (testnet, then mainnet). The broadcaster owns registry and factory and is no
+# approver yet. Paste the four printed slots into the manifest and `just export-deployments`. Dry-run first:
+# the same command without --broadcast. `--disable-code-size-limit`: the factory embeds `RealmEtf` (>24 KB).
+deploy-etf-rh: chain-rh
+    forge script DeployRealmEtf --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
+        --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_verify}}
+
+deploy-etf-rh-testnet: chain-rh-testnet
+    forge script DeployRealmEtf --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_testnet_verify}}
+
+# New `RealmEtfHook` for the manifest's ETF_FACTORY, set on it. The hook's upgrade path: only ETFs created
+# afterwards use it, older ones stay on their hook. Broadcaster must own the factory. Paste ETF_HOOK.
+deploy-etf-hook-rh: chain-rh
+    forge script DeployRealmEtfHook --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+deploy-etf-hook-rh-testnet: chain-rh-testnet
+    forge script DeployRealmEtfHook --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
+
+# New `RealmEtfFactory` implementation (same registry, same hook) behind ETF_FACTORY: ships new `RealmEtf`
+# code to ETFs created afterwards. Broadcaster must own the factory. Paste ETF_FACTORY_IMPL.
+upgrade-etf-factory-rh: chain-rh
+    forge script UpgradeRealmEtfFactory --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
+        --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_verify}}
+
+upgrade-etf-factory-rh-testnet: chain-rh-testnet
+    forge script UpgradeRealmEtfFactory --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_testnet_verify}}
+
 # Regenerates deployments.robinhood.{mainnet,testnet}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.
 export-deployments:

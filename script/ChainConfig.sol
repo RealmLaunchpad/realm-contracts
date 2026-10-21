@@ -119,6 +119,21 @@ library ChainConfig {
         revert(UNSUPPORTED);
     }
 
+    /// @notice The chain's USDG: the ETF deposit asset (a dummy on testnet).
+    function usdg() internal view returns (address) {
+        if (isRobinhood()) return 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
+        if (isRobinhoodTestnet()) return 0xd2397Fd59C825e6F34037fF2f2F541b0B727Eb24;
+        revert(UNSUPPORTED);
+    }
+
+    /// @notice `RealmEtfFactory` proxy from the manifest. Deployed by `DeployRealmEtf`.
+    function etfFactory() internal view returns (address factory) {
+        if (isRobinhood()) factory = DeploymentsRobinhoodMainnet.ETF_FACTORY;
+        else if (isRobinhoodTestnet()) factory = DeploymentsRobinhoodTestnet.ETF_FACTORY;
+        else revert(UNSUPPORTED);
+        require(factory != address(0), "manifest: ETF_FACTORY missing; run DeployRealmEtf first");
+    }
+
     /// @notice The chain's wrapped native token, which the direct venue refuses as a pair quote.
     function wrappedNative() internal view returns (address) {
         if (isRobinhood()) return DeploymentAddressesRobinhoodMainnet.WETH;

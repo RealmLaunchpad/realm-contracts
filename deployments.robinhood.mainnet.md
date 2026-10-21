@@ -18,6 +18,10 @@
 | RealmFactoryUniV4Direct (impl)               | `0xd8d292a6108d86545B0B12e5B9FAC8024d10Aa8d` |
 | RealmAssetsWhitelist (proxy)                 | `0x1Fe8baA5254fD125386Da072cddd1c804BEe0e94` |
 | RealmAssetsWhitelist (impl)                  | `0x233Fd9e6A79fB80c90f50c23Bc9aA57d0417F952` |
+| RealmEtfAssets                               | _(not deployed)_                             |
+| RealmEtfFactory (proxy)                      | _(not deployed)_                             |
+| RealmEtfFactory (impl)                       | _(not deployed)_                             |
+| RealmEtfHook                                 | _(not deployed)_                             |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
 | RealmLpLocker                                | `0x77493d5Efc88817A252a1a17Acd48951Af0EC016` |
 | SwapLpFeeRouter (impl)                       | `0x91fd2fFa173bC417Fc2Fd2FD5443f9f18c705C09` |

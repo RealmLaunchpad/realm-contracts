@@ -59,6 +59,18 @@ library DeploymentsRobinhoodMainnet {
     /// @notice Implementation behind `ASSETS_WHITELIST`. Tracked for verification and audit trails only.
     address public constant ASSETS_WHITELIST_IMPL = 0x233Fd9e6A79fB80c90f50c23Bc9aA57d0417F952;
 
+    // --- ETFs ---
+    /// @notice `RealmEtfAssets`: the assets ETFs may hold and their USDG routes. Not upgradeable: the factory
+    ///         implementation and every ETF bake it in. Deployed by `DeployRealmEtf`; `address(0)` until then.
+    address internal constant ETF_ASSETS = address(0);
+    /// @notice `RealmEtfFactory` proxy (UUPS): where ETFs are created. `ETF_HOOK` bakes it in.
+    address internal constant ETF_FACTORY = address(0);
+    /// @notice Implementation behind `ETF_FACTORY`. Tracked for verification and audit trails only.
+    address internal constant ETF_FACTORY_IMPL = address(0);
+    /// @notice `RealmEtfHook`: the hook of the ETF shares/USDG pools. Not upgradeable: a new one
+    ///         (`DeployRealmEtfHook`) only serves ETFs created after it is set on `ETF_FACTORY`.
+    address internal constant ETF_HOOK = address(0);
+
     /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees 30/70
     ///         treasury/creator.
     /// @dev The hook holds this as an immutable, so it must be deployed BEFORE the hook

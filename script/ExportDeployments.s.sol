@@ -34,6 +34,10 @@ contract ExportDeployments is Script {
         address factoryUniV4DirectImpl;
         address assetsWhitelist;
         address assetsWhitelistImpl;
+        address etfAssets;
+        address etfFactory;
+        address etfFactoryImpl;
+        address etfHook;
         address lpFeeRouter;
         address lpLocker;
         address lpFeeRouterImpl;
@@ -103,6 +107,10 @@ contract ExportDeployments is Script {
         d.factoryUniV4DirectImpl = DeploymentsRobinhoodMainnet.FACTORY_UNIV4_DIRECT_IMPL;
         d.assetsWhitelist = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST;
         d.assetsWhitelistImpl = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST_IMPL;
+        d.etfAssets = DeploymentsRobinhoodMainnet.ETF_ASSETS;
+        d.etfFactory = DeploymentsRobinhoodMainnet.ETF_FACTORY;
+        d.etfFactoryImpl = DeploymentsRobinhoodMainnet.ETF_FACTORY_IMPL;
+        d.etfHook = DeploymentsRobinhoodMainnet.ETF_HOOK;
         d.lpFeeRouter = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER;
         d.lpLocker = DeploymentsRobinhoodMainnet.LP_LOCKER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodMainnet.LP_FEE_ROUTER_IMPL;
@@ -158,6 +166,10 @@ contract ExportDeployments is Script {
         d.factoryUniV4DirectImpl = DeploymentsRobinhoodTestnet.FACTORY_UNIV4_DIRECT_IMPL;
         d.assetsWhitelist = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST;
         d.assetsWhitelistImpl = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST_IMPL;
+        d.etfAssets = DeploymentsRobinhoodTestnet.ETF_ASSETS;
+        d.etfFactory = DeploymentsRobinhoodTestnet.ETF_FACTORY;
+        d.etfFactoryImpl = DeploymentsRobinhoodTestnet.ETF_FACTORY_IMPL;
+        d.etfHook = DeploymentsRobinhoodTestnet.ETF_HOOK;
         d.lpFeeRouter = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER;
         d.lpLocker = DeploymentsRobinhoodTestnet.LP_LOCKER;
         d.lpFeeRouterImpl = DeploymentsRobinhoodTestnet.LP_FEE_ROUTER_IMPL;
@@ -219,6 +231,10 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmFactoryUniV4Direct (impl)", d.factoryUniV4DirectImpl));
         s = string.concat(s, _row("RealmAssetsWhitelist (proxy)", d.assetsWhitelist));
         s = string.concat(s, _row("RealmAssetsWhitelist (impl)", d.assetsWhitelistImpl));
+        s = string.concat(s, _row("RealmEtfAssets", d.etfAssets));
+        s = string.concat(s, _row("RealmEtfFactory (proxy)", d.etfFactory));
+        s = string.concat(s, _row("RealmEtfFactory (impl)", d.etfFactoryImpl));
+        s = string.concat(s, _row("RealmEtfHook", d.etfHook));
         s = string.concat(s, _row("SwapLpFeeRouter (proxy)", d.lpFeeRouter));
         s = string.concat(s, _row("RealmLpLocker", d.lpLocker));
         s = string.concat(s, _row("SwapLpFeeRouter (impl)", d.lpFeeRouterImpl));
