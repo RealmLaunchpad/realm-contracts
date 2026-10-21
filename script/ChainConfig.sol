@@ -121,8 +121,8 @@ library ChainConfig {
 
     /// @notice The chain's USDG: the ETF deposit asset (a dummy on testnet).
     function usdg() internal view returns (address) {
-        if (isRobinhood()) return 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
-        if (isRobinhoodTestnet()) return 0xd2397Fd59C825e6F34037fF2f2F541b0B727Eb24;
+        if (isRobinhood()) return DeploymentAddressesRobinhoodMainnet.USDG;
+        if (isRobinhoodTestnet()) return DeploymentAddressesRobinhoodTestnet.USDG;
         revert(UNSUPPORTED);
     }
 

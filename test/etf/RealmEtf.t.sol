@@ -48,7 +48,7 @@ contract RealmEtfTest is Test {
     using StateLibrary for IPoolManager;
 
     uint256 constant BLOCKNUMBER = 92_800_000;
-    address constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
+    address constant USDG = Mainnet.USDG;
     address constant SPY = 0x117cc2133c37B721F49dE2A7a74833232B3B4C0C;
     address constant META = 0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35;
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
