@@ -39,6 +39,10 @@ interface IEtfV3Factory {
 ///      redemption, so clearing one would brick every ETF holding the asset. Delisting (`setListed(false)`)
 ///      only stops ETFs from buying INTO it by rebalance or creation; holders keep trading through it.
 ///      Replacing a route is how a drained or migrated pool is fixed, for every ETF at once.
+///
+/// @dev SUNSET is for a dead TOKEN (delisted, acquired, paused for good), which no route can fix: ETFs stop
+///      buying, selling and valuing it, so their deposits and redemptions work again, but still hand it out in
+///      `redeemInKind`. Owner only and one-way. A malicious owner can cut ETFs' NAV with it, but moves nothing.
 contract RealmEtfAssets is Ownable2Step {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -72,11 +76,15 @@ contract RealmEtfAssets is Ownable2Step {
     /// @notice Whether ETFs may buy INTO `asset` (creation, rebalance).
     mapping(address asset => bool) public isListed;
 
+    /// @notice Assets retired for every ETF (see the contract docstring). One-way.
+    mapping(address asset => bool) public isSunset;
+
     mapping(address asset => Route) internal _routes;
 
     event ApproverSet(address indexed account, bool allowed);
     event RouteSet(address indexed asset, Route route);
     event ListedSet(address indexed asset, bool listed);
+    event AssetSunset(address indexed asset);
 
     error NotApprover();
     /// @notice The route is not a Uniswap pool between `asset` and USDG, or `asset` is USDG or the native
@@ -109,6 +117,12 @@ contract RealmEtfAssets is Ownable2Step {
         require(isApprover[msg.sender], NotApprover());
         require(_routes[asset].venue != Venue.NONE, NoRoute());
         _setListed(asset, listed);
+    }
+
+    /// @notice Retires `asset` for every ETF, for good. Owner only.
+    function sunset(address asset) external onlyOwner {
+        isSunset[asset] = true;
+        emit AssetSunset(asset);
     }
 
     /// @notice `asset`'s USDG route. Reverts when it has none.

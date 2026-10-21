@@ -24,6 +24,8 @@ import {RealmEtfAssets, IEtfV3Pool} from "src/etf/RealmEtfAssets.sol";
 import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
 import {RealmEtfHook} from "src/etf/RealmEtfHook.sol";
 import {DeploymentAddressesRobinhoodMainnet as Mainnet} from "src/config/DeploymentAddresses.sol";
+import {KeeperGated} from "src/tokens/KeeperGated.sol";
+import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 
 interface IV3FactoryCreate {
     function createPool(address tokenA, address tokenB, uint24 fee) external returns (address pool);
@@ -66,9 +68,11 @@ contract RealmEtfTest is Test {
     address approver = makeAddr("approver");
     address creator = makeAddr("creator");
     address alice = makeAddr("alice");
+    address keeper = makeAddr("keeper");
 
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
+        installKeepersRegistry(owner, keeper);
         registry = new RealmEtfAssets(owner, address(manager), Mainnet.UNIV3_FACTORY, USDG);
         vm.prank(owner);
         registry.setApprover(approver, true);
@@ -104,7 +108,7 @@ contract RealmEtfTest is Test {
         deal(USDG, creator, SEED);
         vm.startPrank(creator);
         IERC20(USDG).approve(address(factory), SEED);
-        etf = RealmEtf(factory.createEtf("Tech ETF", "TECH", assets, weights, SEED, 0));
+        etf = RealmEtf(factory.createEtf("Tech ETF", "TECH", RealmEtf.Mode.FLEXIBLE, assets, weights, SEED, 0));
         vm.stopPrank();
 
         etfKey = _key(address(etf), USDG, 0, 1, address(hook));
@@ -129,7 +133,7 @@ contract RealmEtfTest is Test {
         uint16[] memory weights = new uint16[](1);
         weights[0] = 10_000;
         vm.expectRevert(RealmEtf.AssetNotListed.selector);
-        factory.createEtf("X", "X", assets, weights, SEED, 0);
+        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
     }
 
     //////////////////////// deposit / redeem //////////////////////
@@ -176,11 +180,11 @@ contract RealmEtfTest is Test {
         }
     }
 
-    /// @dev A creator's tiny test rebalance leaves QQQ at ~1e-7 of NAV: a 1 USDG deposit's fair slice of it
-    ///      rounds to 0. It is bought with `MIN_SLICE` instead, so the deposit neither reverts nor skips it.
+    /// @dev Two 1-bps rebalances leave QQQ at ~1e-8 of NAV: a 1 USDG deposit's fair slice of it rounds to 0.
+    ///      It is bought with `MIN_SLICE` instead, so the deposit neither reverts nor skips it.
     function test_deposit_buysADustHoldingWithTheMinimumSlice() public {
-        vm.prank(creator);
-        etf.rebalance(NVDA, 1e12, QQQ, 0);
+        _rebalance(NVDA, 1, QQQ);
+        _rebalance(QQQ, 9_999, NVDA);
         uint256 qqqBefore = IERC20(QQQ).balanceOf(address(etf));
         assertEq(1e6 * registry.usdgValueOf(QQQ, qqqBefore) / etf.totalAssets(), 0);
 
@@ -234,27 +238,31 @@ contract RealmEtfTest is Test {
         }
     }
 
-    function test_mintAndWithdraw_areUnsupported() public {
-        assertEq(etf.maxMint(alice), 0);
+    function test_withdraw_isUnsupported() public {
         assertEq(etf.maxWithdraw(alice), 0);
-        vm.expectRevert(RealmEtf.NotSupported.selector);
-        etf.mint(1, alice);
         vm.expectRevert(RealmEtf.NotSupported.selector);
         etf.withdraw(1, alice, alice);
     }
 
     //////////////////////// rebalance //////////////////////
 
-    function test_rebalance_onlyCreator() public {
+    function test_rebalance_onlyCreatorProposes() public {
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
-        etf.rebalance(NVDA, type(uint256).max, QQQ, 0);
+        etf.proposeRebalance(NVDA, 10_000, QQQ);
+    }
+
+    function test_rebalance_onlyKeeperExecutes() public {
+        vm.prank(creator);
+        etf.proposeRebalance(NVDA, 10_000, QQQ);
+        vm.prank(creator);
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
+        etf.executeRebalance();
     }
 
     function test_rebalance_sellingAllRemovesAndBuyingNewAdds() public {
         uint256 valueBefore = etf.totalAssets();
-        vm.prank(creator);
-        uint256 bought = etf.rebalance(NVDA, type(uint256).max, QQQ, 0);
+        uint256 bought = _rebalance(NVDA, 10_000, QQQ);
 
         address[] memory assets = etf.getAssets();
         assertEq(assets.length, 3);
@@ -266,17 +274,97 @@ contract RealmEtfTest is Test {
         assertApproxEqRel(etf.totalAssets(), valueBefore, 0.03e18);
     }
 
-    function test_rebalance_revertsBelowMinOut() public {
+    /// @dev The intent is a share of the holding AT EXECUTION, so a deposit in between does not make it stale.
+    function test_rebalance_sellsBpsOfTheHoldingAtExecution() public {
         vm.prank(creator);
-        vm.expectRevert(RealmEtf.Slippage.selector);
-        etf.rebalance(NVDA, type(uint256).max, QQQ, type(uint256).max);
+        etf.proposeRebalance(NVDA, 5_000, QQQ);
+        _deposit(alice, 1_000e6);
+        uint256 nvda = IERC20(NVDA).balanceOf(address(etf));
+        vm.prank(keeper);
+        etf.executeRebalance();
+        assertEq(IERC20(NVDA).balanceOf(address(etf)), nvda - nvda * 5_000 / 10_000);
+    }
+
+    function test_rebalance_aProposalReplacesTheLastAndExecutesOnce() public {
+        vm.startPrank(creator);
+        etf.proposeRebalance(NVDA, 10_000, QQQ);
+        etf.proposeRebalance(META, 1_000, QQQ);
+        vm.stopPrank();
+        (address sellAsset, uint16 sellBps,) = etf.pendingRebalance();
+        assertEq(sellAsset, META);
+        assertEq(sellBps, 1_000);
+
+        vm.startPrank(keeper);
+        etf.executeRebalance();
+        assertGt(IERC20(NVDA).balanceOf(address(etf)), 0);
+        vm.expectRevert(RealmEtf.NoPendingRebalance.selector);
+        etf.executeRebalance();
+        vm.stopPrank();
+    }
+
+    function test_rebalance_creatorCancels() public {
+        vm.startPrank(creator);
+        etf.proposeRebalance(NVDA, 10_000, QQQ);
+        etf.cancelRebalance();
+        vm.stopPrank();
+        vm.prank(keeper);
+        vm.expectRevert(RealmEtf.NoPendingRebalance.selector);
+        etf.executeRebalance();
+    }
+
+    function test_rebalance_rejectsBpsAboveTheWholeHolding() public {
+        vm.prank(creator);
+        vm.expectRevert(RealmEtf.InvalidWeights.selector);
+        etf.proposeRebalance(NVDA, 10_001, QQQ);
     }
 
     /// @dev 1 wei of NVDA sells for 0 USDG. Adding QQQ with a zero balance would make every deposit divide by 0.
     function test_rebalance_revertsWhenNothingIsBought() public {
+        deal(NVDA, address(etf), 1);
         vm.prank(creator);
+        etf.proposeRebalance(NVDA, 10_000, QQQ);
+        vm.prank(keeper);
         vm.expectRevert(RealmEtf.ZeroAmount.selector);
-        etf.rebalance(NVDA, 1, QQQ, 0);
+        etf.executeRebalance();
+    }
+
+    /// @dev The checks run again at execution: a listing that changed since the proposal blocks it.
+    function test_rebalance_rechecksAtExecution() public {
+        vm.prank(creator);
+        etf.proposeRebalance(NVDA, 10_000, QQQ);
+        vm.prank(approver);
+        registry.setListed(QQQ, false);
+        vm.prank(keeper);
+        vm.expectRevert(RealmEtf.AssetNotListed.selector);
+        etf.executeRebalance();
+    }
+
+    function test_mode_fixedRejectsEveryRebalance() public {
+        RealmEtf fixedEtf = _modeEtf(RealmEtf.Mode.FIXED);
+        assertEq(uint8(fixedEtf.MODE()), uint8(RealmEtf.Mode.FIXED));
+        vm.prank(creator);
+        vm.expectRevert(RealmEtf.NotSupported.selector);
+        fixedEtf.proposeRebalance(NVDA, 10_000, SPY);
+    }
+
+    /// @dev A `REBALANCE` ETF never buys a new asset, but can buy back an original one it sold out of.
+    function test_mode_rebalanceStaysWithinTheOriginalAssets() public {
+        RealmEtf e = _modeEtf(RealmEtf.Mode.REBALANCE);
+        assertTrue(e.isOriginal(SPY) && e.isOriginal(NVDA) && !e.isOriginal(QQQ));
+        vm.prank(creator);
+        vm.expectRevert(RealmEtf.NotOriginalAsset.selector);
+        e.proposeRebalance(NVDA, 10_000, QQQ);
+
+        _rebalanceOn(e, NVDA, 10_000, SPY);
+        assertEq(e.getAssets().length, 1);
+        _rebalanceOn(e, SPY, 2_000, NVDA);
+        assertEq(e.getAssets().length, 2);
+        assertGt(IERC20(NVDA).balanceOf(address(e)), 0);
+    }
+
+    function test_mode_flexibleBuysAnyListedAsset() public {
+        _rebalance(NVDA, 5_000, QQQ);
+        assertEq(etf.getAssets().length, 4);
     }
 
     //////////////////////// hook //////////////////////
@@ -306,13 +394,28 @@ contract RealmEtfTest is Test {
         etf.redeemOnCredit(1e18, creator);
     }
 
-    function test_hook_rejectsExactOutput() public {
+    /// @dev Exact USDG out has no one-pass solution; only exact-output BUYS are filled.
+    function test_hook_rejectsExactOutputSells() public {
+        uint256 shares = etf.balanceOf(creator);
+        vm.startPrank(creator);
+        etf.approve(address(router), shares);
+        vm.expectRevert();
+        router.swap(etfKey, _params(address(etf), 1e6, false), PoolSwapTest.TestSettings(false, false), "");
+        vm.stopPrank();
+    }
+
+    function test_hook_exactOutputBuyMintsExactlyTheShares() public {
         deal(USDG, alice, 1_000e6);
+        uint256 supply = etf.totalSupply();
         vm.startPrank(alice);
         IERC20(USDG).approve(address(router), 1_000e6);
-        vm.expectRevert();
-        router.swap(etfKey, _params(USDG, 1e18, false), PoolSwapTest.TestSettings(false, false), "");
+        router.swap(etfKey, _params(USDG, 100e18, false), PoolSwapTest.TestSettings(false, false), "");
         vm.stopPrank();
+        assertEq(etf.balanceOf(alice), 100e18);
+        assertEq(etf.totalSupply(), supply + 100e18);
+        assertApproxEqRel(1_000e6 - IERC20(USDG).balanceOf(alice), 100e6, 0.03e18);
+        assertEq(IERC20(USDG).balanceOf(address(hook)), 0);
+        _assertPoolUntouched();
     }
 
     function test_hook_rejectsLiquidity() public {
@@ -324,6 +427,150 @@ contract RealmEtfTest is Test {
     function test_hook_rejectsPoolsOfNonEtfs() public {
         vm.expectRevert();
         manager.initialize(_key(SPY, USDG, 0, 1, address(hook)), uint160(1 << 96));
+    }
+
+    //////////////////////// mint //////////////////////
+
+    /// @dev Every holding grows by at least the fraction of supply minted; the payer pays only what it spent.
+    function test_mint_buysExactlyTheProRataGrowth() public {
+        address[] memory assets = etf.getAssets();
+        uint256[] memory before = _balances(assets);
+        uint256 supply = etf.totalSupply();
+        uint256 estimate = etf.previewMint(100e18);
+        deal(USDG, alice, 1_000e6);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(etf), 1_000e6);
+        uint256 paid = etf.mint(100e18, alice);
+        vm.stopPrank();
+
+        assertEq(etf.balanceOf(alice), 100e18);
+        assertEq(IERC20(USDG).balanceOf(alice), 1_000e6 - paid);
+        assertEq(IERC20(USDG).balanceOf(address(etf)), 0);
+        assertApproxEqRel(paid, estimate, 0.03e18);
+        uint256[] memory afterBalances = _balances(assets);
+        for (uint256 i; i < assets.length; ++i) {
+            assertEq(afterBalances[i] - before[i], (100e18 * before[i] + supply - 1) / supply);
+        }
+    }
+
+    function test_mint_revertsAboveMaxAssets() public {
+        deal(USDG, alice, 1_000e6);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(etf), 1_000e6);
+        vm.expectRevert(RealmEtf.Slippage.selector);
+        etf.mint(100e18, alice, 50e6);
+        vm.stopPrank();
+    }
+
+    /// @dev An exact-output swap the route pool cannot fill buys less than the mint needs: it reverts.
+    function test_mint_revertsWhenARoutePoolCannotFillTheOutput() public {
+        _expectMintRevert(_singleAssetEtf(_thinRouteAsset(false)));
+        _expectMintRevert(_singleAssetEtf(_thinRouteAsset(true)));
+    }
+
+    //////////////////////// in-kind redemption //////////////////////
+
+    function test_redeemInKind_revertsWhenATransferFails() public {
+        vm.mockCallRevert(META, abi.encodeWithSelector(IERC20.transfer.selector), "paused");
+        vm.prank(creator);
+        vm.expectRevert();
+        etf.redeemInKind(1e18, alice, creator);
+    }
+
+    /// @dev The redeemer forfeits META explicitly: its slice stays in the vault, the rest is sent.
+    function test_redeemInKind_skipMaskForfeitsTheMaskedAssets() public {
+        vm.mockCallRevert(META, abi.encodeWithSelector(IERC20.transfer.selector), "paused");
+        address[] memory assets = etf.getAssets();
+        uint256 metaIndex = assets[0] == META ? 0 : assets[1] == META ? 1 : 2;
+        uint256 metaBefore = IERC20(META).balanceOf(address(etf));
+        uint256 shares = etf.balanceOf(creator) / 2;
+
+        vm.prank(creator);
+        uint256[] memory amounts = etf.redeemInKind(shares, alice, creator, 1 << metaIndex);
+
+        vm.clearMockedCalls();
+        assertEq(amounts[metaIndex], 0);
+        assertEq(IERC20(META).balanceOf(address(etf)), metaBefore);
+        for (uint256 i; i < assets.length; ++i) {
+            if (i != metaIndex) assertGt(IERC20(assets[i]).balanceOf(alice), 0);
+        }
+    }
+
+    //////////////////////// sunset //////////////////////
+
+    function test_sunset_onlyOwner() public {
+        vm.prank(approver);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, approver));
+        registry.sunset(META);
+    }
+
+    /// @dev A sunset asset is neither valued, bought, nor sold, but still goes out in kind.
+    function test_sunset_excludesTheAssetFromEverythingButInKind() public {
+        uint256 metaValue = registry.usdgValueOf(META, IERC20(META).balanceOf(address(etf)));
+        uint256 navBefore = etf.totalAssets();
+        vm.prank(owner);
+        registry.sunset(META);
+        assertApproxEqAbs(etf.totalAssets(), navBefore - metaValue, 1);
+
+        uint256 meta = IERC20(META).balanceOf(address(etf));
+        uint256 shares = _deposit(alice, 1_000e6);
+        deal(USDG, alice, 1_000e6);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(etf), 1_000e6);
+        etf.mint(10e18, alice);
+        etf.redeem(shares, alice, alice);
+        vm.stopPrank();
+        _swap(alice, USDG, 100e6);
+        _swap(creator, address(etf), 1e18);
+        assertEq(IERC20(META).balanceOf(address(etf)), meta);
+
+        vm.prank(creator);
+        etf.redeemInKind(1e18, alice, creator);
+        assertGt(IERC20(META).balanceOf(alice), 0);
+    }
+
+    function test_sunset_blocksRebalancesAndCreation() public {
+        vm.prank(owner);
+        registry.sunset(META);
+        vm.startPrank(creator);
+        vm.expectRevert(RealmEtf.AssetNotListed.selector);
+        etf.proposeRebalance(META, 10_000, QQQ);
+        vm.expectRevert(RealmEtf.AssetNotListed.selector);
+        etf.proposeRebalance(NVDA, 10_000, META);
+        vm.stopPrank();
+
+        address[] memory assets = new address[](1);
+        assets[0] = META;
+        uint16[] memory weights = new uint16[](1);
+        weights[0] = 10_000;
+        vm.expectRevert(RealmEtf.AssetNotListed.selector);
+        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
+    }
+
+    //////////////////////// reinvest //////////////////////
+
+    /// @dev USDG airdropped to the ETF buys the live holdings and mints nothing: NAV per share rises.
+    function test_reinvest_buysTheLiveHoldingsWithStrayUsdg() public {
+        vm.prank(owner);
+        registry.sunset(META);
+        uint256 meta = IERC20(META).balanceOf(address(etf));
+        uint256 supply = etf.totalSupply();
+        uint256 navBefore = etf.totalAssets();
+        deal(USDG, address(etf), 100e6);
+
+        vm.prank(keeper);
+        assertEq(etf.reinvest(), 100e6);
+
+        assertEq(IERC20(USDG).balanceOf(address(etf)), 0);
+        assertEq(IERC20(META).balanceOf(address(etf)), meta);
+        assertEq(etf.totalSupply(), supply);
+        assertApproxEqRel(etf.totalAssets(), navBefore + 100e6, 0.01e18);
+    }
+
+    function test_reinvest_onlyKeeper() public {
+        vm.prank(alice);
+        vm.expectRevert(KeeperGated.NotAKeeper.selector);
+        etf.reinvest();
     }
 
     //////////////////////// registry //////////////////////
@@ -392,7 +639,7 @@ contract RealmEtfTest is Test {
         deal(USDG, creator, SEED);
         vm.startPrank(creator);
         IERC20(USDG).approve(address(factory), SEED);
-        address other = factory.createEtf("No Hook", "NOHK", assets, weights, SEED, 0);
+        address other = factory.createEtf("No Hook", "NOHK", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
         vm.stopPrank();
         vm.expectRevert();
         manager.initialize(_key(other, USDG, 0, 1, address(hook)), uint160(1 << 96));
@@ -403,7 +650,7 @@ contract RealmEtfTest is Test {
         registry.setListed(QQQ, false);
         vm.prank(creator);
         vm.expectRevert(RealmEtf.AssetNotListed.selector);
-        etf.rebalance(NVDA, type(uint256).max, QQQ, 0);
+        etf.proposeRebalance(NVDA, 10_000, QQQ);
 
         vm.prank(approver);
         registry.setListed(NVDA, false);
@@ -413,6 +660,43 @@ contract RealmEtfTest is Test {
     }
 
     //////////////////////// helpers //////////////////////
+
+    function _rebalance(address sellAsset, uint16 sellBps, address buyAsset) internal returns (uint256) {
+        return _rebalanceOn(etf, sellAsset, sellBps, buyAsset);
+    }
+
+    /// @dev The creator proposes, a keeper executes.
+    function _rebalanceOn(RealmEtf e, address sellAsset, uint16 sellBps, address buyAsset) internal returns (uint256) {
+        vm.prank(creator);
+        e.proposeRebalance(sellAsset, sellBps, buyAsset);
+        vm.prank(keeper);
+        return e.executeRebalance();
+    }
+
+    /// @dev A SPY + NVDA ETF in `mode`.
+    function _modeEtf(RealmEtf.Mode mode) internal returns (RealmEtf) {
+        address[] memory assets = new address[](2);
+        (assets[0], assets[1]) = (SPY, NVDA);
+        uint16[] memory weights = new uint16[](2);
+        (weights[0], weights[1]) = (5_000, 5_000);
+        deal(USDG, creator, SEED);
+        vm.startPrank(creator);
+        IERC20(USDG).approve(address(factory), SEED);
+        address e = factory.createEtf("Mode", "MODE", mode, assets, weights, SEED, 0);
+        vm.stopPrank();
+        return RealmEtf(e);
+    }
+
+    /// @dev Mints far more than the thin route pool holds (~3e16 raw of the asset, vs ~1e9 in the ETF).
+    function _expectMintRevert(RealmEtf e) internal {
+        deal(USDG, alice, 1e18);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(e), type(uint256).max);
+        uint256 shares = e.totalSupply() * 1e8;
+        vm.expectRevert(RealmEtf.InsufficientLiquidity.selector);
+        e.mint(shares, alice);
+        vm.stopPrank();
+    }
 
     function _key(address a, address b, uint24 fee, int24 spacing, address hooks)
         internal
@@ -465,7 +749,7 @@ contract RealmEtfTest is Test {
         deal(USDG, creator, SEED);
         vm.startPrank(creator);
         IERC20(USDG).approve(address(factory), SEED);
-        address e = factory.createEtf("One", "ONE", assets, weights, SEED, 0);
+        address e = factory.createEtf("One", "ONE", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
         vm.stopPrank();
         return RealmEtf(e);
     }

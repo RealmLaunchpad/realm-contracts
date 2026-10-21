@@ -25,12 +25,16 @@ import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
 ///      swaps 0 and its `slot0` stays at whatever it was initialized to. That price means nothing; NAV
 ///      lives in the ETF.
 ///
-/// @dev EXACT INPUT ONLY, mirroring the ETF's `deposit`/`redeem` (it has no `mint`/`withdraw`).
+/// @dev EXACT INPUT both ways, mirroring the ETF's `deposit`/`redeem`; EXACT OUTPUT for buys only, through its
+///      `mint`. The ETF has no `withdraw`, so exact-output sells revert.
 ///
 /// @dev THE INPUT ARRIVES AFTER THE SWAP. Standard routers pay what they owe once the swap returns.
 ///      - A buy `take`s the USDG from the pool manager before it is paid. An ETF that buys through V3
 ///        pools therefore needs the pool manager to hold that much USDG from other pools (V4 legs hand it
 ///        straight back). On Robinhood, where USDG is the main V4 quote, that ceiling is high, but it is one.
+///      - An exact-output buy learns its price only once `mint` has bought every holding, so it `take`s ALL
+///        the pool manager's USDG first, lets `mint` pull what it spends, and settles the rest straight back.
+///        Same ceiling: the mint's whole cost.
 ///      - A sell cannot do the same: the pool manager holds no shares. The ETF pays out on credit
 ///        (`redeemOnCredit`) and the hook mints itself claims on the incoming shares, which locks them in
 ///        the pool manager for good and takes them out of the ETF's `totalSupply`.
@@ -93,18 +97,30 @@ contract RealmEtfHook is BaseHook {
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        require(params.amountSpecified < 0, ExactOutputNotSupported());
         RealmEtf etf = _etfOf(key);
-        uint256 amountIn = uint256(-params.amountSpecified);
         (Currency cIn, Currency cOut) =
             params.zeroForOne ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
+        bool exactIn = params.amountSpecified < 0;
+        require(exactIn || Currency.unwrap(cIn) == USDG, ExactOutputNotSupported());
 
+        uint256 amountIn;
         uint256 amountOut;
-        if (Currency.unwrap(cIn) == USDG) {
+        if (!exactIn) {
+            amountOut = uint256(params.amountSpecified);
+            uint256 taken = IERC20(USDG).balanceOf(address(poolManager));
+            poolManager.take(cIn, address(this), taken);
+            IERC20(USDG).forceApprove(address(etf), taken);
+            amountIn = etf.mint(amountOut, address(this));
+            poolManager.sync(cIn);
+            IERC20(USDG).safeTransfer(address(poolManager), taken - amountIn);
+            poolManager.settle();
+        } else if (Currency.unwrap(cIn) == USDG) {
+            amountIn = uint256(-params.amountSpecified);
             poolManager.take(cIn, address(this), amountIn);
             IERC20(USDG).forceApprove(address(etf), amountIn);
             amountOut = etf.deposit(amountIn, address(this));
         } else {
+            amountIn = uint256(-params.amountSpecified);
             amountOut = etf.redeemOnCredit(amountIn, address(this));
             poolManager.mint(address(this), cIn.toId(), amountIn);
         }
@@ -112,9 +128,11 @@ contract RealmEtfHook is BaseHook {
         IERC20(Currency.unwrap(cOut)).safeTransfer(address(poolManager), amountOut);
         poolManager.settle();
 
+        // The specified side is the input on exact-input swaps and the output on exact-output ones.
+        (int128 inDelta, int128 outDelta) = (amountIn.toInt256().toInt128(), -amountOut.toInt256().toInt128());
         return (
             this.beforeSwap.selector,
-            toBeforeSwapDelta(amountIn.toInt256().toInt128(), -amountOut.toInt256().toInt128()),
+            exactIn ? toBeforeSwapDelta(inDelta, outDelta) : toBeforeSwapDelta(outDelta, inDelta),
             0
         );
     }
