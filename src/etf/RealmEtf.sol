@@ -146,6 +146,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     /// @notice A `REBALANCE` ETF may only buy the assets it was created with.
     error NotOriginalAsset();
     error NoPendingRebalance();
+    /// @notice The pending rebalance is not the one the keeper vetted.
+    error RebalanceIntentChanged();
 
     constructor(
         string memory name_,
@@ -357,15 +359,23 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     }
 
     /// @notice Keepers only: executes the pending proposal with no `minOut` (when to call, and whether the
-    ///         price impact is acceptable, is keeper policy). Buying an asset not yet held adds it; selling all
-    ///         of one removes it. Reverts if nothing of `buyAsset` is bought: a held asset with a zero balance
-    ///         would make every deposit divide by zero.
-    function executeRebalance() external nonReentrant returns (uint256 bought) {
+    ///         price impact is acceptable, is keeper policy). The keeper passes the intent it vetted, and the call
+    ///         reverts if the creator replaced it since. Buying an asset not yet held adds it; selling all of one
+    ///         removes it. Reverts if nothing of `buyAsset` is bought: a held asset with a zero balance would make
+    ///         every deposit divide by zero.
+    function executeRebalance(address sellAsset, uint16 sellBps, address buyAsset)
+        external
+        nonReentrant
+        returns (uint256 bought)
+    {
         _requireKeeper();
         RebalanceIntent memory intent = pendingRebalance;
         require(intent.sellBps != 0, NoPendingRebalance());
+        require(
+            intent.sellAsset == sellAsset && intent.sellBps == sellBps && intent.buyAsset == buyAsset,
+            RebalanceIntentChanged()
+        );
         delete pendingRebalance;
-        (address sellAsset, address buyAsset) = (intent.sellAsset, intent.buyAsset);
         uint256 sellIndex = _checkRebalance(sellAsset, buyAsset);
         uint256 balance = IERC20(sellAsset).balanceOf(address(this));
         uint256 sellAmount = Math.mulDiv(balance, intent.sellBps, BPS);

@@ -258,7 +258,7 @@ contract RealmEtfTest is Test {
         etf.proposeRebalance(NVDA, 10_000, QQQ);
         vm.prank(creator);
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
-        etf.executeRebalance();
+        etf.executeRebalance(NVDA, 10_000, QQQ);
     }
 
     function test_rebalance_sellingAllRemovesAndBuyingNewAdds() public {
@@ -282,7 +282,7 @@ contract RealmEtfTest is Test {
         _deposit(alice, 1_000e6);
         uint256 nvda = IERC20(NVDA).balanceOf(address(etf));
         vm.prank(keeper);
-        etf.executeRebalance();
+        etf.executeRebalance(NVDA, 5_000, QQQ);
         assertEq(IERC20(NVDA).balanceOf(address(etf)), nvda - nvda * 5_000 / 10_000);
     }
 
@@ -296,11 +296,24 @@ contract RealmEtfTest is Test {
         assertEq(sellBps, 1_000);
 
         vm.startPrank(keeper);
-        etf.executeRebalance();
+        etf.executeRebalance(META, 1_000, QQQ);
         assertGt(IERC20(NVDA).balanceOf(address(etf)), 0);
         vm.expectRevert(RealmEtf.NoPendingRebalance.selector);
-        etf.executeRebalance();
+        etf.executeRebalance(META, 1_000, QQQ);
         vm.stopPrank();
+    }
+
+    /// @dev The keeper vetted one intent; the creator swapped in another before execution landed.
+    function test_rebalance_revertsWhenTheIntentChangedSinceTheKeeperVettedIt() public {
+        vm.prank(creator);
+        etf.proposeRebalance(META, 1_000, QQQ);
+        (address sellAsset, uint16 sellBps, address buyAsset) = etf.pendingRebalance();
+        vm.prank(creator);
+        etf.proposeRebalance(NVDA, 10_000, QQQ);
+
+        vm.prank(keeper);
+        vm.expectRevert(RealmEtf.RebalanceIntentChanged.selector);
+        etf.executeRebalance(sellAsset, sellBps, buyAsset);
     }
 
     function test_rebalance_creatorCancels() public {
@@ -310,7 +323,7 @@ contract RealmEtfTest is Test {
         vm.stopPrank();
         vm.prank(keeper);
         vm.expectRevert(RealmEtf.NoPendingRebalance.selector);
-        etf.executeRebalance();
+        etf.executeRebalance(NVDA, 10_000, QQQ);
     }
 
     function test_rebalance_rejectsBpsAboveTheWholeHolding() public {
@@ -326,7 +339,7 @@ contract RealmEtfTest is Test {
         etf.proposeRebalance(NVDA, 10_000, QQQ);
         vm.prank(keeper);
         vm.expectRevert(RealmEtf.ZeroAmount.selector);
-        etf.executeRebalance();
+        etf.executeRebalance(NVDA, 10_000, QQQ);
     }
 
     /// @dev The checks run again at execution: a listing that changed since the proposal blocks it.
@@ -337,7 +350,7 @@ contract RealmEtfTest is Test {
         registry.setListed(QQQ, false);
         vm.prank(keeper);
         vm.expectRevert(RealmEtf.AssetNotListed.selector);
-        etf.executeRebalance();
+        etf.executeRebalance(NVDA, 10_000, QQQ);
     }
 
     function test_mode_fixedRejectsEveryRebalance() public {
@@ -775,7 +788,7 @@ contract RealmEtfTest is Test {
         vm.prank(creator);
         e.proposeRebalance(sellAsset, sellBps, buyAsset);
         vm.prank(keeper);
-        return e.executeRebalance();
+        return e.executeRebalance(sellAsset, sellBps, buyAsset);
     }
 
     /// @dev A SPY + NVDA ETF in `mode`.
