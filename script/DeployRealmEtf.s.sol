@@ -41,10 +41,10 @@ contract DeployRealmEtf is EtfHookDeployer {
     function run() external {
         (, address owner,) = vm.readCallers();
         address poolManager = ChainConfig.infra().univ4PoolManager;
-        (, address univ3Factory) = ChainConfig.univ2And3Factories();
+        (address univ2Factory, address univ3Factory) = ChainConfig.univ2And3Factories();
 
         vm.startBroadcast();
-        RealmEtfAssets registry = new RealmEtfAssets(owner, poolManager, univ3Factory, ChainConfig.usdg());
+        RealmEtfAssets registry = new RealmEtfAssets(owner, poolManager, univ3Factory, univ2Factory, ChainConfig.usdg());
         address impl = address(new RealmEtfFactory(registry));
         RealmEtfFactory factory =
             RealmEtfFactory(address(new ERC1967Proxy(impl, abi.encodeCall(RealmEtfFactory.initialize, (owner)))));

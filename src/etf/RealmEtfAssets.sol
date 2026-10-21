@@ -28,9 +28,21 @@ interface IEtfV3Factory {
     function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address);
 }
 
+/// @dev The slice of Uniswap V2 this registry and the ETFs read.
+interface IEtfV2Pair {
+    function token0() external view returns (address);
+    function token1() external view returns (address);
+    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32);
+    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external;
+}
+
+interface IEtfV2Factory {
+    function getPair(address tokenA, address tokenB) external view returns (address);
+}
+
 /// @title RealmEtfAssets
 /// @notice The assets an ETF may hold, each with the ONE Uniswap pool it trades against USDG through:
-///         a V3 pool or a V4 pool. Stricter than `RealmAssetsWhitelist` (the pairs list): an asset is here
+///         a V2 pair, a V3 pool or a V4 pool. Stricter than `RealmAssetsWhitelist` (the pairs list): an asset is here
 ///         only once its USDG route is proven. The route also prices the asset (`usdgValueOf`), at spot.
 ///
 /// @dev TWO TIERS: the owner manages approvers, approvers list assets.
@@ -51,10 +63,11 @@ contract RealmEtfAssets is Ownable2Step {
     enum Venue {
         NONE,
         V3,
-        V4
+        V4,
+        V2
     }
 
-    /// @notice An asset's USDG pool: `pool` for V3, `key` for V4; the unused field is zero.
+    /// @notice An asset's USDG pool: `pool` for V2 and V3, `key` for V4; the unused field is zero.
     struct Route {
         Venue venue;
         address pool;
@@ -66,6 +79,9 @@ contract RealmEtfAssets is Ownable2Step {
 
     /// @notice Uniswap's V3 factory; V3 routes must be pools it created.
     address public immutable UNIV3_FACTORY;
+
+    /// @notice Uniswap's V2 factory; V2 routes must be pairs it created.
+    address public immutable UNIV2_FACTORY;
 
     /// @notice The ETF deposit asset, the other side of every route.
     address public immutable USDG;
@@ -92,9 +108,12 @@ contract RealmEtfAssets is Ownable2Step {
     error InvalidRoute();
     error NoRoute();
 
-    constructor(address initialOwner, address poolManager, address univ3Factory, address usdg) Ownable(initialOwner) {
+    constructor(address initialOwner, address poolManager, address univ3Factory, address univ2Factory, address usdg)
+        Ownable(initialOwner)
+    {
         POOL_MANAGER = IPoolManager(poolManager);
         UNIV3_FACTORY = univ3Factory;
+        UNIV2_FACTORY = univ2Factory;
         USDG = usdg;
     }
 
@@ -137,6 +156,10 @@ contract RealmEtfAssets is Ownable2Step {
     function usdgValueOf(address asset, uint256 amount) external view returns (uint256) {
         Route memory route = _routes[asset];
         require(route.venue != Venue.NONE, NoRoute());
+        if (route.venue == Venue.V2) {
+            (uint112 r0, uint112 r1,) = IEtfV2Pair(route.pool).getReserves();
+            return IEtfV2Pair(route.pool).token0() == asset ? Math.mulDiv(amount, r1, r0) : Math.mulDiv(amount, r0, r1);
+        }
         uint160 sqrtPriceX96;
         bool assetIsToken0;
         if (route.venue == Venue.V3) {
@@ -168,6 +191,13 @@ contract RealmEtfAssets is Ownable2Step {
             (t0, t1) = (Currency.unwrap(route.key.currency0), Currency.unwrap(route.key.currency1));
             (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(route.key.toId());
             require(sqrtPriceX96 != 0, InvalidRoute());
+        } else if (route.venue == Venue.V2) {
+            IEtfV2Pair pair = IEtfV2Pair(route.pool);
+            (t0, t1) = (pair.token0(), pair.token1());
+            require(IEtfV2Factory(UNIV2_FACTORY).getPair(t0, t1) == route.pool, InvalidRoute());
+            // An unfunded pair has no price, and `usdgValueOf` divides by its reserves.
+            (uint112 r0, uint112 r1,) = pair.getReserves();
+            require(r0 != 0 && r1 != 0, InvalidRoute());
         } else {
             revert InvalidRoute();
         }

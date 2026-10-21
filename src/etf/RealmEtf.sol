@@ -18,7 +18,7 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 
-import {RealmEtfAssets, IEtfV3Pool} from "src/etf/RealmEtfAssets.sol";
+import {RealmEtfAssets, IEtfV3Pool, IEtfV2Pair} from "src/etf/RealmEtfAssets.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 
 /// @title RealmEtf
@@ -48,7 +48,7 @@ import {KeeperGated} from "src/tokens/KeeperGated.sol";
 ///
 /// @dev TWO CALL CONTEXTS. Called directly, each V4 swap unlocks the pool manager itself. Called while the
 ///      pool manager is already unlocked (by `RealmEtfHook` inside a swap on the shares/USDG pool, or by
-///      any router mid-unlock), V4 swaps run inline and settle their own deltas before returning. V3
+///      any router mid-unlock), V4 swaps run inline and settle their own deltas before returning. V2 and V3
 ///      swaps are direct pool calls either way.
 contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IUnlockCallback, KeeperGated {
     using SafeERC20 for IERC20;
@@ -595,6 +595,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         address tokenIn = buy ? USDG : asset_;
         if (route.venue == RealmEtfAssets.Venue.V3) {
             (amountIn, amountOut) = _swapV3(route.pool, tokenIn, amountSpecified);
+        } else if (route.venue == RealmEtfAssets.Venue.V2) {
+            (amountIn, amountOut) = _swapV2(route.pool, tokenIn, amountSpecified);
         } else if (POOL_MANAGER.isUnlocked()) {
             (amountIn, amountOut) = _swapV4(route.key, tokenIn, amountSpecified);
         } else {
@@ -651,6 +653,29 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         _v3Pool = address(0);
         (int256 paid, int256 received) = zeroForOne ? (amount0, amount1) : (amount1, amount0);
         return (uint256(paid), uint256(-received));
+    }
+
+    /// @dev Amounts from the reserves with Uniswap V2's 0.3% fee, as its router computes them.
+    function _swapV2(address pair, address tokenIn, int256 amountSpecified)
+        internal
+        returns (uint256 amountIn, uint256 amountOut)
+    {
+        bool zeroForOne = tokenIn == IEtfV2Pair(pair).token0();
+        (uint256 r0, uint256 r1,) = IEtfV2Pair(pair).getReserves();
+        (uint256 rIn, uint256 rOut) = zeroForOne ? (r0, r1) : (r1, r0);
+        if (amountSpecified < 0) {
+            amountIn = uint256(-amountSpecified);
+            amountOut = amountIn * 997 * rOut / (rIn * 1000 + amountIn * 997);
+        } else {
+            amountOut = uint256(amountSpecified);
+            require(amountOut < rOut, InsufficientLiquidity());
+            amountIn = rIn * amountOut * 1000 / ((rOut - amountOut) * 997) + 1;
+        }
+        _pay(tokenIn, pair, amountIn);
+        // The pair rejects a zero-out swap; a dust input that buys nothing is left to it, as V3's fee would take it.
+        if (amountOut != 0) {
+            IEtfV2Pair(pair).swap(zeroForOne ? 0 : amountOut, zeroForOne ? amountOut : 0, address(this), "");
+        }
     }
 
     /// @dev Pays a swap's input: pulled from `_payer` during `mint`, from the ETF's balance otherwise.

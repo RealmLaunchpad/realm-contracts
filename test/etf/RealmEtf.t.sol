@@ -30,6 +30,14 @@ import {DeploymentAddressesRobinhoodMainnet as Mainnet} from "src/config/Deploym
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
 
+interface IV2FactoryCreate {
+    function createPair(address tokenA, address tokenB) external returns (address pair);
+}
+
+interface IV2PairMint {
+    function mint(address to) external returns (uint256 liquidity);
+}
+
 interface IV3FactoryCreate {
     function createPool(address tokenA, address tokenB, uint24 fee) external returns (address pool);
 }
@@ -76,7 +84,7 @@ contract RealmEtfTest is Test {
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
         installKeepersRegistry(owner, keeper);
-        registry = new RealmEtfAssets(owner, address(manager), Mainnet.UNIV3_FACTORY, USDG);
+        registry = new RealmEtfAssets(owner, address(manager), Mainnet.UNIV3_FACTORY, Mainnet.UNIV2_FACTORY, USDG);
         vm.prank(owner);
         registry.setApprover(approver, true);
         vm.startPrank(approver);
@@ -740,6 +748,38 @@ contract RealmEtfTest is Test {
         registry.setRoute(address(0), route);
     }
 
+    function test_registry_rejectsUnfundedV2Pair() public {
+        address asset = address(new ERC20Mock());
+        RealmEtfAssets.Route memory route;
+        route.venue = RealmEtfAssets.Venue.V2;
+        route.pool = IV2FactoryCreate(Mainnet.UNIV2_FACTORY).createPair(asset, USDG);
+        vm.prank(approver);
+        vm.expectRevert(RealmEtfAssets.InvalidRoute.selector);
+        registry.setRoute(asset, route);
+    }
+
+    /// @dev A V2-routed asset goes through every swap path: exact-input deposit, exact-output mint, redeem.
+    function test_v2Route_depositMintRedeem() public {
+        address asset = _v2RouteAsset();
+        // 1M whole tokens against 1M USDG: one token is worth one USDG.
+        assertEq(registry.usdgValueOf(asset, 1e18), 1e6);
+        RealmEtf e = _singleAssetEtf(asset);
+
+        deal(USDG, alice, 2_000e6);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(e), 2_000e6);
+        uint256 shares = e.deposit(1_000e6, alice);
+        uint256 held = IERC20(asset).balanceOf(address(e));
+        uint256 supply = e.totalSupply();
+        e.mint(100e18, alice);
+        assertGe(IERC20(asset).balanceOf(address(e)) - held, Math.mulDiv(held, 100e18, supply));
+        uint256 out = e.redeem(shares + 100e18, alice, alice, 0);
+        vm.stopPrank();
+
+        assertEq(IERC20(USDG).balanceOf(address(e)), 0);
+        assertApproxEqRel(out, 1_100e6, 0.02e18);
+    }
+
     function test_registry_valuesAtRouteSpotPrice() public view {
         // A whole SPY, in raw USDG (6 decimals): an index fund share trades in the hundreds of dollars.
         uint256 value = registry.usdgValueOf(SPY, 1e18);
@@ -1072,6 +1112,21 @@ contract RealmEtfTest is Test {
             route.venue = RealmEtfAssets.Venue.V4;
             route.key = key;
         }
+        vm.prank(approver);
+        registry.setRoute(asset, route);
+    }
+
+    /// @dev A fresh mock asset listed on a fresh USDG V2 pair holding 1M of each, in whole units.
+    function _v2RouteAsset() internal returns (address asset) {
+        ERC20Mock tkn = new ERC20Mock();
+        asset = address(tkn);
+        address pair = IV2FactoryCreate(Mainnet.UNIV2_FACTORY).createPair(asset, USDG);
+        tkn.mint(pair, 1_000_000e18);
+        deal(USDG, pair, 1_000_000e6);
+        IV2PairMint(pair).mint(address(this));
+        RealmEtfAssets.Route memory route;
+        route.venue = RealmEtfAssets.Venue.V2;
+        route.pool = pair;
         vm.prank(approver);
         registry.setRoute(asset, route);
     }
