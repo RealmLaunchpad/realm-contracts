@@ -9,6 +9,11 @@ import {
 } from "lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
+import {Math} from "lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+
 import {RealmEtf} from "src/etf/RealmEtf.sol";
 import {RealmEtfAssets} from "src/etf/RealmEtfAssets.sol";
 
@@ -82,7 +87,20 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         isEtf[etf] = true;
         IERC20(REGISTRY.USDG()).safeTransferFrom(msg.sender, etf, seedAssets);
         uint256 shares = b.seed(seedAssets, weightsBps, msg.sender, minShares);
+        if (hook != address(0)) _initializePool(etf, seedAssets, b.totalSupply());
         emit EtfCreated(etf, msg.sender, name, symbol, mode, assets, weightsBps, seedAssets, shares);
+    }
+
+    /// @dev Opens the ETF's shares/USDG pool at the seed price (`usdg` for `shares`), so the hook's first JIT
+    ///      price move is short. Atomic with creation: the hook accepts no pool before `isEtf` is set.
+    function _initializePool(address etf, uint256 usdg, uint256 shares) internal {
+        address usdgToken = REGISTRY.USDG();
+        bool etfIs0 = etf < usdgToken;
+        (address c0, address c1) = etfIs0 ? (etf, usdgToken) : (usdgToken, etf);
+        uint160 sqrtPriceX96 =
+            uint160(Math.sqrt(etfIs0 ? Math.mulDiv(usdg, 1 << 192, shares) : Math.mulDiv(shares, 1 << 192, usdg)));
+        REGISTRY.POOL_MANAGER()
+            .initialize(PoolKey(Currency.wrap(c0), Currency.wrap(c1), 0, 1, IHooks(hook)), sqrtPriceX96);
     }
 
     function _authorizeUpgrade(address) internal override onlyOwner {}

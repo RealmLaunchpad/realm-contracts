@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Math} from "lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -86,7 +88,7 @@ contract RealmEtfTest is Test {
         address hookAddress = address(
             uint160(
                 Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
-                    | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+                    | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
             ) | (uint160(0x4444) << 144)
         );
         factory = RealmEtfFactory(
@@ -112,7 +114,6 @@ contract RealmEtfTest is Test {
         vm.stopPrank();
 
         etfKey = _key(address(etf), USDG, 0, 1, address(hook));
-        manager.initialize(etfKey, uint160(1 << 96));
         router = new PoolSwapTest(manager);
     }
 
@@ -370,22 +371,25 @@ contract RealmEtfTest is Test {
     //////////////////////// hook //////////////////////
 
     function test_hook_buyThroughThePoolMintsShares() public {
+        vm.recordLogs();
         uint256 shares = _swap(alice, USDG, 1_000e6);
         assertEq(etf.balanceOf(alice), shares);
         assertApproxEqRel(shares, 1_000e18, 0.03e18);
-        _assertPoolUntouched();
+        _assertJit(1_000e6, shares);
     }
 
     function test_hook_sellThroughThePoolRedeemsForUsdg() public {
         uint256 shares = etf.balanceOf(creator) / 2;
         uint256 supply = etf.totalSupply();
+        vm.recordLogs();
         uint256 out = _swap(creator, address(etf), shares);
-        // The sold shares sit in the pool manager behind the hook's claims, out of circulation.
-        assertEq(etf.totalSupply(), supply - shares);
+        // The sold shares sit in the pool manager behind the hook's claims, out of circulation, but for the
+        // few raw units the JIT position's removal rounded away.
+        assertApproxEqAbs(etf.totalSupply(), supply - shares, 1e6);
         assertEq(etf.balanceOf(address(manager)), shares);
         assertEq(IERC20(USDG).balanceOf(creator), out);
         assertApproxEqRel(out, 500e6, 0.03e18);
-        _assertPoolUntouched();
+        _assertJit(shares, out);
     }
 
     function test_redeemOnCredit_onlyTheHook() public {
@@ -409,19 +413,120 @@ contract RealmEtfTest is Test {
         uint256 supply = etf.totalSupply();
         vm.startPrank(alice);
         IERC20(USDG).approve(address(router), 1_000e6);
+        vm.recordLogs();
         router.swap(etfKey, _params(USDG, 100e18, false), PoolSwapTest.TestSettings(false, false), "");
         vm.stopPrank();
         assertEq(etf.balanceOf(alice), 100e18);
-        assertEq(etf.totalSupply(), supply + 100e18);
-        assertApproxEqRel(1_000e6 - IERC20(USDG).balanceOf(alice), 100e6, 0.03e18);
+        // The extra shares minted for the JIT rounding are locked as claims, but for what the removal rounded away.
+        assertApproxEqAbs(etf.totalSupply(), supply + 100e18, 1e6);
+        uint256 paid = 1_000e6 - IERC20(USDG).balanceOf(alice);
+        assertApproxEqRel(paid, 100e6, 0.03e18);
         assertEq(IERC20(USDG).balanceOf(address(hook)), 0);
-        _assertPoolUntouched();
+        _assertJit(paid, 100e18);
     }
 
     function test_hook_rejectsLiquidity() public {
         PoolModifyLiquidityTest lp = new PoolModifyLiquidityTest(manager);
         vm.expectRevert();
         lp.modifyLiquidity(etfKey, ModifyLiquidityParams(-60, 60, 1e18, 0), "");
+    }
+
+    function test_hook_poolOpensAtTheSeedPrice() public view {
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(etfKey.toId());
+        uint256 usdgPerShareX18 = Currency.unwrap(etfKey.currency0) == USDG
+            ? 1e36 / Math.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 192) / 1e6
+            : Math.mulDiv(Math.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 96), 1e30, 1 << 96);
+        assertApproxEqRel(usdgPerShareX18, 1e18, 0.001e18);
+    }
+
+    function test_hook_successiveTradesEachGoThroughTheCurve() public {
+        vm.recordLogs();
+        uint256 shares = _swap(alice, USDG, 2_000e6);
+        _assertJit(2_000e6, shares);
+        vm.recordLogs();
+        uint256 out = _swap(alice, address(etf), shares / 3);
+        _assertJit(shares / 3, out);
+        vm.recordLogs();
+        uint256 more = _swap(alice, USDG, 50e6);
+        _assertJit(50e6, more);
+    }
+
+    /// forge-config: default.fuzz.runs = 32
+    function testFuzz_hook_buyAndSellThroughTheCurve(uint256 usdg, uint256 sellBps) public {
+        usdg = bound(usdg, 1e6, 20_000e6);
+        vm.recordLogs();
+        uint256 shares = _swap(alice, USDG, usdg);
+        _assertJit(usdg, shares);
+        uint256 sold = shares * bound(sellBps, 1, 10_000) / 10_000;
+        vm.assume(sold != 0);
+        vm.recordLogs();
+        uint256 out = _swap(alice, address(etf), sold);
+        _assertJit(sold, out);
+    }
+
+    function test_hook_buyFillsTheSameFromEveryStartingPrice() public {
+        _assertEveryStartingPrice(alice, USDG, 1_000e6);
+    }
+
+    function test_hook_sellFillsTheSameFromEveryStartingPrice() public {
+        _assertEveryStartingPrice(creator, address(etf), etf.balanceOf(creator) / 4);
+    }
+
+    /// @dev The other orientation: USDG is token0, so buys move the price down and sells up.
+    function test_hook_usdgAsToken0_buyFillsTheSameFromEveryStartingPrice() public {
+        _useEtfAboveUsdg();
+        _assertEveryStartingPrice(alice, USDG, 1_000e6);
+    }
+
+    function test_hook_usdgAsToken0_sellFillsTheSameFromEveryStartingPrice() public {
+        _useEtfAboveUsdg();
+        _assertEveryStartingPrice(creator, address(etf), etf.balanceOf(creator) / 4);
+    }
+
+    function test_hook_usdgAsToken0_exactOutputBuy() public {
+        _useEtfAboveUsdg();
+        deal(USDG, alice, 1_000e6);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(router), 1_000e6);
+        vm.recordLogs();
+        router.swap(etfKey, _params(USDG, 100e18, false), PoolSwapTest.TestSettings(false, false), "");
+        vm.stopPrank();
+        assertEq(etf.balanceOf(alice), 100e18);
+        _assertJit(1_000e6 - IERC20(USDG).balanceOf(alice), 100e18);
+    }
+
+    /// @dev A price limit inside the JIT range stops the curve short of what the position was sized for.
+    function test_hook_revertsWhenAPriceLimitCutsTheCurveShort() public {
+        uint256 snap = vm.snapshotState();
+        _swap(alice, USDG, 1_000e6);
+        (uint160 end,,,) = manager.getSlot0(etfKey.toId());
+        vm.revertToState(snap);
+
+        deal(USDG, alice, 1_000e6);
+        SwapParams memory params = _params(USDG, 1_000e6, true);
+        params.sqrtPriceLimitX96 = params.zeroForOne ? end + 1 : end - 1;
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(router), 1_000e6);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(hook),
+                IHooks.afterSwap.selector,
+                abi.encodeWithSelector(RealmEtfHook.JitMismatch.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+        router.swap(etfKey, params, PoolSwapTest.TestSettings(false, false), "");
+        vm.stopPrank();
+    }
+
+    /// @dev With a protocol fee on the pool the curve would charge it, so the hook fills the whole trade itself.
+    function test_hook_protocolFeeFallsBackToTheHookFill() public {
+        vm.prank(manager.protocolFeeController());
+        manager.setProtocolFee(etfKey, (uint24(500) << 12) | 500);
+        uint256 shares = _swap(alice, USDG, 1_000e6);
+        assertApproxEqRel(shares, 1_000e18, 0.03e18);
+        assertEq(manager.getLiquidity(etfKey.toId()), 0);
     }
 
     function test_hook_rejectsPoolsOfNonEtfs() public {
@@ -829,9 +934,119 @@ contract RealmEtfTest is Test {
         out = IERC20(tokenOut).balanceOf(who) - before;
     }
 
-    function _assertPoolUntouched() internal view {
-        (uint160 sqrtPriceX96,,,) = manager.getSlot0(etfKey.toId());
-        assertEq(sqrtPriceX96, uint160(1 << 96));
-        assertEq(manager.getLiquidity(etfKey.toId()), 0);
+    /// @dev Checks the recorded swap went through the curve: the pool manager's `Swap` carries all but a sliver of
+    ///      the trade (`paid` in, `received` out), `HookSwap` the rest, they sum to the trade, the pool ends
+    ///      empty and its price within 2 ticks of the trade's.
+    function _assertJit(uint256 paid, uint256 received) internal {
+        (int128 c0, int128 c1, int128 h0, int128 h1) = _swapEvents();
+        (uint256 curveIn, uint256 curveOut) =
+            c0 < 0 ? (uint256(int256(-c0)), uint256(int256(c1))) : (uint256(int256(-c1)), uint256(int256(c0)));
+        (uint256 hookIn, uint256 hookOut) =
+            c0 < 0 ? (uint256(int256(-h0)), uint256(int256(h1))) : (uint256(int256(-h1)), uint256(int256(h0)));
+        assertEq(curveIn + hookIn, paid, "paid = curve + hook");
+        assertEq(curveOut + hookOut, received, "received = curve + hook");
+        assertGe(curveIn * 10_000, paid * 9_997, "curve fills >= 99.97% in");
+        assertGe(curveOut * 10_000, received * 9_997, "curve fills >= 99.97% out");
+        assertEq(manager.getLiquidity(etfKey.toId()), 0, "pool empty");
+
+        _assertPriceNear(paid, received, c0 < 0);
+    }
+
+    /// @dev The pool ends within 2 ticks of the ETF's fill price. The swapper's realised price differs from it by
+    ///      the few raw units of rounding dust, ~4e4 / amount ticks, which only shows on tiny trades.
+    function _assertPriceNear(uint256 paid, uint256 received, bool inIs0) internal view {
+        (, int24 tick,,) = manager.getSlot0(etfKey.toId());
+        (uint256 amt1, uint256 amt0) = inIs0 ? (received, paid) : (paid, received);
+        int24 tradeTick = TickMath.getTickAtSqrtPrice(uint160(Math.sqrt(Math.mulDiv(amt1, 1 << 192, amt0))));
+        int24 tolerance = int24(int256(2 + 40_000 / Math.min(paid, received)));
+        assertLe(tick > tradeTick ? tick - tradeTick : tradeTick - tick, tolerance, "slot0 at trade price");
+    }
+
+    /// @dev Re-runs one trade from every starting price around the JIT range's starting edge, written straight into
+    ///      `slot0`: on the edge with either tick the core can leave there (the edge's own, or the one below as a
+    ///      downward swap leaves it), one raw sqrt-price unit above and below it, on the neighbouring edges, and
+    ///      across bitmap words. The pool is empty, so the trade must fill identically through the curve each time.
+    function _assertEveryStartingPrice(address who, address tokenIn, uint256 amount) internal {
+        uint256 snap = vm.snapshotState();
+        vm.recordLogs();
+        uint256 expected = _swap(who, tokenIn, amount);
+        int24 tickLower = _jitTickLower();
+        vm.revertToState(snap);
+
+        bool up = !_params(tokenIn, amount, true).zeroForOne;
+        int24 startTick = up ? tickLower : tickLower + 1;
+        int24[9] memory offsets = [int24(0), 1, -1, 2, -2, 255, -256, 1000, -1000];
+        for (uint256 i; i < offsets.length; ++i) {
+            for (uint256 k; k < 4; ++k) {
+                uint256 s = vm.snapshotState();
+                int24 tick = startTick + offsets[i];
+                uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tick);
+                if (k == 1) tick -= 1; // on the edge, as a downward swap leaves it
+                else if (k == 2) sqrtPriceX96 += 1; // just above the edge
+                else if (k == 3) (sqrtPriceX96, tick) = (sqrtPriceX96 - 1, tick - 1); // just below it
+                _setSlot0(sqrtPriceX96, tick);
+
+                vm.recordLogs();
+                assertEq(_swap(who, tokenIn, amount), expected, "same fill");
+                _assertJit(amount, expected);
+                vm.revertToState(s);
+            }
+        }
+    }
+
+    /// @dev Creates ETFs like the setUp one until one's address sorts above USDG, and switches the tests to it.
+    function _useEtfAboveUsdg() internal {
+        address[] memory assets = etf.getAssets();
+        uint16[] memory weights = new uint16[](assets.length);
+        for (uint256 i; i < assets.length; ++i) {
+            weights[i] = uint16(10_000 / assets.length);
+        }
+        weights[0] += uint16(10_000 % assets.length);
+        vm.startPrank(creator);
+        for (uint256 i; i < 32 && address(etf) < USDG; ++i) {
+            deal(USDG, creator, SEED);
+            IERC20(USDG).approve(address(factory), SEED);
+            etf = RealmEtf(factory.createEtf("Tech ETF", "TECH", RealmEtf.Mode.FLEXIBLE, assets, weights, SEED, 0));
+        }
+        vm.stopPrank();
+        assertTrue(address(etf) > USDG, "no ETF above USDG");
+        etfKey = _key(address(etf), USDG, 0, 1, address(hook));
+    }
+
+    function _setSlot0(uint160 sqrtPriceX96, int24 tick) internal {
+        bytes32 slot = keccak256(abi.encodePacked(PoolId.unwrap(etfKey.toId()), StateLibrary.POOLS_SLOT));
+        vm.store(address(manager), slot, bytes32(uint256(sqrtPriceX96) | uint256(uint24(tick)) << 160));
+        (uint160 p, int24 t,,) = manager.getSlot0(etfKey.toId());
+        assertEq(p, sqrtPriceX96);
+        assertEq(t, tick);
+    }
+
+    /// @dev The JIT position's lower tick, from the hook's recorded `ModifyLiquidity`.
+    function _jitTickLower() internal returns (int24 tickLower) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sig = keccak256("ModifyLiquidity(bytes32,address,int24,int24,int256,bytes32)");
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].emitter == address(manager) && logs[i].topics[0] == sig) {
+                (tickLower,,,) = abi.decode(logs[i].data, (int24, int24, int256, bytes32));
+                return tickLower;
+            }
+        }
+        revert("no JIT position");
+    }
+
+    /// @dev The last `Swap` of the ETF pool (the curve) and the hook's `HookSwap`, from the recorded logs.
+    function _swapEvents() internal returns (int128 c0, int128 c1, int128 h0, int128 h1) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 id = PoolId.unwrap(etfKey.toId());
+        bytes32 swapSig = keccak256("Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)");
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics.length < 2 || logs[i].topics[1] != id) continue;
+            if (logs[i].emitter == address(manager) && logs[i].topics[0] == swapSig) {
+                (c0, c1) = abi.decode(logs[i].data, (int128, int128));
+            } else if (logs[i].emitter == address(hook) && logs[i].topics[0] == RealmEtfHook.HookSwap.selector) {
+                (h0, h1) = abi.decode(logs[i].data, (int128, int128));
+            }
+        }
+        assertTrue(c0 != 0 && c1 != 0, "curve swapped");
     }
 }

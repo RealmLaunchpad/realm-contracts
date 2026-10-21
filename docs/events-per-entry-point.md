@@ -824,7 +824,8 @@ Emits **`HookSet`** (`hook` indexed). Only ETFs created afterwards use it: each 
 1. New `RealmEtf`: `OwnershipTransferred(0, creator)`.
 2. USDG `Transfer` creator -> ETF, then one swap per asset (USDG -> asset).
 3. `RealmEtf`: `Transfer(0, DEAD, DEAD_SHARES)`, `Transfer(0, creator, shares)`, **`Seeded`** (`receiver` indexed, `assets`, `shares`).
-4. **`EtfCreated`** (`etf` indexed, `creator` indexed, `name`, `symbol`, `mode`, `assets`, `weightsBps`, `seedAssets`, `shares`). `mode` is the immutable `RealmEtf.Mode` (`0` FIXED, `1` REBALANCE, `2` FLEXIBLE).
+4. With a hook set: `PoolManager.Initialize` of the ETF's shares/USDG pool (fee 0, tick spacing 1) at the seed price.
+5. **`EtfCreated`** (`etf` indexed, `creator` indexed, `name`, `symbol`, `mode`, `assets`, `weightsBps`, `seedAssets`, `shares`). `mode` is the immutable `RealmEtf.Mode` (`0` FIXED, `1` REBALANCE, `2` FLEXIBLE).
 
 ### `RealmEtf` (one per ETF)
 
@@ -843,10 +844,19 @@ Emits **`HookSet`** (`hook` indexed). Only ETFs created afterwards use it: each 
 
 ### Swaps on an ETF's shares/USDG pool (`RealmEtfHook`)
 
-The pool holds no liquidity: `beforeSwap` fills every exact-input swap and every exact-output buy through the ETF (exact-output sells revert), and the `PoolManager.Swap` event that closes the swap carries the core curve's zero amounts. The hook emits nothing of its own.
+`beforeSwap` fills every exact-input swap and every exact-output buy through the ETF (exact-output sells revert), then places the ETF's output as a one-tick JIT position so the core curve fills all but a few raw units of the trade (`docs/etf-jit-math.md`). Common tail of every swap, after the ETF fill below:
 
-- Buy (USDG -> shares): USDG `Transfer` PoolManager -> hook, then the ETF's `deposit` events with `sender` = `owner` = hook, then shares `Transfer` hook -> PoolManager, then `PoolManager.Swap`.
-- Exact-output buy (exactly N shares out): USDG `Transfer` of the PoolManager's WHOLE USDG balance to the hook, then the ETF's `mint` events with `sender` = `owner` = hook (each swap paid by a USDG `Transfer` from the hook), then USDG `Transfer` hook -> PoolManager of what `mint` did not spend, then shares `Transfer` hook -> PoolManager, then `PoolManager.Swap`.
-- Sell (shares -> USDG): the ETF's swaps, USDG `Transfer` ETF -> hook, ERC-4626 **`Withdraw`** with `sender` = `receiver` = `owner` = hook (no share `Transfer`: nothing is burned), PoolManager ERC-6909 `Transfer(0, hook, ETF id)` (the hook's claim on the incoming shares), USDG `Transfer` hook -> PoolManager, `PoolManager.Swap`. The router's share `Transfer` to the PoolManager comes after. Those shares stay locked behind the hook's claim and drop out of the ETF's `totalSupply`.
-- Initializing a pool emits only `PoolManager.Initialize`; it reverts unless the pair is a factory ETF created with this hook, against USDG.
+1. Only when the pool's price is not already at the JIT range's starting edge: `PoolManager.Swap` with `sender` = hook and zero amounts (moves the empty pool's price).
+2. `PoolManager.ModifyLiquidity` (`sender` = hook, positive `liquidityDelta`): the JIT position.
+3. **`HookSwap`** (`id` indexed, `sender` indexed = the router, `amount0`, `amount1`, `hookLPfeeAmount0` = 0, `hookLPfeeAmount1` = 0): the part the hook filled itself, same signs as `PoolManager.Swap` (negative: paid by the swapper).
+4. `PoolManager.Swap` (`sender` = the router): the curve's part. Summed with `HookSwap`, the whole trade.
+5. `PoolManager.ModifyLiquidity` (`sender` = hook, negative `liquidityDelta`): the JIT position removed. The pool holds no liquidity again.
+6. Clearing what the hook is owed, each only if non-zero: USDG `Transfer` PoolManager -> ETF (an exact-input buy's unused `USDG_BUFFER`), then PoolManager ERC-6909 `Transfer(0, hook, ETF id)` (shares locked out of `totalSupply`: a sell's incoming shares, or an exact-output buy's unused share buffer).
+
+Without JIT (a protocol fee on the pool, or a trade the math cannot place) steps 1, 2 and 5 are absent, `HookSwap` carries the whole trade and `PoolManager.Swap` zero amounts.
+
+- Buy (USDG -> shares): USDG `Transfer` PoolManager -> hook (the input minus `USDG_BUFFER`), then the ETF's `deposit` events with `sender` = `owner` = hook, then shares `Transfer` hook -> PoolManager, then the tail.
+- Exact-output buy (exactly N shares out): USDG `Transfer` of the PoolManager's WHOLE USDG balance to the hook, then the ETF's `mint` events for N plus the share buffer, with `sender` = `owner` = hook (each swap paid by a USDG `Transfer` from the hook), then USDG `Transfer` hook -> PoolManager of what `mint` did not spend, then shares `Transfer` hook -> PoolManager, then the tail.
+- Sell (shares -> USDG): the ETF's swaps, USDG `Transfer` ETF -> hook, ERC-4626 **`Withdraw`** with `sender` = `receiver` = `owner` = hook (no share `Transfer`: nothing is burned), USDG `Transfer` hook -> PoolManager, then the tail (its step 6 locks the sold shares). The router's share `Transfer` to the PoolManager comes after.
+- Initializing a pool emits only `PoolManager.Initialize`; it reverts unless the pair is a factory ETF created with this hook, against USDG, with fee 0 and tick spacing 1. The factory initializes it at creation.
 

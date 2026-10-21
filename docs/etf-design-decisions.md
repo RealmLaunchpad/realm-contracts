@@ -9,7 +9,7 @@ Decisions on `RealmEtf*` (`src/etf/`) taken while comparing with Lots (lotsoncha
 | Rebalance modes (`FIXED` / `REBALANCE` / `FLEXIBLE`) | Built |
 | Keeper-executed rebalances at a random time | Built (propose/execute on chain; the random timing is keeper policy) |
 | `sunset()` + `reinvest()` for dead components | Built (`reinvest` keeper-gated, see below) |
-| JIT liquidity in the hook pool + `HookSwap` event | Preferred, not built |
+| JIT liquidity in the hook pool + `HookSwap` event | Built (uncommitted); math and proofs in `docs/etf-jit-math.md` |
 | `redeemInKind` reverts on a failed transfer; explicit `skipMask` to forfeit | Built (4-arg `redeemInKind` overload) |
 | Exact-output BUYS through the hook (ERC-4626 `mint()`) | Built |
 | Exact-output SELLS | Stay reverting (`ExactOutputNotSupported`) |
@@ -86,6 +86,6 @@ Price behaviour: the step-2 move emits an extra zero-amount `Swap` at ~the trade
 
 LP fees: the hook's position is the only liquidity, so the hook would earn any LP fee, in the swap's input currency (USDG on buys, ETF shares on sells). Realm tokens are not in this pool; Realm/ETF pairs keep their own `RealmHookAnyPair` fees. Set the LP fee to 0: the trader already pays every component pool's fee.
 
-Gas: a 3-asset hook buy costs ~713k today and a sell ~574k (fork tests, including test overhead). JIT adds an estimated 200-300k (unmeasured): fresh ticks and a position written then cleared every trade, the self-swap, the curve swap, `afterSwap`. Roughly +30-40% at 3 assets, +15-20% at 10.
+Gas (measured, 3-asset ETF): JIT adds 172k-244k per trade, +29-34%; see `docs/etf-jit-math.md`.
 
 Cost: new hook permissions (`afterSwap`, `afterSwapReturnDelta`), so a new hook address (none deployed yet). The tick sizing and rounding of step 3 is the delicate part and needs fuzzing.
