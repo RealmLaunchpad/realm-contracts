@@ -25,6 +25,7 @@ import {RealmEtf} from "src/etf/RealmEtf.sol";
 import {RealmEtfAssets, IEtfV3Pool} from "src/etf/RealmEtfAssets.sol";
 import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
 import {RealmEtfHook} from "src/etf/RealmEtfHook.sol";
+import {IAggregatorHook} from "src/interfaces/IAggregatorHook.sol";
 import {DeploymentAddressesRobinhoodMainnet as Mainnet} from "src/config/DeploymentAddresses.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
 import {installKeepersRegistry} from "test/helpers/KeepersRegistryHelpers.sol";
@@ -628,6 +629,68 @@ contract RealmEtfTest is Test {
         PoolModifyLiquidityTest lp = new PoolModifyLiquidityTest(manager);
         vm.expectRevert();
         lp.modifyLiquidity(etfKey, ModifyLiquidityParams(-60, 60, 1e18, 0), "");
+    }
+
+    function test_hook_registersEachEtfPool() public {
+        assertEq(address(hook.etfOfPool(etfKey.toId())), address(etf));
+
+        address[] memory assets = etf.getAssets();
+        uint16[] memory weights = new uint16[](assets.length);
+        for (uint256 i; i < assets.length; ++i) {
+            weights[i] = uint16(10_000 / assets.length);
+        }
+        weights[0] += uint16(10_000 % assets.length);
+        deal(USDG, creator, SEED);
+        vm.startPrank(creator);
+        IERC20(USDG).approve(address(factory), SEED);
+        vm.recordLogs();
+        address fresh = factory.createEtf(
+            "Tech ETF", "TECH", RealmEtf.Mode.FLEXIBLE, assets, weights, SEED, new uint256[](assets.length)
+        );
+        vm.stopPrank();
+
+        PoolId id = _key(fresh, USDG, 0, 1, address(hook)).toId();
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 registered;
+        for (uint256 i; i < logs.length; ++i) {
+            if (
+                logs[i].emitter == address(hook)
+                    && logs[i].topics[0] == IAggregatorHook.AggregatorPoolRegistered.selector
+            ) {
+                assertEq(logs[i].topics[1], PoolId.unwrap(id));
+                ++registered;
+            }
+        }
+        assertEq(registered, 1);
+        assertEq(address(hook.etfOfPool(id)), fresh);
+    }
+
+    function test_hook_quoteMatchesTheEtfPreviews() public {
+        PoolId id = etfKey.toId();
+        bool buyIsZeroToOne = Currency.unwrap(etfKey.currency0) == USDG;
+        assertEq(hook.quote(buyIsZeroToOne, -1_000e6, id), etf.previewDeposit(1_000e6), "exact-in buy");
+        assertEq(hook.quote(!buyIsZeroToOne, -10e18, id), etf.previewRedeem(10e18), "exact-in sell");
+        assertEq(hook.quote(buyIsZeroToOne, 10e18, id), etf.previewMint(10e18), "exact-out buy");
+        vm.expectRevert(RealmEtfHook.ExactOutputNotSupported.selector);
+        hook.quote(!buyIsZeroToOne, 1_000e6, id);
+
+        // Within the swap's fees and impact of what the pool actually pays.
+        assertApproxEqRel(_swap(alice, USDG, 1_000e6), hook.quote(buyIsZeroToOne, -1_000e6, id), 0.03e18);
+    }
+
+    function test_hook_pseudoTotalValueLockedIsNavAndSupply() public view {
+        (uint256 a0, uint256 a1) = hook.pseudoTotalValueLocked(etfKey.toId());
+        (uint256 usdg, uint256 shares) = Currency.unwrap(etfKey.currency0) == USDG ? (a0, a1) : (a1, a0);
+        assertEq(usdg, etf.totalAssets());
+        assertEq(shares, etf.totalSupply());
+    }
+
+    function test_hook_unknownPoolHasNoQuoteOrTvl() public {
+        PoolId unknown = PoolId.wrap(bytes32(uint256(1)));
+        vm.expectRevert(IAggregatorHook.PoolDoesNotExist.selector);
+        hook.quote(true, -1e6, unknown);
+        vm.expectRevert(IAggregatorHook.PoolDoesNotExist.selector);
+        hook.pseudoTotalValueLocked(unknown);
     }
 
     function test_hook_poolOpensAtTheSeedPrice() public view {
@@ -1443,14 +1506,13 @@ contract RealmEtfTest is Test {
     }
 
     /// @dev Checks the recorded swap went through the curve: the pool manager's `Swap` carries all but a sliver of
-    ///      the trade (`paid` in, `received` out), `HookSwap` the rest, they sum to the trade, the pool ends
-    ///      empty and its price within 2 ticks of the trade's.
+    ///      the trade (`paid` in, `received` out), `HookSwap` the rest (hook-side signs), they sum to the trade,
+    ///      the pool ends empty and its price within 2 ticks of the trade's.
     function _assertJit(uint256 paid, uint256 received) internal {
-        (int128 c0, int128 c1, int128 h0, int128 h1) = _swapEvents();
+        (int128 c0, int128 c1, int256 h0, int256 h1) = _swapEvents();
         (uint256 curveIn, uint256 curveOut) =
             c0 < 0 ? (uint256(int256(-c0)), uint256(int256(c1))) : (uint256(int256(-c1)), uint256(int256(c0)));
-        (uint256 hookIn, uint256 hookOut) =
-            c0 < 0 ? (uint256(int256(-h0)), uint256(int256(h1))) : (uint256(int256(-h1)), uint256(int256(h0)));
+        (uint256 hookIn, uint256 hookOut) = c0 < 0 ? (uint256(h0), uint256(-h1)) : (uint256(h1), uint256(-h0));
         assertEq(curveIn + hookIn, paid, "paid = curve + hook");
         assertEq(curveOut + hookOut, received, "received = curve + hook");
         assertGe(curveIn * 10_000, paid * 9_997, "curve fills >= 99.97% in");
@@ -1547,7 +1609,7 @@ contract RealmEtfTest is Test {
     }
 
     /// @dev The last `Swap` of the ETF pool (the curve) and the hook's `HookSwap`, from the recorded logs.
-    function _swapEvents() internal returns (int128 c0, int128 c1, int128 h0, int128 h1) {
+    function _swapEvents() internal returns (int128 c0, int128 c1, int256 h0, int256 h1) {
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 id = PoolId.unwrap(etfKey.toId());
         bytes32 swapSig = keccak256("Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)");
@@ -1555,8 +1617,8 @@ contract RealmEtfTest is Test {
             if (logs[i].topics.length < 2 || logs[i].topics[1] != id) continue;
             if (logs[i].emitter == address(manager) && logs[i].topics[0] == swapSig) {
                 (c0, c1) = abi.decode(logs[i].data, (int128, int128));
-            } else if (logs[i].emitter == address(hook) && logs[i].topics[0] == RealmEtfHook.HookSwap.selector) {
-                (h0, h1) = abi.decode(logs[i].data, (int128, int128));
+            } else if (logs[i].emitter == address(hook) && logs[i].topics[0] == IAggregatorHook.HookSwap.selector) {
+                (h0, h1,) = abi.decode(logs[i].data, (int256, int256, uint24));
             }
         }
         assertTrue(c0 != 0 && c1 != 0, "curve swapped");

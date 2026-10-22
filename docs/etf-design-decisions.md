@@ -68,7 +68,7 @@ With JIT liquidity the pool manager's `Swap` events and `slot0` carry the trade 
 
 ## Scanner visibility: JIT liquidity
 
-Without JIT, the ETF/USDG hook pool holds no liquidity and `beforeSwap` takes the whole input, so the pool manager emits its `Swap` for that pool with zero amounts and an unchanged price: the USDG <-> ETF leg is invisible to scanners. A standing position (Lots' approach) needs hook-owned capital and is not wanted. Built instead: JIT liquidity plus OpenZeppelin's `HookSwap` event. Sizing, rounding and proofs: `docs/etf-jit-math.md`.
+Without JIT, the ETF/USDG hook pool holds no liquidity and `beforeSwap` takes the whole input, so the pool manager emits its `Swap` for that pool with zero amounts and an unchanged price: the USDG <-> ETF leg is invisible to scanners. A standing position (Lots' approach) needs hook-owned capital and is not wanted. Built instead: JIT liquidity plus the `HookSwap` event of Uniswap's `IAggregatorHook`, which the hook implements in full (`quote` from the ETF's previews, `pseudoTotalValueLocked` = NAV in USDG and share supply, `AggregatorPoolRegistered` at pool creation) so Uniswap's routing and indexing can treat the pool like its own aggregator hooks. It does not implement `protocolFeeFlags`: self-reporting the aggregator flag puts the pool in Uniswap's aggregator fee family (40 pips per direction on Robinhood, 2026-10-22), and any protocol fee turns JIT off. Sizing, rounding and proofs: `docs/etf-jit-math.md`.
 
 Mechanics of a buy (exact input A USDG):
 

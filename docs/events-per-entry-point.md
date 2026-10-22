@@ -830,7 +830,7 @@ Reverts `SeedTooSmall` when `seedAssets < minSeedAssets`.
 1. New `RealmEtf`: `OwnershipTransferred(0, creator)`.
 2. USDG `Transfer` creator -> ETF, then one swap per asset (USDG -> asset).
 3. `RealmEtf`: `Transfer(0, DEAD, DEAD_SHARES)`, `Transfer(0, creator, shares)`, **`Seeded`** (`receiver` indexed, `assets`, `shares`), **`NavUpdated`**.
-4. With a hook set: `PoolManager.Initialize` of the ETF's shares/USDG pool (fee 0, tick spacing 1) at the seed price.
+4. With a hook set: **`RealmEtfHook.AggregatorPoolRegistered`** (`poolId` indexed), then `PoolManager.Initialize` of the ETF's shares/USDG pool (fee 0, tick spacing 1) at the seed price.
 5. **`EtfCreated`** (`etf` indexed, `creator` indexed, `name`, `symbol`, `mode`, `assets`, `weightsBps`, `seedAssets`, `shares`). `mode` is the immutable `RealmEtf.Mode` (`0` FIXED, `1` REBALANCE, `2` FLEXIBLE).
 
 ### `RealmEtf` (one per ETF)
@@ -858,8 +858,8 @@ Reverts `SeedTooSmall` when `seedAssets < minSeedAssets`.
 
 1. Only when the pool's price is not already at the JIT range's starting edge: `PoolManager.Swap` with `sender` = hook and zero amounts (moves the empty pool's price).
 2. `PoolManager.ModifyLiquidity` (`sender` = hook, positive `liquidityDelta`): the JIT position.
-3. **`HookSwap`** (`id` indexed, `sender` indexed = the router, `amount0`, `amount1`, `hookLPfeeAmount0` = 0, `hookLPfeeAmount1` = 0): the part the hook filled itself, same signs as `PoolManager.Swap` (negative: paid by the swapper).
-4. `PoolManager.Swap` (`sender` = the router): the curve's part. Summed with `HookSwap`, the whole trade.
+3. **`HookSwap`** (`poolId` indexed, `sender` indexed = the router, `amount0`, `amount1` as `int256`, `swapFee` = 0): Uniswap's aggregator-hook event, the part the hook filled itself, signed from the hook's side (positive: paid by the swapper, the opposite of `PoolManager.Swap`).
+4. `PoolManager.Swap` (`sender` = the router): the curve's part. `Swap` minus `HookSwap` is the whole trade.
 5. `PoolManager.ModifyLiquidity` (`sender` = hook, negative `liquidityDelta`): the JIT position removed. The pool holds no liquidity again.
 6. Clearing what the hook is owed, each only if non-zero: USDG `Transfer` PoolManager -> ETF (an exact-input buy's unused `USDG_BUFFER`), then PoolManager ERC-6909 `Transfer(0, hook, ETF id)` (shares locked out of `totalSupply`: a sell's incoming shares, or an exact-output buy's unused share buffer).
 
@@ -868,5 +868,5 @@ Without JIT (a protocol fee on the pool, a trade the math cannot place, or a swa
 - Buy (USDG -> shares): USDG `Transfer` PoolManager -> hook (the input minus `USDG_BUFFER`), then the ETF's `deposit` events with `sender` = `owner` = hook, then shares `Transfer` hook -> PoolManager, then the tail.
 - Exact-output buy (exactly N shares out): USDG `Transfer` PoolManager -> hook of twice `previewMint`'s estimate for N plus the share buffer, plus `MINT_LOAN_PAD` (or the PoolManager's whole USDG balance if smaller), then the ETF's `mint` events for N plus the share buffer, with `sender` = `owner` = hook (each swap paid by a USDG `Transfer` from the hook), then USDG `Transfer` hook -> PoolManager of what `mint` did not spend, then shares `Transfer` hook -> PoolManager, then the tail.
 - Sell (shares -> USDG): the exit fee minted to the creator (`Transfer(0, creator, fee)`, **`ExitFeeCharged`**), the ETF's swaps, USDG `Transfer` ETF -> hook, ERC-4626 **`Withdraw`** with `sender` = `receiver` = `owner` = hook (no share `Transfer`: nothing is burned), **`NavUpdated`** (its `totalSupply` already without the sold shares), USDG `Transfer` hook -> PoolManager, then the tail (its step 6 locks the sold shares). The router's share `Transfer` to the PoolManager comes after.
-- Initializing a pool emits only `PoolManager.Initialize`; it reverts unless the pair is a factory ETF created with this hook, against USDG, with fee 0 and tick spacing 1. The factory initializes it at creation.
+- Initializing a pool emits **`AggregatorPoolRegistered`** (`poolId` indexed) then `PoolManager.Initialize`; it reverts unless the pair is a factory ETF created with this hook, against USDG, with fee 0 and tick spacing 1. The factory initializes it at creation.
 

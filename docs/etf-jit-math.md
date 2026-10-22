@@ -110,7 +110,7 @@ In these cases the trade still executes; only its `Swap` event reads zero.
 
 ## Events
 
-The pool manager's `Swap` reports the curve portion `(inC, outC)`. The hook emits `HookSwap(poolId, sender, amount0, amount1, 0, 0)` for its own portion, in the same sign convention as `Swap` (negative: paid by the swapper). An indexer summing both gets exactly what the swapper paid and received.
+The pool manager's `Swap` reports the curve portion `(inC, outC)`. The hook emits Uniswap's aggregator-hook `HookSwap(poolId, sender, amount0, amount1, 0)` for its own portion, signed from the hook's side (positive: paid by the swapper), the opposite of `Swap`. `Swap` minus `HookSwap` is exactly what the swapper paid and received.
 
 ## Gas
 

@@ -22,6 +22,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {RealmEtf} from "src/etf/RealmEtf.sol";
 import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
 import {RealmEtfJitMath} from "src/etf/RealmEtfJitMath.sol";
+import {IAggregatorHook} from "src/interfaces/IAggregatorHook.sol";
 
 /// @title RealmEtfHook
 /// @notice Makes ETF shares tradable as a normal V4 token: a shares/USDG pool where every swap is filled by
@@ -58,7 +59,12 @@ import {RealmEtfJitMath} from "src/etf/RealmEtfJitMath.sol";
 /// @dev ROUNDING DUST. The core rounds the JIT position's removal down, so the hook gets back a few raw units
 ///      less than the curve took. The swapper absorbs that on the side the hook does not specify; on the side
 ///      it does, `USDG_BUFFER` / `SHARES_BUFFER` cover it, or the trade falls back to no JIT.
-contract RealmEtfHook is BaseHook {
+///
+/// @dev UNISWAP AGGREGATOR HOOK. Implements Uniswap's `IAggregatorHook` (`quote`, `pseudoTotalValueLocked`,
+///      `AggregatorPoolRegistered`, `HookSwap`), so Uniswap's routing and indexing can treat the pool like the
+///      aggregator hooks they deploy. No `protocolFeeFlags`: self-reporting the aggregator flag would put the
+///      pool in Uniswap's aggregator fee family, whose protocol fee turns JIT off.
+contract RealmEtfHook is BaseHook, IAggregatorHook {
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
     using SafeCast for int256;
@@ -99,20 +105,11 @@ contract RealmEtfHook is BaseHook {
     uint256 private transient _hookIn;
     uint256 private transient _hookOut;
 
-    /// @notice The part of a swap the hook filled itself, outside the curve. Same signs as the pool manager's
-    ///         `Swap` (negative: paid by the swapper); the two events sum to the whole trade.
-    event HookSwap(
-        bytes32 indexed id,
-        address indexed sender,
-        int128 amount0,
-        int128 amount1,
-        uint128 hookLPfeeAmount0,
-        uint128 hookLPfeeAmount1
-    );
+    /// @notice The ETF behind each pool this hook initialized.
+    mapping(PoolId => RealmEtf) public etfOfPool;
 
     error NotEtfPool();
     error InvalidPoolKey();
-    error LiquidityNotAccepted();
     error ExactOutputNotSupported();
     /// @notice The curve did not fill what the JIT position was sized for. A safety check: the hook already skips
     ///         JIT when the swapper's price limit falls inside the range.
@@ -143,9 +140,11 @@ contract RealmEtfHook is BaseHook {
     }
 
     /// @dev Only a fee-0, tick-spacing-1 ETF/USDG pool may use this hook (the JIT math assumes both).
-    function _beforeInitialize(address, PoolKey calldata key, uint160) internal view override returns (bytes4) {
-        _etfOf(key);
+    function _beforeInitialize(address, PoolKey calldata key, uint160) internal override returns (bytes4) {
+        RealmEtf etf = _etfOf(key);
         require(key.fee == 0 && key.tickSpacing == 1, InvalidPoolKey());
+        etfOfPool[key.toId()] = etf;
+        emit AggregatorPoolRegistered(key.toId());
         return this.beforeInitialize.selector;
     }
 
@@ -155,7 +154,32 @@ contract RealmEtfHook is BaseHook {
         override
         returns (bytes4)
     {
-        revert LiquidityNotAccepted();
+        revert LiquidityNotAllowed();
+    }
+
+    /// @notice The ETF's own preview of the trade: an estimate at spot prices, before the component pools' fees
+    ///         and impact (see `RealmEtf.totalAssets`). Exact-output sells revert, as the swap does.
+    /// @dev ponytail: spot previews; simulate the swap (unlock + revert) if routers need exact quotes.
+    function quote(bool zeroToOne, int256 amountSpecified, PoolId poolId) external view returns (uint256) {
+        RealmEtf etf = etfOfPool[poolId];
+        require(address(etf) != address(0), PoolDoesNotExist());
+        // USDG is token0 when it sorts below the ETF.
+        bool buy = zeroToOne == (USDG < address(etf));
+        if (amountSpecified < 0) {
+            uint256 amountIn = uint256(-amountSpecified);
+            return buy ? etf.previewDeposit(amountIn) : etf.previewRedeem(amountIn);
+        }
+        require(buy, ExactOutputNotSupported());
+        return etf.previewMint(uint256(amountSpecified));
+    }
+
+    /// @notice What the pool can deliver: the ETF's NAV in USDG (a sell can redeem up to all of it) and its
+    ///         share supply (a buy mints, so this is a proxy for depth, not a cap).
+    function pseudoTotalValueLocked(PoolId poolId) external view returns (uint256 amount0, uint256 amount1) {
+        RealmEtf etf = etfOfPool[poolId];
+        require(address(etf) != address(0), PoolDoesNotExist());
+        (uint256 usdg, uint256 shares) = (etf.totalAssets(), etf.totalSupply());
+        return USDG < address(etf) ? (usdg, shares) : (shares, usdg);
     }
 
     function _beforeSwap(address sender, PoolKey calldata key, SwapParams calldata params, bytes calldata)
@@ -229,12 +253,14 @@ contract RealmEtfHook is BaseHook {
         return exactIn ? toBeforeSwapDelta(inDelta, outDelta) : toBeforeSwapDelta(outDelta, inDelta);
     }
 
+    /// @dev Uniswap's aggregator-hook signs, the hook's side: positive in, negative out, the opposite of the
+    ///      pool manager's `Swap`. The swapper's whole trade is `Swap` minus `HookSwap`. No protocol fee: 0.
     function _emitHookSwap(PoolKey calldata key, address sender, bool zeroForOne, uint256 hookIn, uint256 hookOut)
         private
     {
-        (int128 paid, int128 received) = (-hookIn.toInt256().toInt128(), hookOut.toInt256().toInt128());
-        (int128 amount0, int128 amount1) = zeroForOne ? (paid, received) : (received, paid);
-        emit HookSwap(PoolId.unwrap(key.toId()), sender, amount0, amount1, 0, 0);
+        (int256 taken, int256 given) = (hookIn.toInt256(), -hookOut.toInt256());
+        (int256 amount0, int256 amount1) = zeroForOne ? (taken, given) : (given, taken);
+        emit HookSwap(key.toId(), sender, amount0, amount1, 0);
     }
 
     /// @dev Removes the JIT position once the curve has filled exactly its predicted part, then clears what the
