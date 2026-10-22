@@ -60,9 +60,11 @@ library DeploymentsRobinhoodMainnet {
     address public constant ASSETS_WHITELIST_IMPL = 0x233Fd9e6A79fB80c90f50c23Bc9aA57d0417F952;
 
     // --- ETFs ---
-    /// @notice `RealmEtfAssets`: the assets ETFs may hold and their USDG routes. Not upgradeable: the factory
+    /// @notice `RealmEtfAssets` proxy (UUPS): the assets ETFs may hold and their USDG routes. The factory
     ///         implementation and every ETF bake it in. Deployed by `DeployRealmEtf`; `address(0)` until then.
     address internal constant ETF_ASSETS = address(0);
+    /// @notice Implementation behind `ETF_ASSETS`. Tracked for verification and audit trails only.
+    address internal constant ETF_ASSETS_IMPL = address(0);
     /// @notice `RealmEtfFactory` proxy (UUPS): where ETFs are created. `ETF_HOOK` bakes it in.
     address internal constant ETF_FACTORY = address(0);
     /// @notice Implementation behind `ETF_FACTORY`. Tracked for verification and audit trails only.

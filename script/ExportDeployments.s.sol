@@ -35,6 +35,7 @@ contract ExportDeployments is Script {
         address assetsWhitelist;
         address assetsWhitelistImpl;
         address etfAssets;
+        address etfAssetsImpl;
         address etfFactory;
         address etfFactoryImpl;
         address etfHook;
@@ -108,6 +109,7 @@ contract ExportDeployments is Script {
         d.assetsWhitelist = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST;
         d.assetsWhitelistImpl = DeploymentsRobinhoodMainnet.ASSETS_WHITELIST_IMPL;
         d.etfAssets = DeploymentsRobinhoodMainnet.ETF_ASSETS;
+        d.etfAssetsImpl = DeploymentsRobinhoodMainnet.ETF_ASSETS_IMPL;
         d.etfFactory = DeploymentsRobinhoodMainnet.ETF_FACTORY;
         d.etfFactoryImpl = DeploymentsRobinhoodMainnet.ETF_FACTORY_IMPL;
         d.etfHook = DeploymentsRobinhoodMainnet.ETF_HOOK;
@@ -167,6 +169,7 @@ contract ExportDeployments is Script {
         d.assetsWhitelist = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST;
         d.assetsWhitelistImpl = DeploymentsRobinhoodTestnet.ASSETS_WHITELIST_IMPL;
         d.etfAssets = DeploymentsRobinhoodTestnet.ETF_ASSETS;
+        d.etfAssetsImpl = DeploymentsRobinhoodTestnet.ETF_ASSETS_IMPL;
         d.etfFactory = DeploymentsRobinhoodTestnet.ETF_FACTORY;
         d.etfFactoryImpl = DeploymentsRobinhoodTestnet.ETF_FACTORY_IMPL;
         d.etfHook = DeploymentsRobinhoodTestnet.ETF_HOOK;
@@ -231,7 +234,8 @@ contract ExportDeployments is Script {
         s = string.concat(s, _row("RealmFactoryUniV4Direct (impl)", d.factoryUniV4DirectImpl));
         s = string.concat(s, _row("RealmAssetsWhitelist (proxy)", d.assetsWhitelist));
         s = string.concat(s, _row("RealmAssetsWhitelist (impl)", d.assetsWhitelistImpl));
-        s = string.concat(s, _row("RealmEtfAssets", d.etfAssets));
+        s = string.concat(s, _row("RealmEtfAssets (proxy)", d.etfAssets));
+        s = string.concat(s, _row("RealmEtfAssets (impl)", d.etfAssetsImpl));
         s = string.concat(s, _row("RealmEtfFactory (proxy)", d.etfFactory));
         s = string.concat(s, _row("RealmEtfFactory (impl)", d.etfFactoryImpl));
         s = string.concat(s, _row("RealmEtfHook", d.etfHook));

@@ -436,9 +436,9 @@ upgrade-direct-factory-rh-testnet: chain-rh-testnet
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # --- ETFs --------------------------------------------------------------------
-# `RealmEtfAssets` + `RealmEtfFactory` (impl + UUPS proxy) + `RealmEtfHook` (mined salt), factory pointed at
+# `RealmEtfAssets` + `RealmEtfFactory` (each impl + UUPS proxy) + `RealmEtfHook` (mined salt), factory pointed at
 # the hook. Once per chain (testnet, then mainnet). The broadcaster owns registry and factory and is no
-# approver yet. Paste the four printed slots into the manifest and `just export-deployments`. Dry-run first:
+# approver yet. Paste the five printed slots into the manifest and `just export-deployments`. Dry-run first:
 # the same command without --broadcast. `--disable-code-size-limit`: the factory embeds `RealmEtf` (>24 KB).
 deploy-etf-rh: chain-rh
     forge script DeployRealmEtf --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
@@ -467,6 +467,16 @@ upgrade-etf-factory-rh: chain-rh
 upgrade-etf-factory-rh-testnet: chain-rh-testnet
     forge script UpgradeRealmEtfFactory --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_testnet_verify}}
+
+# New `RealmEtfAssets` implementation (same pool manager, factories, USDG) behind ETF_ASSETS: reaches every
+# ETF at once. Broadcaster must own the registry. Paste ETF_ASSETS_IMPL.
+upgrade-etf-assets-rh: chain-rh
+    forge script UpgradeRealmEtfAssets --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_verify}}
+
+upgrade-etf-assets-rh-testnet: chain-rh-testnet
+    forge script UpgradeRealmEtfAssets --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # Regenerates deployments.robinhood.{mainnet,testnet}.md from the matching .sol manifests.
 # CI runs the same command and fails if the result is not committed.

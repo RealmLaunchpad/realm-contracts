@@ -49,6 +49,27 @@ interface IV3PoolMint {
         returns (uint256 amount0, uint256 amount1);
 }
 
+/// @dev A V3 "pool" an upgraded registry could route to: asks its callback for one more than the exact input,
+///      or for the exact input twice.
+contract GreedyV3Pool {
+    address public immutable token0;
+    bool public immutable twice;
+
+    constructor(address token0_, bool twice_) {
+        (token0, twice) = (token0_, twice_);
+    }
+
+    function swap(address, bool, int256 amountSpecified, uint160, bytes calldata data)
+        external
+        returns (int256, int256)
+    {
+        int256 owed = twice ? amountSpecified : amountSpecified + 1;
+        RealmEtf(msg.sender).uniswapV3SwapCallback(owed, 0, data);
+        if (twice) RealmEtf(msg.sender).uniswapV3SwapCallback(owed, 0, data);
+        return (amountSpecified, 0);
+    }
+}
+
 /// @notice ETF ETFs on a Robinhood mainnet fork: real rStocks on their real USDG pools (SPY and META on
 ///         V4, NVDA and QQQ on V3).
 contract RealmEtfTest is Test {
@@ -84,7 +105,14 @@ contract RealmEtfTest is Test {
     function setUp() public {
         vm.createSelectFork(vm.envString("ROBINHOOD_RPC_URL"), BLOCKNUMBER);
         installKeepersRegistry(owner, keeper);
-        registry = new RealmEtfAssets(owner, address(manager), Mainnet.UNIV3_FACTORY, Mainnet.UNIV2_FACTORY, USDG);
+        registry = RealmEtfAssets(
+            address(
+                new ERC1967Proxy(
+                    address(new RealmEtfAssets(address(manager), Mainnet.UNIV3_FACTORY, Mainnet.UNIV2_FACTORY, USDG)),
+                    abi.encodeCall(RealmEtfAssets.initialize, (owner))
+                )
+            )
+        );
         vm.prank(owner);
         registry.setApprover(approver, true);
         vm.startPrank(approver);
@@ -545,7 +573,9 @@ contract RealmEtfTest is Test {
 
         deal(USDG, alice, 1_000e6);
         SwapParams memory params = _params(USDG, 1_000e6, true);
-        params.sqrtPriceLimitX96 = params.zeroForOne ? end + 1 : end - 1;
+        // ~2e-10 of the price short of `end`: well inside the move (~5e-5), and not a few raw units, which can
+        // round to the same fill when the share is currency1 (sqrt price ~1e35).
+        params.sqrtPriceLimitX96 = params.zeroForOne ? end + (end >> 32) : end - (end >> 32);
         vm.startPrank(alice);
         IERC20(USDG).approve(address(router), 1_000e6);
         vm.expectRevert(
@@ -805,6 +835,31 @@ contract RealmEtfTest is Test {
         factory.upgradeToAndCall(impl, "");
         assertTrue(factory.isEtf(address(etf)));
         assertEq(factory.hook(), address(hook));
+    }
+
+    function test_registry_onlyOwnerUpgradesAndStateSurvives() public {
+        address impl = address(new RealmEtfAssets(address(manager), Mainnet.UNIV3_FACTORY, Mainnet.UNIV2_FACTORY, USDG));
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        registry.upgradeToAndCall(impl, "");
+
+        vm.prank(owner);
+        registry.upgradeToAndCall(impl, "");
+        assertTrue(registry.isApprover(approver));
+        assertEq(registry.routeOf(NVDA).pool, NVDA_V3);
+    }
+
+    /// @dev A registry upgrade can point a route at any contract: the ETF still pays each V3 swap at most its exact
+    ///      input, once, so the holdings at rest stay out of reach.
+    function test_v3Callback_paysAtMostTheExactInputOnce() public {
+        uint256 shares = etf.balanceOf(creator) / 10;
+        for (uint256 i; i < 2; ++i) {
+            RealmEtfAssets.Route memory route = _v3Route(address(new GreedyV3Pool(NVDA, i == 1)));
+            vm.mockCall(address(registry), abi.encodeCall(RealmEtfAssets.routeOf, (NVDA)), abi.encode(route));
+            vm.prank(creator);
+            vm.expectRevert(RealmEtf.Unauthorized.selector);
+            etf.redeem(shares, creator, creator);
+        }
     }
 
     function test_hook_rejectsEtfsCreatedWithAnotherHook() public {

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
+import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
+import {
+    Ownable2StepUpgradeable
+} from "lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -45,7 +49,13 @@ interface IEtfV2Factory {
 ///         a V2 pair, a V3 pool or a V4 pool. Stricter than `RealmAssetsWhitelist` (the pairs list): an asset is here
 ///         only once its USDG route is proven. The route also prices the asset (`usdgValueOf`), at spot.
 ///
-/// @dev TWO TIERS: the owner manages approvers, approvers list assets.
+/// @dev TWO TIERS: the owner (cold multisig) manages approvers and upgrades, approvers list assets.
+///
+/// @dev UPGRADEABLE (UUPS, owner-authorised) because every ETF bakes this address in: an upgrade fixes pricing,
+///      validation or listing rules for all of them at once. It cannot teach an existing ETF a new venue (the
+///      swap code is in the ETF). What a malicious upgrade can reach is bounded by the ETF: it can misprice and
+///      misroute the swaps in flight (a deposit's USDG, a redemption's slice, a rebalance), never the holdings
+///      at rest, since an ETF pays each swap at most its exact input (`RealmEtf.uniswapV3SwapCallback`).
 ///
 /// @dev ROUTES ARE NEVER CLEARED, only replaced. An ETF swaps through the route on every deposit and
 ///      redemption, so clearing one would brick every ETF holding the asset. Delisting (`setListed(false)`)
@@ -55,7 +65,7 @@ interface IEtfV2Factory {
 /// @dev SUNSET is for a dead TOKEN (delisted, acquired, paused for good), which no route can fix: ETFs stop
 ///      buying, selling and valuing it, so their deposits and redemptions work again, but still hand it out in
 ///      `redeemInKind`. Owner only and one-way. A malicious owner can cut ETFs' NAV with it, but moves nothing.
-contract RealmEtfAssets is Ownable2Step {
+contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -74,7 +84,12 @@ contract RealmEtfAssets is Ownable2Step {
         PoolKey key;
     }
 
+    /// @notice Contract version.
+    uint256 public constant VERSION = 1;
+
     /// @notice The Uniswap V4 pool manager every V4 route lives on.
+    /// @dev This and the other immutables live in the implementation's bytecode. ETFs copy `POOL_MANAGER` and
+    ///      `USDG` at creation, so an upgrade must keep both.
     IPoolManager public immutable POOL_MANAGER;
 
     /// @notice Uniswap's V3 factory; V3 routes must be pools it created.
@@ -108,13 +123,17 @@ contract RealmEtfAssets is Ownable2Step {
     error InvalidRoute();
     error NoRoute();
 
-    constructor(address initialOwner, address poolManager, address univ3Factory, address univ2Factory, address usdg)
-        Ownable(initialOwner)
-    {
+    constructor(address poolManager, address univ3Factory, address univ2Factory, address usdg) {
         POOL_MANAGER = IPoolManager(poolManager);
         UNIV3_FACTORY = univ3Factory;
         UNIV2_FACTORY = univ2Factory;
         USDG = usdg;
+        _disableInitializers();
+    }
+
+    /// @param initialOwner cold multisig: manages approvers, sunsets assets and upgrades
+    function initialize(address initialOwner) external initializer {
+        __Ownable_init(initialOwner);
     }
 
     function setApprover(address account, bool allowed) external onlyOwner {
@@ -203,4 +222,6 @@ contract RealmEtfAssets is Ownable2Step {
         }
         require((t0 == asset && t1 == USDG) || (t0 == USDG && t1 == asset), InvalidRoute());
     }
+
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 }

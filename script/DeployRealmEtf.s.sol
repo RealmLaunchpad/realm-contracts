@@ -33,7 +33,7 @@ abstract contract EtfHookDeployer is Script {
 }
 
 /// @title Deploy the ETF stack
-/// @notice `RealmEtfAssets`, `RealmEtfFactory` (impl + UUPS proxy) and `RealmEtfHook`, with the factory pointed
+/// @notice `RealmEtfAssets` and `RealmEtfFactory` (each impl + UUPS proxy) and `RealmEtfHook`, with the factory pointed
 ///         at the hook. The broadcaster owns the registry and the factory and is NOT an approver: appoint one
 ///         (`setApprover`) before listing assets, then hand both contracts to the multisig.
 /// @dev    Run: just deploy-etf-<rh|rh-testnet>. Dry-run: the same `forge script` without --broadcast.
@@ -44,7 +44,9 @@ contract DeployRealmEtf is EtfHookDeployer {
         (address univ2Factory, address univ3Factory) = ChainConfig.univ2And3Factories();
 
         vm.startBroadcast();
-        RealmEtfAssets registry = new RealmEtfAssets(owner, poolManager, univ3Factory, univ2Factory, ChainConfig.usdg());
+        address registryImpl = address(new RealmEtfAssets(poolManager, univ3Factory, univ2Factory, ChainConfig.usdg()));
+        RealmEtfAssets registry =
+            RealmEtfAssets(address(new ERC1967Proxy(registryImpl, abi.encodeCall(RealmEtfAssets.initialize, (owner)))));
         address impl = address(new RealmEtfFactory(registry));
         RealmEtfFactory factory =
             RealmEtfFactory(address(new ERC1967Proxy(impl, abi.encodeCall(RealmEtfFactory.initialize, (owner)))));
@@ -53,6 +55,7 @@ contract DeployRealmEtf is EtfHookDeployer {
 
         console.log("=== Deployed. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
         console.log("  ETF_ASSETS =", address(registry));
+        console.log("  ETF_ASSETS_IMPL =", registryImpl);
         console.log("  ETF_FACTORY =", address(factory));
         console.log("  ETF_FACTORY_IMPL =", impl);
         console.log("  ETF_HOOK =", hook);
@@ -97,6 +100,30 @@ contract UpgradeRealmEtfFactory is Script {
         require(factory.REGISTRY() == registry && factory.hook() == hook, "post-upgrade: wiring moved");
         console.log("=== Upgraded. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
         console.log("  ETF_FACTORY_IMPL =", impl);
+        console.log("Then: just export-deployments");
+    }
+}
+
+/// @title Upgrade the ETF asset registry
+/// @notice Deploys a new `RealmEtfAssets` implementation, on the live proxy's pool manager, factories and USDG,
+///         and upgrades `ETF_ASSETS` to it. Reaches every ETF at once: routes, listings and approvers stay.
+/// @dev    Run: just upgrade-etf-assets-<rh|rh-testnet>. The broadcaster must own the registry.
+contract UpgradeRealmEtfAssets is Script {
+    function run() external {
+        RealmEtfAssets registry = RealmEtfAssets(ChainConfig.etfAssets());
+        IPoolManager poolManager = registry.POOL_MANAGER();
+        address usdg = registry.USDG();
+
+        vm.startBroadcast();
+        address impl =
+            address(new RealmEtfAssets(address(poolManager), registry.UNIV3_FACTORY(), registry.UNIV2_FACTORY(), usdg));
+        UUPSUpgradeable(address(registry)).upgradeToAndCall(impl, "");
+        vm.stopBroadcast();
+
+        // ETFs copied both at creation.
+        require(registry.POOL_MANAGER() == poolManager && registry.USDG() == usdg, "post-upgrade: wiring moved");
+        console.log("=== Upgraded. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
+        console.log("  ETF_ASSETS_IMPL =", impl);
         console.log("Then: just export-deployments");
     }
 }

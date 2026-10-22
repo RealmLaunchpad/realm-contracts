@@ -112,8 +112,13 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     /// @notice The creator's pending rebalance, for a keeper to execute. `sellBps == 0`: none.
     RebalanceIntent public pendingRebalance;
 
-    /// @dev The V3 pool a swap is in flight on, the only caller its callback accepts.
+    /// @dev The V3 pool a swap is in flight on, the only caller its callback accepts, once.
     address private transient _v3Pool;
+
+    /// @dev Most the in-flight V3 swap's callback may take: the exact input, or unbounded for an exact output
+    ///      (only `mint` swaps those, paid by the minter, bounded by their approval and `maxAssets`). The registry is upgradeable,
+    ///      so a route's "pool" is not trusted to ask only what it is owed.
+    uint256 private transient _v3MaxIn;
 
     /// @dev Who pays the USDG of `mint`'s swaps (pulled per swap); zero: the ETF pays from its balance.
     address private transient _payer;
@@ -446,7 +451,10 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
 
     function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) external {
         require(msg.sender == _v3Pool, Unauthorized());
-        _pay(abi.decode(data, (address)), msg.sender, uint256(amount0Delta > 0 ? amount0Delta : amount1Delta));
+        _v3Pool = address(0);
+        uint256 owed = uint256(amount0Delta > 0 ? amount0Delta : amount1Delta);
+        require(owed <= _v3MaxIn, Unauthorized());
+        _pay(abi.decode(data, (address)), msg.sender, owed);
     }
 
     //////////////////////// internals //////////////////////
@@ -641,6 +649,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     {
         bool zeroForOne = tokenIn == IEtfV3Pool(pool).token0();
         _v3Pool = pool;
+        _v3MaxIn = amountSpecified < 0 ? uint256(-amountSpecified) : type(uint256).max;
         // V3's sign is the opposite of V4's: positive is an exact input.
         (int256 amount0, int256 amount1) = IEtfV3Pool(pool)
             .swap(

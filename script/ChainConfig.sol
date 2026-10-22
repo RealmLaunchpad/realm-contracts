@@ -126,6 +126,14 @@ library ChainConfig {
         revert(UNSUPPORTED);
     }
 
+    /// @notice `RealmEtfAssets` proxy from the manifest. Deployed by `DeployRealmEtf`.
+    function etfAssets() internal view returns (address registry) {
+        if (isRobinhood()) registry = DeploymentsRobinhoodMainnet.ETF_ASSETS;
+        else if (isRobinhoodTestnet()) registry = DeploymentsRobinhoodTestnet.ETF_ASSETS;
+        else revert(UNSUPPORTED);
+        require(registry != address(0), "manifest: ETF_ASSETS missing; run DeployRealmEtf first");
+    }
+
     /// @notice `RealmEtfFactory` proxy from the manifest. Deployed by `DeployRealmEtf`.
     function etfFactory() internal view returns (address factory) {
         if (isRobinhood()) factory = DeploymentsRobinhoodMainnet.ETF_FACTORY;

@@ -18,7 +18,8 @@
 | RealmFactoryUniV4Direct (impl)               | `0xd8d292a6108d86545B0B12e5B9FAC8024d10Aa8d` |
 | RealmAssetsWhitelist (proxy)                 | `0x1Fe8baA5254fD125386Da072cddd1c804BEe0e94` |
 | RealmAssetsWhitelist (impl)                  | `0x233Fd9e6A79fB80c90f50c23Bc9aA57d0417F952` |
-| RealmEtfAssets                               | _(not deployed)_                             |
+| RealmEtfAssets (proxy)                       | _(not deployed)_                             |
+| RealmEtfAssets (impl)                        | _(not deployed)_                             |
 | RealmEtfFactory (proxy)                      | _(not deployed)_                             |
 | RealmEtfFactory (impl)                       | _(not deployed)_                             |
 | RealmEtfHook                                 | _(not deployed)_                             |
