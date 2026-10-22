@@ -47,6 +47,10 @@ import {KeeperGated} from "src/tokens/KeeperGated.sol";
 ///      or rebalanced, and left out of the shares a deposit mints. Their balance stays for in-kind exits, shared
 ///      by every share, new ones included (`RealmEtfAssets.sunset`).
 ///
+/// @dev EXIT FEE. Every exit (`redeem`, a sell through `RealmEtfHook`, `redeemInKind`) hands `EXIT_FEE_BPS` of
+///      the shares to the creator (`owner()`) and redeems only the rest, so NAV per share is unchanged. None
+///      while ownership is renounced.
+///
 /// @dev TWO CALL CONTEXTS. Called directly, each V4 swap unlocks the pool manager itself. Called while the
 ///      pool manager is already unlocked (by `RealmEtfHook` inside a swap on the shares/USDG pool, or by
 ///      any router mid-unlock), V4 swaps run inline and settle their own deltas before returning. V2 and V3
@@ -68,6 +72,9 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     uint256 public constant MIN_SLICE = 1_000;
 
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
+
+    /// @notice Share of every exit's shares paid to the creator instead of being redeemed (0.05%).
+    uint256 public constant EXIT_FEE_BPS = 5;
 
     uint256 private constant BPS = 10_000;
 
@@ -138,6 +145,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     event RedeemedInKind(address indexed owner, address indexed receiver, uint256 shares);
     /// @notice The redeemer forfeited `asset` (`skipMask`); `amount` stays in the vault for the other holders.
     event InKindForfeited(address indexed asset, uint256 amount);
+    /// @notice An exit paid `shares` (of the shares it gave up) to `creator` instead of redeeming them.
+    event ExitFeeCharged(address indexed creator, uint256 shares);
     /// @notice The ETF's state after every action that changes holdings or supply, emitted last. `assets` is
     ///         `getAssets()` (sunset ones included), `balances` their raw balances, `usdgValues` their spot USDG
     ///         value (`REGISTRY.usdgValueOf`, 0 for sunset assets), so they sum to `totalAssets`.
@@ -325,9 +334,10 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         return balanceOf(owner_);
     }
 
-    /// @notice Estimate only (see `totalAssets`).
+    /// @notice Estimate only (see `totalAssets`). Net of the exit fee.
     function previewRedeem(uint256 shares) external view returns (uint256) {
-        return convertToAssets(shares);
+        (, uint256 fee) = _exitFee(shares);
+        return convertToAssets(shares - fee);
     }
 
     function redeem(uint256 shares, address receiver, address owner_) external returns (uint256) {
@@ -346,7 +356,14 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     function redeemOnCredit(uint256 shares, address receiver) external nonReentrant returns (uint256 assets) {
         require(msg.sender == HOOK, Unauthorized());
         require(shares != 0, ZeroAmount());
-        assets = _sellSlice(shares, totalSupply(), receiver, 0);
+        uint256 supply = totalSupply();
+        // The hook locks all `shares`, so the fee is minted: the supply still drops by exactly what is sold.
+        (address creator, uint256 fee) = _exitFee(shares);
+        if (fee != 0) {
+            _mint(creator, fee);
+            emit ExitFeeCharged(creator, fee);
+        }
+        assets = _sellSlice(shares - fee, supply, receiver, 0);
         emit Withdraw(msg.sender, receiver, msg.sender, assets, shares);
         // The sold shares still count until the hook locks them, after this returns.
         _emitNav(totalSupply() - shares);
@@ -523,8 +540,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         require(shares != 0, ZeroAmount());
         if (msg.sender != owner_) _spendAllowance(owner_, msg.sender, shares);
         uint256 supply = totalSupply();
-        _burn(owner_, shares);
-        assets = _sellSlice(shares, supply, receiver, minAssets);
+        uint256 net = _burnNetOfExitFee(owner_, shares);
+        assets = _sellSlice(net, supply, receiver, minAssets);
         emit Withdraw(msg.sender, receiver, owner_, assets, shares);
         _emitNav(totalSupply());
     }
@@ -537,12 +554,12 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         require(shares != 0, ZeroAmount());
         if (msg.sender != owner_) _spendAllowance(owner_, msg.sender, shares);
         uint256 supply = totalSupply();
-        _burn(owner_, shares);
+        uint256 net = _burnNetOfExitFee(owner_, shares);
         uint256 n = _assets.length;
         amounts = new uint256[](n);
         for (uint256 i; i < n; ++i) {
             IERC20 a = IERC20(_assets[i]);
-            uint256 amount = Math.mulDiv(a.balanceOf(address(this)), shares, supply);
+            uint256 amount = Math.mulDiv(a.balanceOf(address(this)), net, supply);
             if ((skipMask >> i) & 1 == 1) {
                 emit InKindForfeited(address(a), amount);
             } else {
@@ -552,6 +569,23 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         }
         emit RedeemedInKind(owner_, receiver, shares);
         _emitNav(totalSupply());
+    }
+
+    /// @dev The exit fee on `shares` and who gets it: none while ownership is renounced.
+    function _exitFee(uint256 shares) internal view returns (address creator, uint256 fee) {
+        creator = owner();
+        if (creator != address(0)) fee = shares * EXIT_FEE_BPS / BPS;
+    }
+
+    /// @dev Moves the exit fee from `owner_` to the creator and burns the rest, which it returns.
+    function _burnNetOfExitFee(address owner_, uint256 shares) internal returns (uint256 net) {
+        (address creator, uint256 fee) = _exitFee(shares);
+        if (fee != 0) {
+            _transfer(owner_, creator, fee);
+            emit ExitFeeCharged(creator, fee);
+        }
+        net = shares - fee;
+        _burn(owner_, net);
     }
 
     /// @dev Sells `shares / supply` of every live holding into USDG and pays it to `receiver`.

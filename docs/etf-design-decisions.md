@@ -13,6 +13,7 @@ Decisions on `RealmEtf*` (`src/etf/`) taken while comparing with Lots (lotsoncha
 | `redeemInKind` reverts on a failed transfer; explicit `skipMask` to forfeit | Built (4-arg `redeemInKind` overload) |
 | Exact-output BUYS through the hook (ERC-4626 `mint()`) | Built |
 | Exact-output SELLS | Stay reverting (`ExactOutputNotSupported`) |
+| 0.05% exit fee to the creator, in shares (`EXIT_FEE_BPS`, `ExitFeeCharged`) | Built: the fee shares move to the creator instead of being redeemed, so NAV per share is unchanged; no USDG accounting, no claim, no `reinvest` conflict, and a USDG-frozen creator cannot block exits. None while ownership is renounced |
 | NAV-priced venue in `RealmAssetsWhitelist` | Not needed if JIT ships: `slot0` then tracks the last trade and a standard V4 listing works |
 | Fair-mark (NAV) display | Optional frontend view, no contract change |
 

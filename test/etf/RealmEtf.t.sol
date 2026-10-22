@@ -348,9 +348,61 @@ contract RealmEtfTest is Test {
         uint256[] memory amounts = etf.redeemInKind(shares, alice, creator);
 
         for (uint256 i; i < assets.length; ++i) {
-            assertEq(amounts[i], held[i] * shares / supply);
+            assertEq(amounts[i], held[i] * (shares - _exitFee(shares)) / supply);
             assertEq(IERC20(assets[i]).balanceOf(alice), amounts[i]);
         }
+    }
+
+    function test_exitFee_redeemPaysTheCreatorInShares() public {
+        uint256 shares = _deposit(alice, 1_000e6);
+        uint256 fee = _exitFee(shares);
+        uint256 creatorBefore = etf.balanceOf(creator);
+        uint256 supply = etf.totalSupply();
+        vm.expectEmit(address(etf));
+        emit RealmEtf.ExitFeeCharged(creator, fee);
+        vm.prank(alice);
+        etf.redeem(shares, alice, alice);
+        assertGt(fee, 0);
+        assertEq(etf.balanceOf(creator), creatorBefore + fee);
+        assertEq(etf.totalSupply(), supply - shares + fee);
+    }
+
+    /// @dev The fee shares are not redeemed, so the remaining holders' slice of every asset is unchanged.
+    function test_exitFee_redeemInKindLeavesNavPerShareUnchanged() public {
+        uint256 shares = _deposit(alice, 1_000e6);
+        address[] memory assets = etf.getAssets();
+        uint256[] memory held = _balances(assets);
+        uint256 supply = etf.totalSupply();
+        uint256 fee = _exitFee(shares);
+        uint256 creatorBefore = etf.balanceOf(creator);
+        vm.expectEmit(address(etf));
+        emit RealmEtf.ExitFeeCharged(creator, fee);
+        vm.prank(alice);
+        uint256[] memory amounts = etf.redeemInKind(shares, alice, alice);
+        assertEq(etf.balanceOf(creator), creatorBefore + fee);
+        assertEq(etf.totalSupply(), supply - shares + fee);
+        for (uint256 i; i < assets.length; ++i) {
+            assertEq(amounts[i], held[i] * (shares - fee) / supply);
+        }
+    }
+
+    function test_exitFee_hookSellMintsItToTheCreator() public {
+        uint256 shares = _deposit(alice, 1_000e6);
+        uint256 creatorBefore = etf.balanceOf(creator);
+        uint256 supply = etf.totalSupply();
+        _swap(alice, address(etf), shares);
+        assertEq(etf.balanceOf(creator), creatorBefore + _exitFee(shares));
+        assertApproxEqAbs(etf.totalSupply(), supply - shares + _exitFee(shares), 1e6);
+    }
+
+    function test_exitFee_noneWhileOwnershipIsRenounced() public {
+        uint256 shares = _deposit(alice, 1_000e6);
+        vm.prank(creator);
+        etf.renounceOwnership();
+        uint256 supply = etf.totalSupply();
+        vm.prank(alice);
+        etf.redeem(shares, alice, alice);
+        assertEq(etf.totalSupply(), supply - shares);
     }
 
     function test_withdraw_isUnsupported() public {
@@ -531,8 +583,8 @@ contract RealmEtfTest is Test {
         vm.recordLogs();
         uint256 out = _swap(creator, address(etf), shares);
         // The sold shares sit in the pool manager behind the hook's claims, out of circulation, but for the
-        // few raw units the JIT position's removal rounded away.
-        assertApproxEqAbs(etf.totalSupply(), supply - shares, 1e6);
+        // few raw units the JIT position's removal rounded away. The exit fee is minted back to the creator.
+        assertApproxEqAbs(etf.totalSupply(), supply - shares + _exitFee(shares), 1e6);
         assertEq(etf.balanceOf(address(manager)), shares);
         assertEq(IERC20(USDG).balanceOf(creator), out);
         assertApproxEqRel(out, 500e6, 0.03e18);
@@ -1091,7 +1143,7 @@ contract RealmEtfTest is Test {
         vm.recordLogs();
         _swap(creator, address(etf), shares);
         uint256 reported = _assertNav(etf, IERC4626.Withdraw.selector).totalSupply;
-        assertEq(reported, supply - shares);
+        assertEq(reported, supply - shares + _exitFee(shares));
         assertLe(reported, etf.totalSupply());
         assertApproxEqAbs(reported, etf.totalSupply(), 1e6);
     }
@@ -1263,6 +1315,10 @@ contract RealmEtfTest is Test {
         for (uint256 i; i < assets.length; ++i) {
             b[i] = IERC20(assets[i]).balanceOf(address(etf));
         }
+    }
+
+    function _exitFee(uint256 shares) internal view returns (uint256) {
+        return shares * etf.EXIT_FEE_BPS() / 10_000;
     }
 
     function _deposit(address who, uint256 amount) internal returns (uint256 shares) {
