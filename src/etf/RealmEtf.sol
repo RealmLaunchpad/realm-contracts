@@ -55,7 +55,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     using SafeERC20 for IERC20;
     using TransientStateLibrary for IPoolManager;
 
-    /// @notice Most assets an ETF may hold. Every deposit and redemption swaps through each one.
+    /// @notice Most live assets an ETF may hold. Every deposit and redemption swaps through each one; sunset
+    ///         assets are never swapped, so they do not count.
     uint256 public constant MAX_ASSETS = 10;
 
     /// @notice Shares minted to `DEAD` at seeding, so supply never returns to a size rounding can exploit.
@@ -106,7 +107,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     /// @notice USDG's decimals: seeding mints one 18-decimal share per whole USDG.
     uint8 private immutable _usdgDecimals;
 
-    /// @notice The assets held, sunset ones included, in `getAssets()` order. At most `MAX_ASSETS`.
+    /// @notice The assets held, sunset ones included, in `getAssets()` order. At most `MAX_ASSETS` live ones.
     address[] internal _assets;
 
     /// @notice The assets the ETF was created with: all a `REBALANCE` ETF may ever buy.
@@ -413,7 +414,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
             emit AssetRemoved(sellAsset);
         }
         if (_indexOf(buyAsset) == type(uint256).max) {
-            require(_assets.length < MAX_ASSETS, TooManyAssets());
+            require(_liveAssets().length < MAX_ASSETS, TooManyAssets());
             _assets.push(buyAsset);
             emit AssetAdded(buyAsset);
         }

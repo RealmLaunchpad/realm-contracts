@@ -440,6 +440,26 @@ contract RealmEtfTest is Test {
         etf.executeRebalance(NVDA, 10_000, QQQ);
     }
 
+    /// @dev Sunset assets are never swapped, so they take no `MAX_ASSETS` slot: an ETF full of live assets
+    ///      rejects one more until one of them is sunset.
+    function test_rebalance_sunsetAssetsDoNotCountTowardsMaxAssets() public {
+        uint256 room = etf.MAX_ASSETS() - etf.getAssets().length;
+        for (uint256 i; i < room; ++i) {
+            _rebalance(NVDA, 100, _v2RouteAsset());
+        }
+        address extra = _v2RouteAsset();
+        vm.prank(creator);
+        etf.proposeRebalance(NVDA, 100, extra);
+        vm.prank(keeper);
+        vm.expectRevert(RealmEtf.TooManyAssets.selector);
+        etf.executeRebalance(NVDA, 100, extra);
+
+        vm.prank(owner);
+        registry.sunset(META);
+        _rebalance(NVDA, 100, extra);
+        assertEq(etf.getAssets().length, etf.MAX_ASSETS() + 1);
+    }
+
     function test_rebalance_rejectsBpsAboveTheWholeHolding() public {
         vm.prank(creator);
         vm.expectRevert(RealmEtf.InvalidWeights.selector);
