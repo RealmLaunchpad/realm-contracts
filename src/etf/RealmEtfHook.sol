@@ -205,7 +205,8 @@ contract RealmEtfHook is BaseHook, IAggregatorHook {
         private
         returns (uint256 x, uint256 y, uint256 buffer)
     {
-        RealmEtf etf = _etfOf(key);
+        // `beforeInitialize` already vetted the pool's ETF: only the non-USDG side is left to pick.
+        RealmEtf etf = RealmEtf(Currency.unwrap(Currency.unwrap(key.currency0) == USDG ? key.currency1 : key.currency0));
         (Currency cIn, Currency cOut) =
             params.zeroForOne ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
         require(exactIn || Currency.unwrap(cIn) == USDG, ExactOutputNotSupported());
