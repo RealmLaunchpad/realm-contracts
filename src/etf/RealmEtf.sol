@@ -44,7 +44,8 @@ import {KeeperGated} from "src/tokens/KeeperGated.sol";
 ///      around it is impossible. Partial fills still revert. `MODE` bounds what may be bought.
 ///
 /// @dev SUNSET ASSETS (`REGISTRY.isSunset`) are dead to every path but `redeemInKind`: not bought, sold, valued
-///      or rebalanced, and left out of the shares a deposit mints. Their balance stays for in-kind exits.
+///      or rebalanced, and left out of the shares a deposit mints. Their balance stays for in-kind exits, shared
+///      by every share, new ones included (`RealmEtfAssets.sunset`).
 ///
 /// @dev TWO CALL CONTEXTS. Called directly, each V4 swap unlocks the pool manager itself. Called while the
 ///      pool manager is already unlocked (by `RealmEtfHook` inside a swap on the shares/USDG pool, or by
@@ -102,8 +103,10 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     /// @notice What rebalances may do, fixed at creation.
     Mode public immutable MODE;
 
+    /// @notice USDG's decimals: seeding mints one 18-decimal share per whole USDG.
     uint8 private immutable _usdgDecimals;
 
+    /// @notice The assets held, sunset ones included, in `getAssets()` order. At most `MAX_ASSETS`.
     address[] internal _assets;
 
     /// @notice The assets the ETF was created with: all a `REBALANCE` ETF may ever buy.
@@ -197,9 +200,11 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     //////////////////////// seeding //////////////////////
 
     /// @notice First deposit, split by `weightsBps` (no holdings to go pro-rata on yet). One share per
-    ///         whole USDG; `DEAD_SHARES` of them go to `DEAD`. Factory only, once.
+    ///         whole USDG; `DEAD_SHARES` of them go to `DEAD`. Factory only, once. Reverts if any asset's buy
+    ///         gets less than its `minAmountsOut` entry (same order as `getAssets()`): the share count is fixed,
+    ///         so the amounts bought are what slippage cuts.
     /// @dev The factory has already sent `assets` USDG here.
-    function seed(uint256 assets, uint16[] calldata weightsBps, address receiver, uint256 minShares)
+    function seed(uint256 assets, uint16[] calldata weightsBps, address receiver, uint256[] calldata minAmountsOut)
         external
         nonReentrant
         returns (uint256 shares)
@@ -207,7 +212,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         require(msg.sender == FACTORY, OnlyFactory());
         require(totalSupply() == 0, AlreadySeeded());
         uint256 n = _assets.length;
-        require(weightsBps.length == n, InvalidWeights());
+        require(weightsBps.length == n && minAmountsOut.length == n, InvalidWeights());
 
         uint256 sum;
         uint256 spent;
@@ -216,14 +221,15 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
             sum += weightsBps[i];
             uint256 amountIn = i == n - 1 ? assets - spent : assets * weightsBps[i] / BPS;
             spent += amountIn;
-            require(_swap(_assets[i], true, amountIn) != 0, ZeroAmount());
+            uint256 bought = _swap(_assets[i], true, amountIn);
+            require(bought != 0, ZeroAmount());
+            require(bought >= minAmountsOut[i], Slippage());
         }
         require(sum == BPS, InvalidWeights());
 
         uint256 total = assets * 10 ** (decimals() - _usdgDecimals);
         require(total > DEAD_SHARES, ZeroAmount());
         shares = total - DEAD_SHARES;
-        require(shares >= minShares, Slippage());
         _mint(DEAD, DEAD_SHARES);
         _mint(receiver, shares);
         emit Seeded(receiver, assets, shares);
@@ -246,9 +252,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     /// @notice Live (not sunset) holdings valued in USDG at their route pools' spot prices. An estimate:
     ///         selling them would pay swap fees and price impact.
     function totalAssets() public view returns (uint256 total) {
-        address[] memory live = _liveAssets();
-        for (uint256 i; i < live.length; ++i) {
-            total += REGISTRY.usdgValueOf(live[i], IERC20(live[i]).balanceOf(address(this)));
+        for (uint256 i; i < _assets.length; ++i) {
+            total += REGISTRY.usdgValueOf(_assets[i], IERC20(_assets[i]).balanceOf(address(this)));
         }
     }
 
@@ -285,11 +290,12 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     /// @notice Estimate only: the spot value of the exact amounts `mint` buys (see `totalAssets`), before
     ///         swap fees and price impact, so the real cost is higher.
     function previewMint(uint256 shares) external view returns (uint256 assets) {
-        address[] memory live = _liveAssets();
         uint256 supply = totalSupply();
-        for (uint256 i; i < live.length; ++i) {
-            uint256 out = Math.mulDiv(shares, IERC20(live[i]).balanceOf(address(this)), supply, Math.Rounding.Ceil);
-            assets += REGISTRY.usdgValueOf(live[i], out);
+        // Sunset assets value at 0, as `mint` does not buy them.
+        for (uint256 i; i < _assets.length; ++i) {
+            address a = _assets[i];
+            uint256 out = Math.mulDiv(shares, IERC20(a).balanceOf(address(this)), supply, Math.Rounding.Ceil);
+            assets += REGISTRY.usdgValueOf(a, out);
         }
     }
 
@@ -579,7 +585,9 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         uint256 budget = assets - n * minSlice;
         uint256 spent;
         for (uint256 i; i < n; ++i) {
-            uint256 amountIn = i == n - 1 ? assets - spent : minSlice + Math.mulDiv(budget, values[i], totalValue);
+            // Every holding valued at 0 (dust at prices that round it down): split evenly.
+            uint256 share = totalValue == 0 ? budget / n : Math.mulDiv(budget, values[i], totalValue);
+            uint256 amountIn = i == n - 1 ? assets - spent : minSlice + share;
             spent += amountIn;
             _swap(live[i], true, amountIn);
         }
@@ -601,10 +609,12 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     {
         RealmEtfAssets.Route memory route = REGISTRY.routeOf(asset_);
         address tokenIn = buy ? USDG : asset_;
+        // V2 and V3 sort a pool's two tokens by address.
+        bool zeroForOne = buy == (USDG < asset_);
         if (route.venue == RealmEtfAssets.Venue.V3) {
-            (amountIn, amountOut) = _swapV3(route.pool, tokenIn, amountSpecified);
+            (amountIn, amountOut) = _swapV3(route.pool, tokenIn, zeroForOne, amountSpecified);
         } else if (route.venue == RealmEtfAssets.Venue.V2) {
-            (amountIn, amountOut) = _swapV2(route.pool, tokenIn, amountSpecified);
+            (amountIn, amountOut) = _swapV2(route.pool, tokenIn, zeroForOne, amountSpecified);
         } else if (POOL_MANAGER.isUnlocked()) {
             (amountIn, amountOut) = _swapV4(route.key, tokenIn, amountSpecified);
         } else {
@@ -643,11 +653,10 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         POOL_MANAGER.take(cOut, address(this), amountOut);
     }
 
-    function _swapV3(address pool, address tokenIn, int256 amountSpecified)
+    function _swapV3(address pool, address tokenIn, bool zeroForOne, int256 amountSpecified)
         internal
         returns (uint256 amountIn, uint256 amountOut)
     {
-        bool zeroForOne = tokenIn == IEtfV3Pool(pool).token0();
         _v3Pool = pool;
         _v3MaxIn = amountSpecified < 0 ? uint256(-amountSpecified) : type(uint256).max;
         // V3's sign is the opposite of V4's: positive is an exact input.
@@ -665,11 +674,10 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     }
 
     /// @dev Amounts from the reserves with Uniswap V2's 0.3% fee, as its router computes them.
-    function _swapV2(address pair, address tokenIn, int256 amountSpecified)
+    function _swapV2(address pair, address tokenIn, bool zeroForOne, int256 amountSpecified)
         internal
         returns (uint256 amountIn, uint256 amountOut)
     {
-        bool zeroForOne = tokenIn == IEtfV2Pair(pair).token0();
         (uint256 r0, uint256 r1,) = IEtfV2Pair(pair).getReserves();
         (uint256 rIn, uint256 rOut) = zeroForOne ? (r0, r1) : (r1, r0);
         if (amountSpecified < 0) {
@@ -693,7 +701,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         else IERC20(token).safeTransferFrom(_payer, to, amount);
     }
 
-    /// @dev Emits `NavUpdated` with `supply` as the share supply. Values like `totalAssets`.
+    /// @dev Emits `NavUpdated` with `supply` as the share supply. Values like `totalAssets` (sunset: 0).
     function _emitNav(uint256 supply) private {
         address[] memory assets_ = _assets;
         uint256 n = assets_.length;
@@ -702,10 +710,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         uint256 total;
         for (uint256 i; i < n; ++i) {
             balances[i] = IERC20(assets_[i]).balanceOf(address(this));
-            if (!REGISTRY.isSunset(assets_[i])) {
-                values[i] = REGISTRY.usdgValueOf(assets_[i], balances[i]);
-                total += values[i];
-            }
+            values[i] = REGISTRY.usdgValueOf(assets_[i], balances[i]);
+            total += values[i];
         }
         emit NavUpdated(total, supply, assets_, balances, values);
     }

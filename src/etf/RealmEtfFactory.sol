@@ -85,7 +85,8 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
 
     /// @notice Deploys an ETF holding `assets`, owned by the caller, and seeds it with `seedAssets` USDG
     ///         pulled from the caller, split by `weightsBps` (summing to 10,000). The caller receives the shares.
-    ///         `mode` (immutable) bounds the creator's rebalances. Reverts below `minSeedAssets`.
+    ///         `mode` (immutable) bounds the creator's rebalances. Reverts below `minSeedAssets`, or if any
+    ///         asset's seed buy gets less than its `minAmountsOut` entry (same order as `assets`).
     function createEtf(
         string memory name,
         string memory symbol,
@@ -93,14 +94,14 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         address[] calldata assets,
         uint16[] calldata weightsBps,
         uint256 seedAssets,
-        uint256 minShares
+        uint256[] calldata minAmountsOut
     ) external returns (address etf) {
         if (seedAssets < minSeedAssets) revert SeedTooSmall();
         RealmEtf b = new RealmEtf(name, symbol, msg.sender, REGISTRY, hook, mode, assets);
         etf = address(b);
         isEtf[etf] = true;
         IERC20(REGISTRY.USDG()).safeTransferFrom(msg.sender, etf, seedAssets);
-        uint256 shares = b.seed(seedAssets, weightsBps, msg.sender, minShares);
+        uint256 shares = b.seed(seedAssets, weightsBps, msg.sender, minAmountsOut);
         if (hook != address(0)) _initializePool(etf, seedAssets, b.totalSupply());
         emit EtfCreated(etf, msg.sender, name, symbol, mode, assets, weightsBps, seedAssets, shares);
     }

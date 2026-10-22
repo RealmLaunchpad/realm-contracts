@@ -9,7 +9,7 @@ Decisions on `RealmEtf*` (`src/etf/`) taken while comparing with Lots (lotsoncha
 | Rebalance modes (`FIXED` / `REBALANCE` / `FLEXIBLE`) | Built |
 | Keeper-executed rebalances at a random time | Built (propose/execute on chain; the random timing is keeper policy) |
 | `sunset()` + `reinvest()` for dead components | Built (`reinvest` keeper-gated, see below) |
-| JIT liquidity in the hook pool + `HookSwap` event | Built (uncommitted); math and proofs in `docs/etf-jit-math.md` |
+| JIT liquidity in the hook pool + `HookSwap` event | Built; math and proofs in `docs/etf-jit-math.md` |
 | `redeemInKind` reverts on a failed transfer; explicit `skipMask` to forfeit | Built (4-arg `redeemInKind` overload) |
 | Exact-output BUYS through the hook (ERC-4626 `mint()`) | Built |
 | Exact-output SELLS | Stay reverting (`ExactOutputNotSupported`) |
@@ -42,14 +42,12 @@ One immutable mode per ETF, chosen at creation, so depositors pick their trust l
 
 ## In-kind redemption
 
-`redeemInKind` today silently skips an asset whose transfer fails (paused token, blacklisted receiver); the skipped slice stays in the vault and is forfeited to the remaining holders. No third party can force a skip, but a user redeeming during a TEMPORARY pause loses that asset for good without choosing to.
-
-Decision: revert on a failed transfer by default; a separate entry point (or argument) takes a `skipMask` of assets the redeemer explicitly forfeits.
+`redeemInKind` reverts when any transfer fails (paused token, blacklisted receiver). The 4-arg overload takes a `skipMask` of assets the redeemer explicitly forfeits: their slice stays in the vault for the remaining holders. An earlier version skipped failed transfers silently, so a user redeeming during a TEMPORARY pause lost that asset for good without choosing to.
 
 ## Exact-output trades
 
 - Buys: to mint exactly N shares, each holding must grow by `ceil(N * balance_i / supply)`. Buy those exact amounts with exact-output swaps (V3 and V4 both support it); the USDG paid is the sum. This implements ERC-4626 `mint()` and lets the hook accept exact-output buys, which routers need for "buy exactly N Realm tokens" through the ETF.
-- Hook flow: the USDG input is the unspecified side and only known after `mint`, so the hook `take`s the pool manager's whole USDG balance, `mint` pulls each leg's cost from the hook, and the hook settles the rest straight back. Ceiling: the pool manager must hold the mint's cost in USDG (the exact-input buy has the same kind of ceiling).
+- Hook flow: the USDG input is the unspecified side and only known after `mint`, so the hook `take`s twice `mint`'s spot estimate plus `MINT_LOAN_PAD` (1 USDG), `mint` pulls each leg's cost from the hook, and the hook settles the rest straight back. Not the pool manager's whole balance: a component pool's hook that moves USDG mid-swap would find none. Ceiling: the pool manager must hold the mint's cost in USDG (the exact-input buy has the same kind of ceiling), and fees plus impact past 2x revert.
 - Sells: exact USDG out has no one-pass solution (oversell, then buy shares back). Not built.
 
 ## Dead component (agreed)
@@ -59,8 +57,7 @@ If one asset can never trade again (stock delisted or acquired, token permanentl
 Fix:
 
 - `sunset(asset)` on `RealmEtfAssets`, owner (cold multisig) only, one-way. A sunset asset is excluded from deposits, USDG redemptions and `totalAssets`, but stays in `redeemInKind`, so a revived token still reaches holders.
-- Worst case of a malicious owner: sunsetting a healthy asset cuts NAV, but nothing leaves the vault; holders can still take it in kind.
-- Known leak: new depositors get a free claim on a sunset asset's balance. Acceptable for a dead asset.
+- Known leak: deposits price new shares on the live holdings only, yet every share redeems its slice of a sunset asset's balance in kind, so a deposit made after the sunset (flash loan, `redeemInKind`, sell the live slice) takes part of that balance for free. Accepted: sunset is for tokens that can no longer move, and a token whose transfers revert leaks nothing. Sunsetting a token that still transfers (a malicious or mistaken owner) cuts NAV and opens this leak.
 - Companion `reinvest()`: USDG that lands in the vault outside a deposit (a cash payout for an acquired stock, an airdrop) is uncounted today. Buying the live holdings pro-rata with it, minting no shares, hands it to holders.
 - `reinvest()` is keeper-gated, not permissionless: it trades the holders' USDG with no floor, so a public caller could push a pool, reinvest into it and unwind in one transaction (the rebalance attack). No minimum amount: it mints no shares, so `MIN_SLICE` has nothing to protect; a holding whose slice rounds to 0 is not bought.
 
@@ -70,22 +67,20 @@ With JIT liquidity the pool manager's `Swap` events and `slot0` carry the trade 
 
 ## Scanner visibility: JIT liquidity
 
-Today the ETF/USDG hook pool holds no liquidity and `beforeSwap` takes the whole input, so the pool manager emits its `Swap` for that pool with zero amounts and an unchanged price. Component swaps and Realm/ETF pairs emit normal events; only the USDG <-> ETF leg is invisible. A standing position (Lots' approach) needs hook-owned capital and is not wanted. The plan is JIT liquidity plus OpenZeppelin's `HookSwap` event.
+Without JIT, the ETF/USDG hook pool holds no liquidity and `beforeSwap` takes the whole input, so the pool manager emits its `Swap` for that pool with zero amounts and an unchanged price: the USDG <-> ETF leg is invisible to scanners. A standing position (Lots' approach) needs hook-owned capital and is not wanted. Built instead: JIT liquidity plus OpenZeppelin's `HookSwap` event. Sizing, rounding and proofs: `docs/etf-jit-math.md`.
 
 Mechanics of a buy (exact input A USDG):
 
-1. `beforeSwap`: take A USDG on credit, deposit, get S shares (as today).
-2. Move the pool price, with a zero-liquidity self-swap (hooks skip their own calls), to just below the execution price A/S.
-3. Add a narrow single-sided position (a few ticks) holding the S shares, sized so the A input runs out BEFORE the shares do. If the shares ran out first, the remaining input would push the price to the router's limit through empty ticks.
-4. Return a zero delta: the core curve swaps A against the position. The pool manager emits a real `Swap` (A in, ~S out) and `slot0` ends at ~A/S.
-5. `afterSwap`: remove the position; the A USDG it received repays step 1. The few unsold shares (tick rounding, ~1-2 bps) go to the swapper via the after-swap delta, so they receive exactly S. Emit `HookSwap` with the exact totals.
+1. `beforeSwap`: take A USDG on credit, deposit, get S shares.
+2. Move the pool price, with a zero-liquidity self-swap (hooks skip their own calls), to the edge of a one-tick range next to the execution price A/S. At most `MAX_WALK_TICKS` (~50%) per swap, since the core walks an empty pool one 256-tick bitmap word per loop; farther than that, the price moves that far and this swap goes without JIT.
+3. Add a one-tick single-sided position holding the shares, sized so the curve fills all but a few raw units of the trade within it.
+4. Return a `beforeSwap` delta covering the part the curve will not fill: the core curve swaps the rest against the position, so the pool manager emits a real `Swap` and `slot0` ends at ~A/S. `HookSwap` reports the hook's part.
+5. `afterSwap`: check the curve filled exactly the predicted amounts (`JitMismatch` otherwise) and remove the position. Removal rounds a few raw units down: the swapper absorbs them on the side the hook does not specify; on the side it does, `USDG_BUFFER` / `SHARES_BUFFER` cover them.
 
-Sells mirror it with a USDG position (`redeemOnCredit`, then the received shares are locked behind the hook's claims as today). Exact-output buys mirror it with the exact-output mint.
+Sells mirror it with a USDG position (`redeemOnCredit`, then the received shares are locked behind the hook's claims). Exact-output buys mirror it with the exact-output mint. No JIT (the hook fills the whole trade, the curve swaps 0) with a protocol fee on the pool, a trade the math cannot place, or a swapper's price limit inside the range.
 
 Price behaviour: the step-2 move emits an extra zero-amount `Swap` at ~the trade price; scanners that skip zero-amount swaps ignore it, and those that read its price see a sane one. Between trades `slot0` holds the last trade price and in-range liquidity is 0, so scanners still report ~$0 liquidity in this pool; only standing capital would change that.
 
-LP fees: the hook's position is the only liquidity, so the hook would earn any LP fee, in the swap's input currency (USDG on buys, ETF shares on sells). Realm tokens are not in this pool; Realm/ETF pairs keep their own `RealmHookAnyPair` fees. Set the LP fee to 0: the trader already pays every component pool's fee.
+LP fees: the pool's LP fee is 0 (the hook rejects any other pool key): the trader already pays every component pool's fee.
 
-Gas (measured, 3-asset ETF): JIT adds 172k-244k per trade, +29-34%; see `docs/etf-jit-math.md`.
-
-Cost: new hook permissions (`afterSwap`, `afterSwapReturnDelta`), so a new hook address (none deployed yet). The tick sizing and rounding of step 3 is the delicate part and needs fuzzing.
+Gas (measured, 3-asset ETF): JIT adds 172k-244k per trade, +29-34%; see `docs/etf-jit-math.md`. Hook permissions: `beforeInitialize`, `beforeAddLiquidity`, `beforeSwap`, `afterSwap`, `beforeSwapReturnDelta`.

@@ -9,7 +9,6 @@ import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/E
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Math} from "lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
@@ -147,7 +146,11 @@ contract RealmEtfTest is Test {
         deal(USDG, creator, SEED);
         vm.startPrank(creator);
         IERC20(USDG).approve(address(factory), SEED);
-        etf = RealmEtf(factory.createEtf("Tech ETF", "TECH", RealmEtf.Mode.FLEXIBLE, assets, weights, SEED, 0));
+        etf = RealmEtf(
+            factory.createEtf(
+                "Tech ETF", "TECH", RealmEtf.Mode.FLEXIBLE, assets, weights, SEED, new uint256[](assets.length)
+            )
+        );
         vm.stopPrank();
 
         etfKey = _key(address(etf), USDG, 0, 1, address(hook));
@@ -165,13 +168,42 @@ contract RealmEtfTest is Test {
         assertApproxEqRel(etf.totalAssets(), SEED, 0.03e18);
     }
 
+    /// @dev The share count is fixed by the seed, so slippage shows in the amounts bought: each must reach its
+    ///      `minAmountsOut` entry.
+    function test_createEtf_revertsWhenASeedBuyGetsLessThanItsMinimum() public {
+        address[] memory assets = new address[](2);
+        (assets[0], assets[1]) = (SPY, NVDA);
+        uint16[] memory weights = new uint16[](2);
+        (weights[0], weights[1]) = (6_000, 4_000);
+        deal(USDG, creator, SEED);
+        vm.prank(creator);
+        IERC20(USDG).approve(address(factory), SEED);
+
+        uint256 snap = vm.snapshotState();
+        vm.prank(creator);
+        address e = factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, new uint256[](2));
+        uint256[] memory minOut = new uint256[](2);
+        (minOut[0], minOut[1]) = (IERC20(SPY).balanceOf(e), IERC20(NVDA).balanceOf(e));
+        vm.revertToState(snap);
+
+        snap = vm.snapshotState();
+        vm.prank(creator);
+        assertEq(factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, minOut), e);
+        vm.revertToState(snap);
+
+        minOut[1] += 1;
+        vm.prank(creator);
+        vm.expectRevert(RealmEtf.Slippage.selector);
+        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, minOut);
+    }
+
     function test_createEtf_rejectsUnlistedAsset() public {
         address[] memory assets = new address[](1);
         assets[0] = USDG;
         uint16[] memory weights = new uint16[](1);
         weights[0] = 10_000;
         vm.expectRevert(RealmEtf.AssetNotListed.selector);
-        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
+        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, new uint256[](assets.length));
     }
 
     function test_createEtf_enforcesOwnerSetMinSeed() public {
@@ -181,7 +213,7 @@ contract RealmEtfTest is Test {
         uint16[] memory weights = new uint16[](1);
         weights[0] = 10_000;
         vm.expectRevert(RealmEtfFactory.SeedTooSmall.selector);
-        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED - 1, 0);
+        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED - 1, new uint256[](assets.length));
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
@@ -190,7 +222,7 @@ contract RealmEtfTest is Test {
         vm.prank(owner);
         factory.setMinSeedAssets(SEED + 1);
         vm.expectRevert(RealmEtfFactory.SeedTooSmall.selector);
-        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
+        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, new uint256[](assets.length));
     }
 
     //////////////////////// deposit / redeem //////////////////////
@@ -231,6 +263,32 @@ contract RealmEtfTest is Test {
 
         uint256 shares = _deposit(alice, 1_000e6);
 
+        uint256[] memory afterBalances = _balances(assets);
+        for (uint256 i; i < assets.length; ++i) {
+            assertGe(afterBalances[i] * supply, before[i] * (supply + shares));
+        }
+    }
+
+    /// @dev Every holding crashed to a 0 spot value: the deposit splits its USDG evenly instead of dividing by 0.
+    function test_deposit_splitsEvenlyWhenEveryHoldingValuesAtZero() public {
+        address[] memory assets = new address[](2);
+        (assets[0], assets[1]) = (SPY, META);
+        uint16[] memory weights = new uint16[](2);
+        (weights[0], weights[1]) = (5_000, 5_000);
+        deal(USDG, creator, SEED);
+        vm.startPrank(creator);
+        IERC20(USDG).approve(address(factory), SEED);
+        etf = RealmEtf(factory.createEtf("Two", "TWO", RealmEtf.Mode.FIXED, assets, weights, SEED, new uint256[](2)));
+        vm.stopPrank();
+        _crashV4Price(SPY, 1e24);
+        _crashV4Price(META, 1e24);
+        assertEq(etf.totalAssets(), 0);
+
+        uint256[] memory before = _balances(assets);
+        uint256 supply = etf.totalSupply();
+        uint256 shares = _deposit(alice, 1_000e6);
+
+        assertGt(shares, 0);
         uint256[] memory afterBalances = _balances(assets);
         for (uint256 i; i < assets.length; ++i) {
             assertGe(afterBalances[i] * supply, before[i] * (supply + shares));
@@ -564,31 +622,90 @@ contract RealmEtfTest is Test {
         _assertJit(1_000e6 - IERC20(USDG).balanceOf(alice), 100e18);
     }
 
-    /// @dev A price limit inside the JIT range stops the curve short of what the position was sized for.
-    function test_hook_revertsWhenAPriceLimitCutsTheCurveShort() public {
+    /// @dev A price limit inside the JIT range would stop the curve short of the plan: the hook skips JIT and
+    ///      fills the whole trade itself, at the same price, leaving the pool's price where it was.
+    function test_hook_aPriceLimitInsideTheRangeSkipsJit() public {
         uint256 snap = vm.snapshotState();
-        _swap(alice, USDG, 1_000e6);
+        uint256 expected = _swap(alice, USDG, 1_000e6);
         (uint160 end,,,) = manager.getSlot0(etfKey.toId());
         vm.revertToState(snap);
+        (uint160 start,,,) = manager.getSlot0(etfKey.toId());
 
         deal(USDG, alice, 1_000e6);
         SwapParams memory params = _params(USDG, 1_000e6, true);
-        // ~2e-10 of the price short of `end`: well inside the move (~5e-5), and not a few raw units, which can
-        // round to the same fill when the share is currency1 (sqrt price ~1e35).
+        // ~2e-10 of the price short of `end`: well inside the range, and not a few raw units, which can round to
+        // the same fill when the share is currency1 (sqrt price ~1e35).
         params.sqrtPriceLimitX96 = params.zeroForOne ? end + (end >> 32) : end - (end >> 32);
         vm.startPrank(alice);
         IERC20(USDG).approve(address(router), 1_000e6);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CustomRevert.WrappedError.selector,
-                address(hook),
-                IHooks.afterSwap.selector,
-                abi.encodeWithSelector(RealmEtfHook.JitMismatch.selector),
-                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
-            )
-        );
         router.swap(etfKey, params, PoolSwapTest.TestSettings(false, false), "");
         vm.stopPrank();
+
+        // Without JIT the swapper gets the ETF's whole fill, not less the few raw units of removal dust.
+        assertGe(etf.balanceOf(alice), expected);
+        assertApproxEqAbs(etf.balanceOf(alice), expected, 10);
+        (uint160 after_,,,) = manager.getSlot0(etfKey.toId());
+        assertEq(after_, start, "price untouched");
+    }
+
+    /// @dev A price parked far from the JIT range (a trade filled at a pushed NAV) is walked back at most
+    ///      `MAX_WALK_TICKS` per swap, without JIT, so no swap pays for an unbounded walk. The fill is the same,
+    ///      and JIT resumes once the range is in reach.
+    function test_hook_aFarParkedPriceIsWalkedBackInBoundedSteps() public {
+        uint256 snap = vm.snapshotState();
+        vm.recordLogs();
+        uint256 expected = _swap(alice, USDG, 1_000e6);
+        int24 tickLower = _jitTickLower();
+        vm.revertToState(snap);
+
+        int24 startTick = _params(USDG, 1_000e6, true).zeroForOne ? tickLower + 1 : tickLower;
+        int24 walk = hook.MAX_WALK_TICKS();
+        int24[2] memory offsets = [walk * 3 / 2, -walk * 3 / 2];
+        for (uint256 i; i < offsets.length; ++i) {
+            uint256 s = vm.snapshotState();
+            int24 parked = startTick + offsets[i];
+            _setSlot0(TickMath.getSqrtPriceAtTick(parked), parked);
+
+            uint256 out = _swap(alice, USDG, 1_000e6);
+            assertGe(out, expected);
+            assertApproxEqAbs(out, expected, 10);
+            (, int24 tick,,) = manager.getSlot0(etfKey.toId());
+            assertApproxEqAbs(tick, offsets[i] > 0 ? parked - walk : parked + walk, 1, "walked MAX_WALK_TICKS");
+
+            vm.recordLogs();
+            uint256 more = _swap(alice, USDG, 1_000e6);
+            _assertJit(1_000e6, more);
+            vm.revertToState(s);
+        }
+    }
+
+    /// @dev The hook lends `mint` twice its spot estimate plus `MINT_LOAN_PAD`, not the pool manager's whole USDG.
+    function test_hook_exactOutputBuyBorrowsABoundedLoan() public {
+        uint256 settled = 100e18 + hook.SHARES_BUFFER() + (uint256(100e18) >> 40);
+        uint256 loan = 2 * etf.previewMint(settled) + hook.MINT_LOAN_PAD();
+        assertGt(IERC20(USDG).balanceOf(address(manager)), loan, "the pool manager holds more");
+
+        deal(USDG, alice, 1_000e6);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(router), 1_000e6);
+        vm.recordLogs();
+        router.swap(etfKey, _params(USDG, 100e18, false), PoolSwapTest.TestSettings(false, false), "");
+        vm.stopPrank();
+
+        assertEq(etf.balanceOf(alice), 100e18);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 transferSig = keccak256("Transfer(address,address,uint256)");
+        for (uint256 i; i < logs.length; ++i) {
+            if (
+                logs[i].emitter == USDG && logs[i].topics[0] == transferSig
+                    && logs[i].topics[1] == bytes32(uint256(uint160(address(manager))))
+                    && logs[i].topics[2] == bytes32(uint256(uint160(address(hook))))
+            ) {
+                assertEq(abi.decode(logs[i].data, (uint256)), loan);
+                return;
+            }
+        }
+        revert("no loan");
     }
 
     /// @dev With a protocol fee on the pool the curve would charge it, so the hook fills the whole trade itself.
@@ -686,6 +803,7 @@ contract RealmEtfTest is Test {
         uint256 navBefore = etf.totalAssets();
         vm.prank(owner);
         registry.sunset(META);
+        assertEq(registry.usdgValueOf(META, 1e18), 0);
         assertApproxEqAbs(etf.totalAssets(), navBefore - metaValue, 1);
 
         uint256 meta = IERC20(META).balanceOf(address(etf));
@@ -720,7 +838,7 @@ contract RealmEtfTest is Test {
         uint16[] memory weights = new uint16[](1);
         weights[0] = 10_000;
         vm.expectRevert(RealmEtf.AssetNotListed.selector);
-        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
+        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, new uint256[](assets.length));
     }
 
     //////////////////////// reinvest //////////////////////
@@ -872,10 +990,24 @@ contract RealmEtfTest is Test {
         deal(USDG, creator, SEED);
         vm.startPrank(creator);
         IERC20(USDG).approve(address(factory), SEED);
-        address other = factory.createEtf("No Hook", "NOHK", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
+        address other = factory.createEtf(
+            "No Hook", "NOHK", RealmEtf.Mode.FIXED, assets, weights, SEED, new uint256[](assets.length)
+        );
         vm.stopPrank();
         vm.expectRevert();
         manager.initialize(_key(other, USDG, 0, 1, address(hook)), uint160(1 << 96));
+    }
+
+    /// @dev Only a first route lists the asset: repairing a delisted asset's route keeps it delisted.
+    function test_registry_replacingARouteKeepsTheListing() public {
+        vm.startPrank(approver);
+        registry.setListed(SPY, false);
+        registry.setRoute(SPY, _v4Route(SPY));
+        assertFalse(registry.isListed(SPY));
+        registry.setListed(SPY, true);
+        registry.setRoute(SPY, _v4Route(SPY));
+        assertTrue(registry.isListed(SPY));
+        vm.stopPrank();
     }
 
     function test_registry_delistingBlocksBuyingInButNotExiting() public {
@@ -1071,7 +1203,7 @@ contract RealmEtfTest is Test {
         deal(USDG, creator, SEED);
         vm.startPrank(creator);
         IERC20(USDG).approve(address(factory), SEED);
-        address e = factory.createEtf("Mode", "MODE", mode, assets, weights, SEED, 0);
+        address e = factory.createEtf("Mode", "MODE", mode, assets, weights, SEED, new uint256[](assets.length));
         vm.stopPrank();
         return RealmEtf(e);
     }
@@ -1138,7 +1270,8 @@ contract RealmEtfTest is Test {
         deal(USDG, creator, SEED);
         vm.startPrank(creator);
         IERC20(USDG).approve(address(factory), SEED);
-        address e = factory.createEtf("One", "ONE", RealmEtf.Mode.FIXED, assets, weights, SEED, 0);
+        address e =
+            factory.createEtf("One", "ONE", RealmEtf.Mode.FIXED, assets, weights, SEED, new uint256[](assets.length));
         vm.stopPrank();
         return RealmEtf(e);
     }
@@ -1305,7 +1438,11 @@ contract RealmEtfTest is Test {
         for (uint256 i; i < 32 && address(etf) < USDG; ++i) {
             deal(USDG, creator, SEED);
             IERC20(USDG).approve(address(factory), SEED);
-            etf = RealmEtf(factory.createEtf("Tech ETF", "TECH", RealmEtf.Mode.FLEXIBLE, assets, weights, SEED, 0));
+            etf = RealmEtf(
+                factory.createEtf(
+                    "Tech ETF", "TECH", RealmEtf.Mode.FLEXIBLE, assets, weights, SEED, new uint256[](assets.length)
+                )
+            );
         }
         vm.stopPrank();
         assertTrue(address(etf) > USDG, "no ETF above USDG");

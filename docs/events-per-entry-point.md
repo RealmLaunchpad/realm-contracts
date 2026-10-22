@@ -807,7 +807,7 @@ One `RealmEtfAssets` registry, one `RealmEtfFactory` and one `RealmEtfHook` per 
 ### `RealmEtfAssets` (one per chain)
 
 - **`ApproverSet`** (`account` indexed, `allowed`) — owner only.
-- `setRoute(asset, route)` — approver only: **`RouteSet`** (`asset` indexed, `route`) then **`ListedSet`** (`asset` indexed, `true`). `route` is `(venue, pool, key)`: `V3` with the pool in `pool`, or `V4` with the `PoolKey` in `key`. Routes are replaced, never cleared.
+- `setRoute(asset, route)` — approver only: **`RouteSet`** (`asset` indexed, `route`), then, on the asset's FIRST route only, **`ListedSet`** (`asset` indexed, `true`); replacing a route leaves the listing as it is. `route` is `(venue, pool, key)`: `V3` with the pool in `pool`, or `V4` with the `PoolKey` in `key`. Routes are replaced, never cleared.
 - `setListed(asset, listed)` — approver only: **`ListedSet`**. Delisting only stops ETFs from buying into `asset`.
 - `sunset(asset)` — owner only, one-way: **`AssetSunset`** (`asset` indexed). From then on every ETF holding `asset` skips it in deposits, mints, redemptions, rebalances, `reinvest` and `totalAssets`; only `redeemInKind` still sends it.
 
@@ -823,7 +823,7 @@ Emits **`HookSet`** (`hook` indexed). Only ETFs created afterwards use it: each 
 
 Emits **`MinSeedAssetsSet`** (`minSeedAssets`): the least USDG `createEtf` accepts as seed (1,000 USDG at deployment; not emitted by `initialize`).
 
-### `RealmEtfFactory.createEtf(name, symbol, mode, assets, weightsBps, seedAssets, minShares)` — permissionless
+### `RealmEtfFactory.createEtf(name, symbol, mode, assets, weightsBps, seedAssets, minAmountsOut)` — permissionless
 
 Reverts `SeedTooSmall` when `seedAssets < minSeedAssets`.
 
@@ -861,10 +861,10 @@ Reverts `SeedTooSmall` when `seedAssets < minSeedAssets`.
 5. `PoolManager.ModifyLiquidity` (`sender` = hook, negative `liquidityDelta`): the JIT position removed. The pool holds no liquidity again.
 6. Clearing what the hook is owed, each only if non-zero: USDG `Transfer` PoolManager -> ETF (an exact-input buy's unused `USDG_BUFFER`), then PoolManager ERC-6909 `Transfer(0, hook, ETF id)` (shares locked out of `totalSupply`: a sell's incoming shares, or an exact-output buy's unused share buffer).
 
-Without JIT (a protocol fee on the pool, or a trade the math cannot place) steps 1, 2 and 5 are absent, `HookSwap` carries the whole trade and `PoolManager.Swap` zero amounts.
+Without JIT (a protocol fee on the pool, a trade the math cannot place, or a swapper's price limit inside the JIT range) steps 1, 2 and 5 are absent, `HookSwap` carries the whole trade and `PoolManager.Swap` zero amounts. When the pool's price is more than `MAX_WALK_TICKS` from the JIT range, step 1 still happens but moves the price only `MAX_WALK_TICKS` towards it, and the swap goes without JIT (steps 2 and 5 absent).
 
 - Buy (USDG -> shares): USDG `Transfer` PoolManager -> hook (the input minus `USDG_BUFFER`), then the ETF's `deposit` events with `sender` = `owner` = hook, then shares `Transfer` hook -> PoolManager, then the tail.
-- Exact-output buy (exactly N shares out): USDG `Transfer` of the PoolManager's WHOLE USDG balance to the hook, then the ETF's `mint` events for N plus the share buffer, with `sender` = `owner` = hook (each swap paid by a USDG `Transfer` from the hook), then USDG `Transfer` hook -> PoolManager of what `mint` did not spend, then shares `Transfer` hook -> PoolManager, then the tail.
+- Exact-output buy (exactly N shares out): USDG `Transfer` PoolManager -> hook of twice `previewMint`'s estimate for N plus the share buffer, plus `MINT_LOAN_PAD` (or the PoolManager's whole USDG balance if smaller), then the ETF's `mint` events for N plus the share buffer, with `sender` = `owner` = hook (each swap paid by a USDG `Transfer` from the hook), then USDG `Transfer` hook -> PoolManager of what `mint` did not spend, then shares `Transfer` hook -> PoolManager, then the tail.
 - Sell (shares -> USDG): the ETF's swaps, USDG `Transfer` ETF -> hook, ERC-4626 **`Withdraw`** with `sender` = `receiver` = `owner` = hook (no share `Transfer`: nothing is burned), **`NavUpdated`** (its `totalSupply` already without the sold shares), USDG `Transfer` hook -> PoolManager, then the tail (its step 6 locks the sold shares). The router's share `Transfer` to the PoolManager comes after.
 - Initializing a pool emits only `PoolManager.Initialize`; it reverts unless the pair is a factory ETF created with this hook, against USDG, with fee 0 and tick spacing 1. The factory initializes it at creation.
 

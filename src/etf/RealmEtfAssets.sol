@@ -64,7 +64,7 @@ interface IEtfV2Factory {
 ///
 /// @dev SUNSET is for a dead TOKEN (delisted, acquired, paused for good), which no route can fix: ETFs stop
 ///      buying, selling and valuing it, so their deposits and redemptions work again, but still hand it out in
-///      `redeemInKind`. Owner only and one-way. A malicious owner can cut ETFs' NAV with it, but moves nothing.
+///      `redeemInKind`. Owner only and one-way. Sunsetting a token that still transfers leaks value: see `sunset`.
 contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -110,6 +110,7 @@ contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeab
     /// @notice Assets retired for every ETF (see the contract docstring). One-way.
     mapping(address asset => bool) public isSunset;
 
+    /// @notice Each asset's USDG route (`routeOf`): replaced, never cleared.
     mapping(address asset => Route) internal _routes;
 
     event ApproverSet(address indexed account, bool allowed);
@@ -141,13 +142,15 @@ contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeab
         emit ApproverSet(account, allowed);
     }
 
-    /// @notice Sets (or replaces) `asset`'s USDG route and lists it. Approvers only.
+    /// @notice Sets (or replaces) `asset`'s USDG route. Approvers only. A first route also lists `asset`; a
+    ///         replacement leaves the listing as it is, so repairing a delisted asset's route does not re-list it.
     function setRoute(address asset, Route calldata route) external {
         require(isApprover[msg.sender], NotApprover());
         _validate(asset, route);
+        bool first = _routes[asset].venue == Venue.NONE;
         _routes[asset] = route;
         emit RouteSet(asset, route);
-        _setListed(asset, true);
+        if (first) _setListed(asset, true);
     }
 
     /// @notice Lists or delists `asset` without touching its route. Approvers only.
@@ -158,6 +161,11 @@ contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeab
     }
 
     /// @notice Retires `asset` for every ETF, for good. Owner only.
+    /// @dev Meant for a token that can no longer move. If it still transfers and holds value, sunsetting it
+    ///      dilutes every holder at that moment: deposits and mints then price shares on the live holdings
+    ///      only, yet every share, old or new, still redeems its slice of the sunset balance in kind, so a
+    ///      deposit made after the sunset (flash loan, `redeemInKind`, sell the live slice) takes part of it
+    ///      for free. A token whose transfers revert leaks nothing: `redeemInKind` needs `skipMask` past it.
     function sunset(address asset) external onlyOwner {
         isSunset[asset] = true;
         emit AssetSunset(asset);
@@ -169,24 +177,25 @@ contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeab
         require(route.venue != Venue.NONE, NoRoute());
     }
 
-    /// @notice `amount` of `asset` in raw USDG at its route pool's SPOT price, before fees and impact.
+    /// @notice `amount` of `asset` in raw USDG at its route pool's SPOT price, before fees and impact. 0 for a
+    ///         sunset asset: ETFs no longer count it.
     /// @dev Anyone can move it within a transaction: fit for estimates and for splitting a deposit (where a
     ///      wrong price costs only the depositor), never for anything a manipulator could profit from.
     function usdgValueOf(address asset, uint256 amount) external view returns (uint256) {
+        if (isSunset[asset]) return 0;
         Route memory route = _routes[asset];
         require(route.venue != Venue.NONE, NoRoute());
+        // Every venue sorts a pool's two tokens by address.
+        bool assetIsToken0 = asset < USDG;
         if (route.venue == Venue.V2) {
             (uint112 r0, uint112 r1,) = IEtfV2Pair(route.pool).getReserves();
-            return IEtfV2Pair(route.pool).token0() == asset ? Math.mulDiv(amount, r1, r0) : Math.mulDiv(amount, r0, r1);
+            return assetIsToken0 ? Math.mulDiv(amount, r1, r0) : Math.mulDiv(amount, r0, r1);
         }
         uint160 sqrtPriceX96;
-        bool assetIsToken0;
         if (route.venue == Venue.V3) {
             (sqrtPriceX96,,,,,,) = IEtfV3Pool(route.pool).slot0();
-            assetIsToken0 = IEtfV3Pool(route.pool).token0() == asset;
         } else {
             (sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(route.key.toId());
-            assetIsToken0 = Currency.unwrap(route.key.currency0) == asset;
         }
         // Raw token1 per raw token0, Q128.
         uint256 priceX128 = Math.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 64);

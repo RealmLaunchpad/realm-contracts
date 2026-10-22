@@ -27,6 +27,8 @@ Only the hook can add liquidity (`beforeAddLiquidity` reverts; the hook's own ca
 
 The hook swaps on its own pool for 1 unit of input, with the price limit at the range's starting edge. Under Z there is no liquidity, so nothing is exchanged (delta 0) and the core walks the price to exactly the limit. Prior `slot0` therefore plays no part, and a stale or pushed pool price cannot be exploited. The factory initialises the pool at the seed price atomically with ETF creation (no one can initialise it earlier: `beforeInitialize` requires `factory.isEtf`), so this walk crosses only the ticks the NAV moved since the last trade.
 
+The walk is capped at `MAX_WALK_TICKS` (4,096 ticks, ~50%) per swap. The core crosses one 256-tick bitmap word per loop, so a price parked far from NAV (a trade filled at a pushed NAV) would otherwise bill the next swapper for the whole walk. Farther than the cap, the hook moves the price `MAX_WALK_TICKS` towards the range and fills that swap without JIT; JIT resumes once the range is in reach.
+
 ## Case U: price moves up (`zeroForOne = false`; input token1, output and position token0)
 
 Range BELOW the trade price `p = X/Y`:
@@ -79,9 +81,9 @@ P2 relies on the core running exactly one funded step, from the start edge with 
 
 - Only `tA` and `tB` are initialised (Z), so the next initialised tick from the start edge in the swap's direction is the far edge (one tick away, so no bitmap-word boundary can split the step).
 - If the start edge's tick is not yet active when the swap begins (`slot0.tick` sits just outside the position after Step 1), the core first takes a zero-length step to the same price (zero liquidity, zero amounts), crosses the edge (activating `L`), then runs the funded step. The amounts are unchanged.
-- The swapper's price limit must lie beyond the far edge. If it does not, the core stops early.
+- The swapper's price limit must lie beyond the far edge. If it does not, the core would stop early, so the hook skips JIT for that swap and fills it whole.
 
-**Defence in depth.** `afterSwap` checks that the pool's actual `swapDelta` equals the predicted `(inC, outC)` and reverts otherwise (`JitMismatch`). Safety therefore never rests on this equivalence argument alone: a mismatch (an early price limit, a future core change) reverts the trade instead of mispaying.
+**Defence in depth.** `afterSwap` checks that the pool's actual `swapDelta` equals the predicted `(inC, outC)` and reverts otherwise (`JitMismatch`). Safety therefore never rests on this equivalence argument alone: a mismatch (a future core change) reverts the trade instead of mispaying.
 
 **Verification.** `test/etf/RealmEtfJitMath.t.sol` runs the core's own `SwapMath.computeSwapStep` on every fuzzed plan (both directions, exact input and output, raw amounts up to 2^100 and realistic USDG/share sizes) and asserts P1, P2, P3 and the removal prediction. `test/etf/RealmEtf.t.sol` swaps through the real pool on a Robinhood fork and checks the events, the final price and the empty pool.
 

@@ -16,6 +16,8 @@ import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/Pool
 import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol";
+import {Math} from "lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 import {RealmEtf} from "src/etf/RealmEtf.sol";
 import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
@@ -34,8 +36,9 @@ import {RealmEtfJitMath} from "src/etf/RealmEtfJitMath.sol";
 ///      position. The pool manager thus emits a real `Swap` and `slot0` ends at the trade price; `HookSwap`
 ///      reports the hook's part. Sizing and proofs: `RealmEtfJitMath`, `docs/etf-jit-math.md`. The pool
 ///      holds no liquidity between swaps; nobody else may add any. Pools must have fee 0 and tick spacing 1.
-///      With a protocol fee on the pool, or a trade the math cannot place, the hook's delta covers the whole
-///      trade and the curve swaps 0.
+///      With a protocol fee on the pool, a trade the math cannot place, a swapper's price limit inside the
+///      range, or a price more than `MAX_WALK_TICKS` from the range, the hook's delta covers the whole trade
+///      and the curve swaps 0.
 ///
 /// @dev EXACT INPUT both ways, mirroring the ETF's `deposit`/`redeem`; EXACT OUTPUT for buys only, through its
 ///      `mint`. The ETF has no `withdraw`, so exact-output sells revert.
@@ -44,9 +47,10 @@ import {RealmEtfJitMath} from "src/etf/RealmEtfJitMath.sol";
 ///      - A buy `take`s the USDG from the pool manager before it is paid. An ETF that buys through V3
 ///        pools therefore needs the pool manager to hold that much USDG from other pools (V4 legs hand it
 ///        straight back). On Robinhood, where USDG is the main V4 quote, that ceiling is high, but it is one.
-///      - An exact-output buy learns its price only once `mint` has bought every holding, so it `take`s ALL
-///        the pool manager's USDG first, lets `mint` pull what it spends, and settles the rest straight back.
-///        Same ceiling: the mint's whole cost.
+///      - An exact-output buy learns its price only once `mint` has bought every holding, so it `take`s twice
+///        `mint`'s spot estimate (plus `MINT_LOAN_PAD`) first, lets `mint` pull what it spends, and settles the
+///        rest straight back. Not the pool manager's whole USDG: a route pool's hook that moves USDG mid-swap
+///        would find none. Same ceiling: the mint's whole cost.
 ///      - A sell cannot do the same: the pool manager holds no shares. The ETF pays out on credit
 ///        (`redeemOnCredit`) and, once the swap is done, the hook mints itself claims on the incoming shares,
 ///        which locks them in the pool manager for good and takes them out of the ETF's `totalSupply`.
@@ -77,6 +81,15 @@ contract RealmEtfHook is BaseHook {
     ///         unused rest is locked as claims, out of `totalSupply`.
     uint256 public constant SHARES_BUFFER = 4;
 
+    /// @notice Raw USDG (1 USDG) an exact-output buy lends `mint` on top of twice its spot estimate, which
+    ///         rounds a dust buy's legs to 0. Fees and impact past 2x revert the trade, as they should.
+    uint256 public constant MINT_LOAN_PAD = 1e6;
+
+    /// @notice Farthest a swap moves the empty pool's price to reach its JIT range (~50%). The core walks it
+    ///         one 256-tick bitmap word per loop, so a price parked far from NAV costs each swap at most this
+    ///         much walking, without JIT, until the range is back in reach.
+    int24 public constant MAX_WALK_TICKS = 4096;
+
     /// @dev The JIT position of the swap in flight; zero liquidity: none.
     int24 private transient _jitTickLower;
     uint128 private transient _jitLiquidity;
@@ -101,7 +114,8 @@ contract RealmEtfHook is BaseHook {
     error InvalidPoolKey();
     error LiquidityNotAccepted();
     error ExactOutputNotSupported();
-    /// @notice The curve did not fill what the JIT position was sized for (e.g. a price limit inside the range).
+    /// @notice The curve did not fill what the JIT position was sized for. A safety check: the hook already skips
+    ///         JIT when the swapper's price limit falls inside the range.
     error JitMismatch();
 
     constructor(IPoolManager manager, RealmEtfFactory factory) BaseHook(manager) {
@@ -151,7 +165,7 @@ contract RealmEtfHook is BaseHook {
     {
         bool exactIn = params.amountSpecified < 0;
         (uint256 x, uint256 y, uint256 buffer) = _fill(key, params, exactIn);
-        return (this.beforeSwap.selector, _hookDelta(key, sender, params.zeroForOne, exactIn, x, y, buffer), 0);
+        return (this.beforeSwap.selector, _hookDelta(key, sender, params, exactIn, x, y, buffer), 0);
     }
 
     /// @dev Fills the whole trade from the ETF, the swapper paying `x` and receiving `y`, and settles the output
@@ -172,7 +186,8 @@ contract RealmEtfHook is BaseHook {
             y = uint256(params.amountSpecified);
             buffer = SHARES_BUFFER + (y >> 40);
             settled = y + buffer;
-            uint256 taken = IERC20(USDG).balanceOf(address(poolManager));
+            uint256 taken =
+                Math.min(2 * etf.previewMint(settled) + MINT_LOAN_PAD, IERC20(USDG).balanceOf(address(poolManager)));
             poolManager.take(cIn, address(this), taken);
             IERC20(USDG).forceApprove(address(etf), taken);
             x = etf.mint(settled, address(this));
@@ -199,15 +214,15 @@ contract RealmEtfHook is BaseHook {
     function _hookDelta(
         PoolKey calldata key,
         address sender,
-        bool zeroForOne,
+        SwapParams calldata params,
         bool exactIn,
         uint256 x,
         uint256 y,
         uint256 buffer
     ) private returns (BeforeSwapDelta) {
-        (uint256 hookIn, uint256 hookOut) = _placeJit(key, zeroForOne, exactIn, x, y, buffer);
+        (uint256 hookIn, uint256 hookOut) = _placeJit(key, params, exactIn, x, y, buffer);
         (_hookIn, _hookOut) = (hookIn, hookOut);
-        _emitHookSwap(key, sender, zeroForOne, hookIn, hookOut);
+        _emitHookSwap(key, sender, params.zeroForOne, hookIn, hookOut);
 
         // The specified side is the input on exact-input swaps and the output on exact-output ones.
         (int128 inDelta, int128 outDelta) = (hookIn.toInt256().toInt128(), -hookOut.toInt256().toInt128());
@@ -256,19 +271,27 @@ contract RealmEtfHook is BaseHook {
     /// @dev Places the JIT position for a trade the ETF filled with `x` in and `y` out, and returns the hook's
     ///      own part of the trade, all of it (`x`, `y`) without JIT. With JIT, the swapper absorbs the removal's
     ///      rounding on the side the hook does not specify, and `buffer` must cover it on the other.
-    function _placeJit(PoolKey calldata key, bool zeroForOne, bool exactIn, uint256 x, uint256 y, uint256 buffer)
-        private
-        returns (uint256 hookIn, uint256 hookOut)
-    {
-        (uint160 sqrtPriceX96,, uint24 protocolFee,) = poolManager.getSlot0(key.toId());
+    function _placeJit(
+        PoolKey calldata key,
+        SwapParams calldata params,
+        bool exactIn,
+        uint256 x,
+        uint256 y,
+        uint256 buffer
+    ) private returns (uint256 hookIn, uint256 hookOut) {
+        bool zeroForOne = params.zeroForOne;
+        (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee,) = poolManager.getSlot0(key.toId());
         if ((zeroForOne ? protocolFee.getZeroForOneFee() : protocolFee.getOneForZeroFee()) != 0) return (x, y);
         RealmEtfJitMath.Plan memory p = RealmEtfJitMath.plan(zeroForOne, exactIn, x, y);
         if (p.liquidity == 0) return (x, y);
         if (exactIn ? p.inC - p.removedIn > buffer : p.cost - p.outC - p.removedOut > buffer) return (x, y);
+        // A swapper's price limit inside the range would stop the curve short of the plan.
+        if (zeroForOne
+                ? params.sqrtPriceLimitX96 > TickMath.getSqrtPriceAtTick(p.tickLower)
+                : params.sqrtPriceLimitX96 < TickMath.getSqrtPriceAtTick(p.tickLower + 1)) return (x, y);
 
-        // The pool is empty, so this exchanges nothing and only moves the price to the range's starting edge.
-        if (sqrtPriceX96 != p.startSqrtPriceX96) {
-            poolManager.swap(key, SwapParams(p.startSqrtPriceX96 < sqrtPriceX96, -1, p.startSqrtPriceX96), "");
+        if (!_walk(key, sqrtPriceX96, tick, p.startSqrtPriceX96, zeroForOne ? p.tickLower + 1 : p.tickLower)) {
+            return (x, y);
         }
         poolManager.modifyLiquidity(
             key, ModifyLiquidityParams(p.tickLower, p.tickLower + 1, int256(uint256(p.liquidity)), 0), ""
@@ -277,6 +300,21 @@ contract RealmEtfHook is BaseHook {
         (int128 paid, int128 received) = (-p.inC.toInt256().toInt128(), p.outC.toInt256().toInt128());
         _jitDelta = BalanceDelta.unwrap(zeroForOne ? toBalanceDelta(paid, received) : toBalanceDelta(received, paid));
         return exactIn ? (x - p.inC, y - p.cost + p.removedOut) : (x - p.removedIn, y - p.outC);
+    }
+
+    /// @dev Moves the empty pool's price from `sqrtPriceX96` (tick `tick`) to `start` (tick `startTick`), or only
+    ///      `MAX_WALK_TICKS` towards it when it is farther. The pool is empty, so this exchanges nothing. Returns
+    ///      whether the price reached `start`.
+    function _walk(PoolKey calldata key, uint160 sqrtPriceX96, int24 tick, uint160 start, int24 startTick)
+        private
+        returns (bool)
+    {
+        if (sqrtPriceX96 == start) return true;
+        uint160 target = start;
+        if (tick > startTick + MAX_WALK_TICKS) target = TickMath.getSqrtPriceAtTick(tick - MAX_WALK_TICKS);
+        else if (tick < startTick - MAX_WALK_TICKS) target = TickMath.getSqrtPriceAtTick(tick + MAX_WALK_TICKS);
+        poolManager.swap(key, SwapParams(target < sqrtPriceX96, -1, target), "");
+        return target == start;
     }
 
     function _etfOf(PoolKey calldata key) private view returns (RealmEtf etf) {
