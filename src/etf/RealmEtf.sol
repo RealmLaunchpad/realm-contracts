@@ -126,6 +126,9 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     /// @dev The V3 pool a swap is in flight on, the only caller its callback accepts, once.
     address private transient _v3Pool;
 
+    /// @dev The token that swap pays in. The callback pays this one, never a token the pool names in `data`.
+    address private transient _v3TokenIn;
+
     /// @dev Most the in-flight V3 swap's callback may take: the exact input, or unbounded for an exact output
     ///      (only `mint` swaps those, paid by the minter, bounded by their approval and `maxAssets`). The registry is upgradeable,
     ///      so a route's "pool" is not trusted to ask only what it is owed.
@@ -473,12 +476,12 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         return abi.encode(amountIn, amountOut);
     }
 
-    function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) external {
+    function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata) external {
         require(msg.sender == _v3Pool, Unauthorized());
         _v3Pool = address(0);
         uint256 owed = uint256(amount0Delta > 0 ? amount0Delta : amount1Delta);
         require(owed <= _v3MaxIn, Unauthorized());
-        _pay(abi.decode(data, (address)), msg.sender, owed);
+        _pay(_v3TokenIn, msg.sender, owed);
     }
 
     //////////////////////// internals //////////////////////
@@ -692,7 +695,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         internal
         returns (uint256 amountIn, uint256 amountOut)
     {
-        _v3Pool = pool;
+        (_v3Pool, _v3TokenIn) = (pool, tokenIn);
         _v3MaxIn = amountSpecified < 0 ? uint256(-amountSpecified) : type(uint256).max;
         // V3's sign is the opposite of V4's: positive is an exact input.
         (int256 amount0, int256 amount1) = IEtfV3Pool(pool)
@@ -701,7 +704,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
                 zeroForOne,
                 -amountSpecified,
                 zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1,
-                abi.encode(tokenIn)
+                ""
             );
         _v3Pool = address(0);
         (int256 paid, int256 received) = zeroForOne ? (amount0, amount1) : (amount1, amount0);

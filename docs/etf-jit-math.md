@@ -101,6 +101,7 @@ Removing the position, the core pays out at the final price `s_n`, rounding DOWN
 The hook skips JIT and fills the whole trade through its delta, as before JIT, when:
 
 - the protocol fee for the direction is non-zero;
+- the trade's USDG side (input on a buy, output on a sell) is under `MIN_JIT_USDG` (1 USDG): at that size `MIN_SLICE` and rounding dominate the fill's price, and JIT would park that price in `slot0` for free (a 0.003 USDG buy fills ~50% above NAV), so the price stays where it was;
 - the price is out of tick range, or `X/Y ≥ 2^64` (guards the `X·2^192` product);
 - `L` is 0 or exceeds `maxLiquidityPerTick`;
 - `B ≤ 1` (or `Bo ≤ 1`), meaning there is nothing for the curve to fill;

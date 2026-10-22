@@ -37,9 +37,9 @@ import {IAggregatorHook} from "src/interfaces/IAggregatorHook.sol";
 ///      position. The pool manager thus emits a real `Swap` and `slot0` ends at the trade price; `HookSwap`
 ///      reports the hook's part. Sizing and proofs: `RealmEtfJitMath`, `docs/etf-jit-math.md`. The pool
 ///      holds no liquidity between swaps; nobody else may add any. Pools must have fee 0 and tick spacing 1.
-///      With a protocol fee on the pool, a trade the math cannot place, a swapper's price limit inside the
-///      range, or a price more than `MAX_WALK_TICKS` from the range, the hook's delta covers the whole trade
-///      and the curve swaps 0.
+///      With a protocol fee on the pool, a trade under `MIN_JIT_USDG`, a trade the math cannot place, a
+///      swapper's price limit inside the range, or a price more than `MAX_WALK_TICKS` from the range, the
+///      hook's delta covers the whole trade and the curve swaps 0.
 ///
 /// @dev EXACT INPUT both ways, mirroring the ETF's `deposit`/`redeem`; EXACT OUTPUT for buys only, through its
 ///      `mint`. The ETF has no `withdraw`, so exact-output sells revert.
@@ -95,6 +95,11 @@ contract RealmEtfHook is BaseHook, IAggregatorHook {
     ///         one 256-tick bitmap word per loop, so a price parked far from NAV costs each swap at most this
     ///         much walking, without JIT, until the range is back in reach.
     int24 public constant MAX_WALK_TICKS = 4096;
+
+    /// @notice Least raw USDG (1 USDG) a trade must carry, in or out, for JIT. Below it the fill's price is
+    ///         mostly `RealmEtf.MIN_SLICE` and rounding (a 0.003 USDG buy fills ~50% above NAV), and JIT would
+    ///         leave that price in `slot0` for free; the hook fills such a trade whole and the price stays put.
+    uint256 public constant MIN_JIT_USDG = 1e6;
 
     /// @dev The JIT position of the swap in flight; zero liquidity: none.
     int24 private transient _jitTickLower;
@@ -308,6 +313,8 @@ contract RealmEtfHook is BaseHook, IAggregatorHook {
         bool zeroForOne = params.zeroForOne;
         (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee,) = poolManager.getSlot0(key.toId());
         if ((zeroForOne ? protocolFee.getZeroForOneFee() : protocolFee.getOneForZeroFee()) != 0) return (x, y);
+        bool usdgIn = Currency.unwrap(zeroForOne ? key.currency0 : key.currency1) == USDG;
+        if ((usdgIn ? x : y) < MIN_JIT_USDG) return (x, y);
         RealmEtfJitMath.Plan memory p = RealmEtfJitMath.plan(zeroForOne, exactIn, x, y);
         if (p.liquidity == 0) return (x, y);
         if (exactIn ? p.inC - p.removedIn > buffer : p.cost - p.outC - p.removedOut > buffer) return (x, y);

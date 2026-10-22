@@ -78,7 +78,7 @@ Mechanics of a buy (exact input A USDG):
 4. Return a `beforeSwap` delta covering the part the curve will not fill: the core curve swaps the rest against the position, so the pool manager emits a real `Swap` and `slot0` ends at ~A/S. `HookSwap` reports the hook's part.
 5. `afterSwap`: check the curve filled exactly the predicted amounts (`JitMismatch` otherwise) and remove the position. Removal rounds a few raw units down: the swapper absorbs them on the side the hook does not specify; on the side it does, `USDG_BUFFER` / `SHARES_BUFFER` cover them.
 
-Sells mirror it with a USDG position (`redeemOnCredit`, then the received shares are locked behind the hook's claims). Exact-output buys mirror it with the exact-output mint. No JIT (the hook fills the whole trade, the curve swaps 0) with a protocol fee on the pool, a trade the math cannot place, or a swapper's price limit inside the range.
+Sells mirror it with a USDG position (`redeemOnCredit`, then the received shares are locked behind the hook's claims). Exact-output buys mirror it with the exact-output mint. No JIT (the hook fills the whole trade, the curve swaps 0) with a protocol fee on the pool, a trade under `MIN_JIT_USDG` (1 USDG, so dust trades priced mostly by `MIN_SLICE` and rounding cannot move `slot0`), a trade the math cannot place, or a swapper's price limit inside the range.
 
 Price behaviour: the step-2 move emits an extra zero-amount `Swap` at ~the trade price; scanners that skip zero-amount swaps ignore it, and those that read its price see a sane one. Between trades `slot0` holds the last trade price and in-range liquidity is 0, so scanners still report ~$0 liquidity in this pool; only standing capital would change that.
 

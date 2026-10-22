@@ -70,6 +70,25 @@ contract GreedyV3Pool {
     }
 }
 
+/// @dev A V3 "pool" an upgraded registry could route to: asks for exactly its input, but names another token in
+///      the callback's `data`.
+contract TokenSwitchingV3Pool {
+    address public immutable other;
+
+    constructor(address other_) {
+        other = other_;
+    }
+
+    function swap(address, bool zeroForOne, int256 amountSpecified, uint160, bytes calldata)
+        external
+        returns (int256, int256)
+    {
+        (int256 a0, int256 a1) = zeroForOne ? (amountSpecified, int256(0)) : (int256(0), amountSpecified);
+        RealmEtf(msg.sender).uniswapV3SwapCallback(a0, a1, abi.encode(other));
+        return (a0, a1);
+    }
+}
+
 /// @notice ETF ETFs on a Robinhood mainnet fork: real rStocks on their real USDG pools (SPY and META on
 ///         V4, NVDA and QQQ on V3).
 contract RealmEtfTest is Test {
@@ -715,15 +734,30 @@ contract RealmEtfTest is Test {
 
     /// forge-config: default.fuzz.runs = 32
     function testFuzz_hook_buyAndSellThroughTheCurve(uint256 usdg, uint256 sellBps) public {
-        usdg = bound(usdg, 1e6, 20_000e6);
+        usdg = bound(usdg, 2e6, 20_000e6);
         vm.recordLogs();
         uint256 shares = _swap(alice, USDG, usdg);
         _assertJit(usdg, shares);
-        uint256 sold = shares * bound(sellBps, 1, 10_000) / 10_000;
-        vm.assume(sold != 0);
+        // A sell big enough to clear `MIN_JIT_USDG` (~1.1 USDG out).
+        uint256 sold = shares * bound(sellBps, Math.min(10_000, 11e9 / usdg + 1), 10_000) / 10_000;
         vm.recordLogs();
         uint256 out = _swap(alice, address(etf), sold);
         _assertJit(sold, out);
+    }
+
+    /// @dev A trade under `MIN_JIT_USDG` is priced mostly by `MIN_SLICE` and rounding (this buy fills ~50% above
+    ///      NAV): the hook fills it whole and the pool's price stays where the last real trade left it.
+    function test_hook_dustTradesLeaveThePriceUntouched() public {
+        _swap(alice, USDG, 1_000e6);
+        (uint160 start,,,) = manager.getSlot0(etfKey.toId());
+
+        assertGt(_swap(alice, USDG, 3 + 3 * etf.MIN_SLICE()), 0);
+        (uint160 afterBuy,,,) = manager.getSlot0(etfKey.toId());
+        assertEq(afterBuy, start, "dust buy: price untouched");
+
+        assertGt(_swap(creator, address(etf), 2e13), 0);
+        (uint160 afterSell,,,) = manager.getSlot0(etfKey.toId());
+        assertEq(afterSell, start, "dust sell: price untouched");
     }
 
     function test_hook_buyFillsTheSameFromEveryStartingPrice() public {
@@ -1104,6 +1138,19 @@ contract RealmEtfTest is Test {
 
     /// @dev A registry upgrade can point a route at any contract: the ETF still pays each V3 swap at most its exact
     ///      input, once, so the holdings at rest stay out of reach.
+    /// @dev The callback pays the swap's own input token, whatever the pool names in `data`.
+    function test_v3Callback_paysTheSwapsInputTokenNotOneThePoolNames() public {
+        TokenSwitchingV3Pool pool = new TokenSwitchingV3Pool(SPY);
+        vm.mockCall(
+            address(registry), abi.encodeCall(RealmEtfAssets.routeOf, (NVDA)), abi.encode(_v3Route(address(pool)))
+        );
+        uint256 shares = etf.balanceOf(creator) / 10;
+        vm.prank(creator);
+        etf.redeem(shares, creator, creator);
+        assertGt(IERC20(NVDA).balanceOf(address(pool)), 0);
+        assertEq(IERC20(SPY).balanceOf(address(pool)), 0);
+    }
+
     function test_v3Callback_paysAtMostTheExactInputOnce() public {
         uint256 shares = etf.balanceOf(creator) / 10;
         for (uint256 i; i < 2; ++i) {
