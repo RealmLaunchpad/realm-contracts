@@ -683,7 +683,7 @@ upgrade another `Upgraded`.
   from that pool's spot price, or delisted by venue `NONE`, emitting `unitsPerNativeX18 == 0`. Venue
   `VAULT` (enum value 4) lists an ERC-4626 share (a Realm ETF): `pool` is the vault itself (== `asset`),
   `key` the V4 pool it trades in against the vault's `asset()`, and the rate is snapshotted from the
-  vault's NAV (`totalAssets / totalSupply`), not from that pool.
+  vault's NAV (`convertToAssets`), not from that pool.
   Also emitted, keeper-only, by `refreshRates(assets)`: once per listed asset in the array, in array
   order, with its re-snapshotted rate and its UNCHANGED stored `source`; unlisted assets are skipped
   silently.

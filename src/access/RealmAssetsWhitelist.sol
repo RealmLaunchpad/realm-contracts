@@ -49,7 +49,7 @@ interface IUniswapV3FactoryPools {
 ///      types a number and decimals cannot slip: they come from the tokens. Integrators read
 ///      `priceSource` to price the asset live.
 ///
-/// @dev VAULT SHARES (ERC-4626, such as Realm ETFs) are priced at their vault's NAV, `totalAssets / totalSupply`
+/// @dev VAULT SHARES (ERC-4626, such as Realm ETFs) are priced at their vault's NAV, `convertToAssets`
 ///      in its `asset()`, which is then the reference. Not at their trading pool's price: a pool that only
 ///      re-prints its own fills (an ETF's hook pool) holds a pushed price for as long as nobody trades, with no
 ///      arbitrage to pull it back, so a keeper refresh at an unpredictable time would still snapshot it.
@@ -245,13 +245,14 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
                 address vault = source.pool;
                 address underlying = IERC4626(vault).asset();
                 require((t0 == vault && t1 == underlying) || (t0 == underlying && t1 == vault), InvalidPriceSource());
-                // Raw underlying per raw share, exact, rather than `convertToAssets(1e18)`'s rounded one.
-                (uint256 assets, uint256 supply) = (IERC4626(vault).totalAssets(), IERC4626(vault).totalSupply());
-                require(assets != 0 && supply != 0, InvalidPriceSource());
+                // ERC-4626's own conversion, offsets and fees included; 1e36 raw shares keep the per-share
+                // value's rounding at ~1e-24 relative.
+                uint256 assets = IERC4626(vault).convertToAssets(1e36);
+                require(assets != 0, InvalidPriceSource());
                 return (
                     t0,
                     t1,
-                    t0 == vault ? FullMath.mulDiv(assets, 1 << 128, supply) : FullMath.mulDiv(supply, 1 << 128, assets)
+                    t0 == vault ? FullMath.mulDiv(assets, 1 << 128, 1e36) : FullMath.mulDiv(1e36, 1 << 128, assets)
                 );
             }
         } else if (source.venue == Venue.V3) {

@@ -31,7 +31,7 @@ contract Coin is ERC20 {
     }
 }
 
-/// @dev An ERC-4626 share as far as the whitelist reads one: `asset()` and a settable NAV.
+/// @dev An ERC-4626 share as far as the whitelist reads one: `asset()` and `convertToAssets` at a settable NAV.
 contract NavVault is ERC20 {
     address public immutable asset;
     uint256 public totalAssets;
@@ -44,6 +44,10 @@ contract NavVault is ERC20 {
 
     function setTotalAssets(uint256 assets_) external {
         totalAssets = assets_;
+    }
+
+    function convertToAssets(uint256 shares) external view returns (uint256) {
+        return shares * totalAssets / totalSupply();
     }
 }
 
