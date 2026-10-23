@@ -7,6 +7,7 @@ import {
 } from "lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC4626} from "lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
@@ -48,6 +49,11 @@ interface IUniswapV3FactoryPools {
 ///      types a number and decimals cannot slip: they come from the tokens. Integrators read
 ///      `priceSource` to price the asset live.
 ///
+/// @dev VAULT SHARES (ERC-4626, such as Realm ETFs) are priced at their vault's NAV, `totalAssets / totalSupply`
+///      in its `asset()`, which is then the reference. Not at their trading pool's price: a pool that only
+///      re-prints its own fills (an ETF's hook pool) holds a pushed price for as long as nobody trades, with no
+///      arbitrage to pull it back, so a keeper refresh at an unpredictable time would still snapshot it.
+///
 /// @dev THE RATE IS A SNAPSHOT, deliberately. A live read at the consumer would let anyone push the pool
 ///      and unwind it around their own call for the price of two swap fees. Approvers refresh it by
 ///      listing the asset again, and keepers by `refreshRates` from the stored source; on a chain with a
@@ -61,21 +67,23 @@ interface IUniswapV3FactoryPools {
 ///      factory means that venue does not exist on the chain and its listings are refused.
 contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable, KeeperGated {
     /// @notice Contract version.
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 2;
 
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
-    /// @notice Where a price comes from. `NONE` delists.
+    /// @notice Where a price comes from. `NONE` delists. `VAULT`: an ERC-4626 share at its vault's NAV.
     enum Venue {
         NONE,
         V2,
         V3,
-        V4
+        V4,
+        VAULT
     }
 
     /// @notice A listing's price pool: `pool` is the V2 pair or V3 pool, `key` the V4 pool. The unused
-    ///         field is zero.
+    ///         field is zero. `VAULT`: `pool` is the vault (the asset itself) and `key` the V4 pool it trades
+    ///         in against its `asset()`, which prices nothing and only routes dev-buy zaps.
     struct PriceSource {
         Venue venue;
         address pool;
@@ -113,7 +121,8 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
     error NotApprover();
     /// @notice The source's venue is unavailable here, its pool is not Uniswap's, does not hold `asset`,
     ///         is not live (V2/V3: with liquidity; V4: initialized), or its other side is neither native (nor WETH) nor an asset
-    ///         listed directly against native.
+    ///         listed directly against native. `VAULT`: the asset is not the vault, its pool is not against the
+    ///         vault's `asset()`, or the vault is empty.
     error InvalidPriceSource();
 
     /// @dev Implementation immutables: the proxy reads them from the implementation's bytecode.
@@ -194,7 +203,10 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
         returns (uint256 rate, address ref)
     {
         (address t0, address t1, uint256 priceX128) = _spot(source);
-        require(asset == t0 || asset == t1, InvalidPriceSource());
+        // A vault source prices its own share only, never its `asset()` against it.
+        require(
+            (asset == t0 || asset == t1) && (source.venue != Venue.VAULT || asset == source.pool), InvalidPriceSource()
+        );
         ref = asset == t0 ? t1 : t0;
         if (ref == WETH) ref = address(0);
 
@@ -217,10 +229,10 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
 
     /// @dev The source pool's two tokens (zero for native) and its spot price as raw token1 per raw
     ///      token0 in Q128, after checking it is Uniswap's and live: with liquidity for V2/V3, initialized
-    ///      for V4.
+    ///      for V4. `VAULT`: the vault and its `asset()`, at the vault's NAV, once its V4 pool checks out.
     function _spot(PriceSource memory source) private view returns (address t0, address t1, uint256 priceX128) {
         uint160 sqrtPriceX96;
-        if (source.venue == Venue.V4) {
+        if (source.venue == Venue.V4 || source.venue == Venue.VAULT) {
             (t0, t1) = (Currency.unwrap(source.key.currency0), Currency.unwrap(source.key.currency1));
             PoolId id = source.key.toId();
             (sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(id);
@@ -229,6 +241,19 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
             // re-centers them inside `beforeSwap`), so a liquidity check would refuse, or refresh-revert,
             // pools that trade. Depth is the frontend's to show, as it is for thin pools.
             require(sqrtPriceX96 != 0, InvalidPriceSource());
+            if (source.venue == Venue.VAULT) {
+                address vault = source.pool;
+                address underlying = IERC4626(vault).asset();
+                require((t0 == vault && t1 == underlying) || (t0 == underlying && t1 == vault), InvalidPriceSource());
+                // Raw underlying per raw share, exact, rather than `convertToAssets(1e18)`'s rounded one.
+                (uint256 assets, uint256 supply) = (IERC4626(vault).totalAssets(), IERC4626(vault).totalSupply());
+                require(assets != 0 && supply != 0, InvalidPriceSource());
+                return (
+                    t0,
+                    t1,
+                    t0 == vault ? FullMath.mulDiv(assets, 1 << 128, supply) : FullMath.mulDiv(supply, 1 << 128, assets)
+                );
+            }
         } else if (source.venue == Venue.V3) {
             IUniswapV3PoolState pool = IUniswapV3PoolState(source.pool);
             (t0, t1) = (pool.token0(), pool.token1());
