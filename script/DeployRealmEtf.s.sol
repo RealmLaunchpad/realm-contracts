@@ -39,11 +39,12 @@ abstract contract EtfHookDeployer is Script {
 /// @dev    Run: just deploy-etf-<rh|rh-testnet>. Dry-run: the same `forge script` without --broadcast.
 contract DeployRealmEtf is EtfHookDeployer {
     function run() external {
-        (, address owner,) = vm.readCallers();
         address poolManager = ChainConfig.infra().univ4PoolManager;
         (address univ2Factory, address univ3Factory) = ChainConfig.univ2And3Factories();
 
         vm.startBroadcast();
+        // Inside the broadcast: only there does `readCallers` report the real `--account` broadcaster.
+        (, address owner,) = vm.readCallers();
         address registryImpl = address(new RealmEtfAssets(poolManager, univ3Factory, univ2Factory, ChainConfig.usdg()));
         RealmEtfAssets registry =
             RealmEtfAssets(address(new ERC1967Proxy(registryImpl, abi.encodeCall(RealmEtfAssets.initialize, (owner)))));

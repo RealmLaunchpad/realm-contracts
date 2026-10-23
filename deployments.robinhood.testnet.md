@@ -15,14 +15,14 @@
 | RealmHookAnyPair                             | `0x87f077ebBE1D9d35D5E4522bf0a4e30adaaF40cc` |
 | RealmDirectGraduatorUniV4                    | `0xa3e87b0236B9Fa1cbd10c6d9fDE8b72b627CfE4a` |
 | RealmFactoryUniV4Direct (proxy)              | `0xF0399F67e359c08A18816E466364797b7fBc4df4` |
-| RealmFactoryUniV4Direct (impl)               | `0x6f56568cA605b55a1C5757F2A5304D21ae9D9b63` |
+| RealmFactoryUniV4Direct (impl)               | `0x24909f601d469F125e626fcEC7BCce70c89d737f` |
 | RealmAssetsWhitelist (proxy)                 | `0xf15562e731c05Fb9DD9c7BE0a2FD8C03b778c261` |
-| RealmAssetsWhitelist (impl)                  | `0xC5006Ba2E152DA37E8Ad44927775B4e5B0447f5f` |
-| RealmEtfAssets (proxy)                       | _(not deployed)_                             |
-| RealmEtfAssets (impl)                        | _(not deployed)_                             |
-| RealmEtfFactory (proxy)                      | _(not deployed)_                             |
-| RealmEtfFactory (impl)                       | _(not deployed)_                             |
-| RealmEtfHook                                 | _(not deployed)_                             |
+| RealmAssetsWhitelist (impl)                  | `0xe3DcE2402137127Ff77eD3d11Bc5D5d3DC838bcB` |
+| RealmEtfAssets (proxy)                       | `0xfba81c11F27B4d9d38D26070d49f4F0a38003c16` |
+| RealmEtfAssets (impl)                        | `0xBD2b77E5761106AE35db6c135c503CA6DFf18E28` |
+| RealmEtfFactory (proxy)                      | `0xd8eAD284f967a1651988049b2585AacEB9593720` |
+| RealmEtfFactory (impl)                       | `0xF8265A720ae4FfaF784E09062e6eb8Cd9eD21835` |
+| RealmEtfHook                                 | `0xB5623BD9c3df7cce689D8332D9eD9cf2E43168c8` |
 | SwapLpFeeRouter (proxy)                      | `0xE4E30f8BFdA12af0f92991343c30F1b45A733aa0` |
 | RealmLpLocker                                | `0x92D3135C992e4288829a4C848c1Bdd1f901C215F` |
 | SwapLpFeeRouter (impl)                       | `0xD575E0a07438929966C018762367448b67691589` |
