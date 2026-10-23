@@ -266,7 +266,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     ///         selling them would pay swap fees and price impact.
     function totalAssets() public view returns (uint256 total) {
         for (uint256 i; i < _assets.length; ++i) {
-            total += REGISTRY.usdgValueOf(_assets[i], IERC20(_assets[i]).balanceOf(address(this)));
+            total += REGISTRY.usdgValueOf(_assets[i], _balanceOrZero(_assets[i]));
         }
     }
 
@@ -307,7 +307,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         // Sunset assets value at 0, as `mint` does not buy them.
         for (uint256 i; i < _assets.length; ++i) {
             address a = _assets[i];
-            uint256 out = Math.mulDiv(shares, IERC20(a).balanceOf(address(this)), supply, Math.Rounding.Ceil);
+            uint256 out = Math.mulDiv(shares, _balanceOrZero(a), supply, Math.Rounding.Ceil);
             assets += REGISTRY.usdgValueOf(a, out);
         }
     }
@@ -562,10 +562,11 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         amounts = new uint256[](n);
         for (uint256 i; i < n; ++i) {
             IERC20 a = IERC20(_assets[i]);
-            uint256 amount = Math.mulDiv(a.balanceOf(address(this)), net, supply);
             if ((skipMask >> i) & 1 == 1) {
-                emit InKindForfeited(address(a), amount);
+                // A forfeited token may be dead: its balance is read without reverting.
+                emit InKindForfeited(address(a), Math.mulDiv(_balanceOrZero(address(a)), net, supply));
             } else {
+                uint256 amount = Math.mulDiv(a.balanceOf(address(this)), net, supply);
                 a.safeTransfer(receiver, amount);
                 amounts[i] = amount;
             }
@@ -747,11 +748,18 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         uint256[] memory values = new uint256[](n);
         uint256 total;
         for (uint256 i; i < n; ++i) {
-            balances[i] = IERC20(assets_[i]).balanceOf(address(this));
+            balances[i] = _balanceOrZero(assets_[i]);
             values[i] = REGISTRY.usdgValueOf(assets_[i], balances[i]);
             total += values[i];
         }
         emit NavUpdated(total, supply, assets_, balances, values);
+    }
+
+    /// @dev The ETF's balance of `asset`, 0 if the call fails: a dead sunset token (reverting, or no code) must not
+    ///      brick the NAV and preview reads every path runs. Swaps and transfers read balances strictly.
+    function _balanceOrZero(address asset_) private view returns (uint256) {
+        (bool ok, bytes memory data) = asset_.staticcall(abi.encodeCall(IERC20.balanceOf, (address(this))));
+        return ok && data.length >= 32 ? abi.decode(data, (uint256)) : 0;
     }
 
     /// @dev The held assets that are not sunset.

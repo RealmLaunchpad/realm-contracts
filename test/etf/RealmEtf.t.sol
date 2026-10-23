@@ -992,6 +992,39 @@ contract RealmEtfTest is Test {
         assertGt(IERC20(META).balanceOf(alice), 0);
     }
 
+    /// @dev A dead sunset token whose `balanceOf` reverts does not brick the ETF: every path still works, in-kind
+    ///      past it with `skipMask`.
+    function test_sunset_revertingBalanceOfDoesNotBrickTheEtf() public {
+        vm.prank(owner);
+        registry.sunset(META);
+        vm.mockCallRevert(META, abi.encodeWithSelector(IERC20.balanceOf.selector), "dead");
+        _assertEtfWorksPastDeadMeta();
+    }
+
+    /// @dev Same with no code at all behind the sunset token.
+    function test_sunset_codelessTokenDoesNotBrickTheEtf() public {
+        vm.prank(owner);
+        registry.sunset(META);
+        vm.etch(META, "");
+        _assertEtfWorksPastDeadMeta();
+    }
+
+    function _assertEtfWorksPastDeadMeta() internal {
+        etf.totalAssets();
+        etf.previewMint(1e18);
+        uint256 shares = _deposit(alice, 1_000e6);
+        _swap(alice, USDG, 100e6);
+        _swap(creator, address(etf), 1e18);
+        vm.prank(alice);
+        etf.redeem(shares / 2, alice, alice);
+
+        address[] memory assets = etf.getAssets();
+        uint256 metaIndex = assets[0] == META ? 0 : assets[1] == META ? 1 : 2;
+        vm.prank(alice);
+        uint256[] memory amounts = etf.redeemInKind(shares / 4, alice, alice, 1 << metaIndex);
+        assertEq(amounts[metaIndex], 0);
+    }
+
     function test_sunset_blocksRebalancesAndCreation() public {
         vm.prank(owner);
         registry.sunset(META);
