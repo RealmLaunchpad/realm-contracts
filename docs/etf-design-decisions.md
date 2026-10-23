@@ -85,3 +85,17 @@ Price behaviour: the step-2 move emits an extra zero-amount `Swap` at ~the trade
 LP fees: the pool's LP fee is 0 (the hook rejects any other pool key): the trader already pays every component pool's fee.
 
 Gas (measured, 3-asset ETF): JIT adds 172k-244k per trade, +29-34%; see `docs/etf-jit-math.md`. Hook permissions: `beforeInitialize`, `beforeAddLiquidity`, `beforeSwap`, `afterSwap`, `beforeSwapReturnDelta`.
+
+## Gas cost per asset count
+
+Measured 2026-10-23 on a Robinhood-mainnet fork (block 92,800,000, real rStock pools), each call its own transaction (`--isolate`), trades through v4-core's `PoolSwapTest` router. Assets: 3 = SPY, META (V4) + NVDA (V3); 10 = SPY, META, TSLA, AAPL, TSM (V4) + NVDA, QQQ, AMZN, GOOGL, MSFT (V3).
+
+| | Plain V4 swap (SPY, no hook) | 3 assets | 10 assets | Per extra asset |
+|---|---|---|---|---|
+| `deposit()` 1000 USDG | - | 497k | 1.38M | ~126k |
+| Hook buy, 100 USDG | 189k (1x) | 741k (3.9x) | 1.60M (8.4x) | ~122k |
+| Hook sell | - | 686k (3.6x) | 1.51M (8.0x) | ~117k |
+
+Cost is linear in the number of live assets: every deposit, redemption and hook trade values and swaps each one. A hook trade carries ~370k of fixed overhead (the shares-pool swap, JIT, valuation) on top, which is why 3 assets cost more than 3 plain swaps. An extra asset costs less than a whole plain swap, since the transaction and router overhead is paid once.
+
+In USD (ETH at $2,407, average gas over 2026-09-23 to 2026-10-23), a 10-asset hook buy costs ~$0.09 on Robinhood (0.0235 gwei), ~$0.08 on Arbitrum (0.020 gwei, L1 data fee negligible) and ~$1.54 on Ethereum mainnet (0.40 gwei base + tip; ~$11 at the month's 2.7 gwei peak).
