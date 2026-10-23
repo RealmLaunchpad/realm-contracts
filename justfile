@@ -363,6 +363,13 @@ deploy-dummy-usdg-pair-rh-testnet: chain-rh-testnet
     forge script DeployDummyUsdgPair --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
+# Seeds a full-range V4 pool against the dummy USDG for every native-quoted dummy in the testnet pairs file, at
+# its current ETH price, so ETFs can hold it (an ETF route must be a direct USDG pool). Skips the ones that have
+# it. Env: USDG_PER_POOL (default 20_000e18). Then `just discover-etf-assets-rh-testnet`.
+deploy-dummy-etf-usdg-pools-rh-testnet: chain-rh-testnet
+    forge script DeployDummyEtfUsdgPools --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+
 # Arbitrage-bot fixture: DYN + a hook-priced dynamic-fee (ETH, DYN) V4 pool (per-direction fee, owner
 # `setFees`), DYN listed as a V4 quote, and a Realm token launched into an ETH pool and a DYN pool.
 # Env: ETH_DEPTH (default 3 ether), DYN_PER_ETH (default 10_000e18). The account must be a whitelist approver.
@@ -586,6 +593,34 @@ whitelist-realm-rh-testnet:
     forge script WhitelistRealmToken --rpc-url rh-testnet --account realm.dev --slow --broadcast \
         --gas-estimate-multiplier 300
     forge script WhitelistRealmToken --rpc-url rh-testnet --sig 'verify()'
+
+# ETF ASSETS — what an ETF may hold (`RealmEtfAssets`, ETF_ASSETS), NOT what a launch may pair with (the
+# `*-whitelist-assets-*` recipes above). Picks the deepest hookless USDG pool of each asset in
+# `MAINNET_ETF_ASSETS` (discover_etf_assets.py: the 34 rStocks over 1M USDG deep), into
+# script/operations/etf-assets/etf-assets.robinhood.mainnet.json. An asset dropped from that table stays in the
+# file switched off, and the broadcast delists it. Review the file's git diff, then broadcast below.
+discover-etf-assets-rh:
+    uv run script/operations/etf-assets/discover_etf_assets.py
+
+# Testnet: every dummy the testnet pairs file names. Each needs a USDG pool first: run
+# `deploy-dummy-etf-usdg-pools-rh-testnet` once (and again after deploying a new dummy).
+discover-etf-assets-rh-testnet:
+    uv run script/operations/etf-assets/discover_etf_assets.py --chain testnet \
+        --assets "$(jq -r '.assets | join(",")' script/operations/assets-whitelist/listings.robinhood.testnet.json)"
+
+# Sets the file's routes in ETF_ASSETS and (de)lists per its `enabled` flags, then reads the chain back with
+# `verify()`. The signer must already be an ETF_ASSETS approver (owner: `setApprover`).
+whitelist-etf-assets-rh:
+    just chain-rh
+    forge script WhitelistEtfAssets --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
+        --gas-estimate-multiplier 300
+    forge script WhitelistEtfAssets --rpc-url rh-mainnet --sig 'verify()'
+
+whitelist-etf-assets-rh-testnet:
+    just chain-rh-testnet
+    forge script WhitelistEtfAssets --rpc-url rh-testnet --account realm.dev --slow --broadcast \
+        --gas-estimate-multiplier 300
+    forge script WhitelistEtfAssets --rpc-url rh-testnet --sig 'verify()'
 
 # Buys a GRADUATED Realm token with native ETH through the universal router, on Uniswap V4.
 # `amount` is anything cast parses (0.01ether, 1000000gwei, raw wei); `net` is mainnet|testnet.
