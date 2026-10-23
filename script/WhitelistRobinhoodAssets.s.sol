@@ -6,6 +6,9 @@ import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
+import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
+import {DeploymentsRobinhoodMainnet} from "src/config/manifest.robinhood.mainnet.sol";
+import {DeploymentsRobinhoodTestnet} from "src/config/manifest.robinhood.testnet.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 
 /// @title Whitelist Robinhood Chain's biggest coins as direct-venue quotes
@@ -56,6 +59,7 @@ contract WhitelistRobinhoodAssets is Script {
 
         (string[] memory symbols, address[] memory assets, RealmAssetsWhitelist.PriceSource[] memory sources) =
             _listings();
+        _requireEtfsAtNav(symbols, assets, sources);
         bool[] memory live = _dryRun(whitelist, approver, symbols, assets, sources);
 
         vm.startBroadcast();
@@ -105,6 +109,29 @@ contract WhitelistRobinhoodAssets is Script {
 
     function _isDelisting(RealmAssetsWhitelist.PriceSource memory source) internal pure returns (bool) {
         return source.venue == RealmAssetsWhitelist.Venue.NONE;
+    }
+
+    /// @dev A Realm ETF may only be listed at its NAV (`Venue.VAULT`), never from a pool: its hook pool
+    ///      re-prints its last fill, so a pushed price stays until the next trade and a keeper refresh would
+    ///      snapshot it. Reverts the whole run before anything is sent. Not `totalAssets()`: Arcus pTokens are
+    ///      ERC-4626 too, and are priced from their pools on purpose.
+    function _requireEtfsAtNav(
+        string[] memory symbols,
+        address[] memory assets,
+        RealmAssetsWhitelist.PriceSource[] memory sources
+    ) internal view {
+        // Read raw: `ChainConfig.etfFactory()` reverts where none is deployed, and then no ETF exists.
+        RealmEtfFactory factory = RealmEtfFactory(
+            block.chainid == 4663 ? DeploymentsRobinhoodMainnet.ETF_FACTORY : DeploymentsRobinhoodTestnet.ETF_FACTORY
+        );
+        if (address(factory).code.length == 0) return;
+        for (uint256 i; i < assets.length; ++i) {
+            if (_isDelisting(sources[i]) || sources[i].venue == RealmAssetsWhitelist.Venue.VAULT) continue;
+            require(
+                !factory.isEtf(assets[i]),
+                string.concat(symbols[i], " (", vm.toString(assets[i]), ") is a Realm ETF: list it via VAULT")
+            );
+        }
     }
 
     /// @dev Lists everything against forked state, in file order, then rolls back. In order because a
