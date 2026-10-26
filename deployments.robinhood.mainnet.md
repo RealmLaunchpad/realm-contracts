@@ -30,7 +30,7 @@
 | RealmKeeperLens                              | `0x0223c53925b207159F8545a4039B99f100350825` |
 | RealmKeepersRegistry                         | `0x1BC0ABC8131A8e3C721795874b09D2186B78Cb88` |
 | RealmSwapper (proxy)                         | `0x5C8eaB542DF0F47983a0a588002044B2aAe6679B` |
-| RealmSwapper (impl)                          | `0xE13ED0a3C99352b9d1E7B9d3b59a22384579B44E` |
+| RealmSwapper (impl)                          | `0xF8C594d1C0Bb9aD6E9f3C2c73679751d3B3b2494` |
 | RealmToken (impl)                            | `0xb13A758A110569846C87423452904A57Ceb57Eb5` |
 | RealmTaxableTokenUniV4 (impl)                | `0x92f714819987c945A78d1D4030839C6e57c3F29d` |
 | RealmTaxableTokenUniV2 (impl)                | `0xbB13BeF8f9c26d04A351e582108Fe198770065DF` |

@@ -70,10 +70,10 @@ library DeploymentAddressesRobinhoodMainnet {
     ///      market. Per-chain because a wei value cannot be shared between chains.
     /// @dev THE ONE THAT MATTERS — dividends ship here. A conversion measured ~160k-330k gas on a mainnet
     ///      fork; at 0.02 gwei (2026-09-27, L1 calldata price 0) that is <= ~0.0000066 ETH, so this covers
-    ///      the worst case ~15x — headroom for a gas spike, the L1 data fee returning and conversions that
-    ///      revert on their floor. It is ~0.1% of a threshold-sized conversion (0.1 ETH) and ~0.01% of a
-    ///      maximum one (1 ETH).
-    uint256 public constant KEEPER_FEE = 0.0001 ether;
+    ///      the worst case ~30x — headroom for a gas spike, the L1 data fee returning and conversions that
+    ///      revert on their floor. It is ~0.2% of a threshold-sized conversion (0.1 ETH) and ~0.02% of a
+    ///      maximum one (1 ETH). Doubled from 0.0001 (2026-10-26): the keeper wallet kept running dry.
+    uint256 public constant KEEPER_FEE = 0.0002 ether;
 
     /// @notice The `RealmSwapper` proxy: the eligibility gate for a third-asset dividend
     ///         payout and the venue its native -> asset conversion crosses.
