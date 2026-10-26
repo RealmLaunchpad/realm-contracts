@@ -94,7 +94,7 @@ library DeploymentsRobinhoodTestnet {
     address internal constant REALM_SWAPPER = DeploymentAddressesRobinhoodTestnet.REALM_SWAPPER;
     /// @notice Implementation behind `REALM_SWAPPER`. Update on every registry upgrade; tracked for
     ///         verification and audit trails only.
-    address internal constant REALM_SWAPPER_IMPL = 0xcC0EB525F19D042E632335F97A7376e8d7857cC8;
+    address internal constant REALM_SWAPPER_IMPL = 0x527DE4a22Be5d2e1fafBa945443F5b2B9f04f886;
 
     // --- Token implementations (cloned by factories) ---
     address internal constant TOKEN_IMPL = 0x39937Ee93E1B8F25a03879595cFeC4E733bc6965;
