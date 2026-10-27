@@ -384,6 +384,14 @@ repeg-dummy-rstocks-rh-testnet:
     forge script RepegDummyRStocks --rpc-url rh-testnet --account livo.dev --slow --broadcast \
         --gas-estimate-multiplier 300
 
+# Buys an ETF asset with USDG (SELL=true: sells it) through its `RealmEtfAssets` route pool, the one every ETF's
+# NAV reads, and logs its USDG price before/after (plus an ETF's NAV per share when one is passed). AMOUNT is the
+# raw exact input; the account must hold it.
+#   just swap-etf-route-rh-testnet <asset> [amount] [sell] [etf] [account]
+swap-etf-route-rh-testnet asset amount="1000000000000000000000" sell="false" etf="0x0000000000000000000000000000000000000000" account="realm.dev":
+    ASSET={{asset}} AMOUNT={{amount}} SELL={{sell}} ETF={{etf}} forge script SwapEtfRoute --rpc-url rh-testnet \
+        --account {{account}} --slow --broadcast --gas-estimate-multiplier 300
+
 # --- DIRECT-LAUNCH VENUE -----------------------------------------------------
 # The second venue: a token that goes straight to a Uniswap V4 pool at a price its creator picks, with
 # no bonding curve and no launchpad. Two steps, in this order, because the graduator takes the hook as
