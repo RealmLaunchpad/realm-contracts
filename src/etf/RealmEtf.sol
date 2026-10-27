@@ -39,9 +39,10 @@ import {KeeperGated} from "src/tokens/KeeperGated.sol";
 ///      slippage. `totalAssets` and the previews value holdings at their route pools' SPOT prices, before swap
 ///      fees and price impact: estimates, not the exact amounts ERC-4626 asks of previews.
 ///
-/// @dev REBALANCES ARE INTENTS. The creator proposes (sell `sellBps` of one holding, buy another, no `minOut`);
-///      a keeper executes later with no floor, at a time the creator cannot know, so a flash-loaned price push
-///      around it is impossible. Partial fills still revert. `MODE` bounds what may be bought.
+/// @dev REBALANCES ARE INTENTS. The creator queues proposals (sell `sellBps` of one holding, buy another, no
+///      `minOut`) and may cancel any pending one; a keeper executes them in order later with no floor, at a time
+///      the creator cannot know, so a flash-loaned price push around it is impossible. Partial fills still revert.
+///      `MODE` bounds what may be bought.
 ///
 /// @dev SUNSET ASSETS (`REGISTRY.isSunset`) are dead to every path but `redeemInKind`: not bought, sold, valued
 ///      or rebalanced, and left out of the shares a deposit mints. Their balance stays for in-kind exits, shared
@@ -120,8 +121,15 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     /// @notice The assets the ETF was created with: all a `REBALANCE` ETF may ever buy.
     mapping(address asset => bool) public isOriginal;
 
-    /// @notice The creator's pending rebalance, for a keeper to execute. `sellBps == 0`: none.
-    RebalanceIntent public pendingRebalance;
+    /// @notice The creator's proposed rebalances by id, for a keeper to execute in id order. `sellBps == 0`:
+    ///         executed, cancelled or never proposed.
+    mapping(uint256 id => RebalanceIntent) public rebalances;
+
+    /// @notice The id the next proposal gets.
+    uint256 public nextRebalanceId;
+
+    /// @notice The oldest pending rebalance, the only one a keeper may execute. `nextRebalanceId`: none pending.
+    uint256 public rebalanceHead;
 
     /// @dev The V3 pool a swap is in flight on, the only caller its callback accepts, once.
     address private transient _v3Pool;
@@ -138,9 +146,11 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     address private transient _payer;
 
     event Seeded(address indexed receiver, uint256 assets, uint256 shares);
-    event RebalanceProposed(address indexed sellAsset, uint16 sellBps, address indexed buyAsset);
-    event RebalanceCancelled();
-    event Rebalanced(address indexed sellAsset, uint256 sold, address indexed buyAsset, uint256 bought);
+    event RebalanceProposed(uint256 indexed id, address indexed sellAsset, uint16 sellBps, address indexed buyAsset);
+    event RebalanceCancelled(uint256 indexed id);
+    event Rebalanced(
+        uint256 indexed id, address indexed sellAsset, uint256 sold, address indexed buyAsset, uint256 bought
+    );
     /// @notice USDG found in the ETF outside a deposit was spent on the live holdings, minting no shares.
     event Reinvested(uint256 assets);
     event AssetAdded(address indexed asset);
@@ -179,8 +189,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     /// @notice A `REBALANCE` ETF may only buy the assets it was created with.
     error NotOriginalAsset();
     error NoPendingRebalance();
-    /// @notice The pending rebalance is not the one the keeper vetted.
-    error RebalanceIntentChanged();
+    /// @notice An older rebalance is still pending: they execute in id order.
+    error RebalanceOutOfOrder();
 
     constructor(
         string memory name_,
@@ -390,40 +400,44 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
 
     //////////////////////// rebalances //////////////////////
 
-    /// @notice Creator only: proposes selling `sellBps` (of 10,000) of the `sellAsset` holding, as it stands at
-    ///         execution, for `buyAsset`, through USDG. Replaces any pending proposal. A keeper executes it.
-    function proposeRebalance(address sellAsset, uint16 sellBps, address buyAsset) external onlyOwner {
+    /// @notice Creator only: queues selling `sellBps` (of 10,000) of the `sellAsset` holding, as it stands at
+    ///         execution, for `buyAsset`, through USDG. `sellAsset` need only be held by then, so a proposal may
+    ///         sell what an earlier one buys. Keepers execute the queue in id order.
+    function proposeRebalance(address sellAsset, uint16 sellBps, address buyAsset)
+        external
+        onlyOwner
+        returns (uint256 id)
+    {
         require(sellBps != 0 && sellBps <= BPS, InvalidWeights());
         _checkRebalance(sellAsset, buyAsset);
-        pendingRebalance = RebalanceIntent(sellAsset, sellBps, buyAsset);
-        emit RebalanceProposed(sellAsset, sellBps, buyAsset);
+        id = nextRebalanceId++;
+        rebalances[id] = RebalanceIntent(sellAsset, sellBps, buyAsset);
+        emit RebalanceProposed(id, sellAsset, sellBps, buyAsset);
     }
 
-    /// @notice Creator only: drops the pending proposal.
-    function cancelRebalance() external onlyOwner {
-        delete pendingRebalance;
-        emit RebalanceCancelled();
+    /// @notice Creator only: drops pending proposal `id`.
+    function cancelRebalance(uint256 id) external onlyOwner {
+        require(rebalances[id].sellBps != 0, NoPendingRebalance());
+        delete rebalances[id];
+        emit RebalanceCancelled(id);
+        _advanceRebalanceHead();
     }
 
-    /// @notice Keepers only: executes the pending proposal with no `minOut` (when to call, and whether the
-    ///         price impact is acceptable, is keeper policy). The keeper passes the intent it vetted, and the call
-    ///         reverts if the creator replaced it since. Buying an asset not yet held adds it; selling all of one
-    ///         removes it. Reverts if nothing of `buyAsset` is bought: a held asset with a zero balance would make
-    ///         every deposit divide by zero.
-    function executeRebalance(address sellAsset, uint16 sellBps, address buyAsset)
-        external
-        nonReentrant
-        returns (uint256 bought)
-    {
+    /// @notice Keepers only: executes pending proposal `id`, which must be the oldest (`rebalanceHead`), with no
+    ///         `minOut` (when to call, and whether the price impact is acceptable, is keeper policy). Proposals
+    ///         never change, so the id binds the intent the keeper vetted. Buying an asset not yet held adds it;
+    ///         selling all of one removes it. Reverts if nothing of `buyAsset` is bought: a held asset with a zero
+    ///         balance would make every deposit divide by zero.
+    function executeRebalance(uint256 id) external nonReentrant returns (uint256 bought) {
         _requireKeeper();
-        RebalanceIntent memory intent = pendingRebalance;
+        RebalanceIntent memory intent = rebalances[id];
         require(intent.sellBps != 0, NoPendingRebalance());
-        require(
-            intent.sellAsset == sellAsset && intent.sellBps == sellBps && intent.buyAsset == buyAsset,
-            RebalanceIntentChanged()
-        );
-        delete pendingRebalance;
+        require(id == rebalanceHead, RebalanceOutOfOrder());
+        delete rebalances[id];
+        _advanceRebalanceHead();
+        (address sellAsset, address buyAsset) = (intent.sellAsset, intent.buyAsset);
         uint256 sellIndex = _checkRebalance(sellAsset, buyAsset);
+        require(sellIndex != type(uint256).max, AssetNotHeld());
         uint256 balance = IERC20(sellAsset).balanceOf(address(this));
         uint256 sellAmount = Math.mulDiv(balance, intent.sellBps, BPS);
         require(sellAmount != 0, ZeroAmount());
@@ -444,7 +458,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         _swap(buyAsset, true, usdg);
         bought = IERC20(buyAsset).balanceOf(address(this)) - before;
         require(bought != 0, ZeroAmount());
-        emit Rebalanced(sellAsset, sellAmount, buyAsset, bought);
+        emit Rebalanced(id, sellAsset, sellAmount, buyAsset, bought);
         _emitNav(totalSupply());
     }
 
@@ -775,11 +789,22 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         }
     }
 
-    /// @dev The rebalance checks, run at proposal and again at execution. Returns `sellAsset`'s index.
+    /// @dev Moves `rebalanceHead` past executed and cancelled proposals. A creator who cancels many queued
+    ///      behind a pending one makes the keeper's next execution skip them all (one SLOAD each).
+    function _advanceRebalanceHead() private {
+        uint256 head = rebalanceHead;
+        uint256 next = nextRebalanceId;
+        while (head < next && rebalances[head].sellBps == 0) {
+            ++head;
+        }
+        rebalanceHead = head;
+    }
+
+    /// @dev The rebalance checks, run at proposal and again at execution. Returns `sellAsset`'s index, `max` if
+    ///      not held (allowed at proposal: an earlier proposal may buy it).
     function _checkRebalance(address sellAsset, address buyAsset) internal view returns (uint256 sellIndex) {
         require(MODE != Mode.FIXED, NotSupported());
         sellIndex = _indexOf(sellAsset);
-        require(sellIndex != type(uint256).max, AssetNotHeld());
         require(
             buyAsset != sellAsset && REGISTRY.isListed(buyAsset) && !REGISTRY.isSunset(buyAsset)
                 && !REGISTRY.isSunset(sellAsset),

@@ -496,7 +496,7 @@ contract RealmEtfTest is Test {
         etf.proposeRebalance(NVDA, 10_000, QQQ);
         vm.prank(creator);
         vm.expectRevert(KeeperGated.NotAKeeper.selector);
-        etf.executeRebalance(NVDA, 10_000, QQQ);
+        etf.executeRebalance(0);
     }
 
     function test_rebalance_sellingAllRemovesAndBuyingNewAdds() public {
@@ -520,48 +520,68 @@ contract RealmEtfTest is Test {
         _deposit(alice, 1_000e6);
         uint256 nvda = IERC20(NVDA).balanceOf(address(etf));
         vm.prank(keeper);
-        etf.executeRebalance(NVDA, 5_000, QQQ);
+        etf.executeRebalance(0);
         assertEq(IERC20(NVDA).balanceOf(address(etf)), nvda - nvda * 5_000 / 10_000);
     }
 
-    function test_rebalance_aProposalReplacesTheLastAndExecutesOnce() public {
+    /// @dev Proposals queue, execute in id order and once each.
+    function test_rebalance_proposalsQueueAndExecuteInOrder() public {
         vm.startPrank(creator);
-        etf.proposeRebalance(NVDA, 10_000, QQQ);
-        etf.proposeRebalance(META, 1_000, QQQ);
+        assertEq(etf.proposeRebalance(NVDA, 10_000, QQQ), 0);
+        assertEq(etf.proposeRebalance(META, 1_000, QQQ), 1);
         vm.stopPrank();
-        (address sellAsset, uint16 sellBps,) = etf.pendingRebalance();
+        (address sellAsset, uint16 sellBps,) = etf.rebalances(1);
         assertEq(sellAsset, META);
         assertEq(sellBps, 1_000);
 
         vm.startPrank(keeper);
-        etf.executeRebalance(META, 1_000, QQQ);
-        assertGt(IERC20(NVDA).balanceOf(address(etf)), 0);
+        vm.expectRevert(RealmEtf.RebalanceOutOfOrder.selector);
+        etf.executeRebalance(1);
+        etf.executeRebalance(0);
+        assertEq(IERC20(NVDA).balanceOf(address(etf)), 0);
+        etf.executeRebalance(1);
         vm.expectRevert(RealmEtf.NoPendingRebalance.selector);
-        etf.executeRebalance(META, 1_000, QQQ);
+        etf.executeRebalance(1);
         vm.stopPrank();
+        assertEq(etf.rebalanceHead(), 2);
     }
 
-    /// @dev The keeper vetted one intent; the creator swapped in another before execution landed.
-    function test_rebalance_revertsWhenTheIntentChangedSinceTheKeeperVettedIt() public {
-        vm.prank(creator);
-        etf.proposeRebalance(META, 1_000, QQQ);
-        (address sellAsset, uint16 sellBps, address buyAsset) = etf.pendingRebalance();
-        vm.prank(creator);
-        etf.proposeRebalance(NVDA, 10_000, QQQ);
-
-        vm.prank(keeper);
-        vm.expectRevert(RealmEtf.RebalanceIntentChanged.selector);
-        etf.executeRebalance(sellAsset, sellBps, buyAsset);
-    }
-
-    function test_rebalance_creatorCancels() public {
+    /// @dev A queued proposal may sell what an earlier one buys: QQQ is not held when the second is proposed.
+    function test_rebalance_queuedProposalSellsWhatAnEarlierOneBuys() public {
         vm.startPrank(creator);
         etf.proposeRebalance(NVDA, 10_000, QQQ);
-        etf.cancelRebalance();
+        etf.proposeRebalance(QQQ, 5_000, META);
         vm.stopPrank();
-        vm.prank(keeper);
+        vm.startPrank(keeper);
+        vm.expectRevert(RealmEtf.RebalanceOutOfOrder.selector);
+        etf.executeRebalance(1);
+        uint256 qqq = etf.executeRebalance(0);
+        etf.executeRebalance(1);
+        vm.stopPrank();
+        assertEq(IERC20(QQQ).balanceOf(address(etf)), qqq - qqq * 5_000 / 10_000);
+    }
+
+    /// @dev Cancelling the head, or one behind it, lets the next pending one execute.
+    function test_rebalance_creatorCancelsAnyPendingProposal() public {
+        vm.startPrank(creator);
+        etf.proposeRebalance(NVDA, 10_000, QQQ);
+        etf.proposeRebalance(META, 1_000, QQQ);
+        etf.proposeRebalance(META, 2_000, QQQ);
+        etf.cancelRebalance(1);
+        assertEq(etf.rebalanceHead(), 0);
+        etf.cancelRebalance(0);
         vm.expectRevert(RealmEtf.NoPendingRebalance.selector);
-        etf.executeRebalance(NVDA, 10_000, QQQ);
+        etf.cancelRebalance(0);
+        vm.stopPrank();
+        assertEq(etf.rebalanceHead(), 2);
+
+        vm.startPrank(keeper);
+        vm.expectRevert(RealmEtf.NoPendingRebalance.selector);
+        etf.executeRebalance(0);
+        etf.executeRebalance(2);
+        vm.stopPrank();
+        assertGt(IERC20(NVDA).balanceOf(address(etf)), 0);
+        assertEq(etf.rebalanceHead(), 3);
     }
 
     /// @dev Sunset assets are never swapped, so they take no `MAX_ASSETS` slot: an ETF full of live assets
@@ -573,14 +593,15 @@ contract RealmEtfTest is Test {
         }
         address extra = _v2RouteAsset();
         vm.prank(creator);
-        etf.proposeRebalance(NVDA, 100, extra);
+        uint256 id = etf.proposeRebalance(NVDA, 100, extra);
         vm.prank(keeper);
         vm.expectRevert(RealmEtf.TooManyAssets.selector);
-        etf.executeRebalance(NVDA, 100, extra);
+        etf.executeRebalance(id);
 
         vm.prank(owner);
         registry.sunset(META);
-        _rebalance(NVDA, 100, extra);
+        vm.prank(keeper);
+        etf.executeRebalance(id);
         assertEq(etf.getAssets().length, etf.MAX_ASSETS() + 1);
     }
 
@@ -597,7 +618,7 @@ contract RealmEtfTest is Test {
         etf.proposeRebalance(NVDA, 10_000, QQQ);
         vm.prank(keeper);
         vm.expectRevert(RealmEtf.ZeroAmount.selector);
-        etf.executeRebalance(NVDA, 10_000, QQQ);
+        etf.executeRebalance(0);
     }
 
     /// @dev The checks run again at execution: a listing that changed since the proposal blocks it.
@@ -608,7 +629,7 @@ contract RealmEtfTest is Test {
         registry.setListed(QQQ, false);
         vm.prank(keeper);
         vm.expectRevert(RealmEtf.AssetNotListed.selector);
-        etf.executeRebalance(NVDA, 10_000, QQQ);
+        etf.executeRebalance(0);
     }
 
     function test_mode_fixedRejectsEveryRebalance() public {
@@ -1373,7 +1394,7 @@ contract RealmEtfTest is Test {
         etf.proposeRebalance(NVDA, 10_000, QQQ);
         vm.prank(keeper);
         vm.recordLogs();
-        etf.executeRebalance(NVDA, 10_000, QQQ);
+        etf.executeRebalance(0);
         Nav memory nav = _assertNav(etf, RealmEtf.Rebalanced.selector);
         assertEq(nav.totalSupply, etf.totalSupply());
         address[] memory assets = nav.assets;
@@ -1456,9 +1477,9 @@ contract RealmEtfTest is Test {
     /// @dev The creator proposes, a keeper executes.
     function _rebalanceOn(RealmEtf e, address sellAsset, uint16 sellBps, address buyAsset) internal returns (uint256) {
         vm.prank(creator);
-        e.proposeRebalance(sellAsset, sellBps, buyAsset);
+        uint256 id = e.proposeRebalance(sellAsset, sellBps, buyAsset);
         vm.prank(keeper);
-        return e.executeRebalance(sellAsset, sellBps, buyAsset);
+        return e.executeRebalance(id);
     }
 
     /// @dev A SPY + NVDA ETF in `mode`.
