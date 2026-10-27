@@ -14,7 +14,7 @@ Decisions on `RealmEtf*` (`src/etf/`) taken while comparing with Lots (lotsoncha
 | Exact-output BUYS through the hook (ERC-4626 `mint()`) | Built |
 | Exact-output SELLS | Stay reverting (`ExactOutputNotSupported`) |
 | 0.05% exit fee to the creator, in shares (`EXIT_FEE_BPS`, `ExitFeeCharged`) | Built: the fee shares move to the creator instead of being redeemed, so NAV per share is unchanged; no USDG accounting, no claim, no `reinvest` conflict, and a USDG-frozen creator cannot block exits. None while ownership is renounced |
-| NAV-priced venue in `RealmAssetsWhitelist` | Built (`Venue.VAULT`): ETF shares as launch quotes are priced at NAV through USDG. The hook pool's `slot0` is unsafe to price from: it only re-prints the last fill, so a price pushed there (component pools flash-pushed around a ~1 USDG trade) stays until the next trade, with no arbitrage to pull it back, and a keeper refresh would snapshot it |
+| NAV-priced venue in `RealmAssetsWhitelist` | Built (`Venue.VAULT`): ETF shares as launch quotes are priced at NAV through USDG. `RealmEtfFactory` (a whitelist approver) lists every ETF it creates with a hook, no human review: its depth is its components', already vetted in `RealmEtfAssets`; approvers can still delist one. The hook pool's `slot0` is unsafe to price from: it only re-prints the last fill, so a price pushed there (component pools flash-pushed around a ~1 USDG trade) stays until the next trade, with no arbitrage to pull it back, and a keeper refresh would snapshot it |
 | Fair-mark (NAV) display | Optional frontend view, no contract change |
 
 ## Rebalance modes

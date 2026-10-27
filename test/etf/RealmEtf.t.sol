@@ -25,6 +25,11 @@ import {RealmEtf} from "src/etf/RealmEtf.sol";
 import {RealmEtfAssets, IEtfV3Pool} from "src/etf/RealmEtfAssets.sol";
 import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
 import {RealmEtfHook} from "src/etf/RealmEtfHook.sol";
+import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
+// `RealmAssetsWhitelist` is built on `lib/v4-core`, whose structs are distinct types from `@uniswap`'s.
+import {PoolKey as WlPoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {Currency as WlCurrency} from "lib/v4-core/src/types/Currency.sol";
+import {IHooks as WlIHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {IAggregatorHook} from "src/interfaces/IAggregatorHook.sol";
 import {DeploymentAddressesRobinhoodMainnet as Mainnet} from "src/config/DeploymentAddresses.sol";
 import {KeeperGated} from "src/tokens/KeeperGated.sol";
@@ -106,10 +111,13 @@ contract RealmEtfTest is Test {
     /// @dev The USDG/WETH V3 pool: a real Uniswap pool, but not against SPY.
     address constant USDG_WETH_V3 = 0x52e65B17fB6E5BA00Ed806f37Afcd2DaA50271Ca;
     uint256 constant SEED = 1_000e6;
+    /// @dev USDG's native V4 pool, which prices it in the assets whitelist.
+    address constant USDG_NATIVE_HOOK = 0x06a889870C8f83640D6816319f72e2aA579b6080;
 
     IPoolManager manager = IPoolManager(Mainnet.UNIV4_POOL_MANAGER);
     RealmEtfAssets registry;
     RealmEtfFactory factory;
+    RealmAssetsWhitelist whitelist;
     RealmEtfHook hook;
     RealmEtf etf;
     PoolKey etfKey;
@@ -147,13 +155,33 @@ contract RealmEtfTest is Test {
                     | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
             ) | (uint160(0x4444) << 144)
         );
-        factory = RealmEtfFactory(
+        whitelist = RealmAssetsWhitelist(
             address(
                 new ERC1967Proxy(
-                    address(new RealmEtfFactory(registry)), abi.encodeCall(RealmEtfFactory.initialize, (owner))
+                    address(
+                        new RealmAssetsWhitelist(
+                            address(manager), Mainnet.WETH, Mainnet.UNIV2_FACTORY, Mainnet.UNIV3_FACTORY
+                        )
+                    ),
+                    abi.encodeCall(RealmAssetsWhitelist.initialize, (owner))
                 )
             )
         );
+        factory = RealmEtfFactory(
+            address(
+                new ERC1967Proxy(
+                    address(new RealmEtfFactory(registry, whitelist)),
+                    abi.encodeCall(RealmEtfFactory.initialize, (owner))
+                )
+            )
+        );
+        // The factory lists every new ETF priced through USDG, so USDG goes first, against native.
+        vm.startPrank(owner);
+        whitelist.setApprover(address(factory), true);
+        whitelist.setApprover(approver, true);
+        vm.stopPrank();
+        vm.prank(approver);
+        whitelist.setWhitelisted(USDG, _usdgSource());
         deployCodeTo("RealmEtfHook.sol:RealmEtfHook", abi.encode(manager, factory), hookAddress);
         hook = RealmEtfHook(hookAddress);
         vm.prank(owner);
@@ -186,6 +214,30 @@ contract RealmEtfTest is Test {
         assertTrue(factory.isEtf(address(etf)));
         // Bought at market: worth the seed, less fees and impact.
         assertApproxEqRel(etf.totalAssets(), SEED, 0.03e18);
+    }
+
+    function test_createEtf_listsTheEtfAsAQuoteAtItsNav() public view {
+        RealmAssetsWhitelist.PriceSource memory src = whitelist.priceSource(address(etf));
+        assertEq(uint8(src.venue), uint8(RealmAssetsWhitelist.Venue.VAULT));
+        assertEq(src.pool, address(etf));
+        assertEq(keccak256(abi.encode(src.key)), keccak256(abi.encode(etfKey)), "routes zaps through its pool");
+        assertEq(whitelist.referenceOf(address(etf)), USDG);
+        // Whole shares per native = USDG per native over USDG per share, 6 vs 18 decimals included.
+        uint256 expected = whitelist.unitsPerNativeX18(USDG) * 1e6 / etf.convertToAssets(1e18);
+        assertApproxEqRel(whitelist.unitsPerNativeX18(address(etf)), expected, 1e12);
+    }
+
+    function test_createEtf_revertsWhileUsdgIsNotListed() public {
+        RealmAssetsWhitelist.PriceSource memory none;
+        vm.prank(approver);
+        whitelist.setWhitelisted(USDG, none);
+        _expectCreateEtfRevert(RealmAssetsWhitelist.InvalidPriceSource.selector);
+    }
+
+    function test_createEtf_revertsWhileTheFactoryIsNoApprover() public {
+        vm.prank(owner);
+        whitelist.setApprover(address(factory), false);
+        _expectCreateEtfRevert(RealmAssetsWhitelist.NotApprover.selector);
     }
 
     /// @dev The share count is fixed by the seed, so slippage shows in the amounts bought: each must reach its
@@ -1146,7 +1198,7 @@ contract RealmEtfTest is Test {
     }
 
     function test_factory_onlyOwnerUpgradesAndStateSurvives() public {
-        address impl = address(new RealmEtfFactory(registry));
+        address impl = address(new RealmEtfFactory(registry, whitelist));
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         factory.upgradeToAndCall(impl, "");
@@ -1702,5 +1754,26 @@ contract RealmEtfTest is Test {
             }
         }
         assertTrue(c0 != 0 && c1 != 0, "curve swapped");
+    }
+
+    /// @dev A one-asset `createEtf` by `creator`, expected to revert with `selector`.
+    function _expectCreateEtfRevert(bytes4 selector) internal {
+        address[] memory assets = new address[](1);
+        assets[0] = SPY;
+        uint16[] memory weights = new uint16[](1);
+        weights[0] = 10_000;
+        deal(USDG, creator, SEED);
+        vm.startPrank(creator);
+        IERC20(USDG).approve(address(factory), SEED);
+        vm.expectRevert(selector);
+        factory.createEtf("X", "X", RealmEtf.Mode.FIXED, assets, weights, SEED, new uint256[](1));
+        vm.stopPrank();
+    }
+
+    /// @dev USDG's dynamic-fee native V4 pool.
+    function _usdgSource() internal pure returns (RealmAssetsWhitelist.PriceSource memory src) {
+        src.venue = RealmAssetsWhitelist.Venue.V4;
+        src.key =
+            WlPoolKey(WlCurrency.wrap(address(0)), WlCurrency.wrap(USDG), 0x800000, 10, WlIHooks(USDG_NATIVE_HOOK));
     }
 }

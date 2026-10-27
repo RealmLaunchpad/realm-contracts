@@ -828,13 +828,14 @@ Emits **`MinSeedAssetsSet`** (`minSeedAssets`): the least USDG `createEtf` accep
 
 ### `RealmEtfFactory.createEtf(name, symbol, mode, assets, weightsBps, seedAssets, minAmountsOut)` — permissionless
 
-Reverts `SeedTooSmall` when `seedAssets < minSeedAssets`.
+Reverts `SeedTooSmall` when `seedAssets < minSeedAssets`. With a hook set, also reverts when the ETF cannot be listed in `ASSETS_WHITELIST` (step 6): `InvalidPriceSource` while USDG is not listed against native, `NotApprover` while the factory is not a whitelist approver.
 
 1. New `RealmEtf`: `OwnershipTransferred(0, creator)`.
 2. USDG `Transfer` creator -> ETF, then one swap per asset (USDG -> asset).
 3. `RealmEtf`: `Transfer(0, DEAD, DEAD_SHARES)`, `Transfer(0, creator, shares)`, **`Seeded`** (`receiver` indexed, `assets`, `shares`), **`NavUpdated`**.
 4. With a hook set: **`RealmEtfHook.AggregatorPoolRegistered`** (`poolId` indexed), then `PoolManager.Initialize` of the ETF's shares/USDG pool (fee 0, tick spacing 1) at the seed price.
 5. **`EtfCreated`** (`etf` indexed, `creator` indexed, `name`, `symbol`, `mode`, `assets`, `weightsBps`, `seedAssets`, `shares`). `mode` is the immutable `RealmEtf.Mode` (`0` FIXED, `1` REBALANCE, `2` FLEXIBLE).
+6. With a hook set: **`RealmAssetsWhitelist.WhitelistUpdated`** (`asset` = the ETF, `unitsPerNativeX18` at its NAV through USDG, `source` = `VAULT`, `pool` = the ETF, `key` = its shares/USDG pool from step 4): the ETF is a direct-venue launch quote from creation.
 
 ### `RealmEtf` (one per ETF)
 

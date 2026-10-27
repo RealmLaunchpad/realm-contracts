@@ -14,6 +14,7 @@ import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.so
 import {ERC1967Proxy} from "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
 import {Currency} from "lib/v4-core/src/types/Currency.sol";
 import {IHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "lib/v4-core/src/libraries/Hooks.sol";
@@ -22,10 +23,12 @@ import {PoolKey as EtfPoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency as EtfCurrency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks as EtfIHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
-/// @notice A Realm ETF as a direct-venue quote: listed at its NAV (`Venue.VAULT`) through USDG, a launch
+/// @notice A Realm ETF as a direct-venue quote: listed by its factory at creation, at its NAV (`Venue.VAULT`) through USDG, a launch
 ///         against it opening at the default market cap in native, and a native dev buy zapped
 ///         native -> USDG -> shares through the ETF's own hook pool.
 contract RobinhoodEtfQuoteTests is RobinhoodForkBase {
+    using PoolIdLibrary for PoolKey;
+
     /// @dev The ETF suite's block: its component pools were probed here.
     uint256 internal constant ETF_FORK_BLOCK = 92_800_000;
 
@@ -73,10 +76,18 @@ contract RobinhoodEtfQuoteTests is RobinhoodForkBase {
         RealmEtfFactory factory = RealmEtfFactory(
             address(
                 new ERC1967Proxy(
-                    address(new RealmEtfFactory(registry)), abi.encodeCall(RealmEtfFactory.initialize, (admin))
+                    address(new RealmEtfFactory(registry, assetsWhitelist)),
+                    abi.encodeCall(RealmEtfFactory.initialize, (admin))
                 )
             )
         );
+        // The factory lists every new ETF priced through USDG, so USDG goes first, against native.
+        assetsWhitelist.setApprover(address(factory), true);
+        assetsWhitelist.setApprover(admin, true);
+        RealmAssetsWhitelist.PriceSource memory src;
+        src.venue = RealmAssetsWhitelist.Venue.V4;
+        src.key = PoolKey(Currency.wrap(address(0)), Currency.wrap(USDG), USDG_FEE, 10, IHooks(USDG_HOOK));
+        assetsWhitelist.setWhitelisted(USDG, src);
         address hook = address(
             uint160(
                 Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
@@ -99,16 +110,6 @@ contract RobinhoodEtfQuoteTests is RobinhoodForkBase {
         );
         vm.stopPrank();
         etfKey = _key(address(etf), USDG, 0, 1, hook);
-
-        // USDG against native, then the ETF at its NAV through USDG: what the ops script would broadcast.
-        vm.prank(admin);
-        assetsWhitelist.setApprover(address(this), true);
-        RealmAssetsWhitelist.PriceSource memory src;
-        src.venue = RealmAssetsWhitelist.Venue.V4;
-        src.key = PoolKey(Currency.wrap(address(0)), Currency.wrap(USDG), USDG_FEE, 10, IHooks(USDG_HOOK));
-        assetsWhitelist.setWhitelisted(USDG, src);
-        (src.venue, src.pool, src.key) = (RealmAssetsWhitelist.Venue.VAULT, address(etf), etfKey);
-        assetsWhitelist.setWhitelisted(address(etf), src);
     }
 
     /// @dev `asset`'s hookless 0.3% V4 pool against USDG.
@@ -132,6 +133,10 @@ contract RobinhoodEtfQuoteTests is RobinhoodForkBase {
         uint256 expected = assetsWhitelist.unitsPerNativeX18(USDG) * 1e6 / usdgPerShare;
         assertApproxEqRel(assetsWhitelist.unitsPerNativeX18(address(etf)), expected, 1e12, "NAV through USDG");
         assertEq(assetsWhitelist.referenceOf(address(etf)), USDG);
+        RealmAssetsWhitelist.PriceSource memory src = assetsWhitelist.priceSource(address(etf));
+        assertEq(uint8(src.venue), uint8(RealmAssetsWhitelist.Venue.VAULT));
+        assertEq(src.pool, address(etf));
+        assertEq(PoolId.unwrap(src.key.toId()), PoolId.unwrap(etfKey.toId()), "routes zaps through the ETF's pool");
     }
 
     /// @dev The launch opens at the default market cap in native, and a native dev buy reaches the token

@@ -16,10 +16,17 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 import {RealmEtf} from "src/etf/RealmEtf.sol";
 import {RealmEtfAssets} from "src/etf/RealmEtfAssets.sol";
+import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
+// `RealmAssetsWhitelist` is built on `lib/v4-core`, whose structs are distinct types from `@uniswap`'s.
+import {PoolKey as WhitelistPoolKey} from "lib/v4-core/src/types/PoolKey.sol";
+import {Currency as WhitelistCurrency} from "lib/v4-core/src/types/Currency.sol";
+import {IHooks as WhitelistIHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 
 /// @title RealmEtfFactory
 /// @notice Anyone creates an ETF here, seeding it with USDG split by the weights they pick. The
 ///         creator owns the ETF (and alone proposes its rebalances). `isEtf` is what `RealmEtfHook` trusts.
+///         With a hook set, every new ETF is also listed in `ASSETS_WHITELIST` as a direct-venue quote at its
+///         NAV (`Venue.VAULT`): its liquidity is its components', already vetted in `REGISTRY`.
 /// @dev Each ETF records `hook` at creation and trusts only that one for `redeemOnCredit`, so repointing the
 ///      hook (owner) affects ETFs created afterwards; earlier ones stay on the hook they were created with.
 /// @dev UPGRADEABLE (UUPS, owner-authorised) because the hook bakes this address in: an upgrade ships new
@@ -29,11 +36,15 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
     using SafeERC20 for IERC20;
 
     /// @notice Contract version.
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 2;
 
     /// @notice Where every ETF's assets and routes are listed.
     /// @dev Implementation immutable: the proxy reads it from the implementation's bytecode.
     RealmEtfAssets public immutable REGISTRY;
+
+    /// @notice Where every new ETF is listed as a launch quote. This factory must be one of its approvers.
+    /// @dev Implementation immutable: the proxy reads it from the implementation's bytecode.
+    RealmAssetsWhitelist public immutable ASSETS_WHITELIST;
 
     /// @notice The `RealmEtfHook` new ETFs are created with. Zero: they get no pool.
     address public hook;
@@ -60,8 +71,9 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
 
     error SeedTooSmall();
 
-    constructor(RealmEtfAssets registry) {
+    constructor(RealmEtfAssets registry, RealmAssetsWhitelist assetsWhitelist) {
         REGISTRY = registry;
+        ASSETS_WHITELIST = assetsWhitelist;
         _disableInitializers();
     }
 
@@ -86,7 +98,9 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
     /// @notice Deploys an ETF holding `assets`, owned by the caller, and seeds it with `seedAssets` USDG
     ///         pulled from the caller, split by `weightsBps` (summing to 10,000). The caller receives the shares.
     ///         `mode` (immutable) bounds the creator's rebalances. Reverts below `minSeedAssets`, or if any
-    ///         asset's seed buy gets less than its `minAmountsOut` entry (same order as `assets`).
+    ///         asset's seed buy gets less than its `minAmountsOut` entry (same order as `assets`). With a hook
+    ///         set, lists the ETF in `ASSETS_WHITELIST`, and reverts if it cannot: USDG not listed against
+    ///         native, or this factory not an approver.
     function createEtf(
         string memory name,
         string memory symbol,
@@ -104,6 +118,24 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         uint256 shares = b.seed(seedAssets, weightsBps, msg.sender, minAmountsOut);
         if (hook != address(0)) _initializePool(etf, seedAssets, b.totalSupply());
         emit EtfCreated(etf, msg.sender, name, symbol, mode, assets, weightsBps, seedAssets, shares);
+        if (hook != address(0)) _listAsQuote(etf);
+    }
+
+    /// @dev Lists `etf` as a launch quote at its NAV through USDG, its pool (the one `_initializePool` opened)
+    ///      only routing dev-buy zaps. After `EtfCreated`, so indexers see the ETF before its listing.
+    function _listAsQuote(address etf) internal {
+        address usdgToken = REGISTRY.USDG();
+        (address c0, address c1) = etf < usdgToken ? (etf, usdgToken) : (usdgToken, etf);
+        ASSETS_WHITELIST.setWhitelisted(
+            etf,
+            RealmAssetsWhitelist.PriceSource({
+                venue: RealmAssetsWhitelist.Venue.VAULT,
+                pool: etf,
+                key: WhitelistPoolKey(
+                    WhitelistCurrency.wrap(c0), WhitelistCurrency.wrap(c1), 0, 1, WhitelistIHooks(hook)
+                )
+            })
+        );
     }
 
     /// @dev Opens the ETF's shares/USDG pool at the seed price (`usdg` for `shares`), so the hook's first JIT

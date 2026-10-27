@@ -11,6 +11,7 @@ import {HookMiner} from "lib/v4-periphery/src/utils/HookMiner.sol";
 import {RealmEtfAssets} from "src/etf/RealmEtfAssets.sol";
 import {RealmEtfFactory} from "src/etf/RealmEtfFactory.sol";
 import {RealmEtfHook} from "src/etf/RealmEtfHook.sol";
+import {RealmAssetsWhitelist} from "src/access/RealmAssetsWhitelist.sol";
 import {ChainConfig} from "script/ChainConfig.sol";
 
 /// @dev Mines a salt for `RealmEtfHook` (its permission bits live in its address), deploys it for `factory`
@@ -30,11 +31,24 @@ abstract contract EtfHookDeployer is Script {
         require(hook == mined, "hook address mismatch");
         factory.setHook(hook);
     }
+
+    /// @dev Makes `factory` an approver of its `ASSETS_WHITELIST`, which `createEtf` needs to list each new
+    ///      ETF. Call inside a broadcast whose sender owns the whitelist; reverts otherwise.
+    function _approveFactory(RealmEtfFactory factory, address sender) internal {
+        RealmAssetsWhitelist whitelist = factory.ASSETS_WHITELIST();
+        if (whitelist.isApprover(address(factory))) return;
+        require(
+            sender == whitelist.owner(),
+            "ETF_FACTORY is no ASSETS_WHITELIST approver: its owner must setApprover(ETF_FACTORY, true) first"
+        );
+        whitelist.setApprover(address(factory), true);
+    }
 }
 
 /// @title Deploy the ETF stack
 /// @notice `RealmEtfAssets` and `RealmEtfFactory` (each impl + UUPS proxy) and `RealmEtfHook`, with the factory pointed
-///         at the hook. The broadcaster owns the registry and the factory and is NOT an approver: appoint one
+///         at the hook and made an `ASSETS_WHITELIST` approver (the broadcaster must own the whitelist). The
+///         broadcaster owns the registry and the factory and is NOT a registry approver: appoint one
 ///         (`setApprover`) before listing assets, then hand both contracts to the multisig.
 /// @dev    Run: just deploy-etf-<rh|rh-testnet>. Dry-run: the same `forge script` without --broadcast.
 contract DeployRealmEtf is EtfHookDeployer {
@@ -48,10 +62,11 @@ contract DeployRealmEtf is EtfHookDeployer {
         address registryImpl = address(new RealmEtfAssets(poolManager, univ3Factory, univ2Factory, ChainConfig.usdg()));
         RealmEtfAssets registry =
             RealmEtfAssets(address(new ERC1967Proxy(registryImpl, abi.encodeCall(RealmEtfAssets.initialize, (owner)))));
-        address impl = address(new RealmEtfFactory(registry));
+        address impl = address(new RealmEtfFactory(registry, RealmAssetsWhitelist(ChainConfig.assetsWhitelist())));
         RealmEtfFactory factory =
             RealmEtfFactory(address(new ERC1967Proxy(impl, abi.encodeCall(RealmEtfFactory.initialize, (owner)))));
         address hook = _deployHook(factory);
+        _approveFactory(factory, owner);
         vm.stopBroadcast();
 
         console.log("=== Deployed. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
@@ -83,22 +98,31 @@ contract DeployRealmEtfHook is EtfHookDeployer {
 }
 
 /// @title Upgrade the ETF factory
-/// @notice Deploys a new `RealmEtfFactory` implementation, on the live proxy's registry, and upgrades
+/// @notice Deploys a new `RealmEtfFactory` implementation, on the live proxy's registry and the manifest's
+///         `ASSETS_WHITELIST`, makes the factory a whitelist approver if it is not one yet, and upgrades
 ///         `ETF_FACTORY` to it. Ships new `RealmEtf` code to ETFs created afterwards; existing ETFs, the hook
 ///         and its pools are untouched.
-/// @dev    Run: just upgrade-etf-factory-<rh|rh-testnet>. The broadcaster must own the factory.
-contract UpgradeRealmEtfFactory is Script {
+/// @dev    Run: just upgrade-etf-factory-<rh|rh-testnet>. The broadcaster must own the factory, and the
+///         whitelist unless the factory is already its approver.
+contract UpgradeRealmEtfFactory is EtfHookDeployer {
     function run() external {
         RealmEtfFactory factory = RealmEtfFactory(ChainConfig.etfFactory());
         RealmEtfAssets registry = factory.REGISTRY();
+        RealmAssetsWhitelist whitelist = RealmAssetsWhitelist(ChainConfig.assetsWhitelist());
         address hook = factory.hook();
 
         vm.startBroadcast();
-        address impl = address(new RealmEtfFactory(registry));
+        (, address sender,) = vm.readCallers();
+        address impl = address(new RealmEtfFactory(registry, whitelist));
         UUPSUpgradeable(address(factory)).upgradeToAndCall(impl, "");
+        // Same broadcast: from the upgrade on, `createEtf` reverts while the factory is no approver.
+        _approveFactory(factory, sender);
         vm.stopBroadcast();
 
-        require(factory.REGISTRY() == registry && factory.hook() == hook, "post-upgrade: wiring moved");
+        require(
+            factory.REGISTRY() == registry && factory.hook() == hook && factory.ASSETS_WHITELIST() == whitelist,
+            "post-upgrade: wiring moved"
+        );
         console.log("=== Upgraded. Paste into src/config/manifest.%s.sol ===", ChainConfig.name());
         console.log("  ETF_FACTORY_IMPL =", impl);
         console.log("Then: just export-deployments");
