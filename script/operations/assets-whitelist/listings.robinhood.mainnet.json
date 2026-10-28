@@ -1,7 +1,7 @@
 {
  "chainId": 4663,
  "reference": "USDG",
- "referencePerNative": 2449.407594,
+ "referencePerNative": 2353.693564,
  "assets": [
   "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
   "0x03bc731ffb162cdd7b98d3c6542bfc291126075d",
@@ -8433,6 +8433,78 @@
   {
    "symbol": "SATS",
    "asset": "0x95052ddcd5dc25641657424a8cf04834997e1730",
+   "rstock": true,
+   "reason": "no Uniswap V2/V3/V4 pool against native or the reference",
+   "venue": null,
+   "depthNative": 0.0
+  },
+  {
+   "symbol": "JPM",
+   "asset": "0x07c44da0848960bff894f17584db8b2f60b2409e",
+   "rstock": true,
+   "reason": "no Uniswap V2/V3/V4 pool against native or the reference",
+   "venue": null,
+   "depthNative": 0.0
+  },
+  {
+   "symbol": "MCD",
+   "asset": "0x2fdaa4604f10f4ae7f66fa48a174bcd25b1ece20",
+   "rstock": true,
+   "reason": "no Uniswap V2/V3/V4 pool against native or the reference",
+   "venue": null,
+   "depthNative": 0.0
+  },
+  {
+   "symbol": "DIS",
+   "asset": "0x501b1b3b79750313ad2c4cccd08586c4c17d7283",
+   "rstock": true,
+   "reason": "no Uniswap V2/V3/V4 pool against native or the reference",
+   "venue": null,
+   "depthNative": 0.0
+  },
+  {
+   "symbol": "BMNR",
+   "asset": "0x9a7842eded60b0fe1e03eec342c82a397c821ed0",
+   "rstock": true,
+   "reason": "no Uniswap V2/V3/V4 pool against native or the reference",
+   "venue": null,
+   "depthNative": 0.0
+  },
+  {
+   "symbol": "V",
+   "asset": "0x9bff87700337babf5099e99f322f888dafb1d551",
+   "rstock": true,
+   "reason": "no Uniswap V2/V3/V4 pool against native or the reference",
+   "venue": null,
+   "depthNative": 0.0
+  },
+  {
+   "symbol": "PYPL",
+   "asset": "0xa45abdc77918f7b9199b022eee400c0bc5712bd2",
+   "rstock": true,
+   "reason": "no Uniswap V2/V3/V4 pool against native or the reference",
+   "venue": null,
+   "depthNative": 0.0
+  },
+  {
+   "symbol": "UBER",
+   "asset": "0xbd335aa5a1693f0121a5c0ef18a080e9958da78b",
+   "rstock": true,
+   "reason": "no Uniswap V2/V3/V4 pool against native or the reference",
+   "venue": null,
+   "depthNative": 0.0
+  },
+  {
+   "symbol": "GDX",
+   "asset": "0xbdfa7a06458aa26b8e736e0fc87ad37c3bb8ac2e",
+   "rstock": true,
+   "reason": "no Uniswap V2/V3/V4 pool against native or the reference",
+   "venue": null,
+   "depthNative": 0.0
+  },
+  {
+   "symbol": "ZETA",
+   "asset": "0xe674c5c071821f48bb2d12cadb83617eff438f9e",
    "rstock": true,
    "reason": "no Uniswap V2/V3/V4 pool against native or the reference",
    "venue": null,
