@@ -9,6 +9,7 @@ import {IERC4626} from "lib/openzeppelin-contracts/contracts/interfaces/IERC4626
 import {Ownable, Ownable2Step} from "lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuardTransient} from "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 import {Math} from "lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
+import {SafeCast} from "lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -539,7 +540,9 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         _payer = msg.sender;
         for (uint256 i; i < live.length; ++i) {
             uint256 out = Math.mulDiv(shares, IERC20(live[i]).balanceOf(address(this)), supply, Math.Rounding.Ceil);
-            (uint256 paid,) = _trade(live[i], true, int256(out));
+            // Checked cast: a plain `int256(out)` wraps an `out` >= 2^255 into a tiny exact INPUT, which
+            // would mint `shares` for a few raw USDG.
+            (uint256 paid,) = _trade(live[i], true, SafeCast.toInt256(out));
             assets += paid;
         }
         _payer = address(0);
@@ -649,7 +652,7 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     /// @dev Exact-input swap of `amountIn` USDG into `asset_` (`buy`) or `asset_` into USDG.
     function _swap(address asset_, bool buy, uint256 amountIn) internal returns (uint256 amountOut) {
         if (amountIn == 0) return 0;
-        (, amountOut) = _trade(asset_, buy, -int256(amountIn));
+        (, amountOut) = _trade(asset_, buy, -SafeCast.toInt256(amountIn));
     }
 
     /// @dev Swaps USDG into `asset_` (`buy`) or `asset_` into USDG through its registry route. `amountSpecified`

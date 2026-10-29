@@ -12,6 +12,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Math} from "lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
+import {SafeCast} from "lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -1001,6 +1002,26 @@ contract RealmEtfTest is Test {
     function test_mint_revertsWhenARoutePoolCannotFillTheOutput() public {
         _expectMintRevert(_singleAssetEtf(_thinRouteAsset(false)));
         _expectMintRevert(_singleAssetEtf(_thinRouteAsset(true)));
+    }
+
+    /// @dev A share amount whose per-asset buy is >= 2^255 used to wrap into a tiny exact input: the shares
+    ///      were minted for a few raw USDG. The cast is checked now, so it reverts.
+    function test_mint_revertsWhenTheBuySizeWouldWrapNegative() public {
+        RealmEtf e = _singleAssetEtf(SPY);
+        uint256 supply = e.totalSupply();
+        // Balance at 100x supply: a `shares` near uint256.max / 100 (so the mint's supply fits) already
+        // pushes the buy past 2^255.
+        deal(SPY, address(e), supply * 100);
+        uint256 balance = IERC20(SPY).balanceOf(address(e));
+        uint256 shares = Math.mulDiv(type(uint256).max, supply, balance);
+        uint256 out = Math.mulDiv(shares, balance, supply, Math.Rounding.Ceil);
+
+        deal(USDG, alice, 1e6);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(e), type(uint256).max);
+        vm.expectRevert(abi.encodeWithSelector(SafeCast.SafeCastOverflowedUintToInt.selector, out));
+        e.mint(shares, alice);
+        vm.stopPrank();
     }
 
     //////////////////////// in-kind redemption //////////////////////
