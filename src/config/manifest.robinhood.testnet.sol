@@ -57,7 +57,7 @@ library DeploymentsRobinhoodTestnet {
     address public constant ASSETS_WHITELIST = 0xf15562e731c05Fb9DD9c7BE0a2FD8C03b778c261;
 
     /// @notice Implementation behind `ASSETS_WHITELIST`. Tracked for verification and audit trails only.
-    address public constant ASSETS_WHITELIST_IMPL = 0xe3DcE2402137127Ff77eD3d11Bc5D5d3DC838bcB;
+    address public constant ASSETS_WHITELIST_IMPL = 0x9f744020e48dE5Faba2DB697eD1F95516ee84a2e;
 
     // --- ETFs ---
     /// @notice `RealmEtfAssets` proxy (UUPS): the assets ETFs may hold and their USDG routes. The factory
@@ -68,7 +68,7 @@ library DeploymentsRobinhoodTestnet {
     /// @notice `RealmEtfFactory` proxy (UUPS): where ETFs are created. `ETF_HOOK` bakes it in.
     address internal constant ETF_FACTORY = 0xd8eAD284f967a1651988049b2585AacEB9593720;
     /// @notice Implementation behind `ETF_FACTORY`. Tracked for verification and audit trails only.
-    address internal constant ETF_FACTORY_IMPL = 0x135F29e5Fe54074F0A58417ca5Acb0d7b53E0055;
+    address internal constant ETF_FACTORY_IMPL = 0x23cc19acB89e115E7B958511B89F629Fb8f5F6D2;
     /// @notice `RealmEtfHook`: the hook of the ETF shares/USDG pools. Not upgradeable: a new one
     ///         (`DeployRealmEtfHook`) only serves ETFs created after it is set on `ETF_FACTORY`.
     address internal constant ETF_HOOK = 0xB5623BD9c3df7cce689D8332D9eD9cf2E43168c8;
