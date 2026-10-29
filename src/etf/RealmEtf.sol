@@ -535,6 +535,9 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
         returns (uint256 assets)
     {
         require(shares != 0, ZeroAmount());
+        // Every asset sunset: nothing to buy, so the shares cost 0 USDG and redeem the sunset balances in
+        // kind. Accepted, the sunset leak of docs/etf-design-decisions.md: sunset is for tokens that no
+        // longer move, and one that does was the owner's call.
         address[] memory live = _liveAssets();
         uint256 supply = totalSupply();
         _payer = msg.sender;
