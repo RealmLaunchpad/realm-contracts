@@ -49,7 +49,7 @@ library DeploymentsRobinhoodMainnet {
     address public constant FACTORY_UNIV4_DIRECT = 0xC763b1795DaBe2D2336EbA214d16969EBc5db27F;
 
     /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
-    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0xd8d292a6108d86545B0B12e5B9FAC8024d10Aa8d;
+    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0xd96560Cfb1a0E28ee0B220148F72fbAE14F33066;
 
     /// @notice `RealmAssetsWhitelist` proxy (UUPS): the quote currencies the direct venue will launch
     ///         against, each with the native rate derived from its price pool. `FACTORY_UNIV4_DIRECT`
@@ -57,21 +57,21 @@ library DeploymentsRobinhoodMainnet {
     address public constant ASSETS_WHITELIST = 0x1Fe8baA5254fD125386Da072cddd1c804BEe0e94;
 
     /// @notice Implementation behind `ASSETS_WHITELIST`. Tracked for verification and audit trails only.
-    address public constant ASSETS_WHITELIST_IMPL = 0x233Fd9e6A79fB80c90f50c23Bc9aA57d0417F952;
+    address public constant ASSETS_WHITELIST_IMPL = 0x2bebA4595a95426900Fd8dC88dB14f09cF5b3840;
 
     // --- ETFs ---
     /// @notice `RealmEtfAssets` proxy (UUPS): the assets ETFs may hold and their USDG routes. The factory
     ///         implementation and every ETF bake it in. Deployed by `DeployRealmEtf`; `address(0)` until then.
-    address internal constant ETF_ASSETS = address(0);
+    address internal constant ETF_ASSETS = 0xEEc232b86aa0b3a7CDdaAfeE19dD65BC4D905546;
     /// @notice Implementation behind `ETF_ASSETS`. Tracked for verification and audit trails only.
-    address internal constant ETF_ASSETS_IMPL = address(0);
+    address internal constant ETF_ASSETS_IMPL = 0x074Ec2d780A91e64dd237b935ef7FA4b2A82b1d3;
     /// @notice `RealmEtfFactory` proxy (UUPS): where ETFs are created. `ETF_HOOK` bakes it in.
-    address internal constant ETF_FACTORY = address(0);
+    address internal constant ETF_FACTORY = 0x124AD86c732B16366ED26445e3943aDEF635F123;
     /// @notice Implementation behind `ETF_FACTORY`. Tracked for verification and audit trails only.
-    address internal constant ETF_FACTORY_IMPL = address(0);
+    address internal constant ETF_FACTORY_IMPL = 0xEc0E822bbB5689600Ba86Ba3D8e2c2fB2b5A76a2;
     /// @notice `RealmEtfHook`: the hook of the ETF shares/USDG pools. Not upgradeable: a new one
     ///         (`DeployRealmEtfHook`) only serves ETFs created after it is set on `ETF_FACTORY`.
-    address internal constant ETF_HOOK = address(0);
+    address internal constant ETF_HOOK = 0x74dD0a05540f7c1ae419c18f8d55FF220076e8C8;
 
     /// @notice `SwapLpFeeRouter` proxy (UUPS) consumed by `SWAP_HOOK`; splits LP fees 30/70
     ///         treasury/creator.

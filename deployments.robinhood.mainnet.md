@@ -15,14 +15,14 @@
 | RealmHookAnyPair                             | `0x24d9308561c322a603370A0c3BeAD39E05DA00CC` |
 | RealmDirectGraduatorUniV4                    | `0xD1AF35970A304d3529c16997C1f2e21CA341d621` |
 | RealmFactoryUniV4Direct (proxy)              | `0xC763b1795DaBe2D2336EbA214d16969EBc5db27F` |
-| RealmFactoryUniV4Direct (impl)               | `0xd8d292a6108d86545B0B12e5B9FAC8024d10Aa8d` |
+| RealmFactoryUniV4Direct (impl)               | `0xd96560Cfb1a0E28ee0B220148F72fbAE14F33066` |
 | RealmAssetsWhitelist (proxy)                 | `0x1Fe8baA5254fD125386Da072cddd1c804BEe0e94` |
-| RealmAssetsWhitelist (impl)                  | `0x233Fd9e6A79fB80c90f50c23Bc9aA57d0417F952` |
-| RealmEtfAssets (proxy)                       | _(not deployed)_                             |
-| RealmEtfAssets (impl)                        | _(not deployed)_                             |
-| RealmEtfFactory (proxy)                      | _(not deployed)_                             |
-| RealmEtfFactory (impl)                       | _(not deployed)_                             |
-| RealmEtfHook                                 | _(not deployed)_                             |
+| RealmAssetsWhitelist (impl)                  | `0x2bebA4595a95426900Fd8dC88dB14f09cF5b3840` |
+| RealmEtfAssets (proxy)                       | `0xEEc232b86aa0b3a7CDdaAfeE19dD65BC4D905546` |
+| RealmEtfAssets (impl)                        | `0x074Ec2d780A91e64dd237b935ef7FA4b2A82b1d3` |
+| RealmEtfFactory (proxy)                      | `0x124AD86c732B16366ED26445e3943aDEF635F123` |
+| RealmEtfFactory (impl)                       | `0xEc0E822bbB5689600Ba86Ba3D8e2c2fB2b5A76a2` |
+| RealmEtfHook                                 | `0x74dD0a05540f7c1ae419c18f8d55FF220076e8C8` |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
 | RealmLpLocker                                | `0x77493d5Efc88817A252a1a17Acd48951Af0EC016` |
 | SwapLpFeeRouter (impl)                       | `0x91fd2fFa173bC417Fc2Fd2FD5443f9f18c705C09` |
