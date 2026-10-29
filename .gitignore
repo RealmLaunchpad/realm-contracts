@@ -28,3 +28,5 @@ cache-robinhood/
 
 # Deploy run files + deploy-commit ledger, kept across checkouts for verifying later.
 deploy-archive/
+
+.env
