@@ -23,9 +23,10 @@ import {PoolKey as EtfPoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency as EtfCurrency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks as EtfIHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
-/// @notice A Realm ETF as a direct-venue quote: listed by its factory at creation, at its NAV (`Venue.VAULT`) through USDG, a launch
-///         against it opening at the default market cap in native, and a native dev buy zapped
-///         native -> USDG -> shares through the ETF's own hook pool.
+/// @notice A Realm ETF as a direct-venue quote: listed by its factory at creation, pending until a keeper
+///         refresh prices it at its NAV (`Venue.VAULT`) through USDG, a launch against it opening at the
+///         default market cap in native, and a native dev buy zapped native -> USDG -> shares through the
+///         ETF's own hook pool.
 contract RobinhoodEtfQuoteTests is RobinhoodForkBase {
     using PoolIdLibrary for PoolKey;
 
@@ -127,8 +128,18 @@ contract RobinhoodEtfQuoteTests is RobinhoodForkBase {
         return PoolKey(Currency.wrap(c0), Currency.wrap(c1), fee, spacing, IHooks(hooks));
     }
 
-    /// @dev Whole shares per native = USDG per native over USDG per share (NAV), 6 vs 18 decimals included.
-    function test_listing_ratesTheEtfAtItsNavInNative() public view {
+    /// @dev The keeper's refresh, as a test-contract (keeper) call.
+    function _refreshEtf() internal {
+        address[] memory assets = new address[](1);
+        assets[0] = address(etf);
+        assetsWhitelist.refreshRates(assets);
+    }
+
+    /// @dev Pending at creation; once refreshed, whole shares per native = USDG per native over USDG per share
+    ///      (NAV), 6 vs 18 decimals included.
+    function test_listing_ratesTheEtfAtItsNavInNative() public {
+        assertEq(assetsWhitelist.unitsPerNativeX18(address(etf)), 0, "pending at creation");
+        _refreshEtf();
         uint256 usdgPerShare = etf.convertToAssets(1e18); // raw USDG, 6 decimals
         uint256 expected = assetsWhitelist.unitsPerNativeX18(USDG) * 1e6 / usdgPerShare;
         assertApproxEqRel(assetsWhitelist.unitsPerNativeX18(address(etf)), expected, 1e12, "NAV through USDG");
@@ -139,19 +150,31 @@ contract RobinhoodEtfQuoteTests is RobinhoodForkBase {
         assertEq(PoolId.unwrap(src.key.toId()), PoolId.unwrap(etfKey.toId()), "routes zaps through the ETF's pool");
     }
 
-    /// @dev The launch opens at the default market cap in native, and a native dev buy reaches the token
-    ///      through native -> USDG -> shares (the shares hop through the ETF's hook pool).
+    /// @dev No launch against the ETF until a keeper refresh prices it. Then it opens at the default market cap
+    ///      in native, and a native dev buy reaches the token through native -> USDG -> shares (the shares
+    ///      hop through the ETF's hook pool).
     function test_launch_quotedInTheEtfWithANativeDevBuy() public {
+        vm.deal(creator, 0.02 ether);
+        vm.expectRevert(RealmFactoryUniV4Direct.QuoteNotSupported.selector);
+        _launchAgainstEtf();
+
+        _refreshEtf();
         (,, uint256 marketCapX18) = directFactory.previewLaunchTick(address(etf));
         uint256 capInNative = marketCapX18 * 1e18 / assetsWhitelist.unitsPerNativeX18(address(etf));
         assertApproxEqRel(capInNative, directFactory.LAUNCH_MARKET_CAP_X18(), 0.01e18, "default cap in native");
 
+        address token = _launchAgainstEtf();
+        assertEq(RealmTaxableTokenUniV4(payable(token)).quotes(1), address(etf), "the ETF is the token's quote");
+        assertGt(IERC20(token).balanceOf(creator), 0, "dev buy delivered");
+    }
+
+    /// @dev `creator` launches a token quoted in the ETF alone, with a 0.01 ETH native dev buy.
+    function _launchAgainstEtf() internal returns (address token) {
         RealmFactoryUniV4Direct.DirectPair[] memory pairs = new RealmFactoryUniV4Direct.DirectPair[](1);
         pairs[0] = RealmFactoryUniV4Direct.DirectPair({quote: address(etf), weightBps: 10_000});
         TaxConfigsWithDirectAllocation memory noTax;
-        vm.deal(creator, 0.01 ether);
         vm.prank(creator);
-        address token = directFactory.createToken{value: 0.01 ether}(
+        token = directFactory.createToken{value: 0.01 ether}(
             _directSetup("ETF Coin", "ETFC", false),
             pairs,
             noTax,
@@ -160,7 +183,5 @@ contract RobinhoodEtfQuoteTests is RobinhoodForkBase {
             _devBuyTo(creator),
             address(0)
         );
-        assertEq(RealmTaxableTokenUniV4(payable(token)).quotes(1), address(etf), "the ETF is the token's quote");
-        assertGt(IERC20(token).balanceOf(creator), 0, "dev buy delivered");
     }
 }

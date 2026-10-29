@@ -217,12 +217,19 @@ contract RealmEtfTest is Test {
         assertApproxEqRel(etf.totalAssets(), SEED, 0.03e18);
     }
 
-    function test_createEtf_listsTheEtfAsAQuoteAtItsNav() public view {
+    /// @dev Listed pending: the creator's own transaction never snapshots the rate, the keeper's first refresh does.
+    function test_createEtf_listsTheEtfAsAQuoteAtItsNav() public {
         RealmAssetsWhitelist.PriceSource memory src = whitelist.priceSource(address(etf));
         assertEq(uint8(src.venue), uint8(RealmAssetsWhitelist.Venue.VAULT));
         assertEq(src.pool, address(etf));
         assertEq(keccak256(abi.encode(src.key)), keccak256(abi.encode(etfKey)), "routes zaps through its pool");
         assertEq(whitelist.referenceOf(address(etf)), USDG);
+        assertEq(whitelist.unitsPerNativeX18(address(etf)), 0, "pending until a keeper refresh");
+
+        address[] memory refreshed = new address[](1);
+        refreshed[0] = address(etf);
+        vm.prank(keeper);
+        whitelist.refreshRates(refreshed);
         // Whole shares per native = USDG per native over USDG per share, 6 vs 18 decimals included.
         uint256 expected = whitelist.unitsPerNativeX18(USDG) * 1e6 / etf.convertToAssets(1e18);
         assertApproxEqRel(whitelist.unitsPerNativeX18(address(etf)), expected, 1e12);

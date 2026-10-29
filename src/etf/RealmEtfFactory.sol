@@ -25,8 +25,10 @@ import {IHooks as WhitelistIHooks} from "lib/v4-core/src/interfaces/IHooks.sol";
 /// @title RealmEtfFactory
 /// @notice Anyone creates an ETF here, seeding it with USDG split by the weights they pick. The
 ///         creator owns the ETF (and alone proposes its rebalances). `isEtf` is what `RealmEtfHook` trusts.
-///         With a hook set, every new ETF is also listed in `ASSETS_WHITELIST` as a direct-venue quote at its
-///         NAV (`Venue.VAULT`): its liquidity is its components', already vetted in `REGISTRY`.
+///         With a hook set, every new ETF is also listed in `ASSETS_WHITELIST` as a direct-venue quote priced
+///         at its NAV (`Venue.VAULT`): its liquidity is its components', already vetted in `REGISTRY`. The
+///         listing is pending (zero rate) until the keeper's first `refreshRates`, so the creator never
+///         picks when the ETF's rate is snapshotted.
 /// @dev Each ETF records `hook` at creation and trusts only that one for `redeemOnCredit`, so repointing the
 ///      hook (owner) affects ETFs created afterwards; earlier ones stay on the hook they were created with.
 /// @dev UPGRADEABLE (UUPS, owner-authorised) because the hook bakes this address in: an upgrade ships new
@@ -36,7 +38,7 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
     using SafeERC20 for IERC20;
 
     /// @notice Contract version.
-    uint256 public constant VERSION = 2;
+    uint256 public constant VERSION = 3;
 
     /// @notice Where every ETF's assets and routes are listed.
     /// @dev Implementation immutable: the proxy reads it from the implementation's bytecode.
@@ -121,8 +123,9 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         if (hook != address(0)) _listAsQuote(etf);
     }
 
-    /// @dev Lists `etf` as a launch quote at its NAV through USDG, its pool (the one `_initializePool` opened)
-    ///      only routing dev-buy zaps. After `EtfCreated`, so indexers see the ETF before its listing.
+    /// @dev Lists `etf` as a launch quote priced at its NAV through USDG, pending the keeper's first refresh;
+    ///      its pool (the one `_initializePool` opened) only routes dev-buy zaps. After `EtfCreated`, so
+    ///      indexers see the ETF before its listing.
     function _listAsQuote(address etf) internal {
         address usdgToken = REGISTRY.USDG();
         (address c0, address c1) = etf < usdgToken ? (etf, usdgToken) : (usdgToken, etf);
