@@ -1,0 +1,162 @@
+{
+ "chainId": 46630,
+ "assets": [
+  "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
+  "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
+  "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
+  "0xd208c24b164c1ba134f7fe7e3b96e0fd1cff1865",
+  "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
+  "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
+  "0xe0b058d16920bc542bbc83a3dcf5c7afca541464",
+  "0x9120ff9c69b1a5b35ffff837ee17e90ef8950c18"
+ ],
+ "symbols": [
+  "GOOGL",
+  "TSLA",
+  "AAPL",
+  "GLD",
+  "NVDA",
+  "META",
+  "AMZN",
+  "pHOOD3x"
+ ],
+ "enabled": [
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true
+ ],
+ "venues": [
+  2,
+  2,
+  2,
+  2,
+  2,
+  2,
+  2,
+  2
+ ],
+ "pools": [
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000"
+ ],
+ "currency0": [
+  "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
+  "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
+  "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
+  "0xd208c24b164c1ba134f7fe7e3b96e0fd1cff1865",
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
+  "0x9120ff9c69b1a5b35ffff837ee17e90ef8950c18"
+ ],
+ "currency1": [
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24",
+  "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
+  "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
+  "0xe0b058d16920bc542bbc83a3dcf5c7afca541464",
+  "0xd2397fd59c825e6f34037ff2f2f541b0b727eb24"
+ ],
+ "fees": [
+  3000,
+  3000,
+  3000,
+  3000,
+  3000,
+  3000,
+  3000,
+  3000
+ ],
+ "tickSpacings": [
+  60,
+  60,
+  60,
+  60,
+  60,
+  60,
+  60,
+  60
+ ],
+ "hooks": [
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000",
+  "0x0000000000000000000000000000000000000000"
+ ],
+ "readable": [
+  {
+   "symbol": "GOOGL",
+   "asset": "0x089a31af9ec4f18ecdd2404313a679f5f9d01a5b",
+   "venue": "v4",
+   "usdgDepth": 20000,
+   "priceUsdg": 347.30747612
+  },
+  {
+   "symbol": "TSLA",
+   "asset": "0x656b6560b6ada6bb12a15931a6a0f8bd6370414b",
+   "venue": "v4",
+   "usdgDepth": 20000,
+   "priceUsdg": 290.31636569
+  },
+  {
+   "symbol": "AAPL",
+   "asset": "0xab04ec65d7f7cc9a83a5a9b7f498f952b4f848d3",
+   "venue": "v4",
+   "usdgDepth": 20000,
+   "priceUsdg": 301.89589399
+  },
+  {
+   "symbol": "GLD",
+   "asset": "0xd208c24b164c1ba134f7fe7e3b96e0fd1cff1865",
+   "venue": "v4",
+   "usdgDepth": 20000,
+   "priceUsdg": 239.61150377
+  },
+  {
+   "symbol": "NVDA",
+   "asset": "0xd2bc8d4d0d0e50f201b26176daa7c24592c98e99",
+   "venue": "v4",
+   "usdgDepth": 20000,
+   "priceUsdg": 141.65896061
+  },
+  {
+   "symbol": "META",
+   "asset": "0xd4ad8bf17341758b3466c7c7429a1c50c7100d43",
+   "venue": "v4",
+   "usdgDepth": 20000,
+   "priceUsdg": 504.5664544
+  },
+  {
+   "symbol": "AMZN",
+   "asset": "0xe0b058d16920bc542bbc83a3dcf5c7afca541464",
+   "venue": "v4",
+   "usdgDepth": 20000,
+   "priceUsdg": 220.3197973
+  },
+  {
+   "symbol": "pHOOD3x",
+   "asset": "0x9120ff9c69b1a5b35ffff837ee17e90ef8950c18",
+   "venue": "v4",
+   "usdgDepth": 6010,
+   "priceUsdg": 1.44457049
+  }
+ ],
+ "rejected": []
+}

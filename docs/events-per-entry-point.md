@@ -46,6 +46,7 @@ Unified factories register fee config automatically during token creation:
 - `SwapLpFeeRouter` — one upgradeable proxy per chain: the 30/70 LP-fee split and the token-side fee bucket (§14)
 - `RealmAssetsWhitelist` — one upgradeable proxy per chain, the ERC20 quotes the direct venue accepts
 - `RealmTreasuryRouter` / `RealmVoting` — one upgradeable proxy each per chain; the router IS the treasury address every push below lands on (§11)
+- `RealmEtfAssets` / `RealmEtfFactory` / `RealmEtf` / `RealmEtfHook` — ETFs (§17)
 
 External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this file focuses on Realm-owned events and notes the main external-operation points.
 
@@ -68,6 +69,7 @@ External ERC20 / Uniswap / WETH / Permit2 events still occur in traces, but this
 14. [LP fee collection — `RealmLpLocker` / `SwapLpFeeRouter` / `RealmSwapper.sellToken`](#14-lp-fee-collection--realmlplocker--swaplpfeerouter--realmswappersellToken)
 15. [Factory pause — `setPaused`](#15-factory-pause--setpaused)
 16. [Special deployments — `setSpecialDeploymentsBudget`](#16-special-deployments--setspecialdeploymentsbudget)
+17. [ETFs — `RealmEtf*`](#17-etfs--realmetf)
 
 ---
 
@@ -678,10 +680,15 @@ upgrade another `Upgraded`.
   `setWhitelisted(asset, source)`. `source` is `(venue, pool, key)`: venue `V2`/`V3` with the pair/pool
   address in `pool`, or `V4` with the full `PoolKey` in `key`, against native (WETH counts as native) or
   against an asset itself listed against native. `asset` is listed or repriced with the rate snapshotted
-  from that pool's spot price, or delisted by venue `NONE`, emitting `unitsPerNativeX18 == 0`.
-  Also emitted, keeper-only, by `refreshRates(assets)`: once per listed asset in the array, in array
-  order, with its re-snapshotted rate and its UNCHANGED stored `source`; unlisted assets are skipped
-  silently.
+  from that pool's spot price, or delisted by venue `NONE`, emitting `unitsPerNativeX18 == 0`. Venue
+  `VAULT` (enum value 4) lists an ERC-4626 share (a Realm ETF): `pool` is the vault itself (== `asset`),
+  `key` the V4 pool it trades in against the vault's `asset()`. A `VAULT` listing (or re-listing) always
+  emits `unitsPerNativeX18 == 0`: it is PENDING, stored but unusable as a quote, until the first
+  `refreshRates` snapshots the vault's NAV (`convertToAssets`), never that pool. So rate 0 means delisted
+  only with venue `NONE`; with venue `VAULT` it means listed, pending.
+  Also emitted, keeper-only, by `refreshRates(assets)`: once per listed asset in the array (venue not
+  `NONE`, pending `VAULT` listings included), in array order, with its re-snapshotted rate and its
+  UNCHANGED stored `source`; unlisted assets are skipped silently.
 
 ### `RealmSwapper` (one per chain)
 
@@ -797,3 +804,75 @@ Emits **`RealmFactory.PausedSet`** (`paused`), on every call, even when the valu
 ### `RealmFactoryUniV4Direct.setSpecialDeploymentsBudget(address deployer, uint256 budget)` — owner only
 
 Emits **`SpecialDeploymentsBudgetSet`** (`deployer` indexed, `budget`), on every call. `budget` is the deployer's absolute total, not an increment. A `createToken` that spends one (its decay exceeds the normal caps) emits nothing extra: usage is derivable from the token's `RealmTaxableTokenInitialized` decay config.
+
+## 17. ETFs — `RealmEtf*`
+
+One `RealmEtfAssets` registry, one `RealmEtfFactory` and one `RealmEtfHook` per chain, one `RealmEtf` per ETF. An ETF IS its share token: index its events by emitter. Swaps an ETF makes appear as the underlying pools' own events (V4 `PoolManager.Swap`, V3 `Swap`, V2 `Sync` then `Swap`) and ERC20 `Transfer`s, interleaved where noted; they are not Realm events.
+
+### `RealmEtfAssets` (one per chain)
+
+- **`ApproverSet`** (`account` indexed, `allowed`) — owner only.
+- `setRoute(asset, route)` — approver only: **`RouteSet`** (`asset` indexed, `route`), then, on the asset's FIRST route only, **`ListedSet`** (`asset` indexed, `true`); replacing a route leaves the listing as it is. `route` is `(venue, pool, key)`: `V3` (`venue` = 1) or `V2` (`venue` = 3) with the pool or pair in `pool`, or `V4` (`venue` = 2) with the `PoolKey` in `key`. Routes are replaced, never cleared.
+- `setListed(asset, listed)` — approver only: **`ListedSet`**. Delisting only stops ETFs from buying into `asset`.
+- `sunset(asset)` — owner only, one-way: **`AssetSunset`** (`asset` indexed). From then on every ETF holding `asset` skips it in deposits, mints, redemptions, rebalances, `reinvest` and `totalAssets`; only `redeemInKind` still sends it.
+
+### `RealmEtfFactory` (one UUPS proxy per chain)
+
+Deployment emits the proxy's `Upgraded`, `OwnershipTransferred` and `Initialized`; every owner-only upgrade another `Upgraded`.
+
+#### `RealmEtfFactory.setHook(hook)` — owner only
+
+Emits **`HookSet`** (`hook` indexed). Only ETFs created afterwards use it: each ETF records the hook at creation, and a hook only accepts pools of ETFs that recorded it.
+
+#### `RealmEtfFactory.setMinSeedAssets(minSeedAssets)` — owner only
+
+Emits **`MinSeedAssetsSet`** (`minSeedAssets`): the least USDG `createEtf` accepts as seed (1,000 USDG at deployment; not emitted by `initialize`).
+
+### `RealmEtfFactory.createEtf(name, symbol, mode, assets, weightsBps, seedAssets, minAmountsOut)` — permissionless
+
+Reverts `SeedTooSmall` when `seedAssets < minSeedAssets`. With a hook set, also reverts when the ETF cannot be listed in `ASSETS_WHITELIST` (step 6): `InvalidPriceSource` while USDG is not listed against native, `NotApprover` while the factory is not a whitelist approver.
+
+1. New `RealmEtf`: `OwnershipTransferred(0, creator)`.
+2. USDG `Transfer` creator -> ETF, then one swap per asset (USDG -> asset).
+3. `RealmEtf`: `Transfer(0, DEAD, DEAD_SHARES)`, `Transfer(0, creator, shares)`, **`Seeded`** (`receiver` indexed, `assets`, `shares`), **`NavUpdated`**.
+4. With a hook set: **`RealmEtfHook.AggregatorPoolRegistered`** (`poolId` indexed), then `PoolManager.Initialize` of the ETF's shares/USDG pool (fee 0, tick spacing 1) at the seed price.
+5. **`EtfCreated`** (`etf` indexed, `creator` indexed, `name`, `symbol`, `mode`, `assets`, `weightsBps`, `seedAssets`, `shares`). `mode` is the immutable `RealmEtf.Mode` (`0` FIXED, `1` REBALANCE, `2` FLEXIBLE).
+6. With a hook set: **`RealmAssetsWhitelist.WhitelistUpdated`** (`asset` = the ETF, `unitsPerNativeX18` = 0, `source` = `VAULT`, `pool` = the ETF, `key` = its shares/USDG pool from step 4): the ETF is listed as a direct-venue launch quote, PENDING. It becomes usable once a keeper's `refreshRates` emits a second `WhitelistUpdated` for it with its NAV rate through USDG.
+
+### `RealmEtf` (one per ETF)
+
+"Per asset" below means per live (not sunset) asset, except in `redeemInKind`.
+
+**`NavUpdated`** (`totalAssets`, `totalSupply`, `assets`, `balances`, `usdgValues`) is the ETF's last event in every call that changes its holdings or supply (`seed`, `deposit`, `mint`, `redeem`, `redeemOnCredit`, `redeemInKind`, `executeRebalance`, `reinvest`), right after that call's own event: the state the call left. `assets` is `getAssets()` (sunset ones included, in order), `balances` their raw balances, `usdgValues` their spot USDG value (`RealmEtfAssets.usdgValueOf`, 0 for sunset assets), summing to `totalAssets` (`totalAssets()`). `totalSupply` is `totalSupply()` once the call settles. Through `RealmEtfHook` that is a prediction, off by the JIT rounding dust (~1e-16 of a share): a sell reports the supply without the sold shares, which the hook locks only later in the swap, though the dust the core keeps stays in circulation; an exact-output buy still counts the hook's share buffer (at most `SHARES_BUFFER` + 1 per 2^40), locked later in the swap. The next `NavUpdated` reads the settled supply. Nothing else moves NAV with an event of the ETF's own: route-pool prices, `RealmEtfAssets.AssetSunset` and tokens sent straight to the ETF all change it silently.
+
+- `deposit(assets, receiver[, minShares])`: USDG `Transfer` in, one swap per asset (USDG -> asset), `Transfer(0, receiver, shares)`, ERC-4626 **`Deposit`** (`sender`, `owner` = receiver, `assets`, `shares`), **`NavUpdated`**.
+- `mint(shares, receiver[, maxAssets])`: one exact-output swap per asset (USDG -> asset), each paid by a USDG `Transfer` from the caller straight to the pool (V3), the pair (V2) or the PoolManager (V4); then `Transfer(0, receiver, shares)`, ERC-4626 **`Deposit`** (`sender`, `owner` = receiver, `assets` = USDG paid, `shares`), **`NavUpdated`**.
+**Exit fee.** Every exit (`redeem`, `redeemInKind`, a sell through the hook) pays `EXIT_FEE_BPS` (0.05%) of its `shares` to the creator (`owner()`) as shares, and redeems only the rest: **`ExitFeeCharged`** (`creator` indexed, `shares` = the fee), right after the fee's share `Transfer`. Absent when the fee rounds to 0 (under 2,000 raw shares) or ownership is renounced. The exits' own events (`Withdraw`, `RedeemedInKind`) carry the gross `shares`, fee included.
+
+- `redeem(shares, receiver, owner[, minAssets])`: the exit fee (`Transfer(owner, creator, fee)`, **`ExitFeeCharged`**), `Transfer(owner, 0, shares - fee)`, one swap per asset (asset -> USDG), USDG `Transfer` to receiver, ERC-4626 **`Withdraw`** (`sender`, `receiver`, `owner`, `assets`, `shares`), **`NavUpdated`**.
+- `redeemInKind(shares, receiver, owner[, skipMask])`: the exit fee (`Transfer(owner, creator, fee)`, **`ExitFeeCharged`**), `Transfer(owner, 0, shares - fee)`, then per held asset (sunset included, in `getAssets()` order) either its `Transfer` to receiver or, when its bit is set in `skipMask`, **`InKindForfeited`** (`asset` indexed, `amount`; the slice stays in the ETF), then **`RedeemedInKind`** (`owner` indexed, `receiver` indexed, `shares`), **`NavUpdated`**. A failed transfer reverts the whole call.
+- `proposeRebalance(sellAsset, sellBps, buyAsset)` — owner (creator) only, not in a FIXED ETF: **`RebalanceProposed`** (`id` indexed, `sellAsset` indexed, `sellBps`, `buyAsset` indexed). Queues it under the next id (`nextRebalanceId`); earlier proposals stay pending.
+- `cancelRebalance(id)` — owner only, any pending proposal: **`RebalanceCancelled`** (`id` indexed).
+- `executeRebalance(id)` — keepers only (`RealmKeepersRegistry`), reverts unless `id` is the oldest pending proposal (`rebalanceHead`): **`AssetRemoved`** (`asset` indexed) if all of `sellAsset` is sold, **`AssetAdded`** (`asset` indexed) if `buyAsset` was not held, the two swaps (sell -> USDG -> buy), **`Rebalanced`** (`id` indexed, `sellAsset` indexed, `sold`, `buyAsset` indexed, `bought`), **`NavUpdated`** (without `sellAsset` if it was removed, with `buyAsset` if it was added). Consumes proposal `id`.
+- `reinvest()` — keepers only: one swap per asset (USDG -> asset; none for a slice that rounds to 0), then **`Reinvested`** (`assets` = USDG spent), **`NavUpdated`**. No shares are minted.
+- `redeemOnCredit(shares, receiver)` — `RealmEtfHook` only, see the sell below.
+- Ownership: OpenZeppelin `Ownable2Step` events (`OwnershipTransferStarted`, `OwnershipTransferred`).
+
+### Swaps on an ETF's shares/USDG pool (`RealmEtfHook`)
+
+`beforeSwap` fills every exact-input swap and every exact-output buy through the ETF (exact-output sells revert), then places the ETF's output as a one-tick JIT position so the core curve fills all but a few raw units of the trade (`docs/etf-jit-math.md`). Common tail of every swap, after the ETF fill below:
+
+1. Only when the pool's price is not already at the JIT range's starting edge: `PoolManager.Swap` with `sender` = hook and zero amounts (moves the empty pool's price).
+2. `PoolManager.ModifyLiquidity` (`sender` = hook, positive `liquidityDelta`): the JIT position.
+3. **`HookSwap`** (`poolId` indexed, `sender` indexed = the router, `amount0`, `amount1` as `int256`, `swapFee` = 0): Uniswap's aggregator-hook event, the part the hook filled itself, signed from the hook's side (positive: paid by the swapper, the opposite of `PoolManager.Swap`).
+4. `PoolManager.Swap` (`sender` = the router): the curve's part. `Swap` minus `HookSwap` is the whole trade.
+5. `PoolManager.ModifyLiquidity` (`sender` = hook, negative `liquidityDelta`): the JIT position removed. The pool holds no liquidity again.
+6. Clearing what the hook is owed, each only if non-zero: USDG `Transfer` PoolManager -> ETF (an exact-input buy's unused `USDG_BUFFER`), then PoolManager ERC-6909 `Transfer(0, hook, ETF id)` (shares locked out of `totalSupply`: a sell's incoming shares, or an exact-output buy's unused share buffer).
+
+Without JIT (a protocol fee on the pool, a trade whose USDG side is under `MIN_JIT_USDG` = 1 USDG, a trade the math cannot place, or a swapper's price limit inside the JIT range) steps 1, 2 and 5 are absent, `HookSwap` carries the whole trade and `PoolManager.Swap` zero amounts. When the pool's price is more than `MAX_WALK_TICKS` from the JIT range, step 1 still happens but moves the price only `MAX_WALK_TICKS` towards it, and the swap goes without JIT (steps 2 and 5 absent).
+
+- Buy (USDG -> shares): USDG `Transfer` PoolManager -> hook (the input minus `USDG_BUFFER`), then the ETF's `deposit` events with `sender` = `owner` = hook, then shares `Transfer` hook -> PoolManager, then the tail.
+- Exact-output buy (exactly N shares out): USDG `Transfer` PoolManager -> hook of twice `previewMint`'s estimate for N plus the share buffer, plus `MINT_LOAN_PAD` (or the PoolManager's whole USDG balance if smaller), then the ETF's `mint` events for N plus the share buffer, with `sender` = `owner` = hook (each swap paid by a USDG `Transfer` from the hook), then USDG `Transfer` hook -> PoolManager of what `mint` did not spend, then shares `Transfer` hook -> PoolManager, then the tail.
+- Sell (shares -> USDG): the exit fee minted to the creator (`Transfer(0, creator, fee)`, **`ExitFeeCharged`**), the ETF's swaps, USDG `Transfer` ETF -> hook, ERC-4626 **`Withdraw`** with `sender` = `receiver` = `owner` = hook (no share `Transfer`: nothing is burned), **`NavUpdated`** (its `totalSupply` already without the sold shares), USDG `Transfer` hook -> PoolManager, then the tail (its step 6 locks the sold shares). The router's share `Transfer` to the PoolManager comes after.
+- Initializing a pool emits **`AggregatorPoolRegistered`** (`poolId` indexed) then `PoolManager.Initialize`; it reverts unless the pair is a factory ETF created with this hook, against USDG, with fee 0 and tick spacing 1. The factory initializes it at creation.
+
