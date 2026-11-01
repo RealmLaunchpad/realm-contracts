@@ -48,7 +48,7 @@ contract DeployDummyUsdgPair is Script {
     int24 internal constant TICK_LOWER = (TickMath.MIN_TICK / TICK_SPACING) * TICK_SPACING;
     int24 internal constant TICK_UPPER = (TickMath.MAX_TICK / TICK_SPACING) * TICK_SPACING;
 
-    function run() external {
+    function run() external virtual {
         require(ChainConfig.isRobinhoodTestnet(), "Robinhood testnet only");
         string memory symbol = vm.envOr("TOKEN_SYMBOL", string("pHOOD3x"));
 
@@ -58,7 +58,9 @@ contract DeployDummyUsdgPair is Script {
 
         address token =
             address(new DummyRStock(vm.envOr("TOKEN_NAME", string("Dummy HOOD 3x Long")), symbol, deployer, SUPPLY));
-        uint128 liquidity = _seedPool(token, deployer);
+        uint128 liquidity = _seedPool(
+            token, deployer, vm.envOr("TOKENS_PER_USDG", uint256(1e18)), vm.envOr("USDG_PER_POOL", uint256(5000e18))
+        );
         vm.stopBroadcast();
 
         Hop[] memory hops = new Hop[](2);
@@ -71,9 +73,12 @@ contract DeployDummyUsdgPair is Script {
         console.logBytes(DividendRouteLib.encodeV4(hops));
     }
 
-    /// @dev Initializes the (USDG, token) pool and mints one full-range position to `deployer`.
-    function _seedPool(address token, address deployer) internal returns (uint128 liquidity) {
-        uint256 tokensPerUsdg = vm.envOr("TOKENS_PER_USDG", uint256(1e18));
+    /// @dev Initializes the (USDG, token) pool at `tokensPerUsdg` (18 decimals) and mints one full-range position
+    ///      holding `usdgPerPool` to `deployer`.
+    function _seedPool(address token, address deployer, uint256 tokensPerUsdg, uint256 usdgPerPool)
+        internal
+        returns (uint128 liquidity)
+    {
         ChainConfig.Infra memory infra = ChainConfig.infra();
 
         // A PoolKey's currencies are address-ordered, and the price is currency1 per currency0.
@@ -85,20 +90,26 @@ contract DeployDummyUsdgPair is Script {
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
         });
-        uint160 sqrtPriceX96 =
-            uint160(Math.sqrt(Math.mulDiv(usdgFirst ? tokensPerUsdg : 1e36 / tokensPerUsdg, 1 << 192, 1e18)));
-        IPoolManager(infra.univ4PoolManager).initialize(pool, sqrtPriceX96);
+        // USDG is the binding side: the token budget is the whole supply.
+        uint256 max0 = usdgPerPool;
+        uint256 max1 = SUPPLY;
+        if (!usdgFirst) (max0, max1) = (max1, max0);
+        // Scoped: one local fewer at the `abi.encode` below (stack too deep).
+        {
+            uint160 sqrtPriceX96 =
+                uint160(Math.sqrt(Math.mulDiv(usdgFirst ? tokensPerUsdg : 1e36 / tokensPerUsdg, 1 << 192, 1e18)));
+            IPoolManager(infra.univ4PoolManager).initialize(pool, sqrtPriceX96);
+            liquidity = LiquidityAmounts.getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(TICK_LOWER),
+                TickMath.getSqrtPriceAtTick(TICK_UPPER),
+                max0,
+                max1
+            );
+        }
 
         _approve(USDG, infra);
         _approve(token, infra);
-
-        // USDG is the binding side: the token budget is the whole supply.
-        uint256 max0 = vm.envOr("USDG_PER_POOL", uint256(5000e18));
-        uint256 max1 = SUPPLY;
-        if (!usdgFirst) (max0, max1) = (max1, max0);
-        liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96, TickMath.getSqrtPriceAtTick(TICK_LOWER), TickMath.getSqrtPriceAtTick(TICK_UPPER), max0, max1
-        );
 
         bytes[] memory params = new bytes[](2);
         params[0] = abi.encode(pool, TICK_LOWER, TICK_UPPER, liquidity, max0, max1, deployer, "");

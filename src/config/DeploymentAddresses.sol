@@ -34,6 +34,9 @@ library DeploymentAddressesRobinhoodMainnet {
     /// @notice Uniswap V3 factory. `RealmAssetsWhitelist` validates V3 price pools against it.
     address public constant UNIV3_FACTORY = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
 
+    /// @notice USDG: the ETF deposit asset, the other side of every ETF route.
+    address public constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
+
     /// @notice keccak256 of the UniswapV2Pair contract creation code used by UNIV2_FACTORY
     /// @dev Robinhood's official V2 factory uses the CANONICAL UniswapV2 pair init code hash
     ///      (the canonical UniswapV2 value). Verified by predicting an existing pair created by this
@@ -158,6 +161,9 @@ library DeploymentAddressesRobinhoodTestnet {
     /// @notice No Uniswap V3 on this testnet (none published by Uniswap or Robinhood): V3 price pools
     ///         are refused by `RealmAssetsWhitelist`.
     address public constant UNIV3_FACTORY = address(0);
+
+    /// @notice The dummy USDG `DeployDummyRStocks` deployed: the ETF deposit asset on this chain.
+    address public constant USDG = 0xd2397Fd59C825e6F34037fF2f2F541b0B727Eb24;
 
     /// @notice keccak256 of the UniswapV2Pair creation code used by UNIV2_FACTORY.
     /// @dev The factory was deployed from Uniswap's canonical bytecode, so this is the canonical

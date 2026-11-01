@@ -31,6 +31,26 @@ contract Coin is ERC20 {
     }
 }
 
+/// @dev An ERC-4626 share as far as the whitelist reads one: `asset()` and `convertToAssets` at a settable NAV.
+contract NavVault is ERC20 {
+    address public immutable asset;
+    uint256 public totalAssets;
+
+    constructor(address asset_, uint256 supply, uint256 assets_) ERC20("Vault", "V") {
+        asset = asset_;
+        totalAssets = assets_;
+        _mint(msg.sender, supply);
+    }
+
+    function setTotalAssets(uint256 assets_) external {
+        totalAssets = assets_;
+    }
+
+    function convertToAssets(uint256 shares) external view returns (uint256) {
+        return shares * totalAssets / totalSupply();
+    }
+}
+
 /// @dev Answers every V2 and V3 pool read like the real WETH/USDG pool, but no Uniswap factory knows it.
 contract LookalikePool {
     address public constant token0 = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
@@ -396,5 +416,99 @@ contract RealmAssetsWhitelistTest is Test {
     function test_refreshSkipsUnlistedAssets() public {
         _refresh(keeper, USDG);
         assertEq(whitelist.unitsPerNativeX18(USDG), 0, "still unlisted");
+    }
+
+    /// @dev Nor relist: a delisted asset (`NONE` source) is skipped, without an event.
+    function test_refreshSkipsDelistedAssets() public {
+        _list(USDG, _usdgV4());
+        RealmAssetsWhitelist.PriceSource memory none;
+        _list(USDG, none);
+        vm.recordLogs();
+        _refresh(keeper, USDG);
+        assertEq(vm.getRecordedLogs().length, 0, "nothing emitted");
+        assertEq(whitelist.unitsPerNativeX18(USDG), 0, "still delisted");
+    }
+
+    /////////////////////////// vault shares ///////////////////////////
+
+    /// @dev A vault of `supply` 18-decimal shares over `assets` of `underlying`, at an address sorting below
+    ///      or above `underlying`, with an initialized `vault`/`underlying` V4 pool at tick 0 (one raw unit per
+    ///      raw unit): a price nothing like its NAV.
+    function _vault(address underlying, uint256 supply, uint256 assets, bool below)
+        internal
+        returns (NavVault vault, RealmAssetsWhitelist.PriceSource memory source)
+    {
+        address at = address(below ? uint160(underlying) - 1 : uint160(underlying) + 1);
+        deployCodeTo("realmAssetsWhitelist.t.sol:NavVault", abi.encode(underlying, supply, assets), at);
+        vault = NavVault(at);
+        source = _pool(at, underlying, false);
+        (source.venue, source.pool) = (RealmAssetsWhitelist.Venue.VAULT, at);
+    }
+
+    /// @dev An approver's vault listing is validated and stored, but at a zero rate: unusable until a keeper
+    ///      takes its first snapshot. Re-listing resets it to pending, so approvers never snapshot a vault.
+    function test_vault_listingIsPendingUntilAKeeperRefresh() public {
+        _list(USDG, _usdgV4());
+        (NavVault vault, RealmAssetsWhitelist.PriceSource memory source) = _vault(USDG, 1_000e18, 2_000e6, true);
+        vm.expectEmit(address(whitelist));
+        emit RealmAssetsWhitelist.WhitelistUpdated(address(vault), 0, source);
+        _list(address(vault), source);
+        assertEq(whitelist.unitsPerNativeX18(address(vault)), 0, "pending: no rate");
+        assertEq(whitelist.liveUnitsPerNativeX18(address(vault)), 0, "pending: no live rate either");
+        assertEq(whitelist.referenceOf(address(vault)), USDG, "reference stored");
+        assertEq(uint8(whitelist.priceSource(address(vault)).venue), uint8(RealmAssetsWhitelist.Venue.VAULT));
+        assertEq(whitelist.priceSource(address(vault)).pool, address(vault), "source stored");
+
+        _refresh(keeper, address(vault));
+        assertGt(whitelist.unitsPerNativeX18(address(vault)), 0, "first snapshot");
+        _list(address(vault), source);
+        assertEq(whitelist.unitsPerNativeX18(address(vault)), 0, "re-listing: pending again");
+    }
+
+    /// @dev 2 USDG per share: half as many whole shares per native as USDG, in either token order, and never
+    ///      the pool's price (1e12 USDG per share).
+    function test_vault_pricedAtItsNavThroughItsAsset() public {
+        _list(USDG, _usdgV4());
+        uint256 usdgRate = whitelist.unitsPerNativeX18(USDG);
+        for (uint256 i; i < 2; ++i) {
+            (NavVault vault, RealmAssetsWhitelist.PriceSource memory source) = _vault(USDG, 1_000e18, 2_000e6, i == 0);
+            _list(address(vault), source);
+            _refresh(keeper, address(vault));
+            assertApproxEqRel(whitelist.unitsPerNativeX18(address(vault)), usdgRate / 2, 1e6, "NAV, not the pool");
+            assertEq(whitelist.referenceOf(address(vault)), USDG, "priced through its asset");
+            assertEq(whitelist.liveUnitsPerNativeX18(address(vault)), whitelist.unitsPerNativeX18(address(vault)));
+        }
+    }
+
+    /// @dev The live rate follows the NAV at once; the snapshot only once a keeper refreshes it.
+    function test_vault_liveRateFollowsTheNavAndARefreshSnapshotsIt() public {
+        _list(USDG, _usdgV4());
+        uint256 usdgRate = whitelist.unitsPerNativeX18(USDG);
+        (NavVault vault, RealmAssetsWhitelist.PriceSource memory source) = _vault(USDG, 1_000e18, 2_000e6, true);
+        _list(address(vault), source);
+        _refresh(keeper, address(vault));
+        uint256 listed = whitelist.unitsPerNativeX18(address(vault));
+
+        vault.setTotalAssets(4_000e6);
+        assertApproxEqRel(whitelist.liveUnitsPerNativeX18(address(vault)), usdgRate / 4, 1e6, "live: new NAV");
+        assertEq(whitelist.unitsPerNativeX18(address(vault)), listed, "snapshot unchanged");
+        _refresh(keeper, address(vault));
+        assertApproxEqRel(whitelist.unitsPerNativeX18(address(vault)), usdgRate / 4, 1e6, "refreshed");
+    }
+
+    /// @dev A vault source prices the share only: not its asset, nor a pool against anything but its asset,
+    ///      nor an empty vault.
+    function test_vault_rejectsAnythingButItsShareAgainstItsAsset() public {
+        _list(USDG, _usdgV4());
+        (NavVault vault, RealmAssetsWhitelist.PriceSource memory source) = _vault(USDG, 1_000e18, 2_000e6, true);
+        _expectListingReverts(USDG, source);
+
+        address coin = address(new Coin(6));
+        (NavVault other, RealmAssetsWhitelist.PriceSource memory otherSource) = _vault(coin, 1_000e18, 2_000e6, true);
+        otherSource.key = _pool(address(other), USDG, false).key;
+        _expectListingReverts(address(other), otherSource);
+
+        vault.setTotalAssets(0);
+        _expectListingReverts(address(vault), source);
     }
 }

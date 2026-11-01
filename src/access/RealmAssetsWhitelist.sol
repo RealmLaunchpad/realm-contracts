@@ -7,6 +7,7 @@ import {
 } from "lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20Metadata} from "lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC4626} from "lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
 import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "lib/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "lib/v4-core/src/types/PoolId.sol";
@@ -33,7 +34,7 @@ interface IUniswapV3FactoryPools {
 /// @title RealmAssetsWhitelist
 /// @notice The ERC20 assets the protocol has vetted, each with the Uniswap pool that prices it — V2, V3
 ///         or V4 — and its value in the chain's native currency. An asset is whitelisted while its
-///         `unitsPerNativeX18` is non-zero.
+///         `unitsPerNativeX18` is non-zero; a `VAULT` listing stays pending at zero until a keeper refresh.
 ///
 /// @dev TWO TIERS, like every operational allowlist here, but stricter at the top: the owner is a cold
 ///      multisig that manages APPROVERS (and upgrades) and cannot whitelist anything itself. Approvers
@@ -48,11 +49,19 @@ interface IUniswapV3FactoryPools {
 ///      types a number and decimals cannot slip: they come from the tokens. Integrators read
 ///      `priceSource` to price the asset live.
 ///
+/// @dev VAULT SHARES (ERC-4626, such as Realm ETFs) are priced at their vault's NAV, `convertToAssets`
+///      in its `asset()`, which is then the reference. Not at their trading pool's price: a pool that only
+///      re-prints its own fills (an ETF's hook pool) holds a pushed price for as long as nobody trades, with no
+///      arbitrage to pull it back, so a keeper refresh at an unpredictable time would still snapshot it.
+///      Listing stores the source at a ZERO rate: the NAV is spot-priced from the components' route pools,
+///      and whoever lists (an ETF's creator, through its factory) picks that moment and could push them
+///      around it. Only the keeper's `refreshRates`, at a time nobody picks, takes a vault's snapshots.
+///
 /// @dev THE RATE IS A SNAPSHOT, deliberately. A live read at the consumer would let anyone push the pool
 ///      and unwind it around their own call for the price of two swap fees. Approvers refresh it by
-///      listing the asset again, and keepers by `refreshRates` from the stored source; on a chain with a
-///      public mempool, through private orderflow, since a sandwiched refresh would snapshot a pushed
-///      price. Re-listing a reference does not reprice the assets listed against it. `liveUnitsPerNativeX18` re-reads the same sources on demand, for a
+///      listing the asset again (not a `VAULT`'s: that resets it to pending), and keepers by `refreshRates`
+///      from the stored source; on a chain with a public mempool, through private orderflow, since a
+///      sandwiched refresh would snapshot a pushed price. Re-listing a reference does not reprice the assets listed against it. `liveUnitsPerNativeX18` re-reads the same sources on demand, for a
 ///      consumer that accepts that risk (the direct factory's launch price, bounded by the snapshot).
 ///
 /// @dev UPGRADEABLE (UUPS, owner-authorised) because its pricing rules are expected to grow, and the
@@ -61,21 +70,23 @@ interface IUniswapV3FactoryPools {
 ///      factory means that venue does not exist on the chain and its listings are refused.
 contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable, KeeperGated {
     /// @notice Contract version.
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 3;
 
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
-    /// @notice Where a price comes from. `NONE` delists.
+    /// @notice Where a price comes from. `NONE` delists. `VAULT`: an ERC-4626 share at its vault's NAV.
     enum Venue {
         NONE,
         V2,
         V3,
-        V4
+        V4,
+        VAULT
     }
 
     /// @notice A listing's price pool: `pool` is the V2 pair or V3 pool, `key` the V4 pool. The unused
-    ///         field is zero.
+    ///         field is zero. `VAULT`: `pool` is the vault (the asset itself) and `key` the V4 pool it trades
+    ///         in against its `asset()`, which prices nothing and only routes dev-buy zaps.
     struct PriceSource {
         Venue venue;
         address pool;
@@ -98,8 +109,9 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
     mapping(address account => bool) public isApprover;
 
     /// @notice Whole units of `asset` worth one whole unit of the chain's native currency, scaled by 1e18,
-    ///         as of its last listing. Zero means not whitelisted. Whole units: 3,500 USDC per ETH is
-    ///         `3500e18`, whatever the asset's decimals.
+    ///         as of its last listing or refresh. Zero means not whitelisted, or a `VAULT` listing pending
+    ///         its first keeper refresh. Whole units: 3,500 USDC per ETH is `3500e18`, whatever the asset's
+    ///         decimals.
     mapping(address asset => uint256) public unitsPerNativeX18;
 
     /// @notice The asset `asset` was priced against: zero for native (or WETH), else the reference.
@@ -113,7 +125,8 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
     error NotApprover();
     /// @notice The source's venue is unavailable here, its pool is not Uniswap's, does not hold `asset`,
     ///         is not live (V2/V3: with liquidity; V4: initialized), or its other side is neither native (nor WETH) nor an asset
-    ///         listed directly against native.
+    ///         listed directly against native. `VAULT`: the asset is not the vault, its pool is not against the
+    ///         vault's `asset()`, or the vault is empty.
     error InvalidPriceSource();
 
     /// @dev Implementation immutables: the proxy reads them from the implementation's bytecode.
@@ -139,12 +152,14 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
     }
 
     /// @notice Whitelist `asset`, or refresh its rate, priced from `source`. A `NONE` source removes it.
-    ///         Approvers only.
+    ///         A `VAULT` source is validated but stored at a zero rate, pending the keeper's first
+    ///         `refreshRates`. Approvers only.
     function setWhitelisted(address asset, PriceSource calldata source) external {
         require(isApprover[msg.sender], NotApprover());
         uint256 rate;
         address ref;
         if (source.venue != Venue.NONE) (rate, ref) = _rateFrom(asset, source, false);
+        if (source.venue == Venue.VAULT) rate = 0;
         unitsPerNativeX18[asset] = rate;
         referenceOf[asset] = ref;
         _priceSources[asset] = source;
@@ -154,15 +169,16 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
     /// @notice Re-snapshot each listed asset's rate from its STORED source, so launches keep following a
     ///         quote whose price has moved past the direct factory's bounds. Keepers only: a public
     ///         refresh would let anyone push the pool, snapshot it and launch in one transaction.
-    /// @dev Cannot change a source or list anything; unlisted assets are skipped. Reverts if any source
-    ///      no longer prices. Pass references before the assets priced against them: each asset reads its
-    ///      reference's snapshot.
+    ///         Also takes a pending `VAULT` listing's first snapshot.
+    /// @dev Cannot change a source or list anything; unlisted assets (`NONE` source) are skipped. Reverts
+    ///      if any source no longer prices. Pass references before the assets priced against them: each
+    ///      asset reads its reference's snapshot.
     function refreshRates(address[] calldata assets) external {
         _requireKeeper();
         for (uint256 i; i < assets.length; ++i) {
             address asset = assets[i];
-            if (unitsPerNativeX18[asset] == 0) continue;
             PriceSource memory source = _priceSources[asset];
+            if (source.venue == Venue.NONE) continue;
             (uint256 rate,) = _rateFrom(asset, source, false);
             unitsPerNativeX18[asset] = rate;
             emit WhitelistUpdated(asset, rate, source);
@@ -176,7 +192,7 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
 
     /// @notice `unitsPerNativeX18` re-read NOW from the stored price source (and the reference's, for an
     ///         asset listed against one), through the same math as the listing snapshot. Zero when
-    ///         `asset` is not whitelisted.
+    ///         `asset` is not whitelisted or is a pending `VAULT` listing.
     /// @dev A spot read: anyone can move it within a transaction. The snapshot stays the listing gate;
     ///      consumers using this accept the manipulation risk (the direct factory bounds it by the
     ///      snapshot, see `RealmFactoryUniV4Direct._launchTick`).
@@ -194,7 +210,10 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
         returns (uint256 rate, address ref)
     {
         (address t0, address t1, uint256 priceX128) = _spot(source);
-        require(asset == t0 || asset == t1, InvalidPriceSource());
+        // A vault source prices its own share only, never its `asset()` against it.
+        require(
+            (asset == t0 || asset == t1) && (source.venue != Venue.VAULT || asset == source.pool), InvalidPriceSource()
+        );
         ref = asset == t0 ? t1 : t0;
         if (ref == WETH) ref = address(0);
 
@@ -217,10 +236,10 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
 
     /// @dev The source pool's two tokens (zero for native) and its spot price as raw token1 per raw
     ///      token0 in Q128, after checking it is Uniswap's and live: with liquidity for V2/V3, initialized
-    ///      for V4.
+    ///      for V4. `VAULT`: the vault and its `asset()`, at the vault's NAV, once its V4 pool checks out.
     function _spot(PriceSource memory source) private view returns (address t0, address t1, uint256 priceX128) {
         uint160 sqrtPriceX96;
-        if (source.venue == Venue.V4) {
+        if (source.venue == Venue.V4 || source.venue == Venue.VAULT) {
             (t0, t1) = (Currency.unwrap(source.key.currency0), Currency.unwrap(source.key.currency1));
             PoolId id = source.key.toId();
             (sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(id);
@@ -229,6 +248,20 @@ contract RealmAssetsWhitelist is Initializable, Ownable2StepUpgradeable, UUPSUpg
             // re-centers them inside `beforeSwap`), so a liquidity check would refuse, or refresh-revert,
             // pools that trade. Depth is the frontend's to show, as it is for thin pools.
             require(sqrtPriceX96 != 0, InvalidPriceSource());
+            if (source.venue == Venue.VAULT) {
+                address vault = source.pool;
+                address underlying = IERC4626(vault).asset();
+                require((t0 == vault && t1 == underlying) || (t0 == underlying && t1 == vault), InvalidPriceSource());
+                // ERC-4626's own conversion, offsets and fees included; 1e36 raw shares keep the per-share
+                // value's rounding at ~1e-24 relative.
+                uint256 assets = IERC4626(vault).convertToAssets(1e36);
+                require(assets != 0, InvalidPriceSource());
+                return (
+                    t0,
+                    t1,
+                    t0 == vault ? FullMath.mulDiv(assets, 1 << 128, 1e36) : FullMath.mulDiv(1e36, 1 << 128, assets)
+                );
+            }
         } else if (source.venue == Venue.V3) {
             IUniswapV3PoolState pool = IUniswapV3PoolState(source.pool);
             (t0, t1) = (pool.token0(), pool.token1());
