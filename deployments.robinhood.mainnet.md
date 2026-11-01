@@ -19,9 +19,9 @@
 | RealmAssetsWhitelist (proxy)                 | `0x1Fe8baA5254fD125386Da072cddd1c804BEe0e94` |
 | RealmAssetsWhitelist (impl)                  | `0x2bebA4595a95426900Fd8dC88dB14f09cF5b3840` |
 | RealmEtfAssets (proxy)                       | `0xEEc232b86aa0b3a7CDdaAfeE19dD65BC4D905546` |
-| RealmEtfAssets (impl)                        | `0x074Ec2d780A91e64dd237b935ef7FA4b2A82b1d3` |
+| RealmEtfAssets (impl)                        | `0xAf21539983B89Ad454A30b69a8316A7d9fc2CbD2` |
 | RealmEtfFactory (proxy)                      | `0x124AD86c732B16366ED26445e3943aDEF635F123` |
-| RealmEtfFactory (impl)                       | `0xEc0E822bbB5689600Ba86Ba3D8e2c2fB2b5A76a2` |
+| RealmEtfFactory (impl)                       | `0x29726DEC406DD135330Fb01ee24a9dB4dEc4D017` |
 | RealmEtfHook                                 | `0x74dD0a05540f7c1ae419c18f8d55FF220076e8C8` |
 | SwapLpFeeRouter (proxy)                      | `0x823ca5B8041217Df052D9e64AC6E7c16A62FA957` |
 | RealmLpLocker                                | `0x77493d5Efc88817A252a1a17Acd48951Af0EC016` |
