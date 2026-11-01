@@ -62,6 +62,12 @@ interface IEtfV2Factory {
 ///      only stops ETFs from buying INTO it by rebalance or creation; holders keep trading through it.
 ///      Replacing a route is how a drained or migrated pool is fixed, for every ETF at once.
 ///
+/// @dev FIXED-ONLY ASSETS (`isFixedListed`) are too thin to be bought by rebalance, where a price can be pushed
+///      around a keeper's execution: only `FIXED` ETFs may hold them, by being created with them. They stay
+///      out of `isListed`, which is what every rebalance reads, so no ETF, live ones included, can buy into
+///      one. Listing goes through `setFixedRoute`, atomic, so the asset is never open to the other modes.
+///      `setFixedListed(false)` works like delisting: new ETFs stop, holders keep trading.
+///
 /// @dev SUNSET is for a dead TOKEN (delisted, acquired, paused for good), which no route can fix: ETFs stop
 ///      buying, selling and valuing it, so their deposits and redemptions work again, but still hand it out in
 ///      `redeemInKind`. Owner only and one-way. Sunsetting a token that still transfers leaks value: see `sunset`.
@@ -85,7 +91,7 @@ contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeab
     }
 
     /// @notice Contract version.
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 2;
 
     /// @notice The Uniswap V4 pool manager every V4 route lives on.
     /// @dev This and the other immutables live in the implementation's bytecode. ETFs copy `POOL_MANAGER` and
@@ -113,9 +119,13 @@ contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeab
     /// @notice Each asset's USDG route (`routeOf`): replaced, never cleared.
     mapping(address asset => Route) internal _routes;
 
+    /// @notice Whether `FIXED` ETFs may be created with `asset` even though it is not in `isListed`.
+    mapping(address asset => bool) public isFixedListed;
+
     event ApproverSet(address indexed account, bool allowed);
     event RouteSet(address indexed asset, Route route);
     event ListedSet(address indexed asset, bool listed);
+    event FixedListedSet(address indexed asset, bool listed);
     event AssetSunset(address indexed asset);
 
     error NotApprover();
@@ -145,12 +155,14 @@ contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeab
     /// @notice Sets (or replaces) `asset`'s USDG route. Approvers only. A first route also lists `asset`; a
     ///         replacement leaves the listing as it is, so repairing a delisted asset's route does not re-list it.
     function setRoute(address asset, Route calldata route) external {
-        require(isApprover[msg.sender], NotApprover());
-        _validate(asset, route);
-        bool first = _routes[asset].venue == Venue.NONE;
-        _routes[asset] = route;
-        emit RouteSet(asset, route);
-        if (first) _setListed(asset, true);
+        if (_setRoute(asset, route)) _setListed(asset, true);
+    }
+
+    /// @notice Sets (or replaces) `asset`'s USDG route and lists it for `FIXED` ETFs only. Approvers only. Never
+    ///         touches `isListed`.
+    function setFixedRoute(address asset, Route calldata route) external {
+        _setRoute(asset, route);
+        _setFixedListed(asset, true);
     }
 
     /// @notice Lists or delists `asset` without touching its route. Approvers only.
@@ -158,6 +170,13 @@ contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeab
         require(isApprover[msg.sender], NotApprover());
         require(_routes[asset].venue != Venue.NONE, NoRoute());
         _setListed(asset, listed);
+    }
+
+    /// @notice Lists or delists `asset` for `FIXED` ETFs without touching its route. Approvers only.
+    function setFixedListed(address asset, bool listed) external {
+        require(isApprover[msg.sender], NotApprover());
+        require(_routes[asset].venue != Venue.NONE, NoRoute());
+        _setFixedListed(asset, listed);
     }
 
     /// @notice Retires `asset` for every ETF, for good. Owner only.
@@ -202,9 +221,23 @@ contract RealmEtfAssets is Initializable, Ownable2StepUpgradeable, UUPSUpgradeab
         return assetIsToken0 ? Math.mulDiv(amount, priceX128, 1 << 128) : Math.mulDiv(amount, 1 << 128, priceX128);
     }
 
+    /// @dev Approvers only. `first`: `asset` had no route.
+    function _setRoute(address asset, Route calldata route) private returns (bool first) {
+        require(isApprover[msg.sender], NotApprover());
+        _validate(asset, route);
+        first = _routes[asset].venue == Venue.NONE;
+        _routes[asset] = route;
+        emit RouteSet(asset, route);
+    }
+
     function _setListed(address asset, bool listed) private {
         isListed[asset] = listed;
         emit ListedSet(asset, listed);
+    }
+
+    function _setFixedListed(address asset, bool listed) private {
+        isFixedListed[asset] = listed;
+        emit FixedListedSet(asset, listed);
     }
 
     function _validate(address asset, Route calldata route) private view {

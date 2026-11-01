@@ -39,7 +39,11 @@ One immutable mode per ETF, chosen at creation, so depositors pick their trust l
 
 **Residual risk.** A creator can still back-run the keeper's rebalance to capture its own price impact. That is bounded by the rebalance's slippage on a deep pool. If needed, cap the size of each executed rebalance (or split it into chunks) so the impact per execution stays small.
 
-**Asset eligibility follows the mode.** `REBALANCE` and `FLEXIBLE` ETFs may only hold very liquid assets (stricter depth tier), since holding a manipulated price over time is only expensive on deep pools. `FIXED` ETFs have no rebalances to manipulate and may use a wider asset list.
+**Asset eligibility follows the mode, on chain.** `REBALANCE` and `FLEXIBLE` ETFs may only hold very liquid assets (`isListed`), since holding a manipulated price over time is only expensive on deep pools. `FIXED` ETFs have no rebalances to manipulate and may also hold thin assets, listed for them alone in `RealmEtfAssets.isFixedListed`. The `RealmEtf` constructor accepts an asset when `isListed` holds, or `isFixedListed` does and `MODE` is `FIXED`. `_checkRebalance()` reads `isListed` only, so a fixed-only asset is refused by every rebalance, at proposal and at execution, on ETFs created before this existed too. Those were never upgraded: they already read the registry, and only the constructor had to change.
+
+An approver lists a thin asset with `setFixedRoute()`: one call stores the route and sets `isFixedListed`, so the asset is never open to the other modes, and `isListed` is never touched. `setFixedListed()` flips the listing alone. `setFixedListed(asset, false)` works like delisting: no new ETFs, holders keep trading. A later `setRoute()` replaces the route without listing the asset, since a replacement never lists. `setListed(asset, true)` would open the asset to every mode, so nothing should call it on a fixed-only asset; `WhitelistEtfAssets.verify()` fails if one ends up in `isListed`. A fixed-only route may sit behind a hook (OPENAI and ANTHROPIC trade on `RealmHookAnyPair` pools), which `discover_etf_assets.py` otherwise refuses, so `FIXED_ONLY_ETF_ASSETS` names each pool by hand.
+
+Consequence to keep in mind: `RealmEtfFactory` also lists every ETF it creates as a `VAULT` launch quote, with no depth check, and that rate is the NAV a keeper refresh reads from spot. An ETF of thin assets gets that listing too, priced from pools cheap to push. Approvers can delist one.
 
 ## In-kind redemption
 

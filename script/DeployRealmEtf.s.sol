@@ -103,11 +103,13 @@ contract DeployRealmEtfHook is EtfHookDeployer {
 ///         `ETF_FACTORY` to it. Ships new `RealmEtf` code to ETFs created afterwards; existing ETFs, the hook
 ///         and its pools are untouched.
 /// @dev    Run: just upgrade-etf-factory-<rh|rh-testnet>. The broadcaster must own the factory, and the
-///         whitelist unless the factory is already its approver.
+///         whitelist unless the factory is already its approver. Refuses until `ETF_ASSETS` is upgraded:
+///         new ETFs read `isFixedListed`, so `just upgrade-etf-assets-<rh|rh-testnet>` goes first.
 contract UpgradeRealmEtfFactory is EtfHookDeployer {
     function run() external {
         RealmEtfFactory factory = RealmEtfFactory(ChainConfig.etfFactory());
         RealmEtfAssets registry = factory.REGISTRY();
+        require(registry.VERSION() >= 2, "upgrade ETF_ASSETS first: new ETFs read isFixedListed");
         RealmAssetsWhitelist whitelist = RealmAssetsWhitelist(ChainConfig.assetsWhitelist());
         address hook = factory.hook();
 

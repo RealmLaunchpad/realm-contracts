@@ -107,6 +107,8 @@ contract RealmEtfTest is Test {
     address constant META = 0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35;
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
     address constant QQQ = 0xD5f3879160bc7c32ebb4dC785F8a4F505888de68;
+    /// @dev AAPL on its hookless V4 pool, unrouted here: stands in for a thin asset, which the registry cannot tell.
+    address constant FIXED_ONLY = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
     address constant NVDA_V3 = 0xd4EB21209C4D6093f80B5b84f5C45cc093EA14a3;
     address constant QQQ_V3 = 0xD60A5d14dB690B7Afad71F76B108071D7175597d;
     /// @dev The USDG/WETH V3 pool: a real Uniswap pool, but not against SPY.
@@ -1457,6 +1459,168 @@ contract RealmEtfTest is Test {
         assertEq(_assertNav(etf, RealmEtf.RedeemedInKind.selector).totalSupply, etf.totalSupply());
     }
 
+    //////////////////////// fixed-only assets //////////////////////
+
+    /// @dev `asset` routed and listed for `FIXED` ETFs alone.
+    modifier fixedRouted(address asset) {
+        vm.prank(approver);
+        registry.setFixedRoute(asset, _v4Route(asset));
+        _;
+    }
+
+    /// @dev when an approver sets a fixed route, then the asset is routed and fixed-listed but not listed
+    function test_setFixedRoute_assertListsForFixedEtfsOnly() public fixedRouted(FIXED_ONLY) {
+        assertTrue(registry.isFixedListed(FIXED_ONLY), "not fixed-listed");
+        assertFalse(registry.isListed(FIXED_ONLY), "open to every mode");
+        assertEq(
+            keccak256(abi.encode(registry.routeOf(FIXED_ONLY))),
+            keccak256(abi.encode(_v4Route(FIXED_ONLY))),
+            "route not stored"
+        );
+    }
+
+    /// @dev when an approver sets a fixed route, then `RouteSet` then `FixedListedSet` are emitted, and no `ListedSet`
+    function test_setFixedRoute_assertEmitsRouteSetThenFixedListedSet() public {
+        RealmEtfAssets.Route memory route = _v4Route(FIXED_ONLY);
+        vm.recordLogs();
+        vm.prank(approver);
+        registry.setFixedRoute(FIXED_ONLY, route);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 2, "two events");
+        assertEq(logs[0].topics[0], RealmEtfAssets.RouteSet.selector, "RouteSet first");
+        assertEq(logs[0].topics[1], bytes32(uint256(uint160(FIXED_ONLY))), "RouteSet asset");
+        assertEq(logs[0].data, abi.encode(route), "RouteSet route");
+        assertEq(logs[1].topics[0], RealmEtfAssets.FixedListedSet.selector, "FixedListedSet second");
+        assertEq(logs[1].topics[1], bytes32(uint256(uint160(FIXED_ONLY))), "FixedListedSet asset");
+        assertEq(logs[1].data, abi.encode(true), "FixedListedSet listed");
+    }
+
+    /// @dev when a first route goes through `setRoute`, then its behaviour survived the shared logic: `RouteSet`
+    ///      then `ListedSet`, and no fixed listing
+    function test_setRoute_assertFirstRouteStillListsForEveryMode() public {
+        vm.recordLogs();
+        vm.prank(approver);
+        registry.setRoute(FIXED_ONLY, _v4Route(FIXED_ONLY));
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 2, "two events");
+        assertEq(logs[0].topics[0], RealmEtfAssets.RouteSet.selector, "RouteSet first");
+        assertEq(logs[1].topics[0], RealmEtfAssets.ListedSet.selector, "ListedSet second");
+        assertTrue(registry.isListed(FIXED_ONLY), "not listed");
+        assertFalse(registry.isFixedListed(FIXED_ONLY), "fixed-listed");
+    }
+
+    /// @dev when a non-approver calls either fixed entry point, then it reverts `NotApprover`
+    function test_fixedEntryPoints_assertApproversOnly() public {
+        RealmEtfAssets.Route memory route = _v4Route(FIXED_ONLY);
+        vm.expectRevert(RealmEtfAssets.NotApprover.selector);
+        vm.prank(owner);
+        registry.setFixedRoute(FIXED_ONLY, route);
+        vm.expectRevert(RealmEtfAssets.NotApprover.selector);
+        vm.prank(owner);
+        registry.setFixedListed(SPY, true);
+    }
+
+    /// @dev when the route is not against USDG, then `setFixedRoute` reverts like `setRoute`
+    function test_setFixedRoute_assertValidatesTheRoute() public {
+        RealmEtfAssets.Route memory route = _v3Route(USDG_WETH_V3);
+        vm.expectRevert(RealmEtfAssets.InvalidRoute.selector);
+        vm.prank(approver);
+        registry.setFixedRoute(FIXED_ONLY, route);
+    }
+
+    /// @dev when the asset has no route, then `setFixedListed` reverts `NoRoute`
+    function test_setFixedListed_assertNeedsARoute() public {
+        vm.expectRevert(RealmEtfAssets.NoRoute.selector);
+        vm.prank(approver);
+        registry.setFixedListed(FIXED_ONLY, true);
+    }
+
+    /// @dev when an approver flips the fixed listing, then `FixedListedSet` is emitted and `isListed` stays put
+    function test_setFixedListed_assertFlipsOnlyTheFixedListing() public fixedRouted(FIXED_ONLY) {
+        vm.expectEmit(address(registry));
+        emit RealmEtfAssets.FixedListedSet(FIXED_ONLY, false);
+        vm.prank(approver);
+        registry.setFixedListed(FIXED_ONLY, false);
+        assertFalse(registry.isFixedListed(FIXED_ONLY), "still fixed-listed");
+        assertFalse(registry.isListed(FIXED_ONLY), "listed");
+
+        vm.prank(approver);
+        registry.setFixedListed(SPY, true);
+        assertTrue(registry.isListed(SPY), "listing moved");
+    }
+
+    /// @dev when a fixed route lands on an already listed asset, then that listing stays
+    function test_setFixedRoute_assertLeavesAnExistingListingAlone() public fixedRouted(SPY) {
+        assertTrue(registry.isListed(SPY), "delisted");
+        assertTrue(registry.isFixedListed(SPY), "not fixed-listed");
+    }
+
+    /// @dev when a fixed-only asset's route is replaced through `setRoute`, then it is still fixed-only
+    function test_setRoute_assertReplacingAFixedOnlyRouteDoesNotListIt() public fixedRouted(FIXED_ONLY) {
+        vm.recordLogs();
+        vm.prank(approver);
+        registry.setRoute(FIXED_ONLY, _v4Route(FIXED_ONLY));
+        assertEq(vm.getRecordedLogs().length, 1, "only RouteSet");
+        assertFalse(registry.isListed(FIXED_ONLY), "open to every mode");
+        assertTrue(registry.isFixedListed(FIXED_ONLY), "fixed listing lost");
+    }
+
+    /// @dev when a `FIXED` ETF is created with a fixed-only asset, then it holds and values it
+    function test_createFixedEtf_assertHoldsAFixedOnlyAsset() public fixedRouted(FIXED_ONLY) {
+        RealmEtf e = _fixedOnlyMixEtf();
+        assertEq(uint8(e.MODE()), uint8(RealmEtf.Mode.FIXED));
+        assertGt(IERC20(FIXED_ONLY).balanceOf(address(e)), 0, "nothing bought");
+        assertApproxEqRel(e.totalAssets(), SEED, 0.03e18, "seed value");
+    }
+
+    /// @dev when an ETF of any other mode is created with a fixed-only asset, then it reverts `AssetNotListed`
+    function test_createOtherModes_assertRefuseAFixedOnlyAsset() public fixedRouted(FIXED_ONLY) {
+        _expectFixedOnlyMixRevert(RealmEtf.Mode.REBALANCE);
+        _expectFixedOnlyMixRevert(RealmEtf.Mode.FLEXIBLE);
+    }
+
+    /// @dev when a fixed-only asset is sunset, then not even a `FIXED` ETF may be created with it
+    function test_createFixedEtf_assertRefusesASunsetFixedOnlyAsset() public fixedRouted(FIXED_ONLY) {
+        vm.prank(owner);
+        registry.sunset(FIXED_ONLY);
+        _expectFixedOnlyMixRevert(RealmEtf.Mode.FIXED);
+    }
+
+    /// @dev when a `FLEXIBLE` ETF that already exists proposes buying a fixed-only asset, then it reverts
+    function test_proposeRebalance_assertRefusesAFixedOnlyAsset() public fixedRouted(FIXED_ONLY) {
+        vm.expectRevert(RealmEtf.AssetNotListed.selector);
+        vm.prank(creator);
+        etf.proposeRebalance(NVDA, 10_000, FIXED_ONLY);
+    }
+
+    /// @dev when the buy asset goes fixed-only after a `FLEXIBLE` ETF's proposal, then execution reverts
+    function test_executeRebalance_assertRefusesAnAssetTurnedFixedOnly() public {
+        vm.prank(creator);
+        uint256 id = etf.proposeRebalance(NVDA, 10_000, QQQ);
+        vm.startPrank(approver);
+        registry.setListed(QQQ, false);
+        registry.setFixedListed(QQQ, true);
+        vm.stopPrank();
+        vm.expectRevert(RealmEtf.AssetNotListed.selector);
+        vm.prank(keeper);
+        etf.executeRebalance(id);
+    }
+
+    /// @dev when a fixed-only asset is delisted, then new ETFs are refused while an existing one still deposits and redeems
+    function test_setFixedListedFalse_assertBlocksNewEtfsButNotHolders() public fixedRouted(FIXED_ONLY) {
+        RealmEtf e = _fixedOnlyMixEtf();
+        vm.prank(approver);
+        registry.setFixedListed(FIXED_ONLY, false);
+        _expectFixedOnlyMixRevert(RealmEtf.Mode.FIXED);
+
+        deal(USDG, alice, 100e6);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(e), 100e6);
+        uint256 shares = e.deposit(100e6, alice);
+        assertGt(e.redeem(shares, alice, alice), 0, "no exit");
+        vm.stopPrank();
+    }
+
     //////////////////////// helpers //////////////////////
 
     struct Nav {
@@ -1594,6 +1758,30 @@ contract RealmEtfTest is Test {
             factory.createEtf("One", "ONE", RealmEtf.Mode.FIXED, assets, weights, SEED, new uint256[](assets.length));
         vm.stopPrank();
         return RealmEtf(e);
+    }
+
+    /// @dev SPY + `FIXED_ONLY`, half each.
+    function _fixedOnlyMix() internal pure returns (address[] memory assets, uint16[] memory weights) {
+        assets = new address[](2);
+        (assets[0], assets[1]) = (SPY, FIXED_ONLY);
+        weights = new uint16[](2);
+        (weights[0], weights[1]) = (5_000, 5_000);
+    }
+
+    function _fixedOnlyMixEtf() internal returns (RealmEtf) {
+        (address[] memory assets, uint16[] memory weights) = _fixedOnlyMix();
+        deal(USDG, creator, SEED);
+        vm.startPrank(creator);
+        IERC20(USDG).approve(address(factory), SEED);
+        address e = factory.createEtf("Mix", "MIX", RealmEtf.Mode.FIXED, assets, weights, SEED, new uint256[](2));
+        vm.stopPrank();
+        return RealmEtf(e);
+    }
+
+    function _expectFixedOnlyMixRevert(RealmEtf.Mode mode) internal {
+        (address[] memory assets, uint16[] memory weights) = _fixedOnlyMix();
+        vm.expectRevert(RealmEtf.AssetNotListed.selector);
+        factory.createEtf("Mix", "MIX", mode, assets, weights, SEED, new uint256[](2));
     }
 
     /// @dev A fresh mock asset listed on a fresh USDG pool (V3 or V4) at 1:1 raw, whose only position is

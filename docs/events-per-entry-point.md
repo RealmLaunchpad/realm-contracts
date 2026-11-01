@@ -814,6 +814,8 @@ One `RealmEtfAssets` registry, one `RealmEtfFactory` and one `RealmEtfHook` per 
 - **`ApproverSet`** (`account` indexed, `allowed`) — owner only.
 - `setRoute(asset, route)` — approver only: **`RouteSet`** (`asset` indexed, `route`), then, on the asset's FIRST route only, **`ListedSet`** (`asset` indexed, `true`); replacing a route leaves the listing as it is. `route` is `(venue, pool, key)`: `V3` (`venue` = 1) or `V2` (`venue` = 3) with the pool or pair in `pool`, or `V4` (`venue` = 2) with the `PoolKey` in `key`. Routes are replaced, never cleared.
 - `setListed(asset, listed)` — approver only: **`ListedSet`**. Delisting only stops ETFs from buying into `asset`.
+- `setFixedRoute(asset, route)` — approver only: **`RouteSet`** (`asset` indexed, `route`), then **`FixedListedSet`** (`asset` indexed, `true`), on every call, first route or not. Never emits `ListedSet` and never touches `isListed`: `asset` becomes holdable by `FIXED` ETFs alone, atomically.
+- `setFixedListed(asset, listed)` — approver only, `asset` must have a route (`NoRoute`): **`FixedListedSet`** (`asset` indexed, `listed`). `listed = false` only stops new `FIXED` ETFs from being created with `asset`; ETFs holding it keep trading through its route. A `setRoute` on a fixed-only asset emits `RouteSet` alone: not a first route, so no `ListedSet`.
 - `sunset(asset)` — owner only, one-way: **`AssetSunset`** (`asset` indexed). From then on every ETF holding `asset` skips it in deposits, mints, redemptions, rebalances, `reinvest` and `totalAssets`; only `redeemInKind` still sends it.
 
 ### `RealmEtfFactory` (one UUPS proxy per chain)

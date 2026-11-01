@@ -81,7 +81,8 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
     uint256 private constant BPS = 10_000;
 
     /// @notice What the creator may change. `FIXED`: nothing. `REBALANCE`: rebalance among the original assets
-    ///         only. `FLEXIBLE`: rebalance into any listed asset.
+    ///         only. `FLEXIBLE`: rebalance into any listed asset. Only `FIXED` ETFs may be created with an asset
+    ///         listed for them alone (`RealmEtfAssets.isFixedListed`), which no rebalance ever buys.
     enum Mode {
         FIXED,
         REBALANCE,
@@ -212,7 +213,11 @@ contract RealmEtf is ERC20, Ownable2Step, ReentrancyGuardTransient, IERC4626, IU
 
         require(assets_.length != 0 && assets_.length <= MAX_ASSETS, InvalidAssets());
         for (uint256 i; i < assets_.length; ++i) {
-            require(registry.isListed(assets_[i]) && !registry.isSunset(assets_[i]), AssetNotListed());
+            require(
+                (registry.isListed(assets_[i]) || (mode == Mode.FIXED && registry.isFixedListed(assets_[i])))
+                    && !registry.isSunset(assets_[i]),
+                AssetNotListed()
+            );
             for (uint256 j; j < i; ++j) {
                 require(assets_[j] != assets_[i], InvalidAssets());
             }
