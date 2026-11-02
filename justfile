@@ -474,7 +474,8 @@ deploy-etf-hook-rh-testnet: chain-rh-testnet
         --gas-estimate-multiplier 300 {{robinhood_testnet_verify}}
 
 # New `RealmEtfFactory` implementation (same registry, same hook) behind ETF_FACTORY: ships new `RealmEtf`
-# code to ETFs created afterwards. Broadcaster must own the factory. Paste ETF_FACTORY_IMPL.
+# code to ETFs created afterwards. Broadcaster must own the factory. Paste ETF_FACTORY_IMPL. Run
+# `upgrade-etf-assets-*` first: new ETFs read `isFixedListed`, and the script refuses until the registry has it.
 upgrade-etf-factory-rh: chain-rh
     forge script UpgradeRealmEtfFactory --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \
         --gas-estimate-multiplier 300 --disable-code-size-limit {{robinhood_verify}}
@@ -606,7 +607,8 @@ whitelist-realm-rh-testnet:
 # `*-whitelist-assets-*` recipes above). Picks the deepest hookless USDG pool of each asset in
 # `MAINNET_ETF_ASSETS` (discover_etf_assets.py: the 34 rStocks over 1M USDG deep), into
 # script/operations/etf-assets/etf-assets.robinhood.mainnet.json. An asset dropped from that table stays in the
-# file switched off, and the broadcast delists it. Review the file's git diff, then broadcast below.
+# file switched off, and the broadcast delists it. `FIXED_ONLY_ETF_ASSETS` adds the fixed-only assets on the
+# pools it names. Review the file's git diff, then broadcast below.
 discover-etf-assets-rh:
     uv run script/operations/etf-assets/discover_etf_assets.py
 
@@ -616,8 +618,9 @@ discover-etf-assets-rh-testnet:
     uv run script/operations/etf-assets/discover_etf_assets.py --chain testnet \
         --assets "$(jq -r '.assets | join(",")' script/operations/assets-whitelist/listings.robinhood.testnet.json)"
 
-# Sets the file's routes in ETF_ASSETS and (de)lists per its `enabled` flags, then reads the chain back with
-# `verify()`. The signer must already be an ETF_ASSETS approver (owner: `setApprover`).
+# Sets the file's routes in ETF_ASSETS and (de)lists per its `enabled` flags (`fixedOnly` entries for `FIXED`
+# ETFs alone, which needs `upgrade-etf-assets-*` first), then reads the chain back with `verify()`. The signer
+# must already be an ETF_ASSETS approver (owner: `setApprover`).
 whitelist-etf-assets-rh:
     just chain-rh
     forge script WhitelistEtfAssets --rpc-url rh-mainnet --account realm.deployer --slow --broadcast \

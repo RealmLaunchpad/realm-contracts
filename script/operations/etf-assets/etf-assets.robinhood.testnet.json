@@ -30,6 +30,16 @@
   true,
   true
  ],
+ "fixedOnly": [
+  false,
+  false,
+  false,
+  false,
+  false,
+  false,
+  false,
+  true
+ ],
  "venues": [
   2,
   2,

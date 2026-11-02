@@ -14,6 +14,9 @@ the dummies). Per asset, the deepest hookless USDG pool wins, by the pool scan o
 `discover_whitelist_assets.py`, reused: depth is the reserve for V2, the in-range virtual amount for V3/V4.
 An asset with no such pool is left out, under `rejected`.
 
+FIXED-ONLY assets (`FIXED_ONLY_ETF_ASSETS`, mainnet only) skip all of that: too thin to rebalance into, they
+are listed for `FIXED` ETFs alone (`fixedOnly`, `RealmEtfAssets.isFixedListed`) on the pool the table names.
+
 The file is a REGISTRY: an asset a previous run listed and this one does not (removed from the table, or
 its pool gone) stays, switched off, so `WhitelistEtfAssets` delists it (ETFs stop buying into it; its
 route stays, holders still trade out). Removing a ticker from `MAINNET_ETF_ASSETS` is how one is delisted.
@@ -72,6 +75,22 @@ MAINNET_ETF_ASSETS = {
 # `RealmEtfAssets.Venue` (NONE, V3, V4, V2), by Uniswap version.
 ETF_VENUE = {2: 3, 3: 1, 4: 2}
 
+# `RealmHookAnyPair` on Robinhood mainnet.
+REALM_HOOK_ANY_PAIR = "0x24d9308561c322a603370a0c3bead39e05da00cc"
+
+# Only `FIXED` ETFs may hold these. Each pool is named by hand, unscanned: they live behind `RealmHookAnyPair`,
+# which the hookless rule refuses, so the file shows no depth or price for them. Address -> V4 key.
+FIXED_ONLY_ETF_ASSETS = {
+    "0xc73b24a207c4eae3686edf6a3fcf21843bdbe7c0": {
+        "symbol": "OPENAI", "c0": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "c1": "0xc73b24a207c4eae3686edf6a3fcf21843bdbe7c0", "fee": 2000, "ts": 60, "hooks": REALM_HOOK_ANY_PAIR,
+    },
+    "0xf33507de3aa3c1386cee1ecfa2882b0b2930b305": {
+        "symbol": "ANTHROPIC", "c0": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "c1": "0xf33507de3aa3c1386cee1ecfa2882b0b2930b305", "fee": 2000, "ts": 60, "hooks": REALM_HOOK_ANY_PAIR,
+    },
+}
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -103,6 +122,9 @@ def main() -> int:
         else:
             rejected.append({"symbol": coin["symbol"], "asset": coin["asset"], "reason": "no hookless USDG pool"})
 
+    if not named and w.CHAIN_ID == 4663:
+        rows += [_fixed_only_row(a, key) for a, key in FIXED_ONLY_ETF_ASSETS.items()]
+
     old = json.loads(out.read_text()) if out.exists() else {"assets": []}
     listed = {r["asset"] for r in rows}
     dropped = [_old_row(old, i) for i, a in enumerate(old["assets"]) if a not in listed]
@@ -123,7 +145,7 @@ def _row(coin: dict, pick: dict) -> dict:
     p = pick["pool"]
     v4 = p["v"] == 4
     return {
-        "asset": coin["asset"], "symbol": coin["symbol"], "enabled": True,
+        "asset": coin["asset"], "symbol": coin["symbol"], "enabled": True, "fixedOnly": False,
         "source": {
             "venue": ETF_VENUE[p["v"]],
             "pool": w.NATIVE if v4 else p["pool"],
@@ -138,10 +160,19 @@ def _row(coin: dict, pick: dict) -> dict:
     }
 
 
+def _fixed_only_row(asset: str, key: dict) -> dict:
+    symbol = key["symbol"]
+    return {"asset": asset, "symbol": symbol, "enabled": True, "fixedOnly": True,
+            "source": {"venue": ETF_VENUE[4], "pool": w.NATIVE, "c0": key["c0"], "c1": key["c1"], "fee": key["fee"],
+                       "ts": key["ts"], "hooks": key["hooks"]},
+            "readable": {"symbol": symbol, "asset": asset, "venue": "v4", "usdgDepth": 0, "priceUsdg": 0}}
+
+
 def _old_row(old: dict, i: int) -> dict:
     """An entry of the previous file, switched off, its route kept."""
     keys = ("venues", "pools", "currency0", "currency1", "fees", "tickSpacings", "hooks")
     return {"asset": old["assets"][i], "symbol": old["symbols"][i], "enabled": False,
+            "fixedOnly": old["fixedOnly"][i],
             "source": dict(zip(("venue", "pool", "c0", "c1", "fee", "ts", "hooks"), (old[k][i] for k in keys))),
             "readable": {**old["readable"][i], "usdgDepth": 0}}
 
@@ -155,6 +186,8 @@ def _render(rows: list[dict], rejected: list[dict]) -> str:
         "symbols": [r["symbol"] for r in rows],
         # true: route + list. false: delist if listed (the route stays).
         "enabled": [r["enabled"] for r in rows],
+        # true: `FIXED` ETFs only (`isFixedListed`, never `isListed`).
+        "fixedOnly": [r["fixedOnly"] for r in rows],
         "venues": [x["venue"] for x in s],
         "pools": [x["pool"] for x in s],
         "currency0": [x["c0"] for x in s],

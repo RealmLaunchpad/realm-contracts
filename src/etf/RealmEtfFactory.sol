@@ -38,7 +38,7 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
     using SafeERC20 for IERC20;
 
     /// @notice Contract version.
-    uint256 public constant VERSION = 3;
+    uint256 public constant VERSION = 4;
 
     /// @notice Where every ETF's assets and routes are listed.
     /// @dev Implementation immutable: the proxy reads it from the implementation's bytecode.
@@ -99,7 +99,8 @@ contract RealmEtfFactory is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
 
     /// @notice Deploys an ETF holding `assets`, owned by the caller, and seeds it with `seedAssets` USDG
     ///         pulled from the caller, split by `weightsBps` (summing to 10,000). The caller receives the shares.
-    ///         `mode` (immutable) bounds the creator's rebalances. Reverts below `minSeedAssets`, or if any
+    ///         `mode` (immutable) bounds the creator's rebalances, and `FIXED` alone may hold assets listed
+    ///         only for it (`RealmEtfAssets.isFixedListed`). Reverts below `minSeedAssets`, or if any
     ///         asset's seed buy gets less than its `minAmountsOut` entry (same order as `assets`). With a hook
     ///         set, lists the ETF in `ASSETS_WHITELIST`, and reverts if it cannot: USDG not listed against
     ///         native, or this factory not an approver.

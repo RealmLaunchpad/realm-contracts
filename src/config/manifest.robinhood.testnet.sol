@@ -64,11 +64,11 @@ library DeploymentsRobinhoodTestnet {
     ///         implementation and every ETF bake it in. Deployed by `DeployRealmEtf`; `address(0)` until then.
     address internal constant ETF_ASSETS = 0xfba81c11F27B4d9d38D26070d49f4F0a38003c16;
     /// @notice Implementation behind `ETF_ASSETS`. Tracked for verification and audit trails only.
-    address internal constant ETF_ASSETS_IMPL = 0xBD2b77E5761106AE35db6c135c503CA6DFf18E28;
+    address internal constant ETF_ASSETS_IMPL = 0x0814c83286878e7E2417b5d3FEe998c488baf7d3;
     /// @notice `RealmEtfFactory` proxy (UUPS): where ETFs are created. `ETF_HOOK` bakes it in.
     address internal constant ETF_FACTORY = 0xd8eAD284f967a1651988049b2585AacEB9593720;
     /// @notice Implementation behind `ETF_FACTORY`. Tracked for verification and audit trails only.
-    address internal constant ETF_FACTORY_IMPL = 0x23cc19acB89e115E7B958511B89F629Fb8f5F6D2;
+    address internal constant ETF_FACTORY_IMPL = 0xeE996697E3Fbbdf418688bEd1aaA76C3db4A2eb2;
     /// @notice `RealmEtfHook`: the hook of the ETF shares/USDG pools. Not upgradeable: a new one
     ///         (`DeployRealmEtfHook`) only serves ETFs created after it is set on `ETF_FACTORY`.
     address internal constant ETF_HOOK = 0xB5623BD9c3df7cce689D8332D9eD9cf2E43168c8;

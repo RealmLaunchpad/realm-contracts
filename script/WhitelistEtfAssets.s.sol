@@ -17,10 +17,32 @@ import {ChainConfig} from "script/ChainConfig.sol";
 ///         A DISABLED one is delisted if listed; its route stays (routes are never cleared, see `RealmEtfAssets`).
 ///         An entry already as the file says costs no transaction.
 ///
+/// @notice A `fixedOnly` entry is listed for `FIXED` ETFs alone: `isFixedListed` follows `enabled` and `isListed`
+///         stays false. Its first route goes through `setFixedRoute`, atomic, so it never opens to the other
+///         modes; a later route differing goes through `setRoute`, which keeps its listings.
+///
 /// @dev Every entry is simulated first; one the registry refuses (a pool gone since the scan) is skipped.
+/// @dev `fixedOnly` entries need `ETF_ASSETS` upgraded to `VERSION` 2 (`just upgrade-etf-assets-rh`). Others do not.
 ///
 /// Usage: just whitelist-etf-assets-rh (or -rh-testnet): broadcasts, then `verify()` reads the live chain back.
 contract WhitelistEtfAssets is Script {
+    /// @dev The file's parallel arrays, decoded.
+    struct Entries {
+        string[] symbols;
+        address[] assets;
+        bool[] enabled;
+        bool[] fixedOnly;
+        RealmEtfAssets.Route[] routes;
+    }
+
+    /// @dev What one entry needs, as the dry run found it.
+    struct Plan {
+        bool setRoute;
+        bool setFixedRoute;
+        bool setListed;
+        bool setFixedListed;
+    }
+
     function run() public {
         RealmEtfAssets registry = RealmEtfAssets(ChainConfig.etfAssets());
         require(address(registry).code.length != 0, "no contract at the manifest ETF_ASSETS on this chain");
@@ -31,82 +53,116 @@ contract WhitelistEtfAssets is Script {
         vm.stopBroadcast();
         require(registry.isApprover(approver), "signer is not an ETF_ASSETS approver: the owner must add it first");
 
-        (
-            string[] memory symbols,
-            address[] memory assets,
-            bool[] memory enabled,
-            RealmEtfAssets.Route[] memory routes
-        ) = _entries();
-
-        // Dry run: which entries need a route, which need their listing flipped, and which the registry refuses.
-        bool[] memory setRoute = new bool[](assets.length);
-        bool[] memory setListed = new bool[](assets.length);
-        uint256 snapshot = vm.snapshotState();
-        vm.startPrank(approver);
-        for (uint256 i; i < assets.length; ++i) {
-            bool needRoute = enabled[i] && !_hasRoute(registry, assets[i], routes[i]);
-            if (needRoute) {
-                try registry.setRoute(assets[i], routes[i]) {}
-                catch {
-                    console.log("  %s (%s): the registry refuses its route - skipped", symbols[i], assets[i]);
-                    continue;
-                }
-            }
-            setRoute[i] = needRoute;
-            // A first route lists the asset by itself.
-            setListed[i] = registry.isListed(assets[i]) != enabled[i];
-            if (setListed[i]) registry.setListed(assets[i], enabled[i]);
-        }
-        vm.stopPrank();
-        vm.revertToState(snapshot);
+        Entries memory e = _entries();
+        Plan[] memory plans = _dryRun(registry, approver, e);
 
         vm.startBroadcast();
         uint256 routed;
         uint256 flipped;
-        for (uint256 i; i < assets.length; ++i) {
-            if (setRoute[i]) {
-                registry.setRoute(assets[i], routes[i]);
+        for (uint256 i; i < plans.length; ++i) {
+            if (plans[i].setFixedRoute) {
+                registry.setFixedRoute(e.assets[i], e.routes[i]);
+                ++routed;
+            } else if (plans[i].setRoute) {
+                registry.setRoute(e.assets[i], e.routes[i]);
                 ++routed;
             }
-            if (setListed[i]) {
-                registry.setListed(assets[i], enabled[i]);
+            if (plans[i].setListed) {
+                registry.setListed(e.assets[i], _wantsListed(e, i));
+                ++flipped;
+            }
+            if (plans[i].setFixedListed) {
+                registry.setFixedListed(e.assets[i], e.enabled[i]);
                 ++flipped;
             }
         }
         vm.stopBroadcast();
 
-        console.log("=== Routes set %d, listings flipped %d, of %d entries ===", routed, flipped, assets.length);
+        console.log("=== Routes set %d, listings flipped %d, of %d entries ===", routed, flipped, plans.length);
     }
 
     /// @notice Reads back the live chain: every enabled entry must be listed on the file's route, every disabled
-    ///         one unlisted. A SEPARATE invocation because a script's own post-broadcast reads see its simulation.
+    ///         one unlisted, and every `fixedOnly` one fixed-listed as `enabled` says and NOT in `isListed`
+    ///         (reverts if one is not). A SEPARATE invocation because a script's own post-broadcast reads see
+    ///         its simulation.
     ///
     /// Usage: forge script WhitelistEtfAssets --rpc-url rh-mainnet --sig 'verify()'
     function verify() public view {
         RealmEtfAssets registry = RealmEtfAssets(ChainConfig.etfAssets());
         require(address(registry).code.length != 0, "no contract at the manifest ETF_ASSETS on this chain");
 
-        (
-            string[] memory symbols,
-            address[] memory assets,
-            bool[] memory enabled,
-            RealmEtfAssets.Route[] memory routes
-        ) = _entries();
+        Entries memory e = _entries();
         uint256 asExpected;
         uint256 listed;
-        for (uint256 i; i < assets.length; ++i) {
-            bool isListed = registry.isListed(assets[i]);
+        uint256 wrongFixed;
+        for (uint256 i; i < e.assets.length; ++i) {
+            bool isListed = registry.isListed(e.assets[i]);
             if (isListed) ++listed;
-            if (enabled[i] && !_hasRoute(registry, assets[i], routes[i])) {
-                console.log("  WRONG ROUTE %s (%s)", symbols[i], assets[i]);
-            } else if (isListed == enabled[i]) {
+            bool fixedOk = !e.fixedOnly[i] || (registry.isFixedListed(e.assets[i]) == e.enabled[i] && !isListed);
+            if (!fixedOk) ++wrongFixed;
+            if (e.enabled[i] && !_hasRoute(registry, e.assets[i], e.routes[i])) {
+                console.log("  WRONG ROUTE %s (%s)", e.symbols[i], e.assets[i]);
+            } else if (!fixedOk) {
+                console.log("  WRONG FIXED-ONLY LISTING %s (%s)", e.symbols[i], e.assets[i]);
+            } else if (isListed == _wantsListed(e, i)) {
                 ++asExpected;
             } else {
-                console.log(isListed ? "  STILL LISTED %s (%s)" : "  MISSING %s (%s)", symbols[i], assets[i]);
+                console.log(isListed ? "  STILL LISTED %s (%s)" : "  MISSING %s (%s)", e.symbols[i], e.assets[i]);
             }
         }
-        console.log("=== As the file says: %d of %d entries ===", asExpected, assets.length);
+        console.log("=== As the file says: %d of %d entries ===", asExpected, e.assets.length);
         require(listed != 0, "no entry is listed on chain: the broadcast never reached it");
+        require(wrongFixed == 0, "a fixedOnly entry is not as the file says");
+    }
+
+    /// @dev Which entries need a route, which need a listing flipped, and which the registry refuses.
+    function _dryRun(RealmEtfAssets registry, address approver, Entries memory e)
+        internal
+        returns (Plan[] memory plans)
+    {
+        plans = new Plan[](e.assets.length);
+        uint256 snapshot = vm.snapshotState();
+        vm.startPrank(approver);
+        for (uint256 i; i < e.assets.length; ++i) {
+            address asset = e.assets[i];
+            if (e.fixedOnly[i]) require(registry.VERSION() >= 2, "fixedOnly entries: upgrade ETF_ASSETS first");
+            bool needRoute = e.enabled[i] && !_hasRoute(registry, asset, e.routes[i]);
+            bool needFixedRoute = needRoute && e.fixedOnly[i] && !_isRouted(registry, asset);
+            if (needFixedRoute) {
+                try registry.setFixedRoute(asset, e.routes[i]) {}
+                catch {
+                    console.log("  %s (%s): the registry refuses its route - skipped", e.symbols[i], asset);
+                    continue;
+                }
+            } else if (needRoute) {
+                try registry.setRoute(asset, e.routes[i]) {}
+                catch {
+                    console.log("  %s (%s): the registry refuses its route - skipped", e.symbols[i], asset);
+                    continue;
+                }
+            }
+            plans[i].setRoute = needRoute && !needFixedRoute;
+            plans[i].setFixedRoute = needFixedRoute;
+            // A first route lists the asset by itself.
+            plans[i].setListed = registry.isListed(asset) != _wantsListed(e, i);
+            if (plans[i].setListed) registry.setListed(asset, _wantsListed(e, i));
+            plans[i].setFixedListed = e.fixedOnly[i] && registry.isFixedListed(asset) != e.enabled[i];
+            if (plans[i].setFixedListed) registry.setFixedListed(asset, e.enabled[i]);
+        }
+        vm.stopPrank();
+        vm.revertToState(snapshot);
+    }
+
+    function _wantsListed(Entries memory e, uint256 i) internal pure returns (bool) {
+        return e.enabled[i] && !e.fixedOnly[i];
+    }
+
+    function _isRouted(RealmEtfAssets registry, address asset) internal view returns (bool) {
+        try registry.routeOf(asset) returns (RealmEtfAssets.Route memory) {
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     function _hasRoute(RealmEtfAssets registry, address asset, RealmEtfAssets.Route memory route)
@@ -128,22 +184,14 @@ contract WhitelistEtfAssets is Script {
     }
 
     /// @dev Parallel arrays: `vm.parseJson` decodes one JSON value per call.
-    function _entries()
-        internal
-        view
-        returns (
-            string[] memory symbols,
-            address[] memory assets,
-            bool[] memory enabled,
-            RealmEtfAssets.Route[] memory routes
-        )
-    {
+    function _entries() internal view returns (Entries memory e) {
         string memory json = vm.readFile(_path());
         require(vm.parseJsonUint(json, ".chainId") == block.chainid, "ETF assets file is for another chain");
 
-        assets = vm.parseJsonAddressArray(json, ".assets");
-        symbols = vm.parseJsonStringArray(json, ".symbols");
-        enabled = vm.parseJsonBoolArray(json, ".enabled");
+        e.assets = vm.parseJsonAddressArray(json, ".assets");
+        e.symbols = vm.parseJsonStringArray(json, ".symbols");
+        e.enabled = vm.parseJsonBoolArray(json, ".enabled");
+        e.fixedOnly = vm.parseJsonBoolArray(json, ".fixedOnly");
         uint256[] memory venues = vm.parseJsonUintArray(json, ".venues");
         address[] memory pools = vm.parseJsonAddressArray(json, ".pools");
         address[] memory currency0 = vm.parseJsonAddressArray(json, ".currency0");
@@ -152,9 +200,9 @@ contract WhitelistEtfAssets is Script {
         int256[] memory tickSpacings = vm.parseJsonIntArray(json, ".tickSpacings");
         address[] memory hooks = vm.parseJsonAddressArray(json, ".hooks");
 
-        routes = new RealmEtfAssets.Route[](assets.length);
-        for (uint256 i; i < assets.length; ++i) {
-            routes[i] = RealmEtfAssets.Route({
+        e.routes = new RealmEtfAssets.Route[](e.assets.length);
+        for (uint256 i; i < e.assets.length; ++i) {
+            e.routes[i] = RealmEtfAssets.Route({
                 venue: RealmEtfAssets.Venue(venues[i]),
                 pool: pools[i],
                 key: PoolKey({
