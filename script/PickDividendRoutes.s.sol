@@ -17,7 +17,7 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 /// @dev WRITES NOTHING ON-CHAIN: broadcasts nothing and needs no keys. The output is the frontend's
 ///      payout catalogue (the routes creators pass at creation) and the proof an admin sets an
 ///      `ALL_TOKENS` override on. The probe sets the route for its own prober address only.
-/// @dev Needs a registry built from this tree at `REALM_SWAPPER`: an older one lacks the
+/// @dev Needs a registry built from this tree at `REALM_SWAPPER` (the manifest's): an older one lacks the
 ///      per-token `setRoute`, and every probe would silently score 0.
 ///
 /// @dev THE PROBE PICKS THE ROUTE, the discovery script only shortlists. `discover_rstock_routes.py`
@@ -38,7 +38,7 @@ import {DeploymentAddressesRobinhoodMainnet as DeploymentAddresses} from "src/co
 /// Usage:  forge script PickDividendRoutes --rpc-url rh-mainnet
 ///
 /// Env:
-///   REALM_SWAPPER  the registry proxy on this chain
+///   REALM_SWAPPER           (optional) registry proxy; defaults to the manifest's
 ///   ROUTES_JSON             (optional) path to the discovery output
 ///   ROUTES_OUT              (optional) where to write the picked routes
 contract PickDividendRoutes is Script {
@@ -54,7 +54,7 @@ contract PickDividendRoutes is Script {
     string internal constant DEFAULT_ROUTES_OUT = "script/operations/dividend-routes/catalogue.robinhood.mainnet.json";
 
     function run() external {
-        RealmSwapper registry = RealmSwapper(payable(vm.envAddress("REALM_SWAPPER")));
+        RealmSwapper registry = RealmSwapper(payable(vm.envOr("REALM_SWAPPER", DeploymentAddresses.REALM_SWAPPER)));
         string memory json = vm.readFile(vm.envOr("ROUTES_JSON", DEFAULT_ROUTES_JSON));
 
         address[] memory assets = vm.parseJsonAddressArray(json, ".assets");

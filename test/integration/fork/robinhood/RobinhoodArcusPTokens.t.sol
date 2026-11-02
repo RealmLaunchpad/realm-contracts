@@ -40,7 +40,6 @@ contract RobinhoodArcusPTokensTests is RobinhoodForkBase {
 
     address internal constant PHOOD3X = 0xe24CABDf76DD1c2576049167eB1755C84b985C36;
     address internal constant PGLD5X = 0x37A2aFaa98648f2e13658623885F821ac8365609;
-    address internal constant HOOK_FA3D = 0xFA3dA20EC661AA26F9f93E4421Fab6989c4B4800;
     address internal constant HOOK_F28A = 0xf28A89AF20fABDB89Af9D033bB0a98D17212c880;
 
     address internal holder2 = makeAddr("holder2");
@@ -54,10 +53,10 @@ contract RobinhoodArcusPTokensTests is RobinhoodForkBase {
 
     //////////////////////// pools, listings, routes //////////////////////
 
+    /// @dev Both trade in their hook-F28A pool at fee 4250 (pHOOD3x's hook-FA3D/8500 pool has since emptied).
     function _arcusKey(address pToken) internal pure returns (PoolKey memory) {
-        (uint24 fee, address hook) = pToken == PHOOD3X ? (uint24(8_500), HOOK_FA3D) : (uint24(4_250), HOOK_F28A);
         (address c0, address c1) = pToken < USDG ? (pToken, USDG) : (USDG, pToken);
-        return PoolKey(Currency.wrap(c0), Currency.wrap(c1), fee, 10, IHooks(hook));
+        return PoolKey(Currency.wrap(c0), Currency.wrap(c1), 4_250, 10, IHooks(HOOK_F28A));
     }
 
     function _usdgKey() internal pure returns (PoolKey memory) {
