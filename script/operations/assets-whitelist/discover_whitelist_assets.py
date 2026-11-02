@@ -149,11 +149,12 @@ _ARCUS_HOOK_B = "0xf28a89af20fabdb89af9d033bb0a98d17212c880"
 # On by default are the DEEP ones (a 1 ETH buy through native -> USDG -> pToken moves the price < 2%).
 # Off, measured 2026-09-30: pBTC, sBTC, sBTC3x (5-9% at 1 ETH, ~70% at 3 ETH) and sSPCX3x, sGME5x,
 # sGLD5x (about one token for sale: any buy over ~$100 reverts). Re-measure before enabling one.
+# pHOOD3x and pBTC3x also have a hook-A/8500 pool, empty since 2026-11 (the V4 Quoter reverts NotEnoughLiquidity).
 ARCUS = {
-    "0xe24cabdf76dd1c2576049167eb1755c84b985c36": ("pHOOD3x", _ARCUS_HOOK_A, 8500, True),
+    "0xe24cabdf76dd1c2576049167eb1755c84b985c36": ("pHOOD3x", _ARCUS_HOOK_B, 4250, True),
     "0x8b9d2eb675e33e541cb7de25a55724d2e70e8dab": ("pSPCX3x", _ARCUS_HOOK_B, 4250, True),
     "0x17271bd2a1eaa350a002d25236bcc4dc07ceb6a9": ("sSPCX3x", _ARCUS_HOOK_B, 4250, False),
-    "0x4472c69d299382f8847ebce4fc6ed8e295510e3e": ("pBTC3x", _ARCUS_HOOK_A, 8500, True),
+    "0x4472c69d299382f8847ebce4fc6ed8e295510e3e": ("pBTC3x", _ARCUS_HOOK_B, 4250, True),
     "0x1a596466cb593bee293be8366d9ce493582189c2": ("sGME5x", _ARCUS_HOOK_B, 4250, False),
     "0x5c3b9a9b021e86b54202abcb4580f1f5c271875b": ("pGME5x", _ARCUS_HOOK_B, 4250, True),
     "0xb2cb7371bc45a460f856712a3088c23acd385df8": ("sGLD5x", _ARCUS_HOOK_B, 4250, False),

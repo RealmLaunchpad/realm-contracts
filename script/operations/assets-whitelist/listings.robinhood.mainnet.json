@@ -1,7 +1,7 @@
 {
  "chainId": 4663,
  "reference": "USDG",
- "referencePerNative": 2261.932408,
+ "referencePerNative": 2284.834144,
  "assets": [
   "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
   "0x03bc731ffb162cdd7b98d3c6542bfc291126075d",
@@ -3073,10 +3073,10 @@
   41000,
   2500,
   0,
-  8500,
   4250,
   4250,
-  8500,
+  4250,
+  4250,
   4250,
   4250,
   4250,
@@ -3895,10 +3895,10 @@
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
   "0x0000000000000000000000000000000000000000",
-  "0xfa3da20ec661aa26f9f93e4421fab6989c4b4800",
   "0xf28a89af20fabdb89af9d033bb0a98d17212c880",
   "0xf28a89af20fabdb89af9d033bb0a98d17212c880",
-  "0xfa3da20ec661aa26f9f93e4421fab6989c4b4800",
+  "0xf28a89af20fabdb89af9d033bb0a98d17212c880",
+  "0xf28a89af20fabdb89af9d033bb0a98d17212c880",
   "0xf28a89af20fabdb89af9d033bb0a98d17212c880",
   "0xf28a89af20fabdb89af9d033bb0a98d17212c880",
   "0xf28a89af20fabdb89af9d033bb0a98d17212c880",
@@ -6060,9 +6060,11 @@
    "arcus": true,
    "venue": "v4",
    "quote": "USDG",
-   "depthNative": 2988.8499,
-   "priceUsd": 125.87537225,
-   "perNative": 20.34498805
+   "depthNative": null,
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 53.97409463,
+   "perNative": 42.33205132
   },
   {
    "symbol": "pSPCX3x",
@@ -6072,8 +6074,10 @@
    "venue": "v4",
    "quote": "USDG",
    "depthNative": null,
-   "priceUsd": 140.62447618,
-   "perNative": 18.21114655
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 67.39575246,
+   "perNative": 33.90175286
   },
   {
    "symbol": "sSPCX3x",
@@ -6083,8 +6087,10 @@
    "venue": "v4",
    "quote": "USDG",
    "depthNative": null,
-   "priceUsd": 60.57313149,
-   "perNative": 42.2783647
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 94.317275,
+   "perNative": 24.22498046
   },
   {
    "symbol": "pBTC3x",
@@ -6093,9 +6099,11 @@
    "arcus": true,
    "venue": "v4",
    "quote": "USDG",
-   "depthNative": 0.0295,
-   "priceUsd": 197.26443641,
-   "perNative": 12.98223335
+   "depthNative": null,
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 154.67385257,
+   "perNative": 14.77194824
   },
   {
    "symbol": "sGME5x",
@@ -6105,8 +6113,10 @@
    "venue": "v4",
    "quote": "USDG",
    "depthNative": null,
-   "priceUsd": 57.93308256,
-   "perNative": 44.20501777
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 47.46367588,
+   "perNative": 48.13858391
   },
   {
    "symbol": "pGME5x",
@@ -6116,8 +6126,10 @@
    "venue": "v4",
    "quote": "USDG",
    "depthNative": null,
-   "priceUsd": 90.34082736,
-   "perNative": 28.34745949
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 65.22867073,
+   "perNative": 35.02806539
   },
   {
    "symbol": "sGLD5x",
@@ -6126,9 +6138,11 @@
    "arcus": true,
    "venue": "v4",
    "quote": "USDG",
-   "depthNative": 3.3162,
-   "priceUsd": 127.65522339,
-   "perNative": 20.06132515
+   "depthNative": null,
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 180.99957259,
+   "perNative": 12.62342287
   },
   {
    "symbol": "pGLD5x",
@@ -6138,8 +6152,10 @@
    "venue": "v4",
    "quote": "USDG",
    "depthNative": null,
-   "priceUsd": 67.94259413,
-   "perNative": 37.69259883
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 48.2636455,
+   "perNative": 47.34068718
   },
   {
    "symbol": "pBTC",
@@ -6148,9 +6164,11 @@
    "arcus": true,
    "venue": "v4",
    "quote": "USDG",
-   "depthNative": 158.0709,
-   "priceUsd": 107.4394255,
-   "perNative": 23.83606327
+   "depthNative": null,
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 102.53640068,
+   "perNative": 22.28315143
   },
   {
    "symbol": "sBTC3x",
@@ -6159,9 +6177,11 @@
    "arcus": true,
    "venue": "v4",
    "quote": "USDG",
-   "depthNative": 0.0098,
-   "priceUsd": 82.46616131,
-   "perNative": 31.05434888
+   "depthNative": null,
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 91.46744764,
+   "perNative": 24.97975184
   },
   {
    "symbol": "sBTC",
@@ -6170,9 +6190,11 @@
    "arcus": true,
    "venue": "v4",
    "quote": "USDG",
-   "depthNative": 144.9711,
-   "priceUsd": 94.66731566,
-   "perNative": 27.05192311
+   "depthNative": null,
+   "impact1Eth": null,
+   "impacts": {},
+   "priceUsd": 99.40210019,
+   "perNative": 22.98577333
   },
   {
    "symbol": "PONS",
