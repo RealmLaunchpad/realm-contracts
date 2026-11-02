@@ -15,9 +15,9 @@ contract RealmFactorySpecialDeploymentsTest is LaunchpadBaseTestsWithDirectV4 {
 
     address internal special = makeAddr("special");
 
-    /// @dev 19%/19% for 3h: fits the special caps (and, with the 100-bps LP fee, the hook's 20%), not the normal ones.
+    /// @dev 19%/19% for 6h: fits the special caps (and, with the 100-bps LP fee, the hook's 20%), not the normal ones.
     function _specialCfg() internal pure returns (TaxConfigs memory) {
-        return _decayCfg(1900, 1900, 3 hours, true);
+        return _decayCfg(1900, 1900, 6 hours, true);
     }
 
     function _create(address deployer, TaxConfigs memory tax) internal returns (address) {
@@ -69,7 +69,7 @@ contract RealmFactorySpecialDeploymentsTest is LaunchpadBaseTestsWithDirectV4 {
         _grant(special, 1);
         l = directFactory.getDeploymentLimits(special);
         assertEq(l.maxTaxDecayStartCombinedBps, 4_000, "special combined");
-        assertEq(l.maxTaxDecayDurationSeconds, 3 hours, "special duration");
+        assertEq(l.maxTaxDecayDurationSeconds, 6 hours, "special duration");
         assertEq(l.maxOverallFeeBps, 2_000, "hook cap unchanged");
 
         _create(special, _specialCfg());
@@ -85,7 +85,7 @@ contract RealmFactorySpecialDeploymentsTest is LaunchpadBaseTestsWithDirectV4 {
         RealmTaxableTokenUniV4 t = RealmTaxableTokenUniV4(payable(token));
         assertEq(uint256(t.buyTaxDecayStartBps()), 1900, "buy decay start");
         assertEq(uint256(t.sellTaxDecayStartBps()), 1900, "sell decay start");
-        assertEq(uint256(t.taxDecayDuration()), 3 hours, "decay duration");
+        assertEq(uint256(t.taxDecayDuration()), 6 hours, "decay duration");
         assertEq(directFactory.specialDeploymentsUsed(special), 1, "one consumed");
 
         RealmFactoryUniV4Direct.DirectTokenSetup memory setup = RealmFactoryUniV4Direct.DirectTokenSetup({
@@ -159,13 +159,19 @@ contract RealmFactorySpecialDeploymentsTest is LaunchpadBaseTestsWithDirectV4 {
         directFactory.createToken(
             setup,
             _nativePair(),
-            _noDirectAlloc(_decayCfg(1950, 0, 3 hours, true)), // + 100 bps LP fee = 2050
+            _noDirectAlloc(_decayCfg(1950, 0, 6 hours, true)), // + 100 bps LP fee = 2050
             _emptyAntiSniperCfg(),
             _noVaults(),
             _noDevBuy(),
             address(0)
         );
         assertEq(directFactory.specialDeploymentsUsed(special), 0, "revert consumes nothing");
+    }
+
+    function test_special_durationCapStillEnforced() public {
+        _grant(special, 1);
+        vm.expectRevert(IRealmFactory.InvalidTaxDuration.selector);
+        this.previewAs(special, _decayCfg(1900, 1900, 6 hours + 1, true));
     }
 
     function test_preview_followsCallerLimits_withoutConsuming() public {

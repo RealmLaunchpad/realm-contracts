@@ -165,7 +165,7 @@ contract RealmFactoryUniV4Direct is RealmFactoryAbstract {
     uint256 public constant SPECIAL_MAX_TAX_DECAY_START_COMBINED_BPS = 4_000;
 
     /// @notice `MAX_TAX_DECAY_DURATION_SECONDS` for a special deployment.
-    uint256 public constant SPECIAL_MAX_TAX_DECAY_DURATION_SECONDS = 3 hours;
+    uint256 public constant SPECIAL_MAX_TAX_DECAY_DURATION_SECONDS = 6 hours;
 
     /// @notice The chain's wrapped native token, which a pair may NOT be quoted against. See
     ///         `_validateQuote`.
