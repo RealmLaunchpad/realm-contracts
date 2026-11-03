@@ -2,7 +2,6 @@
 pragma solidity 0.8.28;
 
 import {RealmToken} from "src/tokens/RealmToken.sol";
-import {RealmLaunchpad} from "src/RealmLaunchpad.sol";
 import {EarningsAllocation} from "src/tokens/EarningsAllocation.sol";
 import {DividendDistribution} from "src/tokens/DividendDistribution.sol";
 import {DividendDistributionLogic} from "src/tokens/DividendDistributionLogic.sol";
@@ -185,7 +184,7 @@ abstract contract RealmTaxableToken is
         if (hasDividends) _activateDividends();
     }
 
-    /// @notice Allows the token owner OR the launchpad owner to rescue stuck ERC20 balances (never the
+    /// @notice Allows the token owner OR the protocol admin (`_admin()`) to rescue stuck ERC20 balances (never the
     ///         token's own balance; ETH is intentionally not rescuable — see below).
     /// @dev Two rules:
     ///      (1) Self-token rescue is disallowed — the caller must NEVER siphon accrued tax balance
@@ -194,24 +193,23 @@ abstract contract RealmTaxableToken is
     ///          buffer awaiting `processBurn`), and dropping the sweep path avoids racing that buffer;
     ///          any stray ETH is simply left in the contract, effectively benefiting holders. Passing
     ///          `address(0)` reverts.
-    /// @dev The launchpad owner is included so the protocol admin can sweep stuck ERC20s on
-    ///      factory-deployed tokens where `owner == address(0)` makes the token-owner path unreachable.
-    ///      Rescued ERC20s go to `owner` (which may be `address(0)`, in which case the transfer reverts —
-    ///      acceptable, as a stuck-balance rescue with no recipient is a no-op anyway).
+    /// @dev The protocol admin is included so stuck ERC20s stay sweepable on tokens where
+    ///      `owner == address(0)` makes the token-owner path unreachable. Rescued ERC20s go to `owner`,
+    ///      or to the admin when the token is ownerless.
     /// @param token ERC20 to rescue. `address(this)` and `address(0)` both revert.
     /// @dev ⚠️ Rescues only what `_sweepableAsset` says is unclaimed. A dividend payout asset sits in
     ///      this same balance, and handing an undistributed pot to the owner would not lose it — it would
     ///      TRANSFER it from holders to the owner, which is worse. Never open-code
     ///      `IERC20(token).balanceOf(address(this))` on a sweep path.
     function rescueTokens(address token) external virtual {
-        require(msg.sender == owner || msg.sender == _launchpadOwner(), NotTokenOwner());
+        require(msg.sender == owner || msg.sender == _admin(), NotTokenOwner());
         // disallow rescuing the token's own balance to prevent siphoning accrued taxes
         require(token != address(this), CannotRescueSelfToken());
         // The V2 family launches with no token owner, and any token can renounce into the same state,
-        // yet both stay rescuable through the launchpad-owner branch above. Paying `owner` there sends
+        // yet both stay rescuable through the admin branch above. Paying `owner` there sends
         // the rescue to `address(0)`: a burn on a permissive ERC20, a revert on a standards-compliant
-        // one. Fall back to the launchpad owner, the only caller that can still reach this.
-        address recipient = owner == address(0) ? _launchpadOwner() : owner;
+        // one. Fall back to the admin, the only caller that can still reach this.
+        address recipient = owner == address(0) ? _admin() : owner;
         IERC20(token).safeTransfer(recipient, _sweepableAsset(token));
     }
 
@@ -221,30 +219,19 @@ abstract contract RealmTaxableToken is
     ///         `graduationTimestamp` are untouched.
     /// @dev The function name is intentionally generic (`setTaxBps`) even though the body enforces
     ///      a narrower decrease-only rule. This keeps the ABI stable if the policy is ever relaxed.
-    /// @dev Callable by the token owner OR the launchpad owner — same dual-auth pattern as
-    ///      `swapBack` / `rescueTokens`. On factory-deployed tokens (`owner == address(0)`) only
-    ///      the launchpad-owner branch is reachable, which is intentional.
+    /// @dev Callable by the token owner OR the protocol admin (`_admin()`) — same dual-auth pattern as
+    ///      `rescueTokens`. On ownerless tokens (`owner == address(0)`) only the admin branch is
+    ///      reachable, which is intentional.
     /// @param newBuyTaxBps New buy tax rate in basis points. Must be `<= buyTaxBps`.
     /// @param newSellTaxBps New sell tax rate in basis points. Must be `<= sellTaxBps`.
     function setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps) external virtual {
-        require(msg.sender == owner || msg.sender == _launchpadOwner(), NotTokenOwner());
+        require(msg.sender == owner || msg.sender == _admin(), NotTokenOwner());
         require(newBuyTaxBps <= buyTaxBps && newSellTaxBps <= sellTaxBps, TaxBpsCanOnlyDecrease());
 
         emit TaxBpsUpdated(newBuyTaxBps, newSellTaxBps);
 
         buyTaxBps = newBuyTaxBps;
         sellTaxBps = newSellTaxBps;
-    }
-
-    /// @dev The protocol admin half of the dual-auth on `rescueTokens` / `setTaxBps`. The DIRECT-launch
-    ///      venue has no launchpad (`launchpad == address(0)`), and calling `owner()` on an address with
-    ///      no code reverts with empty returndata — so a non-owner caller on such a token would get that
-    ///      instead of `NotTokenOwner`. Returning zero keeps the revert honest. It also means those two
-    ///      functions are owner-only on that venue, and unreachable on one whose owner is renounced:
-    ///      accepted, because the venue's tokens are not administered through a launchpad at all.
-    function _launchpadOwner() internal view returns (address) {
-        RealmLaunchpad lp = launchpad;
-        return address(lp) == address(0) ? address(0) : lp.owner();
     }
 
     //////////////////////// EARNINGS ALLOCATION //////////////////////

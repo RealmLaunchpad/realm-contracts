@@ -417,7 +417,7 @@ Zero-value `depositFees(token)` calls are no-ops and emit no fee events, includi
 
 ## 10. `RealmTaxableToken.setTaxBps(uint16 newBuyTaxBps, uint16 newSellTaxBps)`
 
-Owner-only entry point on both `RealmTaxableTokenUniV2` and `RealmTaxableTokenUniV4`. Callable by the token owner OR `launchpad.owner()`. V2 tokens are always ownerless (`owner == address(0)`), so only the launchpad-owner branch is reachable there; V4 tokens are all direct-launched: owned by their creator unless ownership was renounced at creation, and with no launchpad, so only their owner can call it, and nobody once ownership is renounced.
+Owner-only entry point on both `RealmTaxableTokenUniV2` and `RealmTaxableTokenUniV4`. Callable by the token owner OR the protocol admin (the master fee handler's `owner()`). V2 tokens are always ownerless (`owner == address(0)`), and V4 tokens are direct-launched (no launchpad) and owned by their creator unless ownership was renounced at creation; on every ownerless token, of either venue, the admin branch is the one still reachable.
 
 The function is decrease-only: `newBuyTaxBps` and `newSellTaxBps` must both be `<= ` their current values, otherwise the call reverts with `TaxBpsCanOnlyDecrease`. Equal values are accepted (no-op for that side). `taxDurationSeconds` and `graduationTimestamp` are untouched.
 
