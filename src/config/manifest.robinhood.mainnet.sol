@@ -49,7 +49,7 @@ library DeploymentsRobinhoodMainnet {
     address public constant FACTORY_UNIV4_DIRECT = 0xC763b1795DaBe2D2336EbA214d16969EBc5db27F;
 
     /// @notice Implementation behind `FACTORY_UNIV4_DIRECT`.
-    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0x769057E529226771f41100c795ACffA26179Ab32;
+    address public constant FACTORY_UNIV4_DIRECT_IMPL = 0xEf8D99416476e5d64Fa6D291a6E01bbFdfa8413A;
 
     /// @notice `RealmAssetsWhitelist` proxy (UUPS): the quote currencies the direct venue will launch
     ///         against, each with the native rate derived from its price pool. `FACTORY_UNIV4_DIRECT`
@@ -111,11 +111,11 @@ library DeploymentsRobinhoodMainnet {
     address internal constant REALM_SWAPPER_IMPL = 0xF8C594d1C0Bb9aD6E9f3C2c73679751d3B3b2494;
 
     // --- Token implementations (cloned by factories) ---
-    address internal constant TOKEN_IMPL = 0xb13A758A110569846C87423452904A57Ceb57Eb5;
-    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x92f714819987c945A78d1D4030839C6e57c3F29d;
+    address internal constant TOKEN_IMPL = 0xd9B19d0EEC6902DE2AD1bBE37c4298cB748a371B;
+    address internal constant TAXABLE_TOKEN_V4_IMPL = 0x1F2FB5FaDBC1bC0a65659398c0F44b2F13993ED0;
 
     /// @notice V2 taxable token implementation (cloned by `RealmFactoryUniV2Unified` when tax is configured)
-    address internal constant TAXABLE_TOKEN_V2_IMPL = 0xbB13BeF8f9c26d04A351e582108Fe198770065DF;
+    address internal constant TAXABLE_TOKEN_V2_IMPL = 0x153657B2E0c7CfCc41D8bF66977A512cd2D18631;
 
     // --- Factories (unified) ---
     /// @notice UUPS proxy addresses that integrators whitelist. These stay stable across upgrades.
@@ -124,7 +124,7 @@ library DeploymentsRobinhoodMainnet {
     /// @notice Implementation addresses currently set behind the proxies above. Updated on every
     ///         `UpgradeRealmFactories` run. Tracked for Etherscan verification and audit trails;
     ///         no contract or frontend consumes these directly.
-    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0xeE23C3E58DdDE5357Dbc7A41860556bbD8d82796;
+    address internal constant FACTORY_UNIV2_UNIFIED_IMPL = 0x8Ca71bB9c5f4B826F4980B49EC2e3FDfcc8699Fd;
 
     // --- Creator vaults ---
     /// @notice `RealmCreatorVault` implementation cloned by the vault factory. Update after deploying.
