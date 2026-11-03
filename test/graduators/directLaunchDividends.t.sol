@@ -625,20 +625,22 @@ contract DirectLaunchDividendsTests is DirectLaunchQuotesTests, V4PoolSeeding {
 
     /////////////////////////// OWNER-ONLY ADMIN ///////////////////////////
 
-    /// @dev A direct token has no launchpad, so its owner is its only admin: a stranger and the protocol
-    ///      admin who owns the curve venue's launchpad both get `NotTokenOwner`, not an empty revert.
-    function test_directToken_onlyItsOwnerMayRescueOrLowerTheTax() public {
+    /// @dev A direct token has no launchpad: its owner and the protocol admin (the fee handler's owner)
+    ///      may rescue or lower the tax; a stranger gets `NotTokenOwner`, not an empty revert.
+    function test_directToken_onlyOwnerOrAdminMayRescueOrLowerTheTax() public {
         RealmTaxableTokenUniV4 token = _launch(_aaplPair(), _cfg(AAPL));
-        address[2] memory callers = [stranger, admin];
-        for (uint256 i; i < callers.length; ++i) {
-            vm.prank(callers[i]);
-            vm.expectRevert(RealmTaxableToken.NotTokenOwner.selector);
-            token.rescueTokens(AAPL);
+        vm.prank(stranger);
+        vm.expectRevert(RealmTaxableToken.NotTokenOwner.selector);
+        token.rescueTokens(AAPL);
 
-            vm.prank(callers[i]);
-            vm.expectRevert(RealmTaxableToken.NotTokenOwner.selector);
-            token.setTaxBps(0, 0);
-        }
+        vm.prank(stranger);
+        vm.expectRevert(RealmTaxableToken.NotTokenOwner.selector);
+        token.setTaxBps(0, 0);
+
+        uint16 halfSell = token.sellTaxBps() / 2;
+        vm.prank(admin);
+        token.setTaxBps(0, halfSell);
+        assertEq(uint256(token.buyTaxBps()), 0, "the admin can");
 
         vm.prank(creator);
         token.setTaxBps(0, 0);

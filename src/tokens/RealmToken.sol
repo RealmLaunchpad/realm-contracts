@@ -9,6 +9,7 @@ import {IPoolManager} from "lib/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId} from "lib/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "lib/v4-core/src/libraries/StateLibrary.sol";
 import {Initializable} from "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
+import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {IRealmToken} from "src/interfaces/IRealmToken.sol";
 import {IRealmFactory} from "src/interfaces/IRealmFactory.sol";
 import {IRealmGraduator} from "src/interfaces/IRealmGraduator.sol";
@@ -303,16 +304,23 @@ contract RealmToken is ERC20, ERC20Burnable, IRealmToken, Initializable, SniperP
         graduationTickAscending = ascending;
     }
 
-    /// @notice Proposes a new owner for a token. Only callable by the current tokenOwner.
+    /// @notice Proposes a new owner for a token. Callable by the current tokenOwner or the protocol admin.
     ///         Pass address(0) as newOwner to cancel a pending proposal.
-    /// @dev Also callable by the launchpad for communityTakeOvers. Effectively called by admins.
+    /// @dev The launchpad (curve tokens' `communityTakeOver`) and the protocol admin (`_admin()`) can call it
+    ///      even when ownership is renounced, so community takeovers reach every venue, direct included.
     function proposeNewOwner(address newOwner) external {
         address _owner = owner;
-        require(msg.sender == _owner || msg.sender == address(launchpad), Unauthorized());
+        require(msg.sender == _owner || msg.sender == address(launchpad) || msg.sender == _admin(), Unauthorized());
 
         proposedOwner = newOwner;
 
         emit NewOwnerProposed(_owner, newOwner, msg.sender);
+    }
+
+    /// @dev Protocol admin: the master fee handler's owner. Every token has a fee handler (the direct
+    ///      venue has no launchpad), so this is the one admin reachable on all venues.
+    function _admin() internal view returns (address) {
+        return Ownable(feeHandler).owner();
     }
 
     /// @notice Accepts token ownership. Only callable by the address proposed as new owner.
