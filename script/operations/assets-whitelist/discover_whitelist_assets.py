@@ -208,8 +208,12 @@ BRIDGE_STOCKS = {
 
 # Hand-picked crypto majors (mainnet only): address -> ticker. Discovered and ranked like an rStock.
 # Identity is vouched for HERE. CBBTC checked 2026-10-09: a 1 ETH buy moves its pool 4 bps.
+# ZEC and HOOD ("Robinhood Stock", not the rejected memecoin HOOD 0xdaa8…) added 2026-11-04: team-seeded
+# hookless native V4 pools (fee 2500, tick spacing 25), ~$17.5k per side.
 CRYPTO_MAJORS = {
     "0xcec185eb182c47d1ba1efc84e6959e18cd620be4": "CBBTC",
+    "0x2eedc937c6d9a6555c2e721fc0ff1053765e8db7": "ZEC",
+    "0xe1061f267342903e1f12ff47e95d6706fd4909dd": "HOOD",
 }
 
 
